@@ -33,7 +33,7 @@ import { Editor, NOTHING_TO_MOVE, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { snapshotKey, snapshotRecord, storedSnapshots, type Snapshot, type SnapshotKey } from './snapshots';
 import { ScopeScreens } from './scope-view';
 import { OUTPUT_SCOPE_KEY, OutputScope } from './output-scope';
-import { SnapSidebar } from './snap-side';
+import { candidateTitle, renderList, renderProgress, renderRail, SnapSidebar, type SideActions, type SideView } from './snap-side';
 import { OutputLoudness } from './loudness-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
@@ -52,7 +52,7 @@ import { buildAssembliesSection, storeAssembly, storeTutorialAssembly } from './
 import { AssemblyBrowser } from './browser';
 import { searchCommands, type Command } from './commands';
 import { CATEGORIES, MUTATE_AMOUNTS, PROFILES, type Category } from './mutate';
-import { filterRound, probePhrase, PROBE_HOLD, PROBE_RENDER } from './mutate-render';
+import { filterRound, OVERSAMPLE, PASS, probePhrase, PROBE_HOLD, PROBE_RENDER } from './mutate-render';
 import { buildFlashTab } from './flasher';
 import { attachKeyboard, attachMidi, editorCc, followOctave, isFm1In, isOpenSelect, isTextEntry } from './input';
 import { playsNothing, watchIgnoredFm1s, type IgnoredFm1s } from './ignored-fm1s';
@@ -1150,7 +1150,6 @@ const editor = new Editor($('canvas'), firstPatch, {
     nameInput.value = editor.patch.name;   // (each stop has its own name, D-970)
     renderSnapshots();
     queueSave(editor.patch);   // (the snapshots are kept beside the patch)
-    outScope.update(!snapColumn.hidden, editor.snaps.list.length);
   },
   onSilence(p) {
     // a snapshot switch (D-970): both engines start the stop from silence. A Live FM-1 gets All Notes Off (MIDI CC 123), the
@@ -1176,7 +1175,7 @@ editor.dockPlay = arpBtn;
 initStatusline($('statusline'));
 editor.rebuild();
 showBudget();
-snapshotCandidates = () => editor.snaps.list.map((s) => ({ name: `Snapshot ${s.letter}`, patch: { ...JSON.parse(s.patch) as Patch, name: `Snapshot ${s.letter}` } }));
+snapshotCandidates = () => editor.snaps.list.map((s) => ({ name: `Candidate ${s.letter}`, patch: { ...JSON.parse(s.patch) as Patch, name: `Candidate ${s.letter}` } }));
 host.setPatch(editor.patch);
 const tutorial = new Tutorial({
   editor,
@@ -1548,47 +1547,81 @@ const showDiff = (): void => {
   diffPanel.append(h, ul);
   diffPanel.hidden = false;
 };
-// ---- snapshots (#943): versions of the patch kept with it, lettered A, B… as they are taken (kept beside the remembered
-// patch: save, D-972). The sidebar at the canvas's right edge lists them under the Output scope, the current patch last
-// (#1040); Alt+B or Alt+J goes down the list, the current patch, the top again…, Alt+K the other way (#1028), Shift+Alt+B
-// takes one, Alt+X removes the one on screen, a drag puts one elsewhere in the list
+// ---- candidates (#943, #1048; snapshots in the code): versions of the patch kept with it (kept beside the remembered
+// patch: save, D-972). The Sound design sidebar at the canvas's right edge lists them under the Output scope, the current
+// patch first as A (#1040); Alt+B or Alt+J goes down the list and round to A, Alt+K the other way (#1028), Shift+Alt+B
+// nominates the patch heard, Alt+X removes the candidate heard, Alt+C uses it, a drag puts one elsewhere in the list
 const snapStrip = $('snapshot-strip');
-// the sidebar: its width and its fold; the canvas gives up its width while it lists snapshots or shows the scope (style.css .snap-column)
+// the sidebar: its width and its fold; the canvas gives up its width (style.css .snap-column)
 const snapColumn = $('snap-column');
-const snapSide = new SnapSidebar(snapColumn);
+const snapSide = new SnapSidebar(snapColumn, (b) => popMenu(sideMenu(b), b));
 new ResizeObserver(() => snapColumn.parentElement!.style.setProperty('--snap-col-w', `${snapColumn.offsetWidth + 30}px`)).observe(snapColumn);
-/** a pointer drag of a snapshot's row is under way and has moved: the click that ends it does not switch */
+// Generate's count per round (#996): kept per browser, like Mutate's amount
+const CANDIDATES = 'matryoshka.candidates';
+const CANDIDATE_COUNTS = [2, 4, 6, 8] as const;
+let candidates = 4;
+function setCandidates(v: number): void {
+  candidates = v;
+  status.textContent = `Generate makes ${v} candidates at a time`;
+  renderSnapshots();
+  try {
+    localStorage.setItem(CANDIDATES, String(v));
+  } catch {
+    /* storage blocked: the count lasts until the page is reloaded */
+  }
+}
+try {
+  const v = Number(localStorage.getItem(CANDIDATES));
+  if ((CANDIDATE_COUNTS as readonly number[]).includes(v)) candidates = v;
+} catch {
+  /* storage blocked: the default count */
+}
+/** the picker of candidates per round, under `anchor` (the footer's ×N, the ⋯ menu) */
+const pickCount = (anchor: HTMLElement): void => popMenu(CANDIDATE_COUNTS.map((c) => ({ text: `${c === candidates ? '✓ ' : ''}${c} per round`, run: () => setCandidates(c) })), anchor);
+/** a pointer drag of a candidate's row is under way and has moved: the click that ends it does not switch */
 let snapDragged = false;
-/** a drag of a snapshot's row up or down the list puts it there (#1040, D-970): the keys go through the snapshots in the
- *  list's order and the letters stay. A line shows where it goes; near the list's top or bottom the list scrolls */
+/** a drag of a candidate's row up or down the list puts it there (#1040, D-970): the keys go through the candidates in
+ *  the list's order and the letters stay; A stays first. The row lifts and follows the pointer, its place fades, and a
+ *  teal line shows where it lands; near the list's top or bottom the list scrolls */
 function dragSnapshot(e: PointerEvent, row: HTMLElement, letter: string): void {
   if (e.button !== 0) return;
   snapDragged = false;
-  const y0 = e.clientY;
+  const y0 = e.clientY, top0 = row.offsetTop, scroll0 = snapStrip.scrollTop;
   let to = -1;
+  let lift: HTMLElement | null = null;
+  const line = document.createElement('div');
+  line.className = 'snap-drop';
   const rows = (): HTMLElement[] => [...snapStrip.querySelectorAll<HTMLElement>('.snap[data-letter]')];
-  const unmark = (): void => { for (const r of rows()) r.classList.remove('drop-before', 'drop-after'); };
   const move = (ev: PointerEvent): void => {
     if (!snapDragged && Math.abs(ev.clientY - y0) < 5) return;
-    snapDragged = true;
-    row.classList.add('dragging');
+    if (!lift) {
+      snapDragged = true;
+      lift = row.cloneNode(true) as HTMLElement;
+      lift.classList.add('lifted');
+      lift.removeAttribute('data-letter');
+      snapStrip.append(lift);
+      row.classList.add('ghost');
+    }
     const box = snapStrip.getBoundingClientRect();
     if (ev.clientY < box.top + 24) snapStrip.scrollTop -= 8;
     else if (ev.clientY > box.bottom - 24) snapStrip.scrollTop += 8;
+    lift.style.top = `${top0 + ev.clientY - y0 + snapStrip.scrollTop - scroll0}px`;
     const all = rows();
     const from = all.indexOf(row);
     // the place among the rows: how many of them have their middle above the pointer (the dragged one counted)
     const at = all.filter((r) => { const q = r.getBoundingClientRect(); return q.top + q.height / 2 < ev.clientY; }).length;
     to = at > from ? at - 1 : at;
-    unmark();
-    if (to !== from) (at < all.length ? all[at] : all[all.length - 1]).classList.add(at < all.length ? 'drop-before' : 'drop-after');
+    if (to === from) line.remove();
+    else if (at < all.length) all[at].before(line);
+    else all[all.length - 1].after(line);
   };
   const up = (): void => {
     removeEventListener('pointermove', move);
     removeEventListener('pointerup', up);
     removeEventListener('pointercancel', up);
-    unmark();
-    row.classList.remove('dragging');
+    line.remove();
+    lift?.remove();
+    row.classList.remove('ghost');
     if (snapDragged && to >= 0) editor.moveSnapshot(letter, to);
     setTimeout(() => { snapDragged = false; });   // (after the click this release makes)
   };
@@ -1596,129 +1629,126 @@ function dragSnapshot(e: PointerEvent, row: HTMLElement, letter: string): void {
   addEventListener('pointerup', up);
   addEventListener('pointercancel', up);
 }
-/** how many changes the snapshot is from the current patch, counted as Show changes counts them */
+/** how many changes the candidate is from the current patch, counted as Show changes counts them */
 const snapChanges = (s: Snapshot): number => diffCount(diffPatches(editor.currentPatch(), JSON.parse(s.patch) as Patch, DEFS));
-const snapTitle = (s: Snapshot): string => s.name ? `${s.letter} “${s.name}”` : s.letter;
-function renderSnapshots(): void {
-  const { list, shown } = editor.snaps;
-  const edited = editor.shownEdited();
-  const entry = (label: string, title: string, on: boolean, run: () => void): HTMLButtonElement => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'snap';
-    b.textContent = label;
-    b.title = title;
-    b.setAttribute('aria-pressed', String(on));
-    b.onclick = run;
-    return b;
-  };
-  const items = list.map((s) => {
-    const n = snapChanges(s);
-    const changed = edited && shown === s.letter;
-    const verdict = s.mark === 'keep' ? '. Marked keep: Make candidates breeds from the keeps' : '';
-    const origin = s.from ? `. ${s.from.includes('+') ? 'Bred' : 'Mutated'} from ${s.from === 'current' ? 'the current patch' : s.from.includes('+') ? `the keeps ${s.from}` : s.from}` : '';
-    const b = entry(s.letter, `Snapshot ${snapTitle(s)}: ${n ? `${n} change${n === 1 ? '' : 's'} from the current patch` : 'the same as the current patch'}${origin}${verdict}${changed ? '. Changed since it was taken: switching away keeps the changes as a new snapshot' : ''}. Click to hear it, drag it up or down to change the order, right-click or double-click for more`, shown === s.letter, () => { if (!snapDragged) showStop(s.letter); });
-    b.dataset.letter = s.letter;
-    b.onpointerdown = (e) => dragSnapshot(e, b, s.letter);
-    if (changed) b.classList.add('edited');
-    if (s.mark) b.classList.add(s.mark);
-    if (s.from) {
-      const from = document.createElement('span');
-      from.className = 'snap-from';
-      from.textContent = `←${s.from === 'current' ? 'now' : s.from}`;
-      b.append(from);
-    }
-    if (s.name) {
-      const name = document.createElement('span');
-      name.className = 'snap-name';
-      name.textContent = s.name;
-      b.append(name);
-    }
-    // the thumbnail: the number of changes; a spectrogram of the test phrase (#945) can take this place
-    const thumb = document.createElement('span');
-    thumb.className = 'snap-thumb';
-    thumb.textContent = n ? String(n) : '=';
-    b.append(thumb);
-    const more = (e: Event): void => { e.preventDefault(); popMenu(snapshotMenu(s), b); };
-    b.oncontextmenu = more;
-    b.ondblclick = more;
-    return b;
-  });
-  const take = entry(list.length ? '+' : '+ Snapshot', 'Take a snapshot of the patch on screen (Shift+Alt+B)', false, () => takeSnapshot());
-  take.classList.add('snap-take');
-  take.removeAttribute('aria-pressed');
-  const current = list.length ? [entry('Current', 'The current patch: your latest edits. Alt+B or Alt+J goes on through the snapshots and round again, Alt+K goes back. Right-click to store the kept snapshots as presets', shown === null, () => showStop(null))] : [];
-  for (const b of current) b.oncontextmenu = (e) => {
+const snapTitle = (s: Snapshot): string => candidateTitle(s.letter, s.name);
+/** the Generate round rendering by ear now (a category, #1033), for the progress line and the row being judged */
+let round: SideView['round'] = null;
+const sideActions: SideActions = {
+  hear: (letter) => { if (!snapDragged) showStop(letter); },
+  keep: (letter, on) => {
+    editor.setKeep(letter, on);
+    status.textContent = `${letter}: ${on ? 'kept, Generate breeds from the kept ones' : 'not kept'}`;
+  },
+  use: (letter) => makeCurrent(letter),
+  remove: (letter) => (letter === editor.snaps.shown ? removeShown() : removeCandidate(letter)),
+  more: (s, anchor) => popMenu(snapshotMenu(s), anchor),
+  currentMore: (anchor, e) => {
     const items = keptPresetItems();
     if (!items.length) return;
     e.preventDefault();
-    popMenu(items, b);
-  };
-  snapStrip.replaceChildren(...items, ...current, take);
-  snapSide.setShown(shown);
-  // the entry on show stays in view of the list when it scrolls; only the list scrolls (scrollIntoView could scroll the page)
-  const on = snapStrip.querySelector<HTMLElement>('[aria-pressed="true"]');
-  if (on && on.offsetTop < snapStrip.scrollTop) snapStrip.scrollTop = on.offsetTop;
-  else if (on && on.offsetTop + on.offsetHeight > snapStrip.scrollTop + snapStrip.clientHeight) snapStrip.scrollTop = on.offsetTop + on.offsetHeight - snapStrip.clientHeight;
+    popMenu(items, anchor);
+  },
+  drag: dragSnapshot,
+  step: (dir) => cycleSnapshots(dir),
+  generate: () => makeCandidates(),
+};
+function renderSnapshots(): void {
+  const { list, shown } = editor.snaps;
+  const view: SideView = { list, shown, edited: editor.shownEdited(), currentName: editor.currentPatch().name, changes: snapChanges, round, count: candidates };
+  renderList(snapStrip, view, sideActions);
+  renderRail(snapSide.rail, view, sideActions);
+  renderProgress($('snap-progress'), round);
+  $('cand-count').textContent = list.length ? String(list.length) : '';
+  $('snap-count').textContent = `×${candidates}`;
+  snapSide.setCandidates(list.length);
 }
+$('snap-generate').onclick = () => makeCandidates();
+$('snap-count').onclick = (e) => pickCount(e.currentTarget as HTMLElement);
+$('snap-nominate').onclick = () => takeSnapshot();
+$('snap-stop').onclick = () => { if (byEar) byEar.stop = true; };
+/** the head's ⋯ menu (#1048): Mutate and its settings, candidates per round, then storing and saving, the row heard last */
+const sideMenu = (anchor: HTMLElement): MenuItem[] => {
+  const s = editor.snaps.get(editor.snaps.shown);
+  const heard = s ? [
+    { text: `Save ${s.letter} as a patch…`, rule: true, run: () => saveSnapshotPatch(s) },
+    ...presetEngines(editor.currentPatch()).map((a) => ({ text: `Store ${s.letter} as a preset of ${a.label}…`, run: () => storeSnapshotPreset(s, a) })),
+  ] : [{ text: 'Save A, the current patch', rule: true, run: saveCurrent }];
+  return [
+    { text: 'Mutate', key: 'Alt+M', run: inPatch(() => void editor.mutate('mutate')) },
+    { text: 'Randomize', run: inPatch(() => void editor.mutate('randomize')) },
+    { text: 'Lock envelopes', run: inPatch(() => void editor.lockEnvelopes()) },
+    { text: `Mutate amount: ±${Math.round(editor.mutateAmount * 100)} % …`, rule: true, run: () => popMenu(MUTATE_AMOUNTS.map((a) => ({ text: `${a === editor.mutateAmount ? '✓ ' : ''}±${Math.round(a * 100)} %`, run: () => setMutateAmount(a) })), anchor) },
+    { text: `Mutate pitch: ${editor.mutatePitch ? 'on' : 'off'}`, run: () => setMutatePitch(!editor.mutatePitch) },
+    { text: `Candidates per round: ${candidates} …`, run: () => pickCount(anchor) },
+    ...keptPresetItems(),
+    ...heard,
+  ];
+};
 const snapshotMenu = (s: Snapshot): MenuItem[] => [
-  { text: s.mark === 'keep' ? 'Unmark keep' : 'Keep', run: () => editor.setKeep(s.letter, s.mark !== 'keep') },
-  { text: 'Make candidates from it', key: 'Alt+N', rule: true, run: () => { showStop(s.letter); makeCandidates(); } },
+  { text: s.mark === 'keep' ? 'Unkeep' : 'Keep', run: () => sideActions.keep(s.letter, s.mark !== 'keep') },
+  { text: 'Generate from it', key: 'Alt+N', rule: true, run: () => { showStop(s.letter); makeCandidates(); } },
   { text: 'Rename…', run: () => {
-    const to = window.prompt(`Name of snapshot ${s.letter} (empty: none)`, s.name ?? '');
+    const to = window.prompt(`Name of candidate ${s.letter} (empty: none)`, s.name ?? '');
     if (to !== null) editor.renameSnapshot(s.letter, to.trim());
   } },
-  { text: 'Make it the current patch', key: s.letter === editor.snaps.shown ? 'Alt+C' : undefined, run: () => makeCurrent(s.letter) },
-  { text: 'Save as a patch…', run: () => {
-    const p = JSON.parse(s.patch) as Patch;
-    const name = window.prompt('Save the snapshot to Your patches as', s.name ?? `${p.name} ${s.letter}`)?.trim();
-    if (name) status.textContent = keepPatch({ ...p, name }).msg;
-  } },
+  { text: 'Use it as the current patch', key: s.letter === editor.snaps.shown ? 'Alt+C' : undefined, run: () => makeCurrent(s.letter) },
+  { text: 'Save as a patch…', run: () => saveSnapshotPatch(s) },
   ...presetEngines(editor.currentPatch()).map((a, i) => ({ text: `Store as a preset of ${a.label}…`, rule: i === 0, run: () => storeSnapshotPreset(s, a) })),
   ...keptPresetItems(),
-  { text: 'Remove', danger: true, run: () => {
-    editor.removeSnapshot(s.letter);
-    status.textContent = `snapshot ${s.letter} removed`;
-    queueSave(editor.patch);
-  } },
+  { text: 'Remove', danger: true, run: () => removeCandidate(s.letter) },
 ];
-// ---- presets from snapshots (#1031, D-993): a snapshot's values for an engine become a preset of the current patch's
+/** save candidate `s` to Your patches, under a name the user gives */
+const saveSnapshotPatch = (s: Snapshot): void => {
+  const p = editor.snapshotVersion(s);
+  const name = window.prompt(`Save candidate ${s.letter} to Your patches as`, s.name ?? `${editor.currentPatch().name} ${s.letter}`)?.trim();
+  if (name) status.textContent = keepPatch({ ...p, name }).msg;
+};
+/** forget candidate `letter` (its menu's Remove); the one heard goes as Alt+X removes it */
+const removeCandidate = (letter: string): void => {
+  if (letter === editor.snaps.shown) return removeShown();
+  editor.removeSnapshot(letter);
+  status.textContent = `candidate ${letter} removed`;
+  queueSave(editor.patch);
+};
+// ---- presets from candidates (#1031, D-993): a candidate's values for an engine become a preset of the current patch's
 // engine, without a switch; one undo step takes them out again
-/** store snapshot `s`'s values for the engine `a` as a preset of the current patch's `a`, under a name the user gives */
+/** store candidate `s`'s values for the engine `a` as a preset of the current patch's `a`, under a name the user gives */
 const storeSnapshotPreset = (s: Snapshot, a: AssemblyInst): void => {
   const cur = editor.currentPatch();
   if (!snapshotPreset(cur, a, editor.snapshotVersion(s), a.label))
-    return void (status.textContent = `${a.label} or its FX rack in snapshot ${s.letter} is built differently from the current patch's: a preset holds values only, so it cannot be one of its presets`);
-  const name = window.prompt(`Store snapshot ${s.letter}’s ${a.label} as a preset of the current patch’s ${a.label}`, s.name ?? nextPresetName(cur, a))?.trim();
+    return void (status.textContent = `${a.label} or its FX rack in candidate ${s.letter} is built differently from the current patch's: a preset holds values only, so it cannot be one of its presets`);
+  const name = window.prompt(`Store candidate ${s.letter}’s ${a.label} as a preset of the current patch’s ${a.label}`, s.name ?? nextPresetName(cur, a))?.trim();
   if (!name) return;
   const [done] = editor.storeSnapshotPresets(a.id, [{ letter: s.letter, name }], false).stored;
-  if (done) status.textContent = `snapshot ${s.letter}’s ${a.label} stored as the preset “${done.name}” of ${a.label} (Ctrl/Cmd+Z takes it out)`;
+  if (done) status.textContent = `candidate ${s.letter}’s ${a.label} stored as the preset “${done.name}” of ${a.label} (Ctrl/Cmd+Z takes it out)`;
 };
-/** every snapshot marked keep becomes a preset of the current patch's engine `a`, named after the snapshot */
+/** every kept candidate becomes a preset of the current patch's engine `a`, named after the candidate */
 const storeKeptPresets = (a: AssemblyInst): void => {
   const keeps = editor.snaps.list.filter((s) => s.mark === 'keep');
-  if (!keeps.length) return void (status.textContent = 'no snapshot is marked keep: right-click a snapshot > Keep, then each kept snapshot becomes a preset');
+  if (!keeps.length) return void (status.textContent = 'no candidate is kept: tick a candidate (or hear it and press Keep), then each kept one becomes a preset');
   const { stored, skipped } = editor.storeSnapshotPresets(a.id, keeps.map((s) => ({ letter: s.letter, name: s.name ?? s.letter })), true);
   if (!stored.length && !skipped.length) return;   // (an error: the status line says it)
   const done = stored.length ? `${stored.length} preset${stored.length === 1 ? '' : 's'} of ${a.label} stored: ${stored.map((x) => `${x.letter} as “${x.name}”`).join(', ')} (Ctrl/Cmd+Z takes ${stored.length === 1 ? 'it' : 'them'} out)` : `no preset of ${a.label} stored`;
   status.textContent = done + (skipped.length ? ` · skipped ${skipped.join(', ')}: ${a.label} or its FX rack is built differently there from the current patch's, and a preset holds values only` : '');
 };
-/** Store kept snapshots as presets, one item per engine of the current patch that has presets */
-const keptPresetItems = (): MenuItem[] => presetEngines(editor.currentPatch()).map((a, i) => ({ text: `Store kept snapshots as presets of ${a.label}`, rule: i === 0, run: () => storeKeptPresets(a) }));
+/** Store kept candidates as presets, one item per engine of the current patch that has presets */
+const keptPresetItems = (): MenuItem[] => presetEngines(editor.currentPatch()).map((a, i) => ({ text: `Store kept candidates as presets of ${a.label}`, rule: i === 0, run: () => storeKeptPresets(a) }));
+/** Nominate (Shift+Alt+B): the patch heard becomes a new candidate */
 const takeSnapshot = (): void => {
   const s = editor.takeSnapshot();
-  editor.rebuild();   // (the morph picker offers the snapshots)
-  status.textContent = `snapshot ${s.letter} taken: Alt+B compares it with the current patch`;
+  editor.rebuild();   // (the morph picker offers the candidates)
+  status.textContent = `${s.letter} nominated: Alt+J goes on to it, Alt+K back to A`;
 };
-/** after a switch: the name, the status line (what the stop is, and where changes to the snapshot left went) */
+/** after a switch: the name, the status line (what the stop is, and where changes to the candidate left went) */
 const switched = (r: { kept?: Snapshot } | null): void => {
   if (!r) return;
   audition.restart();   // (a test phrase starts again: each stop hears the same notes from the top, #945)
   tutorial.flipped();
   const s = editor.snaps.get(editor.snaps.shown);
   const n = s ? snapChanges(s) : 0;
-  const where = s ? `snapshot ${snapTitle(s)}: ${n ? `${n} change${n === 1 ? '' : 's'} from the current patch` : 'the same as the current patch'}` : 'the current patch';
-  status.textContent = where + (r.kept ? ` · your changes are kept as snapshot ${r.kept.letter}` : '');
+  const where = s ? `candidate ${snapTitle(s)}: ${n ? `${n} change${n === 1 ? '' : 's'} from the current patch` : 'the same as the current patch'}` : 'A, the current patch';
+  status.textContent = where + (r.kept ? ` · your changes are kept as candidate ${r.kept.letter}` : '');
   queueSave(editor.patch);
 };
 const showStop = (letter: string | null): void => switched(editor.showSnapshot(letter));
@@ -1726,90 +1756,103 @@ const showStop = (letter: string | null): void => switched(editor.showSnapshot(l
 const cycleSnapshots = (step: 1 | -1 = 1): void => {
   const r = editor.cycleSnapshots(step);
   if (r) switched(r);
-  else status.textContent = 'take a snapshot first (Shift+Alt+B), then Alt+B compares it with the current patch';
+  else status.textContent = 'A, the current patch, is the only candidate: Generate (Alt+N) or Nominate (Shift+Alt+B) adds more, then Alt+J goes through them';
 };
-/** Alt+X (#1028): remove the snapshot on screen at once (one undo step) and go on to the next stop */
+/** Alt+X (#1028): remove the candidate heard at once (one undo step) and go on to the next stop */
 const removeShown = (): void => {
   const r = editor.removeShown();
-  if (!r) return void (status.textContent = editor.snaps.list.length ? 'the current patch is on screen: Alt+X removes a snapshot, never the current patch (Alt+J or Alt+K goes to one)' : 'no snapshot to remove');
+  if (!r) return void (status.textContent = editor.snaps.list.length ? 'you are hearing A, the current patch: Alt+X removes a candidate, never A (Alt+J or Alt+K goes to one)' : 'no candidate to remove');
   switched(r);
-  status.textContent = `snapshot ${r.removed.letter} removed (Ctrl/Cmd+Z puts it back) · ${status.textContent}`;
+  status.textContent = `candidate ${r.removed.letter} removed (Ctrl/Cmd+Z puts it back) · ${status.textContent}`;
 };
-/** a snapshot becomes the current patch and leaves the list; the patch it replaces takes its place there (#1040) */
+/** Use: a candidate becomes the current patch, A, and leaves the list; the patch it replaces takes its place there (#1040) */
 const makeCurrent = (letter: string): void => {
   const kept = editor.makeCurrent(letter);
   audition.restart();   // (a switch: silenced, then the test phrase from the top)
-  status.textContent = `${letter} is the current patch (Ctrl/Cmd+Z puts it back)${kept ? `; the patch it replaces is kept as ${kept.letter}, in its place` : ''}`;
+  status.textContent = `${letter} is now A, the current patch (Ctrl/Cmd+Z puts it back)${kept ? `; the patch it replaces is kept as ${kept.letter}, in its place` : ''}`;
   queueSave(editor.patch);
 };
-/** Alt+C (#1040): the snapshot on screen becomes the current patch */
+/** Alt+C (#1040): Use the candidate heard */
 const makeShownCurrent = (): void => {
   const shown = editor.snaps.shown;
-  if (shown === null) return void (status.textContent = editor.snaps.list.length ? 'the current patch is on screen already: Alt+C makes the snapshot on screen the current patch (Alt+J or Alt+K goes to one)' : 'no snapshot to make the current patch');
+  if (shown === null) return void (status.textContent = editor.snaps.list.length ? 'you are hearing A, the current patch, already: Alt+C uses the candidate you hear (Alt+J or Alt+K goes to one)' : 'no candidate to use');
   makeCurrent(shown);
 };
 const snapshotKeyRun: Record<SnapshotKey, () => void> = { next: () => cycleSnapshots(1), previous: () => cycleSnapshots(-1), take: () => takeSnapshot(), remove: removeShown, current: makeShownCurrent };
-// ---- rank and cut (#996): Make candidates (Alt+N) mutates the patch on screen into new snapshots; Alt+J / Alt+K go
-// through them, Alt+X removes a loser at once; the keep mark (no key) chooses what the next round breeds from
+// ---- rank and cut (#996): Generate (Alt+N) mutates the patch heard into new candidates; Alt+J / Alt+K go through them,
+// Alt+X removes a loser at once; the keep mark chooses what the next round breeds from
 const toggleKeepShown = (): void => {
   const s = editor.snaps.get(editor.snaps.shown);
-  if (!s) return void (status.textContent = 'show a snapshot first (Alt+J): the current patch is never marked keep');
-  editor.setKeep(s.letter, s.mark !== 'keep');
-  status.textContent = `snapshot ${s.letter}: ${s.mark === 'keep' ? 'marked keep' : 'no mark'}`;
+  if (!s) return void (status.textContent = 'hear a candidate first (Alt+J): A, the current patch, is never kept');
+  sideActions.keep(s.letter, s.mark !== 'keep');
 };
-/** the round of Make candidates rendering now (a category, #1033): set `stop` to end it early */
+/** the round of Generate rendering now (a category, #1033): set `stop` to end it early */
 let byEar: { stop: boolean } | null = null;
 const makeCandidates = (): void => {
-  if (byEar) return void (byEar.stop = true);   // (Make candidates again while a round renders: stop it there)
+  if (byEar) return void (byEar.stop = true);   // (Generate again while a round renders: stop it there)
   const keeps = editor.snaps.list.filter((s) => s.mark === 'keep').map((s) => s.letter);
-  const from = keeps.length >= 2 ? `the keeps ${keeps.join(', ')}` : editor.snaps.shown ?? 'the current patch';
+  const from = keeps.length >= 2 ? `the kept ${keeps.join(', ')}` : editor.snaps.shown ?? 'A, the current patch';
   const how = keeps.length >= 2 ? `bred, then mutated by up to ±${Math.round(editor.mutateAmount * 50)} %` : `each mutated by up to ±${Math.round(editor.mutateAmount * 100)} %`;
   const tail = `${editor.mutatePitch ? '' : ', pitch held'}: Alt+J listens on, Alt+K back, Alt+X removes`;
   const category = editor.mutateCategory;
   if (category !== 'any') return void makeByEar(category, from, how, tail);
   const made = editor.makeCandidates(candidates);
   if (!made.length) return;
-  editor.rebuild();   // (the morph picker offers the snapshots)
+  editor.rebuild();   // (the morph picker offers the candidates)
   switched({});
   status.textContent = `${made.length} candidates from ${from}, ${made[0].letter}–${made.at(-1)!.letter}, ${how}${tail}`;
 };
 /**
- * Make candidates aimed at a category (#1033, mutate-render.ts): up to four times as many are made and each is rendered
- * with the probe in this browser (one note held 1 s, never the test phrase, D-996), measured and dropped; those that fit
- * join the strip as they pass, the nearest fill the round. The render keeps no sound: only a few numbers per candidate,
- * for this round.
+ * Generate aimed at a category (#1033, mutate-render.ts): up to four times as many are made and each is rendered with the
+ * probe in this browser (one note held 1 s, never the test phrase, D-996), measured and dropped; those that fit join the
+ * list as they pass, the nearest fill the round. The render keeps no sound: only a few numbers per candidate, for this
+ * round. The progress line and a row being judged show it while it runs.
  */
 async function makeByEar(category: Exclude<Category, 'any'>, from: string, how: string, tail: string): Promise<void> {
-  const round = editor.candidateRound(), probe = probePhrase(round.parent), me = { stop: false };
+  const r0 = editor.candidateRound(), probe = probePhrase(r0.parent), me = { stop: false };
   const ids = editor.patch.modules.map((m) => m.id).join();
   const made: Snapshot[] = [];
   byEar = me;
+  round = { found: 0, of: candidates, rendered: 0, most: candidates * OVERSAMPLE };
+  renderSnapshots();
   const by = `the probe (${NOTE_NAMES[probe.notes[0].note]} held ${PROBE_HOLD} s)`;
-  status.textContent = `Make candidates aimed at ${category}: rendering each with ${by}…`;
+  status.textContent = `Generate aimed at ${category}: rendering each with ${by}…`;
   try {
     const r = await filterRound({
-      n: candidates, profile: PROFILES[category], parent: round.parent, next: round.next, sr: WAV_RATE,
+      n: candidates, profile: PROFILES[category], parent: r0.parent, next: r0.next, sr: WAV_RATE,
       render: (p) => audition.renderWith(p, probe, PROBE_RENDER),
-      keep: (p) => void made.push(editor.takeCandidate(p, round.from)),
-      progress: (k, of, passed) => (status.textContent = `Make candidates aimed at ${category}: ${k} of up to ${of} rendered with ${by}, ${passed} of ${candidates} fit so far (Alt+N stops)`),
+      keep: (p, fit) => {
+        made.push(editor.takeCandidate(p, r0.from, { kind: category, fits: fit <= PASS }));
+        if (round) round.found = made.length;
+      },
+      progress: (k, of, passed) => {
+        round = { found: passed, of: candidates, rendered: k, most: of };
+        renderSnapshots();
+        status.textContent = `Generate aimed at ${category}: ${k} of up to ${of} rendered with ${by}, ${passed} of ${candidates} sound like ${category === 'keys' ? 'keys' : `a ${category}`} so far (Alt+N or Stop stops)`;
+      },
       // (another patch opened under the round: its candidates would not be of it)
       cancelled: () => me.stop || editor.patch.modules.map((m) => m.id).join() !== ids,
     });
-    if (editor.patch.modules.map((m) => m.id).join() !== ids) return void (status.textContent = `Make candidates aimed at ${category}: stopped, another patch is open`);
-    if (!made.length) return void (status.textContent = r.rendered ? `Make candidates aimed at ${category}: stopped before any candidate` : `Make candidates: nothing to move there (${NOTHING_TO_MOVE})`);
+    round = null;
+    if (editor.patch.modules.map((m) => m.id).join() !== ids) return void (status.textContent = `Generate aimed at ${category}: stopped, another patch is open`);
+    if (!made.length) return void (status.textContent = r.rendered ? `Generate aimed at ${category}: stopped before any candidate` : `Generate: nothing to move there (${NOTHING_TO_MOVE})`);
     editor.endCandidates(made);
-    editor.rebuild();   // (the morph picker offers the snapshots)
+    editor.rebuild();   // (the morph picker offers the candidates)
     switched({});
-    const fit = `${r.passed} of ${r.rendered} rendered fit ${category}${r.filled ? `, ${r.filled} nearest added` : ''}`;
+    const fit = `${r.passed} of ${r.rendered} rendered sound like ${category === 'keys' ? 'keys' : `a ${category}`}${r.filled ? `, ${r.filled} kind of do (the nearest)` : ''}`;
     status.textContent = `${made.length} candidates from ${from}, ${made[0].letter}–${made.at(-1)!.letter}, ${how}, aimed at ${category} (${fit})${tail}`;
   } catch (e) {
-    status.textContent = `Make candidates aimed at ${category}: a render failed (${(e as Error).message})`;
+    round = null;
+    status.textContent = `Generate aimed at ${category}: a render failed (${(e as Error).message})`;
     if (made.length && editor.patch.modules.map((m) => m.id).join() === ids) editor.endCandidates(made);
   } finally {
     byEar = null;
+    round = null;
+    renderSnapshots();
   }
 }
-// the snapshots the browser kept with the remembered patch, when the page opened on it (each is checked as a patch is)
+// the candidates the browser kept with the remembered patch, when the page opened on it (each is checked as a patch is;
+// a record from before A was the current patch is lettered once more, storedSnapshots)
 if (firstPatch === editor.patch && savedText !== null) {
   const kept = storedSnapshots((() => { try { return localStorage.getItem(SNAP_STORE); } catch { return null; } })(), savedText).flatMap((s) => {
     try { return [{ ...s, patch: JSON.stringify(validatePatch(JSON.parse(s.patch), DEFS)) }]; } catch { return []; }
@@ -1817,7 +1860,7 @@ if (firstPatch === editor.patch && savedText !== null) {
   if (kept.length) editor.restoreSnapshots(kept);
 }
 renderSnapshots();
-outScope.update(true, editor.snaps.list.length);
+outScope.update(true);
 
 // ---- the command palette: modules, assemblies, patches
 const palette = $<HTMLDialogElement>('palette');
@@ -1861,26 +1904,27 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Delete selection', detail: 'Delete', run: inPatch(() => editor.removeSelected()) },
     { kind: 'command', label: 'Bypass selection', detail: 'B', run: inPatch(() => editor.bypassSelected()) },
     { kind: 'command', label: 'Show changes since last load / upload', keywords: 'diff', run: inPatch(showDiff) },
-    { kind: 'command', label: 'Take a snapshot', detail: 'Shift+Alt+B', keywords: 'compare ab a/b set version keep', run: inPatch(takeSnapshot) },
-    { kind: 'command', label: `Make ${candidates} candidates`, detail: 'Alt+N', keywords: 'rank cut mutate variations breed generate snapshots audition', run: inPatch(makeCandidates) },
-    ...CANDIDATE_COUNTS.map((c) => ({ kind: 'command' as const, label: `Candidates per round: ${c}`, detail: c === candidates ? 'now' : undefined, keywords: 'rank cut make how many', run: () => setCandidates(c) })),
-    { kind: 'command', label: editor.snaps.get(editor.snaps.shown)?.mark === 'keep' ? 'Unmark keep on this snapshot' : 'Keep this snapshot', keywords: 'rank mark winner candidate breed', run: inPatch(toggleKeepShown) },
-    { kind: 'command', label: 'Remove this snapshot', detail: 'Alt+X', keywords: 'rank loser drop cut delete candidate', run: inPatch(removeShown) },
-    { kind: 'command', label: 'Make this snapshot the current patch', detail: 'Alt+C', keywords: 'rank winner keep set current snapshot', run: inPatch(makeShownCurrent) },
-    { kind: 'command', label: 'Next snapshot', detail: 'Alt+B · Alt+J', keywords: 'compare ab a/b switch flip cycle current patch', run: inPatch(() => cycleSnapshots(1)) },
-    { kind: 'command', label: 'Previous snapshot', detail: 'Alt+K', keywords: 'compare ab a/b switch flip cycle back current patch', run: inPatch(() => cycleSnapshots(-1)) },
-    ...editor.snaps.list.map((s) => ({ kind: 'command' as const, label: `Show snapshot ${snapTitle(s)}`, keywords: 'compare ab a/b switch', run: inPatch(() => showStop(s.letter)) })),
-    ...(editor.snaps.shown !== null ? [{ kind: 'command' as const, label: 'Back to the current patch', keywords: 'compare ab a/b switch snapshot', run: inPatch(() => showStop(null)) }] : []),
-    // presets from snapshots (#1031): of each engine of the current patch that has presets, without a switch
+    { kind: 'command', label: 'Nominate', detail: 'Shift+Alt+B · the patch you hear as a new candidate', keywords: 'take snapshot candidate compare ab a/b set version keep sound design', run: inPatch(takeSnapshot) },
+    { kind: 'command', label: 'Generate', detail: `Alt+N · ${candidates} candidates`, keywords: 'make candidates rank cut mutate variations breed snapshots audition sound design', run: inPatch(makeCandidates) },
+    ...CANDIDATE_COUNTS.map((c) => ({ kind: 'command' as const, label: `Candidates per round: ${c}`, detail: c === candidates ? 'now' : undefined, keywords: 'generate rank cut make how many', run: () => setCandidates(c) })),
+    { kind: 'command', label: editor.snaps.get(editor.snaps.shown)?.mark === 'keep' ? 'Unkeep this candidate' : 'Keep this candidate', keywords: 'rank mark winner snapshot breed', run: inPatch(toggleKeepShown) },
+    { kind: 'command', label: 'Remove this candidate', detail: 'Alt+X', keywords: 'rank loser drop cut delete snapshot', run: inPatch(removeShown) },
+    { kind: 'command', label: 'Use this candidate', detail: 'Alt+C · it becomes A, the current patch', keywords: 'rank winner keep set current snapshot make', run: inPatch(makeShownCurrent) },
+    { kind: 'command', label: 'Next candidate', detail: 'Alt+B · Alt+J', keywords: 'compare ab a/b switch flip cycle current patch snapshot', run: inPatch(() => cycleSnapshots(1)) },
+    { kind: 'command', label: 'Previous candidate', detail: 'Alt+K', keywords: 'compare ab a/b switch flip cycle back current patch snapshot', run: inPatch(() => cycleSnapshots(-1)) },
+    ...editor.snaps.list.map((s) => ({ kind: 'command' as const, label: `Hear candidate ${snapTitle(s)}`, keywords: 'compare ab a/b switch show snapshot', run: inPatch(() => showStop(s.letter)) })),
+    ...(editor.snaps.shown !== null ? [{ kind: 'command' as const, label: 'Back to A, the current patch', keywords: 'compare ab a/b switch snapshot candidate', run: inPatch(() => showStop(null)) }] : []),
+    { kind: 'command', label: snapSide.folded ? 'Open the Sound design sidebar' : 'Fold the Sound design sidebar', keywords: 'candidates rail snapshots side panel output scope', run: () => snapSide.setFolded(!snapSide.folded) },
+    // presets from candidates (#1031): of each engine of the current patch that has presets, without a switch
     ...(editor.snaps.list.length ? presetEngines(editor.currentPatch()).flatMap((a) => [
-      ...editor.snaps.list.map((s) => ({ kind: 'command' as const, label: `Store snapshot ${snapTitle(s)} as a preset of ${a.label}…`, keywords: 'preset save engine sound current patch', run: inPatch(() => storeSnapshotPreset(s, a)) })),
-      { kind: 'command' as const, label: `Store kept snapshots as presets of ${a.label}`, keywords: 'preset save engine sound keep marked rank batch', run: inPatch(() => storeKeptPresets(a)) },
+      ...editor.snaps.list.map((s) => ({ kind: 'command' as const, label: `Store candidate ${snapTitle(s)} as a preset of ${a.label}…`, keywords: 'preset save engine sound current patch snapshot', run: inPatch(() => storeSnapshotPreset(s, a)) })),
+      { kind: 'command' as const, label: `Store kept candidates as presets of ${a.label}`, keywords: 'preset save engine sound keep marked rank batch snapshots', run: inPatch(() => storeKeptPresets(a)) },
     ]) : []),
     // Mutate and Randomize (#944): the selected cards' parameters, one undo step
     { kind: 'command', label: 'Mutate selection', detail: `Alt+M · ±${Math.round(editor.mutateAmount * 100)} %${editor.mutateCategory === 'any' ? '' : ` · ${editor.mutateCategory}`}`, keywords: 'vary variation nudge random sound design', run: inPatch(() => void editor.mutate('mutate')) },
     { kind: 'command', label: 'Randomize selection', keywords: 'random dice new sound design', run: inPatch(() => void editor.mutate('randomize')) },
     ...MUTATE_AMOUNTS.map((a) => ({ kind: 'command' as const, label: `Mutate amount: ±${Math.round(a * 100)} %`, detail: a === editor.mutateAmount ? 'now' : undefined, keywords: 'mutate how far', run: () => setMutateAmount(a) })),
-    ...CATEGORIES.map((c) => ({ kind: 'command' as const, label: `Mutate category: ${CATEGORY_TEXT[c][0]}`, detail: `${c === editor.mutateCategory ? 'now · ' : ''}${CATEGORY_TEXT[c][1]}`, keywords: 'mutate randomize candidates aim target sound type kind', run: () => setMutateCategory(c) })),
+    ...CATEGORIES.map((c) => ({ kind: 'command' as const, label: `Mutate category: ${CATEGORY_TEXT[c][0]}`, detail: `${c === editor.mutateCategory ? 'now · ' : ''}${CATEGORY_TEXT[c][1]}`, keywords: 'mutate randomize generate candidates aim target sound type kind', run: () => setMutateCategory(c) })),
     { kind: 'command', label: 'Next Mutate category', detail: `Shift+Alt+M · now ${CATEGORY_TEXT[editor.mutateCategory][0]}`, keywords: 'mutate randomize candidates aim target sound type kind cycle', run: () => nextCategory() },
     { kind: 'command', label: editor.mutatePitch ? 'Mutate pitch: off' : 'Mutate pitch: on', detail: editor.mutatePitch ? 'now on: octaves, fifths, fourths' : 'now off: pitch held', keywords: 'mutate randomize candidates tune tuning transpose coarse fine ratio hold', run: () => setMutatePitch(!editor.mutatePitch) },
     { kind: 'command', label: 'Lock selection for Mutate', keywords: 'keep protect hold mutate randomize', run: inPatch(() => editor.lockCards(true)) },
@@ -1898,7 +1942,7 @@ const commands = (): Command[] => {
     ...(editor.listenLabel ? [{ kind: 'command' as const, label: 'Stop listening: back to the Output', detail: 'Esc', keywords: `solo monitor hear signal ${editor.listenLabel}`, run: () => void editor.stopListening() }] : []),
     { kind: 'command', label: 'Listen to the selected card on its own', detail: 'Alt-click a jack or cable', keywords: 'solo monitor hear signal headphones cable output', run: inPatch(() => { if (!editor.listenSelected()) status.textContent = 'Select one card with an audio output, or Alt-click (Option-click) an audio output or a cable, to hear it on its own'; }) },
     { kind: 'command', label: 'Reset the integrated loudness', detail: 'the Output card', keywords: 'lufs level meter loudness rule target', run: () => loudness.reset() },
-    { kind: 'command', label: 'Output scope', detail: outScope.open ? 'shown: hide it' : 'show it', keywords: 'oscilloscope waveform spectrum fft spectrogram gram analyser analyzer meter output hear snapshot', run: inPatch(() => outScope.toggle()) },
+    { kind: 'command', label: 'Output scope', detail: outScope.open ? 'shown: fold it' : 'open it', keywords: 'oscilloscope waveform spectrum fft spectrogram gram analyser analyzer meter output hear candidate sound design', run: inPatch(() => { snapSide.setFolded(false); outScope.toggle(); }) },
     { kind: 'command', label: 'FM-1 & MIDI settings', keywords: 'connect send store sync hardware keyboard release', run: () => $<HTMLDialogElement>('device-bar').showModal() },
     { kind: 'command', label: 'Install firmware', keywords: 'flash update hardware matryoshka return stock official v15', run: () => openInstall() },
     { kind: 'command', label: 'About Matryoshka', keywords: 'credits support ko-fi donate ai usage transparency', run: () => void about.open() },
@@ -2108,6 +2152,14 @@ window.addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey;
   const k = e.key;
   const snapKey = snapshotKey(e);
+  // the open Sound design sidebar has the focus (#1048): ↑ and ↓ go to the candidate before / after, as Alt+K / Alt+J do
+  // (round through A), instead of nudging cards or stepping Main's pages; no other key changes there
+  const sideStep = snapSide.arrowStep(e);
+  if (sideStep) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return void cycleSnapshots(sideStep);
+  }
   let done = editor.rollKey(e) || (!mod && !e.altKey && recordKey(k)); // the piano roll's keys (#136); a Steps card's cursor entry: rest, tie, cursor, stop (#127)
   if (done) {
     e.preventDefault();
@@ -2128,8 +2180,8 @@ window.addEventListener('keydown', (e) => {
   else if (mod && k.toLowerCase() === 'a') (editor.selectAllRows() || editor.selectAll(), (done = true));
   else if ((k === ' ' || k === 'Enter') && !mod && !e.altKey && editor.applyRows()) done = true; // pick mode: show / hide the selected rows
   else if (mod && k.toLowerCase() === 'd') done = editor.duplicateSelected();
-  else if (snapKey) (snapshotKeyRun[snapKey](), (done = true));   // (snapshots.ts snapshotKey: Alt+B / J / K / X, Shift+Alt+B)
-  // Make candidates (#996), by the code as Option+letter types a symbol on a Mac
+  else if (snapKey) (snapshotKeyRun[snapKey](), (done = true));   // (snapshots.ts snapshotKey: Alt+B / J / K / X / C, Shift+Alt+B)
+  // Generate (#996, #1048), by the code as Option+letter types a symbol on a Mac
   else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyN') (makeCandidates(), (done = true));
   // the canvas's TIDY and FIT (#987), Mutate (#944); by the code, as Option+letter types a symbol on a Mac
   else if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyT') (onCanvas(() => editor.tidyUp())(), (done = true));
@@ -2408,7 +2460,7 @@ try {
 const MUTATE_PITCH = 'matryoshka.mutate-pitch';
 function setMutatePitch(on: boolean): void {
   editor.mutatePitch = on;
-  status.textContent = on ? 'Mutate pitch on: Mutate, Randomize and Make candidates move pitch by octaves, fifths and fourths, ratios to whole numbers' : 'Mutate pitch off: Mutate, Randomize and Make candidates leave pitch alone';
+  status.textContent = on ? 'Mutate pitch on: Mutate, Randomize and Generate move pitch by octaves, fifths and fourths, ratios to whole numbers' : 'Mutate pitch off: Mutate, Randomize and Generate leave pitch alone';
   try {
     localStorage.setItem(MUTATE_PITCH, on ? '1' : '0');
   } catch {
@@ -2433,10 +2485,10 @@ const CATEGORY_TEXT: Record<Category, readonly [string, string]> = {
   keys: ['Keys', 'quick attack, long decay, some sustain'],
   drone: ['Drone', 'very slow attack and release, full sustain'],
 };
-/** the category chip over the snapshots: the category's name, marked when it aims at one */
+/** the Aim chip over the candidates: the category's name, marked when it aims at one */
 const categoryChip = $<HTMLButtonElement>('category-chip');
 function showCategory(): void {
-  categoryChip.textContent = CATEGORY_TEXT[editor.mutateCategory][0];
+  $('category-name').textContent = CATEGORY_TEXT[editor.mutateCategory][0];
   categoryChip.toggleAttribute('data-aim', editor.mutateCategory !== 'any');
 }
 categoryChip.onclick = () => popMenu(CATEGORIES.map((c) => ({ text: `${c === editor.mutateCategory ? '✓ ' : ''}${CATEGORY_TEXT[c][0]}`, run: () => setMutateCategory(c) })), categoryChip);
@@ -2444,8 +2496,8 @@ function setMutateCategory(c: Category): void {
   editor.mutateCategory = c;
   showCategory();
   status.textContent = c === 'any'
-    ? 'Mutate category Any: Mutate, Randomize and Make candidates aim at no kind of sound'
-    : `Mutate category ${CATEGORY_TEXT[c][0]} (${CATEGORY_TEXT[c][1]}): Mutate and Randomize bring envelopes, cutoff and glide into its ranges; Make candidates also renders each with one note held 1 s and keeps those that sound it`;
+    ? 'Mutate category Any: Mutate, Randomize and Generate aim at no kind of sound'
+    : `Mutate category ${CATEGORY_TEXT[c][0]} (${CATEGORY_TEXT[c][1]}): Mutate and Randomize bring envelopes, cutoff and glide into its ranges; Generate also renders each with one note held 1 s and keeps those that sound it`;
   try {
     localStorage.setItem(MUTATE_CATEGORY, c);
   } catch {
@@ -2461,25 +2513,6 @@ try {
   /* storage blocked: Any */
 }
 showCategory();
-// Make candidates' count per round (#996): kept per browser, like Mutate's amount
-const CANDIDATES = 'matryoshka.candidates';
-const CANDIDATE_COUNTS = [2, 4, 6, 8] as const;
-let candidates = 4;
-function setCandidates(v: number): void {
-  candidates = v;
-  status.textContent = `Make candidates makes ${v} at a time`;
-  try {
-    localStorage.setItem(CANDIDATES, String(v));
-  } catch {
-    /* storage blocked: the count lasts until the page is reloaded */
-  }
-}
-try {
-  const v = Number(localStorage.getItem(CANDIDATES));
-  if ((CANDIDATE_COUNTS as readonly number[]).includes(v)) candidates = v;
-} catch {
-  /* storage blocked: the default count */
-}
 function panic(): void {
   tutorial.stop();
   host.mute(true);
@@ -2603,7 +2636,7 @@ function setView(v: View): void {
   $('canvas').hidden = v !== 'patch';
   $('help-btn').hidden = v !== 'patch';
   snapColumn.hidden = v !== 'patch';
-  outScope.update(v === 'patch', editor.snaps.list.length);
+  outScope.update(v === 'patch');
   // the sidebar is the same in every view; LIBRARY's sections are tabs under the switch
   $('library-tabs').hidden = v !== 'library';
   // the FM-1 is its own instrument: its panel has the keys and knobs, so the Main dock, the wheels and the keyboard go;
@@ -3495,7 +3528,7 @@ if (import.meta.env.DEV) {
   // the lesson editor's live link: it checks steps against this synth and loads patches into it
   tutorial.observer = synthLink(() => ({
     patch: editor.patch, selected: [...editor.selected], arpPlay: editor.playing, audio: host.running && !host.muted,
-    snapshots: { A: !!editor.snaps.get('A'), B: !!editor.snaps.get('B') }, zoom: editor.zoom, library: loadLibrary(),
+    snapshots: { A: editor.snaps.list.length >= 1, B: editor.snaps.list.length >= 2 }, zoom: editor.zoom, library: loadLibrary(),   // (the first and second candidate: A is the current patch, D-666)
   }), (p) => { sink.send({ t: 'panic' }); loadNamed(p, { quiet: true }); });
   const link = document.createElement('a');
   link.href = '/lesson-editor'; link.target = '_blank'; link.rel = 'noopener';

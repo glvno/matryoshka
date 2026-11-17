@@ -189,8 +189,8 @@ export class Audition {
   }
 
   /** `phrase` played once by `p` instead of the patch open, rendered offline as the WAV export renders it (or as `how`
-   *  says: its length, an early stop), in memory only: Make candidates measures a candidate's probe by it and drops the
-   *  sound (mutate-render.ts) */
+   *  says: its length, an early stop), in memory only: Generate measures a candidate's probe by it and drops the sound
+   *  (mutate-render.ts) */
   renderWith(p: Patch, phrase: Phrase, how: Pick<RenderSetup, 'seconds' | 'quiet'> = {}): Promise<[Float32Array, Float32Array]> {
     return this.host.render(p, phrase, { ...how, armed: this.host.armed(), tempo: this.host.tempo() });
   }

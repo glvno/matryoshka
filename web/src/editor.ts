@@ -95,7 +95,7 @@ import { scopeTools, type ScreenSpec } from './scope-view';
 import { listenable, type ListenSource } from './listen';
 import type { EnvSpec } from './env-view';
 import { flipPlan } from './ab';
-import { body, sameVersion, Snapshots, type Snapshot } from './snapshots';
+import { body, CURRENT_LETTER, sameVersion, Snapshots, type Snapshot } from './snapshots';
 import { isGlobalTempo, patchTempo, tempo } from './tempo';
 import { rowOrder } from './structure';
 import { EXCLUDED_TYPES,
@@ -145,7 +145,7 @@ import { EXCLUDED_TYPES,
   mergeRows, rowNames, rowOf, sameRange, setRowNames, splitRow, syncTied, tiedTo, ties, type Ties, ROW_NAMES_MAX, ROW_NAME_MAX,
   copyRuns, copyStarts, setCopies, COPY_ROWS_MAX, COPIES_MAX } from './assembly';
 
-/** why Mutate, Randomize or Make candidates found nothing to move */
+/** why Mutate, Randomize or Generate found nothing to move */
 export const NOTHING_TO_MOVE = 'locked, pitch held ("Mutate pitch" is off), or left alone: Main, the Output, voices, Steps, the Arpeggiator, Drum maps, the Harmonizer';
 /** how many times Mutate or one candidate is tried before nothing moving counts as nothing to move */
 const MUTATE_TRIES = 8;
@@ -176,7 +176,7 @@ const HISTORY = 40;
 /** snapshots a step added or removed, each with its place in the list (added: after the step; removed: before it) */
 type ListChange = { added: { s: Snapshot; at: number }[]; removed: { s: Snapshot; at: number }[] };
 /** an undo step: the patch (Editor.snap) and the stop it belongs to, a snapshot's letter or null for the current patch;
- *  `list`: a step that added, removed or moved snapshots (Make candidates #996, Alt+X #1028, a drag in the list #1040), with the current patch kept aside;
+ *  `list`: a step that added, removed or moved candidates (Generate #996, Alt+X #1028, a drag in the list #1040), with the current patch kept aside;
  *  `presets`: the user presets a step stored from snapshots and those they replaced, taken out and put back by undo (#1031) */
 type UndoStep = { s: string; shown: string | null; list?: { change: ListChange; current: string | null }; presets?: { put: Preset[]; was: Preset[] } };
 /** a logarithmic slider's value rounded to the parameter's step (a glide time to the ms, a cutoff to the Hz), not to a whole number */
@@ -3454,16 +3454,16 @@ export class Editor {
     return true;
   }
 
-  // ---- snapshots (#943): versions of the patch to compare with the current patch. The switch goes A, B, …, the current
-  // patch, A…; a switch changes values in place when only values differ (ab.ts flipPlan)
+  // ---- candidates (#943, #1048; snapshots in the code): versions of the patch to compare with the current patch, which is
+  // candidate A. The switch goes A, B, …, A…; a switch changes values in place when only values differ (ab.ts flipPlan)
 
   readonly snaps = new Snapshots();
 
-  /** keep the patch on screen as a new snapshot; returns it */
-  takeSnapshot(name?: string): Snapshot {
+  /** keep the patch on screen as a new candidate (Nominate); `from`: where it came from (Snapshot.from); returns it */
+  takeSnapshot(name?: string, from?: string): Snapshot {
     this.endGesture();
     this.endPass();
-    const s = this.snaps.take(this.patch, name);
+    const s = this.snaps.take(this.patch, name, from);
     this.ev.onSnapshots?.();
     return s;
   }
@@ -3520,11 +3520,12 @@ export class Editor {
   }
 
   /**
-   * Make a snapshot the current patch (#1040, D-971): a swap. The snapshot leaves the list and is shown as the current
-   * patch; the current patch it replaces takes the snapshot's place in the list with the next letter (returned), unless it
-   * is the same version or a snapshot holds it already. The snapshot on screen gives the version heard, changes made to it
-   * included; changes made to another snapshot on screen are kept as a new snapshot first, as a switch keeps them. One
-   * undo step, which puts both back. Null when nothing was added (or there is no such snapshot)
+   * Use: make a candidate the current patch (#1040, D-971), so it becomes A: a swap. The candidate leaves the list and is
+   * shown as the current patch; the current patch it replaces takes the candidate's place in the list with the next letter
+   * (returned, from `use`), unless it is the same version or a candidate holds it already. The candidate on screen gives
+   * the version heard, changes made to it included; changes made to another candidate on screen are kept as a new
+   * candidate first, as a switch keeps them. One undo step, which puts both back. Null when nothing was added (or there is
+   * no such candidate)
    */
   makeCurrent(letter: string): Snapshot | null {
     const s = this.snaps.get(letter);
@@ -3538,7 +3539,7 @@ export class Editor {
     const cur = this.currentPatch();
     if (from !== null && from !== letter && this.shownEdited() && !sameVersion(cur, this.patch) && !this.snaps.holding(this.patch)) change.added.push({ s: this.snaps.take(this.patch), at: 0 });
     const to = from === letter ? this.patch : JSON.parse(s.patch) as Patch;
-    const kept = sameVersion(cur, to) || list.some((x) => x !== s && sameVersion(JSON.parse(x.patch) as Patch, cur)) ? null : this.snaps.take(cur);
+    const kept = sameVersion(cur, to) || list.some((x) => x !== s && sameVersion(JSON.parse(x.patch) as Patch, cur)) ? null : this.snaps.take(cur, undefined, 'use');
     const at = list.indexOf(s);
     this.snaps.remove(letter);
     if (kept) list.splice(at, 0, ...list.splice(list.indexOf(kept), 1));
@@ -3615,10 +3616,10 @@ export class Editor {
     return kept ? { removed: s, kept } : { removed: s };
   }
 
-  // ---- rank and cut (#996): make candidates, listen to each and remove the losers at once (Alt+X), again from a survivor.
-  // Every snapshot is a candidate alike, whatever made it (taken by hand, kept from an edit, made by Make candidates)
+  // ---- rank and cut (#996): Generate candidates, listen to each and remove the losers at once (Alt+X), again from a
+  // survivor. Every candidate is alike, whatever made it (nominated, kept from an edit, made by Generate)
 
-  /** mark a snapshot keep (Make candidates breeds from the keeps, D-987), or take the mark off */
+  /** mark a candidate keep (Generate breeds from the kept ones, D-987), or take the mark off */
   setKeep(letter: string, keep: boolean): void {
     const s = this.snaps.get(letter);
     if (!s) return;
@@ -3685,12 +3686,12 @@ export class Editor {
       const patch = round.next();
       if (patch) made.push(this.snaps.take(patch, undefined, round.from));
     }
-    if (!made.length) return this.ev.onError(`Make candidates: nothing to move there (${NOTHING_TO_MOVE})`), [];
+    if (!made.length) return this.ev.onError(`Generate: nothing to move there (${NOTHING_TO_MOVE})`), [];
     this.endCandidates(made);
     return made;
   }
 
-  /** a round of Make candidates from the patch on screen, as makeCandidates makes them: `next` makes one more (null: it
+  /** a round of Generate from the patch on screen, as makeCandidates makes them: `next` makes one more (null: it
    *  moved nothing), `from` names its parents, at the category chosen for Mutate with the parent as the anchor */
   candidateRound(): { from: string; parent: Patch; next: () => Patch | null } {
     this.endGesture();
@@ -3702,7 +3703,7 @@ export class Editor {
     const keptPatches = keeps.map((s) => JSON.parse(s.patch) as Patch);
     const opts: MutateOptions = { ...this.mutateOptions(parent), anchor: parent };
     return {
-      from: breed ? keeps.map((s) => s.letter).join('+') : this.snaps.shown ?? 'current',
+      from: breed ? keeps.map((s) => s.letter).join('+') : this.snaps.shown ?? CURRENT_LETTER,
       parent,
       next: () => {
         const { patch, moved } = breed ? breedPatch(parent, keptPatches, scope, this.mutateAmount, DEFS, Math.random, opts) : mutatePatch(parent, scope, 'mutate', this.mutateAmount, DEFS, Math.random, opts);
@@ -3711,9 +3712,11 @@ export class Editor {
     };
   }
 
-  /** a candidate of a round into the strip as a snapshot, before the round's undo step (endCandidates) */
-  takeCandidate(patch: Patch, from: string): Snapshot {
+  /** a candidate of a round into the list, before the round's undo step (endCandidates); `aim`: its category and whether
+   *  it passed */
+  takeCandidate(patch: Patch, from: string, aim?: Snapshot['aim']): Snapshot {
     const s = this.snaps.take(patch, undefined, from);
+    if (aim) s.aim = aim;
     this.ev.onSnapshots?.();
     return s;
   }
@@ -3773,10 +3776,10 @@ export class Editor {
   /** "Mutate pitch": pitch rows move too, by musical steps only (the host keeps it per browser, D-975) */
   mutatePitch = false;
 
-  /** the sound category Mutate, Randomize and Make candidates aim at (#1033; the host keeps it per browser); 'any': none */
+  /** the sound category Mutate, Randomize and Generate aim at (#1033; the host keeps it per browser); 'any': none */
   mutateCategory: Category = 'any';
 
-  /** the options Mutate, Randomize and Make candidates use on `p`: "Mutate pitch", the category, and the values each
+  /** the options Mutate, Randomize and Generate use on `p`: "Mutate pitch", the category, and the values each
    *  assembly card's factory presets give its rows (a moving row may take one instead of noise) */
   private mutateOptions(p: Patch): MutateOptions {
     const pools = new Map<string, number[]>();
@@ -3799,7 +3802,7 @@ export class Editor {
 
   /** mutate or randomize `scope` (default: the selected cards) as one undo step, sent live (the structure stays, so the
    *  voices keep sounding and the selection stays, to go again); the number of parameters moved. The first of a run keeps
-   *  the patch as it was as a snapshot, "before mutate", unless a snapshot holds that version already (D-975) */
+   *  the patch as it was as a candidate, "before mutate", unless a candidate holds that version already (D-975) */
   mutate(mode: MutateMode, scope: MutateScope = { modules: [...this.selected], assemblies: [...this.selectedAsm] }): number {
     const verb = mode === 'mutate' ? 'Mutate' : 'Randomize';
     if (!scope.modules.length && !scope.assemblies.length) return this.ev.onError(`${verb}: select the cards first`), 0;
@@ -3810,12 +3813,12 @@ export class Editor {
     let { patch, moved, roles } = mutatePatch(this.patch, scope, mode, this.mutateAmount, DEFS, Math.random, opts);
     for (let tries = 1; !moved && tries < MUTATE_TRIES; tries++) ({ patch, moved, roles } = mutatePatch(this.patch, scope, mode, this.mutateAmount, DEFS, Math.random, opts));
     if (!moved) return this.ev.onError(`${verb}: nothing to move there (${NOTHING_TO_MOVE})`), 0;
-    const kept = sameRun ? null : this.snaps.holding(this.patch) ? null : this.takeSnapshot('before mutate');
+    const kept = sameRun ? null : this.snaps.holding(this.patch) ? null : this.takeSnapshot('before mutate', 'mutate');
     this.applyLive(patch);
     this.mutateRun = run();
     const amount = mode === 'mutate' ? ` by up to ±${Math.round(this.mutateAmount * 100)} %` : '';
     const aim = this.mutateCategory === 'any' ? '' : `, aimed at ${this.mutateCategory}: ${roles ? `${roles} envelope, cutoff or glide row${roles === 1 ? '' : 's'} in its ranges` : 'no envelope, cutoff or glide row on these cards'}`;
-    this.ev.onError(`${mode === 'mutate' ? 'Mutated' : 'Randomized'} ${moved} parameter${moved === 1 ? '' : 's'}${amount}${aim}${kept ? `; the patch before is snapshot ${kept.letter}` : ''}. Ctrl/Cmd+Z puts them back`);
+    this.ev.onError(`${mode === 'mutate' ? 'Mutated' : 'Randomized'} ${moved} parameter${moved === 1 ? '' : 's'}${amount}${aim}${kept ? `; the patch before is candidate ${kept.letter}` : ''}. Ctrl/Cmd+Z puts them back`);
     return moved;
   }
 
@@ -3840,7 +3843,7 @@ export class Editor {
     for (const t of targets) if (setParamLock(t.m, t.param, true)) n++;
     if (this.commit(before)) (this.rebuild(), this.ev.onLayout(this.patch));
     const envs = new Set(targets.map((t) => t.m.id)).size;
-    this.ev.onError(n ? `Locked ${n} row${n === 1 ? '' : 's'} of ${envs} envelope${envs === 1 ? '' : 's'}${some ? ' on the selected cards' : ''}: Mutate, Randomize and Make candidates leave them alone. Ctrl/Cmd+Z unlocks` : `Lock envelopes: every row of ${envs === 1 ? 'that envelope' : `those ${envs} envelopes`} is locked already`);
+    this.ev.onError(n ? `Locked ${n} row${n === 1 ? '' : 's'} of ${envs} envelope${envs === 1 ? '' : 's'}${some ? ' on the selected cards' : ''}: Mutate, Randomize and Generate leave them alone. Ctrl/Cmd+Z unlocks` : `Lock envelopes: every row of ${envs === 1 ? 'that envelope' : `those ${envs} envelopes`} is locked already`);
     return n;
   }
 

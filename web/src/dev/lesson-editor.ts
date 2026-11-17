@@ -77,8 +77,8 @@ const KINDS: Record<PartKind, string> = {
 };
 const FACTS: Record<AssemblyFact, string> = { exists: 'exists', open: 'is expanded', collapsed: 'is collapsed', promoted: 'has a promoted slider', exposed: 'has an exposed output', merged: 'has merged inputs', contains: 'contains another assembly', resized: 'was resized', saved: 'was saved to the library' };
 const EVENTS: Record<EventName, string> = {
-  notes: 'notes played', undos: 'undo', redos: 'redo', zooms: 'zoom', flips: 'snapshot switch', shares: 'share link', bypasses: 'bypass presses', news: 'New patch pressed', saves: 'assembly saves',
-  audio: 'audio enabled', arpPlay: 'arpeggiator playing', snapshotA: 'snapshot A taken', snapshotB: 'snapshot B taken', selected: 'modules selected', bypassed: 'a module bypassed / on',
+  notes: 'notes played', undos: 'undo', redos: 'redo', zooms: 'zoom', flips: 'candidate switch', shares: 'share link', bypasses: 'bypass presses', news: 'New patch pressed', saves: 'assembly saves',
+  audio: 'audio enabled', arpPlay: 'arpeggiator playing', snapshotA: 'a first candidate', snapshotB: 'a second candidate', selected: 'modules selected', bypassed: 'a module bypassed / on',
 };
 const UI_IDS = ['add-btn', 'add-assembly-btn', 'palette-btn', 'audio-btn', 'new-patch-btn', 'tour-btn'];
 

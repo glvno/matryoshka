@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Make candidates with a category, by ear (#1033, layer 3). About OVERSAMPLE times as many candidates as asked for are made
+// Generate with a category, by ear (#1033, layer 3). About OVERSAMPLE times as many candidates as asked for are made
 // (Mutate's role rows already steered: mutate.ts), and each is rendered offline in the browser with the probe (one note
 // held, then let go: never the test phrase, D-996; phrase-render.ts), one at a time. Its sound is measured at once and
 // dropped: a round keeps only a few numbers per candidate (its loudness contour and brightness, then one fit), for the
 // round in flight, and never stores sound anywhere (no browser storage, no cache, no file). A candidate whose sound fits
-// the category's profile joins the strip as it passes; when fewer than asked pass, the best of the rest fill the round.
+// the category's profile joins the list as it passes; when fewer than asked pass, the best of the rest fill the round.
 import { keysOf } from './levels';
 import type { Profile, Span } from './mutate';
 import type { Patch } from './patch';
