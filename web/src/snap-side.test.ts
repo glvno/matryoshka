@@ -51,9 +51,9 @@ describe('Sound design sidebar (#1040, #1048)', () => {
     const wide = innerWidth;
     const { side, root } = make();
     side.setWidth(400);
-    Object.defineProperty(window, 'innerWidth', { value: 800, configurable: true });
+    Object.defineProperty(window, 'innerWidth', { value: 900, configurable: true });
     window.dispatchEvent(new Event('resize'));
-    expect([side.width, root.style.getPropertyValue('--snap-side-w')]).toEqual([280, '280px']);   // (800 less the 520 the window keeps)
+    expect([side.width, root.style.getPropertyValue('--snap-side-w')]).toEqual([380, '380px']);   // (900 less the 520 the window keeps)
     Object.defineProperty(window, 'innerWidth', { value: wide, configurable: true });
     window.dispatchEvent(new Event('resize'));
     expect(side.width).toBe(Math.min(400, Math.max(SIDE_W.min, wide - 520)));

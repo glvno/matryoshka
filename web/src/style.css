@@ -302,7 +302,7 @@ dialog.about .hsec h3 { margin-bottom: 10px; font-size: 22px; letter-spacing: .0
    Colours: coral (--accent) Generate, seafoam (--secondary) Nominate, play and what you hear, gold (--gate) only for kept */
 .snap-column { --snap-tile: color-mix(in oklab, var(--ink) 9%, var(--panel)); --snap-hover: color-mix(in oklab, var(--ink) 5%, var(--panel));
   --snap-head: 600 13px/1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; --snap-body: 'Barlow', system-ui, sans-serif;
-  position: fixed; right: 0; top: 0; bottom: 0; z-index: 8; width: var(--snap-side-w, 220px); display: flex; flex-direction: column;
+  position: fixed; right: 0; top: 0; bottom: 0; z-index: 8; width: var(--snap-side-w, 300px); display: flex; flex-direction: column;
   overflow: hidden; border-left: 1px solid var(--line); background: var(--panel); box-shadow: 0 0 8px var(--shadow); color: var(--ink); }
 body:has(.snap-column:not([hidden])) .workspace { margin-right: var(--snap-col-w, 0px); }
 .snap-column[hidden] { display: none; }
@@ -316,7 +316,7 @@ body:has(.snap-column:not([hidden])) .workspace { margin-right: var(--snap-col-w
 .listen { flex: none; padding: 10px 10px 8px; border-bottom: 1px solid var(--line); }
 .listen-lab { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; min-width: 0; }
 .listen-title { font: var(--snap-head); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.listen-why { font: 400 12px/1.25 var(--snap-body); color: var(--muted); opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.listen-why { font: 400 12px/1.25 var(--snap-body); color: var(--muted); opacity: .85; }
 .listen-ctl, .listen-ctl2 { display: flex; gap: 6px; align-items: center; min-width: 0; }
 .listen-ctl2 { margin-top: 6px; height: 28px; }
 .listen .ph-play, .snap-rail-play { flex: none; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%;
@@ -325,14 +325,12 @@ body:has(.snap-column:not([hidden])) .workspace { margin-right: var(--snap-col-w
 .listen :is(.ph-kind, .ph-root) { height: 34px; min-width: 0; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--snap-tile); color: var(--ink);
   font: 500 13px/1 var(--snap-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .listen .ph-kind { flex: 1 1 auto; text-align: left; }
-.listen .ph-root { flex: none; width: 54px; padding: 0 4px; }
+.listen .ph-root { flex: none; width: 50px; padding: 0 2px; }
 .listen .ph-root:disabled { opacity: .45; cursor: default; }
-.listen :is(.ph-loop, .ph-wav, .ph-rec) { flex: none; display: flex; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; background: transparent;
+.listen :is(.ph-loop, .ph-wav, .ph-rec) { flex: none; display: flex; align-items: center; gap: 4px; padding: 0 7px; border: 1px solid var(--line); border-radius: 7px; background: transparent;
   color: var(--muted); font: 600 12px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
 .listen .ph-loop { height: 34px; }
-/* a narrow sidebar: Loop shows its sign only, so the phrase's name keeps its room */
-.snap-column { container-type: inline-size; }
-@container (max-width: 280px) { .listen .ph-word { display: none; } }
+.listen .ph-kind { padding: 0 6px; font-size: 12.5px; }
 .listen .ph-loop[aria-pressed="true"] { background: var(--secondary); border-color: var(--secondary); color: var(--accent-ink); }
 .listen :is(.ph-wav, .ph-rec) { height: 28px; color: var(--ink); }
 .listen .ph-wav:disabled { opacity: .5; cursor: default; }
@@ -355,10 +353,10 @@ body:has(.snap-column:not([hidden])) .workspace { margin-right: var(--snap-col-w
    shorter than it */
 .output-scope { position: relative; flex: 0 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 4px; padding: 8px 10px 0; }
 .output-scope[hidden] { display: none; }
-.output-scope .oscope-head { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.output-scope .oscope-head { display: flex; align-items: center; gap: 2px 4px; min-width: 0; }
 .output-scope .oscope-title { font: var(--cap); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); cursor: default; }
 .output-scope:not(.collapsed) .oscope-title { display: none; }
-.output-scope .scope-tools { display: flex; align-items: center; gap: 2px; margin-right: auto; }
+.output-scope .scope-tools { display: flex; align-items: center; gap: 1px; margin-right: auto; min-width: 0; white-space: nowrap; }
 .output-scope .oscope-fold { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); font-size: 11px; line-height: 1; }
 .output-scope .oscope-fold:hover { color: var(--ink); background: var(--snap-tile); }
 .output-scope.collapsed { padding: 6px 8px 2px 12px; }

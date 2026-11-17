@@ -13,7 +13,7 @@ import { CURRENT_LETTER, fitText, originText, type Snapshot } from './snapshots'
 /** where this browser keeps it */
 export const SNAP_SIDE_STORE = 'matryoshka.snapSidebar';
 /** its width in CSS px: the default, the narrowest and the widest (the window can make the widest narrower) */
-export const SIDE_W = { default: 220, min: 220, max: 640 };
+export const SIDE_W = { default: 300, min: 300, max: 640 };
 /** what the widest leaves of the window beside it (the workspace sidebar, the canvas) */
 const ROOM = 520;
 /** the sentence of an empty list (the mockup's, #1048) */
