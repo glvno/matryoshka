@@ -9,8 +9,10 @@
 // (pitchRows) stay as they are unless "Mutate pitch" is on, and then move only by musical steps. A row of an engine with
 // factory presets may take a preset's value instead of noise (MutateOptions.pools). Make candidates with two or more keeps
 // breeds (breedPatch). The editor applies the result as one undo step (Editor.mutate, Editor.makeCandidates). D-975, D-987.
-import { assembliesOf, tiedTo, type AssemblyInst, type RowTarget } from './assembly';
+import { assembliesOf, tiedTo, toDef, type AssemblyInst, type RowTarget } from './assembly';
 import { RATIOS, rowRange } from './modules';
+import { LEVEL_ROWS } from './levels';
+import { cardRows } from './preset-cards';
 import { paramUnit, paramValue, topOf, type Cable, type ModuleDef, type ModuleInst, type ParamDef, type Patch } from './patch';
 import { stepToward } from './value-input';
 
@@ -141,6 +143,24 @@ export interface MutateResult {
 
 const key = (t: RowTarget): string => `${t.module}:${t.param}`;
 
+/** engine card rows that set up the instrument rather than its sound, by the last part of their card key: a reference tone
+ *  (Monolith D's A-440), the voice mode and assignment, and the keyboard's octave */
+export const HOLD_ROWS = /^(a-440|poly\/mono|unison|assign|octave)$/;
+
+/** the engine card rows Mutate, Randomize, preset draws and breeding never move (#1018): each factory engine's output
+ *  level rows (levels.ts LEVEL_ROWS, set per preset by the factory loudness rule) and the set-up rows of HOLD_ROWS */
+export function heldRows(p: Patch): Set<string> {
+  const held = new Set<string>();
+  for (const a of assembliesOf(p)) {
+    const levels = LEVEL_ROWS[a.name ?? ''] ?? [];
+    for (const r of cardRows(toDef(p, a))) {
+      const last = r.key.split(' / ').pop() ?? '';
+      if (levels.includes(r.key) || HOLD_ROWS.test(last)) held.add(key(a.params[r.i]));
+    }
+  }
+  return held;
+}
+
 /** a whole-number ratio or 0.5: where a Ratio may go with "Mutate pitch" on */
 const MUSICAL_RATIO = RATIOS.map((r) => r === 0.5 || Number.isInteger(r));
 
@@ -173,7 +193,7 @@ export function mutatePatch(p: Patch, scope: MutateScope, mode: MutateMode, amou
   };
   const pitchOf = pitchRows(out, defs);
   const pick = <T>(xs: readonly T[]): T => xs[Math.min(xs.length - 1, Math.floor(rnd() * xs.length))];
-  const seen = new Set<string>();
+  const seen = new Set<string>(), held = heldRows(out);
   const rows: Row[] = [];
   for (const t of scopeTargets(out, scope, defs).flat()) {
     if (seen.has(key(t))) continue;
@@ -181,7 +201,7 @@ export function mutatePatch(p: Patch, scope: MutateScope, mode: MutateMode, amou
     for (const g of group) seen.add(key(g));
     if (group.some((g) => {
       const m = byId.get(g.module), pd = pdOf(g);
-      return !m || !pd || MUTATE_SKIP[m.type] || pd.fixed || pd.screen || pd.onScreen || isLocked(out, m, g.param);
+      return !m || !pd || MUTATE_SKIP[m.type] || pd.fixed || pd.screen || pd.onScreen || held.has(key(g)) || isLocked(out, m, g.param);
     })) continue;
     const kinds = group.map((g) => pitchOf(byId.get(g.module)!, g.param)).filter((k): k is PitchKind => !!k);
     const kind = kinds.includes('held') ? 'held' : kinds[0];
@@ -289,13 +309,13 @@ export function mutatePatch(p: Patch, scope: MutateScope, mode: MutateMode, amou
 export function breedPatch(p: Patch, keeps: readonly Patch[], scope: MutateScope, amount: number, defs: Record<string, ModuleDef>, rnd: () => number = Math.random, opts: MutateOptions = {}): MutateResult {
   const bred = structuredClone(p);
   const byId = new Map(bred.modules.map((m) => [m.id, m]));
-  const keepMods = keeps.map((k) => new Map(k.modules.map((m) => [m.id, m])));
+  const keepMods = keeps.map((k) => new Map(k.modules.map((m) => [m.id, m]))), held = heldRows(bred);
   for (const card of scopeTargets(bred, scope, defs)) {
     if (!card.length) continue;
     const parent = keepMods[Math.min(keeps.length - 1, Math.floor(rnd() * keeps.length))];
     for (const t of card) for (const g of tiedTo(bred, t.module, t.param)) {
       const m = byId.get(g.module), pd = m && defs[m.type]?.params.find((q) => q.name === g.param);
-      if (!m || !pd || MUTATE_SKIP[m.type] || pd.fixed || pd.screen || pd.onScreen || isLocked(bred, m, g.param)) continue;
+      if (!m || !pd || MUTATE_SKIP[m.type] || pd.fixed || pd.screen || pd.onScreen || held.has(key(g)) || isLocked(bred, m, g.param)) continue;
       if (keepMods.some((k) => k.get(g.module)?.type !== m.type)) continue;
       m.params[g.param] = parent.get(g.module)!.params[g.param] ?? pd.default;
     }

@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AssemblyInst } from './assembly';
 import { DEFS, RATIOS } from './modules';
-import { breedPatch, cardScope, isLocked, isSwitch, mutatePatch, pitchRows, setParamLock, type MutateScope } from './mutate';
+import { breedPatch, cardScope, heldRows, isLocked, isSwitch, mutatePatch, pitchRows, setParamLock, type MutateScope } from './mutate';
 import { defaultParams, paramUnit, type ModuleInst, type Patch } from './patch';
 import { FM1_PRESETS } from './presets';
 
@@ -188,6 +188,32 @@ describe('pitch (#1006)', () => {
       }
     }
     expect([...seen].sort()).toEqual(['cents', 'offset', 'ratio', 'semitones']);
+  });
+});
+
+describe('held rows (#1018)', () => {
+  it("never move an engine's output volume or its set-up rows (A-440, voice mode, keyboard octave) on any factory patch", () => {
+    const moved = (p: Patch, q: Patch, held: Set<string>): string[] =>
+      [...held].filter((k) => {
+        const [id, param] = k.split(':');
+        return p.modules.find((m) => m.id === +id)!.params[param] !== q.modules.find((m) => m.id === +id)!.params[param];
+      });
+    const p0 = FM1_PRESETS['Monolith D']();
+    expect(heldRows(p0).size).toBe(2);   // output / volume (vca.gain) and output / a-440 (select.pos)
+    for (const name of Object.keys(FM1_PRESETS)) {
+      const p = FM1_PRESETS[name](), held = heldRows(p);
+      const rnd = seeded(3 + name.length);
+      for (const [mode, amount] of [['mutate', 0.5], ['randomize', 0]] as const)
+        for (const pitch of [false, true])
+          expect(moved(p, mutatePatch(p, everything(p), mode, amount, DEFS, rnd, { pitch }).patch, held), `${name} ${mode}`).toEqual([]);
+      for (let i = 0; i < 8; i++) expect(moved(p, mutatePatch(p, cardScope(p), 'mutate', 0.5, DEFS, rnd).patch, held), `${name} candidate`).toEqual([]);
+      const keeps = [0, 1].map(() => {
+        const k = structuredClone(p);
+        for (const h of held) { const [id, param] = h.split(':'); const m = k.modules.find((x) => x.id === +id)!; m.params[param] = (m.params[param] ?? 0) === 0 ? 1 : 0; }
+        return k;   // keeps whose held rows differ: breeding still takes the patch on screen's
+      });
+      expect(moved(p, breedPatch(p, keeps, cardScope(p), 0.5, DEFS, rnd).patch, held), `${name} bred`).toEqual([]);
+    }
   });
 });
 
