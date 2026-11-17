@@ -94,7 +94,7 @@ import type { ScreenSpec } from './scope-view';
 import { listenable, type ListenSource } from './listen';
 import type { EnvSpec } from './env-view';
 import { flipPlan } from './ab';
-import { body, sameVersion, Snapshots, type Snapshot, type SnapshotMark } from './snapshots';
+import { body, sameVersion, Snapshots, type Snapshot } from './snapshots';
 import { isGlobalTempo, patchTempo, tempo } from './tempo';
 import { rowOrder } from './structure';
 import { EXCLUDED_TYPES,
@@ -175,7 +175,7 @@ const HISTORY = 40;
 /** snapshots a step added or removed, each with its place in the list (added: after the step; removed: before it) */
 type ListChange = { added: { s: Snapshot; at: number }[]; removed: { s: Snapshot; at: number }[] };
 /** an undo step: the patch (Editor.snap) and the stop it belongs to, a snapshot's letter or null for the current patch;
- *  `list`: a step that added or removed snapshots (Make candidates, Cut the losers, #996), with the current patch kept aside */
+ *  `list`: a step that added or removed snapshots (Make candidates #996, Alt+X #1028), with the current patch kept aside */
 type UndoStep = { s: string; shown: string | null; list?: { change: ListChange; current: string | null } };
 /** a logarithmic slider's value rounded to the parameter's step (a glide time to the ms, a cutoff to the Hz), not to a whole number */
 function snapTo(pd: ParamDef, v: number): number {
@@ -3595,27 +3595,46 @@ export class Editor {
     this.ev.onSnapshots?.();
   }
 
-  // ---- rank and cut (#996): make candidates, mark each keep or cut while listening, cut the losers, again from a survivor.
-  // Every snapshot is a candidate alike, whatever made it (taken by hand, kept from an edit, made by Make candidates)
-
-  /** mark a snapshot keep or cut (null: no mark) */
-  setMark(letter: string, mark: SnapshotMark | null): void {
-    const s = this.snaps.get(letter);
-    if (!s) return;
-    if (mark) s.mark = mark;
-    else delete s.mark;
-    this.ev.onSnapshots?.();
-  }
-
-  /** Alt+K / Alt+X: mark the snapshot on screen and go to the next stop; the same mark again takes it off and stays. Null
-   *  when the current patch is on screen (it is never a candidate) */
-  markShown(mark: SnapshotMark): { letter: string; mark: SnapshotMark | null } | null {
+  /**
+   * Alt+X (#1028): remove the snapshot on screen at once and show the next stop, as one undo step. Changes made to it are
+   * kept as a new snapshot first (D-971), unless a snapshot holds that version already. Null when the current patch is on
+   * screen (it is never removed); else the snapshot removed and, when the changes went to one, `kept`.
+   */
+  removeShown(): { removed: Snapshot; kept?: Snapshot } | null {
     const s = this.snaps.get(this.snaps.shown);
     if (!s) return null;
-    if (s.mark === mark) return this.setMark(s.letter, null), { letter: s.letter, mark: null };
-    s.mark = mark;
-    this.cycleSnapshots();
-    return { letter: s.letter, mark };
+    this.endGesture();
+    this.endPass();
+    const list = this.snaps.list;
+    const to = this.snaps.next()!;   // (the stop after it, before anything is added)
+    const change: ListChange = { added: [], removed: [{ s, at: list.indexOf(s) }] };
+    const step: UndoStep = { s: this.snap(), shown: s.letter, list: { change, current: this.snaps.current } };
+    const cur = JSON.parse(this.snaps.current!) as Patch;
+    let kept: Snapshot | undefined;
+    if (this.shownEdited() && !sameVersion(cur, this.patch)) {
+      kept = this.snaps.holding(this.patch);
+      if (!kept) change.added.push({ s: (kept = this.snaps.take(this.patch)), at: 0 });
+    }
+    this.snaps.remove(s.letter);
+    for (const a of change.added) a.at = list.indexOf(a.s);
+    this.snaps.shown = to;
+    this.swapTo(to === null ? cur : JSON.parse(this.snaps.get(to)!.patch) as Patch);
+    if (to === null) this.snaps.current = null;
+    this.record(step);
+    this.ev.onSnapshots?.();
+    return kept ? { removed: s, kept } : { removed: s };
+  }
+
+  // ---- rank and cut (#996): make candidates, listen to each and remove the losers at once (Alt+X), again from a survivor.
+  // Every snapshot is a candidate alike, whatever made it (taken by hand, kept from an edit, made by Make candidates)
+
+  /** mark a snapshot keep (Make candidates breeds from the keeps, D-987), or take the mark off */
+  setKeep(letter: string, keep: boolean): void {
+    const s = this.snaps.get(letter);
+    if (!s) return;
+    if (keep) s.mark = 'keep';
+    else delete s.mark;
+    this.ev.onSnapshots?.();
   }
 
   /**
@@ -3646,32 +3665,6 @@ export class Editor {
     this.record(before);
     this.showSnapshot(made[0].letter);
     return made;
-  }
-
-  /**
-   * Cut the losers: remove every snapshot marked cut, as one undo step. When the snapshot on screen is one, the current
-   * patch comes back in the same step; changes made to that snapshot are kept as a new snapshot first (D-971). Returns the
-   * snapshots cut.
-   */
-  cutLosers(): Snapshot[] {
-    const list = this.snaps.list;
-    const losers = list.filter((s) => s.mark === 'cut');
-    if (!losers.length) return [];
-    this.endGesture();
-    this.endPass();
-    const change: ListChange = { added: [], removed: losers.map((s) => ({ s, at: list.indexOf(s) })) };
-    const step: UndoStep = { s: this.snap(), shown: this.snaps.shown, list: { change, current: this.snaps.current } };
-    if (this.snaps.get(this.snaps.shown)?.mark === 'cut') {
-      const cur = JSON.parse(this.snaps.current!) as Patch;
-      if (this.shownEdited() && !sameVersion(cur, this.patch) && !this.snaps.holding(this.patch)) change.added.push({ s: this.snaps.take(this.patch), at: 0 });
-      this.snaps.shown = this.snaps.current = null;
-      this.swapTo(cur);
-    }
-    for (const s of losers) this.snaps.remove(s.letter);
-    for (const a of change.added) a.at = list.indexOf(a.s);
-    this.record(step);
-    this.ev.onSnapshots?.();
-    return losers;
   }
 
   /**

@@ -11,6 +11,7 @@ import { MUTATE_SKIP } from './mutate';
 import type { ModuleInst, Patch } from './patch';
 import { encodePatch } from './patchbin';
 import { relocatedPatches } from './community-factory';
+import { snapshotKey } from './snapshots';
 
 // (jsdom lacks these; selector.ts makes its ResizeObserver when it loads, so before the imports)
 vi.hoisted(() => {
@@ -316,9 +317,9 @@ describe('rank and cut (#996)', () => {
   it('with two or more keeps, Make candidates breeds from them and says so', () => {
     const { editor } = rig(relocatedPatches['Oracle V']());
     editor.makeCandidates(3); // A, B, C
-    editor.setMark('A', 'keep');
+    editor.setKeep('A', true);
     expect(editor.makeCandidates(1).map((s) => s.from)).toEqual(['A']);   // (one keep: a Mutate of the snapshot on screen)
-    editor.setMark('C', 'keep');
+    editor.setKeep('C', true);
     expect(editor.makeCandidates(2).map((s) => [s.letter, s.from])).toEqual([['E', 'A+C'], ['F', 'A+C']]);
   });
 
@@ -329,54 +330,58 @@ describe('rank and cut (#996)', () => {
     expect(editor.snaps.list).toEqual([]);
   });
 
-  it('Alt+K / Alt+X mark the snapshot on screen and go on; the same mark again takes it off; the current patch is never marked', () => {
+  /** a snapshot key pressed (snapshots.ts snapshotKey), run as main.ts runs it */
+  const press = (editor: Editor, code: string): unknown => {
+    const k = snapshotKey({ altKey: true, shiftKey: false, ctrlKey: false, metaKey: false, code, key: '' });
+    return k === 'next' ? editor.cycleSnapshots(1) : k === 'previous' ? editor.cycleSnapshots(-1) : k === 'remove' ? editor.removeShown() : null;
+  };
+  /** the stop on screen after each of `n` presses */
+  const stops = (editor: Editor, code: string, n: number): (string | null)[] => Array.from({ length: n }, () => (press(editor, code), editor.snaps.shown));
+
+  it('going through the candidates never stops at the current patch: Alt+J and Alt+K go round both ways, Alt+X removes and goes on (#1028)', () => {
     const { editor } = rig(relocatedPatches['Oracle V']());
-    editor.makeCandidates(3); // on A
-    expect(editor.markShown('keep')).toEqual({ letter: 'A', mark: 'keep' });
-    expect(editor.snaps.shown).toBe('B');
-    expect(editor.markShown('cut')).toEqual({ letter: 'B', mark: 'cut' });
+    const current = sound(editor.patch);
+    editor.makeCandidates(3); // A, B, C; on A
+    expect(stops(editor, 'KeyJ', 8)).toEqual(['B', 'C', null, 'A', 'B', 'C', null, 'A']);
+    expect(stops(editor, 'KeyK', 5)).toEqual([null, 'C', 'B', 'A', null]);
+    expect(stops(editor, 'KeyJ', 2)).toEqual(['A', 'B']);
+    expect(press(editor, 'KeyX')).toEqual({ removed: expect.objectContaining({ letter: 'B' }) });
     expect(editor.snaps.shown).toBe('C');
-    editor.cycleSnapshots(); // the current patch
-    expect(editor.markShown('cut')).toBeNull();
-    editor.showSnapshot('B');
-    expect(editor.markShown('cut')).toEqual({ letter: 'B', mark: null });
-    expect(editor.snaps.shown).toBe('B');
+    press(editor, 'KeyX'); // C goes: the next stop is the current patch
+    expect([editor.snaps.list.map((s) => s.letter), editor.snaps.shown, sound(editor.patch)]).toEqual([['A'], null, current]);
+    expect(press(editor, 'KeyX')).toBeNull();   // (the current patch is never removed)
+    expect(stops(editor, 'KeyJ', 3)).toEqual(['A', null, 'A']);
+    expect(stops(editor, 'KeyK', 2)).toEqual([null, 'A']);
   });
 
-  it('Cut the losers: hand-taken and made candidates alike, one undo step; the current patch comes back when the shown one goes', () => {
+  it('Alt+X is one undo step; changes made to the snapshot on screen are kept as a new snapshot first', () => {
     const { editor } = rig(relocatedPatches['Oracle V']());
     const current = sound(editor.patch);
     editor.takeSnapshot(); // A, by hand
     editor.makeCandidates(2); // B, C; on B
-    editor.setMark('A', 'cut');
-    editor.setMark('B', 'cut');
-    editor.setMark('C', 'keep');
-    const b = sound(editor.patch);
-    expect(editor.cutLosers().map((s) => s.letter)).toEqual(['A', 'B']);
-    expect(editor.snaps.list.map((s) => s.letter)).toEqual(['C']);
-    expect([editor.snaps.shown, sound(editor.patch)]).toEqual([null, current]);
-    editor.undo();
-    expect(editor.snaps.list.map((s) => [s.letter, s.mark])).toEqual([['A', 'cut'], ['B', 'cut'], ['C', 'keep']]);
-    expect([editor.snaps.shown, sound(editor.patch), sound(editor.currentPatch())]).toEqual(['B', b, current]);
-    editor.redo();
-    expect(editor.snaps.list.map((s) => s.letter)).toEqual(['C']);
-    expect(editor.snaps.shown).toBeNull();
-    // the next round from the survivor: new letters, never the cut ones
-    editor.showSnapshot('C');
-    expect(editor.makeCandidates(2).map((s) => [s.letter, s.from])).toEqual([['D', 'C'], ['E', 'C']]);
-  });
-
-  it('cutting the snapshot on screen with changes on it keeps the changes as a new snapshot', () => {
-    const { editor } = rig(relocatedPatches['Oracle V']());
-    editor.makeCandidates(2); // on A
-    editor.setMark('A', 'cut');
     editor.patch.modules.find((x) => x.type === 'steps')!.notes = [{ at: 1, len: 1, note: 50, vel: 90 }];
     const edited = sound(editor.patch);
-    editor.cutLosers();
-    expect(editor.snaps.list.map((s) => s.letter)).toEqual(['B', 'C']);
-    expect(patchOf(editor, 'C')).toBe(edited);
+    expect(editor.removeShown()).toEqual({ removed: expect.objectContaining({ letter: 'B' }), kept: expect.objectContaining({ letter: 'D' }) });
+    expect(editor.snaps.list.map((s) => s.letter)).toEqual(['A', 'C', 'D']);
+    expect(patchOf(editor, 'D')).toBe(edited);
+    expect([editor.snaps.shown, sound(editor.patch), sound(editor.currentPatch())]).toEqual(['C', patchOf(editor, 'C'), current]);
     editor.undo();
-    expect(editor.snaps.list.map((s) => s.letter)).toEqual(['A', 'B']);
-    expect([editor.snaps.shown, sound(editor.patch)]).toEqual(['A', edited]);
+    expect(editor.snaps.list.map((s) => s.letter)).toEqual(['A', 'B', 'C']);
+    expect([editor.snaps.shown, sound(editor.patch), sound(editor.currentPatch())]).toEqual(['B', edited, current]);
+    editor.redo();
+    expect(editor.snaps.list.map((s) => s.letter)).toEqual(['A', 'C', 'D']);
+    expect([editor.snaps.shown, sound(editor.patch)]).toEqual(['C', patchOf(editor, 'C')]);
+    // the next round from a survivor: new letters, never a removed one's
+    expect(editor.makeCandidates(1).map((s) => [s.letter, s.from])).toEqual([['E', 'C']]);
+  });
+
+  it('the keep mark has no key: set and taken off from the menu or the palette, kept with the snapshot', () => {
+    const { editor } = rig(relocatedPatches['Oracle V']());
+    editor.makeCandidates(2); // on A
+    editor.setKeep('B', true);
+    expect(editor.snaps.list.map((s) => s.mark)).toEqual([undefined, 'keep']);
+    editor.setKeep('B', false);
+    expect(editor.snaps.list.map((s) => s.mark)).toEqual([undefined, undefined]);
+    expect(editor.snaps.shown).toBe('A');
   });
 });

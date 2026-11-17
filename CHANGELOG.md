@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Snapshots go round and round, both ways, and a loser goes with one key.** Going through candidates with Option+K or Option+X stopped at Current: the keys that marked a snapshot keep or cut moved on, but did nothing once the current patch was on screen. Now Alt+J (Option+J on a Mac) goes to the next snapshot, as Alt+B does, and Alt+K goes to the one before; both go round through the snapshots and Current without stopping. Alt+X removes the snapshot on screen at once and plays the next one (Ctrl/Cmd+Z puts it back; changes you made to it are kept as a new snapshot first). The cut mark and Cut the losers (Shift+Alt+X) are gone. Keep stays, in a snapshot's right-click menu and the command palette, to choose what Make candidates breeds from (#1028).
+
 ## 1.18.3 — 2026-11-17
 
 - **Mutate leaves an instrument's volume and its set-up switches alone.** Mutate, Randomize and Make candidates no longer change an engine's output volume (Monolith D's VOLUME, for example, could drop), nor Monolith D's A-440 reference tone, an engine's poly/mono, unison and voice assignment, or its keyboard octave (#1020).

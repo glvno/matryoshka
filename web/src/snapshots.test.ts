@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The snapshot list (#943): automatic letters, the switch's order with the current patch as the last stop, and what counts
-// as the same version.
+// The snapshot list (#943): automatic letters, the switch's order with the current patch as the last stop, what counts as
+// the same version, and the snapshot keys (#1028).
 import { describe, expect, it } from 'vitest';
-import { body, letterAt, sameVersion, snapshotRecord, storedSnapshots, Snapshots } from './snapshots';
+import { body, letterAt, sameVersion, snapshotKey, snapshotRecord, storedSnapshots, Snapshots } from './snapshots';
 import { relocatedPatches } from './community-factory';
 import type { Patch } from './patch';
 
@@ -74,14 +74,28 @@ describe('snapshots (#943)', () => {
     const s = new Snapshots();
     s.take(p);
     s.take({ ...copy(p), name: 'bright' }, 'bright', 'A');
-    s.list[0].mark = 'keep';   // (rank and cut's marks and origins come back too, #996)
-    s.list[1].mark = 'cut';
+    s.list[0].mark = 'keep';   // (rank and cut's keep marks and origins come back too, #996)
     const text = JSON.stringify(p);
     const record = snapshotRecord(text, s.list)!;
     expect(storedSnapshots(record, text)).toEqual(s.list);
+    // (a cut mark from before Alt+X removed at once, #1028, is dropped)
+    const old = JSON.parse(record) as { list: Record<string, unknown>[] };
+    old.list[1].mark = 'cut';
+    expect(storedSnapshots(JSON.stringify(old), text)[1]).toEqual(s.list[1]);
     expect(storedSnapshots(record, JSON.stringify({ ...p, name: 'another' }))).toEqual([]);
     expect(storedSnapshots(record, null)).toEqual([]);
     expect(storedSnapshots('not json', text)).toEqual([]);
     expect(snapshotRecord(text, [])).toBeNull();
+  });
+
+  it('the snapshot keys, by the key\u2019s place: Alt+B or Alt+J the next stop, Alt+K the one before, Alt+X remove, Shift+Alt+B take (#1028)', () => {
+    const press = (code: string, mods: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean } = {}, typed = '\u222b') =>
+      snapshotKey({ altKey: true, shiftKey: false, ctrlKey: false, metaKey: false, ...mods, code, key: typed });
+    expect(['KeyB', 'KeyJ', 'KeyK', 'KeyX'].map((c) => press(c))).toEqual(['next', 'next', 'previous', 'remove']);
+    expect(press('KeyB', { shiftKey: true })).toBe('take');
+    expect(press('Quote', {}, 'b')).toBe('next');   // (B by its letter too, on another layout)
+    // Shift+Alt+X (once Cut the losers) and the other Shift and Ctrl/Cmd forms are free; without Alt nothing is a snapshot key
+    for (const c of ['KeyJ', 'KeyK', 'KeyX']) expect(press(c, { shiftKey: true })).toBeNull();
+    for (const c of ['KeyB', 'KeyJ', 'KeyK', 'KeyX']) expect([press(c, { ctrlKey: true }), press(c, { metaKey: true }), press(c, { altKey: false })]).toEqual([null, null, null]);
   });
 });
