@@ -5,7 +5,8 @@
   "firmware_product": "FM-1_7011800",
   "source_commit": "fe37c6ac94d4454a479be128f642b38544abb85f",
   "source_tree": "e98a8283ec4dc918f82ac3857fed1b3ffcb2db95",
-  "status": "automated checks passed; awaiting the owner's look and go",
+  "status": "approved for publication; automated checks and the owner's look passed",
+  "release_approval": {"status": "approved", "by": "repository owner", "date": "2026-11-17", "instruction": "Go!", "scope": "Publication of v1.18.2 tagged on the frozen commit fe37c6ac."},
   "bundled_firmware": {
     "release": "v1.18.0",
     "package": {"name": "web/public/firmware/matryoshka.fwsc", "size": 610641, "sha256": "d986a1bc1b9f6f7c288177d4822f8d5cef26793dd6042bceb37614ba865e392e"},
@@ -28,5 +29,5 @@
     "note": "the scenarios of fe37c6ac on v1.18.0's bridge, the firmware users have (D-1160)"
   },
   "not_run": "firmware build, emu:smoke, boot check, the test rig and the full device check: the firmware is 1.18.0's, already qualified (release/qualification/v1.18.0.json)",
-  "owner_checks": {"status": "pending", "scope": "Mutate v2 and the card CPU shares on the candidate editor with the bundled package"}
+  "owner_checks": {"status": "passed", "by": "repository owner", "date": "2026-11-17", "scope": "Mutate v2 and the card CPU shares on the candidate editor with the bundled package", "report": "Go!"}
 }
