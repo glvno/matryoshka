@@ -4,6 +4,7 @@
 
 - **Mutate leaves an instrument's volume and its set-up switches alone.** Mutate, Randomize and Make candidates no longer change an engine's output volume (Monolith D's VOLUME, for example, could drop), nor Monolith D's A-440 reference tone, an engine's poly/mono, unison and voice assignment, or its keyboard octave (#1020).
 - **Shortcuts work while a sidebar control has the focus.** After you chose a patch from the patch picker, Option+M, `/` and the other shortcuts did nothing until you clicked elsewhere. Now only a text field you are typing in keeps the keys (#1023).
+- **A press on a row's name sets the slider.** On an engine card, pressing a row's name opened its rename box, so you could not set a low value by pressing near the left end of the bar. The name is now part of the slider; rename a row from Rename… in its ⋮ menu (#1025).
 
 ## 1.18.2 — 2026-11-17
 
