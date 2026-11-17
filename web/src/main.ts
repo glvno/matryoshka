@@ -54,7 +54,8 @@ import { searchCommands, type Command } from './commands';
 import { CATEGORIES, MUTATE_AMOUNTS, PROFILES, type Category } from './mutate';
 import { filterRound } from './mutate-render';
 import { buildFlashTab } from './flasher';
-import { attachKeyboard, attachMidi, editorCc, followOctave, isFm1In, isOpenSelect, isTextEntry, otherFm1 } from './input';
+import { attachKeyboard, attachMidi, editorCc, followOctave, isFm1In, isOpenSelect, isTextEntry } from './input';
+import { playsNothing, watchIgnoredFm1s, type IgnoredFm1s } from './ignored-fm1s';
 import { Piano } from './piano';
 import { sliderJack } from './slider-jack';
 import { PANEL_BUTTONS } from './modules';
@@ -2753,6 +2754,7 @@ async function connectFm1(ask = false): Promise<void> {
     libraryDeviceChanged();
     devStatus((e as Error).message);
   }
+  watchIgnored();   // (SysEx is allowed now, if the browser asked: the FM-1s set to ignore the editor are known from here, #1045)
 }
 /** the FM-1 runs an older Matryoshka than this site comes with (#216): its version from INFO, or from its identity for
  *  firmware before 1.8 (M-VAVE's identity handshake, as Connect FM-1 asks a firmware that is not Matryoshka) */
@@ -3141,6 +3143,16 @@ const showMidi = (): void => {
     : 'Play from a MIDI keyboard (the browser asks for MIDI access)';
 };
 let midiAsking = false;
+/** the FM-1s set to ignore the editor (GLO › SYSTEM › EDITOR at IGNORE, #702), linked or not: their MIDI plays nothing
+ *  here (#1045, ignored-fm1s.ts). Watched once MIDI with SysEx is allowed (Connect FM-1 asks for it): at start and after a
+ *  connect. The linked FM-1 is asked no HELLO of its own (the link asks it) */
+let ignoring: IgnoredFm1s | null = null;
+let watching = false;
+const watchIgnored = (): void => {
+  if (ignoring || watching) return;
+  watching = true;   // (not allowed yet: null, and asked again after the next connect)
+  void watchIgnoredFm1s((inp) => device.connected && inp.id === device.input?.id).then((w) => ((ignoring = w), (watching = false)));
+};
 const setMidi = async (on: boolean): Promise<void> => {
   if (midiSwitch) {
     midiOn = on;
@@ -3149,6 +3161,7 @@ const setMidi = async (on: boolean): Promise<void> => {
   }
   if (!on || midiAsking) return;
   midiAsking = true;
+  watchIgnored();
   midiSwitch = await attachMidi(
     { send: (m) => (audition.played(m), sink.send(m)) },   // (its notes go into the takes too, #945)
     (s) => {
@@ -3158,7 +3171,9 @@ const setMidi = async (on: boolean): Promise<void> => {
       midiInputs = n;
       showMidi();
     },
-    (port) => mirror.follows(port) || otherFm1(port, device.connected ? device.input?.id : null),   // (the followed FM-1's panel comes in through the mirror: not twice; another FM-1 than the linked one, #698)
+    // (the followed FM-1's panel comes in through the mirror: not twice; another FM-1 than the linked one, #698; the
+    // emulator's port unless linked and an FM-1 set to ignore the editor, #1045)
+    (port) => mirror.follows(port) || playsNothing(port, device.connected ? device.input?.id : null, ignoring),
     (port) => isFm1In(port, device.input?.id),   // (an FM-1 sends its clock all the time, #473: the tempo stays the editor's)
   );
   midiAsking = false;

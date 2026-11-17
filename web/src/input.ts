@@ -97,6 +97,12 @@ export const isFm1In = (port: Pick<MIDIPort, 'id' | 'name'>, linkedId?: string |
 export const otherFm1 = (port: Pick<MIDIPort, 'id' | 'name'>, linkedId?: string | null): boolean =>
   !!linkedId && port.id !== linkedId && isFm1In(port);
 
+/** the emulator's virtual MIDI port (`m1emu serve`'s `FM-1 (emu)`, the scenarios' `FM-1 (emu <pid>)`, docs/EMULATOR.md): a
+ *  developer's tool, never a user's FM-1. It plays nothing in the editor unless the editor is linked to it (a scenario's
+ *  page connects to it), so scenarios running beside an open editor do not play or press its buttons (#1045) */
+export const emulatorElsewhere = (port: Pick<MIDIPort, 'id' | 'name'>, linkedId?: string | null): boolean =>
+  port.id !== linkedId && /\(emu[ )]/i.test(port.name ?? '');
+
 /** a control change the editor takes instead of the engines (true: taken): CC 16..19 turn Main's knobs (the rows of the
  *  device page in focus), CC 80..86 press (64 and up) and let go its patch buttons as the FM-1's panel does, a switch
  *  flipping on the press, so the patch, the dock's button and both engines agree (#1041) */
