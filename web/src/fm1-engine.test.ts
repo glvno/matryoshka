@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { buildFm1EngineWasm } from '../scripts/fm1-wasm.mjs';
+import { insertArpeggiator } from './arp-button';
 import { Engine } from './engine';
 import { Fm1Engine } from './fm1-engine';
 import { Fm1Bridge } from './fm1-engine-host';
@@ -114,6 +115,50 @@ it('bends as a 14-bit MIDI bend reaches the FM-1', () => {
   fm1.hear({ t: 'on', note: 69, vel: 1 });
   fm1.hear({ t: 'bend', v: 1 });   // (a full bend up: 16383, two semitones less 1/8192 of the range)
   expect(measure(frames((l, r) => fm1.render(l, r), SR / 2).subarray(SR / 10)).hz).toBeCloseTo(440 * 2 ** (2 / 12), -1);
+});
+
+/** Main's keys through an Arpeggiator on ARP (a switching Toggle) into one voice of a sine; `bypassed`: ARP engaged, the
+ *  arpeggiator off */
+function arpPatch(bypassed: boolean): Patch {
+  const patch = newPatch(DEFS);
+  const main = patch.modules.find((m) => m.type === 'fm1')!;
+  const out = patch.modules.find((m) => m.type === 'output')!;
+  const alloc = addModule(patch, DEFS[ALLOC], 0, 0);
+  alloc.params.voices = 1;
+  const osc = addModule(patch, DEFS.osc, 0, 0);
+  connect(patch, DEFS, { module: main.id, port: 'keys' }, { module: alloc.id, port: 'keys' });
+  connect(patch, DEFS, { module: alloc.id, port: 'pitch' }, { module: osc.id, port: 'pitch' });
+  connect(patch, DEFS, { module: osc.id, port: 'out' }, { module: out.id, port: 'l' });
+  const arp = insertArpeggiator(patch)!;
+  if (bypassed) arp.bypass = true;
+  return patch;
+}
+
+/** the pitches heard in 4096-frame windows over two seconds while C3 and G3 are held: one (the last key) while the
+ *  arpeggiator is off, both in turn while it plays */
+function heldPitches(fm1: Fm1Engine): number[] {
+  fm1.hear({ t: 'on', note: 48, vel: 1 });
+  fm1.hear({ t: 'on', note: 55, vel: 1 });
+  const x = frames((l, r) => fm1.render(l, r), SR * 2);
+  const hz: number[] = [];
+  for (let at = SR / 10; at + 4096 <= x.length; at += 4096) hz.push(Math.round(measure(x.subarray(at, at + 4096)).hz / 10) * 10);
+  return [...new Set(hz)];
+}
+
+it('loads a patch with its own ARP state: a bypassed arpeggiator stays off, whatever the last patch or a MIDI CC 86 did (#1041)', () => {
+  const g3 = Math.round(440 * 2 ** ((55 - 69) / 12) / 10) * 10;
+  const fresh = new Fm1Engine(module, SR);
+  expect(fresh.apply(new Fm1Bridge().load(arpPatch(true)))).toBe(0);
+  expect(heldPitches(fresh)).toEqual([g3]);
+  // after a patch whose arpeggiator plays (ARP released), and after a press and release of ARP as MIDI CC 86
+  const after = new Fm1Engine(module, SR);
+  after.apply(new Fm1Bridge().load(arpPatch(false)));
+  expect(heldPitches(after).length).toBeGreaterThan(1);
+  after.hear({ t: 'panic' });
+  after.apply(new Fm1Bridge().load(arpPatch(true)));
+  after.hear({ t: 'cc', n: 86, v: 127 });
+  after.hear({ t: 'cc', n: 86, v: 0 });
+  expect(heldPitches(after)).toEqual([g3]);
 });
 
 // ---- the worklet: the switch between the engines

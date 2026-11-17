@@ -22,7 +22,7 @@ describe('the panel section (#60)', () => {
     expect(label(1)).toBe('');
   });
 
-  it('a held button and a switched one reach the Main module\'s outputs; CC 80.. holds them', () => {
+  it('a held button and a switched one reach the Main module\'s outputs; setButton holds them', () => {
     const p = emptyPatch();
     const main = addModule(p, DEFS.fm1, 0, 0);
     const out = addModule(p, DEFS.output, 0, 0);
@@ -34,10 +34,10 @@ describe('the panel section (#60)', () => {
     e.render(l, r);
     expect(e.probe(main.id, 'arp')![0]).toBe(1); // saved switched on
     expect(e.probe(main.id, 'fx')![0]).toBe(0);
-    e.cc(80, 127);
+    e.setButton(0, true);
     e.render(l, r);
     expect(e.probe(main.id, 'fx')![0]).toBe(1);
-    e.cc(80, 0);
+    e.setButton(0, false);
     e.render(l, r);
     expect(e.probe(main.id, 'fx')![0]).toBe(0);
   });

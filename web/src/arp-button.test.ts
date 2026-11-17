@@ -4,6 +4,7 @@ import { arpChoices, arpFree, arpsOf, insertArpeggiator } from './arp-button';
 import { DEFS, PANEL_BUTTONS } from './modules';
 import { Engine } from './engine';
 import { addModule, connect, emptyPatch } from './patch';
+import { PRESETS } from './presets';
 
 describe('+ Add arpeggiator (#119)', () => {
   it('goes between Main\'s keys and the allocator, and ARP becomes its switching Toggle', () => {
@@ -54,6 +55,24 @@ describe('+ Add arpeggiator (#119)', () => {
     insertArpeggiator(q);
     expect(render(q)).not.toEqual(plain);
     expect(render(q, true)).toEqual(plain);                   // ARP pressed before the keys: straight
+  });
+
+  it('a MIDI CC 86 never switches the arpeggiator behind the patch and the ARP button: the editor presses ARP (#1041)', () => {
+    const render = (raw: boolean): Float32Array => {
+      const e = new Engine(44118);
+      e.load(PRESETS['Monolith D']());           // (ARP engaged: its Arpeggiator bypassed, as every factory patch has it)
+      if (raw) {                                 // an FM-1's ARP pressed and let go, as it sends it out over MIDI
+        e.cc(80 + PANEL_BUTTONS.indexOf('arp'), 127);
+        e.cc(80 + PANEL_BUTTONS.indexOf('arp'), 0);
+      }
+      e.noteOn(48);
+      e.noteOn(55);
+      const l = new Float32Array(44118), r = new Float32Array(l.length);
+      e.render(l, r);
+      return l;
+    };
+    const straight = render(false);
+    expect(render(true).findIndex((v, i) => v !== straight[i])).toBe(-1);   // (the first sample that differs: none)
   });
 
   it('with nothing on Main\'s keys it is just fed by them', () => {

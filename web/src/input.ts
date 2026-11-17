@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Computer-keyboard and Web MIDI note input.
 import type { AudioHost } from './audio';
+import type { Editor } from './editor';
+import { PANEL_BUTTONS } from './modules';
 import { OCTAVE_MAX, OCTAVE_MIN } from './patch';
 
 /** the note keys, C up to D# a bit more than an octave above; key i plays `keyBase(octave) + i` */
@@ -94,6 +96,16 @@ export const isFm1In = (port: Pick<MIDIPort, 'id' | 'name'>, linkedId?: string |
  *  the editor is not linked to plays nothing here and its Start / Stop moves nothing. Nothing linked: none is skipped */
 export const otherFm1 = (port: Pick<MIDIPort, 'id' | 'name'>, linkedId?: string | null): boolean =>
   !!linkedId && port.id !== linkedId && isFm1In(port);
+
+/** a control change the editor takes instead of the engines (true: taken): CC 16..19 turn Main's knobs (the rows of the
+ *  device page in focus), CC 80..86 press (64 and up) and let go its patch buttons as the FM-1's panel does, a switch
+ *  flipping on the press, so the patch, the dock's button and both engines agree (#1041) */
+export function editorCc(cc: { n: number; v: number }, editor: Pick<Editor, 'turnKnob' | 'pressButton'>): boolean {
+  if (cc.n >= 16 && cc.n <= 19) editor.turnKnob(cc.n - 16, cc.v / 127);
+  else if (cc.n >= 80 && cc.n < 80 + PANEL_BUTTONS.length) editor.pressButton(cc.n - 80, cc.v >= 64);
+  else return false;
+  return true;
+}
 
 /**
  * Asks for Web MIDI and plays from every input. Resolves to a switch (off: incoming messages are ignored and the notes

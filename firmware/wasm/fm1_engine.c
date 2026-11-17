@@ -28,7 +28,9 @@ WASM_EXPORT("fm1e_r") int32_t *fm1e_r(void) { return out_r; }
 WASM_EXPORT("fm1e_rate") uint32_t fm1e_rate(void) { return ENG_SR; }
 
 /* the binary at fm1e_bin (len bytes) into the engine: 0 it plays, else eng_load's error (silent until the next load).
- * The transport, the tempo and the clock are the engine's own and stay, as on the FM-1 when the editor sends a patch */
+ * The transport, the tempo and the clock are the engine's own and stay, as on the FM-1 when the editor sends a patch. The
+ * patch buttons are the patch's, as eng_load sets them (the switched-on ones it was saved with, its Toggles' targets
+ * bypassed or not): the last patch's never act on it (#1041) */
 WASM_EXPORT("fm1e_load") int32_t fm1e_load(uint32_t len)
 {
     int e;
@@ -37,7 +39,7 @@ WASM_EXPORT("fm1e_load") int32_t fm1e_load(uint32_t len)
     e = eng_load(bin, len);
     loaded = e == 0;
     if (loaded)
-        eng_buttons(buttons);
+        buttons = eng_buttons_get();
     return e;
 }
 

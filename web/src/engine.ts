@@ -1370,8 +1370,8 @@ export class Engine {
     this.ctl.at = Math.max(0, Math.min(1, v));
   }
 
-  /** a control change: CC 1 / 2 / 64 / 65 drive Main mod / breath / sustain / foot; CC 22 its morph, CC 80..86 hold / release its
-   * patch buttons (64 and up: on); others are ignored (CC 16..19, the knobs, edit the device page in focus: the editor's) */
+  /** a control change: CC 1 / 2 / 64 / 65 drive Main mod / breath / sustain / foot; CC 22 its morph; others are ignored
+   * (CC 16..19, the knobs, edit the device page in focus, and CC 80..86 press the patch buttons: the editor's, #1041) */
   cc(n: number, v: number): void {
     const x = Math.max(0, Math.min(1, v / 127));
     const main = (name: string): void => {
@@ -1382,7 +1382,6 @@ export class Engine {
     else if (n === 64) this.ctl.sustain = x;
     else if (n === 65) this.ctl.foot = x;
     else if (n === 22) main('morph');
-    else if (n >= 80 && n < 80 + PANEL_BUTTONS.length) this.setButton(n - 80, v >= 64);
   }
 
   allNotesOff(): void {

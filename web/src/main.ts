@@ -52,7 +52,7 @@ import { AssemblyBrowser } from './browser';
 import { searchCommands, type Command } from './commands';
 import { MUTATE_AMOUNTS } from './mutate';
 import { buildFlashTab } from './flasher';
-import { attachKeyboard, attachMidi, followOctave, isFm1In, isOpenSelect, isTextEntry, otherFm1 } from './input';
+import { attachKeyboard, attachMidi, editorCc, followOctave, isFm1In, isOpenSelect, isTextEntry, otherFm1 } from './input';
 import { Piano } from './piano';
 import { sliderJack } from './slider-jack';
 import { PANEL_BUTTONS } from './modules';
@@ -721,8 +721,8 @@ const sandboxKeys = new SandboxKeys();
  * the FM-1's own (the pill keys, the computer keyboard, the on-screen one), not MIDI */
 const sink = {
   send(msg: HostMsg, fromPanel = false): void {
-    // CC 16..19 from a MIDI controller turn Main's knobs: the rows of the device page in focus
-    if (msg.t === 'cc' && msg.n >= 16 && msg.n <= 19) return editor.turnKnob(msg.n - 16, msg.v / 127);
+    // CC 16..19 from a MIDI controller turn Main's knobs; CC 80..86 press its patch buttons, through the editor (#1041)
+    if (msg.t === 'cc' && editorCc(msg, editor)) return;
     if (msg.t === 'panic') sandboxKeys.route(msg, editor.patch, editor.armedSet, 0);
     // the FM-1's keys in sandbox mode: it sends plain notes (D-232), and they play what its keys play on the editor's
     // patch (D-520: a Drum map's rows on black keys 1..8; sandbox-keys.ts), at the FM-1's octave

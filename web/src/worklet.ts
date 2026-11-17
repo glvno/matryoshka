@@ -126,8 +126,8 @@ class ModularProcessor extends AudioWorkletProcessor {
   private mix = 0;
   private fm1L = new Float32Array(128);
   private fm1R = new Float32Array(128);
-  /** the FM-1 engine from its compiled module: what the page set before (the transport, the tempo, the patch buttons, the
-   *  clock), then the messages that came while it compiled */
+  /** the FM-1 engine from its compiled module: what the page set before (the transport, the tempo, the clock), then the
+   *  messages that came while it compiled (the patch's load among them sets the patch buttons, as the patch has them) */
   private startFm1(module: WebAssembly.Module): void {
     const waiting = this.fm1Waiting ?? [];
     this.fm1Waiting = null;
@@ -139,7 +139,6 @@ class ModularProcessor extends AudioWorkletProcessor {
     }
     this.fm1.hear({ t: 'transport', on: this.engine.transportRunning });
     this.fm1.hear({ t: 'tempo', bpm: this.engine.tempoGlobal });
-    for (let i = 0, b = this.engine.buttonMask; b; i++, b >>= 1) if (b & 1) this.fm1.hear({ t: 'button', i, on: true });
     if (this.sinceClock <= CLOCK_GONE) this.fm1.clockExternal(true);
     for (const o of waiting) this.applyFm1(o);
   }
