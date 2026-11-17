@@ -17,6 +17,10 @@ interface Events {
   /** Mutate's lock on this parameter (#944): its own, whether its card or an assembly around it locks it anyway, and the
    *  setter (an undo step); absent for a parameter Mutate never moves */
   lock?: { own: boolean; card: boolean; set(on: boolean): void };
+  /** rename the card row (an assembly card's row): a Rename… item, the only way to rename it (#1025) */
+  rename?(): void;
+  /** false: the parameter takes no modulation, so the menu holds only its other items (rename, lock) */
+  routing?: boolean;
 }
 
 /** does the cable's source swing both ways (its output range, ranges.ts, starts below 0: an LFO's −1..1)? A macro range
@@ -57,7 +61,7 @@ export function parameterMenu(m: ModuleInst, def: ModuleDef, pd: ParamDef, ev: E
   const label = longName(def.type, pd.name);
   const summary = document.createElement('summary');
   summary.textContent = '⋮';
-  summary.title = `${def.label} ${label}: modulation`;
+  summary.title = `${def.label} ${label}: ${ev.routing === false ? 'menu' : 'modulation'}`;
   summary.setAttribute('aria-label', summary.title);
   const content = document.createElement('div');
   content.className = 'routing-controls';
@@ -77,8 +81,21 @@ export function parameterMenu(m: ModuleInst, def: ModuleDef, pd: ParamDef, ev: E
   };
   const p = ev.patch();
   const target = pd.toggle || pd.choices ? 'jack' : 'thumb';
-  hint(`Drop a cable on the ${target} to modulate ${label}, with its own depth. ${def.label} takes up to two different sources.`
-    + (pd.input ? ` The ${longName(def.type, pd.input)} jack is ${label}'s built-in input.` : ''));
+  if (ev.rename) {
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.className = 'sm';
+    rename.textContent = 'Rename…';
+    rename.title = `Rename the ${label} row on this card`;
+    rename.onclick = () => {
+      menu.open = false;
+      ev.rename!();
+    };
+    content.append(rename);
+  }
+  if (ev.routing !== false)
+    hint(`Drop a cable on the ${target} to modulate ${label}, with its own depth. ${def.label} takes up to two different sources.`
+      + (pd.input ? ` The ${longName(def.type, pd.input)} jack is ${label}'s built-in input.` : ''));
 
   if (ev.lock) {
     const { own, card, set } = ev.lock;
