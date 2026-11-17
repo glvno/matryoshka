@@ -4,7 +4,7 @@
 // candidate; the list with A, the current patch, first and the Keep · Use · ✕ buttons only on the row heard; the rail with
 // the letter heard, its place among the stops and a dot per candidate; ↑ ↓ while it has the focus.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { EMPTY_TEXT, renderList, renderProgress, renderRail, SIDE_W, SNAP_SIDE_STORE, SnapSidebar, type SideActions, type SideView } from './snap-side';
+import { EMPTY_TEXT, renderList, renderProgress, renderRail, SIDE_W, SNAP_SIDE_STORE, SnapSidebar, WORKSPACE_MIN, type SideActions, type SideView } from './snap-side';
 import type { Snapshot } from './snapshots';
 
 let store: Map<string, string>;
@@ -12,6 +12,7 @@ const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: str
 
 beforeEach(() => {
   store = new Map();
+  Object.defineProperty(window, 'innerWidth', { value: 1600, configurable: true });   // (a window with room for a wider sidebar)
 });
 
 function make(): { side: SnapSidebar; root: HTMLElement; menu: HTMLElement[] } {
@@ -44,19 +45,21 @@ describe('Sound design sidebar (#1040, #1048)', () => {
     side.setWidth(10);
     expect(side.width).toBe(SIDE_W.min);
     side.setWidth(10_000);
-    expect(side.width).toBeLessThanOrEqual(Math.max(SIDE_W.min, innerWidth - 520));
+    expect(side.width).toBe(1600 - WORKSPACE_MIN);   // (the canvas and the deck keep the room they need)
   });
 
-  it('a narrower window holds it narrower for the while, without forgetting the width the user set', () => {
-    const wide = innerWidth;
+  it('a narrower window holds it narrower for the while, so the deck and the canvas keep their room, without forgetting the width the user set', () => {
     const { side, root } = make();
-    side.setWidth(400);
-    Object.defineProperty(window, 'innerWidth', { value: 900, configurable: true });
+    side.setWidth(600);
+    Object.defineProperty(window, 'innerWidth', { value: WORKSPACE_MIN + 400, configurable: true });
     window.dispatchEvent(new Event('resize'));
-    expect([side.width, root.style.getPropertyValue('--snap-side-w')]).toEqual([380, '380px']);   // (900 less the 520 the window keeps)
-    Object.defineProperty(window, 'innerWidth', { value: wide, configurable: true });
+    expect([side.width, root.style.getPropertyValue('--snap-side-w')]).toEqual([400, '400px']);
+    Object.defineProperty(window, 'innerWidth', { value: 1200, configurable: true });
     window.dispatchEvent(new Event('resize'));
-    expect(side.width).toBe(Math.min(400, Math.max(SIDE_W.min, wide - 520)));
+    expect(side.width).toBe(SIDE_W.min);   // (never narrower than its narrowest)
+    Object.defineProperty(window, 'innerWidth', { value: 1600, configurable: true });
+    window.dispatchEvent(new Event('resize'));
+    expect(side.width).toBe(600);
   });
 
   it('its head says Sound design, with the ⋯ menu and the fold', () => {
