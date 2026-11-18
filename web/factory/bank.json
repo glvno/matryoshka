@@ -1973,21 +1973,25 @@
     },
     {
      "id": 2,
-     "type": "lfo",
+     "type": "osc",
      "x": 20,
      "y": 60,
      "params": {
       "wave": 2,
-      "rate": 5,
-      "depth": 1,
-      "sync": 0,
-      "div": 6,
-      "bpm": 120,
-      "phase": 0,
-      "range": 0,
-      "dir": 0,
-      "mult": 3,
-      "wide": 4
+      "pw": 0.5,
+      "coarse": -48,
+      "fine": 0,
+      "pm": 0,
+      "level": 1,
+      "fb": 0,
+      "unison": 1,
+      "detune": 10,
+      "blend": 0.5,
+      "stack": 0,
+      "pm2": 0,
+      "pm3": 0,
+      "analog": 0,
+      "phase": 0
      },
      "att": [
       1,
@@ -1998,7 +2002,7 @@
        "wave"
       ],
       "p2": [
-       "rate"
+       "pw"
       ]
      }
     },
@@ -2134,7 +2138,7 @@
      ],
      "map": {
       "p1": [
-       "fine"
+       "wave"
       ],
       "p2": [
        "pw"
@@ -2169,7 +2173,7 @@
      ],
      "map": {
       "p1": [
-       "fine"
+       "wave"
       ],
       "p2": [
        "pw"
@@ -3550,6 +3554,69 @@
       "swing": 50
      },
      "bypass": true
+    },
+    {
+     "id": 68,
+     "type": "const",
+     "x": 20,
+     "y": 3420,
+     "params": {
+      "value": 0.33
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "value"
+      ],
+      "p2": []
+     }
+    },
+    {
+     "id": 69,
+     "type": "scale",
+     "x": 340,
+     "y": 3420,
+     "params": {
+      "gain": 1.8090171188358597,
+      "offset": -2.3016439042027104
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "gain"
+      ],
+      "p2": [
+       "offset"
+      ]
+     }
+    },
+    {
+     "id": 70,
+     "type": "scale",
+     "x": 660,
+     "y": 3420,
+     "params": {
+      "gain": 0.16666666666666666,
+      "offset": 0
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "gain"
+      ],
+      "p2": [
+       "offset"
+      ]
+     }
     }
    ],
    "cables": [
@@ -4299,26 +4366,6 @@
       "port": "out"
      },
      "to": {
-      "module": 4,
-      "port": "in"
-     }
-    },
-    {
-     "from": {
-      "module": 3,
-      "port": "out"
-     },
-     "to": {
-      "module": 53,
-      "port": "in"
-     }
-    },
-    {
-     "from": {
-      "module": 3,
-      "port": "out"
-     },
-     "to": {
       "module": 54,
       "port": "in"
      }
@@ -4341,26 +4388,6 @@
      "to": {
       "module": 56,
       "port": "in"
-     }
-    },
-    {
-     "from": {
-      "module": 4,
-      "port": "out"
-     },
-     "to": {
-      "module": 9,
-      "port": "p1"
-     }
-    },
-    {
-     "from": {
-      "module": 53,
-      "port": "out"
-     },
-     "to": {
-      "module": 8,
-      "port": "p1"
      }
     },
     {
@@ -4532,6 +4559,76 @@
       "module": 67,
       "port": "keys"
      }
+    },
+    {
+     "from": {
+      "module": 68,
+      "port": "out"
+     },
+     "to": {
+      "module": 69,
+      "port": "in"
+     }
+    },
+    {
+     "from": {
+      "module": 69,
+      "port": "out"
+     },
+     "to": {
+      "module": 2,
+      "port": "pitch"
+     }
+    },
+    {
+     "from": {
+      "module": 3,
+      "port": "out"
+     },
+     "to": {
+      "module": 70,
+      "port": "in"
+     }
+    },
+    {
+     "from": {
+      "module": 70,
+      "port": "out"
+     },
+     "to": {
+      "module": 4,
+      "port": "in"
+     }
+    },
+    {
+     "from": {
+      "module": 70,
+      "port": "out"
+     },
+     "to": {
+      "module": 53,
+      "port": "in"
+     }
+    },
+    {
+     "from": {
+      "module": 4,
+      "port": "out"
+     },
+     "to": {
+      "module": 9,
+      "port": "pitch"
+     }
+    },
+    {
+     "from": {
+      "module": 53,
+      "port": "out"
+     },
+     "to": {
+      "module": 8,
+      "port": "pitch"
+     }
     }
    ],
    "assemblies": [
@@ -4652,6 +4749,11 @@
        "module": 39,
        "port": "in2",
        "label": "in2 4"
+      },
+      {
+       "module": 9,
+       "port": "pitch",
+       "label": "freq A"
       }
      ],
      "outputs": [
@@ -4938,7 +5040,10 @@
       61,
       62,
       63,
-      64
+      64,
+      68,
+      69,
+      70
      ],
      "inputs": [
       {
@@ -5301,9 +5406,9 @@
        ]
       },
       {
-       "module": 2,
-       "param": "rate",
-       "label": "lfo rate",
+       "module": 68,
+       "param": "value",
+       "label": "lfo freq",
        "head": "lfo"
       },
       {

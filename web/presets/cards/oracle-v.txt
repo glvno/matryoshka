@@ -64,7 +64,7 @@
 #   poly mod / pw A = OFF              OFF, ON
 #   poly mod / filter = OFF            OFF, ON
 # lfo
-#   lfo rate = 5 Hz                    0.02..40 Hz
+#   lfo freq = 0.33                    -4..4
 #   lfo / saw = OFF                    OFF, ON
 #   lfo / tri = ON                     OFF, ON
 #   square = OFF                       OFF, ON
@@ -143,7 +143,7 @@ preset: Vintage Strings
   amp / d = 1 s
   amp / s = 1
   amp / r = 1.4 s
-  lfo rate = 5.5 Hz
+  lfo freq = 0.4
   wheel mod / freq A = 0.2
   freq B = 0.2
   volume = 0.58

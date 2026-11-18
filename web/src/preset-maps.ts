@@ -267,6 +267,13 @@ export const HAND_MAPS: HandMap[] = [
       'select#49.pos': { table: ['lfo#1.wave'], lo: [0], n: [6], v: [1, 1, 1, 2, 1, 1] },
     },
   },
+  // ---- the LFO to 500 Hz (#862): the LFO rate in Hz (0.02..40) became `lfo freq` (-4..4 over 0.022..500 Hz, equal
+  // ratios per step). The FM-1's move table holds only small whole numbers, which cannot carry that curve, so `lfo freq`
+  // starts at Init (5 Hz). Every other row is still there.
+  {
+    engine: 'Oracle V', from: ORACLE_1_11, to: '2a53eef2', why: 'issue #862: the LFO reaches 500 Hz, its rate on a Const',
+    rows: { 'const#64.value': 'init' },
+  },
   // ---- 1.11: Wanderer XL took Wanderer's slot (D-348): each VCO plays its saw and its pulse at once, the mixer's wave
   // switches pick one, and the rows moved to other modules. A row keeps its value where it is the same control; a VCO's
   // wave (sine, triangle, saw, square, sharktooth, reverse saw) becomes its switch (square: SQUARE, the others: SAW); the
