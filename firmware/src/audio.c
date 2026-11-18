@@ -7,6 +7,9 @@
 #define FS 44118u                 /* the I2S rate (ENG_SR) */
 
 static int32_t abuf[2u * HALF_WORDS] __attribute__((aligned(4)));
+#ifndef UNROLL4                  /* (engine.c's, #1072; a host test without the engine: plain loops) */
+#define UNROLL4
+#endif
 
 /* the patch engine (engine.c) renders one half buffer per ISR call. eng_run = 0: silence (a patch is being loaded) */
 static volatile uint8_t eng_run;
