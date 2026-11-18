@@ -62,9 +62,17 @@ Factory bank: median worst +7.4 (Verona Drum 1), plan worst +0.5 (Shush 101), me
 
 - A host build of `engine.c` (Apple M-series) takes about 2.1 times as long in `sched_build` as main does: the worst factory patch 208 µs against 99 µs. Each item's waits are found again in each of the four passes.
 - RAM: no change in `.data`, `.bss`, the pool or `.lowram`. The table plan's lanes while the rig's plan is made take 36 bytes of NOINIT (`sch_keep`). The second cost table (`DEF_TCOST`, 114 bytes) is in flash.
-- On the FM-1: `tools/m1_link.py loadtime` measures a load's silence from the halves the engine stays stopped. Not yet run (rig turn pending).
+- On the FM-1 (`tools/m1_link.py --rig loadtime 20`, 20 loads in one window): a load keeps the sound off 31 to 52 ms with this build against 23 to 40 ms with the build before it (PR #1078's, whose plan is main's): Hera 6 gauze 2 23 → 31 ms, Canvas 32 → 38, Verona Drum 1 29 → 39, 909 Kit 40 → 52.
+
+## On the test rig, 2026-11-18
+
+Firmware CI run 44254199826 (this branch at `4cdcebd8`; boot check passed), against main CI run 44241663949 measured on 2026-11-17 on the same rig. Raw files: `build/poly-headroom/rig-plan/`, `rig-main/` and `rig-main-bank/` in the main checkout.
+
+- **Benchmark, 8 keys, core 0's voices span (`blocktime`, mean over 3 s):** Algo Four fx −6.9 points, Cassia 1 fx −5.6, Cassia 1 fx4 −5.1, Expander S fx −9.8, Hera 6 fx −6.5, Hera 6 fx4 −2.0, Hera 6 gauze 2 −6.4, Io 4 fx −8.3, Io 4 fx4 −7.6, Oracle V fx −0.5, Oracle V fx4 −0.2. Core 0's wait for core 1 drops from 440–750 µs to 63–280 µs. Hera 6 fx4 and the two Oracle V patches shed voices before, so their earlier spans read low.
+- **Benchmark survey (worst steady phase, `rig_cpu_survey.py`):** stopped −5.0 to −9.2 points, running −4.2 to −9.8. Dropped voices: Hera 6 gauze 2 3 → 0, Oracle V fx 2 → 0, Oracle V fx4 2 → 0, Hera 6 fx4 2 → 0. The worst is Oracle V fx4 at 2,882 of 2,902 µs stopped (99.3 %), so the margin there is thin.
+- **Factory bank survey:** stopped −5.3 (909 Kit) to +1.7 (Silver Box); running −4.0 (8 Lire) to +2.1 (Silver Box, Canvas). Patches whose plan did not change (Silver Box, Wanderer, Monolith D, Sallen 20, Hera 6, Briefcase 3, 8 Lire, Cassia 1, Elvira 2) moved by −4.1 to +2.1 between the two days. So this survey's day-to-day noise is about ±2 points, and a ±0.5-point regression needs main and this build surveyed in one session.
 
 ## Not yet measured
 
-- The rig before and after on the poly benchmark and the whole bank, stopped and running.
+- Main and this build surveyed back to back in one session on the whole bank.
 - Module times with the transport running (`modtime --run`) for the model's running case.
