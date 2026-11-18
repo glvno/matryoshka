@@ -1393,6 +1393,42 @@ async function main() {
         await check('tie 808: LFO held on the device page: Main\'s LFO jack up (TEST_SCREEN sees the jacks)', b !== undefined && !!(b & LFO_BIT), `buttons ${b}`);
       }
     },
+    /** ratchets and micro timing on the SEQ page (#675, #677, D-833): a hit on step 3, then with step 3 held PRESET two
+     *  clicks right (RATCHET X3) and OCT+ twice (MICRO +2/24); the release switches nothing, the track has them; held
+     *  again, OCT- three times and PRESET two left: MICRO -1/24, RATCHET OFF */
+    async seqTiming() {
+      const tag = 'seq timing';
+      await check(`${tag}: 808 Kit opens, synced`, await openSynced('808 Kit'));
+      await check(`${tag}: the SEQ page, the track cleared`, await seqCleared(), fmt(await trackNotes()));
+      await emu.tap(BLACK[0]);
+      await emu.elapse(200);
+      await emu.tap(WHITE[2]);
+      let ns = await notesUntil((x) => x.length === 1);
+      await check(`${tag}: a hit on step 3`, ns.length === 1 && ns[0].at === 2, fmt(ns));
+      const held = async (presetClicks, octs) => {
+        await emu.key(WHITE[2], true);
+        await emu.elapse(150);
+        await emu.turn(ENC.preset, presetClicks);
+        await emu.elapse(200);
+        const said = presetClicks > 0 ? await emu.waitText('RATCHET X3', 2000) : await emu.waitText('RATCHET OFF', 2000);
+        for (const o of octs) await emu.tap(o);
+        await emu.elapse(200);
+        const micro = await emu.waitText(octs[0] === B.octUp ? 'MICRO +2/24' : 'MICRO -1/24', 2000);
+        await emu.key(WHITE[2], false);
+        await emu.elapse(300);
+        return said && micro;
+      };
+      const bar = await held(2, [B.octUp, B.octUp]);
+      ns = await notesUntil((x) => x[0]?.ratchet === 3 && x[0]?.micro === 2);
+      await check(`${tag}: step held + PRESET / OCT+: ratchet x3, micro +2/24, the bar says so, the release switches nothing`,
+        bar && ns.length === 1 && ns[0].ratchet === 3 && ns[0].micro === 2, fmt(ns));
+      const bar2 = await held(-2, [B.octDown, B.octDown, B.octDown]);
+      ns = await notesUntil((x) => x[0]?.ratchet === undefined && x[0]?.micro === -1);
+      await check(`${tag}: held again, OCT- x3 and PRESET back: micro -1/24, no ratchet`,
+        bar2 && ns.length === 1 && ns[0].ratchet === undefined && ns[0].micro === -1, fmt(ns));
+      await emu.tap(B.seq, 120);
+      await emu.waitOwnPage(3000);
+    },
     async drumHold() {   // #368 (the owner, 2026-10-28): a black key on a drum track's grid sounds while held; REC running records it
       await check('hold: 8 Lire opens (its delay dry), synced', await openSynced('8 Lire', openDry));
       await check('hold: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));

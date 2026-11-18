@@ -1253,6 +1253,10 @@ static const uint8_t EUCLID_RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};   /* its r
 static const uint8_t METER_BAR[METER_N] = {48, 72, 96, 120, 72, 84, 108, 144};   /* ... a bar in clock ticks */
 static const uint8_t METER_BEAT[METER_N] = {24, 24, 24, 24, 36, 12, 36, 36};   /* ... a count-in click's ticks */
 static const char *const METER_NAME[METER_N] = {"2/4", "3/4", "4/4", "5/4", "6/8", "7/8", "9/8", "12/8"};
+#define RATCHET_MAX 5u         /* a note's most hits inside its step (#675, track.ts) */
+#define MICRO_STEPS 24         /* micro timing's unit, a step's share (#677, track.ts) ... */
+#define MICRO_MAX 23           /* ... and its most either way */
+#define STEPS_HITS 16u         /* the hits to come every track holds together (modules.ts) */
 #define CLICK_MS 25u           /* ... its click on each beat: ms to nothing, level (Q16), Hz on beats 2..4 and on beat 1 */
 #define CLICK_LEVEL_Q16 16384
 #define CLICK_HZ 1000u
@@ -1995,7 +1999,7 @@ static const def_t DEFS[N_TYPES] = {
 };
 /* one copy of each type, a block: what the two-core schedule balances (engine.c sched_build, #802), in 64 cycles of
  * web/src/cpu-costs.json (its run and parameter inputs: cpu.ts scheduleCost) */
-static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 34, 9, 437, 11, 112, 1568, 3, 40, 96, 39, 328, 178, 326, 156, 89, 36, 36, 40, 49, 72, 548, 266, 54, 361, 105, 54, 37, 468, 271, 448, 668, 11, 15, 1, 12, 53, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4, 231, 178, 31};
+static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 34, 9, 437, 11, 112, 1568, 3, 40, 96, 39, 328, 178, 326, 156, 89, 36, 36, 40, 49, 72, 548, 266, 54, 361, 105, 54, 37, 468, 271, 448, 668, 11, 15, 1, 12, 55, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4, 231, 178, 31};
 /* a module bypassed when the patch loads, in the same units: passing an input through (D-1104; cpu.ts scheduleBypass) */
 #define DEF_COST_BYPASS 18u
 /* Gate-port kinds for pattern authorization, independent of environment grouping (bit n: port n is a gate) */

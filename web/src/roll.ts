@@ -18,7 +18,7 @@
 import { NOTE_NAMES } from './modules';
 import type { ModuleInst } from './patch';
 import { renamedKey } from './storage-key';
-import { COND_ORDER, condName, droneRow, fixNotes, isDrone, STEP_VEL, STEPS_MAX, STEPS_RATES, type StepNote } from './track';
+import { COND_ORDER, condName, droneRow, fixNotes, isDrone, MICRO_MAX, MICRO_STEPS, microName, RATCHET_MAX, setTiming, STEP_VEL, STEPS_MAX, STEPS_RATES, type StepNote } from './track';
 
 export interface RollOps {
   /** the track as it is now (null: it is gone) and its label */
@@ -142,7 +142,7 @@ export class PianoRoll {
     help.textContent = '?';
     help.title = 'Click a note: select (Shift adds). Drag: move (Option: copy), its edges: length / start, Cmd-drag: velocity.\n'
       + 'Empty grid: drag a band; double-click adds a note, double-click a note removes it; right-click removes.\n'
-      + 'Delete removes the selection; arrows move it (Shift + ↑↓ an octave, Shift + ←→ length); L: a drone (tied round the loop, again: one step), Shift+L: the row a drone (its first note held, the rest of the row gone); T / Shift+T: the trig condition (FILL, 1ST, 3:4 …: when the selection plays); Cmd-A / C / X / V / D; B draw mode; Esc.';
+      + 'Delete removes the selection; arrows move it (Shift + ↑↓ an octave, Shift + ←→ length); L: a drone (tied round the loop, again: one step), Shift+L: the row a drone (its first note held, the rest of the row gone); T / Shift+T: the trig condition (FILL, 1ST, 3:4 …: when the selection plays); X / Shift+X: the ratchet (the selection plays 2 to 5 times inside its step); , / . : micro timing, 1/24 of a step earlier / later (Shift: 6/24); Cmd-A / C / X / V / D; B draw mode; Esc.';
     this.infoEl = document.createElement('span');
     this.infoEl.className = 'roll-info';
     const close = btn('×', 'roll-close', 'close the roll (Esc)', () => this.ops.close());
@@ -360,8 +360,11 @@ export class PianoRoll {
       // far as it runs on into the next pass (a drone: up to its own start)
       const wraps = !!n.wrap && n.at < this.len && (isDrone(n) || n.at + n.len > this.len);
       const d = document.createElement('div');
-      d.className = 'roll-note' + (this.sel.has(id(n)) ? ' sel' : '') + (n.at >= this.len ? ' past' : '') + (isDrone(n) && wraps ? ' drone' : '') + (n.cond ? ' cond' : '');
-      d.style.left = `${n.at * sw + 1}px`;
+      const timed = !isDrone(n);                 // (a drone ignores its ratchet and micro timing)
+      d.className = 'roll-note' + (this.sel.has(id(n)) ? ' sel' : '') + (n.at >= this.len ? ' past' : '') + (isDrone(n) && wraps ? ' drone' : '') + (n.cond ? ' cond' : '') + (timed && (n.ratchet ?? 1) > 1 ? ' ratchet' : '');
+      d.style.left = `${(n.at + (timed ? (n.micro ?? 0) / MICRO_STEPS : 0)) * sw + 1}px`;   // (micro timing: off its step, #677)
+      d.style.setProperty('--ratchet', String(n.ratchet ?? 1));
+      d.style.setProperty('--sw', `${sw}px`);
       d.style.top = `${this.rowOf(n.note) * rh + 1}px`;
       d.style.height = `${rh - 2}px`;
       d.style.width = `${Math.max(3, (wraps ? this.len - n.at : n.len) * sw - 2)}px`;
@@ -434,7 +437,8 @@ export class PianoRoll {
 
   private describe(n: StepNote): string {
     const len = isDrone(n) ? 'a drone (tied round the loop onto itself)' : `${n.len} step${n.len > 1 ? 's' : ''}${n.wrap ? ' (on across the loop point)' : ''}`;
-    return `step ${n.at + 1} · ${this.pitchName(n.note)} · ${len} · vel ${n.vel}${n.chance ? ` · ${n.chance} %` : ''}${n.cond ? ` · plays on ${condName(n.cond)}` : ''}`;
+    const timing = isDrone(n) ? '' : `${(n.ratchet ?? 1) > 1 ? ` · ×${n.ratchet}` : ''}${n.micro ? ` · ${microName(n.micro)} ${n.micro > 0 ? 'late' : 'early'}` : ''}`;
+    return `step ${n.at + 1} · ${this.pitchName(n.note)} · ${len} · vel ${n.vel}${n.chance ? ` · ${n.chance} %` : ''}${n.cond ? ` · plays on ${condName(n.cond)}` : ''}${timing}`;
   }
 
   /** a note by what its row says: a Drum map row's name, else the pitch */
@@ -868,6 +872,25 @@ export class PianoRoll {
       });
       this.infoEl.textContent = c ? `plays on ${condName(c)}` : 'plays every time';
       this.edit(over(changed, rest));
+      return true;
+    }
+    if (lower === 'x' || k === ',' || k === '.' || k === '<' || k === '>') {
+      // the selected notes' ratchet (#675): X one hit more, Shift+X one fewer; their micro timing (#677): , / . 1/24 of a
+      // step earlier / later, with Shift 6/24 (both from the first note's)
+      if (!picked.length) return true;
+      const first = picked[0], sel = new Set(picked.map(id));
+      let t: { ratchet?: number; micro?: number }, say: string;
+      if (lower === 'x') {
+        const r = Math.max(1, Math.min(RATCHET_MAX, (first.ratchet ?? 1) + (shift ? -1 : 1)));
+        t = { ratchet: r };
+        say = r > 1 ? `ratchet ×${r}: plays ${r} times inside its step` : 'ratchet off: plays once';
+      } else {
+        const m = Math.max(-MICRO_MAX, Math.min(MICRO_MAX, (first.micro ?? 0) + (k === ',' || k === '<' ? -1 : 1) * (shift ? 6 : 1)));
+        t = { micro: m };
+        say = m ? `micro timing ${microName(m)} of a step ${m > 0 ? 'late' : 'early'}` : 'micro timing off: on the step';
+      }
+      this.infoEl.textContent = say;
+      this.edit(setTiming(this.notes, (n) => sel.has(id(n)), t) ?? []);
       return true;
     }
     if (lower === 'l') {

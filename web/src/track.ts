@@ -38,6 +38,11 @@ export interface StepNote {
   chance?: number;
   /** its trig condition (#674, format 60, D-830; COND_*): when it plays, instead of every time; absent = every time */
   cond?: number;
+  /** its ratchet (#675, format 63): it plays this many times inside its step, 2..RATCHET_MAX, evenly spaced; absent = once */
+  ratchet?: number;
+  /** its micro timing (#677, format 63): played this many MICRO_STEPS-ths of a step late (negative: early), -MICRO_MAX..
+   * MICRO_MAX; absent = on the step. A drone ignores its ratchet and micro timing */
+  micro?: number;
   /** tied across the loop point (#384, format 50): its length runs on past the end of the pass into the next pass's first
    * steps instead of being cut there. With the most length (STEPS_MAX) it is a drone: it ties back onto its own step and
    * never starts again while it plays (isDrone). Absent = cut at the end of the pass */
@@ -120,6 +125,16 @@ export function condName(c: number | undefined): string {
   return (c & COND_NOT ? 'NOT ' : '') + (b ? `${a + 1}:${b + 1}` : ['', 'FILL', 'PRE', 'NEI', '1ST'][a]);
 }
 
+/** a note's ratchet (#675) and micro timing (#677): the most times a note plays inside its step, and micro timing in
+ * MICRO_STEPS-ths of a step either way, at most MICRO_MAX (the Elektron machines' range at 1/16: 23/384 of a bar) */
+export const RATCHET_MAX = 5;
+export const MICRO_STEPS = 24;
+export const MICRO_MAX = 23;
+/** a note plays off its step's start or more than once: it carries a timing word (noteWords) */
+export const hasTiming = (n: StepNote): boolean => (n.ratchet ?? 1) > 1 || !!n.micro;
+/** micro timing as the FM-1 and the editor write it: +5/24, -3/24; '' for none */
+export const microName = (m: number | undefined): string => (m ? `${m > 0 ? '+' : ''}${m}/${MICRO_STEPS}` : '');
+
 /** a chance as stored: 5..100 in steps of 5, undefined for 100 */
 const fixChance = (v: unknown): number | undefined => {
   const c = v === undefined || v === null ? 100 : int(v, 5, 100);
@@ -145,6 +160,9 @@ export function fixNotes(raw: unknown): StepNote[] | undefined {
     const chance = cond ? undefined : fixChance(o.chance);
     if (chance !== undefined) n.chance = chance;
     if (cond) n.cond = cond;
+    const ratchet = int(o.ratchet, 1, RATCHET_MAX), micro = int(o.micro, -MICRO_MAX, MICRO_MAX);
+    if (ratchet !== null && ratchet > 1) n.ratchet = ratchet;
+    if (micro) n.micro = micro;
     if (o.wrap === true) n.wrap = true;
     out.push(n);
   }
@@ -153,15 +171,17 @@ export function fixNotes(raw: unknown): StepNote[] | undefined {
   let words = 0;
   for (const [i, n] of out.entries()) {
     if (i > 0 && n.at === out[i - 1].at && n.note === out[i - 1].note) continue;
-    if ((words += n.cond ? 2 : 1) > TRACK_NOTES_MAX) break;
+    if ((words += noteSize(n)) > TRACK_NOTES_MAX) break;
     kept.push(n);
   }
   return kept.length ? kept : undefined;
 }
 
-/** the words a track's notes take in the binary (noteWords: a note with a condition takes two), what TRACK_NOTES_MAX and
- * DEVICE.notes count */
-export const wordCount = (notes: readonly StepNote[] | undefined): number => (notes ?? []).reduce((k, n) => k + (n.cond ? 2 : 1), 0);
+/** the words one note takes in the binary (noteWords): the note, its condition word, its timing word */
+const noteSize = (n: StepNote): number => 1 + (n.cond ? 1 : 0) + (hasTiming(n) ? 1 : 0);
+/** the words a track's notes take in the binary (noteWords: a note with a condition or a timing word takes more than one),
+ * what TRACK_NOTES_MAX and DEVICE.notes count */
+export const wordCount = (notes: readonly StepNote[] | undefined): number => (notes ?? []).reduce((k, n) => k + noteSize(n), 0);
 
 /**
  * The notes of a pattern saved before #133 (patch format 30 and older): a step byte per step (bit 0 on, bit 1 accent,
@@ -191,16 +211,21 @@ export function migrateSteps(steps: unknown, notes?: unknown, vels?: unknown): S
 /** a note in the binary (patchbin.ts, engine.c): u32 LE, bits 0..5 the start, 6..11 the length - 1, 12..18 the note,
  * 19..25 the velocity, 26..30 the chance code (100 - chance) / 5, bit 31 tied across the loop point (NOTE_WRAP, format 50).
  * A note with a trig condition (format 60, #674) has chance code NOTE_COND, and its condition word follows it: a word of
- * velocity 0 with the note's start and note, the condition in bits 6..11 (its low six bits) and 26 (bit 6); engine.c keeps
- * the words as they are (NW_COND) */
+ * velocity 0 with the note's start and note, the condition in bits 6..11 (its low six bits) and 26 (bit 6). A note with
+ * a ratchet or micro timing (format 63, #675, #677) is followed by its timing word, after the condition word if it has
+ * one: velocity 0, the note's start and note, bit 31 set, micro timing + 32 in bits 6..11, the ratchet - 1 in bits 26..28.
+ * engine.c keeps the words as they are (ENG_NOTE_COND, ENG_TIME_WORD) */
 export const NOTE_WRAP = 0x80000000;
 export const NOTE_COND = 31;
 export const noteWord = (n: StepNote): number =>
   ((n.at | ((n.len - 1) << 6) | (n.note << 12) | (n.vel << 19) | ((n.cond ? NOTE_COND : (100 - (n.chance ?? 100)) / 5) << 26)) >>> 0) + (n.wrap ? NOTE_WRAP : 0);
 /** a note's condition word (its note's start and note, velocity 0) */
 export const condWord = (n: StepNote): number => (n.at | ((n.cond! & 63) << 6) | (n.note << 12) | (((n.cond! >> 6) & 1) << 26)) >>> 0;
-/** a track's notes as words: each note, and after a note with a condition its condition word */
-export const noteWords = (notes: readonly StepNote[] | undefined): number[] => (notes ?? []).flatMap((n) => (n.cond ? [noteWord(n), condWord(n)] : [noteWord(n)]));
+/** a note's timing word (its note's start and note, velocity 0, bit 31) */
+export const timeWord = (n: StepNote): number => ((n.at | (((n.micro ?? 0) + 32) << 6) | (n.note << 12) | (((n.ratchet ?? 1) - 1) << 26)) >>> 0) + NOTE_WRAP;
+/** a track's notes as words: each note, after a note with a condition its condition word, then its timing word */
+export const noteWords = (notes: readonly StepNote[] | undefined): number[] =>
+  (notes ?? []).flatMap((n) => [noteWord(n), ...(n.cond ? [condWord(n)] : []), ...(hasTiming(n) ? [timeWord(n)] : [])]);
 export function wordNote(w: number): StepNote {
   const n: StepNote = { at: w & 63, len: ((w >>> 6) & 63) + 1, note: (w >>> 12) & 127, vel: (w >>> 19) & 127 };
   const code = Math.min(19, (w >>> 26) & 31);
@@ -209,16 +234,28 @@ export function wordNote(w: number): StepNote {
   return n;
 }
 /** words back into notes: a condition word gives the note before it (the same start and note, chance code NOTE_COND) its
- * condition; one anywhere else is dropped */
+ * condition, a timing word after the note (or after its condition word) its ratchet and micro timing; one anywhere else
+ * is dropped */
 export function wordsNotes(words: readonly number[]): StepNote[] {
   const out: StepNote[] = [];
+  const extra = (w: number, i: number): number | undefined => {
+    const c = words[i] >>> 0;
+    return i < words.length && !((c >>> 19) & 127) && (c & 0x7f03f) === (w & 0x7f03f) ? c : undefined;
+  };
   for (let i = 0; i < words.length; i++) {
     const w = words[i] >>> 0;
     if (!((w >>> 19) & 127)) continue;
-    const n = wordNote(w), c = words[i + 1] >>> 0;
-    if (((w >>> 26) & 31) === NOTE_COND && i + 1 < words.length && !((c >>> 19) & 127) && (c & 0x7f03f) === (w & 0x7f03f)) {
+    const n = wordNote(w);
+    let c = extra(w, i + 1);
+    if (((w >>> 26) & 31) === NOTE_COND && c !== undefined && !(c & NOTE_WRAP)) {
       const cond = ((c >>> 6) & 63) | (((c >>> 26) & 1) << 6);
       if (isCond(cond) && cond) n.cond = cond;
+      c = extra(w, ++i + 1);
+    }
+    if (c !== undefined && c & NOTE_WRAP) {
+      const ratchet = Math.min(RATCHET_MAX, ((c >>> 26) & 7) + 1), micro = Math.max(-MICRO_MAX, Math.min(MICRO_MAX, ((c >>> 6) & 63) - 32));
+      if (ratchet > 1) n.ratchet = ratchet;
+      if (micro) n.micro = micro;
       i++;
     }
     out.push(n);
@@ -234,6 +271,9 @@ export interface StepView {
   chance: number;
   /** its trig condition (0: none) */
   cond: number;
+  /** its ratchet (1: once) and micro timing (0: on the step) */
+  ratchet: number;
+  micro: number;
   tie: boolean;
   note: number;
   vel: number;
@@ -246,6 +286,8 @@ export function stepView(notes: readonly StepNote[] | undefined, k: number, len?
     accent: first?.vel === ACCENT_VEL,
     chance: first?.chance ?? 100,
     cond: first?.cond ?? 0,
+    ratchet: first?.ratchet ?? 1,
+    micro: first?.micro ?? 0,
     tie: !first && !!notes?.some((n) => noteThrough(n, k, len)),
     note: first?.note ?? STEP_NOTE,
     vel: first?.vel ?? STEP_VEL,
@@ -260,6 +302,20 @@ export function setCond(notes: readonly StepNote[] | undefined, which: (n: StepN
     delete out.chance;
     if (cond && isCond(cond)) out.cond = cond;
     else delete out.cond;
+    return out;
+  }));
+}
+
+/** the notes `which` picks take a ratchet (1..RATCHET_MAX) and / or micro timing (-MICRO_MAX..MICRO_MAX); a value left out
+ * stays as it is */
+export function setTiming(notes: readonly StepNote[] | undefined, which: (n: StepNote) => boolean, t: { ratchet?: number; micro?: number }): StepNote[] | undefined {
+  return fixNotes((notes ?? []).map((n) => {
+    if (!which(n)) return n;
+    const out: StepNote = { ...n };
+    if (t.ratchet !== undefined) out.ratchet = t.ratchet;
+    if (t.micro !== undefined) out.micro = t.micro;
+    if ((out.ratchet ?? 1) <= 1) delete out.ratchet;
+    if (!out.micro) delete out.micro;
     return out;
   }));
 }
@@ -347,24 +403,30 @@ export function setStepValue(notes: readonly StepNote[] | undefined, k: number, 
 }
 
 /** step k holds exactly these notes (cursor entry of a chord, #135): its own notes go (a note tied through it ends before it),
- * each key a note one step long at its velocity (1..127), the step's chance kept */
+ * each key a note one step long at its velocity (1..127), the step's chance, condition, ratchet and micro timing kept */
 export function chordFits(notes: readonly StepNote[] | undefined, k: number, keys: readonly { note: number }[], len = STEPS_MAX): boolean {
   const kept = setStep(notes, k, { on: false, accent: false, chance: 100 }, len) ?? [];
   return kept.length + new Set(keys.map(x => x.note)).size <= TRACK_NOTES_MAX;
 }
 export function setChord(notes: readonly StepNote[] | undefined, k: number, keys: readonly { note: number; vel: number }[], len = STEPS_MAX): StepNote[] | undefined {
-  const v = stepView(notes, k), chance = v.on ? v.chance : 100, cond = v.on ? v.cond : 0;
+  const v = stepView(notes, k), chance = v.on ? v.chance : 100, cond = v.on ? v.cond : 0, ratchet = v.on ? v.ratchet : 1, micro = v.on ? v.micro : 0;
   const out = setStep(notes, k, { on: false, accent: false, chance: 100 }, len) ?? [];
   for (const x of keys)
     if (out.length < TRACK_NOTES_MAX && k >= 0 && k < STEPS_MAX)
-      out.push({ at: k, len: 1, note: Math.max(0, Math.min(127, Math.round(x.note))), vel: Math.max(1, Math.min(127, Math.round(x.vel))), ...(chance < 100 ? { chance } : {}), ...(cond ? { cond } : {}) });
+      out.push({ at: k, len: 1, note: Math.max(0, Math.min(127, Math.round(x.note))), vel: Math.max(1, Math.min(127, Math.round(x.vel))), ...(chance < 100 ? { chance } : {}), ...(cond ? { cond } : {}), ...(ratchet > 1 ? { ratchet } : {}), ...(micro ? { micro } : {}) });
   return fixNotes(out);
 }
 
-/** live-recorded notes laid over a track (#135, overdub): a recorded note replaces one on the same step and key */
+/** live-recorded notes laid over a track (#135, overdub): a recorded note replaces one on the same step and key, keeping
+ * its ratchet and micro timing (#675, #677; engine.c eng_steps_overdub, the same) */
 export function overdub(notes: readonly StepNote[] | undefined, add: readonly StepNote[]): StepNote[] | undefined {
-  const kept = (notes ?? []).filter((n) => !add.some((a) => a.at === n.at && a.note === n.note));
-  return fixNotes([...add, ...kept]);
+  const same = (a: StepNote, n: StepNote): boolean => a.at === n.at && a.note === n.note;
+  const kept = (notes ?? []).filter((n) => !add.some((a) => same(a, n)));
+  const timed = add.map((a) => {
+    const o = notes?.find((n) => same(a, n));
+    return o && hasTiming(o) ? { ...a, ...(o.ratchet ? { ratchet: o.ratchet } : {}), ...(o.micro ? { micro: o.micro } : {}) } : a;
+  });
+  return fixNotes([...timed, ...kept]);
 }
 
 /** a drum pattern from a string, a step per character: x a note (C4, the default velocity), X an accented one (full
@@ -511,7 +573,7 @@ export function patternOf(m: { notes?: StepNote[]; patterns?: (Pattern | null)[]
 
 /** a short note word (format 48's patterns section, 16 bits): bits 0..3 the start, 4..7 the length - 1, 8..14 the note,
  * 15 the accent (full velocity, else the default velocity); for a pattern whose every note fits it (isShortNote) */
-export const isShortNote = (n: StepNote): boolean => !n.wrap && n.at < 16 && n.len <= 16 && (n.vel === STEP_VEL || n.vel === ACCENT_VEL) && (n.chance ?? 100) === 100 && !n.cond;
+export const isShortNote = (n: StepNote): boolean => !n.wrap && n.at < 16 && n.len <= 16 && (n.vel === STEP_VEL || n.vel === ACCENT_VEL) && (n.chance ?? 100) === 100 && !n.cond && !hasTiming(n);
 export const shortWord = (n: StepNote): number => n.at | ((n.len - 1) << 4) | (n.note << 8) | (n.vel === ACCENT_VEL ? 0x8000 : 0);
 export const wordShort = (w: number): StepNote => ({ at: w & 15, len: ((w >> 4) & 15) + 1, note: (w >> 8) & 127, vel: w & 0x8000 ? ACCENT_VEL : STEP_VEL });
 /** a pattern's words as the binary and the pattern store write them: short ones (u16) when every note fits one, else

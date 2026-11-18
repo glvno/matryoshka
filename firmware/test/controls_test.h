@@ -17,7 +17,8 @@ typedef struct {
     uint32_t params, mutes, trk, row, roll_lo, seq_pg, pattern, lpg, locks;
     eng_mset_t arms;                                    /* (all 128 modules: a big patch's tracks sit above 31, #721) */
     int32_t notes_n;
-    uint32_t notes_sum, acc_n, len_sum, vel_sum, chance_sum, pitch_sum, cond_n;
+    uint32_t notes_sum, acc_n, len_sum, vel_sum, chance_sum, pitch_sum, cond_n, ratchet_sum;
+    int32_t micro_sum;
     uint32_t song_sel, song_cur, song_len, song_sum, song, clear_at, del_at, msg_sum;
     uint32_t fx_row, fx_on;
     uint32_t stored, store_sum, pat_sum;                /* the pattern store (#901): its entries, their ids and hashes, and
@@ -88,6 +89,10 @@ static void ct_take(ct_snap_t *s)
             s->vel_sum += (w[k] >> 19) & 127u;
             s->chance_sum += (w[k] >> 26) & 31u;
             s->cond_n += (w[k] >> 19 & 127u) && ((w[k] >> 26) & 31u) == ENG_NOTE_COND;
+            if (ENG_IS_TIME(w[k])) {                    /* (#675, #677) */
+                s->ratchet_sum += ENG_TIME_RATCHET(w[k]) - 1u;
+                s->micro_sum += ENG_TIME_MICRO(w[k]);
+            }
             s->pitch_sum += (w[k] >> 12) & 127u;
         }
     }
@@ -200,6 +205,8 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_PATTERN_NEW: return a->stored == b->stored + 1u;
     case CE_PATTERN_LOAD: return a->msg_sum != b->msg_sum && a->pat_sum != b->pat_sum;
     case CE_CONDITION: return a->cond_n != b->cond_n;
+    case CE_RATCHET: return a->ratchet_sum != b->ratchet_sum && a->micro_sum == b->micro_sum;
+    case CE_MICRO: return a->micro_sum != b->micro_sum && a->ratchet_sum == b->ratchet_sum && a->seq_pg == b->seq_pg && a->octave == b->octave;
     case CE_FILL: return a->msg_sum != b->msg_sum && a->page == b->page && a->notes_sum == b->notes_sum && a->mutes == b->mutes
                          && a->params == b->params && !eng_fill_on();   /* (FILL said, and let go with FX; FX's own job not done) */
     case CE_CHORD_BUTTON: {                             /* (#598) a chord button: its key under the split out, no note played */
