@@ -185,9 +185,10 @@ static void c1_poll(void)                       /* the main loop */
 /* D-1114, #979: the float kernels' result bits on both cores (engine.c eng_fpu_probe). DIAG page 140 runs the probe
  * FPU_RUNS times on core 0 from the main loop with the interrupts on (the audio interrupt, which plays float kernels
  * too, comes between its instructions), then once on core 1, handed over as the self-test is (c1_test); 141 and 142
- * read core 0's first and core 1's hashes (tools/m1_link.py fpucheck) */
+ * read core 0's first and core 1's hashes (tools/m1_link.py fpucheck). The hashes sit in NOINIT, outside the RAM
+ * region's budget: before page 140 has run since power-on, 141 and 142 read whatever was there */
 #define FPU_RUNS 32u
-static uint32_t fpu_h0[ENG_PROBE_CASES], fpu_h1[ENG_PROBE_CASES];
+static uint32_t __attribute__((section(".noinit"))) fpu_h0[ENG_PROBE_CASES], fpu_h1[ENG_PROBE_CASES];
 
 static void fpu_job(uint32_t arg)               /* (runs on core 1) */
 {
