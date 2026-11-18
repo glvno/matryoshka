@@ -100,6 +100,7 @@ import { flipPlan } from './ab';
 import { body, CURRENT_LETTER, sameVersion, Snapshots, type Snapshot } from './snapshots';
 import { isGlobalTempo, patchTempo, tempo } from './tempo';
 import { rowOrder } from './structure';
+import type { Card } from './quick-patch';
 import { EXCLUDED_TYPES,
   addChild,
   addMember,
@@ -142,7 +143,7 @@ import { EXCLUDED_TYPES,
   type AssemblyInst,
   type PortRef,
   type Rect,
-  type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveRef, setColumnBreak, setHeading, setSpan, spanPlan, type SpanBlock,
+  type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveRef, setColumnBreak, setHeading, setSpan, spanPlan, type SpanBlock, cardWidth,
   keepParams, pickRows, pickState, keyRange, type PickRow,
   mergeRows, rowNames, rowOf, sameRange, setRowNames, splitRow, syncTied, tiedTo, ties, type Ties, ROW_NAMES_MAX, ROW_NAME_MAX,
   copyRuns, copyStarts, setCopies, COPY_ROWS_MAX, COPIES_MAX } from './assembly';
@@ -283,14 +284,9 @@ type Pt = { x: number; y: number };
 const CARD_W = 300;
 const CARD_H = 540;
 /** the host's elements drawn over the canvas, which a new card is kept clear of (#175) */
-const OVER_CANVAS = '.view-switch, .fm1-connect, .help-btn, #diff, .tutorial, .flaw-panel';
+const OVER_CANVAS = '.view-switch, .fm1-connect, .help-btn, #diff, .tutorial, .flaw-panel, .qp-panel';
 /** how far each paste of the same clip lands from the last (down and right) */
 const PASTE_STEP = 40;
-/** a collapsed assembly card's footprint width: a grid cell per column (`.module.assembly.cols` in style.css) */
-const cardWidth = (params: ParamRef[]): number => {
-  const n = paramColumns(params).length;
-  return n > 1 ? n * GRID.x - 20 : CARD_W;
-};
 /** jacks on each side edge of a card; the rest hang off its bottom edge */
 const EDGE_JACKS = 4;
 /** an input for a card's edge layout: its row element and which port it is (a parameter's dedicated input joins its row) */
@@ -675,10 +671,11 @@ export class Editor {
     return p;
   }
 
-  /** one undo step from `before` (a snap) to now, if anything changed; inside an open gesture the gesture's step covers it */
+  /** one undo step from `before` (a snap) to now, if anything changed; inside an open gesture the gesture's step covers it,
+   *  inside Quick patch's open chain the chain's step does (beginStep) */
   private commit(before: string, shown = this.snaps.shown): boolean {
     if (before === this.snap()) return false;
-    if (this.gesture !== null) return true;
+    if (this.gesture !== null || this.chain !== null) return true;
     this.history.push({ s: before, shown });
     if (this.history.length > HISTORY) this.history.shift();
     this.future = [];
@@ -719,10 +716,28 @@ export class Editor {
     if (before !== null) this.commit(before);
   }
 
-  /** drop an open gesture without a step (the patch was replaced) */
+  /** drop an open gesture (and an open chain) without a step (the patch was replaced) */
   private dropGesture(): void {
     window.clearTimeout(this.gestureTimer);
     this.gesture = null;
+    this.chain = null;
+  }
+
+  /** Quick patch's open chain (#1091): the patch before it; its changes are one undo step when it ends */
+  private chain: { s: string } | null = null;
+
+  /** open one undo step for every change until the returned function is called (a Quick patch chain); an undo or another
+   *  patch in between drops it, and the function then does nothing */
+  beginStep(): () => void {
+    this.endGesture();
+    const step = { s: this.snap() };
+    this.chain = step;
+    return () => {
+      if (this.chain !== step) return;
+      this.endGesture();
+      this.chain = null;
+      this.commit(step.s);
+    };
   }
 
   undo(): void {
@@ -2895,6 +2910,147 @@ export class Editor {
     this.zoomAround(this.zoom * KEY_ZOOM ** dir);
   }
 
+  // ---- Quick patch (#1091, quick-patch-view.ts): where its cards are and go, the view that follows the chain
+
+  /** a card's element: a module's card (Main's panel in the dock), or a collapsed assembly's */
+  private cardEl(c: Card): HTMLElement | undefined {
+    if (c.kind === 'assembly') return this.containers.get(c.id);
+    return this.cards.get(c.id) ?? (this.docked()?.id === c.id ? this.dock?.querySelector<HTMLElement>('.dock-main') ?? undefined : undefined);
+  }
+
+  /** where a card is on screen (client px); null when it is not drawn */
+  cardScreenRect(c: Card): DOMRect | null {
+    const el = this.cardEl(c);
+    return el?.isConnected ? el.getBoundingClientRect() : null;
+  }
+
+  /** a card's place on the canvas (layout px); null for Main in the dock or a card not drawn */
+  cardRect(c: Card): Rect | null {
+    const el = c.kind === 'module' ? this.cards.get(c.id) : this.containers.get(c.id);
+    return el?.offsetWidth ? { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight } : null;
+  }
+
+  /** the places taken on the canvas (layout px): cards, assembly cards and frames, comments (the panels over the canvas
+   *  move with the view, so a card beside another is not kept clear of them) */
+  takenRects(): Rect[] {
+    const rect = (el: HTMLElement): Rect => ({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight });
+    return [...this.cards.values(), ...this.containers.values(), ...this.frames.values(), ...this.commentEls.values()].map(rect);
+  }
+
+  /** where + Module would put a card `w` wide: near the pointer over the canvas, else the view's centre, in a free cell */
+  freeSpot(w: number): Pt {
+    return this.slot(w);
+  }
+
+  /** the pointer over the canvas (client px), null when it is elsewhere */
+  get pointer(): Pt | null {
+    return this.hover;
+  }
+
+  /** the card under the pointer: a module's or a collapsed assembly's, on the canvas */
+  cardUnderPointer(): Card | null {
+    if (!this.hover) return null;
+    const el = document.elementFromPoint(this.hover.x, this.hover.y)?.closest<HTMLElement>('.module');
+    if (!el || !this.canvas.contains(el)) return null;
+    if (el.dataset.asm) return { kind: 'assembly', id: Number(el.dataset.asm) };
+    return el.dataset.id ? { kind: 'module', id: Number(el.dataset.id) } : null;
+  }
+
+  /** a new module or assembly at a place, as one change (part of an open chain's step); null when it failed */
+  placeCard(what: { type: string } | { def: AssemblyDef }, at: Pt): Card | null {
+    let card: Card | null = null;
+    let note = '';
+    const done = this.change(() => {
+      if ('type' in what) {
+        const m = addModule(this.patch, DEFS[what.type], Math.round(at.x), Math.round(at.y));
+        card = { kind: 'module', id: m.id };
+        note = this.lineNote(m);
+      } else card = { kind: 'assembly', id: insertAssembly(this.patch, DEFS, what.def, Math.round(at.x), Math.round(at.y)).id };
+    });
+    if (note) showToast(note, 6000);
+    return done ? card : null;
+  }
+
+  /** a copy of a card (a module with its settings, an assembly through its definition, collapsed) at a place */
+  copyCard(c: Card, at: Pt): Card | null {
+    let card: Card | null = null;
+    const done = this.change(() => {
+      if (c.kind === 'module') {
+        const m = this.patch.modules.find((x) => x.id === c.id);
+        if (!m || m.type === 'fm1' || m.type === 'output') throw new Error('Main and the Output are never copied');
+        card = { kind: 'module', id: this.cloneModule(m, Math.round(at.x), Math.round(at.y)).id };
+      } else {
+        const a = assemblyById(this.patch, c.id);
+        if (!a) throw new Error('This assembly is no longer in the patch.');
+        card = { kind: 'assembly', id: insertAssembly(this.patch, DEFS, toDef(this.patch, a), Math.round(at.x), Math.round(at.y)).id };
+      }
+    });
+    return done ? card : null;
+  }
+
+  /** a parameter input's depth (attenuverter), as the Depth slider of the parameter's ⋮ menu sets it */
+  setDepth(id: number, index: 0 | 1, att: number): void {
+    const m = this.patch.modules.find((x) => x.id === id);
+    if (!m?.att || m.att[index] === att) return;
+    this.touch();
+    m.att[index] = att;
+    this.ev.onAtt(id, index, att);
+  }
+
+  private easing = 0;
+
+  /**
+   * Ease the view to show the cards at `rects` (layout px, the newest last): nothing moves while they are in view; else
+   * they are centred, zoomed out (never in) as far as `minZoom` to fit, dropping the oldest while they do not fit then. At
+   * once with reduced motion. The camera that follows a Quick patch chain.
+   */
+  showRects(rects: Rect[], minZoom = 0.5): void {
+    const c = this.canvas;
+    if (!c.clientWidth || !rects.length) return;
+    const PAD = 32;
+    const union = (rs: Rect[]): Rect => {
+      const x = Math.min(...rs.map((q) => q.x)), y = Math.min(...rs.map((q) => q.y));
+      return { x, y, w: Math.max(...rs.map((q) => q.x + q.w)) - x, h: Math.max(...rs.map((q) => q.y + q.h)) - y };
+    };
+    const fitOf = (q: Rect): number => Math.min(c.clientWidth / (q.w + 2 * PAD), c.clientHeight / (q.h + 2 * PAD));
+    let shown = rects;
+    while (shown.length > 1 && fitOf(union(shown)) < minZoom) shown = shown.slice(1);
+    // (the view switch sits over the canvas's top edge: keep the cards below it)
+    const top = union(shown);
+    const r = { ...top, y: top.y - 24, h: top.h + 24 };
+    const v = this.viewRect();
+    if (r.x - PAD >= v.x && r.y - PAD >= v.y && r.x + r.w + PAD <= v.x + v.w && r.y + r.h + PAD <= v.y + v.h) return;
+    const fit = fitOf(r);
+    const z0 = this.zoom;
+    const z1 = Math.round(Math.min(z0, Math.max(Math.min(minZoom, z0), fit)) * 100) / 100;
+    const cam0 = this.camera;
+    // the view's centre moves in a straight line while the zoom moves in equal ratios
+    const from = { x: cam0.x + c.clientWidth / z0 / 2, y: cam0.y + c.clientHeight / z0 / 2 };
+    const to = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+    const at = (k: number): { z: number; cam: Pt } => {
+      const z = z0 * (z1 / z0) ** k;
+      return { z, cam: { x: from.x + (to.x - from.x) * k - c.clientWidth / z / 2, y: from.y + (to.y - from.y) * k - c.clientHeight / z / 2 } };
+    };
+    cancelAnimationFrame(this.easing);
+    const end = (): void => {
+      const { cam } = at(1);
+      if (z1 !== this.zoom) this.setZoom(z1);
+      this.sizeCanvas(cam);
+      this.queueView();
+    };
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return end();
+    const t0 = performance.now(), MS = 260;
+    const frame = (now: number): void => {
+      const t = Math.min(1, (now - t0) / MS);
+      if (t >= 1) return end();
+      const { z, cam } = at(1 - (1 - t) ** 3);
+      this.setZoom(z, true);
+      this.sizeCanvas(cam);
+      this.easing = requestAnimationFrame(frame);
+    };
+    this.easing = requestAnimationFrame(frame);
+  }
+
   /** the plain wheel's setting (VIEW's Scroll wheel, kept per browser by the host): auto tells a mouse from a trackpad */
   wheelMode: WheelSetting = 'auto';
   /** auto mode decided a wheel gesture by guessing the device (the host's one-time hint) */
@@ -3365,14 +3521,7 @@ export class Editor {
       const map = new Map<number, number>();
       for (const id of ids) {
         const m = this.patch.modules.find((x) => x.id === id)!;
-        const copy = addModule(this.patch, DEFS[m.type], m.x, m.y + CARD_H / 2);
-        copy.params = { ...m.params };
-        if (m.att) copy.att = [m.att[0], m.att[1]];
-        if (m.map) copy.map = JSON.parse(JSON.stringify(m.map));
-        if (m.range) copy.range = JSON.parse(JSON.stringify(m.range));
-        if (m.bypass) copy.bypass = true;
-        if (m.inputMap) copy.inputMap = structuredClone(m.inputMap);
-        map.set(id, copy.id);
+        map.set(id, this.cloneModule(m, m.x, m.y + CARD_H / 2).id);
       }
       for (const c of [...this.patch.cables]) if (map.has(c.from.module) && map.has(c.to.module)) connect(this.patch, DEFS, { module: map.get(c.from.module)!, port: c.from.port }, { module: map.get(c.to.module)!, port: c.to.port });
       this.selected.clear();
@@ -3380,6 +3529,18 @@ export class Editor {
       this.selectedAsm.clear();
       for (const id of asmCopies) this.selectedAsm.add(id);
     });
+  }
+
+  /** a copy of a module at (x, y): its parameters, matrix, depths, ranges, routes and bypass, no cables */
+  private cloneModule(m: ModuleInst, x: number, y: number): ModuleInst {
+    const copy = addModule(this.patch, DEFS[m.type], x, y);
+    copy.params = { ...m.params };
+    if (m.att) copy.att = [m.att[0], m.att[1]];
+    if (m.map) copy.map = JSON.parse(JSON.stringify(m.map));
+    if (m.range) copy.range = JSON.parse(JSON.stringify(m.range));
+    if (m.bypass) copy.bypass = true;
+    if (m.inputMap) copy.inputMap = structuredClone(m.inputMap);
+    return copy;
   }
 
   // ---- copy / paste (clipboard.ts): the system clipboard is main.ts's; the editor turns a selection into a clip and back

@@ -1239,6 +1239,13 @@ export function moveAssembly(p: Patch, a: AssemblyInst, dx: number, dy: number):
 /** the editor's card grid: columns 320 px apart (a card is 236..300 px wide), rows 560 px (what "Add module" uses), a 20 px margin */
 export const GRID = { x: 320, y: 560, cols: 4, margin: 20 };
 
+/** a collapsed assembly card's footprint width: a grid cell per column (`.module.assembly.cols` in style.css), else a
+ *  card's widest, 300 px */
+export const cardWidth = (params: ParamRef[]): number => {
+  const n = paramColumns(params).length;
+  return n > 1 ? n * GRID.x - 20 : 300;
+};
+
 export interface Rect {
   x: number;
   y: number;
