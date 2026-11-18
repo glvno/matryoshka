@@ -38928,11 +38928,11 @@
   },
   {
    "name": "8 Lire",
-   "cycles": 325856
+   "cycles": 473658
   },
   {
    "name": "Elvira 2",
-   "cycles": 166383
+   "cycles": 171155
   },
   {
    "name": "Scrounge",
@@ -38972,7 +38972,7 @@
   },
   {
    "name": "assembly 8 Lire",
-   "cycles": 319177
+   "cycles": 451045
   },
   {
    "name": "assembly adsr operator",
