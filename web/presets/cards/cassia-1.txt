@@ -5,7 +5,7 @@
 # The level row (voice / vol) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # voice
-#   voices = 4                         1..16
+#   voices = 5                         1..16
 #   line = 4                           1..4
 #   vol = 0.5                          0..1
 # vibrato
@@ -360,4 +360,4 @@ preset: Tine Piano
   dca 2 / l3 = 0
   dca 2 / sus = off
   dca 2 / end = 3
-  vol = 0.64
+  vol = 0.62

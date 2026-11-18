@@ -836,7 +836,7 @@ asm('Oracle V', 'Voices', (b) => {
   const wheel = b.add('vca', 0, 1);
   const wFreqA = b.add('scale', 0, 2, { gain: 0.24, offset: 0 });
   const nz = b.add('noise', 1, 0, { level: 1 });
-  const part = b.add('alloc', 1, 2, { voices: 4 });
+  const part = b.add('alloc', 1, 2, { voices: 5 });
   const gl = b.add('glide', 2, 1, { time: 0.001 });
   const oscB = b.add('osc', 2, 0, { wave: 2, level: 1, fine: 7, analog: 1 }, { p1: 'fine' });
   const oscA = b.add('osc', 3, 0, { wave: 2, level: 1, analog: 1 }, { p1: 'fine' });
@@ -1397,7 +1397,7 @@ const CZ_STEPS = (s: [number, number][], sus: number, end: number): Record<strin
 /** Cassia 1's chorus at Init (#658, the owner's feature parity by default: the CZ-1's chorus on) */
 const CASSIA_CHORUS = 0.5;
 asm('Cassia 1', 'Voices', (b) => {
-  const part = b.add('alloc', 0, 4, { voices: 4 });
+  const part = b.add('alloc', 0, 4, { voices: 5 });
   const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5.5, depth: 1 / 12 });
   const vibS = b.add('scale', 0, 0.5, { gain: 0, offset: 0 }); // the vibrato's depth in semitones (negative: the CZ's saw down)
   const nz = b.add('noise', 0, 1, { level: 1, color: 0 });
@@ -2013,7 +2013,7 @@ const ALGO_PATHS: [number, number, number[]][] = [
 ];
 
 asm('Algo Four', 'Voices', (b) => {
-  const part = b.add('alloc', 0, 2, { voices: 6, stack: 1 });
+  const part = b.add('alloc', 0, 2, { voices: 8, stack: 1 });
   const op: number[] = [];
   const env: number[] = [];
   const vca: number[] = [];

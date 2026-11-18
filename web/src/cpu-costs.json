@@ -12,38 +12,39 @@
    "8 Lire": 0.54,
    "808 kit": 0.9,
    "909 kit": 0.65,
-   "Algo Four": 1.36,
-   "Briefcase 3": 0.62,
-   "Canvas": 0.77,
-   "Cassia 1": 0.38,
+   "Algo Four": 1.34,
+   "Briefcase 3": 0.68,
+   "Canvas": 0.79,
+   "Cassia 1": 1.44,
    "Elvira 2": 0.8,
-   "Expander S": 1.38,
-   "Hera 4": 0.88,
-   "Io 4": 0.68,
+   "Expander S": 1.48,
+   "Hera 4": 0.74,
+   "Io 4": 0.7,
    "Meridian 8": 0.74,
-   "Monolith D": 0.7,
-   "Oracle V": 1.46,
+   "Monolith D": 0.83,
+   "Oracle V": 1.48,
    "Perun 4": 0.73,
-   "Sallen 20": 0.95,
+   "Sallen 20": 1.01,
    "Scrounge": 0.8,
-   "Silver Box": 0.7,
+   "Silver Box": 0.94,
    "Spokes 6": 0.79,
-   "Vernon 100": 0.55,
+   "Vernon 100": 0.6,
    "Verona Drum 1": 0.83,
-   "Wanderer": 1.02,
+   "Wanderer": 1.09,
    "basic poly": 0.92,
    "drift poly": 0.92,
    "mono lead": 1.28,
    "supersaw stack": 0.88
   },
   "voices": {
-   "Algo Four": 0.51,
-   "Cassia 1": 0.64,
-   "Expander S": 0.68,
-   "Hera 4": 0.51,
-   "Oracle V": 0.61
+   "Algo Four": 0.55,
+   "Cassia 1": 0.59,
+   "Expander S": 0.76,
+   "Hera 4": 0.59,
+   "Oracle V": 0.63
   },
-  "survey": "docs/measurements/cpu-survey-2026-11-18-rig-headroom120-bank114.json and -run.json (CI run 44262067788, the 22 patches of the 1.14 bank); the voices: -voices114.json and -run.json (the same build)"
+  "fx": 0.53,
+  "survey": "docs/measurements/cpu-survey-2026-11-18-rig-headroom120-bank114.json and -run.json (CI run 44262067788, the 22 patches of the 1.14 bank); the voices: -voices114.json and -run.json (the same build); the master FX bus: -voices120.json, -voices120-hera6.json, -fxbus-voices.json, -fxbus-expander7.json and their -run.json (CI runs 44313018225, 44320755391, 44357433714)"
  },
  "blockUs": 2901,
  "note": 72,
@@ -38883,7 +38884,7 @@
   },
   {
    "name": "Oracle V",
-   "cycles": 595950
+   "cycles": 719585
   },
   {
    "name": "Silver Box",
@@ -38891,7 +38892,7 @@
   },
   {
    "name": "Hera 6",
-   "cycles": 549475
+   "cycles": 738400
   },
   {
    "name": "Sallen 20",
@@ -38903,7 +38904,7 @@
   },
   {
    "name": "Algo Four",
-   "cycles": 741553
+   "cycles": 967097
   },
   {
    "name": "Canvas",
@@ -38927,11 +38928,11 @@
   },
   {
    "name": "8 Lire",
-   "cycles": 325856
+   "cycles": 473658
   },
   {
    "name": "Elvira 2",
-   "cycles": 166383
+   "cycles": 171155
   },
   {
    "name": "Scrounge",
@@ -38951,7 +38952,7 @@
   },
   {
    "name": "Cassia 1",
-   "cycles": 660547
+   "cycles": 801550
   },
   {
    "name": "Verona Drum 1",
@@ -38971,7 +38972,7 @@
   },
   {
    "name": "assembly 8 Lire",
-   "cycles": 319177
+   "cycles": 451045
   },
   {
    "name": "assembly adsr operator",
@@ -38979,7 +38980,7 @@
   },
   {
    "name": "assembly Algo Four",
-   "cycles": 679658
+   "cycles": 899719
   },
   {
    "name": "assembly auto pan",
@@ -39015,7 +39016,7 @@
   },
   {
    "name": "assembly Cassia 1",
-   "cycles": 611759
+   "cycles": 749527
   },
   {
    "name": "assembly clap",
@@ -39139,7 +39140,7 @@
   },
   {
    "name": "assembly Oracle V",
-   "cycles": 536230
+   "cycles": 655506
   },
   {
    "name": "assembly overdrive",
