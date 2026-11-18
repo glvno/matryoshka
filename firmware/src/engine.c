@@ -799,11 +799,12 @@ static int words_ok(const uint32_t *w, uint32_t n)
 }
 /* ratchets and micro timing (#675, #677; modules.ts StepsHit, the same): the hits to come of every track's notes in
  * STEPS_HITS slots (hits 0: free), and per track the step whose early notes were queued at the step before it (-1 none:
- * modules.ts StepsState.early). In the RAM region, not the pool */
+ * modules.ts StepsState.early). In the NOINIT region (ENG_NOINIT, not cleared at boot): eng_load clears every slot's hits
+ * and count and each track's early step before any track runs, and only a slot with hits is read */
 typedef struct { int32_t cnt, every; uint8_t trk, note, vel, left, hits, wrap; int8_t early; } hit_t;
-static hit_t steps_hits[STEPS_HITS];
-static int8_t steps_early[ENG_MAX_TRACKS];
-static uint8_t steps_nhits[ENG_MAX_TRACKS];       /* each track's slots in use: none, and no sample looks at them */
+static hit_t steps_hits[STEPS_HITS] ENG_NOINIT;
+static int8_t steps_early[ENG_MAX_TRACKS] ENG_NOINIT;
+static uint8_t steps_nhits[ENG_MAX_TRACKS] ENG_NOINIT;   /* each track's slots in use: none, and no sample looks at them */
 
 /* an Arpeggiator module as it runs (web/src/arpeggiator.ts, the same steps): its keys in press order, the step counter, the
  * note it plays, samples since the last step and between the last two, the clock tick of its next step, the random mode's
