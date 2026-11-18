@@ -177,3 +177,4 @@ The optional capability inspector and its bypass preview are experimental ([D-96
 - Several named banks in the browser: the bank picker in the FM-1 column, Send bank to FM-1 for a chosen bank, and Save as bank… making a new one — issue #220
 - What listening to a cable (issue #939) plays while the FM-1 engine is heard ([D-982](#D-982)): the browser engine's signal, or the FM-1 engine's, which needs the module's output from `engine.c` — issue #941
 - Tagging the factory presets by category, from their names and measured envelopes for the owner to review, so a category draws preset values from its own presets only (layer 2) — issue #1033
+- Whether the FM-1 plays a patch's MIDI learn without the editor, from a controller on its MIDI input — issue #1067
