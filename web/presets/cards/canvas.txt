@@ -94,10 +94,15 @@ engine: Canvas
 # silent here (no audio input). The patch field starts as the Easel's classic patch: the sequencer into the pitch
 # (pitch proc, in octaves: a voltage of 0.58 is a fifth), the envelope into the index and the gate levels (.. proc), the
 # random voltage into the timbre (timbre proc).
+# Every preset is silent until a key is played (#1086): the pulser runs by itself, so no preset lets it trigger the
+# envelope or the sequencer. A preset that it clocked on the Easel takes each key as its pulse instead, its pulser off;
+# hold a key with ARP on for the run at the tempo, or put notes on the PATTERN track for PLAY. For the free-running
+# original, set the pulser's mode to triggered and that trigger row to pulser. Gate 1 is in combination or vca in every
+# preset: in lopass its VCA stays open, and the closed filter lets the folded tone and its offset through between notes.
 
-# The pulser clocks a five-stage sequence with one rest into the pitch; the envelope and the random timbre follow it.
+# Each key steps a five-stage sequence with one rest into the pitch; the envelope and the random timbre follow it.
 preset: Sequencer Run
-  sequencer / trigger = pulser
+  sequencer / trigger = keyboard
   stages = 5
   voltage 1 = 0
   voltage 2 = 0.25
@@ -111,7 +116,7 @@ preset: Sequencer Run
   sustain = 0.02 s
   decay = 0.3 s
   pulser / trigger = self
-  pulser / mode = triggered
+  pulser / mode = off
   period = 0.18 s
   random / trigger = sequencer
   pitch proc = 1
@@ -119,10 +124,10 @@ preset: Sequencer Run
   timbre mix = 0.6
   timbre = 5
   timbre proc = 1.5
-  mode 1 = lopass
+  mode 1 = combination
   level 1 proc = 1
   reverb = 0.25
-  chan a = 0.64
+  chan a = 1.39
   chan b = 0
 
 # The complex oscillator folded hard, the mod osc a fifth up in f.m. with the envelope opening the index: a keyboard lead.
@@ -152,17 +157,17 @@ preset: Complex Lead
   chan a = 0.44
   chan b = 0
 
-# The pulser fires a short transient envelope through the lopass gate, the random voltage picking a timbre per hit.
+# Each key fires a short transient envelope through the gate, the random voltage picking a timbre per hit.
 preset: Easel Bongos
-  envelope / trigger = pulser
+  envelope / trigger = keyboard
   envelope / mode = transient
   attack = 0.001 s
   sustain = 0.003 s
   decay = 0.12 s
   pulser / trigger = self
-  pulser / mode = triggered
+  pulser / mode = off
   period = 0.25 s
-  random / trigger = pulser
+  random / trigger = keyboard
   mod osc / keyboard = on
   range = + hi
   frequency = 0.65
@@ -172,10 +177,10 @@ preset: Easel Bongos
   timbre mix = 0.4
   timbre = 3
   timbre proc = 2.5
-  mode 1 = lopass
+  mode 1 = combination
   level 1 proc = 1.3
   reverb = 0.3
-  chan a = 0.61
+  chan a = 1.46
   chan b = 0
 
 # The folder at its deepest, the mod osc six octaves under the keys' C (range low, off the keys) in a.m. as a slow
@@ -203,9 +208,9 @@ preset: Fold Drone
   chan a = 0.62
   chan b = 0
 
-# A pure sine with f.m. near 3:1 that the envelope lets ring out, a four-stage sequence clocked by the pulser: chimes.
+# A pure sine with f.m. near 3:1 that the envelope lets ring out, each key stepping a four-stage sequence: chimes.
 preset: FM Chimes
-  sequencer / trigger = pulser
+  sequencer / trigger = keyboard
   stages = 4
   voltage 1 = 0
   voltage 2 = 0.58
@@ -217,7 +222,7 @@ preset: FM Chimes
   sustain = 0.01 s
   decay = 1.5 s
   pulser / trigger = self
-  pulser / mode = triggered
+  pulser / mode = off
   period = 0.5 s
   random / trigger = sequencer
   pitch proc = 1
@@ -233,5 +238,5 @@ preset: FM Chimes
   mode 1 = combination
   level 1 proc = 1
   reverb = 0.5
-  chan a = 0.59
+  chan a = 1.12
   chan b = 0
