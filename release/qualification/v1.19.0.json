@@ -4,9 +4,12 @@
   "firmware_product": "FM-1_7011900",
   "source_commit": "69275f462dc83bcabbafedeea74c5e8ebde9d0a8",
   "source_tree": "34ac78d2fa9646f65a2ae9b1aac9a2fb64d0be99",
-  "status": "automated and rig checks passed; owner device checks and release approval pending",
+  "status": "approved for publication; automated, rig and owner checks passed",
   "release_approval": {
-    "status": "pending",
+    "status": "approved",
+    "by": "repository owner",
+    "date": "2026-11-17",
+    "instruction": "go for 1.19",
     "scope": "Publication of v1.19.0 from the merge of this record, whose firmware/ and tools/ equal the qualified source 69275f46 (D-105)."
   },
   "build_manifest_sha256": "57dbf753465ba63fc5118cd263ce13e0dede7d9d9dea61c534f44b552cada01a",
@@ -54,5 +57,5 @@
       "new_modules": "the module's cost on the rig is the patch's steady time minus the same patch without it (the overload guard's mean ISR time, steady samples; the model's cycles / 195.8 per us): Low pass gate res 0 +69 us (model 15,047 cycles = 77 us), res 0.6 +91 us (model 21,063 = 108 us); Limiter limiting with lookahead +81 us (model 12,211 = 62 us), without lookahead +73 us (model 13,431 = 69 us), not limiting with lookahead +79 us (model 11,746 = 60 us). The Low pass gate measures under the model; the Limiter about 10 to 20 us over it (under 1 % of the 2902 us budget). No shedding or mute."
     }
   },
-  "owner_checks": {"status": "pending", "steps": "D-139: the steps in the pull request's body (the Flash tab install with factory content, a Low pass gate and a Limiter patch heard on the FM-1, a 1.18 patch still loading, the factory sounds by hand, a power cycle)."}
+  "owner_checks": {"status": "passed", "by": "repository owner", "date": "2026-11-17", "report": "go for 1.19", "steps": "D-139: the steps in the pull request's body (the Flash tab install with factory content, a Low pass gate and a Limiter patch heard on the FM-1, a 1.18 patch still loading, the factory sounds by hand, a power cycle)."}
 }
