@@ -19,7 +19,7 @@
 // rules and warns). The reverse, a preset as a block of text, serves `npm run presets -- show` and the library import.
 import type { AssemblyDef } from './assembly';
 import { PRESET_NAME_MAX, type Preset } from './device-presets';
-import { DEFS, selectCount } from './modules';
+import { DEFS, rowRange, selectCount } from './modules';
 import type { ParamDef } from './patch';
 import { defStructureAndOrder } from './structure';
 
@@ -53,7 +53,9 @@ export function cardRows(def: AssemblyDef): CardRow[] {
   const rows: CardRow[] = def.params.map((r, i) => {
     if (r.head) section = r.head;
     const m = def.modules.find((x) => x.id === r.module)!;
-    const pd = DEFS[m.type]?.params.find((d) => d.name === r.param);
+    // (the range the row offers: a free Delay's time reaches what its line holds, rowRange)
+    const own = DEFS[m.type]?.params.find((d) => d.name === r.param);
+    const pd = own && rowRange(m.type, m.params, own);
     const positions = m.type === 'select' && r.param === 'pos' ? selectCount(m.params) : undefined;
     const names = r.names && positions ? r.names.slice(0, positions) : undefined;
     return { i, section, label: r.label, key: '', type: m.type, param: r.param, pd: pd && !pd.screen ? pd : undefined, init: m.params[r.param] ?? pd?.default ?? 0, ...(names ? { names } : {}), ...(positions ? { positions } : {}) };

@@ -3618,60 +3618,211 @@ asm('8 Lire', 'Voices', (b) => {
 // = `bank`, WAVE = `pos`, TUNE) through its MOD program (here the SRR one, a Bitcrusher's rate: clean at the left) into a
 // VCA on its own envelope (the ENV knob's attack and release as two rows) plus DRONE (a Macro, 0..1, into the VCA: the
 // envelope held at the top). The keys play the voices as touchpads: the Drum map's rows 1-4 and 5-8 are voices 1-4 (the
-// white keys from F3, repeated over the keybed as 8 Lire's). The mix is saturated, then the ladder low pass (CUTOFF,
-// RESO), the delay (TIME, FDBK, MIX; ours reaches 520 ms, the original 1.6 s) and OUCH: BITE (a folding Waveshaper) into CHOKE (a low pass, open
-// at the right), without the original's analog feedback loop or modifier ports; VOL. LFO 1 (sine) into the cutoff, LFO 2
-// (a wave choice) into the bite, each by an amount (on the original they are patched by hand). No sequencer, no CHRM:
-// TUNE is in semitones.
+// white keys from F3, repeated over the keybed as 8 Lire's). The lighter set of #858 (Elvira 2 XL, web/scripts/xl, is the
+// reference for each part):
+//  - the sequencer: each voice has eight steps (`seq 1..4`: a Sequencer added to TUNE, in octaves, as the original adds
+//    its recorded TUNE settings), its length, clock divider (a Clock divider on Main's 24 ppqn clock: 6 = a step per
+//    sixteenth) and order. Main's clock runs only while the transport runs, so the steps play with PLAY; the transport's
+//    start (Main's `run`) puts every sequence back on step 1 and every divider on its first pulse. The original records
+//    up to 128 TUNE settings and has no gates either: a sequence moves the pitch of a voice that is held or droning;
+//  - the mix is saturated, then the main filter: CUTOFF and RESO (Macros, 0..1: the original's knobs have no scale) and
+//    `filter`, its type: the ladder low pass (a Ladder), the ladder band and high pass (two state variable stages each),
+//    state variable low, band and high pass, then `other` for the rest: a high pass on RESO and a low pass on CUTOFF in
+//    series and in parallel, base-width (RESO the base, CUTOFF the width above it) and its notch, and the comb (RESO the
+//    damping, CUTOFF the time). The original's second comb, tuned to voice 1's TUNE, is not here: a row cannot turn both
+//    a voice's TUNE and the comb's tuning (their ranges differ). `routing`: default (filter into the delay) or reversed
+//    (delay into the filter);
+//  - the delay: TIME to 1.6 s (its line holds 1,600 ms), FDBK, MIX; `reverb` on plays a Reverb (SIZE, DAMP) in place of
+//    the delay, MIX setting both. The lo-fi reverb setting is not here;
+//  - OUCH: BITE (a folding Waveshaper) into CHOKE (a low pass, open at the right), the modifier ports as FEEDBACK (a loop
+//    from CHOKE back into BITE, one block late: it rings as a comb) and DIODE (the fold's asymmetry); VOL after it;
+//  - the LFOs reach audio rate: FREQ (a Macro, 0..1) is 0.02 Hz to about 1 kHz on an Oscillator. With `sync` each runs
+//    on the FM-1's tempo instead, FREQ picking one, two or three cycles a beat (an LFO on TEMPO, its division pinned).
+//    LFO 1 is the sine, into the cutoff; LFO 2 has a wave choice (the Oscillator's) and `lfo 2 mode` S&H (noise held at
+//    each cycle), into BITE at audio rate (a VCA before the fold). Synced, LFO 2's Oscillator stands still and an LFO's
+//    ramp turns its phase through one cycle per beat division, so its wave is the same either way.
+// No CHRM: TUNE is in semitones.
+const LFO_OCT = 15.6;
+/** an LFO's FREQ (0..1) for a rate in Hz: 0.02 Hz at 0, LFO_OCT octaves more at 1 */
+const lfoFreq = (hz: number): number => Math.round((Math.log2(hz / 0.02) / LFO_OCT) * 100) / 100;
+/** the rows of Elvira 2 that set more than one parameter (set after it is built) */
+const elviraRows = { routing: [0, 0], mix: 0, lfo2Sync: 0 };
 asm('Elvira 2', 'Voices', (b) => {
   const map = plates(b);
   b.module(map).names = [1, 2, 3, 4, 1, 2, 3, 4].map((v, r) => `VOICE ${v}${r < 4 ? '' : 'B'}`);   // (rows 5-8 play voices 1-4 again)
-  const lfo1 = b.add('lfo', 0, 1, { wave: 0, rate: 0.2, depth: 1 });
-  const lfo2 = b.add('lfo', 0, 2, { wave: 2, rate: 3, depth: 1 });
-  const toCutoff = b.add('scale', 0, 3, { gain: 0, offset: 0 });
-  const toBite = b.add('scale', 0, 4, { gain: 0, offset: 0 });
+  /** pin p1 / p2 of `id` turns `param`, a Macro's 0..1 landing between the positions `range` */
+  const pin = (id: number, p: 'p1' | 'p2', param: string, range: [number, number]): void => {
+    const m = b.module(id);
+    m.map![p] = [param];
+    m.range = { ...m.range, [p]: { ...m.range?.[p], [param]: range } };
+  };
+  // ---- the LFOs: FREQ through two Attenuverters (0.02 Hz at 0: C4 - 13.68 octaves; LFO_OCT octaves to 1) onto an
+  // Oscillator; synced, an LFO on TEMPO with its division pinned to FREQ (1/4, 1/8, 1/8T from left to right)
+  const lfoPitch = (col: number, from: number, osc: number): void => {
+    const s1 = b.add('scale', col, 2, { gain: 4, offset: -2.5 });
+    const s2 = b.add('scale', col, 3, { gain: LFO_OCT / 4, offset: -3.93 });
+    b.wire(from, 'out', s1, 'in');
+    b.wire(s1, 'out', s2, 'in');
+    b.wire(s2, 'out', osc, 'pitch');
+  };
+  const tempoLfo = (col: number, freq: number, wave: number): number => {
+    const l = b.add('lfo', col, 5, { wave, depth: 1, sync: 1, bpm: LFO_TEMPO });
+    pin(l, 'p1', 'div', [0.6, 0.2]);
+    b.wire(freq, 'out', l, 'p1');
+    return l;
+  };
+  const freq1 = b.add('macro', 0, 1, { value: lfoFreq(0.2) });
+  const osc1 = b.add('osc', 0, 4, { wave: 0, level: 1 });
+  lfoPitch(0, freq1, osc1);
+  const tempo1 = tempoLfo(0, freq1, 0);
+  const sync1 = b.add('select', 0, 6, { count: 2, pos: 1, fade: 5 });
+  b.wire(osc1, 'out', sync1, 'in1');
+  b.wire(tempo1, 'out', sync1, 'in2');
+  // LFO 2: synced, its pitch Selector takes FREQ away (its 2nd position: -4, about 0 Hz) and its phase Selector passes
+  // the LFO's saw (-1..1) into the Oscillator's phase at pi radians: one cycle of the wave per beat division
+  const freq2 = b.add('macro', 9, 1, { value: lfoFreq(3) });
+  const pitch2 = b.add('select', 9, 0, { count: 2, pos: 1, fade: 0, v2: -4 });
+  const osc2 = b.add('osc', 9, 4, { wave: 2, level: 1, pm: 3.14 });
+  b.wire(freq2, 'out', pitch2, 'in1');
+  lfoPitch(9, pitch2, osc2);
+  const tempo2 = tempoLfo(9, freq2, 2);
+  const phase2 = b.add('select', 9, 6, { count: 2, pos: 1, fade: 0 });
+  b.wire(tempo2, 'out', phase2, 'in2');
+  b.wire(phase2, 'out', osc2, 'pm');
+  const noise = b.add('noise', 9, 7, { level: 1, color: 0 });
+  const held = b.add('sh', 9, 8, { mode: 0 });
+  b.wire(noise, 'out', held, 'in');
+  b.wire(osc2, 'out', held, 'clock');
+  const mode2 = b.add('select', 9, 9, { count: 2, pos: 1, fade: 0 });
+  b.wire(osc2, 'out', mode2, 'in1');
+  b.wire(held, 'out', mode2, 'in2');
+  const toCutoff = b.add('scale', 0, 7, { gain: 0, offset: 0 });
+  const toBite = b.add('scale', 0, 8, { gain: 0, offset: 1 }); // (1 + LFO 2 x the amount: BITE's VCA)
+  b.wire(sync1, 'out', toCutoff, 'in');
+  b.wire(mode2, 'out', toBite, 'in');
+  // ---- the voices and their sequences
   //               bank pos  coarse attack release
   const set: [number, number, number, number, number][] = [
     [0, 0.2, -15, 0.05, 0.8], [1, 0.4, -8, 0.05, 0.8], [2, 0.3, -3, 0.3, 1.5], [3, 0.6, 0, 0.3, 1.5],
   ];
+  const restart = b.add('math', 10, 0, { ka: -1, kb: 0, off: 1 }); // (1 - run: high while stopped, so a start counts from 1)
   const voices = set.map(([bank, pos, coarse, a, r], i) => {
     const wt = b.add('wavetable', 1 + i, 0, { bank, pos, coarse, level: 0.8 });
     const srr = b.add('crush', 1 + i, 1, { bits: 16, rate: 1 });
     const env = b.add('adsr', 1 + i, 2, { a, d: 0.2, s: 1, r });
     const drone = b.add('macro', 1 + i, 3, { value: 0 }); // (a Macro: 0..1, so an FM-1 click is 0.01)
     const vca = b.add('vca', 1 + i, 4, { gain: 1 });
+    const seq = b.add('seq', 1 + i, 6, { len: 8, gate: 0 });
+    const div = b.add('clkdiv', 1 + i, 7, { div: 6 });
     b.wire(wt, 'out', srr, 'in');
     b.wire(srr, 'out', vca, 'in');
     b.wire(env, 'env', vca, 'cv');
     b.wire(drone, 'out', vca, 'cv');
     for (const row of [i + 1, i + 5]) b.wire(map, `g${row}`, env, 'gate'); // (either row of the voice holds the gate up)
-    return { wt, srr, env, drone, vca };
+    b.wire(div, 'out', seq, 'clock');
+    b.wire(seq, 'out', wt, 'pitch');
+    b.wire(restart, 'add', div, 'reset');
+    return { wt, srr, env, drone, vca, seq, div };
   });
   const mix = b.add('mixer', 5, 0, { l1: 0.7, l2: 0.7, l3: 0.7, l4: 0.7 });
   const sat = b.add('shape', 5, 1, { drive: 2, mode: 0, level: 0.8 });
-  const lpf = b.add('ladder', 6, 0, { cutoff: 2500, res: 0.25, cvamt: 3 });
-  const dly = b.add('delay', 6, 1, { time: 400, fb: 0.4, mix: 0.3 });
-  const bite = b.add('shape', 7, 0, { drive: 1, mode: 2, level: 0.8 }, { p1: 'drive' });
-  const choke = b.add('filter', 7, 1, { cutoff: 16000, res: 0 });
-  const scope = b.add('scope', 8, 0, { time: 16 });
   voices.forEach((v, i) => b.wire(v.vca, 'out', mix, `in${i + 1}`));
   b.wire(mix, 'out', sat, 'in');
-  b.wire(sat, 'out', lpf, 'in');
-  b.wire(lpf, 'lp24', dly, 'in');
-  b.wire(dly, 'out', bite, 'in');
+  // ---- the main filter: CUTOFF and RESO pinned into each type, LFO 1 into each cutoff (3 octaves a unit)
+  const cutoff = b.add('macro', 6, 0, { value: 0.72 });
+  const reso = b.add('macro', 6, 1, { value: 0.25 });
+  const fin = b.add('select', 6, 2, { count: 2, pos: 1, fade: 5 }); // (the mix, or the delay when reversed)
+  b.wire(sat, 'out', fin, 'in1');
+  const resonant = (row: number, type: 'ladder' | 'filter', res: number, from: number, port: string, withReso: boolean): number => {
+    const f = b.add(type, 6, row, { cutoff: 2500, res, cvamt: 3 });
+    b.wire(from, port, f, 'in');
+    pin(f, 'p1', 'cutoff', [0, 1]);
+    b.wire(cutoff, 'out', f, 'p1');
+    if (withReso) {
+      pin(f, 'p2', 'res', [0, 1]);
+      b.wire(reso, 'out', f, 'p2');
+    }
+    b.wire(toCutoff, 'out', f, 'cv');
+    return f;
+  };
+  const ladder = resonant(3, 'ladder', 0.25, fin, 'out', true);
+  const svf = resonant(4, 'filter', 0.25, fin, 'out', true);
+  const bp4 = resonant(5, 'filter', 0.1, svf, 'bp', false); // (the second stages: the four-pole band and high pass)
+  const hp4 = resonant(6, 'filter', 0.1, svf, 'hp', false);
+  const hpR = b.add('filter', 7, 0, { cutoff: 100, res: 0 }); // (the high pass on RESO)
+  b.wire(fin, 'out', hpR, 'in');
+  pin(hpR, 'p1', 'cutoff', [0, 1]);
+  b.wire(reso, 'out', hpR, 'p1');
+  const lpC = resonant(7, 'filter', 0, fin, 'out', false); // (the low pass on CUTOFF)
+  const series = resonant(8, 'filter', 0, hpR, 'hp', false);
+  const parallel = b.add('mixer', 7, 1, { l1: 1, l2: 1, l3: 0, l4: 0 });
+  b.wire(lpC, 'lp12', parallel, 'in1');
+  b.wire(hpR, 'hp', parallel, 'in2');
+  const widthOf = b.add('scale', 7, 2, { gain: 0.6, offset: 0 });
+  b.wire(cutoff, 'out', widthOf, 'in');
+  const width = b.add('filter', 7, 3, { cutoff: 2500, res: 0, cvamt: 3 }); // (base-width: the low pass at RESO + 0.6 CUTOFF)
+  b.wire(hpR, 'hp', width, 'in');
+  pin(width, 'p1', 'cutoff', [0, 1]);
+  b.wire(reso, 'out', width, 'p1');
+  b.wire(widthOf, 'out', width, 'p1');
+  b.wire(toCutoff, 'out', width, 'cv');
+  const notch = b.add('math', 7, 4, {});
+  b.wire(fin, 'out', notch, 'a');
+  b.wire(width, 'lp12', notch, 'b');
+  const comb = b.add('comb', 7, 5, { coarse: 0, fb: 0.85, damp: 0.2, mix: 1 });
+  b.wire(fin, 'out', comb, 'in');
+  pin(comb, 'p1', 'damp', [0, 1]);
+  b.wire(reso, 'out', comb, 'p1');
+  const combPitch = b.add('scale', 7, 6, { gain: 5.7, offset: -2.7 }); // (CUTOFF: the comb's time, 40 Hz .. 2 kHz)
+  b.wire(cutoff, 'out', combPitch, 'in');
+  b.wire(toCutoff, 'out', combPitch, 'in');
+  b.wire(combPitch, 'out', comb, 'pitch');
+  const other = b.add('select', 8, 1, { count: 5, pos: 1, fade: 5 });
+  ([[series, 'lp12'], [parallel, 'out'], [width, 'lp12'], [notch, 'sub'], [comb, 'out']] as const).forEach(([m, port], k) => b.wire(m, port, other, `in${k + 1}`));
+  const type = b.add('select', 8, 0, { count: 7, pos: 1, fade: 5 });
+  ([[ladder, 'lp24'], [bp4, 'bp'], [hp4, 'hp'], [svf, 'lp12'], [svf, 'bp'], [svf, 'hp'], [other, 'out']] as const).forEach(([m, port], k) => b.wire(m, port, type, `in${k + 1}`));
+  // ---- the delay and the reverb (in place of the delay), then the routing's last switch
+  const din = b.add('select', 8, 2, { count: 2, pos: 1, fade: 5 }); // (the filter, or the mix when reversed)
+  b.wire(type, 'out', din, 'in1');
+  b.wire(sat, 'out', din, 'in2');
+  const dly = b.add('delay', 8, 3, { time: 400, fb: 0.4, mix: 0.3, length: 1600 });
+  const rv = b.add('reverb', 8, 4, { size: 0.5, damp: 0.4, mix: 0.3 });
+  b.wire(din, 'out', dly, 'in');
+  b.wire(din, 'out', rv, 'in');
+  const fx = b.add('select', 8, 5, { count: 2, pos: 1, fade: 5 });
+  b.wire(dly, 'out', fx, 'in1');
+  b.wire(rv, 'out', fx, 'in2');
+  b.wire(fx, 'out', fin, 'in2');
+  const post = b.add('select', 8, 6, { count: 2, pos: 1, fade: 5 }); // (the delay, or the filter when reversed)
+  b.wire(fx, 'out', post, 'in1');
+  b.wire(type, 'out', post, 'in2');
+  // ---- OUCH: the delay and the loop (FEEDBACK) into BITE's VCA (LFO 2 at audio rate), the fold, CHOKE; VOL
+  const ouchIn = b.add('mixer', 10, 1, { l1: 1, l2: 0, l3: 0, l4: 0 });
+  const biteIn = b.add('vca', 10, 2, { gain: 1 });
+  const bite = b.add('shape', 10, 3, { drive: 1, mode: 2, level: 1, sym: 0 });
+  const choke = b.add('filter', 10, 4, { cutoff: 16000, res: 0 });
+  const vol = b.add('mixer', 10, 5, { l1: 0.8, l2: 0, l3: 0, l4: 0 });
+  const scope = b.add('scope', 11, 0, { time: 16 });
+  b.wire(post, 'out', ouchIn, 'in1');
+  b.wire(choke, 'lp12', ouchIn, 'in2');
+  b.wire(ouchIn, 'out', biteIn, 'in');
+  b.wire(toBite, 'out', biteIn, 'cv');
+  b.wire(biteIn, 'out', bite, 'in');
   b.wire(bite, 'out', choke, 'in');
-  b.wire(choke, 'lp12', scope, 'a');
-  b.wire(lfo1, 'out', toCutoff, 'in');
-  b.wire(toCutoff, 'out', lpf, 'cv');
-  b.wire(lfo2, 'out', toBite, 'in');
-  b.wire(toBite, 'out', bite, 'p1');
+  b.wire(choke, 'lp12', vol, 'in1');
+  b.wire(vol, 'out', scope, 'a');
   voices.forEach((v, i) => b.nest(`voice ${i + 1}`, 1 + i, 0, [v.wt, v.srr, v.env, v.drone, v.vca]));
   voices.forEach((v) => {
     b.nestInput('gate', v.env, 'gate');
+    b.nestInput('tune', v.wt, 'pitch');
     b.nestOutput('out', v.vca, 'out');
   });
+  voices.forEach((v, i) => b.nest(`seq ${i + 1}`, 1 + i, 1, [v.seq, v.div]));
+  voices.forEach((v) => b.nestOutput('pitch', v.seq, 'out'));
   b.input('keys', map, 'keys');
-  b.output('out', choke, 'lp12');
+  b.input('clock', voices[0].div, 'clock', ...voices.slice(1).map((v): [number, string] => [v.div, 'clock']));
+  b.input('run', restart, 'a', ...voices.map((v): [number, string] => [v.seq, 'reset']));
+  b.output('out', vol, 'out');
   voices.forEach((v, i) => {
     b.param('tune', v.wt, 'coarse', { head: `voice ${i + 1}`, ...(i % 2 === 0 ? { col: true } : {}) });
     b.param('fine', v.wt, 'fine');
@@ -3682,21 +3833,58 @@ asm('Elvira 2', 'Voices', (b) => {
     b.param('release', v.env, 'r');
     b.param('drone', v.drone, 'value');
   });
-  b.param('cutoff', lpf, 'cutoff', { col: true, head: 'lpf' });
-  b.param('reso', lpf, 'res');
+  voices.forEach((v, i) => {
+    for (let s = 1; s <= 8; s++) b.param(`step ${s}`, v.seq, `s${s}`, s === 1 ? { head: `seq ${i + 1}`, ...(i % 2 === 0 ? { col: true } : {}) } : s === 5 ? { group: true } : {});
+    b.param('length', v.seq, 'len', { group: true });
+    b.param('clock div', v.div, 'div');
+    b.param('order', v.seq, 'dir');
+  });
+  b.param('cutoff', cutoff, 'value', { col: true, head: 'filter' });
+  b.param('reso', reso, 'value');
+  b.param('filter', type, 'pos');
+  b.param('other', other, 'pos');
+  b.param('routing', fin, 'pos', { group: true });
   b.param('time', dly, 'time', { head: 'delay' });
   b.param('fdbk', dly, 'fb');
   b.param('mix', dly, 'mix');
-  b.param('bite', bite, 'drive', { head: 'ouch' });
+  b.param('reverb', fx, 'pos', { group: true });
+  b.param('size', rv, 'size');
+  b.param('damp', rv, 'damp');
+  b.param('bite', bite, 'drive', { col: true, head: 'ouch' });
   b.param('choke', choke, 'cutoff');
-  b.param('vol', bite, 'level');
-  b.param('lfo 1 freq', lfo1, 'rate', { col: true, head: 'lfos' });
+  b.param('vol', vol, 'l1');
+  b.param('feedback', ouchIn, 'l2', { group: true });
+  b.param('diode', bite, 'sym');
+  b.param('lfo 1 freq', freq1, 'value', { col: true, head: 'lfos' });
+  b.param('lfo 1 sync', sync1, 'pos');
   b.param('lfo 1 → cutoff', toCutoff, 'gain');
-  b.param('lfo 2 freq', lfo2, 'rate', { group: true });
-  b.param('lfo 2 wav', lfo2, 'wave');
-  b.param('lfo 2 → bite', toBite, 'gain');
+  b.param('lfo 2 freq', freq2, 'value', { group: true });
+  b.param('lfo 2 wav', osc2, 'wave');
+  b.param('lfo 2 mode', mode2, 'pos');
+  b.param('lfo 2 sync', pitch2, 'pos');
+  b.param('lfo 2 → bite', toBite, 'gain', { group: true });
   b.param('out', scope, 'view', { col: true });
+  elviraRows.routing = [din, post];
+  elviraRows.mix = rv;
+  elviraRows.lfo2Sync = phase2;
 });
+// Elvira 2's switches: their positions named; one `routing` row moves its three Selectors, `lfo 2 sync` both of LFO 2's,
+// the delay's `mix` the reverb's too (#357, a row's `also`)
+{
+  const d = defs.find((x) => x.name === 'Elvira 2')!;
+  const NAMES: Record<string, string[]> = {
+    filter: ['ladder lp', 'ladder bp', 'ladder hp', 'sv lp', 'sv bp', 'sv hp', 'other'],
+    other: ['hp/lp series', 'hp/lp par', 'base-width', 'bw notch', 'comb'],
+    routing: ['default', 'reversed'], reverb: ['off', 'on'], 'lfo 1 sync': ['free', 'sync'], 'lfo 2 sync': ['free', 'sync'],
+    'lfo 2 mode': ['wave', 'S&H'],
+  };
+  for (const r of d.params) {
+    if (NAMES[r.label]) r.names = NAMES[r.label];
+    if (r.label === 'routing') r.also = elviraRows.routing.map((module) => ({ module, param: 'pos' }));
+    if (r.label === 'lfo 2 sync') r.also = [{ module: elviraRows.lfo2Sync, param: 'pos' }];
+    if (r.label === 'mix') r.also = [{ module: elviraRows.mix, param: 'mix' }];
+  }
+}
 
 // Scrounge, after the neutral labs Scrooge (its manual v1.1): five voices that live on their control voltage. On the
 // original each sequencer step is a voltage curve (POKE its height, TILT its slope, GATE its length) that both powers a

@@ -307,6 +307,38 @@ for (const [k, [andOr, depth]] of [[2, 1.5], [1, 0.6]].entries()) {
     [128 * 120, 'at', 0], [128 * 150, 'off', 53], [128 * 150, 'off', 57]];
   ends[name] = 128 * 300;
 }
+// Elvira 2's lighter set (#858): each filter type (the second Selector's five behind `other`), the routing reversed, the
+// reverb in place of the delay, OUCH's feedback and diode, the LFOs at audio rate, synced (LFO 2's phase turned by an LFO
+// on TEMPO), LFO 2's S&H, and the voices' sequences on the transport (voice 1 droning; run, stop, run again)
+const elviraKit = (name: string, rows: [string, number, string?][], ev: Ev[], end = 128 * 160): void => {
+  const p = FM1_PRESETS['Elvira 2']();
+  const card = p.assemblies!.find((a) => a.params.some((r) => r.label === 'lfo 2 mode'))!;
+  for (const [label, v, head] of rows) {
+    let h = '';
+    const row = card.params.find((r) => {
+      h = r.head ?? h;
+      return r.label === label && (!head || h === head);
+    })!;
+    for (const t of [{ module: row.module, param: row.param }, ...(row.also ?? [])]) p.modules.find((m) => m.id === t.module)!.params[t.param] = v;
+  }
+  tests[name] = p;
+  events[name] = ev;
+  ends[name] = end;
+};
+const elviraKeys: Ev[] = [[0, 'on', 53], [128 * 20, 'on', 57], [128 * 90, 'off', 53], [128 * 100, 'off', 57]];
+for (let k = 2; k <= 7; k++) elviraKit(`elvira-filter-${k}`, [['filter', k], ['reso', 0.6], ['lfo 1 → cutoff', 0.5], ['lfo 1 freq', 0.5]], elviraKeys);
+for (let k = 1; k <= 5; k++) elviraKit(`elvira-other-${k}`, [['filter', 7], ['other', k], ['reso', 0.4], ['cutoff', 0.55]], elviraKeys);
+elviraKit('elvira-routing-reverb', [['routing', 2], ['reverb', 2], ['size', 0.7], ['mix', 0.5], ['time', 1300], ['filter', 5]], elviraKeys, 128 * 300);
+// (OUCH's loop and an audio-rate wave into the fold are kept gentle: a loop hot enough to run chaotic, or a square's edges
+// folded hard, drift apart between the float and the Q16 engine past the tolerance, as #758's moving delay time does)
+elviraKit('elvira-ouch', [['feedback', 0.4], ['diode', 0.5], ['bite', 2], ['choke', 3000], ['time', 1600], ['fdbk', 0.6]], elviraKeys, 128 * 300);
+elviraKit('elvira-lfo-audio', [['lfo 2 freq', 0.85], ['lfo 2 wav', 0], ['lfo 2 → bite', 0.8], ['bite', 3], ['lfo 1 freq', 0.75], ['lfo 1 → cutoff', 0.4]], elviraKeys);
+elviraKit('elvira-lfo-sync', [['lfo 2 sync', 2], ['lfo 2 wav', 0], ['lfo 2 → bite', 1], ['bite', 4], ['lfo 1 sync', 2], ['lfo 1 → cutoff', 0.6],
+  ['lfo 2 freq', 0.7], ['lfo 1 freq', 0.1]], [[0, 'run', 0], ...elviraKeys], 128 * 200);
+elviraKit('elvira-lfo-sh', [['lfo 2 mode', 2], ['lfo 2 freq', 0.5], ['lfo 2 → bite', 1], ['bite', 4]], elviraKeys);
+elviraKit('elvira-seq', [['drone', 1, 'voice 1'], ['step 2', 0.25, 'seq 1'], ['step 3', -0.5, 'seq 1'], ['step 5', 0.58, 'seq 1'], ['length', 5, 'seq 1'],
+  ['clock div', 3, 'seq 1'], ['order', 2, 'seq 1'], ['step 2', 0.42, 'seq 2'], ['clock div', 2, 'seq 2']],
+  [[128 * 5, 'run', 0], [128 * 30, 'on', 55], [128 * 150, 'stop', 0], [128 * 170, 'off', 55], [128 * 190, 'run', 0]], 128 * 300);
 for (const [cc, port] of [[2, 'breath'], [64, 'sustain'], [65, 'foot']] as const) {
   const name = `main-${port}`;
   tests[name] = make(name, (add, wire) => {
