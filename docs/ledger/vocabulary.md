@@ -438,7 +438,7 @@ An assembly whose members run once per voice of the Voicing module that feeds it
 
 ### Port ring
 
-Quick patch's ring of the current card's ports round the card: outputs on the right arc, inputs and the thumbs of its rows on the left.
+Quick patch's see-through radial menu: rings of the current card's jack names round the card's name, the jacks that take a cable on the left half and the jacks that send on the right.
 
 ### Preset
 

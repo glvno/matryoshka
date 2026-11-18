@@ -9,8 +9,8 @@ import { moduleKeywords } from './labels';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, type Patch } from './patch';
 import {
-  besideSpot, buildChain, cardPorts, cardTitle, chainText, defaultPort, farEnds, GAP, loadBlueprints, matchPorts, parseChain, portCables,
-  rankPorts, removeBlueprint, saveBlueprint, search, Trail, type Card, type Catalog, type Place, type QPort,
+  besideSpot, buildChain, cardPorts, cardTitle, chainText, defaultPort, farEnds, GAP, HALF_GAP, HALF_MAX, halfRings, halfSectors, loadBlueprints, matchPorts, parseChain, portCables,
+  rankPorts, removeBlueprint, RINGS_MAX, saveBlueprint, search, sectorPath, Trail, type Card, type Catalog, type Place, type QPort,
 } from './quick-patch';
 
 const catalog = (blueprints: Catalog['blueprints'] = []): Catalog => ({
@@ -164,8 +164,15 @@ describe('the typed chain', () => {
       buildChain(p, DEFS, parsed.statements, catalog(), placer(p), rectOf(p));
     };
     expect(() => run('zzqx > vca')).toThrow('no module, assembly or card called "zzqx"');
-    expect(() => run('lfo.nope > vca')).toThrow('LFO has no output "nope". Its outputs: out, pulse');
-    expect(() => run('lfo > vca.zz')).toThrow(/VCA has no input "zz"/);
+    expect(() => run('lfo.nope > vca')).toThrow('LFO has no port "nope" that fits here. It has: out, pulse');
+    expect(() => run('lfo > vca.zz')).toThrow(/VCA has no port "zz"/);
+  });
+  it('`out` is the port named out, also when it has a cable and another port is free', () => {
+    const p = newPatch(DEFS);
+    const parsed = parseChain('lfo.out > vca.cv; lfo.out > multimode.cv');
+    if ('error' in parsed) throw new Error(parsed.error);
+    buildChain(p, DEFS, parsed.statements, catalog(), placer(p), rectOf(p));
+    expect(cableList(p)).toEqual(['lfo.out>filter.cv', 'lfo.out>vca.cv']);
   });
   it('a second card of a type: #2', () => {
     const p = newPatch(DEFS);
@@ -250,6 +257,36 @@ describe('blueprints', () => {
     const stamp = parseChain('bp nope');
     if ('error' in stamp) throw new Error(stamp.error);
     expect(() => buildChain(p, DEFS, stamp.statements, catalog(), placer(p), rectOf(p))).toThrow('no blueprint "nope"');
+  });
+});
+
+describe('the radial menu\'s layout', () => {
+  it('splits a ring into a left half and a right half, each into equal sectors from the top down', () => {
+    const right = halfSectors(4, 'right'), left = halfSectors(4, 'left');
+    const w = (Math.PI - 2 * HALF_GAP) / 4;
+    for (const s of [...right, ...left]) expect(s.a1 - s.a0).toBeCloseTo(w);
+    // the right half runs clockwise from the top (−90°) to the bottom (90°); the left half down the left side
+    expect(right[0].a0).toBeCloseTo(-Math.PI / 2 + HALF_GAP);
+    expect(right[3].a1).toBeCloseTo(Math.PI / 2 - HALF_GAP);
+    expect(left[0].a1).toBeCloseTo((3 * Math.PI) / 2 - HALF_GAP);
+    expect(left[3].a0).toBeCloseTo(Math.PI / 2 + HALF_GAP);
+    // labels: every right sector's middle is right of the centre, every left one's left of it
+    expect(right.every((s) => Math.cos(s.mid) > 0)).toBe(true);
+    expect(left.every((s) => Math.cos(s.mid) < 0)).toBe(true);
+  });
+  it('fills the inner ring first, spills outwards, and starts the thumbs on a ring of their own', () => {
+    const jacks = Array.from({ length: 15 }, (_, i) => `j${i}`);
+    const rings = halfRings(jacks, ['cutoff', 'res']);
+    expect(rings.map((r) => r.length)).toEqual([HALF_MAX, 15 - HALF_MAX, 2]);
+    // Briefcase 3: 17 jacks that send take three rings on the right; with its thumbs the left pages past RINGS_MAX
+    const def = FACTORY.find((d) => d.name === 'Briefcase 3')!;
+    const p = newPatch(DEFS);
+    const ports = cardPorts(p, DEFS, { kind: 'assembly', id: insertAssembly(p, DEFS, def, 0, 0).id });
+    expect(halfRings(ports.filter((q) => q.dir === 'out')).length).toBe(Math.ceil(17 / HALF_MAX));
+    expect(halfRings(ports.filter((q) => q.dir === 'in' && !q.param), ports.filter((q) => q.param)).length).toBeGreaterThan(RINGS_MAX);
+  });
+  it('draws a sector as a closed path between its two radii', () => {
+    expect(sectorPath(100, 50, 80, 0, Math.PI / 2)).toBe('M180.00 100.00A80 80 0 0 1 100.00 180.00L100.00 150.00A50 50 0 0 0 150.00 100.00Z');
   });
 });
 

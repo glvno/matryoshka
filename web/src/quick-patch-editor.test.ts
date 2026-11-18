@@ -129,7 +129,7 @@ describe('Quick patch in the editor', () => {
     field().value = 'lfo.nope > vca';
     field().dispatchEvent(new Event('input'));
     play('⏎');
-    expect(document.querySelector('.qp-hint')!.textContent).toBe('LFO has no output "nope". Its outputs: out, pulse');
+    expect(document.querySelector('.qp-hint')!.textContent).toBe('LFO has no port "nope" that fits here. It has: out, pulse');
     expect(history(editor)).toBe(steps + 1);
   });
 
@@ -151,6 +151,33 @@ describe('Quick patch in the editor', () => {
     play('⏎ Esc');
     expect(cables(editor.patch)).toEqual(['filter.lp24>vca.in', 'lfo.out>filter.cv', 'vca.out>output.l']);
     expect(history(editor)).toBe(steps + 1);
+  });
+
+  it('marks direction with icons only: the ring and the list name ports, never "in" or "out" as a direction', () => {
+    const { quick } = setup();
+    quick.show();
+    play('lfo ⏎ ⏎ multi ⏎');
+    // what the overlay and the list say besides port names (and the icons' spoken labels)
+    const words = (root: Element): string => {
+      const copy = root.cloneNode(true) as Element;
+      for (const e of copy.querySelectorAll('.qp-name, title, [aria-label]')) e.remove();
+      return copy.textContent ?? '';
+    };
+    const radial = document.querySelector('.qp-radial')!, list = document.querySelector('.qp-list')!;
+    expect(radial.querySelectorAll('.qp-sec').length).toBeGreaterThan(8);
+    for (const root of [radial, list]) expect(words(root)).not.toMatch(/\b(in|out|inputs?|outputs?)\b/i);
+    // the two halves' icons say it to a screen reader instead
+    expect([...radial.querySelectorAll('.qp-io')].map((e) => e.getAttribute('aria-label'))).toEqual(['input', 'output']);
+    expect(list.querySelector('li .qp-io')!.getAttribute('aria-label')).toBe('input');
+  });
+
+  it('typing "out" offers the port named out, not every port that sends', () => {
+    const { quick } = setup();
+    quick.show();
+    play('lfo ⏎ out');
+    const ports = [...document.querySelectorAll('.qp-list li')].filter((li) => li.querySelector('.qp-io')).map((li) => li.querySelector('.qp-name')!.textContent);
+    expect(ports).toEqual(['out']);
+    expect([...document.querySelectorAll('.qp-radial .qp-sec .qp-name')].map((e) => e.textContent)).toEqual(['out']);
   });
 
   it('C copies the card under the pointer beside it and opens its ring', () => {

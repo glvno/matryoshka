@@ -261,7 +261,7 @@ export function search(p: Patch, defs: Record<string, ModuleDef>, cat: Catalog, 
 
 /** connect two ports, whichever way round they come; cables into one input add up. Throws with the editor's reason */
 export function wire(p: Patch, defs: Record<string, ModuleDef>, a: QPort, b: QPort): void {
-  if (a.dir === b.dir) throw new Error('connect an output to an input');
+  if (a.dir === b.dir) throw new Error('a cable joins a jack that sends to one that takes it');
   const [out, input] = a.dir === 'out' ? [a, b] : [b, a];
   const one = (from: Endpoint, to: Endpoint): void => {
     if (p.cables.some((c) => sameEnd(c.from, from) && sameEnd(c.to, to))) return;
@@ -302,6 +302,45 @@ export function besideSpot(anchor: Rect, side: 'left' | 'right', size: Size, occ
     if (!grown.some((o) => overlaps(o, r))) return { x: r.x, y: r.y };
   }
   return { x, y: anchor.y };
+}
+
+// ---- the radial menu's layout: rings round the card's name, the left half of each for the jacks that take a cable, the
+// right half for the jacks that send
+
+/** the most sectors one half of a ring holds before its jacks spill to the next ring out (labels stay legible) */
+export const HALF_MAX = 8;
+/** the most rings the menu shows; more page */
+export const RINGS_MAX = 3;
+/** the gap (radians) at the top and the bottom of the ring, between the halves */
+export const HALF_GAP = 0.14;
+
+/** a sector of a ring, by its angles (radians, clockwise from 3 o'clock, as on screen) and the angle of its label */
+export interface Sector { a0: number; a1: number; mid: number }
+
+/** `n` equal sectors over one half of a ring, from the top down: the left half runs down the left side, the right half
+ *  down the right side; a gap at the top and the bottom keeps the halves apart */
+export function halfSectors(n: number, side: 'left' | 'right'): Sector[] {
+  const w = (Math.PI - 2 * HALF_GAP) / Math.max(1, n);
+  return Array.from({ length: n }, (_, i) => {
+    const [a0, a1] = side === 'right'
+      ? [-Math.PI / 2 + HALF_GAP + i * w, -Math.PI / 2 + HALF_GAP + (i + 1) * w]
+      : [(3 * Math.PI) / 2 - HALF_GAP - (i + 1) * w, (3 * Math.PI) / 2 - HALF_GAP - i * w];
+    return { a0, a1, mid: (a0 + a1) / 2 };
+  });
+}
+
+/** one half's items ring by ring, inside out: `items` fill the inner ring first, HALF_MAX each, and `next` (the row
+ *  thumbs) start a ring of their own */
+export function halfRings<T>(items: T[], next: T[] = []): T[][] {
+  const chunk = (l: T[]): T[][] => Array.from({ length: Math.ceil(l.length / HALF_MAX) }, (_, i) => l.slice(i * HALF_MAX, (i + 1) * HALF_MAX));
+  return [...chunk(items), ...chunk(next)];
+}
+
+/** an SVG path for the ring sector between radii r0 < r1 and angles a0 < a1 round (c, c) */
+export function sectorPath(c: number, r0: number, r1: number, a0: number, a1: number): string {
+  const p = (r: number, a: number): string => `${(c + r * Math.cos(a)).toFixed(2)} ${(c + r * Math.sin(a)).toFixed(2)}`;
+  const large = a1 - a0 > Math.PI ? 1 : 0;
+  return `M${p(r1, a0)}A${r1} ${r1} 0 ${large} 1 ${p(r1, a1)}L${p(r0, a1)}A${r0} ${r0} 0 ${large} 0 ${p(r0, a0)}Z`;
 }
 
 // ---- the typed chain
@@ -373,14 +412,16 @@ export function resolvePort(p: Patch, defs: Record<string, ModuleDef>, card: Car
   const fallback = (): QPort | null => (held ? defaultPort(ports, held, cabled) : rankPorts(ports, null, cabled).find((q) => q.dir === want) ?? null);
   const title = cardTitle(p, defs, card);
   const list = (): string => ports.slice(0, 12).map((q) => q.name).join(', ') + (ports.length > 12 ? ', …' : '');
+  // a typed name picks the port of that name (`out` is the port named out); `in` / `out` that the card has no port of
+  // pick the likely one, as nothing typed does
+  const found = typed ? matchPorts(ports, typed).filter((q) => !held || fit(held, q) >= 0) : [];
+  if (found.length) return found[0];
   if (!typed || typed.toLowerCase() === want) {
     const d = fallback();
-    if (!d) throw new ChainError(`${title} has no ${want === 'in' ? 'input' : 'output'}${held ? ` that takes ${held.kind}` : ''}`);
+    if (!d) throw new ChainError(want === 'in' ? `${title} has no jack that takes ${held ? held.kind : 'a cable'}` : `${title} has no jack to cable from`);
     return d;
   }
-  const found = matchPorts(ports, typed).filter((q) => !held || fit(held, q) >= 0);
-  if (!found.length) throw new ChainError(`${title} has no ${want === 'in' ? 'input' : 'output'} "${typed}"${ports.length ? `. Its ${want === 'in' ? 'inputs' : 'outputs'}: ${list()}` : ''}`);
-  return found[0];
+  throw new ChainError(`${title} has no port "${typed}" that fits here${ports.length ? `. It has: ${list()}` : ''}`);
 }
 
 /** a new card's size before it is drawn: wide enough for a card, as tall as its rows (refined once it is on the canvas) */

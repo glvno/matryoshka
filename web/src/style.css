@@ -2248,23 +2248,32 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .qp-muted, .qp-keys { color: var(--muted); }
 .qp-keys { font-size: 10px; line-height: 1.6; }
 .qp-keys kbd { padding: 0 3px; border: 1px solid var(--line); border-radius: 3px; }
-.qp-ring { position: fixed; inset: 0; z-index: 54; pointer-events: none; }
-.qp-chip { position: fixed; pointer-events: auto; display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border: 1px solid var(--line);
-  border-radius: 999px; background: var(--panel); color: var(--ink); font-size: 12px; white-space: nowrap; box-shadow: 0 1px 4px var(--shadow); cursor: pointer; }
-.qp-chip .qp-dot { width: 8px; height: 8px; border-radius: 50%; border: 2px solid currentColor; box-sizing: border-box; color: var(--audio); }
-.qp-chip.control .qp-dot { color: var(--control); }
-.qp-chip.gate .qp-dot { color: var(--gate); }
-.qp-chip.keys .qp-dot { color: var(--ink); }
-.qp-chip.cabled .qp-dot { background: currentColor; }
-.qp-chip.lit { border-color: var(--secondary); }
-.qp-chip.dim { opacity: .6; }
-.qp-chip.off, .qp-chip:disabled { opacity: .3; cursor: default; }
-.qp-chip.sel { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
-.qp-chip .qp-follow { padding: 0 5px; border-radius: 999px; background: var(--surface-tint); color: var(--secondary); font-size: 11px; }
-.qp-chip .qp-follow:hover { background: color-mix(in srgb, var(--secondary) 22%, transparent); }
-.qp-chip.qp-more { color: var(--muted); }
-.qp-sliders { position: fixed; z-index: 55; display: flex; flex-direction: column; gap: 4px; padding: 6px 10px; border: 1px solid var(--line);
-  border-radius: 8px; background: var(--panel); color: var(--ink); box-shadow: 0 4px 16px var(--backdrop); font-size: 11px; }
+/* the radial overlay: translucent, so the cards Quick patch makes show through; sectors are plain labelled segments */
+.qp-radial { position: fixed; z-index: 54; pointer-events: none; }
+.qp-radial svg { display: block; overflow: visible; }
+.qp-disc { fill: color-mix(in srgb, var(--panel) 55%, transparent); stroke: var(--line); }
+.qp-sec { pointer-events: auto; cursor: pointer; }
+.qp-sec path { fill: color-mix(in srgb, var(--panel) 78%, transparent); stroke: var(--line); stroke-width: 1; }
+.qp-sec:hover path { fill: color-mix(in srgb, var(--secondary) 18%, var(--panel)); }
+.qp-sec.lit path { fill: color-mix(in srgb, var(--secondary) 28%, var(--panel)); stroke: var(--secondary); }
+.qp-sec.sel path { stroke: var(--accent); stroke-width: 2.5; }
+.qp-sec.dim { opacity: .65; }
+.qp-sec.off { opacity: .28; cursor: default; }
+.qp-sec text { fill: var(--ink); font: 500 11.5px/1 'Barlow', system-ui, sans-serif; text-anchor: middle; pointer-events: none; }
+.qp-sec.more text { fill: var(--muted); }
+.qp-kind { fill: none; stroke: var(--audio); stroke-width: 1.4; }
+.qp-kind.control { stroke: var(--control); } .qp-kind.gate { stroke: var(--gate); } .qp-kind.keys { stroke: var(--ink); }
+.qp-kind.cabled { fill: currentColor; color: var(--audio); }
+.qp-kind.control.cabled { color: var(--control); } .qp-kind.gate.cabled { color: var(--gate); } .qp-kind.keys.cabled { color: var(--ink); }
+.qp-core { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 6px; border-radius: 50%; pointer-events: auto; text-align: center; }
+.qp-core-name { display: flex; align-items: center; gap: 4px; max-width: 100%; font: 600 13px/1.1 'Barlow', system-ui, sans-serif; color: var(--ink); overflow-wrap: anywhere; }
+.qp-core .qp-field { width: 128px; padding: 5px 8px; font-size: 13px; }
+/* a port's direction is this icon, never the word: a jack with an arrow into it (takes a cable) or out of it (sends) */
+.qp-io { flex: none; width: 18px; height: 10px; color: var(--muted); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.qp-io.audio { color: var(--audio); } .qp-io.control { color: var(--control); } .qp-io.gate { color: var(--gate); } .qp-io.keys { color: var(--ink); }
+.qp-list .qp-io { align-self: center; }
+.qp-sliders { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 11px; }
 .qp-sliders:empty, .qp-sliders[hidden] { display: none; }
 .qp-strip-head { color: var(--muted); }
 .qp-slider { display: grid; grid-template-columns: 84px 1fr 64px; align-items: center; gap: 8px; }

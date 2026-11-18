@@ -6,12 +6,12 @@
 import type { Editor } from './editor';
 import { DEFS } from './modules';
 import { depthText, parseDepth, storedDepth } from './depth';
-import { formatValue, longName } from './labels';
+import { formatValue, longName, moduleTag } from './labels';
 import { DEPTH_MAX, fromUnit, toUnit, type ParamDef, type Patch } from './patch';
 import { isPin, parameterInputs } from './parameter-routing';
 import {
-  besideSpot, buildChain, cardExists, cardKey, cardPorts, cardTitle, ChainError, chainText, farEnds, fit, guessSize, isChainText,
-  matchPorts, moveCard, parseChain, portCables, rankPorts, removeBlueprint, sameCard, saveBlueprint, search, Trail, wire,
+  besideSpot, buildChain, cardExists, cardPorts, cardTitle, ChainError, chainText, farEnds, fit, guessSize, halfRings, halfSectors, isChainText,
+  matchPorts, moveCard, parseChain, portCables, rankPorts, removeBlueprint, RINGS_MAX, sameCard, saveBlueprint, search, sectorPath, Trail, wire,
   type Built, type Card, type Catalog, type FarEnd, type Hit, type Link, type Place, type QPort, type Statement,
 } from './quick-patch';
 import { parseValue } from './value-input';
@@ -27,21 +27,45 @@ export interface QuickHost {
   onBlueprints?: () => void;
 }
 
-/** one line of the list under the field: what Enter (or a click) does */
-interface Choice { label: string; detail?: string; port?: QPort; follow?: boolean; run: (shift: boolean) => void }
+/** one line of the list under the field: what Enter (or a click) does; `io`: the direction icon of the port it names */
+interface Choice { label: string; detail?: string; port?: QPort; io?: { dir: 'in' | 'out'; kind: string }; follow?: boolean; run: (shift: boolean) => void }
 
 /** the parameter a cable just reached: the strip's sliders (its value, and the depth of the pin that carries it) */
 interface Sliders { card: Card; module: number; params: string[]; pin?: 0 | 1 }
 
-/** how many ports one arc of the ring shows before it pages (PageDown / PageUp) */
-const ARC_MAX = 12;
-const CHIP_H = 26;
+/** the radial menu's sizes (px): the centre disc's radius, then each ring's width */
+const RADIAL_CORE = 78;
+/** the room beside the rings for each half's direction icon */
+const RADIAL_ICON = 24;
+const RADIAL_BAND = 58;
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
   if (text) e.textContent = text;
   return e;
+};
+
+const SVGNS = 'http://www.w3.org/2000/svg';
+/** a port's direction as an icon, never a word (owner on PR #1094: the words would read as the ports named `in` and
+ *  `out`): a jack with an arrow into it for one that takes a cable, out of it for one that sends, in its signal's colour;
+ *  screen readers get "input" / "output" */
+const ioIcon = (dir: 'in' | 'out', kind: string): SVGSVGElement => {
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('class', `qp-io ${dir} ${kind}`);
+  svg.setAttribute('viewBox', '0 0 18 10');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', dir === 'in' ? 'input' : 'output');
+  const title = document.createElementNS(SVGNS, 'title');
+  title.textContent = dir === 'in' ? 'input' : 'output';
+  const jack = document.createElementNS(SVGNS, 'circle');
+  jack.setAttribute('cx', dir === 'in' ? '13' : '5');
+  jack.setAttribute('cy', '5');
+  jack.setAttribute('r', '3.2');
+  const arrow = document.createElementNS(SVGNS, 'path');
+  arrow.setAttribute('d', dir === 'in' ? 'M0 5H8M5.5 2.5L8 5L5.5 7.5' : 'M10 5H18M15.5 2.5L18 5L15.5 7.5');
+  svg.append(title, jack, arrow);
+  return svg;
 };
 
 export class QuickPatch {
@@ -51,7 +75,13 @@ export class QuickPatch {
   private readonly hint = el('div', 'qp-hint');
   private readonly list = el('ul', 'qp-list');
   private readonly last = el('div', 'qp-last');
-  private readonly ring = el('div', 'qp-ring');
+  /** the radial overlay: its rings (an SVG) and the centre disc with the card's name and the field */
+  private readonly ring = el('div', 'qp-radial');
+  private readonly core = el('div', 'qp-core');
+  /** the rings' SVG goes in here, and the card's name over the field: re-drawn without moving the field (which keeps its
+   *  focus) */
+  private readonly svgBox = el('div', 'qp-svgbox');
+  private readonly coreName = el('div', 'qp-core-name');
   private readonly strip = el('div', 'qp-sliders');
   private isOpen = false;
   /** the card whose ports the ring shows */
@@ -72,10 +102,10 @@ export class QuickPatch {
   private fresh: Card[] = [];
   /** the last finished chain as a line that builds it again (a blueprint's text) */
   lastChain = '';
-  /** where the panel goes while no card is current (client px) */
+  /** where the overlay is centred (client px): where Quick patch opened, for the whole time it is open */
   private spot = { x: 0, y: 0 };
-  private raf = 0;
-  private placed = '';
+  /** the cards made while it was open: when it closes, the view brings them in if one is off screen */
+  private made: Card[] = [];
 
   constructor(private readonly host: QuickHost) {
     this.panel.setAttribute('role', 'dialog');
@@ -91,9 +121,11 @@ export class QuickPatch {
     this.list.setAttribute('role', 'listbox');
     this.hint.setAttribute('aria-live', 'polite');
     const keys = el('div', 'qp-keys');
-    keys.innerHTML = '<kbd>⏎</kbd> pick <kbd>⇧⏎</kbd> follow a cable <kbd>[</kbd><kbd>]</kbd> back, forward <kbd>Esc</kbd> done · <code>a.out &gt; b.in</code> a chain · <code>bp name</code> a blueprint';
-    this.panel.append(this.crumbs, this.field, this.hint, this.list, this.last, keys);
-    this.ring.setAttribute('aria-hidden', 'true');
+    keys.innerHTML = '<kbd>⏎</kbd> pick <kbd>⇧⏎</kbd> follow a cable <kbd>[</kbd><kbd>]</kbd> back, forward <kbd>Esc</kbd> done · <code>lfo.pulse &gt; vca.cv</code> a chain · <code>bp name</code> a blueprint';
+    this.panel.append(this.crumbs, this.hint, this.strip, this.list, this.last, keys);
+    this.svgBox.setAttribute('aria-hidden', 'true');   // (the list says the same to a screen reader)
+    this.core.append(this.coreName, this.field);
+    this.ring.append(this.svgBox, this.core);
     this.field.addEventListener('input', () => { this.page = 0; this.sel = 0; this.error = ''; this.render(); });
     this.field.addEventListener('keydown', (e) => this.key(e));
     // the panel, ring and strip keep the field's focus: a press on a chip or a list line acts without taking it
@@ -117,34 +149,35 @@ export class QuickPatch {
     const selected: Card | null = card
       ?? (ed.selected.size === 1 && !ed.selectedAsm.size ? { kind: 'module', id: [...ed.selected][0] }
         : ed.selectedAsm.size === 1 && !ed.selected.size ? { kind: 'assembly', id: [...ed.selectedAsm][0] } : null);
-    const canvas = document.getElementById('canvas')?.getBoundingClientRect();
-    this.spot = ed.pointer ?? (canvas ? { x: canvas.left + canvas.width / 2 - 170, y: canvas.top + canvas.height / 3 } : { x: 200, y: 200 });
     if (!this.isOpen) {
-      document.body.append(this.ring, this.strip, this.panel);
+      // the overlay sits at the pointer, else over the selected card, else in the canvas's middle, and stays there
+      const canvas = document.getElementById('canvas')?.getBoundingClientRect();
+      const r = selected && ed.cardScreenRect(selected);
+      this.spot = ed.pointer ?? (r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : canvas ? { x: canvas.left + canvas.width / 2, y: canvas.top + canvas.height / 2 } : { x: 300, y: 300 });
+      document.body.append(this.ring, this.panel);
       this.isOpen = true;
       this.trail.clear();
+      this.made = [];
       this.at = null;
       this.held = null;
       this.far = null;
       this.sliders = null;
       this.field.value = '';
-      this.loop();
     }
     if (selected) this.goTo(selected, false);
     this.render();
     this.field.focus();
   }
 
-  /** end the chain (one undo step) and close */
+  /** end the chain (one undo step) and close; the view then brings in a new card that is off screen */
   close(): void {
     if (!this.isOpen) return;
     this.finishChain();
     this.isOpen = false;
-    cancelAnimationFrame(this.raf);
     this.panel.remove();
     this.ring.remove();
-    this.strip.remove();
     this.field.blur();
+    this.settle();
   }
 
   /** C: a copy of the card under the pointer beside it, and its ring; false when the pointer is over no card */
@@ -159,7 +192,7 @@ export class QuickPatch {
     if (!copy) return true;
     this.host.say(`Copied ${cardTitle(this.patch, DEFS, card)}: pick a port, or type where it goes`);
     this.show(copy);
-    this.frame();
+    this.made.push(copy);
     return true;
   }
 
@@ -223,8 +256,8 @@ export class QuickPatch {
     const card = ed.placeCard(what, at);
     if (!card) return;
     this.fresh.push(card);
+    this.made.push(card);
     this.goTo(card);
-    this.frame();
   }
 
   /** pick a port: without a cable, pick one up there; with one, drop it here and stay on this card */
@@ -241,7 +274,7 @@ export class QuickPatch {
     }
     const held = this.held;
     if (sameCard(held.card, at)) return this.fail('a cable goes to another card: type its name');
-    if (fit(held.port, port) < 0) return this.fail(`${port.name} does not take ${held.port.dir === 'out' ? 'that output' : 'an input'}`);
+    if (fit(held.port, port) < 0) return this.fail(`${port.name} does not take this cable`);
     this.startChange();
     const ed = this.ed;
     const [from, to] = held.port.dir === 'out' ? [{ card: held.card, port: held.port }, { card: at, port }] : [{ card: at, port }, { card: held.card, port: held.port }];
@@ -254,7 +287,6 @@ export class QuickPatch {
     this.sel = 0;
     this.page = 0;
     this.render();
-    this.frame();
   }
 
   /** a chain that ends on a card left of the new cards that feed it: those cards move to before it, by signal flow */
@@ -325,7 +357,6 @@ export class QuickPatch {
     this.goTo(card);
     this.sliders = null;
     this.render();
-    this.frame();
   }
 
   /** back (-1) or forward (1) along the trail; the cable held, if any, comes along */
@@ -343,7 +374,6 @@ export class QuickPatch {
     this.field.value = '';
     this.sel = 0;
     this.render();
-    this.frame();
   }
 
   /** build typed chains (or a stamped blueprint) as one undo step of their own */
@@ -374,8 +404,8 @@ export class QuickPatch {
     this.held = null;
     this.sliders = null;
     if (end) this.goTo(end);
+    this.made.push(...b.fresh);
     this.render();
-    this.frame(b.cards);
   }
 
   private fail(text: string): void {
@@ -437,7 +467,9 @@ export class QuickPatch {
   private compute(): Choice[] {
     const t = this.field.value.trim();
     if (this.far) {
-      return this.far.ends.map((end) => ({ label: `⤳ ${end.title}`, detail: longName(this.typeOf(end.card), end.port), run: () => this.travel(end.card) }));
+      // (the far end's port faces the other way from the one followed)
+      const io = { dir: this.far.port.dir === 'out' ? 'in' as const : 'out' as const, kind: this.far.port.param ? 'control' : this.far.port.kind };
+      return this.far.ends.map((end) => ({ label: `⤳ ${end.title}`, detail: longName(this.typeOf(end.card), end.port), io, run: () => this.travel(end.card) }));
     }
     const bp = /^bp(?:\s+(.*))?$/i.exec(t);
     if (bp && !/[>;]/.test(t)) return this.blueprintChoices(bp[1]?.trim() ?? '');
@@ -465,9 +497,10 @@ export class QuickPatch {
     const ends = !this.held ? farEnds(this.patch, DEFS, at, q) : [];
     const follow = ends.length ? ` · ⤳ ${ends.length === 1 ? ends[0].title : `${ends.length} cables`} (⇧⏎)` : '';
     return {
-      label: `${q.dir === 'out' ? 'out' : 'in'} · ${q.name}`,
+      label: q.name,
       detail: `${q.label !== q.name ? `${q.label} · ` : ''}${q.param ? 'parameter' : q.kind}${follow}`,
       port: q,
+      io: { dir: q.dir, kind: q.param ? 'control' : q.kind },
       follow: ends.length > 0,
       run: (shift) => (shift && ends.length ? this.follow(q) : this.pick(q)),
     };
@@ -478,7 +511,6 @@ export class QuickPatch {
       if (hit.kind === 'card') {
         this.goTo(hit.card);
         this.render();
-        this.frame();
       } else if (hit.kind === 'module') this.make({ type: hit.type });
       else if (hit.kind === 'assembly') this.make({ def: hit.def });
       else this.build([{ kind: 'blueprint', name: hit.blueprint.name }], `bp ${hit.blueprint.name}`);
@@ -559,9 +591,8 @@ export class QuickPatch {
     if (this.sel >= this.choices.length) this.sel = 0;
     this.renderTrail();
     this.renderList();
-    this.renderRing();
+    this.renderRadial();
     this.renderStrip();
-    this.placed = '';
     this.position();
   }
 
@@ -601,7 +632,8 @@ export class QuickPatch {
       li.id = `qp-opt-${i}`;
       li.setAttribute('role', 'option');
       li.setAttribute('aria-selected', String(i === this.sel));
-      li.append(el('span', 'qp-label', c.label));
+      if (c.io) li.append(ioIcon(c.io.dir, c.io.kind));
+      li.append(el('span', c.port ? 'qp-label qp-name' : 'qp-label', c.label));
       if (c.detail) li.append(el('span', 'qp-detail', c.detail));
       if (i === 0 && !t) li.append(el('kbd', '', '⏎'));
       li.onclick = (e) => c.run(e.shiftKey);
@@ -614,66 +646,106 @@ export class QuickPatch {
     this.last.replaceChildren(el('span', 'qp-muted', 'last chain '), el('code', '', this.lastChain), el('span', 'qp-muted', ' · bp save <name> keeps it'));
   }
 
-  /** the ring's chips, per arc: outputs right, inputs left, the ones the held cable fits first */
-  private arcs(): { outs: QPort[]; ins: QPort[]; pages: number } {
-    if (!this.at || this.far) return { outs: [], ins: [], pages: 0 };
-    // holding a cable from this card: only the port it comes from
-    if (this.held && sameCard(this.held.card, this.at)) return this.held.port.dir === 'out' ? { outs: [this.held.port], ins: [], pages: 1 } : { outs: [], ins: [this.held.port], pages: 1 };
+  /** the radial menu's rings, inside out: each ring's left half holds jacks that take a cable, its right half jacks that
+   *  send. The jacks fill the inner ring first and spill outwards; the row thumbs (parameters, which take a cable but are
+   *  not jacks) start a ring of their own on the left. Past three rings the rings page (PageDown, or the "more…" button
+   *  under the disc). A typed name filters every ring */
+  private rings(): { left: QPort[]; right: QPort[] }[] {
+    if (!this.at) return [];
     let ports = cardPorts(this.patch, DEFS, this.at);
-    const held = this.held && !sameCard(this.held.card, this.at) ? this.held.port : null;
-    if (held) ports = [...rankPorts(ports, held, this.cabled(this.at)), ...ports.filter((q) => fit(held, q) < 0)];
     const t = this.field.value.trim();
     if (t && !isChainText(t)) {
       const hits = new Set(matchPorts(ports, t));
       ports = ports.filter((q) => hits.has(q));
     }
-    const outs = ports.filter((q) => q.dir === 'out'), ins = ports.filter((q) => q.dir === 'in');
-    const pages = Math.max(1, Math.ceil(Math.max(outs.length, ins.length) / ARC_MAX));
-    this.page = Math.min(Math.max(0, this.page), pages - 1);
-    const cut = (l: QPort[]): QPort[] => l.slice(this.page * ARC_MAX, (this.page + 1) * ARC_MAX);
-    return { outs: cut(outs), ins: cut(ins), pages };
+    const left = halfRings(ports.filter((q) => q.dir === 'in' && !q.param), ports.filter((q) => q.param));
+    const right = halfRings(ports.filter((q) => q.dir === 'out'));
+    const all = Array.from({ length: Math.max(left.length, right.length) }, (_, i) => ({ left: left[i] ?? [], right: right[i] ?? [] }));
+    this.pages = Math.max(1, Math.ceil(all.length / RINGS_MAX));
+    this.page = ((this.page % this.pages) + this.pages) % this.pages;
+    return all.slice(this.page * RINGS_MAX, (this.page + 1) * RINGS_MAX);
   }
 
-  private renderRing(): void {
-    const { outs, ins, pages } = this.arcs();
+  private pages = 1;
+
+  /** the overlay: a translucent disc at the place Quick patch opened, the current card's name and the field in its centre,
+   *  and rings of labelled sectors round it, the left half for the jacks that take a cable, the right for those that send.
+   *  Plain segments, not jacks: a port's signal is a small dot, its direction the icon beside its half */
+  private renderRadial(): void {
     const at = this.at;
-    if (!at) return void this.ring.replaceChildren();
-    const held = this.held && !sameCard(this.held.card, at) ? this.held.port : null;
+    const rings = this.rings();
+    const held = this.held && at && !sameCard(this.held.card, at) ? this.held.port : null;
+    const fromHere = this.held && at && sameCard(this.held.card, at) ? this.held.port : null;
     // (the list's ports and the ring's are made apart: the same port by direction, name and thumb)
-    const same = (a: QPort | undefined, b: QPort): boolean => !!a && a.dir === b.dir && a.name === b.name && !a.param === !b.param;
-    const chosen = this.held && sameCard(this.held.card, at) ? this.held.port : this.choices[this.sel]?.port;
+    const same = (a: QPort | null | undefined, b: QPort): boolean => !!a && a.dir === b.dir && a.name === b.name && !a.param === !b.param;
+    const chosen = fromHere ?? this.choices[this.sel]?.port;
     const first = !this.field.value.trim() ? this.choices[0]?.port : undefined;
-    const chip = (q: QPort): HTMLElement => {
-      const f = held ? fit(held, q) : 0;
-      const ends = !this.held ? farEnds(this.patch, DEFS, at, q) : [];
-      const b = el('button', `qp-chip ${q.dir} ${q.param ? 'control' : q.kind}${f === 0 ? (held ? ' lit' : '') : f > 0 ? ' dim' : ' off'}${same(chosen, q) ? ' sel' : ''}${ends.length || (this.held && this.cabled(at)(q)) ? ' cabled' : ''}`);
-      b.tabIndex = -1;
-      b.title = `${q.label} (${q.param ? 'parameter' : q.kind})${ends.length ? `: ⤳ ${ends.map((e) => e.title).join(', ')} (Shift-click follows)` : ''}`;
-      const name = el('span', 'qp-name', q.name);
-      const dot = el('span', 'qp-dot');
-      const parts: HTMLElement[] = q.dir === 'out' ? [name, dot] : [dot, name];
-      if (same(first, q)) parts[q.dir === 'out' ? 'push' : 'unshift'](el('kbd', '', '⏎'));
-      if (ends.length) {
-        const go = el('span', 'qp-follow', `⤳ ${ends.length === 1 ? ends[0].title : ends.length}`);
-        go.onclick = (e) => { e.stopPropagation(); this.follow(q); };
-        parts[q.dir === 'out' ? 'push' : 'unshift'](go);
-      }
-      b.append(...parts);
-      b.disabled = f < 0;
-      b.onclick = (e) => (e.shiftKey && ends.length ? this.follow(q) : this.pick(q));
-      b.dataset.dir = q.dir;
-      return b;
+    // (room on each side for the halves' direction icons)
+    const size = 2 * (RADIAL_CORE + RADIAL_BAND * Math.max(1, rings.length)) + 8 + 2 * RADIAL_ICON;
+    const c = size / 2;
+    const svg = document.createElementNS(SVGNS, 'svg');
+    svg.setAttribute('class', 'qp-rings');
+    svg.setAttribute('width', String(size));
+    svg.setAttribute('height', String(size));
+    const node = <K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string>, text = ''): SVGElementTagNameMap[K] => {
+      const e = document.createElementNS(SVGNS, tag);
+      for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+      if (text) e.textContent = text;
+      return e;
     };
-    const chips = [...outs.map(chip), ...ins.map(chip)];
-    if (pages > 1) {
-      const more = el('button', 'qp-chip qp-more', `${this.page + 1} / ${pages} ▾`);
-      more.tabIndex = -1;
-      more.title = 'More ports (PageDown, PageUp), or type a port\'s name';
-      more.onclick = () => { this.page = (this.page + 1) % pages; this.render(); };
-      more.dataset.dir = 'more';
-      chips.push(more);
+    svg.append(node('circle', { class: 'qp-disc', cx: String(c), cy: String(c), r: String(c - RADIAL_ICON - 2) }));
+    const sector = (q: QPort, s: { a0: number; a1: number; mid: number }, r0: number, r1: number): void => {
+      const g = node('g', { class: 'qp-sec' });
+      const label = (r0 + r1) / 2;
+      const tx = c + label * Math.cos(s.mid), ty = c + label * Math.sin(s.mid);
+      g.append(node('path', { d: sectorPath(c, r0, r1, s.a0, s.a1) }));
+      const f = held ? fit(held, q) : 0;
+      const ends = !this.held ? farEnds(this.patch, DEFS, at!, q) : [];
+      if (held) g.classList.add(f === 0 ? 'lit' : f > 0 ? 'dim' : 'off');
+      if (fromHere && !same(fromHere, q)) g.classList.add('off');
+      if (same(chosen, q)) g.classList.add('sel');
+      // the label fits its sector: as many letters as the arc has room for, the whole name in the tooltip
+      const room = Math.max(3, Math.floor(Math.min((s.a1 - s.a0) * label, r1 - r0 + 40) / 6.6));
+      const text = q.name.length > room ? `${q.name.slice(0, room - 1)}…` : q.name;
+      g.append(node('title', {}, `${q.label} (${q.param ? 'parameter' : q.kind})${ends.length ? `: ⤳ ${ends.map((e) => e.title).join(', ')}, Shift-click follows` : ''}`));
+      g.append(node('circle', { class: `qp-kind ${q.param ? 'control' : q.kind}${ends.length || (this.held && this.cabled(at!)(q)) ? ' cabled' : ''}`, cx: String(tx), cy: String(ty - 9), r: '2.4' }));
+      g.append(node('text', { class: 'qp-name', x: String(tx), y: String(ty + 5) }, `${ends.length ? '⤳' : ''}${text}${same(first, q) ? ' ⏎' : ''}`));
+      g.addEventListener('click', (e) => {
+        if (g.classList.contains('off')) return;
+        if (e.shiftKey && ends.length) this.follow(q);
+        else this.pick(q);
+      });
+      svg.append(g);
+    };
+    rings.forEach((ring, ri) => {
+      const r0 = RADIAL_CORE + ri * RADIAL_BAND + 2, r1 = r0 + RADIAL_BAND - 4;
+      halfSectors(ring.left.length, 'left').forEach((s, i) => sector(ring.left[i], s, r0, r1));
+      halfSectors(ring.right.length, 'right').forEach((s, i) => sector(ring.right[i], s, r0, r1));
+    });
+    // the halves' direction icons, level with the centre outside the rings
+    if (rings.length) {
+      const place = (icon: SVGSVGElement, x: number): void => {
+        for (const [k, v] of Object.entries({ x: String(x), y: String(c - 5), width: '18', height: '10' })) icon.setAttribute(k, v);
+        svg.append(icon);
+      };
+      place(ioIcon('in', 'ring'), 2);
+      place(ioIcon('out', 'ring'), size - 20);
     }
-    this.ring.replaceChildren(...chips);
+    if (this.pages > 1) {
+      const more = node('g', { class: 'qp-sec more' });
+      more.append(node('text', { x: String(c), y: String(size - 6) }, `more… ${this.page + 1}/${this.pages}`));
+      more.addEventListener('click', () => { this.page++; this.render(); });
+      svg.append(more);
+    }
+    // the centre: the card's tag and name over the field
+    this.core.style.width = this.core.style.height = `${RADIAL_CORE * 2 - 8}px`;
+    this.coreName.replaceChildren(at ? cardTitle(this.patch, DEFS, at) : 'Quick patch');
+    if (at?.kind === 'module') {
+      const m = this.patch.modules.find((x) => x.id === at.id);
+      if (m) this.coreName.prepend(el('span', `mtag ${moduleTag(m.type).family}`, moduleTag(m.type).tag));
+    }
+    this.svgBox.replaceChildren(svg);
+    this.ring.style.width = this.ring.style.height = `${size}px`;
   }
 
   private renderStrip(): void {
@@ -729,98 +801,33 @@ export class QuickPatch {
     if (s.pin !== undefined && m.att && outs[s.params.length]) outs[s.params.length].textContent = depthText(DEFS[m.type].params.find((q) => q.name === s.params[0])!, m.att[s.pin]);
   }
 
-  /** keep the panel, the ring and the strip on their cards while the view moves (each frame, only when something moved) */
-  private loop(): void {
-    this.raf = requestAnimationFrame(() => {
-      if (!this.isOpen) return;
-      this.position();
-      this.loop();
-    });
-  }
-
+  /** the overlay stays where Quick patch opened for the whole chain (moved in only as far as the window needs), the panel
+   *  with the list beside it */
   private position(): void {
-    const ed = this.ed;
-    const r = this.at ? ed.cardScreenRect(this.at) : null;
-    const sr = this.sliders ? ed.cardScreenRect(this.sliders.card) : null;
-    const key = JSON.stringify([r && [r.left, r.top, r.width, r.height], sr && [sr.left, sr.top, sr.width], this.spot, innerWidth, innerHeight, this.ring.childElementCount]);
-    if (key === this.placed) return;
-    this.placed = key;
-    const W = innerWidth, H = innerHeight, PW = Math.min(360, W - 16);
-    // the panel: under the current card (over it when there is no room below), else at the pointer
-    const ph = this.panel.offsetHeight || 220;
-    let px = this.spot.x, py = this.spot.y + 12;
-    if (r) {
-      px = r.left + r.width / 2 - PW / 2;
-      py = r.bottom + 14;
-      if (py + ph > H - 8) py = r.top - ph - 14;
-      if (py < 8) py = Math.min(H - ph - 8, Math.max(8, r.bottom + 14));
-    }
+    const W = innerWidth, H = innerHeight;
+    const size = parseFloat(this.ring.style.width) || 2 * RADIAL_CORE;
+    const PW = Math.min(340, W - 16);
+    const cx = Math.min(W - size / 2 - 8, Math.max(size / 2 + 8, this.spot.x));
+    const cy = Math.min(H - size / 2 - 8, Math.max(size / 2 + 8, this.spot.y));
+    this.ring.style.left = `${Math.round(cx - size / 2)}px`;
+    this.ring.style.top = `${Math.round(cy - size / 2)}px`;
+    const right = cx + size / 2 + 12 + PW <= W - 8;
     this.panel.style.width = `${PW}px`;
-    this.panel.style.left = `${Math.round(Math.min(W - PW - 8, Math.max(8, px)))}px`;
-    this.panel.style.top = `${Math.round(Math.min(H - ph - 8, Math.max(8, py)))}px`;
-    // the ring: an arc on each side of the card, the middle ports furthest out; a card as wide as the window (Main's
-    // panel in the dock) gets a row over it instead
-    const chips = [...this.ring.children] as HTMLElement[];
-    if (r) {
-      const wide = r.width > W * 0.5;
-      const side = (dir: string): HTMLElement[] => chips.filter((c) => c.dataset.dir === dir);
-      if (wide) {
-        let x = r.left + 12;
-        for (const c of chips) {
-          c.style.left = `${Math.round(x)}px`;
-          c.style.top = `${Math.round(Math.max(8, r.top - CHIP_H - 8))}px`;
-          c.style.transform = '';
-          x += c.offsetWidth + 6;
-        }
-      } else {
-        const arc = (list: HTMLElement[], right: boolean): void => {
-          const n = list.length;
-          const span = (n - 1) * CHIP_H;
-          const cy = Math.min(H - span / 2 - CHIP_H, Math.max(span / 2 + 8, r.top + Math.min(r.height, H) / 2));
-          list.forEach((c, i) => {
-            const u = n > 1 ? (i - (n - 1) / 2) / ((n - 1) / 2) : 0;
-            const out = 12 + 28 * (1 - u * u);
-            c.style.top = `${Math.round(cy + (i - (n - 1) / 2) * CHIP_H - CHIP_H / 2)}px`;
-            c.style.left = `${Math.round(right ? r.right + out : r.left - out)}px`;
-            c.style.transform = right ? '' : 'translateX(-100%)';
-          });
-        };
-        arc([...side('out'), ...side('more')], true);
-        arc(side('in'), false);
-      }
-    }
-    // the strip of sliders: over the card whose parameter the cable reached
-    if (sr && this.strip.childElementCount) {
-      const sw = Math.min(320, W - 16);
-      const sh = this.strip.offsetHeight || 80;
-      this.strip.style.width = `${sw}px`;
-      this.strip.style.left = `${Math.round(Math.min(W - sw - 8, Math.max(8, sr.left + sr.width / 2 - sw / 2)))}px`;
-      this.strip.style.top = `${Math.round(Math.max(8, sr.top - sh - 10))}px`;
-      this.strip.hidden = false;
-    } else this.strip.hidden = true;
+    this.panel.style.left = `${Math.round(right ? cx + size / 2 + 12 : Math.max(8, cx - size / 2 - 12 - PW))}px`;
+    const ph = this.panel.offsetHeight || 200;
+    this.panel.style.top = `${Math.round(Math.min(H - ph - 8, Math.max(8, cy - size / 2)))}px`;
   }
 
-  /** move the view so the chain's cards stay in sight: all of them while they fit at a readable zoom, else the newest (the
-   *  current card with room for its ring and panel, and the strip over the card it is on) */
-  private frame(extra: Card[] = []): void {
+  /** the chain is done: when a card made while Quick patch was open lies wholly off screen, ease once to bring them in */
+  private settle(): void {
     const ed = this.ed;
-    const cards = [...this.links.flatMap((l) => [l.from, l.to]), ...this.fresh, ...extra, ...(this.held ? [this.held.card] : []), ...(this.at ? [this.at] : [])];
-    const seen = new Set<string>();
-    const newest = cards.reverse().filter((c) => !seen.has(cardKey(c)) && seen.add(cardKey(c))).reverse();
-    const z = ed.zoom;
-    // the ring's arcs stand as tall as their chips, centred on the card
-    const arc = (dir: string): number => [...this.ring.children].filter((c) => (c as HTMLElement).dataset.dir === dir).length;
-    const ringH = (Math.max(arc('in'), arc('out') + arc('more')) + 1) * CHIP_H / z;
-    const rects = newest.flatMap((c) => {
-      const r = ed.cardRect(c);
-      if (!r) return [];
-      if (!sameCard(c, this.at)) return [r];
-      const top = Math.min(r.y, r.y + r.h / 2 - ringH / 2);
-      return [{ x: r.x - 150 / z, y: top, w: r.w + 300 / z, h: Math.max(r.y + r.h, top + ringH) - top + 200 / z }];
+    const view = document.getElementById('canvas')?.getBoundingClientRect();
+    if (!view || !this.made.length) return;
+    const away = this.made.some((card) => {
+      const r = ed.cardScreenRect(card);
+      return !!r && (r.right < view.left || r.left > view.right || r.bottom < view.top || r.top > view.bottom);
     });
-    const s = this.sliders && ed.cardRect(this.sliders.card);
-    if (s) rects.push({ x: s.x, y: s.y - 110 / z, w: s.w, h: 110 / z });
-    if (rects.length) ed.showRects(rects);
+    if (away) ed.showRects(this.made.flatMap((card) => ed.cardRect(card) ?? []));
   }
 }
 
