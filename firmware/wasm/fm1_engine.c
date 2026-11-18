@@ -121,6 +121,7 @@ WASM_EXPORT("fm1e_running") uint32_t fm1e_running(void) { return (uint32_t)eng_t
 WASM_EXPORT("fm1e_once") void fm1e_once(void) { eng_play_once(); }
 WASM_EXPORT("fm1e_count_in") void fm1e_count_in(uint32_t bars) { eng_count_in(eng_ticks(), bars); }
 WASM_EXPORT("fm1e_tempo") void fm1e_tempo(uint32_t bpm) { eng_tempo_global(bpm); }   /* 0: each patch its own */
+WASM_EXPORT("fm1e_meter") void fm1e_meter(uint32_t m) { eng_meter(m); }   /* the global time signature (#1011) */
 WASM_EXPORT("fm1e_clock_tick") void fm1e_clock_tick(void) { eng_clock_tick(); }
 WASM_EXPORT("fm1e_clock_external") void fm1e_clock_external(uint32_t on) { eng_clock_external((int)on); }
 

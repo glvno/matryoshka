@@ -40,9 +40,9 @@ export interface Fm1Events {
   /** the FM-1 armed or disarmed (#139, #191, #395: REC held + a black key, SEL, the SEQ page): the armed modules, by
    * their index in the binary, as a mask in ARM_WORDS words (#721) */
   arms?(words: number[]): void;
-  /** GLO > PANEL > TEMPO or the global tempo changed on the emulated FM-1 (its menu, PLAY held + PRESET, Main's tempo row
-   * while global; D-907): global, and the global tempo (0: not known yet) */
-  tempo?(global: boolean, bpm: number): void;
+  /** GLO > PANEL > TEMPO, the global tempo or TIME SIG changed on the emulated FM-1 (its menu, PLAY held + PRESET, Main's
+   * tempo row while global; D-907, #1011): global, the global tempo (0: not known yet) and the time signature (a METERS index) */
+  tempo?(global: boolean, bpm: number, meter: number): void;
 }
 
 /** a note the panel's keys started or let go in the engine (panel.c panel_key): a key's own note at the octave, or a row
@@ -76,7 +76,7 @@ interface Exports {
   fm1w_mute(module: number, on: number): void;
   fm1w_arm_mask(w0: number, w1: number, w2: number, w3: number): void;
   /** (absent from a wasm built before D-907) */
-  fm1w_tempo?(patch: number, bpm: number): void;
+  fm1w_tempo?(patch: number, bpm: number, meter: number): void;
   fm1w_focus_dev(): number; fm1w_focus_page(): number; fm1w_octave(): number;
   /** (absent from a wasm built before #549) */
   fm1w_held?(): number; fm1w_guide?(): number; fm1w_align_buf?(): number; fm1w_align?(): void;
@@ -112,7 +112,7 @@ export class Fm1Ui {
       }) : []),
       mute: (m: number, on: number) => ev.mute?.(m, on !== 0),
       arms: (w0: number, w1: number, w2: number, w3: number) => ev.arms?.([w0 >>> 0, w1 >>> 0, w2 >>> 0, w3 >>> 0]),
-      tempo: (patch: number, bpm: number) => ev.tempo?.(patch === 0, bpm),
+      tempo: (patch: number, bpm: number, meter: number) => ev.tempo?.(patch === 0, bpm, meter),
     };
     const { instance } = await WebAssembly.instantiate(bytes, { fm1: env });
     memory = (instance.exports as unknown as Exports).memory;
@@ -154,8 +154,8 @@ export class Fm1Ui {
   playTurned(): void { this.x.fm1w_play_turned?.(); }
   /** a track muted / unmuted on the FM-1 it follows (MUTE_NOW): its black key's light follows */
   mute(module: number, on: boolean): void { this.x.fm1w_mute(module, on ? 1 : 0); }
-  /** the page's TEMPO setting and global tempo (D-907): the emulated FM-1 plays and shows them */
-  tempo(global: boolean, bpm: number): void { this.x.fm1w_tempo?.(global ? 0 : 1, Math.round(bpm)); }
+  /** the page's TEMPO setting, global tempo and time signature (D-907, #1011): the emulated FM-1 plays and shows them */
+  tempo(global: boolean, bpm: number, meter: number): void { this.x.fm1w_tempo?.(global ? 0 : 1, Math.round(bpm), meter); }
   /** the editor's armed devices (#191): their modules as a mask (arm.ts armMask, ARM_WORDS words, #721) */
   armMask(words: readonly number[]): void { this.x.fm1w_arm_mask(words[0] >>> 0, (words[1] ?? 0) >>> 0, (words[2] ?? 0) >>> 0, (words[3] ?? 0) >>> 0); }
 

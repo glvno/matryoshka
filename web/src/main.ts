@@ -67,7 +67,7 @@ import type { Firmware, PanelInput } from './fm1-profiles';
 import { longName, moduleKeywords, moduleName } from './labels';
 import { DeckControls } from './deck';
 import { releaseFocusAfterPointer } from './focus';
-import { DEFS } from './modules';
+import { DEFS, METERS } from './modules';
 import { addModule, newPatch, trackLabel, validatePatch, type Patch, type SideKey } from './patch';
 import { diffCount, diffLines, diffPatches } from './diff';
 import { loadLibrary, summary } from './assemblies';
@@ -412,9 +412,10 @@ device.onEvent = (e) => {
     alignSoon();
     return;
   }
-  if (e.kind === 'tempo') {   // the FM-1's TEMPO setting and global tempo (D-907): after HELLO and when changed there
+  if (e.kind === 'tempo') {   // the FM-1's TEMPO setting, global tempo (D-907) and time signature (#1011; older firmware
+                              // sends none: the editor keeps its own): after HELLO and when changed there
     fromDevice = true;
-    try { tempo.set(e.bpm ? { mode: e.global ? 'global' : 'patch', bpm: e.bpm } : { mode: e.global ? 'global' : 'patch' }, 'device'); } finally { fromDevice = false; }
+    try { tempo.set({ mode: e.global ? 'global' : 'patch', ...(e.bpm ? { bpm: e.bpm } : {}), ...(e.meter !== undefined ? { meter: e.meter } : {}) }, 'device'); } finally { fromDevice = false; }
     return;
   }
   if (e.kind === 'slot') {
@@ -921,9 +922,9 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
   pattern: (p, song) => fm1Event({ kind: 'pattern', pattern: p, song }, 'emu'),
   song: (k, entries) => fm1Event({ kind: 'song', song: k, entries }, 'emu'),
   mute: (m, on) => fm1Event({ kind: 'mute', module: m, on }, 'emu'),
-  tempo: (global, bpm) => {                  // the FM-1 tab's GLO > PANEL > TEMPO, PLAY held + PRESET (D-907)
+  tempo: (global, bpm, meter) => {           // the FM-1 tab's GLO > PANEL > TEMPO and TIME SIG, PLAY held + PRESET (D-907, #1011)
     fromEmu = true;
-    try { tempo.set(bpm ? { mode: global ? 'global' : 'patch', bpm } : { mode: global ? 'global' : 'patch' }, 'emu'); } finally { fromEmu = false; }
+    try { tempo.set({ mode: global ? 'global' : 'patch', ...(bpm ? { bpm } : {}), ...(meter !== undefined ? { meter } : {}) }, 'emu'); } finally { fromEmu = false; }
   },
   // REC held + a black key on the emulated FM-1 (#139): the editor arms the same track, so the keys the page plays (the
   // emulator's MIDI out) go through it as they do on the device
@@ -2609,7 +2610,7 @@ function emuLoad(): void {
       chip: `Over budget · ${over} · won’t upload`, action: 'Use the FM-1 view anyway', more });
   }
   ui.transport(editor.playing);
-  ui.tempo(tempo.global, tempo.bpm);
+  ui.tempo(tempo.global, tempo.bpm, tempo.meter);
   emuArm();                                  // (a load disarms the emulator's engine)
   const at = editor.focus && binaryPage(editor.patch, editor.focus.device, editor.focus.page);
   if (at) ui.focus(at[0], at[1]);
@@ -3297,9 +3298,12 @@ $('dev-release').onclick = () => {
 // is connected; a connected FM-1 that shares it (feature bit 16) says its own at HELLO (TEMPO_NOW) and gets every change.
 // The browser engine, the FM-1 tab and MIDI clock out play it; Main's tempo row and the knobs set it (editor.ts).
 const tempoBtn = $('tempo-btn');
+const meterSel = $<HTMLSelectElement>('meter-sel');   // the time signature (#1011), beside the tempo
+meterSel.append(...METERS.map((m, k) => new Option(m.name, String(k))));
 const showTempo = (): void => {
   tempoBtn.setAttribute('aria-pressed', String(tempo.global));
   tempoBtn.textContent = tempo.global ? `Tempo: global, ${tempo.bpm} bpm` : 'Tempo: each patch its own';
+  meterSel.value = String(tempo.meter);
 };
 tempo.listen((s, from, was) => {
   const src = fromDevice ? 'device' : fromEmu ? 'emu' : from;
@@ -3309,9 +3313,10 @@ tempo.listen((s, from, was) => {
     /* storage blocked: the setting lasts until the page is reloaded */
   }
   host.tempo(s.mode === 'global' ? s.bpm : null);
-  if (src !== 'emu') emu.ui?.tempo(s.mode === 'global', s.bpm);
+  host.timeSignature(s.meter);
+  if (src !== 'emu') emu.ui?.tempo(s.mode === 'global', s.bpm, s.meter);
   if (src !== 'device') {
-    if (device.hasTempo) device.tempo(s.mode === 'global', s.bpm);
+    if (device.hasTempo) device.tempo(s.mode === 'global', s.bpm, s.meter);
     else if (s.mode === 'global' && live() && !uploading) {   // (older firmware: its patch's tempo follows, as it did)
       const main = editor.patch.modules.find((m) => m.type === 'fm1');
       if (main) device.param(editor.patch, main.id, 'tempo', s.bpm);
@@ -3321,6 +3326,7 @@ tempo.listen((s, from, was) => {
   showTempo();
 });
 host.tempo(tempo.global ? tempo.bpm : null);
+host.timeSignature(tempo.meter);
 try {
   localStorage.setItem(TEMPO_KEY, JSON.stringify(tempo.setting));   // (a first visit's too: what plays is on record)
 } catch {
@@ -3328,6 +3334,7 @@ try {
 }
 showTempo();
 tempoBtn.onclick = () => tempo.set({ mode: tempo.global ? 'patch' : 'global' });
+meterSel.onchange = () => tempo.set({ meter: Number(meterSel.value) });
 
 // MIDI clock out: on, the ticked MIDI outputs get clock at Main's tempo and Start / Stop with Play, so several FM-1s play in
 // time with this page and each other. An output nobody ticked or unticked is ticked when it looks like an FM-1. The switch

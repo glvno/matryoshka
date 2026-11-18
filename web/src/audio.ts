@@ -8,6 +8,7 @@ import type { StepNote } from './track';
 import type { PatternView } from './engine';
 import type { Fm1Op } from './fm1-engine';
 import { Fm1Bridge } from './fm1-engine-host';
+import { METER_DEFAULT } from './modules';
 
 /** the engine heard (#941): the browser's (engine.ts) or the FM-1's (engine.c as WebAssembly, fm1-engine.ts) */
 export type EngineKind = 'browser' | 'fm1';
@@ -200,6 +201,7 @@ export class AudioHost {
       if (this.pending) this.send({ t: 'patch', patch: this.pending, revision: this.revision });
       this.send({ t: 'transport', on: this.transportOn });
       this.send({ t: 'tempo', bpm: this.tempoOn });
+      this.send({ t: 'meter', meter: this.meterOn });
       if (this.listenOn) this.send({ t: 'listen', srcs: this.listenOn });
       for (const msg of this.early) this.send(msg);
       this.early = [];
@@ -282,6 +284,13 @@ export class AudioHost {
   tempo(bpm: number | null): void {
     this.tempoOn = bpm;
     this.send({ t: 'tempo', bpm });
+  }
+
+  /** the global time signature (#1011, tempo.ts): an index into METERS; kept for when the worklet starts */
+  private meterOn = METER_DEFAULT;
+  timeSignature(m: number): void {
+    this.meterOn = m;
+    this.send({ t: 'meter', meter: m });
   }
 
   /** the outputs listened to instead of the Output (#939, listen.ts), null: the Output; kept for when the worklet starts */

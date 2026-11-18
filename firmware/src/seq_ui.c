@@ -1297,22 +1297,26 @@ static void sr_rec_white(uint32_t n)
 
 /* The count-in (#414), every pass while it runs (seq_take). Its bars count from the transport's start (eng_run_ticks:
  * where the tracks' bars are). REC with the transport stopped started it: the count-in is its first bars; running
- * already: it begins at the next bar line and lasts the set bars, so recording always begins on a bar. Each beat the bar
- * says COUNT-IN and the beat (with two bars the bar before it: 1.3) and REC's LED is on for the beat's first half; the
- * keys sound as ever and the tracks do not record (seq_rec_sync). When it ends the tracks record and the bar names them */
-#define CIN_BAR 96u                              /* ticks a bar: four beats of 24 */
+ * already: it begins at the next bar line and lasts the set bars, so recording always begins on a bar. A bar and its
+ * beats are the global time signature's (#1011, eng_bar_ticks / eng_beat_ticks, as the click counts them), taken as it
+ * begins. Each beat the bar says COUNT-IN and the beat (with two bars the bar before it: 1.3) and REC's LED is on for the
+ * beat's first half; the keys sound as ever and the tracks do not record (seq_rec_sync). When it ends the tracks record
+ * and the bar names them */
+static uint8_t seq_cin_bar, seq_cin_beat;       /* its bar and beat in clock ticks */
 static void seq_cin_poll(void)
 {
     int32_t rel = eng_run_ticks();
-    uint32_t into, k;
+    uint32_t into, k, bar = seq_cin_bar, beat = seq_cin_beat, beats;
     char m[24], num[8], *p;
     if (rel < 0)
         return;                                  /* (the engine has not taken the start yet) */
     if (seq_cin == 1u) {
         uint32_t start = eng_ticks() - (uint32_t)rel, from = 0;   /* the tick the transport started on */
+        seq_cin_bar = (uint8_t)(bar = eng_bar_ticks());
+        seq_cin_beat = (uint8_t)(beat = eng_beat_ticks());
         if ((int32_t)(seq_cin_at - start) > 0)   /* running already when REC was pressed: from the next bar line */
-            from = (seq_cin_at - start + CIN_BAR - 1u) / CIN_BAR * CIN_BAR;
-        seq_cin_end = from + seq_cin_bars * CIN_BAR;
+            from = (seq_cin_at - start + bar - 1u) / bar * bar;
+        seq_cin_end = from + seq_cin_bars * bar;
         seq_cin = 2;
     }
     if ((uint32_t)rel >= seq_cin_end) {          /* it ends: the armed tracks record from this bar */
@@ -1322,23 +1326,24 @@ static void seq_cin_poll(void)
         ui_dirty = ui_dirty ? ui_dirty : 1;      /* (the footer: REC and the track) */
         return;
     }
-    if (seq_cin_end - (uint32_t)rel > seq_cin_bars * CIN_BAR) {   /* before the bar line it begins on */
+    if (seq_cin_end - (uint32_t)rel > seq_cin_bars * bar) {   /* before the bar line it begins on */
         seq_cin_lit = 1;
         return;
     }
-    into = seq_cin_bars * CIN_BAR - (seq_cin_end - (uint32_t)rel);   /* ticks into the count */
-    seq_cin_lit = (uint8_t)(into % 24u < 12u);
-    k = into / 24u;                              /* the beat, 0.. over the bars */
+    into = seq_cin_bars * bar - (seq_cin_end - (uint32_t)rel);   /* ticks into the count */
+    seq_cin_lit = (uint8_t)(into % beat < beat / 2u);
+    k = into / beat;                             /* the beat, 0.. over the bars */
+    beats = bar / beat;
     if (k == seq_cin_shown)
         return;
     seq_cin_shown = (uint8_t)k;
     p = put(m, MSG_COUNT_IN " ");
     if (seq_cin_bars > 1u) {
-        fmt_int(num, (int32_t)(k / 4u) + 1);
+        fmt_int(num, (int32_t)(k / beats) + 1);
         p = put(p, num);
         *p++ = '.';
     }
-    fmt_int(num, (int32_t)(k % 4u) + 1);
+    fmt_int(num, (int32_t)(k % beats) + 1);
     put(p, num)[0] = 0;
     ui_msg(m, 4000);                             /* (the next beat's message replaces it, or the end's) */
 }

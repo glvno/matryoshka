@@ -28,8 +28,9 @@
  *   static uint32_t m1_test_screen(uint32_t k, uint8_t *out);   the screen as text: k 0xFF its head (count, page, flags, Main's
  *                                                               patch buttons u16: their jacks, #368), else
  *                                                               text k (x, y, w, h, n, n characters); the bytes written, 0 = none
- *   static void m1_tempo(uint32_t patch, uint32_t bpm);         TEMPO: the editor set GLO > PANEL > TEMPO (0 GLOBAL, 1 PATCH) and the
- *                                                               global tempo (D-907, tempo_glo.h gt_set)
+ *   static void m1_tempo(uint32_t patch, uint32_t bpm, uint32_t meter);   TEMPO: the editor set GLO > PANEL > TEMPO (0 GLOBAL, 1 PATCH),
+ *                                                               the global tempo (D-907, tempo_glo.h gt_set) and, from a 4th byte,
+ *                                                               the time signature's index (#1011; METER_N: none sent, it stays)
  *   static void m1_arms(eng_mset_t mask);                       ARMS: the editor's armed set (#191, feature bit 20), a set of
  *                                                               the modules (0..127 with feature bit 21, #721); no ARMS_NOW back
  *   static uint32_t m1_test_peak(void);                         the output's peak (16 bit, before MASTER) since the last call, bit
@@ -212,15 +213,16 @@ static void m1_keys_report(uint32_t key, int down, uint32_t keys, uint32_t held)
  * changed */
 static void m1_guide_now(const uint8_t *p, uint32_t n) { m1_reply(R_GUIDE_NOW, p, n); }
 
-/* TEMPO_NOW: GLO > PANEL > TEMPO (0 GLOBAL, 1 PATCH) and the global tempo (bpm, u16; 0 = not known yet), after INFO and
- * unasked when either changed on the FM-1 (D-907) */
+/* TEMPO_NOW: GLO > PANEL > TEMPO (0 GLOBAL, 1 PATCH), the global tempo (bpm, u16; 0 = not known yet) and the time
+ * signature's index (#1011; firmware before it sends 3 bytes), after INFO and unasked when any changed on the FM-1 (D-907) */
 static void m1_tempo_now(void)
 {
-    uint8_t p[3];
+    uint8_t p[4];
     p[0] = gt_patch;
     p[1] = (uint8_t)gt_bpm;
     p[2] = (uint8_t)(gt_bpm >> 8);
-    m1_reply(R_TEMPO_NOW, p, 3);
+    p[3] = gt_meter;
+    m1_reply(R_TEMPO_NOW, p, 4);
 }
 
 static void m1_ack(uint32_t cmd, uint32_t seq, uint32_t status, uint32_t aux)
@@ -910,9 +912,10 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         if (len >= 8u)                                       /* 2 from an editor before feature bit 21, else ENG_MSET_WORDS (#721) */
             m1_arms(mset_read(d, len / 4u));
         break;
-    case C_TEMPO:                                            /* mode u8, bpm u16 (0: the global tempo stays) */
+    case C_TEMPO:                                            /* mode u8, bpm u16 (0: the global tempo stays), optional meter u8
+                                                              * (#1011; an older firmware takes the first 3 and ignores it) */
         if (len >= 3u) {
-            m1_tempo(d[0], (uint32_t)d[1] | (uint32_t)d[2] << 8);
+            m1_tempo(d[0], (uint32_t)d[1] | (uint32_t)d[2] << 8, len >= 4u ? d[3] : METER_N);
             m1_ui_rows();
         }
         break;

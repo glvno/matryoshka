@@ -285,3 +285,94 @@ describe('continuous Arpeggiator rate input', () => {
     expect(played(e, Math.floor(SR / 128)).length).toBeGreaterThanOrEqual(4);
   });
 });
+
+/** the block of every note start over `blocks` blocks, and its note; `before`: what happens before block b */
+function starts(e: Engine, blocks: number, before?: (b: number) => void): { b: number; note: number }[] {
+  const l = new Float32Array(128), r = new Float32Array(128);
+  const out: { b: number; note: number }[] = [];
+  let last = '';
+  for (let b = 0; b < blocks; b++) {
+    before?.(b);
+    e.render(l, r);
+    const on = e.voiceNotes().filter((v) => v.on).map((v) => v.note);
+    const k = on.join(',');
+    if (k !== last && on.length) out.push({ b, note: on[on.length - 1] });
+    last = k;
+  }
+  return out;
+}
+/** blocks of a bar of 4/4 at 240 bpm (a second) */
+const BAR = SR / 128;
+
+describe('bar rates (#1010), the time signature (#1011) and swing (#1012)', () => {
+  const held = (params: Record<string, number>, keys: number[], blocks: number, meter?: number): { b: number; note: number }[] => {
+    const e = new Engine(SR);
+    e.load(arpPatch({ gate: 0.5, ...params }, 1, 240).p);
+    if (meter !== undefined) e.meter = meter;
+    for (const k of keys) e.noteOn(k, 1);
+    return starts(e, blocks);
+  };
+
+  it('a pass fills its bars whatever the keys: three and four notes loop in the same time', () => {
+    const three = held({ mode: 0, rate: 8 }, [64, 60, 67], Math.ceil(BAR * 2) + 2);
+    const four = held({ mode: 0, rate: 8 }, [64, 60, 67, 71], Math.ceil(BAR * 2) + 2);
+    expect(three.map((x) => x.note)).toEqual([60, 64, 67, 60, 64, 67, 60]);
+    expect(four.map((x) => x.note)).toEqual([60, 64, 67, 71, 60, 64, 67, 71, 60]);
+    expect(Math.abs(three[3].b - BAR)).toBeLessThanOrEqual(1);
+    expect(Math.abs(four[4].b - BAR)).toBeLessThanOrEqual(1);
+    expect(Math.abs(three[6].b - 2 * BAR)).toBeLessThanOrEqual(1);
+    // half a bar, 2 and 4 bars
+    expect(Math.abs(held({ rate: 7 }, [60, 64], BAR + 2)[2].b - BAR / 2)).toBeLessThanOrEqual(1);
+    expect(Math.abs(held({ rate: 9 }, [60, 64], 2 * BAR + 2)[1].b - BAR)).toBeLessThanOrEqual(1);
+    expect(Math.abs(held({ rate: 10 }, [60, 64], 4 * BAR + 2)[1].b - 2 * BAR)).toBeLessThanOrEqual(1);
+  });
+
+  it('each step at its exact share: five notes in a bar stay even; up-down counts its turnaround once', () => {
+    const five = held({ mode: 0, rate: 8 }, [60, 62, 64, 65, 67], Math.ceil(BAR * 2) + 2);
+    five.forEach((x, k) => expect(Math.abs(x.b - (k * BAR) / 5), `step ${k}`).toBeLessThanOrEqual(1));
+    const ud = held({ mode: 2, rate: 8, octaves: 2 }, [60, 64, 67], Math.ceil(BAR) + 2);
+    expect(ud.map((x) => x.note)).toEqual([60, 64, 67, 72, 76, 79, 76, 72, 67, 64, 60]); // 10 steps, then the next pass
+    expect(Math.abs(ud[10].b - BAR)).toBeLessThanOrEqual(1);
+  });
+
+  it('the time signature sets the bar: 3/4 and 6/8 fill 72 ticks, 7/8 84', () => {
+    for (const [meter, beats] of [[1, 3], [4, 3], [5, 3.5]]) {
+      const s = held({ mode: 0, rate: 8 }, [60, 64, 67], Math.ceil(BAR) + 2, meter);
+      expect(Math.abs(s[3].b - (BAR * beats) / 4), `meter ${meter}`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('with the transport running the passes start on its bar lines; a chord change waits for the next pass', () => {
+    const e = new Engine(SR);
+    e.load(arpPatch({ mode: 0, rate: 8, gate: 0.3 }, 1, 240).p);
+    e.transport(true);
+    // a key inside the first bar: its step plays at once; the pass started with 60 alone, so 64 joins at the next bar line
+    const all = starts(e, Math.ceil(BAR * 2) + 2, (b) => (b === 100 ? e.noteOn(60, 1) : b === 150 ? e.noteOn(64, 1) : undefined));
+    expect(all[0]).toEqual({ b: 100, note: 60 });
+    expect(all.map((x) => x.note)).toEqual([60, 60, 64, 60]);
+    expect(Math.abs(all[1].b - BAR)).toBeLessThanOrEqual(1);
+    expect(Math.abs(all[2].b - 1.5 * BAR)).toBeLessThanOrEqual(1);
+    expect(Math.abs(all[3].b - 2 * BAR)).toBeLessThanOrEqual(1);
+  });
+
+  it('swing starts every second step late by (swing - 50) / 50 of a step, on a clock rate and on a bar rate', () => {
+    // (a step plays at the start of the block its time falls in, the late one at the first block after its delay: one
+    // block either way)
+    const step16 = BAR / 16; // a 1/16 at 240 bpm
+    const tick = held({ mode: 0, rate: 4, swing: 75 }, [60, 64], Math.ceil(step16 * 4) + 2);
+    expect(tick.map((x) => x.note)).toEqual([60, 64, 60, 64, 60]);
+    [0, 1.5, 2, 3.5, 4].forEach((at, k) => expect(Math.abs(tick[k].b - at * step16), `step ${k}`).toBeLessThanOrEqual(2));
+    const fit = held({ mode: 0, rate: 8, swing: 70 }, [60, 62, 64, 65], Math.ceil(BAR) + 2);
+    [0, 1.4, 2, 3.4, 4].forEach((at, k) => expect(Math.abs(fit[k].b - (at * BAR) / 4), `step ${k}`).toBeLessThanOrEqual(2));
+    // straight at 50 %: as before
+    expect(held({ mode: 0, rate: 4, swing: 50 }, [60, 64], Math.ceil(step16 * 2) + 2).map((x) => x.b)).toEqual(held({ mode: 0, rate: 4 }, [60, 64], Math.ceil(step16 * 2) + 2).map((x) => x.b));
+  });
+
+  it('a bar rate or swing writes format 63 (firmware before it plays neither); a patch without them keeps its format', () => {
+    const base = formatOf(arpPatch().p);
+    expect(base).toBeLessThan(63);
+    expect(formatOf(arpPatch({ rate: 6 }).p)).toBe(base);
+    expect(formatOf(arpPatch({ rate: 8 }).p)).toBe(63);
+    expect(formatOf(arpPatch({ swing: 60 }).p)).toBe(63);
+  });
+});

@@ -199,9 +199,9 @@ export type DeviceEvent =
   | { kind: 'presetStored'; structure: string; name: string }
   /** an INFO nobody asked for: MENU > MIDI OUT changed under Live (feature bit 8; `info` has it) */
   | { kind: 'info' }
-  /** GLO > PANEL > TEMPO and the global tempo as the FM-1 has them (TEMPO_NOW, D-907): after HELLO, and when they change
-   *  there; bpm 0: not known yet */
-  | { kind: 'tempo'; global: boolean; bpm: number }
+  /** GLO > PANEL > TEMPO, the global tempo and TIME SIG as the FM-1 has them (TEMPO_NOW, D-907, #1011): after HELLO, and
+   *  when they change there; bpm 0: not known yet; meter (a METERS index) only from firmware that has it */
+  | { kind: 'tempo'; global: boolean; bpm: number; meter?: number }
   /** a key edge the FM-1's panel took (KEYS_NOW, #549, feature bit 18) */
   | ({ kind: 'keys' } & KeysNow)
   /** the FM-1's panel state (GUIDE_NOW, #549, #554, feature bit 18): after HELLO and whenever it changed */
@@ -534,9 +534,10 @@ export class DeviceLink {
     if (this.connected && this.takesArms) this.out!.send(armsFrame(this.info!.features & FEATURE_WIDE_ARMS ? words : words.slice(0, 2)));
   }
 
-  /** GLO > PANEL > TEMPO and the global tempo (bpm 0: leave it), to firmware that shares them */
-  tempo(global: boolean, bpm: number): void {
-    if (this.connected && this.hasTempo) this.out!.send(tempoFrame(global, bpm));
+  /** GLO > PANEL > TEMPO, the global tempo (bpm 0: leave it) and the time signature (#1011; older firmware ignores it), to
+   *  firmware that shares them */
+  tempo(global: boolean, bpm: number, meter: number): void {
+    if (this.connected && this.hasTempo) this.out!.send(tempoFrame(global, bpm, meter));
   }
 
   /** the transport (PLAY) */

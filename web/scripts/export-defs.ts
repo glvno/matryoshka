@@ -7,7 +7,7 @@
 // (the factory assemblies the FM-1 runs compiled, scripts/gen-aot.ts).
 // Run from web/: npx vite-node scripts/export-defs.ts
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { ADSR_LONG, ANALOG_CURVE, ANALOG_DIP, ANALOG_DIP_S, ANALOG_PWO, ANALOG_SKEW, ANALOG_TOL, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, FILTER_DRIVE_KNEE, FILTER_DRIVE_TOP, DIODE_W180, DIODE_KCRIT, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_REACH_MAX, DELAY_RATES, DELAY_TAIL, delayAaCoefs, DEVICE_SR, DELAY_TAPE_LP, DELAY_TAPE_HP, delayTapePole, DELAY_WOW_HZ, DELAY_FLUTTER_HZ, DELAY_WOW_MS, DELAY_FLUTTER_MS, turnInc, delayDepth8, DELAY_HEADS, DELAY_HEAD_MASK, DELAY_HEAD_GAIN, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, LFO_TEMPO, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY, ONCE_BAR, CLICK_MS, CLICK_LEVEL_Q16, CLICK_HZ, CLICK_ACCENT_HZ } from '../src/modules';
+import { ADSR_LONG, ANALOG_CURVE, ANALOG_DIP, ANALOG_DIP_S, ANALOG_PWO, ANALOG_SKEW, ANALOG_TOL, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, FILTER_DRIVE_KNEE, FILTER_DRIVE_TOP, DIODE_W180, DIODE_KCRIT, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_REACH_MAX, DELAY_RATES, DELAY_TAIL, delayAaCoefs, DEVICE_SR, DELAY_TAPE_LP, DELAY_TAPE_HP, delayTapePole, DELAY_WOW_HZ, DELAY_FLUTTER_HZ, DELAY_WOW_MS, DELAY_FLUTTER_MS, turnInc, delayDepth8, DELAY_HEADS, DELAY_HEAD_MASK, DELAY_HEAD_GAIN, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, LFO_TEMPO, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY, METERS, METER_DEFAULT, CLICK_MS, CLICK_LEVEL_Q16, CLICK_HZ, CLICK_ACCENT_HZ } from '../src/modules';
 import { LPG_ATTACK, LPG_CLIP, LPG_RES_K } from '../src/modules';
 import { LIMIT_AHEAD, LIMIT_CHUNK, LIMIT_KA } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16, VERSION, deviceBudget, DEVICE } from '../src/patchbin';
@@ -143,7 +143,11 @@ w(`#define TRACK_STEPS ${STEPS_MAX}        /* a Steps track's most steps (track.
 w(`#define TRACK_NAME_MAX ${TRACK_NAME_MAX}`);
 w(`#define TRACK_NOTES_MAX ${TRACK_NOTES_MAX}   /* notes per track (the notes section, flag bit 4; track.ts noteWord) */`);
 w(`#define TRACK_POLY ${TRACK_POLY}          /* notes a track sounds at once (modules.ts) */`);
-w(`#define ONCE_BAR ${ONCE_BAR}u          /* play once (#632): the count-in's bar in clock ticks (modules.ts) */`);
+w(`#define METER_N ${METERS.length}u           /* the global time signature (#1011, modules.ts METERS): its meters, as listed */`);
+w(`#define METER_DEFAULT ${METER_DEFAULT}u      /* ... 4/4: what plays when none was set */`);
+w(`static const uint8_t METER_BAR[METER_N] = {${METERS.map((m) => m.bar).join(', ')}};   /* ... a bar in clock ticks */`);
+w(`static const uint8_t METER_BEAT[METER_N] = {${METERS.map((m) => m.beat).join(', ')}};   /* ... a count-in click's ticks */`);
+w(`static const char *const METER_NAME[METER_N] = {${METERS.map((m) => `"${m.name}"`).join(', ')}};`);
 w(`#define CLICK_MS ${CLICK_MS}u           /* ... its click on each beat: ms to nothing, level (Q16), Hz on beats 2..4 and on beat 1 */`);
 w(`#define CLICK_LEVEL_Q16 ${CLICK_LEVEL_Q16}`);
 w(`#define CLICK_HZ ${CLICK_HZ}u`);

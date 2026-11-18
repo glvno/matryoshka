@@ -174,6 +174,9 @@
         <span class="menu-heading">Tempo</span>
         <button id="tempo-btn" type="button" aria-pressed="true">Tempo: global</button>
         <p class="muted">Global: every patch plays at one tempo, and opening another patch keeps it. Main’s tempo row sets it. Patch: each patch plays its own tempo. Either way each patch keeps its own. A connected FM-1 shares this setting (GLO, PANEL, K4). MIDI clock in overrides both.</p>
+        <!-- the time signature (main.ts, tempo.ts, #1011): global like the tempo, shared with a connected FM-1 (GLO > PANEL 2/2 > TIME SIG) -->
+        <div class="row"><label for="meter-sel">Time signature</label><select id="meter-sel" aria-describedby="meter-note"></select></div>
+        <p id="meter-note" class="muted">The bar for play once, REC’s count-in and the arpeggiator’s bar rates; the tempo counts quarter notes in every one. It belongs to this browser and the FM-1, not to a patch. A connected FM-1 shares it (GLO, PANEL, then ALGO to its second page). Older FM-1 firmware plays 4/4.</p>
         <!-- MIDI clock out (main.ts, clock-out.ts): the ticked outputs get clock at Main's tempo and Start / Stop with Play -->
         <span class="menu-heading">MIDI clock out</span>
         <button id="clock-out-btn" type="button" aria-pressed="false">Send MIDI clock: off</button>
