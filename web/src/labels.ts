@@ -31,6 +31,7 @@ const BY_TYPE: Record<string, Record<string, string>> = {
   comp: { thresh: 'threshold', hyst: 'hysteresis', gt: 'a above b', lt: 'a below b', trig: 'rise trigger' },
   range: { inlo: 'in low', inhi: 'in high', outlo: 'out low', outhi: 'out high' },
   limit: { gr: 'gain reduction', ahead: 'lookahead' },
+  euclid: { hits: 'hits (fill)', off: 'off (rests)' },
   matrix: {
     ...Object.fromEntries([1, 2, 3, 4].flatMap((k) => [[`in${k}`, `in ${k}`], [`out${k}`, `out ${k}`]])),
     ...Object.fromEntries([1, 2, 3, 4].flatMap((i) => [1, 2, 3, 4].map((o) => [`i${i}o${o}`, `in ${i} → out ${o}`]))),
@@ -105,6 +106,11 @@ const HINTS: Record<string, string> = {
   'limit.gain': 'Drive into the limiter, in dB. More gain makes the sound louder up to the ceiling, and squashes it more.',
   'limit.release': 'How fast the gain comes back after a peak: 99 % of the way in this time. Short times pump and distort low notes; long times duck the sound after a loud hit.',
   'limit.ahead': 'Lookahead: the sound is delayed 1.45 ms, so the gain has come down smoothly by the time a peak arrives. Off: no delay, for a limiter inside a feedback loop; the gain drops at once on a peak, which is harsher.',
+  'euclid.steps': 'The pattern\'s length in steps, 1..32. It plays round and round.',
+  'euclid.hits': 'How many of the steps are hits, spread as evenly as they go (a Euclidean rhythm): 3 hits over 8 steps is the tresillo x..x..x., 5 over 8 with rotate 2 the cinquillo x.xx.xx. 0: none, all steps: every step.',
+  'euclid.rotate': 'Turns the pattern: it starts this many steps later in it, so the hits come that much earlier.',
+  'euclid.accent': 'How many of the hits are accented, spread as evenly over the hits as the hits are over the steps; the first hit is always one. Accented hits also play on the accent output. 0: none.',
+  'euclid.rate': 'With nothing in clock: one step each this long on the FM-1\'s clock (the tempo, or MIDI clock) while the transport runs, the first when PLAY starts. With a cable in clock, each rising edge is a step and this row does nothing.',
 };
 export const paramHint = (type: string, name: string): string | undefined => HINTS[`${type}.${name}`];
 
@@ -131,7 +137,7 @@ const TAGS: Record<string, [string, TagFamily]> = {
   mixer: ['MIX', 'util'], math: ['MATH', 'util'], logic: ['LOGIC', 'util'], const: ['DC', 'util'], macro: ['MACRO', 'util'], scale: ['SCALE', 'util'],
   output: ['OUT', 'util'], fm1: ['MAIN', 'util'], part: ['PART', 'util'], alloc: ['VOICES', 'util'], scope: ['SCOPE', 'util'],
   drummap: ['MAP', 'mod'], pd: ['PD', 'src'], select: ['SEL', 'util'], shreg: ['SHREG', 'mod'], comp: ['COMP', 'util'], range: ['RANGE', 'util'], matrix: ['MATRIX', 'util'], lpg: ['LPG', 'shp'],
-  limit: ['LIMIT', 'shp'],
+  limit: ['LIMIT', 'shp'], euclid: ['EUCLID', 'mod'],
 };
 
 /** the short tag before a card's title and the family that colours it */
@@ -158,6 +164,7 @@ const ALIASES: Record<string, string> = {
   harm: 'chord chords orchid chord memory one finger triad seventh ninth sus inversion voicing',
   lpg: 'lpg lowpass gate lopass gate low pass gate vactrol buchla 292 pluck ping bongo strike filter vca',
   limit: 'brickwall peak ceiling clip maximizer loudness ear safety protect headphones feedback master dynamics',
+  euclid: 'euclidean bjorklund rhythm pattern trigger gate clock drum sequencer fill hits pulses rotate accent tresillo polyrhythm',
 };
 
 /** the words a module is found by in the palette and + Add module besides its name: its label, its card tag, its former

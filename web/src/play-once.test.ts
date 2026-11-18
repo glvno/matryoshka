@@ -66,6 +66,24 @@ describe('play once (#632)', () => {
     expect(flips(0)).toBeGreaterThan(1.8 * flips(23999));
   });
 
+  it('counts in a bar of the time signature (#1011): 6/8 two dotted quarters, 7/8 seven eighths, 5/4 five beats', () => {
+    const count = (meter: number, n: number): { at: number[]; running: boolean[] } => {
+      const { p } = rig([{ len: 16, at: [0, 4, 8, 12] }]);
+      const e = new Engine(SR);
+      e.load(p);
+      e.meter = meter;
+      e.playOnce();
+      const r = run(e, n);
+      return { at: clicks(r.l, n), running: r.running };
+    };
+    const six = count(4, 72000 + 2000); // a bar of 6/8 at 120 (quarter notes): 72 ticks
+    expect(six.at).toEqual([0, 35999]);
+    expect(six.running.findIndex((r) => r) * 128).toBeGreaterThanOrEqual(72000 - 128);
+    expect(six.running.findIndex((r) => r) * 128).toBeLessThan(72000 + 128);
+    expect(count(5, 84000).at).toEqual([0, 11999, 23999, 35999, 47999, 59999, 71999]);
+    expect(count(3, 120000).at).toEqual([0, 23999, 47999, 71999, 95999]);
+  });
+
   it('then plays the pattern once and stops by itself', () => {
     const { p } = rig([{ len: 16, at: [0, 4, 8, 12] }]);
     const e = new Engine(SR);

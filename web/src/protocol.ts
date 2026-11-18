@@ -34,8 +34,10 @@
 //                                                    patch; no reply. Format 48 (INFO's highest readable format)
 //   37 SONG     song u8 (0-based), n u8, n (pattern u8, shift i8)   a song's entries, into the running patch; no reply.
 //                                                    Format 48
-//   38 TEMPO    mode u8 (0 global, 1 patch), bpm u16 (0: the global tempo stays)   GLO > PANEL > TEMPO and the global
-//                                                    tempo (D-907, tempo.ts); no reply. Feature bit 16
+//   38 TEMPO    mode u8 (0 global, 1 patch), bpm u16 (0: the global tempo stays), meter u8   GLO > PANEL > TEMPO, the global
+//                                                    tempo (D-907, tempo.ts) and the time signature (#1011, modules.ts METERS
+//                                                    index); no reply. Feature bit 16. Firmware before #1011 takes the first
+//                                                    3 bytes and ignores the 4th, so the editor always sends it
 //   39 ARMS     ARM_WORDS u32 (2 before feature bit 21)   the editor's armed set (#191), a mask over the module indices of
 //                                                    the patch it sent (arm.ts armMask; word k: modules 32k..32k+31): the FM-1
 //                                                    arms the same, so its panel's keys and the editor's notes play the same
@@ -99,9 +101,10 @@
 //                                                    wired): a mask over the module indices of the patch the FM-1 plays (arm.ts
 //                                                    armedFromMask). The editor follows (an editor before #721 reads the first
 //                                                    two words); older firmware never sends it
-//   55 TEMPO_NOW  mode u8 (0 global, 1 patch), bpm u16 (0: not known yet)   after INFO (the answer to HELLO), and unasked
-//                                                    when the FM-1 changed the setting or the global tempo (its menu, PLAY
-//                                                    held + PRESET, Main's tempo row while global). Feature bit 16
+//   55 TEMPO_NOW  mode u8 (0 global, 1 patch), bpm u16 (0: not known yet), meter u8   after INFO (the answer to HELLO), and
+//                                                    unasked when the FM-1 changed the setting, the global tempo (its menu, PLAY
+//                                                    held + PRESET, Main's tempo row while global) or TIME SIG. Feature bit 16.
+//                                                    Firmware before #1011 sends 3 bytes (it plays 4/4)
 //   57 KEYS_NOW  key u8 (0 = F3; bit 7 pressed), keys u32 (held after it, bit n key n), held u16 (the buttons held then,
 //               matrix ids)                       unasked (#549, feature bit 18): every key edge the FM-1's panel takes,
 //                                                    while MENU > MIDI OUT is on and the editor said HELLO since power-on.
@@ -151,6 +154,7 @@
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
 
+import { meterOf } from './modules';
 import { ARM_WORDS, type Range } from './patch';
 import { noteWords, PATTERNS_MAX, SHIFT_MAX, SONG_LEN_MAX, SONGS_MAX, TRACK_NOTES_MAX, wordsNotes, type SongEntry, type StepNote } from './track';
 
@@ -314,10 +318,11 @@ export function parseSongNow(payload: number[]): { song: number; entries: SongEn
 }
 export const focusFrame = (device: number, page: number): Uint8Array => frame(CMD.focus, [device & 0xff, page & 0xff]);
 export const muteFrame = (module: number, on: boolean): Uint8Array => frame(CMD.mute, [module, on ? 1 : 0]);
-/** GLO > PANEL > TEMPO (global: true) and the global tempo (whole bpm; 0 leaves it) */
-export const tempoFrame = (global: boolean, bpm: number): Uint8Array => {
+/** GLO > PANEL > TEMPO (global: true), the global tempo (whole bpm; 0 leaves it) and the time signature (a METERS index,
+ *  #1011) */
+export const tempoFrame = (global: boolean, bpm: number, meter: number): Uint8Array => {
   const b = Math.max(0, Math.min(0xffff, Math.round(bpm)));
-  return frame(CMD.tempo, [global ? 0 : 1, b & 0xff, b >> 8]);
+  return frame(CMD.tempo, [global ? 0 : 1, b & 0xff, b >> 8, meterOf(meter)]);
 };
 /** ARMS (#191): the editor's armed set as a module mask (arm.ts armMask), its words as u32 LE (two for firmware before
  * feature bit 21: modules 0..63; ARM_WORDS since, #721) */
@@ -329,9 +334,11 @@ export const parseArmsNow = (payload: number[]): number[] | null => {
   const n = payload.length >= 4 * ARM_WORDS ? ARM_WORDS : 2;
   return Array.from({ length: ARM_WORDS }, (_, k) => (k < n ? (payload[4 * k] | (payload[4 * k + 1] << 8) | (payload[4 * k + 2] << 16) | (payload[4 * k + 3] << 24)) >>> 0 : 0));
 };
-/** a TEMPO_NOW payload: the FM-1's setting and global tempo (bpm 0: not known yet) */
-export const parseTempoNow = (payload: number[]): { global: boolean; bpm: number } | null =>
-  payload.length >= 3 ? { global: payload[0] === 0, bpm: payload[1] | (payload[2] << 8) } : null;
+/** a TEMPO_NOW payload: the FM-1's setting and global tempo (bpm 0: not known yet), and its time signature when the
+ *  firmware sends one (#1011; older firmware: none, the editor keeps its own) */
+export const parseTempoNow = (payload: number[]): { global: boolean; bpm: number; meter?: number } | null =>
+  payload.length < 3 ? null : payload.length >= 4 ? { global: payload[0] === 0, bpm: payload[1] | (payload[2] << 8), meter: meterOf(payload[3]) }
+    : { global: payload[0] === 0, bpm: payload[1] | (payload[2] << 8) };
 /** the arpeggiator's settings, and its transport (null = leave it) */
 export const transportFrame = (run: boolean): Uint8Array => frame(CMD.transport, [run ? 1 : 0]);
 export const liveFrame = (paused = false): Uint8Array => frame(CMD.live, paused ? [1] : []);

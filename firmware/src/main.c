@@ -846,7 +846,8 @@ static int slot_used(uint32_t s) { return s < bank_slots && (bank_mask >> s & 1u
  * ALLOW; bits 5..7 unused: a development build wrote USB LEVEL there, #600, never released, and they are not read), the
  * global tempo's low byte (byte 5,
  * D-907; was CPU in the bar), clock in (bit 0; bit 1: CLOCK OUT off, #473, read alike; bit 2: 3.5MM OUT off, #631, a
- * record from before reads as ON), TEMPO and the tempo's bit 8 (byte 7, tempo_glo.h; was program change),
+ * record from before reads as ON), TEMPO, the time signature (bits 2..5, #1011) and the tempo's bit 8 (byte 7,
+ * tempo_glo.h; was program change),
  * MIDI channel, MIDI out, the bank's format, the selected module, REC's count-in (byte 12, #414: a record without
  * it, SET_MIN bytes, reads as OFF), the last processed factory set (bytes 13..15, #441: a
  * record without them reads as unknown). The version stays 1, so an older firmware reads the longer record too; it
@@ -948,10 +949,12 @@ static void device_identity_boot(void)
     di_usb_snapshot();
 }
 
-/* TEMPO from the editor (proto.c, D-907) */
-static void m1_tempo(uint32_t patch, uint32_t bpm)
+/* TEMPO from the editor (proto.c, D-907): meter the time signature's index (#1011), METER_N from an editor without it */
+static void m1_tempo(uint32_t patch, uint32_t bpm, uint32_t meter)
 {
     gt_set(patch, bpm, fm1_ms);
+    if (meter < METER_N)
+        gt_set_meter(meter, fm1_ms);
     if (!ui_dirty)
         ui_dirty = 1;
 }
@@ -1313,6 +1316,7 @@ static void defaults_now(void)
     octave = 0;
     gt_patch = 0;                                /* TEMPO: GLOBAL, at the tempo of the patch loaded next */
     gt_bpm = 0;
+    gt_meter = METER_DEFAULT;                    /* TIME SIG: 4/4 (#1011) */
     gt_apply();
     if (flash_ok) {
         ui_msg("WRITING THE FACTORY BANK", 10000);

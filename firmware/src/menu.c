@@ -52,6 +52,7 @@ static void menu_value(uint32_t row, char *out)
     case MR_LEDS: p = put(p, cfg.leds == 0 ? "OFF" : cfg.leds == 1 ? "DIM LOW" : "DIM HIGH"); break;
     case MR_ACCEL: p = put(p, ONOFF[cfg.accel]); break;
     case MR_CIN: p = put(p, cfg.count_in == 0 ? "OFF" : cfg.count_in == 1 ? "1 BAR" : "2 BARS"); break;
+    case MR_METER: p = put(p, METER_NAME[gt_meter]); break;   /* the time signature (#1011) */
     case MR_TEMPO: {                             /* GLOBAL or PATCH, and the tempo now as the footer shows it (#582);
                                                   * under MIDI clock (the footer: MIDI) EXT in its place, as GLOBAL EXT
                                                   * (D-907: GLOBAL MIDI would not fit the row's 10 characters) */
@@ -231,7 +232,7 @@ static void menu_draw(int full)
 static void menu_open(void)             /* GLO (panel.c): the menu on MIDI, nothing armed (#395) */
 {
     menu_tab = MT_MIDI;
-    menu_sys2 = 0;
+    menu_page2 = 0;
     menu_armed = MR_COUNT;
     update_arm = 0;
 }
@@ -302,6 +303,15 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
             m1_tempo_now();
         }
         break;
+    case MR_METER: {                                    /* TIME SIG (#1011): one meter a click, no wrap; kept 5 s later, without SAVE */
+        int32_t v = (int32_t)gt_meter + d;
+        v = v < 0 ? 0 : v > (int32_t)METER_N - 1 ? (int32_t)METER_N - 1 : v;
+        if ((uint32_t)v != gt_meter) {
+            gt_set_meter((uint32_t)v, fm1_ms);
+            m1_tempo_now();
+        }
+        break;
+    }
     case MR_UPDATE:
     case MR_DEFAULTS:                               /* a turn right arms the row for GLO's hold (menu_fire), left disarms it */
         menu_armed = MR_COUNT;
@@ -321,14 +331,14 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
     ui_dirty = 1;
 }
 
-static void menu_tab_go(int32_t s)                      /* ALGO: the next / previous tab, drawn whole (another layout); SYSTEM
-                                                         * takes two steps, its pages 1/2 and 2/2 (#702) */
+static void menu_tab_go(int32_t s)                      /* ALGO: the next / previous tab, drawn whole (another layout); PANEL
+                                                         * and SYSTEM take two steps, their pages 1/2 and 2/2 (#702, #1011) */
 {
-    if (menu_tab == MT_SYSTEM && (s > 0) != (menu_sys2 != 0)) {
-        menu_sys2 = (uint8_t)(s > 0);
+    if (menu_two(menu_tab) && (s > 0) != (menu_page2 != 0)) {
+        menu_page2 = (uint8_t)(s > 0);
     } else {
         menu_tab = (uint8_t)((menu_tab + (s > 0 ? 1u : MT_COUNT - 1u)) % MT_COUNT);
-        menu_sys2 = (uint8_t)(menu_tab == MT_SYSTEM && s < 0);
+        menu_page2 = (uint8_t)(menu_two(menu_tab) && s < 0);
     }
     menu_armed = MR_COUNT;
     update_arm = 0;

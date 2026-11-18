@@ -61,7 +61,7 @@ static uint32_t help_state_sig(void)
 {
     int mod = page == PAGE_SEQ ? seq_module() : -1;
     uint32_t s = help_state(), len = mod >= 0 ? (uint32_t)seq_len(mod) > 16u : 0u;
-    return s | (uint32_t)(pg_cur_dev & 63u) << 4 | (uint32_t)(pg_list_btn >= 0) << 10 | (uint32_t)(menu_sys2 && menu_tab == MT_SYSTEM ? 7u : menu_tab) << 11
+    return s | (uint32_t)(pg_cur_dev & 63u) << 4 | (uint32_t)(pg_list_btn >= 0) << 10 | (uint32_t)(menu_page2 ? (menu_tab == MT_SYSTEM ? 7u : 6u) : menu_tab) << 11
          | (uint32_t)(seq_trk & 15u) << 14 | len << 18 | (uint32_t)(eng_steps_count() > 0) << 19 | (pages_gen() & 0x3FFu) << 20
          | (uint32_t)(!sr_preview) << 30 | (uint32_t)(eng_keys_harm() >= 0) << 31;
 }
@@ -80,7 +80,7 @@ static int hc_roll_silent(void) { return hc_roll() && !sr_preview; }
 static int hc_tracks(void) { return eng_steps_count() > 0; }
 static int hc_menu_guide(void) { return menu_tab == MT_GUIDE; }
 static int hc_menu_page(void) { return menu_page() != 0; }
-static int hc_menu_system(void) { return menu_tab == MT_SYSTEM && !menu_sys2; }   /* (its first page: UPDATE MODE, FACTORY RESET) */
+static int hc_menu_system(void) { return menu_tab == MT_SYSTEM && !menu_page2; }   /* (its first page: UPDATE MODE, FACTORY RESET) */
 static int hc_harm(void) { return (sr_on ? eng_steps_harm((uint32_t)seq_module()) : eng_keys_harm()) >= 0; }   /* (the keys reach a Harmonizer: its chord buttons, #598) */
 static int hc_fx_bank(void) { return eng_fx_count() > 0u; }
 static int hc_pattern_store(void) { return pt_on; }   /* (the pattern store is claimed: the SEQ page's pattern rows, #901) */
@@ -489,7 +489,7 @@ static void guide_state(uint8_t *p, int conds)
     p[3] = (uint8_t)pg_cur_dev;
     p[4] = (uint8_t)pg_cur_page;
     p[5] = seq_trk;
-    p[6] = (uint8_t)(menu_tab | (menu_sys2 && menu_tab == MT_SYSTEM ? 128u : 0u));   /* (bit 7: SYSTEM's second page, #702) */
+    p[6] = (uint8_t)(menu_tab | (menu_page2 ? 128u : 0u));   /* (bit 7: the tab's second page, SYSTEM's #702, PANEL's #1011) */
     p[7] = (uint8_t)panel_held;
     p[8] = (uint8_t)((panel_held >> 8) & 0x3Fu);
     p[9] = (uint8_t)hc;

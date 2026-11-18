@@ -2,7 +2,7 @@
 // The module library: definitions (shared with the editor) and DSP implementations.
 
 import { fixedDoes } from './controls';
-import { ARP_MODES, ARP_RATES } from './arpeggiator';
+import { ARP_MODES, ARP_RATE_CHOICES, ARP_RATES } from './arpeggiator';
 import { HARM_EXT, HARM_SUS, HARM_TYPES, HARM_VOICING } from './harmonizer';
 import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
 import { COND_FILL, COND_FIRST, COND_NEI, COND_NOT, COND_PRE, isDrone, STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepLock, type StepNote } from './track';
@@ -1378,6 +1378,94 @@ const limit: ModuleImpl<LimitState> = {
       }
     }
     s.g = g;
+  },
+};
+
+// Euclid (#1018): ported from KITTEN RACK (https://github.com/BlackKittenDevices/kitten-rack, a GPL-3.0 fork of
+// Matryoshka; its modules.ts euclid and engine.c m_euclid), with an accent and the engine's clock added.
+/** Euclid's longest pattern, in steps */
+export const EUCLID_STEPS_MAX = 32;
+/** Euclid's rates on the engine's clock (nothing in `clock`) and their clock ticks a step (24 a quarter note): the
+ *  Arpeggiator's tempo rates, its own list so that list can grow without moving these (engine.c EUCLID_RATE_TICKS) */
+export const EUCLID_RATES = ['1/4', '1/4T', '1/8', '1/8T', '1/16', '1/16T', '1/32'];
+export const EUCLID_RATE_TICKS = [24, 16, 12, 8, 6, 4, 3];
+/** 0: a rest, 1: a hit, 2: an accented hit */
+export function euclidStep(x: number, steps: number, hits: number, accent: number): number {
+  if ((x * hits) % steps >= hits) return 0;
+  return (Math.floor((x * hits) / steps) * accent) % hits < accent ? 2 : 1; // (the hit's index among the hits: floor(x hits / steps))
+}
+interface EuclidState { pos: number; hit: number; c1: number; r1: number; run: boolean; count: number; left: number }
+/**
+ * Euclid (#1018, ported from KITTEN RACK's euclid): `hits` spread as evenly as they go over `steps` (Bjorklund's
+ * Euclidean rhythms: 3 over 8 is the tresillo x..x..x.), the pattern turned earlier by `rotate` steps. Step x (from the
+ * pattern's start, rotate added) is a hit when x × hits mod steps < hits. `accent` spreads that many accents over the hits
+ * the same way (hit k of the hits is accented when k × accent mod hits < accent), so the first hit is always one of them.
+ * Each step: `trig` on a hit, `off` on a rest, `accent` on an accented hit. With a cable in `clock`, each rising edge is a
+ * step and the outputs are up as long as the clock is, as in KITTEN RACK. With nothing in it, the module follows the
+ * engine's clock while the transport runs, as Steps does: the first step when PLAY starts, then one each `rate` (its
+ * EUCLID_RATE_TICKS of the 24 ppqn clock) on the sample its tick falls on, the outputs up for half a step. A rising edge
+ * at `reset`: the next step is the first. engine.c m_euclid the same on integers.
+ */
+const euclid: ModuleImpl<EuclidState> = {
+  def: {
+    type: 'euclid',
+    label: 'Euclid',
+    since: 63,
+    inputs: [gate('clock'), gate('reset')],
+    outputs: [gate('trig'), gate('off'), gate('accent')],
+    params: [
+      param('steps', 1, EUCLID_STEPS_MAX, 8, { step: 1 }),
+      param('hits', 0, EUCLID_STEPS_MAX, 3, { step: 1 }),
+      param('rotate', 0, EUCLID_STEPS_MAX - 1, 0, { step: 1 }),
+      param('accent', 0, EUCLID_STEPS_MAX, 0, { step: 1 }),
+      param('rate', 0, EUCLID_RATES.length - 1, 4, { step: 1, choices: EUCLID_RATES }),
+    ],
+  },
+  init: () => ({ pos: -1, hit: 0, c1: 0, r1: 0, run: false, count: 0, left: 0 }),
+  process(c, s) {
+    const steps = Math.min(EUCLID_STEPS_MAX, Math.max(1, Math.round(c.p.steps ?? 8)));
+    const hits = Math.min(steps, Math.max(0, Math.round(c.p.hits ?? 3)));
+    const rot = Math.min(EUCLID_STEPS_MAX - 1, Math.max(0, Math.round(c.p.rotate ?? 0)));
+    const acc = Math.min(hits, Math.max(0, Math.round(c.p.accent ?? 0)));
+    const rt = EUCLID_RATE_TICKS[Math.min(EUCLID_RATES.length - 1, Math.max(0, Math.round(c.p.rate ?? 4)))];
+    const v = c.voice, ext = !!c.connected.clock, width = Math.max(1, (rt * v.tickLen) >> 1);
+    const { clock, reset } = c.inp, { trig, off, accent } = c.out;
+    for (let i = 0; i < c.n; i++) {
+      if (reset[i] >= 0.5 && s.r1 < 0.5) s.pos = -1;
+      s.r1 = reset[i];
+      let adv = 0;
+      if (ext) {
+        if (clock[i] >= 0.5 && s.c1 < 0.5) adv = 1;
+        s.c1 = clock[i];
+      } else {
+        if (i === 0 && v.run && !s.run) { // (PLAY: the first step now)
+          s.count = 0;
+          s.pos = -1;
+          adv = 1;
+        }
+        if (i === v.tick) // (-1 while stopped; MIDI clock's ticks can come several to a sample)
+          for (let t = 0; t < v.ticks; t++)
+            if (++s.count >= rt) {
+              s.count = 0;
+              adv++;
+            }
+      }
+      if (adv) {
+        s.pos = (s.pos + adv) % steps;
+        s.hit = euclidStep((s.pos + rot) % steps, steps, hits, acc);
+        s.left = width;
+      }
+      let hi: boolean;
+      if (ext) hi = clock[i] >= 0.5;
+      else {
+        hi = s.left > 0;
+        if (hi) s.left--;
+      }
+      trig[i] = hi && s.hit ? 1 : 0;
+      off[i] = hi && !s.hit ? 1 : 0;
+      accent[i] = hi && s.hit === 2 ? 1 : 0;
+    }
+    s.run = v.run;
   },
 };
 
@@ -3284,8 +3372,11 @@ const alloc: ModuleImpl<null> = {
 
 /**
  * Arpeggiator: keys in, keys out (between the Main module and a Voice allocator). It plays the held keys one at a time
- * (arpeggiator.ts: mode, octaves, tempo rate or continuous Hz input, clock-edge override, gate length, latch). It runs once
- * (SHARED_TYPES); the engine runs its notes, not process(): the keys output only shows the gate of the note it plays.
+ * (arpeggiator.ts: mode, octaves, tempo rate or continuous Hz input, clock-edge override, gate length, latch, swing). The
+ * bar rates (#1010: a pass of the pattern fills 1/2, 1, 2 or 4 bars of the global time signature) are a stretch of the
+ * rate (ParamDef.top) appended in format 63, and `swing` (#1012, as Steps': 50 % straight, 80 % the most, past 75 % a
+ * stretch) too: pins, macro ranges and the morph span what they did before. It runs once (SHARED_TYPES); the engine runs
+ * its notes, not process(): the keys output only shows the gate of the note it plays.
  */
 const arp: ModuleImpl<null> = {
   def: {
@@ -3295,10 +3386,11 @@ const arp: ModuleImpl<null> = {
     outputs: [keys('keys')],
     params: [
       param('mode', 0, ARP_MODES.length - 1, 0, { step: 1, choices: ARP_MODES }),
-      param('rate', 0, ARP_RATES.length - 1, 4, { step: 1, choices: ARP_RATES }),
+      param('rate', 0, ARP_RATES.length - 1, 4, { step: 1, choices: ARP_RATE_CHOICES, top: ARP_RATE_CHOICES.length - 1, grew: { since: 63, from: ARP_RATES.length - 1 } }),
       param('octaves', 1, 4, 1, { step: 1 }),
       param('gate', 0.1, 1, 0.5, { step: 0.01 }),
       param('latch', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
+      param('swing', 50, SWING_PIN_MAX, 50, { step: 1, unit: '%', top: SWING_MAX, since: 63 }),
     ],
   },
   init: () => null,
@@ -3316,10 +3408,21 @@ export interface StepsSound { key: number; left: number; cnt: number; thru?: num
 export const SND_WRAP = 0x80;
 /** how many notes a Steps track sounds at once (a further note ends the oldest) */
 export const TRACK_POLY = 8;
-/** play once (#632, Engine.playOnce; engine.c eng_play_once): the count-in's bar in clock ticks (four beats of 24), and
- * its click on each beat: a square wave that falls to nothing in CLICK_MS, at CLICK_LEVEL (Q16 of full scale), CLICK_HZ
- * on beats 2..4 and CLICK_ACCENT_HZ on beat 1 */
-export const ONCE_BAR = 96;
+/** the global time signature (#1011): its meters, in the order the FM-1's GLO > PANEL > TIME SIG and the editor list them;
+ * `bar`: a bar in clock ticks (24 a quarter note: the tempo counts quarter notes in every meter, as MIDI clock does);
+ * `beat`: a count-in click's ticks (a quarter in x/4, a dotted quarter in 6/8, 9/8 and 12/8, an eighth in 7/8).
+ * METER_DEFAULT (4/4) is what plays when no time signature was set (older settings, older firmware). */
+export const METERS: readonly { name: string; bar: number; beat: number }[] = [
+  { name: '2/4', bar: 48, beat: 24 }, { name: '3/4', bar: 72, beat: 24 }, { name: '4/4', bar: 96, beat: 24 },
+  { name: '5/4', bar: 120, beat: 24 }, { name: '6/8', bar: 72, beat: 36 }, { name: '7/8', bar: 84, beat: 12 },
+  { name: '9/8', bar: 108, beat: 36 }, { name: '12/8', bar: 144, beat: 36 },
+];
+export const METER_DEFAULT = 2;
+/** a meter index as both engines take it: 0..METERS.length - 1, anything else 4/4 */
+export const meterOf = (m: number | null | undefined): number => (typeof m === 'number' && Number.isInteger(m) && m >= 0 && m < METERS.length ? m : METER_DEFAULT);
+/** play once (#632, Engine.playOnce; engine.c eng_play_once): one bar of the meter is counted in, with a click on each of
+ * its beats: a square wave that falls to nothing in CLICK_MS, at CLICK_LEVEL (Q16 of full scale), CLICK_HZ on the other
+ * beats and CLICK_ACCENT_HZ on beat 1 */
 export const CLICK_MS = 25;
 export const CLICK_LEVEL_Q16 = 16384;
 export const CLICK_HZ = 1000;
@@ -4640,7 +4743,7 @@ const lpg: ModuleImpl<LpgState> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm, lpg, limit];
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm, lpg, limit, euclid];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

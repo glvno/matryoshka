@@ -4,11 +4,13 @@
 // own tempo either way; Global only sets it aside. The browser engine (engine.ts tempoGlobal), MIDI clock out and the
 // FM-1 tab play it; Main's tempo row shows and edits it. While an FM-1 is connected the setting is the FM-1's (protocol.ts
 // TEMPO / TEMPO_NOW, firmware/src/tempo_glo.h), else this browser keeps it. MIDI clock in overrides both (D-452).
-import { TEMPO_MAX, TEMPO_MIN } from './modules';
+// The time signature (#1011) sits beside it: one of METERS (4/4 as made), global like the tempo, shared the same way (the
+// FM-1's TIME SIG, TEMPO's 4th byte); the tempo counts quarter notes in every meter.
+import { METER_DEFAULT, meterOf, TEMPO_MAX, TEMPO_MIN } from './modules';
 import type { Patch } from './patch';
 
 export type TempoMode = 'global' | 'patch';
-export interface TempoSetting { mode: TempoMode; bpm: number }
+export interface TempoSetting { mode: TempoMode; bpm: number; meter: number }
 /** where a change came from: the editor (its row, its toggle, the knobs), the FM-1 (TEMPO_NOW), the FM-1 tab */
 export type TempoSource = 'editor' | 'device' | 'emu';
 
@@ -20,37 +22,39 @@ export const clampBpm = (v: number): number => Math.min(TEMPO_MAX, Math.max(TEMP
 /** the patch's own tempo (Main's; 120 without one) */
 export const patchTempo = (patch: Patch): number => clampBpm(patch.modules.find((m) => m.type === 'fm1')?.params.tempo ?? DEFAULT_BPM);
 /** the tempo the patch plays at under the setting */
-export const tempoNow = (s: TempoSetting, patch: Patch): number => (s.mode === 'global' ? s.bpm : patchTempo(patch));
+export const tempoNow = (s: Pick<TempoSetting, 'mode' | 'bpm'>, patch: Patch): number => (s.mode === 'global' ? s.bpm : patchTempo(patch));
 
 /** the stored setting; none stored (the first visit): Global, at `first` (the open patch's tempo) */
 export function readTempo(raw: string | null, first: number): TempoSetting {
   try {
     const v = JSON.parse(raw ?? 'null');
     if (v && typeof v === 'object' && (v.mode === 'global' || v.mode === 'patch') && Number.isFinite(v.bpm))
-      return { mode: v.mode, bpm: clampBpm(v.bpm) };
+      return { mode: v.mode, bpm: clampBpm(v.bpm), meter: meterOf(v.meter) };
   } catch {
     /* unreadable: as made */
   }
-  return { mode: 'global', bpm: clampBpm(first) };
+  return { mode: 'global', bpm: clampBpm(first), meter: METER_DEFAULT };
 }
 
 type Listener = (s: TempoSetting, from: TempoSource, was: TempoSetting) => void;
 
 /** the setting, one per page */
 export class Tempo {
-  private s: TempoSetting = { mode: 'global', bpm: DEFAULT_BPM };
+  private s: TempoSetting = { mode: 'global', bpm: DEFAULT_BPM, meter: METER_DEFAULT };
   private listeners: Listener[] = [];
 
   get mode(): TempoMode { return this.s.mode; }
   get bpm(): number { return this.s.bpm; }
+  /** the time signature: a METERS index */
+  get meter(): number { return this.s.meter; }
   get global(): boolean { return this.s.mode === 'global'; }
   get setting(): TempoSetting { return { ...this.s }; }
 
   /** a change (only what is given); listeners hear it when something changed */
   set(next: Partial<TempoSetting>, from: TempoSource = 'editor'): void {
     const was = this.s;
-    const s: TempoSetting = { mode: next.mode ?? was.mode, bpm: next.bpm === undefined ? was.bpm : clampBpm(next.bpm) };
-    if (s.mode === was.mode && s.bpm === was.bpm) return;
+    const s: TempoSetting = { mode: next.mode ?? was.mode, bpm: next.bpm === undefined ? was.bpm : clampBpm(next.bpm), meter: next.meter === undefined ? was.meter : meterOf(next.meter) };
+    if (s.mode === was.mode && s.bpm === was.bpm && s.meter === was.meter) return;
     this.s = s;
     for (const l of this.listeners) l(this.setting, from, was);
   }

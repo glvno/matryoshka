@@ -33,7 +33,7 @@ void eng_fpu_probe(uint32_t lane, uint32_t *h);
 
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 62   /* 62 (release 1.19, patchbin.ts FORMAT_1_19): the Low pass gate (T_LPG, #1018) and the Limiter (T_LIMIT, #1019) types appended after the Harmonizer; 61: a cable into a Part's priority input (PART_I_PRIORITY, #976); 60: trig conditions, a note's condition word after it (ENG_NOTE_COND, #674); 59: the stored pattern links (ENG_FLAG_LINKS, #901) after the P-locks; 58: the Oscillator's `phase` (where sync restarts the cycle, #691) appended; 57: the ADSR's `ads` (release at the decay's time, D-745) appended; 56: Env L/R's `curve` (a linear fall, #689) appended; 55: optional validated master FX bus after format54 origins and before macro ranges */
+#define ENG_PATCH_VERSION 63   /* 63 (release 1.20, patchbin.ts FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid type (T_EUCLID, #1018) appended after the Limiter; 62 (release 1.19, patchbin.ts FORMAT_1_19): the Low pass gate (T_LPG, #1018) and the Limiter (T_LIMIT, #1019) types appended after the Harmonizer; 61: a cable into a Part's priority input (PART_I_PRIORITY, #976); 60: trig conditions, a note's condition word after it (ENG_NOTE_COND, #674); 59: the stored pattern links (ENG_FLAG_LINKS, #901) after the P-locks; 58: the Oscillator's `phase` (where sync restarts the cycle, #691) appended; 57: the ADSR's `ads` (release at the decay's time, D-745) appended; 56: Env L/R's `curve` (a linear fall, #689) appended; 55: optional validated master FX bus after format54 origins and before macro ranges */
 #define ENG_COUNTED 51                /* the first format whose module records carry their parameter count (patchbin.ts COUNTED, #667) */
 /* Format 51's record (patchbin.ts, D-1000): u8 type, u8 count (bits 0..5: the parameters it holds; bit 7, ENG_REC_TEMPLATE,
  * on a type with parameter inputs: its attenuverters and p1 / p2 masks are at their template, eng_mask_template, and left
@@ -610,7 +610,7 @@ void eng_clock_tick(void);
 void eng_clock_external(int on);
 void eng_transport(int on);
 int eng_transport_running(void);
-/* Play once (#632; engine.ts playOnce): the transport stops, one bar of four beats is counted in on the clock with a click
+/* Play once (#632; engine.ts playOnce): the transport stops, one bar of the meter (eng_meter) is counted in on the clock with a click
  * on each beat (not in eng_render's output: eng_click_mix adds it, D-820), then the transport starts and each Steps track
  * the clock steps plays its pattern once, or the song's entries once each; a shorter track loops on until the longest
  * ends; then the transport stops by itself (its edges then come out of eng_clock_out as 2 / -2). eng_transport ends it where it is. eng_once_state: 0 not, 1 counting in,
@@ -618,7 +618,7 @@ int eng_transport_running(void);
 #define ENG_PLAY_ONCE
 void eng_play_once(void);
 int eng_once_state(void);
-uint32_t eng_once_beat(void);          /* the count-in's beat, 0..3 (0 until it counts) */
+uint32_t eng_once_beat(void);          /* the count-in's beat, 0.. its beats a bar less one (0 until it counts) */
 /* REC's count-in click (D-803; engine.ts countIn): a click on each beat of `bars` bars from the transport's start or, running
  * already at `at` (eng_ticks then), from the next bar line, as seq_ui.c counts them; 0 bars: none. A stop ends it */
 #define ENG_COUNT_IN
@@ -633,7 +633,7 @@ uint32_t eng_button_kind(uint32_t b);
 uint32_t eng_button_targets(uint32_t b, const uint8_t **list);
 uint32_t eng_ticks(void);                 /* the clock's ticks so far (24 a quarter note) */
 int32_t eng_run_ticks(void);              /* ticks since the transport started (the Steps tracks' bars count from there:
-                                           * 96 a bar of four beats), -1 until the engine has taken the start */
+                                           * eng_bar_ticks a bar), -1 until the engine has taken the start */
 int eng_clock_is_external(void);          /* MIDI clock drives the clock */
 /* MIDI clock out (#473, main.c clock_out.h): the ticks of the tempo the last eng_render made (none while MIDI clock
  * drives the clock), up to `max` of their samples in it in *off, and the transport's edge in it in *edge (1 started,
@@ -651,6 +651,14 @@ uint32_t eng_tempo_global_get(void);      /* the global tempo (bpm), 0 while eac
 int eng_tempo_moved(void);                /* the global tempo moved by eng_set_param or by adopting a patch's since the last call */
 int eng_tempo_row(uint32_t module, uint32_t param);   /* (module, param) is Main's tempo and the tempo is global: the patch's
                                                        * own value stays as it is (proto.c m1_patch_param) */
+/* The global time signature (#1011, GLO > PANEL > TIME SIG; engine.ts meter; defs.h METER_*): meter m (0..METER_N - 1,
+ * anything else METER_DEFAULT, 4/4, which plays until one is set). A bar of it is what play once and REC count in, with a
+ * click on each of its beats, and what the Arpeggiator's bar rates fill. The tempo counts quarter notes in every meter */
+#define ENG_METER
+void eng_meter(uint32_t m);
+uint32_t eng_meter_get(void);
+uint32_t eng_bar_ticks(void);             /* a bar of the meter in clock ticks (24 a quarter note) */
+uint32_t eng_beat_ticks(void);            /* a count-in click's ticks (METER_BEAT) */
 uint32_t eng_buttons_get(void);
 /* the patch buttons' LEDs (the FM-1, the EMU view): eng_buttons_get, but ARP as a Toggle of Arpeggiators is lit while
  * they play, not while they are bypassed (D-231; the editor: buttons.ts litWhileEnabled) */

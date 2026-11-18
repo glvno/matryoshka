@@ -109,7 +109,7 @@ int main(int argc, char **argv)
             }
             else if (!strcmp(kind, "rec") || !strcmp(kind, "cc") || !strcmp(kind, "thon") || !strcmp(kind, "thoff"))
                 fscanf(ev, "%u %u", &note, &vel);
-            else if (!strcmp(kind, "pat") || !strcmp(kind, "song") || !strcmp(kind, "cin") || !strcmp(kind, "fill"))
+            else if (!strcmp(kind, "pat") || !strcmp(kind, "song") || !strcmp(kind, "cin") || !strcmp(kind, "fill") || !strcmp(kind, "meter"))
                 fscanf(ev, "%u", &note);
         }
         rewind(ev);
@@ -172,6 +172,11 @@ int main(int argc, char **argv)
             fscanf(ev, "%u", &note);
 #ifdef ENG_COUNT_IN
             eng_count_in(eng_ticks(), note);
+#endif
+        } else if (!strcmp(kind, "meter")) {     /* (#1011) the global time signature: an index into METER_BAR */
+            fscanf(ev, "%u", &note);
+#ifdef ENG_METER
+            eng_meter(note);
 #endif
         } else if (!strcmp(kind, "ext") || !strcmp(kind, "int")) {
             eng_clock_external(!strcmp(kind, "ext"));

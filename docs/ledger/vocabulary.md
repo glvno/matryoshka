@@ -596,6 +596,10 @@ The input a bypassed module passes to its outputs: `in` by default, a mixer's `i
 
 The handle of a slider, which is also the parameter's input jack.
 
+### Time signature
+
+The meter every patch plays in: one of 2/4, 3/4, 4/4, 5/4, 6/8, 7/8, 9/8 and 12/8, 4/4 as made. Like the **global tempo** it belongs to the FM-1 and to the editor, not to a patch. It sets the bar that play once and REC count in and that the arpeggiator's bar rates fill. The tempo counts quarter notes in every meter.
+
 ### Tombstone
 
 What a superseded row becomes: Status `Superseded by` the new row, Decision cell reduced to a pointer. The ID never dangles.

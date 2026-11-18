@@ -164,7 +164,7 @@ static int m1_test_key(uint32_t id, int down);                 /* main.c: the de
 static int m1_test_turn(uint32_t enc, int32_t clicks);
 static uint32_t m1_test_screen(uint32_t k, uint8_t *out);
 static uint32_t m1_test_peak(void);
-static void m1_tempo(uint32_t patch, uint32_t bpm);           /* main.c: the editor set the global tempo (D-907) */
+static void m1_tempo(uint32_t patch, uint32_t bpm, uint32_t meter);   /* main.c: the editor set the global tempo (D-907) and time signature (#1011) */
 static void m1_arms(eng_mset_t mask);                         /* main.c: the editor's armed set (#191) */
 static void m1_pat_load(void);                                /* patlink.c: the pattern store (#901), the hooks proto.c needs */
 static uint64_t m1_pat_clean(void);

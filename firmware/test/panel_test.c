@@ -1054,8 +1054,33 @@ int main(void)
         enc(4, -1);
         enc(4, -1);
         check("  and back to OFF", cfg.count_in == 0u && on_screen("OFF"));
+        check("  the header says PANEL 1/2 (#1011)", on_screen("PANEL 1/2"));
+        {                                                   /* PANEL's second page: TIME SIG (#1011) */
+            uint32_t told = host_tempo_told;
+            enc(1, 1);
+            check("ALGO again: PANEL's second page, TIME SIG alone on K1, 4/4 as made (#1011)", menu_tab == MT_PANEL && menu_page2 && menu_page()
+                  && pages_now()->nrows == 1u && pages_now()->par[0] == MR_METER && on_screen("PANEL 2/2") && on_screen("TIME SIG") && on_screen("4/4")
+                  && gt_meter == METER_DEFAULT && setting_bar(MR_METER, 70u) == METER_DEFAULT * 70u / (METER_N - 1u));
+            enc(2, 1);
+            check("K1 right: 5/4, the editor told, kept 5 s later (#1011)", gt_meter == 3u && on_screen("5/4") && eng_meter_get() == 3u
+                  && host_tempo_told == told + 1u && gt_due);
+            enc(2, -1);
+            enc(2, -1);
+            enc(2, -1);
+            check("  K1 left: one meter a click, down to 2/4", gt_meter == 0u && on_screen("2/4") && setting_bar(MR_METER, 70u) == 0u);
+            told = host_tempo_told;
+            enc(2, -1);
+            check("  stays at 2/4 (no wrap), the editor not told again", gt_meter == 0u && host_tempo_told == told);
+            for (uint32_t k = 0; k < METER_N; k++)
+                enc(2, 1);
+            check("  up to 12/8 and stays (no wrap)", gt_meter == METER_N - 1u && on_screen("12/8") && setting_bar(MR_METER, 70u) == 70u);
+            gt_set_meter(METER_DEFAULT, fm1_ms);
+            enc(1, -1);
+            check("ALGO back: PANEL 1/2", menu_tab == MT_PANEL && !menu_page2 && pages_now()->par[3] == MR_TEMPO && on_screen("PANEL 1/2"));
+            enc(1, 1);
+        }
         enc(1, 1);
-        check("ALGO again: SYSTEM (update mode, factory reset, quick start, output)", menu_tab == MT_SYSTEM && pages_now()->nrows == 4u && pages_now()->par[1] == MR_DEFAULTS && pages_now()->par[2] == MR_QUICK && pages_now()->par[3] == MR_OUTPUT);
+        check("ALGO again: SYSTEM (update mode, factory reset, quick start, output)", menu_tab == MT_SYSTEM && !menu_page2 && pages_now()->nrows == 4u && pages_now()->par[1] == MR_DEFAULTS && pages_now()->par[2] == MR_QUICK && pages_now()->par[3] == MR_OUTPUT);
         check("  OUTPUT reads STEREO (#612)", !out_mono && on_screen("STEREO"));
         enc(5, 1);
         check("K4 on SYSTEM: OUTPUT STEREO > MONO (#612)", out_mono == 1u && on_screen("MONO") && !on_screen("MONO L"));
@@ -1069,7 +1094,7 @@ int main(void)
         check("  and back to STEREO", !out_mono && on_screen("STEREO"));
         check("  the header says SYSTEM 1/2 (#702)", on_screen("SYSTEM 1/2"));
         enc(1, 1);
-        check("ALGO again: SYSTEM's second page, EDITOR on K1 (#702)", menu_tab == MT_SYSTEM && menu_sys2 && menu_page() && pages_now()->nrows == 3u
+        check("ALGO again: SYSTEM's second page, EDITOR on K1 (#702)", menu_tab == MT_SYSTEM && menu_page2 && menu_page() && pages_now()->nrows == 3u
               && pages_now()->par[0] == MR_EDITOR && on_screen("SYSTEM 2/2") && on_screen("EDITOR") && on_screen("ALLOW"));
         check("  no armed-row line in the controls sheet's conditions there", !hc_menu_system());
         enc(2, 1);
@@ -1107,7 +1132,7 @@ int main(void)
         loop();
         check("  K2 right: ON again, the mark gone", out_off == 0u && on_screen("ON") && px(OFF_FX + 2u, BATT_FY + 2u) != P_WARN && !on_screen(MSG_FOOT_OUT35_OFF));
         enc(1, -1);
-        check("ALGO back: SYSTEM 1/2", menu_tab == MT_SYSTEM && !menu_sys2 && pages_now()->par[3] == MR_OUTPUT && on_screen("SYSTEM 1/2"));
+        check("ALGO back: SYSTEM 1/2", menu_tab == MT_SYSTEM && !menu_page2 && pages_now()->par[3] == MR_OUTPUT && on_screen("SYSTEM 1/2"));
         enc(1, 1);
         enc(1, 1);
         check("ALGO again: INFO, a list, not a page", menu_tab == MT_INFO && !menu_page() && on_screen("BANK SLOTS") && on_screen("VERSION"));
@@ -1198,6 +1223,7 @@ int main(void)
         tap(BTN_GLO);
         enc(1, 1);
         enc(1, 1);
+        enc(1, 1);                                          /* (PANEL's two pages, #1011) */
         enc(3, 1);
         check("again: the menu, SYSTEM, FACTORY RESET armed", page == PAGE_MENU && menu_tab == MT_SYSTEM && menu_armed == MR_DEFAULTS);
         later(MENU_ARM_MS + 100u);
@@ -4794,7 +4820,13 @@ int main(void)
         old[7] = 1;
         check("(the factory patch <7PH runs)", seven < N_PRESETS && load_at(seven) == 0);
         gt_unpack(old, 16);
-        check("TEMPO: an older settings record reads as GLOBAL, the tempo not known yet", gt_patch == 0u && gt_bpm == 0u);
+        check("TEMPO: an older settings record reads as GLOBAL, the tempo not known yet, 4/4 (#1011)", gt_patch == 0u && gt_bpm == 0u && gt_meter == METER_DEFAULT);
+        old[7] = GT_MARK;                                   /* (a record of a firmware before #1011: the mark, bits 2..5 at 0) */
+        gt_meter = 0;
+        gt_unpack(old, 16);
+        check("  a record from before the time signature reads as 4/4 (#1011)", gt_meter == METER_DEFAULT && eng_meter_get() == METER_DEFAULT);
+        old[7] = 1;
+        gt_unpack(old, 16);
         r = gt_poll(fm1_ms, 1);
         check("  the boot's patch gives the global tempo (<7PH: 124), and the editor hears of it", eng_tempo_global_get() == 124u && gt_bpm == 124u && (r & 1u));
         for (k = 0; k < N_PRESETS && other == N_PRESETS; k++) {
@@ -4853,7 +4885,15 @@ int main(void)
         gt_patch = 1;
         gt_bpm = 0;
         gt_unpack(rec, 16);
-        check("the settings record round trip: GLOBAL at 126", gt_patch == 0u && gt_bpm == 126u && rec[7] == GT_MARK);
+        check("the settings record round trip: GLOBAL at 126", gt_patch == 0u && gt_bpm == 126u && rec[7] == (GT_MARK | (METER_DEFAULT + 1u) << 2));
+        gt_meter = 6;                                       /* 9/8 (#1011) */
+        gt_pack(rec);
+        gt_meter = 0;
+        gt_unpack(rec, 16);
+        check("  and the time signature's: 9/8 in bits 2..5, bit 6 free (#1011)", gt_meter == 6u && eng_meter_get() == 6u && (rec[7] >> 2 & 15u) == 7u && !(rec[7] & 0x40u));
+        gt_meter = METER_DEFAULT;
+        gt_pack(rec);
+        gt_unpack(rec, 16);
         later(1600);
         page = PAGE_MENU;
         menu_tab = MT_PANEL;
@@ -4869,7 +4909,7 @@ int main(void)
         main_m = eng_find(T_FM1);
         check("  another patch plays its own", ((eng_get_param((uint32_t)main_m, FM1_P_TEMPO) + 32768) >> 16) != 126 && eng_tempo_global_get() == 0u);
         gt_pack(rec);
-        check("  the record keeps PATCH and the global tempo", rec[7] == (GT_MARK | 2u) && rec[5] == 126u);
+        check("  the record keeps PATCH and the global tempo", rec[7] == (GT_MARK | (METER_DEFAULT + 1u) << 2 | 2u) && rec[5] == 126u);
         gt_bpm = 300;
         gt_pack(rec);
         gt_bpm = 0;

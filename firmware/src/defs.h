@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 57
+#define N_TYPES 58
 enum {
     T_FM1,
     T_OSC,
@@ -62,6 +62,7 @@ enum {
     T_HARM,
     T_LPG,
     T_LIMIT,
+    T_EUCLID,
 };
 
 /* fm1: Main */
@@ -792,9 +793,10 @@ enum {
 #define ARP_P_OCTAVES 2
 #define ARP_P_GATE 3
 #define ARP_P_LATCH 4
+#define ARP_P_SWING 5
 #define ARP_NIN 3
 #define ARP_NOUT 1
-#define ARP_NPAR 5
+#define ARP_NPAR 6
 #define ARP_CVBASE -1
 #define ARP_NDATA 0
 
@@ -1144,6 +1146,25 @@ enum {
 #define LIMIT_CVBASE 1
 #define LIMIT_NDATA 0
 
+/* euclid: Euclid */
+#define EUCLID_I_CLOCK 0
+#define EUCLID_I_RESET 1
+#define EUCLID_I_P1 2
+#define EUCLID_I_P2 3
+#define EUCLID_O_TRIG 0
+#define EUCLID_O_OFF 1
+#define EUCLID_O_ACCENT 2
+#define EUCLID_P_STEPS 0
+#define EUCLID_P_HITS 1
+#define EUCLID_P_ROTATE 2
+#define EUCLID_P_ACCENT 3
+#define EUCLID_P_RATE 4
+#define EUCLID_NIN 4
+#define EUCLID_NOUT 3
+#define EUCLID_NPAR 5
+#define EUCLID_CVBASE 2
+#define EUCLID_NDATA 0
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 #define DELAY_SYNC_TOP 520   /* ms: the synced note lengths spread over 1..this (modules.ts) */
@@ -1212,6 +1233,8 @@ static const int32_t ANALOG_SAWC_T[129] = {1073741824, 1071647400, 1069558421, 1
 #define LIMIT_AHEAD 64   /* the Limiter's lookahead line, samples (#1019) */
 #define LIMIT_CHUNK 16   /* its line's chunks, whose peaks it keeps */
 #define LIMIT_KA 109857605   /* its attack with lookahead, Q30: 99.9 % of a step in LIMIT_AHEAD samples */
+#define EUCLID_STEPS_MAX 32   /* Euclid's longest pattern, steps (#1018) */
+static const uint8_t EUCLID_RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};   /* its rates on the engine's clock: clock ticks a step */
 #define SHREG_STAGES 8   /* the Shift register's stages (#438) */
 #define SHREG_PAT_SEED 0x5bd1e995u   /* mixed with the instance seed: its starting pattern */
 #define SHREG_FLIP_SEED 0x27d4eb2fu   /* mixed with the instance seed: its flip stream */
@@ -1225,7 +1248,11 @@ static const int32_t ANALOG_SAWC_T[129] = {1073741824, 1071647400, 1069558421, 1
 #define TRACK_NAME_MAX 8
 #define TRACK_NOTES_MAX 128   /* notes per track (the notes section, flag bit 4; track.ts noteWord) */
 #define TRACK_POLY 8          /* notes a track sounds at once (modules.ts) */
-#define ONCE_BAR 96u          /* play once (#632): the count-in's bar in clock ticks (modules.ts) */
+#define METER_N 8u           /* the global time signature (#1011, modules.ts METERS): its meters, as listed */
+#define METER_DEFAULT 2u      /* ... 4/4: what plays when none was set */
+static const uint8_t METER_BAR[METER_N] = {48, 72, 96, 120, 72, 84, 108, 144};   /* ... a bar in clock ticks */
+static const uint8_t METER_BEAT[METER_N] = {24, 24, 24, 24, 36, 12, 36, 36};   /* ... a count-in click's ticks */
+static const char *const METER_NAME[METER_N] = {"2/4", "3/4", "4/4", "5/4", "6/8", "7/8", "9/8", "12/8"};
 #define CLICK_MS 25u           /* ... its click on each beat: ms to nothing, level (Q16), Hz on beats 2..4 and on beat 1 */
 #define CLICK_LEVEL_Q16 16384
 #define CLICK_HZ 1000u
@@ -1706,17 +1733,19 @@ static const char *const ALLOC_CH5[] = {"ALL", "1", "2", "3", "4", "5", "6", "7"
 static const char *const ALLOC_CH6[] = {"C-1", "C#-1", "D-1", "D#-1", "E-1", "F-1", "F#-1", "G-1", "G#-1", "A-1", "A#-1", "B-1", "C0", "C#0", "D0", "D#0", "E0", "F0", "F#0", "G0", "G#0", "A0", "A#0", "B0", "C1", "C#1", "D1", "D#1", "E1", "F1", "F#1", "G1", "G#1", "A1", "A#1", "B1", "C2", "C#2", "D2", "D#2", "E2", "F2", "F#2", "G2", "G#2", "A2", "A#2", "B2", "C3", "C#3", "D3", "D#3", "E3", "F3", "F#3", "G3", "G#3", "A3", "A#3", "B3", "C4", "C#4", "D4", "D#4", "E4", "F4", "F#4", "G4", "G#4", "A4", "A#4", "B4", "C5", "C#5", "D5", "D#5", "E5", "F5", "F#5", "G5", "G#5", "A5", "A#5", "B5", "C6", "C#6", "D6", "D#6", "E6", "F6", "F#6", "G6", "G#6", "A6", "A#6", "B6", "C7", "C#7", "D7", "D#7", "E7", "F7", "F#7", "G7", "G#7", "A7", "A#7", "B7", "C8", "C#8", "D8", "D#8", "E8", "F8", "F#8", "G8", "G#8", "A8", "A#8", "B8", "C9", "C#9", "D9", "D#9", "E9", "F9", "F#9", "G9", 0};
 static const char *const *const ALLOC_CH[] = {0, ALLOC_CH1, ALLOC_CH2, ALLOC_CH3, ALLOC_CH4, ALLOC_CH5, ALLOC_CH6, ALLOC_CH6, ADSR_CH4, ALLOC_CH5};
 static const char *const ARP_INNAMES[] = {"KEYS", "CLK", "RATE"};
-static const int32_t ARP_MIN[] = {0, 0, 65536, 6554, 0};
-static const int32_t ARP_MAX[] = {262144, 393216, 262144, 65536, 65536};
-static const int32_t ARP_DEF[] = {0, 262144, 65536, 32768, 0};
-static const int32_t ARP_INC[] = {65536, 65536, 65536, 655, 65536};
-static const int32_t ARP_STEP[] = {65536, 65536, 65536, 655, 65536};
-static const char *const ARP_PN[] = {"MODE", "RATE", "OCTAVES", "GATE", "LATCH"};
-static const uint8_t ARP_LOG[] = {0, 0, 0, 0, 0};
-static const char *const ARP_UNIT[] = {"", "", "", "", ""};
+static const int32_t ARP_MIN[] = {0, 0, 65536, 6554, 0, 3276800};
+static const int32_t ARP_MAX[] = {262144, 393216, 262144, 65536, 65536, 4915200};
+static const int32_t ARP_DEF[] = {0, 262144, 65536, 32768, 0, 3276800};
+static const int32_t ARP_INC[] = {65536, 65536, 65536, 655, 65536, 65536};
+static const int32_t ARP_STEP[] = {65536, 65536, 65536, 655, 65536, 65536};
+static const int32_t ARP_TOP[] = {262144, 655360, 262144, 65536, 65536, 5242880};
+static const uint8_t ARP_SINCE[] = {0, 0, 0, 0, 0, 63};
+static const char *const ARP_PN[] = {"MODE", "RATE", "OCTAVES", "GATE", "LATCH", "SWING"};
+static const uint8_t ARP_LOG[] = {0, 0, 0, 0, 0, 0};
+static const char *const ARP_UNIT[] = {"", "", "", "", "", "%"};
 static const char *const ARP_CH0[] = {"UP", "DOWN", "UP-DOWN", "RANDOM", "AS PLAYED", 0};
-static const char *const ARP_CH1[] = {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", 0};
-static const char *const *const ARP_CH[] = {ARP_CH0, ARP_CH1, 0, 0, ADSR_CH4};
+static const char *const ARP_CH1[] = {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", "1/2 BAR", "1 BAR", "2 BARS", "4 BARS", 0};
+static const char *const *const ARP_CH[] = {ARP_CH0, ARP_CH1, 0, 0, ADSR_CH4, 0};
 static const char *const STEPS_INNAMES[] = {"CLK", "RESET", "TRANSPOSE", "P1", "P2", "KEYS"};
 static const int32_t STEPS_MIN[] = {65536, 0, 3276800, 655, 0};
 static const int32_t STEPS_MAX[] = {4194304, 393216, 4915200, 65536, 196608};
@@ -1892,6 +1921,17 @@ static const char *const LIMIT_PN[] = {"CEILING", "RELEASE", "GAIN", "AHEAD"};
 static const uint8_t LIMIT_LOG[] = {0, 1, 0, 0};
 static const char *const LIMIT_UNIT[] = {"DB", "S", "DB", ""};
 static const char *const *const LIMIT_CH[] = {0, 0, 0, ADSR_CH4};
+static const char *const EUCLID_INNAMES[] = {"CLOCK", "RESET", "P1", "P2"};
+static const int32_t EUCLID_MIN[] = {65536, 0, 0, 0, 0};
+static const int32_t EUCLID_MAX[] = {2097152, 2097152, 2031616, 2097152, 393216};
+static const int32_t EUCLID_DEF[] = {524288, 196608, 0, 0, 262144};
+static const int32_t EUCLID_INC[] = {65536, 65536, 65536, 65536, 65536};
+static const int32_t EUCLID_STEP[] = {65536, 65536, 65536, 65536, 65536};
+static const char *const EUCLID_PN[] = {"STEPS", "HITS", "ROTATE", "ACCENT", "RATE"};
+static const uint8_t EUCLID_LOG[] = {0, 0, 0, 0, 0};
+static const char *const EUCLID_UNIT[] = {"", "", "", "", ""};
+static const char *const EUCLID_CH4[] = {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", 0};
+static const char *const *const EUCLID_CH[] = {0, 0, 0, 0, EUCLID_CH4};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0, FM1_STEP},   /* fm1 */
@@ -1934,7 +1974,7 @@ static const def_t DEFS[N_TYPES] = {
     {PART_NIN, PART_NOUT, PART_NPAR, 0, PART_CVBASE, -1, PART_NDATA, 0, 0, 0, 0, 0, "PART", 0, PART_INNAMES, 0, 0, 0, 0, 0, 0},   /* part */
     {RANDOM_NIN, RANDOM_NOUT, RANDOM_NPAR, 0, RANDOM_CVBASE, -1, RANDOM_NDATA, 0, RANDOM_MIN, RANDOM_MAX, RANDOM_DEF, RANDOM_INC, "RANDOM", RANDOM_PN, RANDOM_INNAMES, RANDOM_LOG, RANDOM_UNIT, RANDOM_CH, 0, 0, RANDOM_STEP},   /* random */
     {ALLOC_NIN, ALLOC_NOUT, ALLOC_NPAR, 14, ALLOC_CVBASE, -1, ALLOC_NDATA, 0, ALLOC_MIN, ALLOC_MAX, ALLOC_DEF, ALLOC_INC, "VOICING", ALLOC_PN, ALLOC_INNAMES, ALLOC_LOG, ALLOC_UNIT, ALLOC_CH, ALLOC_TOP, ALLOC_SINCE, ALLOC_STEP},   /* alloc */
-    {ARP_NIN, ARP_NOUT, ARP_NPAR, 0, ARP_CVBASE, -1, ARP_NDATA, 0, ARP_MIN, ARP_MAX, ARP_DEF, ARP_INC, "ARPEGGIATOR", ARP_PN, ARP_INNAMES, ARP_LOG, ARP_UNIT, ARP_CH, 0, 0, ARP_STEP},   /* arp */
+    {ARP_NIN, ARP_NOUT, ARP_NPAR, 0, ARP_CVBASE, -1, ARP_NDATA, 0, ARP_MIN, ARP_MAX, ARP_DEF, ARP_INC, "ARPEGGIATOR", ARP_PN, ARP_INNAMES, ARP_LOG, ARP_UNIT, ARP_CH, ARP_TOP, ARP_SINCE, ARP_STEP},   /* arp */
     {STEPS_NIN, STEPS_NOUT, STEPS_NPAR, 0, STEPS_CVBASE, -1, STEPS_NDATA, 0, STEPS_MIN, STEPS_MAX, STEPS_DEF, STEPS_INC, "STEPS", STEPS_PN, STEPS_INNAMES, STEPS_LOG, STEPS_UNIT, STEPS_CH, STEPS_TOP, STEPS_SINCE, STEPS_STEP},   /* steps */
     {MACRO_NIN, MACRO_NOUT, MACRO_NPAR, 0, MACRO_CVBASE, -1, MACRO_NDATA, 0, MACRO_MIN, MACRO_MAX, MACRO_DEF, MACRO_INC, "MACRO", MACRO_PN, MACRO_INNAMES, MACRO_LOG, MACRO_UNIT, MACRO_CH, 0, 0, MACRO_STEP},   /* macro */
     {DRUMMAP_NIN, DRUMMAP_NOUT, DRUMMAP_NPAR, 0, DRUMMAP_CVBASE, -1, DRUMMAP_NDATA, 0, DRUMMAP_MIN, DRUMMAP_MAX, DRUMMAP_DEF, DRUMMAP_INC, "DRUM MAP", DRUMMAP_PN, DRUMMAP_INNAMES, DRUMMAP_LOG, DRUMMAP_UNIT, DRUMMAP_CH, 0, DRUMMAP_SINCE, DRUMMAP_STEP},   /* drummap */
@@ -1951,12 +1991,13 @@ static const def_t DEFS[N_TYPES] = {
     {HARM_NIN, HARM_NOUT, HARM_NPAR, 0, HARM_CVBASE, -1, HARM_NDATA, 0, HARM_MIN, HARM_MAX, HARM_DEF, HARM_INC, "HARMONIZER", HARM_PN, HARM_INNAMES, HARM_LOG, HARM_UNIT, HARM_CH, 0, 0, HARM_STEP},   /* harm */
     {LPG_NIN, LPG_NOUT, LPG_NPAR, 0, LPG_CVBASE, 0, LPG_NDATA, 1, LPG_MIN, LPG_MAX, LPG_DEF, LPG_INC, "LOW PASS GATE", LPG_PN, LPG_INNAMES, LPG_LOG, LPG_UNIT, LPG_CH, 0, 0, LPG_STEP},   /* lpg */
     {LIMIT_NIN, LIMIT_NOUT, LIMIT_NPAR, 0, LIMIT_CVBASE, 0, LIMIT_NDATA, 1, LIMIT_MIN, LIMIT_MAX, LIMIT_DEF, LIMIT_INC, "LIMITER", LIMIT_PN, LIMIT_INNAMES, LIMIT_LOG, LIMIT_UNIT, LIMIT_CH, 0, 0, LIMIT_STEP},   /* limit */
+    {EUCLID_NIN, EUCLID_NOUT, EUCLID_NPAR, 0, EUCLID_CVBASE, -1, EUCLID_NDATA, 0, EUCLID_MIN, EUCLID_MAX, EUCLID_DEF, EUCLID_INC, "EUCLID", EUCLID_PN, EUCLID_INNAMES, EUCLID_LOG, EUCLID_UNIT, EUCLID_CH, 0, 0, EUCLID_STEP},   /* euclid */
 };
 /* one copy of each type, a block: what the two-core schedule balances (engine.c sched_build, #802), in 64 cycles of
  * web/src/cpu-costs.json (its run and parameter inputs: cpu.ts scheduleCost) */
-static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 34, 9, 322, 11, 112, 1209, 3, 40, 96, 39, 331, 178, 326, 156, 89, 36, 36, 40, 49, 72, 275, 222, 54, 163, 105, 54, 37, 468, 278, 448, 668, 11, 15, 1, 11, 53, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4, 179, 178};
+static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 34, 9, 322, 11, 112, 1209, 3, 40, 96, 39, 331, 178, 326, 156, 89, 36, 36, 40, 49, 72, 275, 222, 54, 163, 105, 54, 37, 468, 278, 448, 668, 11, 15, 1, 12, 53, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4, 179, 178, 31};
 /* a module bypassed when the patch loads, in the same units: passing an input through (D-1104; cpu.ts scheduleBypass) */
 #define DEF_COST_BYPASS 18u
 /* Gate-port kinds for pattern authorization, independent of environment grouping (bit n: port n is a gate) */
-static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u,4u,0u};
-static const uint32_t PRESET_GATE_OUT[] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u,0u,0u};
+static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u,4u,0u,3u};
+static const uint32_t PRESET_GATE_OUT[] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u,0u,0u,7u};

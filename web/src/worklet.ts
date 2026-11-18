@@ -11,6 +11,7 @@ import { DISPLAY_EVERY, ViewStream, VoiceStreams, voiceSums, type ViewData } fro
 import { PhrasePlayer, type Phrase } from './phrases';
 import { ListenMix, type ListenSource } from './listen';
 import { KMeter } from './loudness';
+import { meterOf } from './modules';
 
 declare const sampleRate: number;
 declare class AudioWorkletProcessor {
@@ -32,6 +33,8 @@ export type HostMsg =
   | { t: 'cin'; bars: number }
   /** the global tempo (D-907), null: each patch its own */
   | { t: 'tempo'; bpm: number | null }
+  /** the global time signature (#1011): an index into METERS (modules.ts) */
+  | { t: 'meter'; meter: number }
   | { t: 'button'; i: number; on: boolean }
   /** a Steps module's notes edited (#133), a Steps module muted */
   | { t: 'track'; id: number; notes: StepNote[] | undefined; pat?: number }
@@ -140,6 +143,7 @@ class ModularProcessor extends AudioWorkletProcessor {
     }
     this.fm1.hear({ t: 'transport', on: this.engine.transportRunning });
     this.fm1.hear({ t: 'tempo', bpm: this.engine.tempoGlobal });
+    this.fm1.hear({ t: 'meter', meter: this.engine.meter });
     if (this.sinceClock <= CLOCK_GONE) this.fm1.clockExternal(true);
     for (const o of waiting) this.applyFm1(o);
   }
@@ -201,6 +205,7 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'once') this.engine.playOnce();
         else if (m.t === 'cin') this.engine.countIn(m.bars);
         else if (m.t === 'tempo') this.engine.tempoGlobal = m.bpm;
+        else if (m.t === 'meter') this.engine.meter = meterOf(m.meter);
         else if (m.t === 'button') this.engine.setButton(m.i, m.on);
         else if (m.t === 'track') this.engine.setTrack(m.id, m.notes, m.pat);
         else if (m.t === 'pattern') this.engine.setPattern(m.p);

@@ -14,9 +14,10 @@ import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 /** the emulator event that starts the transport (tools/cpu/prof.c, kind 4, note 1) */
 const TRANSPORT_ON = (4 << 16) | 1;
-/** what a count plays before its notes: a patch with a Steps track counts with the transport running, the worst case the
- * estimate stands for (a stopped track costs far less, #877; issue #878) */
-export const startEvents = (p: Patch): number[] => (p.modules.some((m) => m.type === 'steps') ? [TRANSPORT_ON] : []);
+/** what a count plays before its notes: a patch with a Steps track or a Euclid counts with the transport running, the worst
+ * case the estimate stands for (a stopped track costs far less, #877; issue #878; a Euclid on the engine's clock only
+ * steps while it runs, #1018) */
+export const startEvents = (p: Patch): number[] => (p.modules.some((m) => m.type === 'steps' || m.type === 'euclid') ? [TRANSPORT_ON] : []);
 
 export function cpuChecks(note: number): { name: string; patch: Patch; notes: number[] }[] {
   const chord = [note - 12, note - 5, note, note + 4];

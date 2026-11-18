@@ -615,12 +615,19 @@ typedef struct {
         struct { int32_t vel[DRUMMAP_NOUT / 2]; uint32_t held[4]; uint8_t gate, gap, fell; } dm;   /* fell: let go since the last
                                                     * block; held: with repeat on (#184), the keys down (bit k & 31 of held[k >> 5]) */
         struct { int32_t count, c1, r1; } cdv;
+        struct { int32_t c1, r1, left; int16_t count; int8_t pos; uint8_t hit, run; } euc;   /* Euclid: clock / reset's last samples, samples the outputs stay up (the engine's clock), ticks since the step, the step (-1: the next is the first), 0 rest / 1 hit / 2 accented hit, the transport as the last block saw it */
         struct { int32_t v, c1; } sh;
         struct { uint32_t rnd, rnd0; uint8_t reg, pat, c1, r1; } shr;   /* Shift register: the flip stream and where a reset restarts it; the stages (s1 in bit 7), the pattern a reset restores, clock / reset high at the previous sample */
         struct { uint8_t hi; } cmp;   /* Comparator: gt is high */
         struct { float vac, y1, y2; int32_t t1; } lpg;   /* Low pass gate: the vactrol (0..1), the two one-poles (steps of Q16), strike at the previous sample */
         struct { int32_t rem, t1; } pls;
         struct { int32_t w[SELECT_NOUT - 1]; int8_t k; uint8_t fading; } sel;   /* Selector: each input's weight (Q16), the position (-1: none yet) */
+        struct { int32_t cvel[ARP_HELD]; uint32_t pend_pos, wait, late, steps, j, cycle, o_ticks, o_frac;
+                 uint8_t cnote[ARP_HELD], ncyc, pend, fit, fit_run; } arp;   /* Arpeggiator (arp_block; here, so the engine's
+                 * own RAM does not grow, #1010, #1012): swing's step waiting (pend: the step, wait: samples after its
+                 * time) and how late the sounding note started; the bar rates: they ran in the last block (fit), aligned
+                 * to the transport (fit_run), the pass's keys (cnote, cvel, ncyc) and steps, its next step, its number
+                 * since the transport started, where a pass started while stopped (ticks, the clock's phase in the tick) */
     } s;
 } inst_t;
 
@@ -797,7 +804,7 @@ static int words_ok(const uint32_t *w, uint32_t n)
 
 /* an Arpeggiator module as it runs (web/src/arpeggiator.ts, the same steps): its keys in press order, the step counter, the
  * note it plays, samples since the last step and between the last two, the clock tick of its next step, the random mode's
- * generator, the clk input's last state */
+ * generator, the clk input's last state (swing's and the bar rates' state in its instance: inst_t s.arp) */
 typedef struct { uint8_t note, down; int32_t vel; } arp_key_t;
 typedef struct {
     uint8_t node, n, running, clk_hi;
@@ -950,6 +957,7 @@ static volatile uint16_t tempo_glo;   /* the global tempo (eng_tempo_global): bp
 static uint8_t tempo_moved;           /* eng_set_param or a load moved it (eng_tempo_moved) */
 static int32_t tempo_own;             /* the running patch's own tempo (Q16) while the global one plays */
 static void tempo_apply(void);
+static volatile uint8_t meter = METER_DEFAULT;   /* the global time signature (eng_meter, #1011): an index into METER_BAR */
 static volatile uint16_t panel_buttons; /* the patch buttons held / switched on (eng_buttons) */
 
 /* the arena's module copies (inst_pool, at the start of eng_arena below): inst_pool[0] is the spare every node points at
@@ -1328,6 +1336,9 @@ static void init_state(const node_t *nd, inst_t *it, uint32_t mod, uint32_t v)
         break;
     case T_CLKDIV:
         it->s.cdv.count = -1;
+        break;
+    case T_EUCLID:
+        it->s.euc.pos = -1;
         break;
     case T_SHREG: {                      /* modules.ts shreg.seed with engine.ts instSeed(module index, part) */
         uint32_t seed = (mod * 8u + v + 1u) * 0x9e3779b9u;
@@ -3702,20 +3713,34 @@ static void arp_note_off(arp_t *a, uint32_t note)
         arp_key_drop(a, note);
 }
 
-/* the note of step pos (arpeggiator.ts arpNote): the keys sorted (or as played), over the octaves, picked by the mode */
-static int arp_pick(arp_t *a, int32_t *vel)
+/* the steps of one pass over keys k (the bar rates; arpeggiator.ts arpSteps): notes x octaves (those up to 127), up-down's
+ * turnaround once */
+static uint32_t arp_steps(const arp_t *a, const arp_key_t *k, uint32_t n)
+{
+    const node_t *nd = &E.node[a->node];
+    int32_t mode = clampi((nd->par[ARP_P_MODE] + 32768) >> 16, 0, 4), oct = clampi((nd->par[ARP_P_OCTAVES] + 32768) >> 16, 1, 4);
+    uint32_t i, o, len = 0;
+    for (o = 0; o < (uint32_t)oct; o++)
+        for (i = 0; i < n; i++)
+            len += k[i].note + 12u * o <= 127u;
+    return mode == 2 && len > 2u ? 2u * len - 2u : len ? len : 1u;
+}
+
+/* the note of step pos of keys k (arpeggiator.ts arpNote): the keys sorted (or as played), over the octaves, picked by the
+ * mode */
+static int arp_pick(arp_t *a, const arp_key_t *k, uint32_t n, int32_t *vel)
 {
     const node_t *nd = &E.node[a->node];
     uint8_t base[ARP_HELD], note[ARP_LIST];
     int32_t bvel[ARP_HELD], nvel[ARP_LIST];
     int32_t mode = clampi((nd->par[ARP_P_MODE] + 32768) >> 16, 0, 4), oct = clampi((nd->par[ARP_P_OCTAVES] + 32768) >> 16, 1, 4);
     uint32_t i, j, o, len = 0, idx;
-    for (i = 0; i < a->n; i++) {
-        base[i] = a->held[i].note;
-        bvel[i] = a->held[i].vel;
+    for (i = 0; i < n; i++) {
+        base[i] = k[i].note;
+        bvel[i] = k[i].vel;
     }
     if (mode != 4)                               /* sorted by note (insertion sort: stable, as Array.sort) */
-        for (i = 1; i < a->n; i++)
+        for (i = 1; i < n; i++)
             for (j = i; j > 0 && base[j - 1] > base[j]; j--) {
                 uint8_t t = base[j];
                 int32_t tv = bvel[j];
@@ -3725,7 +3750,7 @@ static int arp_pick(arp_t *a, int32_t *vel)
                 bvel[j - 1] = tv;
             }
     for (o = 0; o < (uint32_t)oct; o++)
-        for (i = 0; i < a->n; i++)
+        for (i = 0; i < n; i++)
             if (base[i] + 12u * o <= 127u) {
                 note[len] = (uint8_t)(base[i] + 12u * o);
                 nvel[len++] = bvel[i];
@@ -4315,17 +4340,51 @@ static void steps_keys(void)
     E.nkev = 0;
 }
 
-/* One block (arpeggiator.ts arpBlock): clk edges take precedence, then continuous rate in Hz, then tempo.
- * Inputs are read as the last block left them. Gate length follows the continuous period or last clock interval. */
+/* step k of the keys (n of them) starts now: its note goes to the groups and Drum maps; the note is as late after its time
+ * as `since` says (swing) */
+static void arp_fire(arp_t *a, inst_t *it, uint32_t k, const arp_key_t *keys, uint32_t n)
+{
+    int32_t vel = 0;
+    int note;
+    a->pos = k;
+    note = arp_pick(a, keys, n, &vel);
+    a->pos = k + 1u;
+    it->s.arp.pend = 0;
+    it->s.arp.late = a->since;
+    if (note < 0)
+        return;
+    arp_emit_on(a, (uint32_t)note, vel);
+    a->cur = (int16_t)note;
+}
+
+/* the pass's keys as arp_pick takes them, into k; their count */
+static uint32_t arp_cyc(const inst_t *it, arp_key_t *k)
+{
+    uint32_t i;
+    for (i = 0; i < it->s.arp.ncyc; i++) {
+        k[i].note = it->s.arp.cnote[i];
+        k[i].down = 1;
+        k[i].vel = it->s.arp.cvel[i];
+    }
+    return it->s.arp.ncyc;
+}
+
+/* One block (arpeggiator.ts arpBlock): clk edges take precedence, then continuous rate in Hz, then the rate on the clock:
+ * a clock rate's ticks, or a bar rate's share of a pass (#1010) on the clock's phase, its passes on the transport's bar
+ * lines while it runs. Swing (#1012) starts every second step late. Inputs are read as the last block left them. Gate
+ * length follows the continuous period, the last clock interval or the pass's share. */
 static void arp_block(arp_t *a, uint32_t n, uint32_t bpm)
 {
-    static const uint8_t RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};
+    static const uint8_t RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3}, FIT_HALVES[4] = {1, 2, 4, 8};
     const node_t *nd = &E.node[a->node];
-    const inst_t *it = &inst_pool[nd->inst0];
-    uint32_t rate = RATE_TICKS[clampi((nd->par[ARP_P_RATE] + 32768) >> 16, 0, 6)], i;
-    int clk = (nd->conn >> ARP_I_CLK) & 1u, edge = 0, step = 0;
+    inst_t *it = &inst_pool[nd->inst0];
+    int32_t r = clampi((nd->par[ARP_P_RATE] + 32768) >> 16, 0, 10), fit_i = r - 7;
+    uint32_t rate, cyc_ticks = 0, i, at = a->pos, sl;
+    int clk = (nd->conn >> ARP_I_CLK) & 1u, edge = 0, step = 0, fit, started;
     int continuous = !clk && ((nd->conn >> ARP_I_RATE) & 1u), rate_edge = 0;
+    int32_t swing = nd->par[ARP_P_SWING] - 50 * ENG_ONE;
     uint32_t period = 0;
+    arp_key_t ck[ARP_HELD];
     if (!arp_latched(a)) {                       /* latch turned off: the keys let go meanwhile go */
         uint32_t k = 0;
         for (i = 0; i < a->n; i++)
@@ -4368,34 +4427,121 @@ static void arp_block(arp_t *a, uint32_t n, uint32_t bpm)
         a->running = 0;
         return;
     }
-    if (!a->running) {
-        a->running = 1;
-        step = 1;
-        a->pos = 0;
-        a->next = E.ticks + rate;
-        a->interval = continuous ? period : (uint32_t)((uint64_t)rate * 60u * ENG_SR / (24u * bpm));
-        a->rate_phase = 0;
-        a->since = 0;
-    } else if (clk ? edge : continuous ? rate_edge : (int32_t)(E.ticks - a->next) >= 0) {
-        step = 1;
-        if (!clk && !continuous) {
-            a->next += rate;
-            if ((int32_t)(E.ticks - a->next) >= 0)
-                a->next = E.ticks + rate;        /* fell behind (a tempo jump): from now */
+    fit = fit_i >= 0 && !clk && !continuous;
+    if (fit_i >= 0)
+        cyc_ticks = METER_BAR[meter] * FIT_HALVES[fit_i] / 2u;
+    /* a clock rate's ticks; a bar rate's under clk or rate (the first step's length): a step of a pass of the keys now */
+    rate = fit_i < 0 ? RATE_TICKS[r] : cyc_ticks / arp_steps(a, a->held, a->n);
+    if (!rate)
+        rate = 1;
+    started = !a->running;                       /* (a key that starts it plays at once, swing or not) */
+    if (fit) {
+        const uint64_t whole = 60u * ENG_SR, C = (uint64_t)cyc_ticks * whole;
+        uint64_t pos, due;
+        uint64_t frac = E.tick_acc;              /* the part of the next tick gone by, of `whole`: the tempo's remainder, */
+        int fresh = !a->running || !it->s.arp.fit;   /* or with MIDI clock the samples since its tick over a measured tick */
+        if (clk_ext) {
+            frac = E.ext_len ? (uint64_t)E.ext_since * whole / E.ext_len : 0u;
+            if (frac > whole - 1u)
+                frac = whole - 1u;
         }
-        if (!continuous && a->since > 0)
-            a->interval = a->since;
-        a->since = 0;
+        if (E.running) {                         /* the passes from the transport's start: on its bar lines */
+            uint32_t t = E.ticks - E.run_ticks, k = t / cyc_ticks;
+            pos = (uint64_t)(t - k * cyc_ticks) * whole + frac;
+            if (k != it->s.arp.cycle || !it->s.arp.fit_run)
+                fresh = 1;
+            it->s.arp.cycle = k;
+        } else {
+            int64_t rel;
+            if (fresh) {                         /* (stopped: from this key) */
+                it->s.arp.o_ticks = E.ticks;
+                it->s.arp.o_frac = (uint32_t)frac;
+            } else if (it->s.arp.fit_run) {      /* (the transport stopped: the pass goes on where it is) */
+                it->s.arp.o_ticks = E.run_ticks + it->s.arp.cycle * cyc_ticks;
+                it->s.arp.o_frac = 0;
+            }
+            rel = (int64_t)((uint64_t)(E.ticks - it->s.arp.o_ticks) * whole) + (int64_t)frac - (int64_t)it->s.arp.o_frac;
+            pos = rel > 0 ? (uint64_t)rel : 0u;
+            while (pos >= C) {
+                pos -= C;
+                it->s.arp.o_ticks += cyc_ticks;
+                fresh = 1;
+            }
+        }
+        if (fresh) {                             /* a pass starts: its keys and steps */
+            for (i = 0; i < a->n; i++) {
+                it->s.arp.cnote[i] = a->held[i].note;
+                it->s.arp.cvel[i] = a->held[i].vel;
+            }
+            it->s.arp.ncyc = a->n;
+            it->s.arp.steps = arp_steps(a, a->held, a->n);
+            it->s.arp.j = 0;
+        }
+        due = pos * it->s.arp.steps / C;         /* the step whose share of the pass has come */
+        if (due > it->s.arp.steps - 1u)
+            due = it->s.arp.steps - 1u;
+        if (!a->running) {
+            a->running = 1;
+            a->since = 0;
+            it->s.arp.pend = 0;
+        }
+        if (due >= it->s.arp.j) {
+            step = 1;
+            at = (uint32_t)due;
+            it->s.arp.j = (uint32_t)due + 1u;
+        }
+        a->interval = (uint32_t)((uint64_t)cyc_ticks * (uint32_t)E.tick_len / it->s.arp.steps);
+        it->s.arp.fit = 1;
+        it->s.arp.fit_run = E.running;
+    } else {
+        it->s.arp.fit = 0;
+        if (!a->running) {
+            a->running = 1;
+            step = 1;
+            a->pos = 0;
+            at = 0;
+            a->next = E.ticks + rate;
+            a->interval = continuous ? period : (uint32_t)((uint64_t)rate * 60u * ENG_SR / (24u * bpm));
+            a->rate_phase = 0;
+            a->since = 0;
+            it->s.arp.pend = 0;
+        } else if (clk ? edge : continuous ? rate_edge : (int32_t)(E.ticks - a->next) >= 0) {
+            step = 1;
+            if (!clk && !continuous) {
+                a->next += rate;
+                if ((int32_t)(E.ticks - a->next) >= 0)
+                    a->next = E.ticks + rate;    /* fell behind (a tempo jump): from now */
+            }
+            if (!continuous && a->since > 0)
+                a->interval = a->since;
+        }
     }
     if (step) {
-        int32_t vel = 0;
-        int note = arp_pick(a, &vel);
-        a->pos++;
+        uint32_t d = 0;
+        a->since = 0;
+        it->s.arp.late = 0;
         if (a->cur >= 0)
             arp_emit_off(a, (uint32_t)a->cur);
-        arp_emit_on(a, (uint32_t)note, vel);
-        a->cur = (int16_t)note;
-    } else if (a->cur >= 0 && a->since >= (uint32_t)(((uint64_t)a->interval * (uint32_t)nd->par[ARP_P_GATE]) >> 16)) {
+        a->cur = -1;
+        /* the step's length the swing is a share of: the clock rate's, the pass's share, the clk or rate input's period */
+        sl = fit || clk || continuous ? a->interval : rate * (uint32_t)E.tick_len;
+        if (!started && (at & 1u) && swing > 0 && sl > 0u)
+            d = (uint32_t)((int64_t)swing * sl / (50 * ENG_ONE));
+        if (d > 0u) {
+            it->s.arp.pend = 1;
+            it->s.arp.pend_pos = at;
+            it->s.arp.wait = d;
+        } else if (fit) {
+            arp_fire(a, it, at, ck, arp_cyc(it, ck));
+        } else {
+            arp_fire(a, it, at, a->held, a->n);
+        }
+    } else if (it->s.arp.pend && a->since >= it->s.arp.wait) {
+        if (fit)
+            arp_fire(a, it, it->s.arp.pend_pos, ck, arp_cyc(it, ck));
+        else
+            arp_fire(a, it, it->s.arp.pend_pos, a->held, a->n);
+    } else if (a->cur >= 0 && a->since >= it->s.arp.late + (uint32_t)(((uint64_t)a->interval * (uint32_t)nd->par[ARP_P_GATE]) >> 16)) {
         arp_emit_off(a, (uint32_t)a->cur);
         a->cur = -1;
     }
@@ -4796,7 +4942,11 @@ void eng_play_once(void)
     once_gen++;
 }
 int eng_once_state(void) { return once_gen != once_seen ? (once_cmd == 1u ? 1 : 0) : once_st; }
-uint32_t eng_once_beat(void) { return once_gen != once_seen || once_st != 1u ? 0u : once_cin / 24u; }
+uint32_t eng_once_beat(void) { return once_gen != once_seen || once_st != 1u ? 0u : once_cin / METER_BEAT[meter]; }
+void eng_meter(uint32_t m) { meter = (uint8_t)(m < METER_N ? m : METER_DEFAULT); }
+uint32_t eng_meter_get(void) { return meter; }
+uint32_t eng_bar_ticks(void) { return METER_BAR[meter]; }
+uint32_t eng_beat_ticks(void) { return METER_BEAT[meter]; }
 /* the click's sample k of len, half a period `half` samples (modules.ts clickSample: exact in both engines) */
 static int32_t click_sample(int32_t k, int32_t len, int32_t half)
 {
@@ -10359,6 +10509,100 @@ static void m_clkdiv(const node_t *nd, inst_t *it, uint32_t n)
     it->s.cdv.r1 = r1;
 }
 
+/* Euclid (modules.ts euclid, #1018), ported from KITTEN RACK's m_euclid (https://github.com/BlackKittenDevices/kitten-rack,
+ * a GPL-3.0 fork of Matryoshka), with an accent and the engine's clock added. Step x of the pattern: 0 a rest, 1 a hit,
+ * 2 an accented hit (modules.ts euclidStep) */
+static uint8_t euclid_step(int32_t x, int32_t steps, int32_t hits, int32_t acc)
+{
+    if ((x * hits) % steps >= hits)
+        return 0;
+    return (x * hits / steps * acc) % hits < acc ? 2u : 1u;   /* (the hit's index among the hits: x hits / steps) */
+}
+/* the outputs from sample `from` to `to`: up (on step `hit`: trig, off or accent) or all down */
+static void euclid_out(esig_t *const *o, int up, uint8_t hit, uint32_t from, uint32_t to)
+{
+    fill(o[0] + from, up && hit ? ENG_ONE : 0, to - from);
+    fill(o[1] + from, up && !hit ? ENG_ONE : 0, to - from);
+    fill(o[2] + from, up && hit == 2u ? ENG_ONE : 0, to - from);
+}
+/* a cable in clock: a step on each rising edge, the outputs up while the clock is; none: the engine's clock while the
+ * transport runs, the first step on its start, then one each EUCLID_RATE_TICKS, the outputs up for half a step. The
+ * outputs go in spans that end where something can change: a tick, the clock or reset crossing 0.5 (exact) */
+static void m_euclid(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *clock = it->in[EUCLID_I_CLOCK], *reset = it->in[EUCLID_I_RESET];
+    esig_t *const o[3] = {it->out[EUCLID_O_TRIG], it->out[EUCLID_O_OFF], it->out[EUCLID_O_ACCENT]};
+    int32_t steps = clampi(round_q16(EF(it, EUCLID_P_STEPS)), 1, EUCLID_STEPS_MAX);
+    int32_t hits = clampi(round_q16(EF(it, EUCLID_P_HITS)), 0, steps);
+    int32_t rot = clampi(round_q16(EF(it, EUCLID_P_ROTATE)), 0, EUCLID_STEPS_MAX - 1);
+    int32_t acc = clampi(round_q16(EF(it, EUCLID_P_ACCENT)), 0, hits);
+    int32_t rt = EUCLID_RATE_TICKS[clampi(round_q16(EF(it, EUCLID_P_RATE)), 0, (int32_t)sizeof EUCLID_RATE_TICKS - 1)];
+    int32_t width = (rt * E.tick_len) >> 1, pos = it->s.euc.pos, c1 = it->s.euc.c1, r1 = it->s.euc.r1, left = it->s.euc.left;
+    int32_t count = it->s.euc.count, tick = E.tick_off;
+    int ext = (nd->conn >> EUCLID_I_CLOCK) & 1u, start = E.running && !it->s.euc.run;
+    uint8_t hit = it->s.euc.hit;
+    uint32_t i, e;
+    if (width < 1)
+        width = 1;
+    for (i = 0; i < n; i = e) {
+        int32_t adv = 0;
+        int hi = ext && clock[i] >= 32768, rs = reset[i] >= 32768;
+        if (rs && r1 < 32768)
+            pos = -1;
+        if (ext)
+            adv = hi && c1 < 32768;
+        else {
+            if (i == 0 && start) {       /* (PLAY: the first step now) */
+                count = 0;
+                pos = -1;
+                adv = 1;
+            }
+            if ((int32_t)i == tick) {    /* (-1 while stopped; MIDI clock's ticks can come several to a sample) */
+                int32_t q;
+                for (q = 0; q < E.tick_n; q++)
+                    if (++count >= rt) {
+                        count = 0;
+                        adv++;
+                    }
+            }
+        }
+        if (adv) {
+            pos = (pos + adv) % steps;
+            hit = euclid_step((pos + rot) % steps, steps, hits, acc);
+            left = width;
+        }
+        e = !ext && tick > (int32_t)i ? (uint32_t)tick : n;
+        if (ext && reset != zero_buf)
+            for (e = i + 1; e < n && (clock[e] >= 32768) == hi && (reset[e] >= 32768) == rs; e++)
+                ;
+        else if (ext)
+            for (e = i + 1; e < n && (clock[e] >= 32768) == hi; e++)
+                ;
+        else if (reset != zero_buf) {
+            uint32_t end = e;
+            for (e = i + 1; e < end && (reset[e] >= 32768) == rs; e++)
+                ;
+        }
+        r1 = reset[e - 1];
+        if (ext) {
+            c1 = clock[e - 1];
+            euclid_out(o, hi, hit, i, e);
+        } else {
+            uint32_t up = left <= 0 ? 0u : (uint32_t)left < e - i ? (uint32_t)left : e - i;
+            euclid_out(o, 1, hit, i, i + up);
+            euclid_out(o, 0, hit, i + up, e);
+            left -= (int32_t)up;
+        }
+    }
+    it->s.euc.pos = (int8_t)pos;
+    it->s.euc.c1 = c1;
+    it->s.euc.r1 = r1;
+    it->s.euc.left = left;
+    it->s.euc.count = (int16_t)count;
+    it->s.euc.hit = hit;
+    it->s.euc.run = E.running;
+}
+
 static void m_sh(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *in = it->in[SH_I_IN], *clock = it->in[SH_I_CLOCK];
@@ -11108,6 +11352,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_LADDER: m_ladder(nd, it, n); break;
     case T_DYN: m_dyn(nd, it, n); break;
     case T_LIMIT: m_limit(nd, it, n); break;
+    case T_EUCLID: m_euclid(nd, it, n); break;
     case T_ESP: m_esp(nd, it, n); break;
     case T_MATH: m_math(nd, it, n); break;
     case T_LOGIC: m_logic(nd, it, n); break;
@@ -12003,11 +12248,12 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
     for (off = 0; off < total; off += ENG_BLOCK) {
         uint32_t n = total - off < ENG_BLOCK ? total - off : ENG_BLOCK;
         int32_t click_at = -1, accent = 0;
+        const uint32_t bar = METER_BAR[meter], beat = METER_BEAT[meter];   /* the global time signature's (#1011) */
         ENG_PROF(4, 0, 0);
 #ifdef ENG_POISON
         poi_after(-1);
 #endif
-        if (once_st == 1u && once_cin >= ONCE_BAR) {   /* play once's count-in is over: the transport starts, each track */
+        if (once_st == 1u && once_cin >= bar) {   /* play once's count-in is over: the transport starts, each track */
             uint32_t s = E.song && E.song_n[E.song - 1u] ? E.song_n[E.song - 1u] : 1u;   /* the clock steps counts */
             once_st = 2;                                                                       /* its passes */
             once_run = 1;
@@ -12075,7 +12321,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 }
             }
             if (once_st == 1u) {                 /* play once's count-in (#632): beat 1's click on this block's first sample,
-                                                  * then one on each 24th tick */
+                                                  * then one on each beat of the bar */
                 if (once_first) {
                     click_at = 0;
                     accent = 1;
@@ -12083,7 +12329,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 } else if (seen) {
                     uint32_t before = once_cin;
                     once_cin += (uint32_t)E.tick_n;
-                    if (once_cin < ONCE_BAR && once_cin / 24u > before / 24u)
+                    if (once_cin < bar && once_cin / beat > before / beat)
                         click_at = E.tick_off > 0 ? E.tick_off : 0;
                 }
             }
@@ -12095,8 +12341,8 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                     int32_t at = (int32_t)(cin_req_at - E.run_ticks);
                     cin_seen = cin_gen;
                     cin_on = cin_req_bars != 0u;
-                    cin_from = at > 0 ? ((uint32_t)at + ONCE_BAR - 1u) / ONCE_BAR * ONCE_BAR : 0u;
-                    cin_end = cin_from + cin_req_bars * ONCE_BAR;
+                    cin_from = at > 0 ? ((uint32_t)at + bar - 1u) / bar * bar : 0u;
+                    cin_end = cin_from + cin_req_bars * bar;
                 }
                 if (cin_on) {
                     if (start && cin_from == 0u) {   /* beat 1 on the start's first sample */
@@ -12104,9 +12350,9 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                         accent = 1;
                     }
                     for (r = r0 + 1u; r - r0 <= r1 - r0; r++)   /* each tick of this block */
-                        if (r >= cin_from && r < cin_end && r % 24u == 0u) {
+                        if (r >= cin_from && r < cin_end && (r - cin_from) % beat == 0u) {
                             click_at = E.tick_off > 0 ? E.tick_off : 0;
-                            accent = (r - cin_from) % ONCE_BAR == 0u;
+                            accent = (r - cin_from) % bar == 0u;
                         }
                     if (r1 >= cin_end)
                         cin_on = 0;
