@@ -1,0 +1,39 @@
+{
+ "runs": 32,
+ "core0_runs_differing": 0,
+ "core1": [
+  "11c96a92",
+  "51ca2f53",
+  "5dd8d5cf",
+  "3faa9188",
+  "f31baa1c",
+  "949362e1"
+ ],
+ "core1_us": 3035,
+ "core0_us": 3351,
+ "core1_stack": 2152,
+ "core0": [
+  "11c96a92",
+  "51ca2f53",
+  "5dd8d5cf",
+  "3faa9188",
+  "f31baa1c",
+  "949362e1"
+ ],
+ "host": [
+  "11c96a92",
+  "51ca2f53",
+  "5dd8d5cf",
+  "3faa9188",
+  "f31baa1c",
+  "949362e1"
+ ],
+ "cases": [
+  "filter osc drive",
+  "filter lp12",
+  "ladder stsat fm",
+  "ladder diode",
+  "formant",
+  "resonator"
+ ]
+}
