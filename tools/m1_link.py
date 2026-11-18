@@ -38,8 +38,8 @@
                                           (#802, #803, DIAG pages 132..139: what an audio block's time is made of, over
                                            SECONDS (default 3): each part of the audio interrupt, the voices, TIMER5's
                                            interrupts, the second core's busy and idle time and its hand-offs, mean and
-                                           most per block; --patch: a factory patch (firmware/src/presets.h) uploaded live
-                                           first; --notes: hold the first N of the rig survey's 8 notes (C4 E4 G4 B4 C5 E5
+                                           most per block; --patch: a factory patch (firmware/src/presets.h) or the path of
+                                           a patch binary, uploaded live first; --notes: hold the first N of the rig survey's 8 notes (C4 E4 G4 B4 C5 E5
                                            G5 B5) from 1 s before the window to its end; --json: the raw values too. Reads
                                            only, except that page 139 holds the main loop 5 ms)
   tools/m1_link.py modtime [SECONDS] [--notes N] [--patch NAME] [--json FILE]
@@ -764,9 +764,12 @@ def diag_words(link, n):
 
 
 def load_factory(link, patch):
-    """a factory patch (firmware/src/presets.h) uploaded live"""
-    ps = factory_presets()
-    hit = [d for n, d in ps if n.lower() == patch.lower()] or [d for n, d in ps if n.lower().startswith(patch.lower())]
+    """a factory patch (firmware/src/presets.h), or a patch binary at that path, uploaded live"""
+    if os.path.isfile(patch):
+        hit = [open(patch, "rb").read()]
+    else:
+        ps = factory_presets()
+        hit = [d for n, d in ps if n.lower() == patch.lower()] or [d for n, d in ps if n.lower().startswith(patch.lower())]
     if len(hit) != 1:
         sys.exit(f"--patch {patch!r}: {'no' if not hit else 'more than one'} factory patch of that name; "
                  f"names: {', '.join(n for n, _ in ps)}")

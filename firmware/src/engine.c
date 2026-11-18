@@ -76,6 +76,13 @@ typedef int32_t esig_t;
 /* the per-sample helpers are forced inline: -Os left mulq / mulr as calls, a sixth of a busy patch's cycles went to the
  * call and return (tools/cpu, npm run cpu-hot) */
 #define HOT static inline __attribute__((always_inline))
+/* a sample loop of the per-copy path unrolled 4 times (#1072): the same operations in the same order, so the same output;
+ * on the FM-1 a taken branch costs about 7.5 cycles, a loop's whole body costs a few (tools/emu/timing.txt) */
+#if defined(__clang__)
+#define UNROLL4 _Pragma("clang loop unroll_count(4)")
+#else
+#define UNROLL4
+#endif
 
 HOT int32_t mulq(int32_t a, int32_t b, unsigned s) { return (int32_t)(((int64_t)a * b) >> s); }
 HOT int32_t mul16(int32_t a, int32_t b) { return mulq(a, b, 16); }
@@ -6613,14 +6620,17 @@ static void m_scale(const node_t *nd, inst_t *it, uint32_t n)
     esig_t *out = it->out[0];
     int32_t g = EF(it, SCALE_P_GAIN), o = EF(it, SCALE_P_OFFSET);
     uint32_t i;
-    if (!g || in == zero_buf)
+    if (!g || in == zero_buf) {
         fill(out, o, n);
-    else if (g == ENG_ONE)
+    } else if (g == ENG_ONE) {
+        UNROLL4
         for (i = 0; i < n; i++)
             out[i] = in[i] + o;
-    else
+    } else {
+        UNROLL4
         for (i = 0; i < n; i++)
             out[i] = mul16(in[i], g) + o;
+    }
 }
 
 static int32_t env_rate(int32_t t_q16);
@@ -6984,14 +6994,17 @@ static void m_vca(const node_t *nd, inst_t *it, uint32_t n)
     int32_t g = EF(it, VCA_P_GAIN);
     uint32_t i;
     (void)nd; /* an unplugged cv reads the zero buffer: a VCA with no control is closed */
-    if (!g || in == zero_buf || cv == zero_buf)
+    if (!g || in == zero_buf || cv == zero_buf) {
         fill(out, 0, n);
-    else if (g == ENG_ONE)
+    } else if (g == ENG_ONE) {
+        UNROLL4
         for (i = 0; i < n; i++)
             out[i] = mul16(in[i], cv[i]);
-    else
+    } else {
+        UNROLL4
         for (i = 0; i < n; i++)
             out[i] = mul16(mul16(in[i], cv[i]), g);
+    }
 }
 
 #define LAD_SAT_KNEE (3 << 19)      /* 1.5 in Q20: the saturator's knee */
@@ -7739,7 +7752,7 @@ static void m_math(const node_t *nd, inst_t *it, uint32_t n)      /* modules.ts 
             esig_t *dst = o[k];
             if (IS_DUMMY(dst))
                 continue;
-#define MATH_ONE(Y) for (i = 0; i < n; i++) { int32_t a = mul16(ia[i], ka) + off, b = mul16(ib[i], kb); (void)b; dst[i] = (Y); }
+#define MATH_ONE(Y) UNROLL4 for (i = 0; i < n; i++) { int32_t a = mul16(ia[i], ka) + off, b = mul16(ib[i], kb); (void)b; dst[i] = (Y); }
             switch (k) {
             case MATH_O_ADD: MATH_ONE(a + b) break;
             case MATH_O_SUB: MATH_ONE(a - b) break;
@@ -7778,7 +7791,7 @@ static void m_logic(const node_t *nd, inst_t *it, uint32_t n)     /* modules.ts 
     int only = only_output(it, LOGIC_NOUT);
     if (only >= 0) {
         esig_t *dst = o[only];
-#define LOGIC_ONE(Y) for (i = 0; i < n; i++) { int a = ia[i] >= t, b = ib[i] >= t; (void)b; dst[i] = (Y) ? ENG_ONE : 0; }
+#define LOGIC_ONE(Y) UNROLL4 for (i = 0; i < n; i++) { int a = ia[i] >= t, b = ib[i] >= t; (void)b; dst[i] = (Y) ? ENG_ONE : 0; }
         switch (only) {
         case LOGIC_O_AND: LOGIC_ONE(a && b) break;
         case LOGIC_O_OR: LOGIC_ONE(a || b) break;
@@ -7977,12 +7990,14 @@ static void m_mixer(const node_t *nd, inst_t *it, uint32_t n)
         fill(out, 0, n);
         break;
     case 1:
+        UNROLL4
         for (i = 0; i < n; i++)
             out[i] = mul16(x[0][i], l[0]);
         break;
     case 2: {
         const esig_t *x0 = x[0], *x1 = x[1];
         const int32_t l0 = l[0], l1 = l[1];
+        UNROLL4
         for (i = 0; i < n; i++)
             out[i] = mul16(x0[i], l0) + mul16(x1[i], l1);
         break;
@@ -7990,11 +8005,13 @@ static void m_mixer(const node_t *nd, inst_t *it, uint32_t n)
     case 3: {
         const esig_t *x0 = x[0], *x1 = x[1], *x2 = x[2];
         const int32_t l0 = l[0], l1 = l[1], l2 = l[2];
+        UNROLL4
         for (i = 0; i < n; i++)
             out[i] = mul16(x0[i], l0) + mul16(x1[i], l1) + mul16(x2[i], l2);
         break;
     }
     default:
+        UNROLL4
         for (i = 0; i < n; i++)
             out[i] = mul16(a[i], la) + mul16(b[i], lb) + mul16(c[i], lc) + mul16(d[i], ld);
     }
@@ -10817,6 +10834,7 @@ static void m_xfade(const node_t *nd, inst_t *it, uint32_t n)
     esig_t *out = it->out[0];
     int32_t base = EF(it, XFADE_P_MIX);
     uint32_t i;
+    UNROLL4
     for (i = 0; i < n; i++) {
         int32_t m = clampi(base + pos[i], 0, ENG_ONE);
         out[i] = mul16(a[i], ENG_ONE - m) + mul16(b[i], m);
@@ -10851,9 +10869,11 @@ static void m_select(inst_t *it, uint32_t n)
         int32_t v = EF(it, SELECT_P_V1 + k);
         if (x == zero_buf)
             fill(out, v, n);
-        else if (!IS_DUMMY(out))
+        else if (!IS_DUMMY(out)) {
+            UNROLL4
             for (i = 0; i < n; i++)
                 out[i] = x[i] + v;
+        }
     } else {
         int32_t *w = it->s.sel.w;
         uint32_t busy = 0;
@@ -10873,13 +10893,8 @@ static void m_select(inst_t *it, uint32_t n)
             busy |= (uint32_t)(w[j] != ((int32_t)j == k ? ENG_ONE : 0));
         it->s.sel.fading = (uint8_t)busy;
     }
-    for (j = 0; j < SEL_N; j++) {
-        esig_t *g = it->out[SELECT_O_G1 + j], v = (int32_t)j == k ? ENG_ONE : 0;
-        if (IS_DUMMY(g))
-            continue;
-        for (i = 0; i < n; i++)
-            g[i] = v;
-    }
+    for (j = 0; j < SEL_N; j++)                  /* the gates (fill: nothing for an unconnected one) */
+        fill(it->out[SELECT_O_G1 + j], (int32_t)j == k ? ENG_ONE : 0, n);
 }
 
 /* the formants (Hz) of A E I O U; gains 1, 1/2, 1/4 */
@@ -11035,6 +11050,7 @@ static int32_t signal_mean(const esig_t *src, uint32_t n)
 {
     int64_t sum = 0;
     uint32_t i;
+    UNROLL4
     for (i = 0; i < n; i++)
         sum += src[i];
     return block_mean(sum, n);
@@ -11173,6 +11189,7 @@ static void m_bypass(const node_t *nd, inst_t *it, uint32_t n)
         esig_t *o = it->out[j];
         if (IS_DUMMY(o))
             continue;
+        UNROLL4
         for (i = 0; i < n; i++)
             o[i] = src[i];
     }
@@ -11485,21 +11502,25 @@ static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, 
             const esig_t *a = p[0], *b = p[1], *c = p[2];
             if (sm->n >= 4u) {
                 const esig_t *d = p[3];
+                UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] = a[i] + b[i] + c[i] + d[i];
                 q = 4;
             } else {
+                UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] = a[i] + b[i] + c[i];
                 q = 3;
             }
             for (; q + 3u <= sm->n; q += 3u) {
                 a = p[q], b = p[q + 1u], c = p[q + 2u];
+                UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] += a[i] + b[i] + c[i];
             }
             for (; q < sm->n; q++) {
                 a = p[q];
+                UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] += a[i];
             }
@@ -11508,13 +11529,15 @@ static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, 
         if (sm->n >= 2) {                           /* the first two sources in one pass, the rest added */
             const esig_t *a = E.sum_src[sm->first], *b = E.sum_src[sm->first + 1u];
             const int32_t wa = E.sum_w[sm->first], wb = E.sum_w[sm->first + 1u];
-            if (!wa && !wb)
+            if (!wa && !wb) {
+                UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] = a[i] + b[i];
-            else if (wa && wb)
+            } else if (wa && wb) {
+                UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] = mul16(a[i], wa) + mul16(b[i], wb);
-            else
+            } else
                 for (i = 0; i < n; i++)
                     dst[i] = (wa ? mul16(a[i], wa) : a[i]) + (wb ? mul16(b[i], wb) : b[i]);
             q = 2;
@@ -11532,12 +11555,15 @@ static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, 
         for (; q < sm->n; q++) {
             const esig_t *src = E.sum_src[sm->first + q];
             const int32_t w = E.sum_w[sm->first + q];
-            if (w)
+            if (w) {
+                UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] += mul16(src[i], w);
-            else
+            } else {
+                UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] += src[i];
+            }
         }
     }
     ENG_PROF(1, m, IT_V(nd, it));
@@ -11981,6 +12007,7 @@ static void render_sched(uint32_t n)
 static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the patch, clamped */
 {
     uint32_t off, i, k, v;
+    UNROLL4
     for (i = 0; i < total; i++)
         left[i] = right[i] = 0;
     cko.n = 0;
@@ -12189,6 +12216,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             const inst_t *it = &inst_pool[o->inst0];
             int32_t lvl = it->eff[OUTPUT_P_LEVEL];
             const esig_t *l = it->in[OUTPUT_I_L], *r = (o->conn & (1u << OUTPUT_I_R)) ? it->in[OUTPUT_I_R] : it->in[OUTPUT_I_L];
+            UNROLL4
             for (i = 0; i < n; i++) {
                 left[off + i] += mul16(l[i], lvl);
                 right[off + i] += mul16(r[i], lvl);
@@ -12220,6 +12248,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         }
         ENG_PROF(5, 0, 0);
     }
+    UNROLL4
     for (i = 0; i < total; i++) {
         left[i] = clampi(left[i], -ENG_ONE, ENG_ONE);
         right[i] = clampi(right[i], -ENG_ONE, ENG_ONE);

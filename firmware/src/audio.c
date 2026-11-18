@@ -104,6 +104,7 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
             eng_render(eng_l, eng_r, HALF_FRAMES);
             bt_m[BT_M_REND1] = fm1_ticks();
             int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
+            UNROLL4                                     /* (engine.c, #803) */
             for (i = 0; i < HALF_FRAMES; i++) {         /* Q16 (+-1.0) * MASTER -> 24 bit in the low bits, -6 dBFS ceiling */
                 o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
                 o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;

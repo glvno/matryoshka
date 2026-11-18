@@ -194,6 +194,21 @@ pub struct Timing {
     /// core 1 runs a job: its last instruction was in the flash
     busy1: bool,
     pub counts: [Counts; 2],
+    /// the profile, when M1EMU_PROF asks for one, and whether it counts now
+    pub prof: Option<Prof>,
+    pub prof_on: bool,
+    last_pc: [u32; 2],
+    /// what-if (M1EMU_RAMSIM, set by `m1emu cpu` from the ELF): code at these flash halfwords (index (pc - 0x0200_0000) / 2)
+    /// runs as if it were in RAM
+    pub ram_sim: Vec<bool>,
+}
+
+/// Where the cycles went (`m1emu cpu --modtime` with M1EMU_PROF): per core, the device cycles and the line fills each
+/// instruction address was charged, over the windows `Timing::prof_on` covers. A data fill counts at the instruction
+/// that retired last on its core.
+pub struct Prof {
+    /// (address, core) -> [cycles, fetch misses, data misses]
+    pub at: std::collections::HashMap<(u32, u8), [f64; 3]>,
 }
 
 pub fn xip(addr: u32) -> bool {
@@ -214,6 +229,10 @@ impl Timing {
             owed: [0.0; 2],
             busy1: false,
             counts: Default::default(),
+            prof: std::env::var_os("M1EMU_PROF").map(|_| Prof { at: Default::default() }),
+            prof_on: false,
+            last_pc: [0; 2],
+            ram_sim: Vec::new(),
         }
     }
 
@@ -252,9 +271,11 @@ impl Timing {
             c.load_uses += 1;
         }
         self.loaded[core] = if class == cost::LOAD as usize { (rw >> 16) as u16 } else { 0 };
+        let mut fetch_missed = 0.0;
         let end = pc + len as u32;
         self.next[core] = end;
-        if xip(pc) {
+        let flash = xip(pc) && !self.ram_sim.get(((pc - 0x0200_0000) >> 1) as usize).copied().unwrap_or(false);
+        if flash {
             let (first, last) = (pc >> self.icache.shift, (end - 1) >> self.icache.shift);
             for l in first..=last {
                 if l != self.line[core] {
@@ -262,6 +283,7 @@ impl Timing {
                     if !self.icache.access(l << self.icache.shift) {
                         cyc += p.miss;
                         c.fetch_misses += 1;
+                        fetch_missed += 1.0;
                     }
                 }
             }
@@ -270,7 +292,7 @@ impl Timing {
             c.ram_insns += 1;
         }
         if core == 1 {
-            self.busy1 = xip(pc);
+            self.busy1 = flash;
         }
         if self.busy1 {
             cyc *= 1.0 + p.dual;
@@ -278,6 +300,14 @@ impl Timing {
         }
         c.cycles += cyc;
         self.owed[core] += cyc * self.scale - 1.0;
+        self.last_pc[core] = pc;
+        if self.prof_on {
+            if let Some(pr) = self.prof.as_mut() {
+                let e = pr.at.entry((pc, core as u8)).or_insert([0.0; 3]);
+                e[0] += cyc;
+                e[1] += fetch_missed;
+            }
+        }
     }
 
     /// A data read at `addr` on `core` (only the XIP window is cached).
@@ -296,6 +326,14 @@ impl Timing {
         };
         c.cycles += cyc;
         self.owed[core] += cyc * self.scale;
+        if self.prof_on && cyc == self.p.miss {
+            let pc = self.last_pc[core];
+            if let Some(pr) = self.prof.as_mut() {
+                let e = pr.at.entry((pc, core as u8)).or_insert([0.0; 3]);
+                e[0] += cyc;
+                e[2] += 1.0;
+            }
+        }
     }
 
     /// The whole emulator cycles owed by `core`, taken (the fraction stays owed).

@@ -55,12 +55,22 @@ SPEED = "-O2"                       # the app's audio path (#798, tools/size_fns
 # what JieLi's AC79 SDK and FM1 Open compile with (#950, #979): the single-precision FPU (-mcpu=r3 -mfprev1), and every
 # float result rounded as written (no fused multiply-add)
 FPU_FLAGS = ["-mcpu=r3", "-mfprev1", "-ffp-contract=off"]
-# (spike) hot engine functions that run from SRAM: their compiled sections (-ffunction-sections: .text.NAME) are renamed
+# Functions that run from SRAM (#1072, #803): their compiled sections (-ffunction-sections: .text.NAME) are renamed
 # .fast_text.NAME in matryoshka.o before the link, so the code is the compiler's own, only placed elsewhere (app.ld .fast_text,
 # in NOINIT, copied there at boot by main.c). Only functions the compiler keeps out of line everywhere: a section attribute in
-# the source would instead stop this compiler inlining across the two sections and change the code.
-FAST_TEXT = ("m_osc", "exp2_scale", "sin_turn", "fill", "svf_g", "svf_stage", "env_rate_q8", "signal_mean", "flaw_scale",
-             "morph_value") if os.environ.get("ENG_RAMCODE", "0") == "1" else ()
+# the source would instead stop this compiler inlining across the two sections and change the code. Code from the flash
+# runs through a 32 KB instruction cache that a block's code overflows, so most of it is fetched again every block (about
+# 2 us a 64-byte line); the list is the code with the most of those fetches per byte, in the emulator's timing model over
+# the poly benchmark (web/scripts/poly-bench.ts, `m1emu cpu` with M1EMU_PROF; docs/measurements/2026-11-17-poly-headroom.md).
+# It must fit in NOINIT after .noinit (build.py checks). ENG_RAMCODE=0 leaves everything in the flash.
+FAST_TEXT = (
+    "sch_job", "eng_once_beat", "eng_transport_running", "exp2_scale", "uac_tap", "eng_ctl", "fm1__p33_xfer",
+    "toast_wanted", "div64_lu", "env_rate_q8", "ui_msg", "m1_param_now", "pages_select", "usb_retry", "eng_records_end",
+    "ctl_ramp16", "uac_render_start", "eng_section_at", "fm1_alnk0_irq", "seq_cond_at", "eng_steps_take", "eng_rec_size",
+    "value_of", "eng_steps_thru", "seq_rec_sync", "ctl_keeps", "m1_arms_now", "m1_slot_now", "eng_click_mix",
+    "eng_lane_run", "eng_steps_rec", "group_cables", "fm1_led_key", "morph_value", "host_poll", "batt_mark_sync",
+    "unit_of", "fm1__p33_op", "unison_switch", "ana_init", "lfo_free", "eng_set_range", "eng_type_at",
+) if os.environ.get("ENG_RAMCODE", "1") == "1" else ()
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 
 # SDK files of AC79NN_SDK_V1.2.1_2023-12-13 (the tested version)
@@ -651,7 +661,7 @@ def main():
     side = json.dumps({"version": version, "product": PRODUCT, "size": len(pkg), "sha256": hashlib.sha256(pkg).hexdigest(),
                        "app_sha256": hashlib.sha256(img).hexdigest(),
                        "build": {"ENG_AOT": int(os.environ.get("ENG_AOT", "0")),
-                                 "ENG_RAMCODE": int(os.environ.get("ENG_RAMCODE", "0")),
+                                 "ENG_RAMCODE": int(os.environ.get("ENG_RAMCODE", "1")),
                                  "ENG_BUF_REUSE": int(os.environ.get("ENG_BUF_REUSE", "1")),
                                  "FELUCCA_SPEED": os.environ.get("FELUCCA_SPEED", SPEED),
                                  # Missing overrides use defaults in the recorded source commit.
