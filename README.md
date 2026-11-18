@@ -172,13 +172,14 @@ Assemblies are an editor-only overlay: the patch stays a flat list of modules an
 - **Wavetable** is an oscillator with four banks of eight single-cycle frames (`analog`: sine, triangle, saw, square, pulses; `organ`: drawbar sets; `formant`: a moving bump of harmonics; `digital`: steps and corners). `pos` sweeps the frames with crossfades; an LFO into `p1` on `pos` is the classic wavetable sweep. It has `pm` and `sync` like the Oscillator (the FM path is not oversampled), and it is band-limited in three steps so high notes stay clean.
 - **Chorus** is a stereo chorus (two taps in quadrature around 12 ms, swept up to ±8 ms) with `l` and `r` outputs for the Output. Like the Delay it runs once for all voices; one per patch on the FM-1.
 
-## Sequencer, clock divider, S&H, quantizer, pulse
+## Sequencer, clock divider, S&H, quantizer, pulse, Euclid
 
 - **Sequencer**: eight steps (`s1`..`s8`, −1..1), `len` and `dir` (forward, backward, pendulum, random). A rising edge on `clock` moves on, `reset` goes back to step 1. `out` is the current step all the time, `gate` follows the clock while the step is not a rest; a step turned fully down is a rest. A square LFO is a clock; Main `gate` into `reset` restarts the pattern on every key. `glide` slews `out` from step to step (the time is that fraction of the clock period, so it follows the tempo; 0 = steps), `gate` sets the gate length as a fraction of the period (0 = the clock's own width, 1 = legato: the steps tie and an ADSR does not retrigger). Both measure the period from the last two clock edges.
 - **Clock divider**: `out` passes every `div`-th clock pulse, `d2` `d4` `d8` every 2nd, 4th and 8th; `reset` makes the next pulse a downbeat.
 - **S&H**: `out` takes `in` on a clock edge (`hold`) or follows it while the clock is up (`track`). Noise into a clocked S&H into a Quantizer is a random melody.
 - **Quantizer**: snaps a pitch to the nearest note of a scale on a root (chromatic, major, minor, pentatonics, dorian, mixolydian, blues, whole tone, fifths, octaves). Put it after a Sequencer, an S&H, a Slew limiter or an LFO into `pitch`.
 - **Pulse**: a trigger in, a gate of `time` out; a new trigger restarts it. It turns a short clock tick into a gate long enough for an envelope's attack, or a long gate into a short one.
+- **Euclid** plays a Euclidean rhythm: `hits` spread as evenly as they go over `steps` (3 over 8 is the tresillo), turned by `rotate`, with `accent` of the hits accented. Each step raises `trig` on a hit, `off` on a rest and also `accent` on an accented hit. It steps on rising edges at `clock`, or with nothing there on the FM-1's tempo or MIDI clock while PLAY runs, one step each `rate`; `reset` starts the pattern again. Ported from KITTEN RACK's Euclid.
 ## Pan, crossfade, vowel, phaser, digitizer, noise colour
 
 - **Pan** places a signal with an equal-power law; its `pos` input adds to the `pan` knob, so Main `spread` into it spreads the voices across the stereo field and an LFO autopans.

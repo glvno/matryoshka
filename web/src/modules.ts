@@ -1381,6 +1381,94 @@ const limit: ModuleImpl<LimitState> = {
   },
 };
 
+// Euclid (#1018): ported from KITTEN RACK (https://github.com/BlackKittenDevices/kitten-rack, a GPL-3.0 fork of
+// Matryoshka; its modules.ts euclid and engine.c m_euclid), with an accent and the engine's clock added.
+/** Euclid's longest pattern, in steps */
+export const EUCLID_STEPS_MAX = 32;
+/** Euclid's rates on the engine's clock (nothing in `clock`) and their clock ticks a step (24 a quarter note): the
+ *  Arpeggiator's tempo rates, its own list so that list can grow without moving these (engine.c EUCLID_RATE_TICKS) */
+export const EUCLID_RATES = ['1/4', '1/4T', '1/8', '1/8T', '1/16', '1/16T', '1/32'];
+export const EUCLID_RATE_TICKS = [24, 16, 12, 8, 6, 4, 3];
+/** 0: a rest, 1: a hit, 2: an accented hit */
+export function euclidStep(x: number, steps: number, hits: number, accent: number): number {
+  if ((x * hits) % steps >= hits) return 0;
+  return (Math.floor((x * hits) / steps) * accent) % hits < accent ? 2 : 1; // (the hit's index among the hits: floor(x hits / steps))
+}
+interface EuclidState { pos: number; hit: number; c1: number; r1: number; run: boolean; count: number; left: number }
+/**
+ * Euclid (#1018, ported from KITTEN RACK's euclid): `hits` spread as evenly as they go over `steps` (Bjorklund's
+ * Euclidean rhythms: 3 over 8 is the tresillo x..x..x.), the pattern turned earlier by `rotate` steps. Step x (from the
+ * pattern's start, rotate added) is a hit when x × hits mod steps < hits. `accent` spreads that many accents over the hits
+ * the same way (hit k of the hits is accented when k × accent mod hits < accent), so the first hit is always one of them.
+ * Each step: `trig` on a hit, `off` on a rest, `accent` on an accented hit. With a cable in `clock`, each rising edge is a
+ * step and the outputs are up as long as the clock is, as in KITTEN RACK. With nothing in it, the module follows the
+ * engine's clock while the transport runs, as Steps does: the first step when PLAY starts, then one each `rate` (its
+ * EUCLID_RATE_TICKS of the 24 ppqn clock) on the sample its tick falls on, the outputs up for half a step. A rising edge
+ * at `reset`: the next step is the first. engine.c m_euclid the same on integers.
+ */
+const euclid: ModuleImpl<EuclidState> = {
+  def: {
+    type: 'euclid',
+    label: 'Euclid',
+    since: 63,
+    inputs: [gate('clock'), gate('reset')],
+    outputs: [gate('trig'), gate('off'), gate('accent')],
+    params: [
+      param('steps', 1, EUCLID_STEPS_MAX, 8, { step: 1 }),
+      param('hits', 0, EUCLID_STEPS_MAX, 3, { step: 1 }),
+      param('rotate', 0, EUCLID_STEPS_MAX - 1, 0, { step: 1 }),
+      param('accent', 0, EUCLID_STEPS_MAX, 0, { step: 1 }),
+      param('rate', 0, EUCLID_RATES.length - 1, 4, { step: 1, choices: EUCLID_RATES }),
+    ],
+  },
+  init: () => ({ pos: -1, hit: 0, c1: 0, r1: 0, run: false, count: 0, left: 0 }),
+  process(c, s) {
+    const steps = Math.min(EUCLID_STEPS_MAX, Math.max(1, Math.round(c.p.steps ?? 8)));
+    const hits = Math.min(steps, Math.max(0, Math.round(c.p.hits ?? 3)));
+    const rot = Math.min(EUCLID_STEPS_MAX - 1, Math.max(0, Math.round(c.p.rotate ?? 0)));
+    const acc = Math.min(hits, Math.max(0, Math.round(c.p.accent ?? 0)));
+    const rt = EUCLID_RATE_TICKS[Math.min(EUCLID_RATES.length - 1, Math.max(0, Math.round(c.p.rate ?? 4)))];
+    const v = c.voice, ext = !!c.connected.clock, width = Math.max(1, (rt * v.tickLen) >> 1);
+    const { clock, reset } = c.inp, { trig, off, accent } = c.out;
+    for (let i = 0; i < c.n; i++) {
+      if (reset[i] >= 0.5 && s.r1 < 0.5) s.pos = -1;
+      s.r1 = reset[i];
+      let adv = 0;
+      if (ext) {
+        if (clock[i] >= 0.5 && s.c1 < 0.5) adv = 1;
+        s.c1 = clock[i];
+      } else {
+        if (i === 0 && v.run && !s.run) { // (PLAY: the first step now)
+          s.count = 0;
+          s.pos = -1;
+          adv = 1;
+        }
+        if (i === v.tick) // (-1 while stopped; MIDI clock's ticks can come several to a sample)
+          for (let t = 0; t < v.ticks; t++)
+            if (++s.count >= rt) {
+              s.count = 0;
+              adv++;
+            }
+      }
+      if (adv) {
+        s.pos = (s.pos + adv) % steps;
+        s.hit = euclidStep((s.pos + rot) % steps, steps, hits, acc);
+        s.left = width;
+      }
+      let hi: boolean;
+      if (ext) hi = clock[i] >= 0.5;
+      else {
+        hi = s.left > 0;
+        if (hi) s.left--;
+      }
+      trig[i] = hi && s.hit ? 1 : 0;
+      off[i] = hi && !s.hit ? 1 : 0;
+      accent[i] = hi && s.hit === 2 ? 1 : 0;
+    }
+    s.run = v.run;
+  },
+};
+
 /** Quantize one audio sample to a signed 16-bit word for bitwise operations. */
 const xorWord = (x: number): number => Math.max(-32768, Math.min(32767, Math.floor(x * 32768)));
 
@@ -4655,7 +4743,7 @@ const lpg: ModuleImpl<LpgState> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm, lpg, limit];
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm, lpg, limit, euclid];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

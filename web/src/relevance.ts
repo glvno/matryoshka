@@ -63,6 +63,8 @@ export const RULES: Rule[] = [
   { type: 'ladder', params: ['stsat'], reads: ['diode'], live: (c) => c.p('diode') < 0.5, why: 'Stage saturation is for the Moog ladder: the diode mode has none.' },
   { type: 'string', params: ['burst'], reads: [], live: (c) => c.cabled('gate'), why: 'A burst fires on a gate: patch the gate input.' },
   { type: 'lpg', params: ['res'], reads: ['mode'], live: (c) => Math.round(c.p('mode')) !== 2, why: 'In vca mode there is no filter to resonate.' },
+  { type: 'euclid', params: ['rate'], reads: [], live: (c) => !c.cabled('clock'), why: 'With a cable in clock each of its edges is a step: the rate is for the FM-1\'s clock.' },
+  { type: 'euclid', params: ['accent'], reads: ['hits'], live: (c) => Math.round(c.p('hits')) >= 1, why: 'With no hits there is nothing to accent.' },
 ];
 
 const cabledInto = (p: Patch, id: number, port: string): boolean => p.cables.some((c) => c.to.module === id && c.to.port === port);
