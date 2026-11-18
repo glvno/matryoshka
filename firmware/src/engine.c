@@ -11632,12 +11632,26 @@ typedef struct {                        /* (sched_build's, on the main loop's st
     uint8_t at[SCH_KIX + SCH_KMAX];     /* its place in its lane */
     uint8_t pos[ENG_MAX_MODULES];       /* a module's place in E.order */
     uint8_t km[SCH_KMAX], kl[SCH_KMAX], nk;   /* the kernels: their Reverb, their lane; how many */
+    const uint16_t *wl, *wat, *wn;      /* each copy's waits as sch_deps finds them (wl from wat[ix], wn[ix] of them), recorded
+                                         * once in the arena's free bytes; wl 0: no room, found again each time */
 } sch_build_t;
-typedef struct { const sch_build_t *b; uint32_t lane, t, need; } sch_acc_t;   /* an item in `lane`: when it may start; the
-                                                                               * other lane's items it needs */
+typedef struct {                        /* an item in `lane`: when it may start; the other lane's items it needs; with rec,
+                                         * what it waits for, recorded instead (up to cap; nrec past cap: no room) */
+    const sch_build_t *b;
+    uint32_t lane, t, need;
+    uint16_t *rec;
+    uint32_t nrec, cap;
+} sch_acc_t;
 static void sch_dep(sch_acc_t *a, uint32_t d)          /* the item waits for copy d (or kernel d - SCH_KIX) */
 {
-    uint32_t t = a->b->fin[d];
+    uint32_t t;
+    if (a->rec) {
+        if (a->nrec < a->cap)
+            a->rec[a->nrec] = (uint16_t)d;
+        a->nrec++;
+        return;
+    }
+    t = a->b->fin[d];
     if ((d >= SCH_KIX ? a->b->kl[d - SCH_KIX] : LANE_OF(d)) != a->lane) {
         t += SCH_SYNC;
         if (a->b->at[d] + 1u > a->need)
@@ -11692,6 +11706,17 @@ static void sch_deps(sch_acc_t *a, uint32_t m, uint32_t v)
         if (a->b->km[w] == m)
             sch_dep(a, SCH_KIX + w);
 }
+/* what copy v of module m waits for (sch_deps), from the record when there is one */
+static void sch_waits(sch_acc_t *a, uint32_t m, uint32_t v)
+{
+    uint32_t ix = E.node[m].inst0 + v, k;
+    if (!a->b->wl) {
+        sch_deps(a, m, v);
+        return;
+    }
+    for (k = 0; k < a->b->wn[ix]; k++)
+        sch_dep(a, a->b->wl[a->b->wat[ix] + k]);
+}
 /* the copies of an oscillator's wave it plays (m_osc: its unison or its stack's notes, the more; schedule.ts oscVoices) */
 static uint32_t sch_voices(const node_t *nd)
 {
@@ -11737,7 +11762,7 @@ static uint32_t sch_plan(sch_build_t *b, int rig, int keep, uint32_t *total)
                 sch_acc_t a = {b, l, end[l], 0};
                 if (keep && l != LANE_OF(ix))
                     continue;
-                sch_deps(&a, m, v);
+                sch_waits(&a, m, v);
                 if (first || a.t + cost < fin) {
                     fin = a.t + cost;
                     best = l;
@@ -11768,7 +11793,7 @@ static void sched_build(void)
 {
 #if ENG_SCHED
     sch_build_t b;
-    uint32_t k, v, n0, copies = 0, end_t, total_t, end_r, total_r, t_at_rig = 0;
+    uint32_t k, v, n0, copies = 0, end_t, total_t, end_r, total_r, t_at_rig = 0, lo = ar_lo;
     int on_t, on_r;
 #endif
     sched_off();
@@ -11781,6 +11806,29 @@ static void sched_build(void)
     for (k = 0; k < E.norder && b.nk < SCH_KMAX && copies + b.nk < ENG_MAX_INST + 1u; k++)
         if (E.node[E.order[k]].type == T_REVERB)
             b.km[b.nk++] = (uint8_t)E.order[k];
+    b.wl = 0;
+    {   /* each copy's waits, recorded once for every pass below, in the arena's free bytes (given back at the end: the
+         * buffers and the lines are placed after this) */
+        uint32_t room = arena_free() / 2u > 65535u ? 65535u : arena_free() / 2u, used = 0, m;
+        uint16_t *w = room > 2u * (ENG_MAX_INST + 1u) ? (uint16_t *)arena_lo(2u * room) : 0;
+        if (w) {
+            uint16_t *at = w, *n = w + ENG_MAX_INST + 1u, *list = n + ENG_MAX_INST + 1u;
+            room -= 2u * (ENG_MAX_INST + 1u);
+            for (k = 0; k < E.norder && used <= room; k++)
+                for (m = E.order[k], v = 0; v < E.node[m].ninst; v++) {
+                    sch_acc_t a = {&b, 0, 0, 0, list + used, 0, room > used ? room - used : 0u};
+                    sch_deps(&a, m, v);
+                    at[E.node[m].inst0 + v] = (uint16_t)used;
+                    n[E.node[m].inst0 + v] = (uint16_t)a.nrec;
+                    used += a.nrec;
+                }
+            if (used <= room) {
+                b.wl = list;
+                b.wat = at;
+                b.wn = n;
+            }
+        }
+    }
     end_t = sch_plan(&b, 0, 0, &total_t);
     on_t = sch.n[1] && end_t + SCH_FORK < total_t;
     if (on_t) {
@@ -11796,6 +11844,7 @@ static void sched_build(void)
         t_at_rig = total_r;
     if (!(on_r && end_r * SCH_GAIN < t_at_rig * (SCH_GAIN - 1u))) {
         if (!on_t) {
+            ar_lo = lo;
             sched_off();
             return;
         }
@@ -11826,12 +11875,13 @@ static void sched_build(void)
         for (v = 0; v < nd->ninst; v++) {
             uint32_t ix = nd->inst0 + v, slot = (LANE_OF(ix) ? n0 : 0u) + b.at[ix];
             sch_acc_t a = {&b, LANE_OF(ix), 0, 0};
-            sch_deps(&a, m, v);
+            sch_waits(&a, m, v);
             sch.need[slot] = (uint8_t)a.need;
             if (a.need)
                 sch.it[(LANE_OF(ix) ? 0u : n0) + a.need - 1u] |= SCH_PUB;
         }
     }
+    ar_lo = lo;
 #endif
 }
 

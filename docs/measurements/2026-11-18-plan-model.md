@@ -60,9 +60,9 @@ Factory bank: median worst +7.4 (Verona Drum 1), plan worst +0.5 (Shush 101), me
 
 ## Cost of planning
 
-- A host build of `engine.c` (Apple M-series) takes about 2.1 times as long in `sched_build` as main does: the worst factory patch 208 µs against 99 µs. Each item's waits are found again in each of the four passes.
+- Each copy's waits are recorded once, in the arena's free bytes, and every pass reads them; the bytes are given back before the buffers and lines are placed. A patch that leaves no room for the record finds them again each pass, with the same result. A host build of `engine.c` (Apple M-series) now takes 39 µs in `sched_build` on the worst factory patch, against 90 µs on main (and 208 µs before the record). The plans are the same, item by item, on all 32 patches.
 - RAM: no change in `.data`, `.bss`, the pool or `.lowram`. The table plan's lanes while the rig's plan is made take 36 bytes of NOINIT (`sch_keep`). The second cost table (`DEF_TCOST`, 114 bytes) is in flash.
-- On the FM-1 (`tools/m1_link.py --rig loadtime 20`, 20 loads in one window): a load keeps the sound off 31 to 52 ms with this build against 23 to 40 ms with the build before it (PR #1078's, whose plan is main's): Hera 6 gauze 2 23 → 31 ms, Canvas 32 → 38, Verona Drum 1 29 → 39, 909 Kit 40 → 52.
+- On the FM-1 (`tools/m1_link.py --rig loadtime 20`, 20 loads in one window), before the record: a load kept the sound off 31 to 52 ms with this branch (CI 44254199826) against 23 to 40 ms with PR #1078's build, whose plan is main's: Hera 6 gauze 2 23 → 31 ms, Canvas 32 → 38, Verona Drum 1 29 → 39, 909 Kit 40 → 52. With the record, the plan costs less than main's (host), so a load should be no longer than main's; not yet measured on the rig.
 
 ## On the test rig, 2026-11-18
 
