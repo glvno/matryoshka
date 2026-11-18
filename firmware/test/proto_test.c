@@ -9,6 +9,7 @@
 #include <string.h>
 #ifdef PROTO_TEST_EXTERNAL_ENGINE
 #include "../src/engine.h"
+#include "../src/defs.h"           /* (tempo_glo.h's METER_N / METER_DEFAULT, #1011; engine.c brings it otherwise) */
 #else
 #include "../src/engine.c"
 #endif
