@@ -11,7 +11,7 @@ import { DEPTH_MAX, fromUnit, toUnit, type ParamDef, type Patch } from './patch'
 import { isPin, parameterInputs } from './parameter-routing';
 import {
   besideSpot, buildChain, cardExists, cardPorts, cardTitle, ChainError, chainText, farEnds, fit, guessSize, halfRings, halfSectors, isChainText,
-  matchPorts, moveCard, parseChain, portCables, radialCentre, rankPorts, removeBlueprint, RINGS_MAX, sameCard, saveBlueprint, search, sectorPath, Trail, wire,
+  matchPorts, moveCard, parseChain, portCables, radialPlace, rankPorts, removeBlueprint, RINGS_MAX, sameCard, saveBlueprint, search, sectorPath, Trail, wire,
   type Built, type Card, type Catalog, type FarEnd, type Hit, type Link, type Place, type QPort, type Statement,
 } from './quick-patch';
 import { parseValue } from './value-input';
@@ -797,21 +797,20 @@ export class QuickPatch {
     if (s.pin !== undefined && m.att && outs[s.params.length]) outs[s.params.length].textContent = depthText(DEFS[m.type].params.find((q) => q.name === s.params[0])!, m.att[s.pin]);
   }
 
-  /** the overlay sits in the middle of the canvas's visible area for the whole chain, again after a window resize (owner
-   *  on PR #1094), the panel with the list beside it */
+  /** the overlay sits in the middle of the canvas's visible area for the whole chain (owner on PR #1094), the panel beside
+   *  it, both inside that area and never over the sidebars or the deck (radialPlace); again after a window resize */
   private position(): void {
     const W = innerWidth, H = innerHeight;
     const size = parseFloat(this.ring.style.width) || 2 * RADIAL_CORE;
-    const PW = Math.min(340, W - 16);
     const view = document.getElementById('canvas')?.getBoundingClientRect() ?? { left: 0, top: 0, width: W, height: H };
-    const { x: cx, y: cy } = radialCentre(view, size, { w: W, h: H });
-    this.ring.style.left = `${Math.round(cx - size / 2)}px`;
-    this.ring.style.top = `${Math.round(cy - size / 2)}px`;
-    const right = cx + size / 2 + 12 + PW <= W - 8;
-    this.panel.style.width = `${PW}px`;
-    this.panel.style.left = `${Math.round(right ? cx + size / 2 + 12 : Math.max(8, cx - size / 2 - 12 - PW))}px`;
-    const ph = this.panel.offsetHeight || 200;
-    this.panel.style.top = `${Math.round(Math.min(H - ph - 8, Math.max(8, cy - size / 2)))}px`;
+    this.panel.style.maxHeight = `${Math.max(120, view.height - 16)}px`;
+    const place = radialPlace(view, size, { w: 340, h: this.panel.offsetHeight || 220 });
+    this.ring.style.left = `${Math.round(place.cx - size / 2)}px`;
+    this.ring.style.top = `${Math.round(place.cy - size / 2)}px`;
+    this.ring.style.transform = place.scale < 1 ? `scale(${place.scale.toFixed(3)})` : '';
+    this.panel.style.width = `${Math.round(place.panel.w)}px`;
+    this.panel.style.left = `${Math.round(place.panel.x)}px`;
+    this.panel.style.top = `${Math.round(place.panel.y)}px`;
   }
 
   /** the chain is done: when a card made while Quick patch was open lies wholly off screen, ease once to bring them in */

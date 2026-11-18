@@ -10,7 +10,7 @@ import { DEFS } from './modules';
 import { addModule, connect, newPatch, type Patch } from './patch';
 import {
   besideSpot, buildChain, cardPorts, cardTitle, chainText, defaultPort, farEnds, GAP, HALF_GAP, HALF_MAX, halfRings, halfSectors, loadBlueprints, matchPorts, parseChain, portCables,
-  radialCentre, rankPorts, removeBlueprint, RINGS_MAX, saveBlueprint, search, sectorPath, Trail, type Card, type Catalog, type Place, type QPort,
+  radialPlace, rankPorts, removeBlueprint, RINGS_MAX, saveBlueprint, search, sectorPath, Trail, type Card, type Catalog, type Place, type QPort,
 } from './quick-patch';
 
 const catalog = (blueprints: Catalog['blueprints'] = []): Catalog => ({
@@ -285,11 +285,33 @@ describe('the radial menu\'s layout', () => {
     expect(halfRings(ports.filter((q) => q.dir === 'out')).length).toBe(Math.ceil(17 / HALF_MAX));
     expect(halfRings(ports.filter((q) => q.dir === 'in' && !q.param), ports.filter((q) => q.param)).length).toBeGreaterThan(RINGS_MAX);
   });
-  it('sits in the middle of the canvas\'s visible area, moved in only as far as the window needs', () => {
-    const view = { left: 208, top: 0, width: 932, height: 670 };
-    expect(radialCentre(view, 400, { w: 1440, h: 900 })).toEqual({ x: 674, y: 335 });
-    // a menu taller than the canvas is moved down to stay inside the window
-    expect(radialCentre(view, 700, { w: 1440, h: 900 })).toEqual({ x: 674, y: 358 });
+  it('keeps the menu and its panel inside the canvas\'s visible area, never over the sidebars or the deck', () => {
+    const inside = (view: { left: number; top: number; width: number; height: number }, size: number, panel: { w: number; h: number }) => {
+      const p = radialPlace(view, size, panel);
+      const r = (size * p.scale) / 2;
+      expect(p.cx - r).toBeGreaterThanOrEqual(view.left);
+      expect(p.cx + r).toBeLessThanOrEqual(view.left + view.width);
+      expect(p.cy - r).toBeGreaterThanOrEqual(view.top);
+      expect(p.cy + r).toBeLessThanOrEqual(view.top + view.height);
+      expect(p.panel.x).toBeGreaterThanOrEqual(view.left);
+      expect(p.panel.x + p.panel.w).toBeLessThanOrEqual(view.left + view.width);
+      expect(p.panel.y).toBeGreaterThanOrEqual(view.top);
+      expect(p.panel.y + panel.h).toBeLessThanOrEqual(view.top + view.height);
+      // the panel never covers the disc
+      const apart = p.side === 'below' ? p.panel.y >= p.cy + r : p.panel.x >= p.cx + r || p.panel.x + p.panel.w <= p.cx - r;
+      expect(apart).toBe(true);
+      return p;
+    };
+    // a wide canvas: the disc in the middle, the panel on its right
+    expect(inside({ left: 208, top: 0, width: 1400, height: 670 }, 400, { w: 340, h: 300 })).toMatchObject({ cx: 908, cy: 335, scale: 1, side: 'right' });
+    // the canvas between the left sidebar and the Sound design sidebar: the pair moves together to fit
+    expect(inside({ left: 208, top: 0, width: 932, height: 670 }, 400, { w: 340, h: 300 })).toMatchObject({ scale: 1, side: 'right', panel: { x: 710 } });
+    // a narrow, tall canvas: the panel under the disc
+    expect(inside({ left: 0, top: 0, width: 520, height: 900 }, 400, { w: 340, h: 300 })).toMatchObject({ side: 'below', scale: 1 });
+    // narrow and short: the disc shrinks beside the panel
+    expect(inside({ left: 0, top: 0, width: 600, height: 500 }, 500, { w: 340, h: 300 }).scale).toBeLessThan(1);
+    // Briefcase 3's three rings (a disc taller than the canvas) shrink to the canvas's height
+    expect(inside({ left: 208, top: 0, width: 932, height: 640 }, 752, { w: 340, h: 300 }).scale).toBeLessThan(1);
   });
   it('draws a sector as a closed path between its two radii', () => {
     expect(sectorPath(100, 50, 80, 0, Math.PI / 2)).toBe('M180.00 100.00A80 80 0 0 1 100.00 180.00L100.00 150.00A50 50 0 0 0 150.00 100.00Z');

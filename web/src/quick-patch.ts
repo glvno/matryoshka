@@ -336,14 +336,41 @@ export function halfRings<T>(items: T[], next: T[] = []): T[][] {
   return [...chunk(items), ...chunk(next)];
 }
 
-/** where the radial menu's centre goes (client px): the middle of the canvas's visible area, moved in only as far as a
- *  menu `size` across needs to stay inside the window */
-export function radialCentre(view: { left: number; top: number; width: number; height: number }, size: number, win: { w: number; h: number }): { x: number; y: number } {
+/** a box on screen (client px): the canvas's visible area, between the sidebars and above the deck */
+export interface Box { left: number; top: number; width: number; height: number }
+/** where the radial menu and its panel (the list, the sliders) go: the disc's centre and scale, the panel's place */
+export interface RadialPlace { cx: number; cy: number; scale: number; side: 'right' | 'left' | 'below'; panel: { x: number; y: number; w: number } }
+
+/**
+ * Place the radial menu (`size` across) and its panel (`panel.w` wide, `panel.h` tall) inside the canvas's visible area,
+ * never over the sidebars or the deck. The disc stays in the middle with the panel on its right, else on its left; else
+ * the two move together so they fit side by side; else the panel goes under the disc; else the disc shrinks beside the
+ * panel. A disc taller than the area shrinks to fit it.
+ */
+export function radialPlace(view: Box, size: number, panel: { w: number; h: number }): RadialPlace {
+  const M = 8, GAP = 12;
+  const right = view.left + view.width - M, bottom = view.top + view.height - M;
   const clamp = (v: number, lo: number, hi: number): number => Math.min(Math.max(v, lo), Math.max(lo, hi));
-  return {
-    x: clamp(view.left + view.width / 2, size / 2 + 8, win.w - size / 2 - 8),
-    y: clamp(view.top + view.height / 2, size / 2 + 8, win.h - size / 2 - 8),
-  };
+  const pw = Math.max(0, Math.min(panel.w, view.width - 2 * M));
+  const panelY = (top: number): number => clamp(top, view.top + M, bottom - panel.h);
+  const cx0 = view.left + view.width / 2, cy0 = view.top + view.height / 2;
+  const k0 = Math.min(1, (view.height - 2 * M) / size);
+  const s = size * k0, r = s / 2;
+  if (cx0 + r + GAP + pw <= right) return { cx: cx0, cy: cy0, scale: k0, side: 'right', panel: { x: cx0 + r + GAP, y: panelY(cy0 - r), w: pw } };
+  if (cx0 - r - GAP - pw >= view.left + M) return { cx: cx0, cy: cy0, scale: k0, side: 'left', panel: { x: cx0 - r - GAP - pw, y: panelY(cy0 - r), w: pw } };
+  if (s + GAP + pw <= view.width - 2 * M) {
+    const cx = view.left + (view.width - s - GAP - pw) / 2 + r;
+    return { cx, cy: cy0, scale: k0, side: 'right', panel: { x: cx + r + GAP, y: panelY(cy0 - r), w: pw } };
+  }
+  if (size + GAP + panel.h <= view.height - 2 * M && size <= view.width - 2 * M) {
+    const cy = view.top + (view.height - size - GAP - panel.h) / 2 + size / 2;
+    return { cx: cx0, cy, scale: 1, side: 'below', panel: { x: clamp(cx0 - pw / 2, view.left + M, right - pw), y: cy + size / 2 + GAP, w: pw } };
+  }
+  // a narrow canvas: the disc shrinks so it fits beside the panel (to half its size at most), the panel narrows after that
+  const k = Math.max(0.5, Math.min(k0, (view.width - 2 * M - GAP - pw) / size));
+  const w = Math.min(pw, view.width - 2 * M - GAP - size * k);
+  const cx = view.left + M + (size * k) / 2;
+  return { cx, cy: cy0, scale: k, side: 'right', panel: { x: cx + (size * k) / 2 + GAP, y: panelY(cy0 - (size * k) / 2), w: Math.max(0, w) } };
 }
 
 /** an SVG path for the ring sector between radii r0 < r1 and angles a0 < a1 round (c, c) */

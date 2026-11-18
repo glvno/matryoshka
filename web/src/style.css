@@ -2221,10 +2221,11 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; cursor: pointer; }
 .move-bar button.move-close { background: transparent; color: var(--secondary); }
 
-/* Quick patch (#1091, quick-patch-view.ts): the field at the pointer, the current card's ports in a ring round it, the
-   strip of sliders over the card a cable just reached */
-.qp-panel { position: fixed; z-index: 55; display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--line);
-  border-radius: 10px; background: var(--panel); color: var(--ink); box-shadow: 0 8px 28px var(--backdrop); font-size: 12px; }
+/* Quick patch (#1091, quick-patch-view.ts): the panel beside the radial menu (the list, the sliders), kept inside the
+   canvas's visible area */
+.qp-panel { position: fixed; z-index: 55; display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--line); box-sizing: border-box;
+  border-radius: 10px; background: var(--panel); color: var(--ink); box-shadow: 0 8px 28px var(--backdrop); font-size: 12px; overflow: auto; }
+.qp-radial { transform-origin: 50% 50%; }
 .qp-field { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--secondary); border-radius: 6px; background: var(--bg);
   color: var(--ink); font: 14px/1.2 'Barlow', system-ui, sans-serif; cursor: text; }
 .qp-field:focus { outline: 2px solid color-mix(in srgb, var(--secondary) 45%, transparent); outline-offset: 1px; }
