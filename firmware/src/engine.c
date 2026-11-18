@@ -8884,6 +8884,22 @@ HOT uint32_t reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *ou
  * as an item of its own with nothing to wait for (sched_build), else m_reverb runs it first. m_reverb then mixes the wet
  * with this block's dry input, keeps that input in the ring and its settings (kp) for the next block. */
 #define RV_RING(it) ((int32_t *)((it)->s.rev.buf + RV_LEN))
+/* the decay gains for the effective size and freeze, cached until either changes (reverb_kernel, eng_fpu_probe) */
+static void reverb_gains(inst_t *it, int32_t size, int frz)
+{
+    uint32_t k;
+    if (!it->s.rev.gains_ok || it->s.rev.size != size || it->s.rev.frozen != frz) {
+        /* T sr: the samples a line takes to fall 60 dB, T = 0.2 x 2^(5 size) s, at least 0.2 s (D-1114: never zero) */
+        float tsr = 0.2f * (float)ENG_SR * exp2_f((float)size * (5.0f / 65536.0f)), e = -RV_DB60 / tsr;
+        for (k = 0; k < 8u; k++)
+            it->s.rev.gain[k] = frz ? 1.0f : exp2_f(e * (float)RV_LINE[k]);
+        it->s.rev.hold = (uint16_t)(tsr * 0.10034f);  /* samples to fall 6.02 dB: T x 0.1003 */
+        it->s.rev.size = size;
+        it->s.rev.frozen = (uint8_t)frz;
+        it->s.rev.gains_ok = 1;
+    }
+}
+
 static __attribute__((noinline)) void reverb_kernel(inst_t *it, uint32_t n)   /* (one copy for both callers) */
 {
     int16_t *base = it->s.rev.buf, *line[8], *ap[2], *pre;
@@ -8895,16 +8911,7 @@ static __attribute__((noinline)) void reverb_kernel(inst_t *it, uint32_t n)   /*
     float gin = frz ? 0.0f : RV_GIN;
     if (frz)
         d = 0.0f;
-    if (!it->s.rev.gains_ok || it->s.rev.size != size || it->s.rev.frozen != frz) {
-        /* T sr: the samples a line takes to fall 60 dB, T = 0.2 x 2^(5 size) s, at least 0.2 s (D-1114: never zero) */
-        float tsr = 0.2f * (float)ENG_SR * exp2_f((float)size * (5.0f / 65536.0f)), e = -RV_DB60 / tsr;
-        for (k = 0; k < 8u; k++)
-            it->s.rev.gain[k] = frz ? 1.0f : exp2_f(e * (float)RV_LINE[k]);
-        it->s.rev.hold = (uint16_t)(tsr * 0.10034f);  /* samples to fall 6.02 dB: T x 0.1003 */
-        it->s.rev.size = size;
-        it->s.rev.frozen = (uint8_t)frz;
-        it->s.rev.gains_ok = 1;
-    }
+    reverb_gains(it, size, frz);
     /* D-1109: drain once nothing has entered for as long as the loudest wet sum heard since (oct: its bits above one step
      * of the lines) takes to fall under one step, plus RV_LEN; until something enters again. Never while frozen. */
     drain = !frz && (uint32_t)it->s.rev.still * 16u >= (uint32_t)it->s.rev.hold * it->s.rev.oct + RV_LEN;
@@ -11371,7 +11378,8 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
  * part, loud enough to reach the saturators; a moving cv, morph and fm where the case cables them), then silence. h[c]
  * is an FNV-1a hash of every word its cabled outputs wrote and of its own state's bytes after each block (its struct in
  * inst_t's union: floats and 32-bit words, laid out alike on every host; the whole union holds pointers). The unconnected
- * outputs go to the lane's dummy buffer (lane 1: the second core's). Everything is on the caller's stack (about 1 KB). */
+ * outputs go to the lane's dummy buffer (lane 1: the second core's). Everything is on the caller's stack (about 1 KB).
+ * The last case, the Reverb, runs its sample loop (reverb_samples) on a short copy of its lines (probe_reverb). */
 #define PROBE_N 16u
 #define PROBE_BLOCKS 8u
 #define PROBE_LOUD 5u
@@ -11385,17 +11393,63 @@ static uint32_t probe_hash(uint32_t h, const void *p, uint32_t len)
     return h;
 }
 
-void eng_fpu_probe(uint32_t lane, uint32_t *h)
+/* The Reverb's case: its whole lines (16 KB) fit no stack, so reverb_samples runs RVP_BLOCKS blocks of PROBE_N samples
+ * on short lines of RVP_LINE samples, filled with a fixed pattern loud enough to reach the clamp, and no pre-delay. The
+ * lines do not wrap in that time; the taps (the modulated two included) read the pattern, and every float product, the
+ * damping, the matrix and the rounded line writes run as in a patch. The last block drains (D-1109). h is an FNV-1a hash
+ * of the wet output and of the state's fixed-size part (from li, after the buffer's pointer) after each block, then of
+ * the lines. About 2 KB of stack (a frame apart from the filters' cases). */
+#define RVP_BLOCKS 4u
+#define RVP_LINE (RVP_BLOCKS * PROBE_N + 16u)   /* the writes reach RVP_BLOCKS x PROBE_N; the taps read up to 8 past */
+static __attribute__((noinline)) uint32_t probe_reverb(void)
+{
+    int16_t mem[8u * RVP_LINE + 3u * RVP_BLOCKS * PROBE_N], *line[8], *ap[2], *pre;
+    esig_t in[PROBE_N], out[PROBE_N];
+    inst_t it;
+    const int32_t *kp = DEFS[T_REVERB].pdef;
+    float d = (float)kp[REVERB_P_DAMP] * (0.8f / 65536.0f);
+    uint32_t h = 0x811C9DC5u, seed = 12345u, b, i, j, t = 0;
+    const uint8_t *st = (const uint8_t *)it.s.rev.li;
+    const uint32_t stlen = (uint32_t)((const uint8_t *)(&it.s.rev.hold + 1) - st);
+    uint8_t *z = (uint8_t *)&it;
+    for (j = 0; j < sizeof it; j++)
+        z[j] = 0;
+    for (j = 0; j < sizeof mem / sizeof mem[0]; j++) {
+        seed = seed * 1664525u + 1013904223u;
+        mem[j] = (int16_t)(seed >> 16);
+    }
+    for (j = 0; j < 8u; j++)
+        line[j] = mem + j * RVP_LINE;
+    ap[0] = mem + 8u * RVP_LINE;
+    ap[1] = ap[0] + RVP_BLOCKS * PROBE_N;
+    pre = ap[1] + RVP_BLOCKS * PROBE_N;
+    reverb_gains(&it, kp[REVERB_P_SIZE], 0);
+    for (b = 0; b < RVP_BLOCKS; b++) {
+        for (i = 0; i < PROBE_N; i++, t++) {
+            seed = seed * 1664525u + 1013904223u;
+            in[i] = b + 1u < RVP_BLOCKS ? ((int32_t)((t * 4093u) & 0x1FFFFu) - 65536 + (int32_t)(seed >> 17) - 16384) * 3 / 2 : 0;
+        }
+        if (b + 1u < RVP_BLOCKS)
+            reverb_samples(&it, PROBE_N, in, out, line, ap, pre, it.s.rev.gain, d, RV_MOD, 0u, RV_GIN, 0);
+        else
+            reverb_samples(&it, PROBE_N, in, out, line, ap, pre, it.s.rev.gain, d, RV_MOD, 0u, RV_GIN, 1);
+        h = probe_hash(h, out, sizeof out);
+        h = probe_hash(h, st, stlen);
+    }
+    return probe_hash(h, mem, sizeof mem);
+}
+
+static __attribute__((noinline)) void probe_modules(uint32_t lane, uint32_t *h)
 {
     /* the cases: the filter with osc, drive, cv and morph, every output; the filter's lp12 alone; the Ladder with stsat
      * and an audio-rate fm; its diode mode; the Formant filter; the Resonator */
-    static const uint8_t TYPE[ENG_PROBE_CASES] = {T_FILTER, T_FILTER, T_LADDER, T_LADDER, T_VOWEL, T_MODAL};
+    static const uint8_t TYPE[ENG_PROBE_CASES - 1u] = {T_FILTER, T_FILTER, T_LADDER, T_LADDER, T_VOWEL, T_MODAL};
     esig_t in[3][PROBE_N], out[FILTER_NOUT][PROBE_N];
     int32_t eff[MAX_PAR];
     node_t nd;
     inst_t it;
     uint32_t c, b, i, j, t, seed;
-    for (c = 0; c < ENG_PROBE_CASES; c++) {
+    for (c = 0; c < ENG_PROBE_CASES - 1u; c++) {
         const def_t *d = &DEFS[TYPE[c]];
         uint8_t *z = (uint8_t *)&nd;
         for (j = 0; j < sizeof nd; j++)
@@ -11476,6 +11530,12 @@ void eng_fpu_probe(uint32_t lane, uint32_t *h)
                                            TYPE[c] == T_VOWEL ? sizeof it.s.vow : sizeof it.s.mod);
         }
     }
+}
+
+void eng_fpu_probe(uint32_t lane, uint32_t *h)
+{
+    probe_modules(lane, h);
+    h[ENG_PROBE_CASES - 1u] = probe_reverb();
 }
 
 /* A signal within +-IDLE_Q16 (Q16) counts as silent: idle parts (part_quiet) and a natural master FX tail (m_fx). */

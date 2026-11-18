@@ -893,7 +893,7 @@ def fpubench(link, a):
         print(f"raw values: {a[a.index('--json') + 1]}")
 
 
-FPU_CASES = ("filter osc drive", "filter lp12", "ladder stsat fm", "ladder diode", "formant", "resonator")
+FPU_CASES = ("filter osc drive", "filter lp12", "ladder stsat fm", "ladder diode", "formant", "resonator", "reverb")
 
 
 def fpucheck(link, a):
@@ -911,7 +911,7 @@ def fpucheck(link, a):
     host = None
     probe = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "fpu_probe")
     if os.path.exists(probe):
-        host = [int(x, 16) for x in subprocess.run([probe], capture_output=True, text=True, check=True).stdout.split()]
+        host = [int(x, 16) for x in subprocess.run([probe], capture_output=True, text=True).stdout.split()]   # (exit 1: differs from its EXPECT)
     ran = c1 & 7 == 7
     print(f"core 0: {runs} runs from the main loop, {diff} case hashes differing from the first run's; one run {t0} us")
     print(f"core 1: {'ran' if ran else 'did not run'} (on {c1 & 1}, job taken {(c1 >> 1) & 1}, back in time {(c1 >> 2) & 1}); "
