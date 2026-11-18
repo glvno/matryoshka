@@ -204,6 +204,7 @@ export const OUTPUT_RANGES: Record<string, Record<string, Range>> = {
     trig: `${GATE} (a one-sample pulse each time gt rises)`,
   },
   lpg: { out: (p) => `${FOLLOWS} × level (${num(get(p, 'level', 1))}), closed at 0; resonance can lift it` },
+  euclid: { trig: `${GATE} (on a hit)`, off: `${GATE} (on a rest)`, accent: `${GATE} (on an accented hit)` },
 };
 
 /** the range an output carries, worked out from the module's parameters now ('' for an output without one) */

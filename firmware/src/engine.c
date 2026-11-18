@@ -601,6 +601,7 @@ typedef struct {
         struct { int32_t vel[DRUMMAP_NOUT / 2]; uint32_t held[4]; uint8_t gate, gap, fell; } dm;   /* fell: let go since the last
                                                     * block; held: with repeat on (#184), the keys down (bit k & 31 of held[k >> 5]) */
         struct { int32_t count, c1, r1; } cdv;
+        struct { int32_t c1, r1, left; int16_t count; int8_t pos; uint8_t hit, run; } euc;   /* Euclid: clock / reset's last samples, samples the outputs stay up (the engine's clock), ticks since the step, the step (-1: the next is the first), 0 rest / 1 hit / 2 accented hit, the transport as the last block saw it */
         struct { int32_t v, c1; } sh;
         struct { uint32_t rnd, rnd0; uint8_t reg, pat, c1, r1; } shr;   /* Shift register: the flip stream and where a reset restarts it; the stages (s1 in bit 7), the pattern a reset restores, clock / reset high at the previous sample */
         struct { uint8_t hi; } cmp;   /* Comparator: gt is high */
@@ -1321,6 +1322,9 @@ static void init_state(const node_t *nd, inst_t *it, uint32_t mod, uint32_t v)
         break;
     case T_CLKDIV:
         it->s.cdv.count = -1;
+        break;
+    case T_EUCLID:
+        it->s.euc.pos = -1;
         break;
     case T_SHREG: {                      /* modules.ts shreg.seed with engine.ts instSeed(module index, part) */
         uint32_t seed = (mod * 8u + v + 1u) * 0x9e3779b9u;
@@ -10626,6 +10630,100 @@ static void m_clkdiv(const node_t *nd, inst_t *it, uint32_t n)
     it->s.cdv.r1 = r1;
 }
 
+/* Euclid (modules.ts euclid, #1018), ported from KITTEN RACK's m_euclid (https://github.com/BlackKittenDevices/kitten-rack,
+ * a GPL-3.0 fork of Matryoshka), with an accent and the engine's clock added. Step x of the pattern: 0 a rest, 1 a hit,
+ * 2 an accented hit (modules.ts euclidStep) */
+static uint8_t euclid_step(int32_t x, int32_t steps, int32_t hits, int32_t acc)
+{
+    if ((x * hits) % steps >= hits)
+        return 0;
+    return (x * hits / steps * acc) % hits < acc ? 2u : 1u;   /* (the hit's index among the hits: x hits / steps) */
+}
+/* the outputs from sample `from` to `to`: up (on step `hit`: trig, off or accent) or all down */
+static void euclid_out(esig_t *const *o, int up, uint8_t hit, uint32_t from, uint32_t to)
+{
+    fill(o[0] + from, up && hit ? ENG_ONE : 0, to - from);
+    fill(o[1] + from, up && !hit ? ENG_ONE : 0, to - from);
+    fill(o[2] + from, up && hit == 2u ? ENG_ONE : 0, to - from);
+}
+/* a cable in clock: a step on each rising edge, the outputs up while the clock is; none: the engine's clock while the
+ * transport runs, the first step on its start, then one each EUCLID_RATE_TICKS, the outputs up for half a step. The
+ * outputs go in spans that end where something can change: a tick, the clock or reset crossing 0.5 (exact) */
+static void m_euclid(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *clock = it->in[EUCLID_I_CLOCK], *reset = it->in[EUCLID_I_RESET];
+    esig_t *const o[3] = {it->out[EUCLID_O_TRIG], it->out[EUCLID_O_OFF], it->out[EUCLID_O_ACCENT]};
+    int32_t steps = clampi(round_q16(EF(it, EUCLID_P_STEPS)), 1, EUCLID_STEPS_MAX);
+    int32_t hits = clampi(round_q16(EF(it, EUCLID_P_HITS)), 0, steps);
+    int32_t rot = clampi(round_q16(EF(it, EUCLID_P_ROTATE)), 0, EUCLID_STEPS_MAX - 1);
+    int32_t acc = clampi(round_q16(EF(it, EUCLID_P_ACCENT)), 0, hits);
+    int32_t rt = EUCLID_RATE_TICKS[clampi(round_q16(EF(it, EUCLID_P_RATE)), 0, (int32_t)sizeof EUCLID_RATE_TICKS - 1)];
+    int32_t width = (rt * E.tick_len) >> 1, pos = it->s.euc.pos, c1 = it->s.euc.c1, r1 = it->s.euc.r1, left = it->s.euc.left;
+    int32_t count = it->s.euc.count, tick = E.tick_off;
+    int ext = (nd->conn >> EUCLID_I_CLOCK) & 1u, start = E.running && !it->s.euc.run;
+    uint8_t hit = it->s.euc.hit;
+    uint32_t i, e;
+    if (width < 1)
+        width = 1;
+    for (i = 0; i < n; i = e) {
+        int32_t adv = 0;
+        int hi = ext && clock[i] >= 32768, rs = reset[i] >= 32768;
+        if (rs && r1 < 32768)
+            pos = -1;
+        if (ext)
+            adv = hi && c1 < 32768;
+        else {
+            if (i == 0 && start) {       /* (PLAY: the first step now) */
+                count = 0;
+                pos = -1;
+                adv = 1;
+            }
+            if ((int32_t)i == tick) {    /* (-1 while stopped; MIDI clock's ticks can come several to a sample) */
+                int32_t q;
+                for (q = 0; q < E.tick_n; q++)
+                    if (++count >= rt) {
+                        count = 0;
+                        adv++;
+                    }
+            }
+        }
+        if (adv) {
+            pos = (pos + adv) % steps;
+            hit = euclid_step((pos + rot) % steps, steps, hits, acc);
+            left = width;
+        }
+        e = !ext && tick > (int32_t)i ? (uint32_t)tick : n;
+        if (ext && reset != zero_buf)
+            for (e = i + 1; e < n && (clock[e] >= 32768) == hi && (reset[e] >= 32768) == rs; e++)
+                ;
+        else if (ext)
+            for (e = i + 1; e < n && (clock[e] >= 32768) == hi; e++)
+                ;
+        else if (reset != zero_buf) {
+            uint32_t end = e;
+            for (e = i + 1; e < end && (reset[e] >= 32768) == rs; e++)
+                ;
+        }
+        r1 = reset[e - 1];
+        if (ext) {
+            c1 = clock[e - 1];
+            euclid_out(o, hi, hit, i, e);
+        } else {
+            uint32_t up = left <= 0 ? 0u : (uint32_t)left < e - i ? (uint32_t)left : e - i;
+            euclid_out(o, 1, hit, i, i + up);
+            euclid_out(o, 0, hit, i + up, e);
+            left -= (int32_t)up;
+        }
+    }
+    it->s.euc.pos = (int8_t)pos;
+    it->s.euc.c1 = c1;
+    it->s.euc.r1 = r1;
+    it->s.euc.left = left;
+    it->s.euc.count = (int16_t)count;
+    it->s.euc.hit = hit;
+    it->s.euc.run = E.running;
+}
+
 static void m_sh(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *in = it->in[SH_I_IN], *clock = it->in[SH_I_CLOCK];
@@ -11374,6 +11472,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_LADDER: m_ladder(nd, it, n); break;
     case T_DYN: m_dyn(nd, it, n); break;
     case T_LIMIT: m_limit(nd, it, n); break;
+    case T_EUCLID: m_euclid(nd, it, n); break;
     case T_ESP: m_esp(nd, it, n); break;
     case T_MATH: m_math(nd, it, n); break;
     case T_LOGIC: m_logic(nd, it, n); break;

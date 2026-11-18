@@ -613,6 +613,38 @@ kit('lpg-res', (add, wire) => {
   wire(a, 'out', out, 'l'); wire(b, 'out', out, 'r');
 });
 for (const k of ['lpg-strike', 'lpg-vca', 'lpg-res']) ends[k] = 128 * 600;
+// Euclid (#1018, ported from KITTEN RACK's euclid): on a square LFO's edges, reset by a slower one, one Euclid's hits and
+// rotation moved through p1, accents; then on the engine's clock (no cable in clock) at three rates, through a stop and a
+// start, a reset from another Euclid's rests, and MIDI clock (ticks several to a block)
+kit('euclid-clock', (add, wire) => {
+  const clock = add('lfo', 0, 0, { wave: 3, rate: 8, depth: 1 }), rst = add('lfo', 0, 0, { wave: 3, rate: 0.37, depth: 1 });
+  const slow = add('lfo', 0, 0, { wave: 1, rate: 0.6, depth: 1 });
+  const a = add('euclid', 0, 0, { steps: 8, hits: 3, rotate: 2, accent: 1 });
+  const b = add('euclid', 0, 0, { steps: 13, hits: 5, accent: 2 }, { map: { p1: ['hits', 'rotate'] } });
+  const env = add('adsr', 0, 0, { a: 0.001, d: 0.08, s: 0, r: 0.03 }), osc = add('osc', 0, 0, { wave: 1, level: 0.7 }), vca = add('vca', 0, 0);
+  const mix = add('mixer', 0, 0, { l1: 0.6, l2: 0.3, l3: 0.9, l4: 0.5 }), out = add('output', 0, 0, { level: 0.7 });
+  wire(clock, 'out', a, 'clock'); wire(clock, 'out', b, 'clock'); wire(rst, 'out', a, 'reset'); wire(slow, 'out', b, 'p1');
+  wire(a, 'trig', env, 'gate'); wire(osc, 'out', vca, 'in'); wire(env, 'env', vca, 'cv'); wire(vca, 'out', out, 'l');
+  wire(b, 'trig', mix, 'in1'); wire(b, 'off', mix, 'in2'); wire(b, 'accent', mix, 'in3'); wire(a, 'accent', mix, 'in4'); wire(mix, 'out', out, 'r');
+});
+ends['euclid-clock'] = 128 * 900;
+kit('euclid-tempo', (add, wire) => {
+  add('fm1', 0, 0, { tempo: 140 });
+  const a = add('euclid', 0, 0, { steps: 16, hits: 7, accent: 3, rate: 4 }), b = add('euclid', 0, 0, { steps: 5, hits: 2, rate: 3 });
+  const c = add('euclid', 0, 0, { steps: 4, hits: 4, rotate: 1, accent: 2, rate: 0 });
+  const ml = add('mixer', 0, 0, { l1: 0.6, l2: 0.3, l3: 0.4, l4: 0 }), mr = add('mixer', 0, 0, { l1: 0.5, l2: 0.4, l3: 0.3, l4: 0.2 });
+  const out = add('output', 0, 0, { level: 0.7 });
+  wire(b, 'off', a, 'reset');
+  wire(a, 'trig', ml, 'in1'); wire(a, 'off', ml, 'in2'); wire(a, 'accent', ml, 'in3'); wire(ml, 'out', out, 'l');
+  wire(b, 'trig', mr, 'in1'); wire(c, 'trig', mr, 'in2'); wire(c, 'accent', mr, 'in3'); wire(c, 'off', mr, 'in4'); wire(mr, 'out', out, 'r');
+});
+{
+  const ev: Ev[] = [[128 * 5, 'run', 0], [128 * 300, 'stop', 0], [128 * 340, 'run', 0], [128 * 500, 'ext', 0]];
+  for (let t = 0; t < 150; t++) ev.push([128 * 500 + 900 * t - (t % 10 === 4 ? 900 : 0), 'tick', 0]); // (every tenth with the one before: two in a block)
+  ev.push([128 * 500 + 900 * 150 + 200, 'int', 0]);
+  events['euclid-tempo'] = ev;
+  ends['euclid-tempo'] = 128 * 500 + 900 * 150 + 128 * 100;
+}
 // modulation scaling (#526): the Range module (a curve, unclamped past its input range; clamped and inverted), its curve
 // moved through p1; a depth past 1 (up to 2) on both pins; a bipolar macro range next to a plain one
 kit('range-curve', (add, wire) => {
