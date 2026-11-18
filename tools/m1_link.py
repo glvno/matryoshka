@@ -38,9 +38,8 @@
                                           (#802, #803, DIAG pages 132..139: what an audio block's time is made of, over
                                            SECONDS (default 3): each part of the audio interrupt, the voices, TIMER5's
                                            interrupts, the second core's busy and idle time and its hand-offs, mean and
-                                           most per block; --patch: a factory patch (firmware/src/presets.h) or a patch
-                                           binary file (NAME.bin) uploaded live first; --notes: hold the first N of the
-                                           rig survey's 8 notes (C4 E4 G4 B4 C5 E5
+                                           most per block; --patch: a factory patch (firmware/src/presets.h) or the path of
+                                           a patch binary, uploaded live first; --notes: hold the first N of the rig survey's 8 notes (C4 E4 G4 B4 C5 E5
                                            G5 B5) from 1 s before the window to its end; --json: the raw values too. Reads
                                            only, except that page 139 holds the main loop 5 ms)
   tools/m1_link.py modtime [SECONDS] [--notes N] [--patch NAME] [--json FILE]
@@ -54,11 +53,6 @@
                                            the interrupts off (about a second in all; the sound stops meanwhile and the
                                            overload guard may drop a voice), then its fastest run in CPU cycles per sample
                                            (the clock from the same page's timed adds); --json: the raw values too)
-  tools/m1_link.py fpucheck [--json FILE] (D-1114, #979, DIAG pages 140..142: the float kernels' result bits for a fixed
-                                           input (engine.c eng_fpu_probe), 32 runs on core 0 from the main loop with the
-                                           interrupts on, then one on core 1; prints the hashes of both and those of
-                                           build/fpu_probe (firmware/test/fpu_probe.c, the host) when it exists. Exit 1 when
-                                           any differ)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's matryoshka.dis (CI artifact matryoshka-elf) names the functions)
   tools/m1_link.py factory-info           (#915: the factory region's state, layout, set, length and patch count)
@@ -709,8 +703,6 @@ def main():
         t5parts(link, a[1:])
     elif a[0] == "fpubench":
         fpubench(link, a[1:])
-    elif a[0] == "fpucheck":
-        fpucheck(link, a[1:])
     elif a[0] == "diag":
         raw = []
         for page in range(32):
@@ -772,16 +764,15 @@ def diag_words(link, n):
 
 
 def load_factory(link, patch):
-    """a factory patch (firmware/src/presets.h), or a patch binary file (NAME.bin, as rig_cpu_survey.py DIR reads), uploaded live"""
+    """a factory patch (firmware/src/presets.h), or a patch binary at that path, uploaded live"""
     if os.path.isfile(patch):
-        with open(patch, "rb") as f:
-            hit = [f.read()]
+        hit = [open(patch, "rb").read()]
     else:
         ps = factory_presets()
         hit = [d for n, d in ps if n.lower() == patch.lower()] or [d for n, d in ps if n.lower().startswith(patch.lower())]
-        if len(hit) != 1:
-            sys.exit(f"--patch {patch!r}: {'no' if not hit else 'more than one'} factory patch of that name; "
-                     f"names: {', '.join(n for n, _ in ps)}")
+    if len(hit) != 1:
+        sys.exit(f"--patch {patch!r}: {'no' if not hit else 'more than one'} factory patch of that name; "
+                 f"names: {', '.join(n for n, _ in ps)}")
     upload_chunks(link, hit[0])
     c = crc16(hit[0])
     link.ack(frame(0x11, [len(hit[0]) & 0xFF, len(hit[0]) >> 8, c & 0xFF, c >> 8]), 0x11, wait=3.0)
@@ -896,46 +887,6 @@ def fpubench(link, a):
         with open(a[a.index("--json") + 1], "w") as f:
             json.dump(r, f, indent=1)
         print(f"raw values: {a[a.index('--json') + 1]}")
-
-
-FPU_CASES = ("filter osc drive", "filter lp12", "ladder stsat fm", "ladder diode", "formant", "resonator", "reverb")
-
-
-def fpucheck(link, a):
-    """DIAG page 140 runs main.c fpu_check (core 0 32 times, then core 1); 141 and 142 read the two cores' hashes"""
-    import json, os, subprocess
-    p = link.ask(frame(0x2B, [140]), (0x4B, 140), tries=1, wait=10.0)
-    if len(p) < 33:
-        sys.exit("no float check page (DIAG 140): a firmware from before #979's filters")
-    w = [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range(8)]
-    nc, runs, diff, c1, t1, t0, odd, stack = w
-    hashes = []
-    for page in (141, 142):
-        q = link.ask(frame(0x2B, [page]), (0x4B, page))
-        hashes.append([int.from_bytes(bytes(q[1 + 4 * i:5 + 4 * i]), "little") for i in range(nc)])
-    host = None
-    probe = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "fpu_probe")
-    if os.path.exists(probe):
-        host = [int(x, 16) for x in subprocess.run([probe], capture_output=True, text=True).stdout.split()]   # (exit 1: differs from its EXPECT)
-    ran = c1 & 7 == 7
-    print(f"core 0: {runs} runs from the main loop, {diff} case hashes differing from the first run's; one run {t0} us")
-    print(f"core 1: {'ran' if ran else 'did not run'} (on {c1 & 1}, job taken {(c1 >> 1) & 1}, back in time {(c1 >> 2) & 1}); "
-          f"{t1} us with the hand-off; its stack {stack} B used at most")
-    print(f"{'case':<18} {'core 0':>8} {'core 1':>8} {'host':>8}")
-    bad = diff != 0 or not ran or odd != 0
-    for c in range(nc):
-        h = f"{host[c]:08x}" if host else "-"
-        bad = bad or (host is not None and host[c] != hashes[0][c])
-        print(f"{FPU_CASES[c] if c < len(FPU_CASES) else c:<18} {hashes[0][c]:08x} {hashes[1][c]:08x} {h:>8}")
-    print("all equal" if not bad else "DIFFERENT (or core 1 did not run)")
-    if "--json" in a:
-        with open(a[a.index("--json") + 1], "w") as f:
-            json.dump({"runs": runs, "core0_runs_differing": diff, "core1": c1, "core1_us": t1, "core0_us": t0,
-                       "core1_stack": stack, "core0": [f"{x:08x}" for x in hashes[0]],
-                       "core1": [f"{x:08x}" for x in hashes[1]], "host": [f"{x:08x}" for x in host] if host else None,
-                       "cases": list(FPU_CASES)}, f, indent=1)
-    if bad:
-        sys.exit(1)
 
 
 def modtime(link, a):

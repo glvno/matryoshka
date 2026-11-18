@@ -124,3 +124,30 @@ fn rmw_clear_by_register() {
         assert_eq!(cpu.regs, regs, "64 e8 {lo:02x} {:02x} changed a register", b << 4 | s);
     }
 }
+
+/// Runs the 4-byte branch `code` at `at` on `cpu` and returns where it went.
+fn branch(cpu: &mut Cpu, ram: &mut Ram, at: u32, code: [u8; 4]) -> u32 {
+    ram.0[at as usize..at as usize + 4].copy_from_slice(&code);
+    cpu.pc = at;
+    cpu.step(ram).unwrap_or_else(|e| panic!("{code:02x?}: {e:?}"));
+    cpu.pc
+}
+
+/// The calls and tail calls between the flash (0x02000120..) and the hot code in NOINIT (0x01C7C000..; tools/build.py
+/// FAST_TEXT, #1072) are the 4-byte forms with their full reach, +-4 MiB from the next instruction (22 bits of halfwords).
+/// The offsets are objdump's from an ENG_RAMCODE=1 build of PR #1078.
+#[test]
+fn far_branches_between_flash_and_noinit() {
+    let mut ram = Ram(vec![0; 0x50_0000]);
+    let mut cpu = Cpu::new(0);
+    // `9e ea 4f 30` call 3956894: the RAM code calling m1_handle in the flash
+    assert_eq!(branch(&mut cpu, &mut ram, 0x100, [0x9e, 0xea, 0x4f, 0x30]), 0x104 + 3956894);
+    // `a3 ea 4f f3` call -3676514: isr_alnk0 in the flash calling fm1_alnk0_irq in the RAM
+    assert_eq!(branch(&mut cpu, &mut ram, 0x38_2000, [0xa3, 0xea, 0x4f, 0xf3]), 0x38_2004 - 3676514);
+    // the same offsets as tail calls: `goto #i` (0xeac0) and `goto -#i` (0xeae0)
+    assert_eq!(branch(&mut cpu, &mut ram, 0x100, [0xde, 0xea, 0x4f, 0x30]), 0x104 + 3956894);
+    assert_eq!(branch(&mut cpu, &mut ram, 0x38_2000, [0xe3, 0xea, 0x4f, 0xf3]), 0x38_2004 - 3676514);
+    // the far ends of the reach
+    assert_eq!(branch(&mut cpu, &mut ram, 0x100, [0x9f, 0xea, 0xff, 0xff]), 0x104 + 0x3f_fffe);
+    assert_eq!(branch(&mut cpu, &mut ram, 0x40_0000, [0xe0, 0xea, 0x00, 0x00]), 0x40_0004 - 0x40_0000);
+}

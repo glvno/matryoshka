@@ -60,6 +60,68 @@ fn elf_symbols(elf: &[u8]) -> Result<std::collections::HashMap<String, u32>, Str
     Ok(out)
 }
 
+/// The function symbols of a 32-bit little-endian ELF file, sorted by address: (address, size, name).
+fn elf_funcs(elf: &[u8]) -> Vec<(u32, u32, String)> {
+    let u16_at = |o: usize| u16::from_le_bytes([elf[o], elf[o + 1]]) as usize;
+    let u32_at = |o: usize| u32::from_le_bytes([elf[o], elf[o + 1], elf[o + 2], elf[o + 3]]);
+    let (shoff, shentsize, shnum) = (u32_at(0x20) as usize, u16_at(0x2e), u16_at(0x30));
+    let mut out = Vec::new();
+    for i in 0..shnum {
+        let sh = shoff + i * shentsize;
+        if u32_at(sh + 4) != 2 {
+            continue;
+        }
+        let (off, size, link) = (u32_at(sh + 16) as usize, u32_at(sh + 20) as usize, u32_at(sh + 24) as usize);
+        let str_off = u32_at(shoff + link * shentsize + 16) as usize;
+        for s in (off..off + size).step_by(16) {
+            if elf[s + 12] & 15 != 2 || u16_at(s + 14) == 0 {
+                continue; // STT_FUNC, defined
+            }
+            let name_at = str_off + u32_at(s) as usize;
+            let end = elf[name_at..].iter().position(|&b| b == 0).unwrap_or(0);
+            out.push((u32_at(s + 4), u32_at(s + 8), String::from_utf8_lossy(&elf[name_at..name_at + end]).into_owned()));
+        }
+    }
+    out.sort();
+    out
+}
+
+/// M1EMU_PROF=DIR: the profile of one slot's module-time window (timing.rs `Prof`), by function, into DIR/SLOT.tsv:
+/// device cycles a half on core 0 and core 1, instruction and data line fills a half; the profile is then cleared.
+fn prof_dump(m: &mut Machine, funcs: &[(u32, u32, String)], slot: u32, name: &str, halves: u32) {
+    let Some(dir) = std::env::var_os("M1EMU_PROF") else { return };
+    let Some(t) = m.timing.as_mut() else { return };
+    let Some(pr) = t.prof.as_mut() else { return };
+    let mut by: std::collections::HashMap<String, [f64; 4]> = Default::default();
+    let mut lines: std::collections::BTreeMap<u32, [f64; 3]> = Default::default();
+    for (&(pc, core), v) in pr.at.iter() {
+        let i = funcs.partition_point(|f| f.0 <= pc);
+        let f = if i > 0 && pc < funcs[i - 1].0 + funcs[i - 1].1.max(2) { funcs[i - 1].2.clone() } else { format!("?{pc:08x}") };
+        let e = by.entry(f).or_insert([0.0; 4]);
+        e[core as usize] += v[0];
+        e[2] += v[1];
+        e[3] += v[2];
+        let l = lines.entry(pc & !63).or_insert([0.0; 3]);
+        l[core as usize] += v[0];
+        l[2] += v[1];
+    }
+    pr.at.clear();
+    let h = halves.max(1) as f64;
+    let mut rows: Vec<_> = by.into_iter().collect();
+    rows.sort_by(|a, b| (b.1[0] + b.1[1]).total_cmp(&(a.1[0] + a.1[1])));
+    let mut s = format!("# {name}: device cycles a half (core 0, core 1), instruction / data line fills a half, over {halves} halves\n");
+    for (f, v) in rows {
+        s += &format!("{f}\t{:.0}\t{:.0}\t{:.2}\t{:.2}\n", v[0] / h, v[1] / h, v[2] / h, v[3] / h);
+    }
+    let path = std::path::Path::new(&dir).join(format!("{slot}.tsv"));
+    if let Err(e) = std::fs::write(&path, s) {
+        eprintln!("{}: {e}", path.display());
+    }
+    // each 64-byte line of code: cycles a half on core 0 and core 1, its instruction fills a half
+    let s: String = lines.iter().map(|(a, v)| format!("{a:08x}\t{:.0}\t{:.0}\t{:.3}\n", v[0] / h, v[1] / h, v[2] / h)).collect();
+    let _ = std::fs::write(std::path::Path::new(&dir).join(format!("{slot}.lines")), s);
+}
+
 /// The names of the bank's slots, from the flash (firmware/src/slotstore.c: one record a sector, the newest of an id
 /// wins): slot -> name.
 fn slot_names(flash: &[u8]) -> Vec<(u32, String)> {
@@ -202,6 +264,12 @@ fn modtime(m: &mut Machine, s: &Syms, slot: u32, play: &Play) -> Result<(u32, Ve
     // has ended (well within 5 ms: a block is 2.9 ms).
     m.soc.write8(s.mt_on, 1);
     m.run_for(5)?;
+    if let Some(t) = m.timing.as_mut() {
+        if let Some(p) = t.prof.as_mut() {
+            p.at.clear();
+        }
+        t.prof_on = true;
+    }
     for k in 0..2 * MT_MODULES {
         m.soc.write32(s.mt_sum + 4 * k, 0);
     }
@@ -212,6 +280,9 @@ fn modtime(m: &mut Machine, s: &Syms, slot: u32, play: &Play) -> Result<(u32, Ve
         isr += m.soc.read32(s.eng_us_last) as u64;
     }
     m.soc.write8(s.mt_on, 0);
+    if let Some(t) = m.timing.as_mut() {
+        t.prof_on = false;
+    }
     let blocks = m.soc.read32(s.mt_blocks);
     let mut rows: Vec<[u64; 2]> = Vec::new();
     for q in 0..MT_MODULES {
@@ -238,6 +309,7 @@ pub fn run(app: &[u8], a: &[String]) -> ExitCode {
         eprintln!("m1emu cpu: --elf ELF is required (the build's matryoshka.elf: the counters' addresses)");
         return ExitCode::from(2);
     };
+    let funcs = std::fs::read(elf_path).map(|e| elf_funcs(&e)).unwrap_or_default();
     let syms = match std::fs::read(elf_path).map_err(|e| e.to_string()).and_then(|e| elf_symbols(&e)) {
         Ok(s) => s,
         Err(e) => {
@@ -299,6 +371,30 @@ pub fn run(app: &[u8], a: &[String]) -> ExitCode {
 
     let t0 = std::time::Instant::now();
     let mut m = Machine::boot(app, flash.as_deref());
+    // M1EMU_RAMSIM=NAME,..|FILE: a what-if, these functions (or, in FILE, one per line, NAME or a 64-byte line's address
+    // 0x...) run as if placed in RAM (timing.rs `ram_sim`)
+    if let (Some(t), Ok(v)) = (m.timing.as_mut(), std::env::var("M1EMU_RAMSIM")) {
+        let text = std::fs::read_to_string(&v).unwrap_or(v.replace(',', "\n"));
+        let mut mark = |lo: u32, hi: u32| {
+            for a in (lo.max(0x0200_0000)..hi).step_by(2) {
+                let i = ((a - 0x0200_0000) >> 1) as usize;
+                if i >= t.ram_sim.len() {
+                    t.ram_sim.resize(i + 1, false);
+                }
+                t.ram_sim[i] = true;
+            }
+        };
+        for w in text.split_whitespace() {
+            if let Some(h) = w.strip_prefix("0x") {
+                let a = u32::from_str_radix(h, 16).unwrap_or(0) & !63;
+                mark(a, a + 64);
+            } else if let Some(f) = funcs.iter().find(|f| f.2 == w) {
+                mark(f.0, f.0 + f.1);
+            } else {
+                eprintln!("M1EMU_RAMSIM: no function {w}");
+            }
+        }
+    }
     let result = (|| -> Result<String, String> {
         smoke::quick_start(&mut m, 9000)?;
         m.run_for(1500)?; // (the first boot writes the factory bank once the quick start closes)
@@ -334,6 +430,7 @@ pub fn run(app: &[u8], a: &[String]) -> ExitCode {
             }
             if with_modtime {
                 let (halves, r, isr) = modtime(&mut m, &s, *slot, &play)?;
+                prof_dump(&mut m, &funcs, *slot, name, halves);
                 let cells: Vec<String> = r.iter().map(|[c0, c1]| format!("[{c0},{c1}]")).collect();
                 eprintln!("{slot:2} {name:20} modtime: {} modules, {halves} halves, interrupt {isr:.1} us", r.len());
                 mods.push(format!("{}:{{\"halves\":{halves},\"isr_us\":{isr:.2},\"modules_ns\":[{}]}}", json_str(name), cells.join(",")));

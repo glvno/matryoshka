@@ -7,6 +7,9 @@
 #define FS 44118u                 /* the I2S rate (ENG_SR) */
 
 static int32_t abuf[2u * HALF_WORDS] __attribute__((aligned(4)));
+#ifndef UNROLL4                  /* (engine.c's, #1072; a host test without the engine: plain loops) */
+#define UNROLL4
+#endif
 
 /* the patch engine (engine.c) renders one half buffer per ISR call. eng_run = 0: silence (a patch is being loaded) */
 static volatile uint8_t eng_run;
@@ -104,6 +107,7 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
             eng_render(eng_l, eng_r, HALF_FRAMES);
             bt_m[BT_M_REND1] = fm1_ticks();
             int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
+            UNROLL4                                     /* (engine.c, #803) */
             for (i = 0; i < HALF_FRAMES; i++) {         /* Q16 (+-1.0) * MASTER -> 24 bit in the low bits, -6 dBFS ceiling */
                 o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
                 o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;
