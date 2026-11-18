@@ -53,6 +53,8 @@ import { initStatusline, pinStatus } from './statusline';
 import { buildAssembliesSection, storeAssembly, storeTutorialAssembly } from './assemblies';
 import { AssemblyBrowser } from './browser';
 import { searchCommands, type Command } from './commands';
+import { loadBlueprints, type Catalog } from './quick-patch';
+import { QuickPatch } from './quick-patch-view';
 import { CATEGORIES, MUTATE_AMOUNTS, PROFILES, type Category } from './mutate';
 import { filterRound, OVERSAMPLE, PASS, probePhrase, PROBE_HOLD, PROBE_RENDER } from './mutate-render';
 import { buildFlashTab } from './flasher';
@@ -1154,6 +1156,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     tutorial.refresh();
   },
   onLoad(p) {
+    quick.close();   // (its cards and chain belong to the patch it was opened on)
     loadsSeen++;
     device.invalidateOrigins();
     emuFresh = true;
@@ -1180,6 +1183,13 @@ const editor = new Editor($('canvas'), firstPatch, {
   },
   morphCandidates: patchCandidates,
 }, $('dock'));
+// ---- Quick patch (#1091, quick-patch-view.ts): Tab opens it on the canvas, C copies the card under the pointer
+const quickCatalog = (): Catalog => ({
+  modules: addableModules(DEFS).map((m) => ({ type: m.type, name: m.name, keywords: moduleKeywords(m.type, m.def.label) })),
+  assemblies: assemblyShelves().filter((a, i, all) => all.findIndex((b) => b.def === a.def) === i).map((a) => ({ def: a.def, shelf: a.shelf, keywords: `${a.def.blurb ?? ''} ${summary(a.def)}` })),
+  blueprints: loadBlueprints(),
+});
+const quick = new QuickPatch({ editor, say: (text) => { status.textContent = text; }, catalog: quickCatalog });
 // the wheels stand beside the keyboard, each under its output's jack; the octave buttons under the dock's outputs
 editor.wheelHost = $('wheels');
 editor.dockWheels = hands.wheels;
@@ -1892,6 +1902,11 @@ const palette = $<HTMLDialogElement>('palette');
 const palInput = $<HTMLInputElement>('palette-input');
 const palList = $('palette-list');
 const inPatch = (run: () => void): (() => void) => () => { toPatch(); run(); };
+const keepBlueprint = (): void => {
+  if (!quick.hasChain) return void (status.textContent = 'Build a chain in Quick patch (Tab) first, then keep it as a blueprint');
+  const name = window.prompt('Name of the blueprint', 'my-chain')?.trim();
+  if (name) quick.keepAs(name);
+};
 const commands = (): Command[] => {
   const assembly = (d: AssemblyDef, shelf: string): Command => ({
     kind: 'assembly', tags: ['assembly', ...(defIsEngine(d) ? ['engine'] : []), shelf], label: d.name, detail: d.blurb ? `${d.blurb} · ${shelf}` : shelf, keywords: `insert ${d.blurb ?? ''} ${summary(d)}`,
@@ -1916,6 +1931,10 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Save patch card (PNG)', keywords: 'image picture share post export download', run: () => void saveCard() },
     { kind: 'command', label: 'Tutorial', keywords: 'learn help starter tour chapters course', run: () => { toPatch(); tutorial.open(); } },
     { kind: 'command', label: 'New patch', keywords: 'engine start empty', run: () => startNew() },
+    { kind: 'command', label: 'Quick patch', detail: 'Tab · type modules and ports, pick from a ring', keywords: 'build chain ring type ports cables connect patch fast keyboard radial wheel traverse follow cable', run: inPatch(() => quick.show()) },
+    { kind: 'command', label: 'Copy the card under the pointer', detail: 'C · and open its ring', keywords: 'duplicate pipette clone hovered quick patch', run: inPatch(() => { if (!quick.copyHovered()) status.textContent = 'C copies the card under the pointer: point at a card on the canvas'; }) },
+    { kind: 'command', label: 'Keep the last chain as a blueprint\u2026', detail: 'Quick patch: bp save <name>', keywords: 'blueprint save stamp chain quick patch', run: keepBlueprint },
+    ...loadBlueprints().map((b) => ({ kind: 'blueprint', label: b.name, detail: b.chain, keywords: 'stamp blueprint chain quick patch', run: inPatch(() => quick.stamp(b.name)) })),
     { kind: 'command', label: 'Undo', detail: 'Ctrl/Cmd+Z', run: inPatch(() => editor.undo()) },
     { kind: 'command', label: 'Redo', detail: 'Shift+Ctrl/Cmd+Z', run: inPatch(() => editor.redo()) },
     { kind: 'command', label: 'Make assembly from the selection', detail: 'Ctrl/Cmd+G', run: inPatch(() => editor.makeAssembly()) },
@@ -2209,6 +2228,13 @@ window.addEventListener('keydown', (e) => {
   }
   if (k === '/' || (mod && k.toLowerCase() === 'k')) (openPalette(), (done = true));
   else if (k === '?') (help.showModal(), (done = true));
+  // Quick patch (#1091): Tab while the canvas has the keys (no control focused; Shift+Tab and Tab in a control stay the
+  // browser's), C copies the card under the pointer and opens its ring
+  else if (k === 'Tab' && !mod && !e.altKey && !e.shiftKey && currentView === 'patch' && (!t || t === document.body || ($('canvas').contains(t) && !control))) (quick.show(), (done = true));
+  else if (!mod && !e.altKey && !e.shiftKey && k.toLowerCase() === 'c' && currentView === 'patch') {
+    if (!quick.copyHovered()) status.textContent = 'C copies the card under the pointer: point at a card first';
+    done = true;
+  }
   else if ((k === '[' || k === ']') && !mod && !e.altKey) (editor.selectPattern(editor.pattern + (k === ']' ? 1 : -1)), (done = true));   // the patch's pattern (#375)
   else if (e.shiftKey && !mod && !e.altKey && k.toLowerCase() === 'r') {   // REC on the armed track (#135)
     if (!editor.toggleRec()) status.textContent = 'Shift+R records on the armed track: ARM a Steps track first';
@@ -2726,6 +2752,7 @@ const workspace = document.querySelector<HTMLElement>('.workspace')!;
 function setView(v: View): void {
   if (installOpen()) closeInstall(); // any view navigation closes the Install panel; a running install keeps going (and its guard)
   currentView = v;
+  if (v !== 'patch') quick.close();
   if (v !== 'patch') tutorial.closeWelcome?.(); // the welcome card is PATCH's: leaving PATCH closes it for this visit
   currentTab = v === 'library' ? 'library' : 'patch';
   closeSidebar();

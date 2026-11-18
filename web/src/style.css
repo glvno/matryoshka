@@ -2220,3 +2220,63 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .move-bar button { flex: none; min-height: 28px; padding: 0 10px; border: 1px solid var(--secondary); border-radius: 4px; background: var(--secondary); color: var(--panel);
   font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; cursor: pointer; }
 .move-bar button.move-close { background: transparent; color: var(--secondary); }
+
+/* Quick patch (#1091, quick-patch-view.ts): the panel beside the radial menu (the list, the sliders), kept inside the
+   canvas's visible area */
+.qp-panel { position: fixed; z-index: 55; display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--line); box-sizing: border-box;
+  border-radius: 10px; background: var(--panel); color: var(--ink); box-shadow: 0 8px 28px var(--backdrop); font-size: 12px; overflow: auto; }
+.qp-radial { transform-origin: 50% 50%; }
+.qp-field { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--secondary); border-radius: 6px; background: var(--bg);
+  color: var(--ink); font: 14px/1.2 'Barlow', system-ui, sans-serif; cursor: text; }
+.qp-field:focus { outline: 2px solid color-mix(in srgb, var(--secondary) 45%, transparent); outline-offset: 1px; }
+.qp-trail { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.qp-trail[hidden], .qp-last[hidden] { display: none; }
+.qp-trail button { padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; background: transparent; font-size: 11px; }
+.qp-trail .qp-crumb + .qp-crumb::before { content: '→ '; color: var(--muted); }
+.qp-trail .qp-crumb.on { border-color: var(--secondary); color: var(--secondary); }
+.qp-hint:empty { display: none; }
+.qp-hint { color: var(--muted); }
+.qp-hint.bad { color: var(--danger); }
+.qp-list { list-style: none; margin: 0; padding: 0; max-height: 216px; overflow: auto; }
+.qp-list:empty { display: none; }
+.qp-list li { display: flex; align-items: baseline; gap: 8px; padding: 5px 8px; border-radius: 5px; cursor: pointer; }
+.qp-list li.sel, .qp-list li:hover { background: var(--surface-tint); box-shadow: inset 2px 0 var(--secondary); }
+.qp-list .qp-label { white-space: nowrap; }
+.qp-list .qp-detail { margin-left: auto; color: var(--muted); font-size: 11px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.qp-list kbd, .qp-chip kbd { font: 500 10px/1 'Barlow', system-ui, sans-serif; color: var(--muted); }
+.qp-last { color: var(--ink); overflow-wrap: anywhere; }
+.qp-last code { font-size: 11px; }
+.qp-muted, .qp-keys { color: var(--muted); }
+.qp-keys { font-size: 10px; line-height: 1.6; }
+.qp-keys kbd { padding: 0 3px; border: 1px solid var(--line); border-radius: 3px; }
+/* the radial overlay: translucent, so the cards Quick patch makes show through; sectors are plain labelled segments */
+.qp-radial { position: fixed; z-index: 54; pointer-events: none; }
+.qp-radial svg { display: block; overflow: visible; }
+.qp-disc { fill: color-mix(in srgb, var(--panel) 55%, transparent); stroke: var(--line); }
+.qp-sec { pointer-events: auto; cursor: pointer; }
+.qp-sec path { fill: color-mix(in srgb, var(--panel) 78%, transparent); stroke: var(--line); stroke-width: 1; }
+.qp-sec:hover path { fill: color-mix(in srgb, var(--secondary) 18%, var(--panel)); }
+.qp-sec.lit path { fill: color-mix(in srgb, var(--secondary) 28%, var(--panel)); stroke: var(--secondary); }
+.qp-sec.sel path { stroke: var(--accent); stroke-width: 2.5; }
+.qp-sec.dim { opacity: .65; }
+.qp-sec.off { opacity: .28; cursor: default; }
+.qp-sec text { fill: var(--ink); font: 500 11.5px/1 'Barlow', system-ui, sans-serif; text-anchor: middle; pointer-events: none; }
+.qp-sec.more text { fill: var(--muted); }
+.qp-kind { fill: none; stroke: var(--audio); stroke-width: 1.4; }
+.qp-kind.control { stroke: var(--control); } .qp-kind.gate { stroke: var(--gate); } .qp-kind.keys { stroke: var(--ink); }
+.qp-kind.cabled { fill: currentColor; color: var(--audio); }
+.qp-kind.control.cabled { color: var(--control); } .qp-kind.gate.cabled { color: var(--gate); } .qp-kind.keys.cabled { color: var(--ink); }
+/* the centre disc: the field exactly in the middle, the card's label above it in capitals, a size smaller (owner on PR #1094) */
+.qp-core { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: auto; text-align: center; }
+.qp-core-name { position: absolute; left: 50%; bottom: calc(50% + 19px); transform: translateX(-50%); display: flex; align-items: center; justify-content: center; gap: 4px;
+  width: 100%; font: 600 11px/1.1 'Barlow', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--ink); overflow-wrap: anywhere; }
+.qp-core .qp-field { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 128px; padding: 5px 8px; font-size: 13px; }
+/* a port's direction is this icon, never the word: a jack with an arrow into it (takes a cable) or out of it (sends) */
+.qp-io { flex: none; width: 18px; height: 10px; color: var(--muted); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.qp-io.audio { color: var(--audio); } .qp-io.control { color: var(--control); } .qp-io.gate { color: var(--gate); } .qp-io.keys { color: var(--ink); }
+.qp-list .qp-io { align-self: center; }
+.qp-sliders { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 11px; }
+.qp-sliders:empty, .qp-sliders[hidden] { display: none; }
+.qp-strip-head { color: var(--muted); }
+.qp-slider { display: grid; grid-template-columns: 84px 1fr 64px; align-items: center; gap: 8px; }
+.qp-slider .qp-value { text-align: right; font-variant-numeric: tabular-nums; }

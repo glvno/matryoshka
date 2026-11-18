@@ -30,6 +30,10 @@ How close an FM-1 factory instrument can come to full parity: `fit: full`, `reac
 
 The FM-1's patch slots, its only patch list: 60 slots with the [pattern store](#pattern-store), 64 on an FM-1 without one. PRESET steps the occupied slots. The editor keeps one bank, its offline copy in the browser (several named banks: issue #220).
 
+### Blueprint
+
+A chain kept under a name in this browser from Quick patch. Stamping it makes its cards again, wired, as one undo step.
+
 ### Blurb
 
 A factory engine's one-line description in the owner's wording, kept on the assembly definition.
@@ -432,6 +436,10 @@ On the FM-1, a way to play the patch's pattern or song through once: one bar is 
 
 An assembly whose members run once per voice of the Voicing module that feeds it; also called a rack of voice cards.
 
+### Port ring
+
+Quick patch's see-through radial menu: rings of the current card's jack names round the card's name, the jacks that take a cable on the left half and the jacks that send on the right.
+
 ### Preset
 
 A stored set of card row values for one structure; any assembly device of that structure can load it, in the editor and on the FM-1. A device has presets when some exist for its structure; a plain module never does. Avoid: variant, sound, candidate or snapshot (a version of the patch kept to compare), program.
@@ -439,6 +447,10 @@ A stored set of card row values for one structure; any assembly device of that s
 ### Preset chip
 
 The ‹ name › control on an assembly device's card that picks one of its stored presets.
+
+### Quick patch
+
+The editor's keyboard way to build a patch: a radial menu in the middle of the canvas, with one field for module names, port names and typed chains and the current card's ports in rings round its name.
 
 ### Quick start
 
