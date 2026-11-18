@@ -11400,8 +11400,7 @@ static int32_t signal_mean(const esig_t *src, uint32_t n)
 {
     int64_t sum = 0;
     uint32_t i;
-    UNROLL4
-    for (i = 0; i < n; i++)
+    for (i = 0; i < n; i++)          /* (not UNROLL4: unrolled, the compiler stops inlining it, which costs more) */
         sum += src[i];
     return block_mean(sum, n);
 }
@@ -11539,8 +11538,7 @@ static void m_bypass(const node_t *nd, inst_t *it, uint32_t n)
         esig_t *o = it->out[j];
         if (IS_DUMMY(o))
             continue;
-        UNROLL4
-        for (i = 0; i < n; i++)
+        for (i = 0; i < n; i++)      /* (not UNROLL4, as signal_mean) */
             o[i] = src[i];
     }
 }

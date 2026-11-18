@@ -61,21 +61,20 @@ FPU_FLAGS = ["-mcpu=r3", "-mfprev1", "-ffp-contract=off"]
 # the source would instead stop this compiler inlining across the two sections and change the code. Code from the flash
 # runs through a 32 KB instruction cache that a block's code overflows, so most of it is fetched again every block (about
 # 2 us a 64-byte line); the list is the code with the most of those fetches per byte, in the emulator's timing model over
-# the poly benchmark (web/scripts/poly-bench.ts, `m1emu cpu` with M1EMU_PROF; docs/measurements/2026-11-18-poly-headroom.md),
-# whole functions up to 12.8 KB.
+# the poly benchmark (web/scripts/poly-bench.ts, `m1emu cpu --modtime` with M1EMU_PROF on a build with ENG_RAMCODE=0;
+# docs/measurements/2026-11-18-poly-headroom.md), whole functions, greedy up to 12.64 KB. Profiled on the 1.20 headroom
+# build (float filters, Reverb, Delay and Low pass gate; #979), whose hot code differs from the fixed-point build's.
 # It must fit in NOINIT after .noinit (build.py checks), and nothing in it may run before fm1_cstart copies it there (the
 # P33 helpers that read the reset reason do). Only this file's functions: the compiler-rt helpers are not renamed.
 # Calls and tail calls between the flash and NOINIT are the 4-byte forms, within their +-4 MiB reach
 # (tools/emu/src/isa_tests.rs). ENG_RAMCODE=0 leaves everything in the flash.
 FAST_TEXT = (
-    "eng_once_beat", "delay_div", "eng_transport_running", "eng_ctl", "div64_lu", "uac_render_start", "eng_find",
-    "seq_rec_sync", "toast_wanted", "ui_msg", "m1_param_now", "exp2_scale", "pages_select", "eng_records_end",
-    "eng_locks_end", "uac_tap", "eng_steps_module", "signal_mean", "eng_section_at", "fm1_alnk0_irq", "value_of",
-    "unit_of", "m1_arms_now", "ctl_ramp16", "m_bypass", "eng_steps_take", "eng_rec_size", "env_rate_q8", "m1_slot_now",
-    "m1_pack7", "panel_key_queue", "group_cables", "midi_enqueue", "eng_steps_rec", "eng_click_mix", "eng_steps_thru",
-    "eng_lane_run", "ctl_ramp30", "batt_mark_sync", "fm1_led_key", "splash_art", "host_poll", "sch_item", "ana_init",
-    "keys_report", "ctl_keeps", "update_screen", "eng_udivmod64", "eng_type_at", "ring_scale", "unison_switch",
-    "morph_value", "eng_set_range", "pages_ensure",
+    "toast_wanted", "bt_c1_job", "usb_retry", "eng_find", "eng_transport_running", "eng_steps_module", "eng_steps_take",
+    "pages_select", "panel_key_queue", "exp2_scale", "fm1_led_key", "env_rate_q8", "seq_rec_sync", "pages_at",
+    "unit_of", "fm1_adc_read", "uac_tap", "host_poll", "keys_report", "uac_render_start", "ctl_rate", "div64_lu",
+    "fm1_timer2_irq", "ctl_ramp16", "value_of", "fm1_alnk0_irq", "eng_lane_run", "eng_section_at", "reverb_kernel",
+    "group_cables", "fm1__sr_bits", "eng_records_end", "sch_lane", "eng_steps_rec", "eng_click_mix", "eng_rec_size",
+    "ana_init", "eng_udivmod64", "batt_mark_sync", "ctl_ramp30", "lcd_blit",
 ) if os.environ.get("ENG_RAMCODE", "1") == "1" else ()
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 
