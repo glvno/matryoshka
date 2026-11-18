@@ -4,9 +4,12 @@
   "firmware_product": "FM-1_7012000",
   "source_commit": "83b92f6090c033a115c810420e7e499edaadea33",
   "source_tree": "1f7ff878eb9271a20896be0930a0d2b5bc0424d3",
-  "status": "automated and rig checks passed; owner device check and release approval pending",
+  "status": "approved for publication; automated, rig and owner checks passed",
   "release_approval": {
-    "status": "pending",
+    "status": "approved",
+    "by": "repository owner",
+    "date": "2026-11-18",
+    "instruction": "Ship it!",
     "scope": "Publication of v1.20.0 from the merge of this record, whose firmware/ and tools/ equal the qualified source 83b92f60 (D-105)."
   },
   "build_manifest_sha256": "bb28de542e7a75f8ff3f9113ef7eb9c8b545ff0d92f32c9daab135261da03f05",
@@ -56,5 +59,5 @@
       "ratchets": "a Steps track at 1/32 and 180 bpm (16 notes) into a saw, filter, envelope and VCA, every note with a ratchet of 4 or 5 and micro timing, against the same patch without timing (#1080). Transport running, worst steady: mono 16.0 -> 16.7 % (+0.7 points), three voices 19.9 -> 21.2 % (+1.3 points); the overload guard's mean ISR time mono about 271 -> 283 us, three voices about 306 -> 382 us (the extra hits keep more voices sounding). Stopped, the track plays nothing and the patches read the same (10.9 / 10.5 %, 12.7 / 13.0 %). Nothing shed, no overload, no late half."
     }
   },
-  "owner_checks": {"status": "pending", "steps": "D-139: the steps in the pull request's body (the Flash tab install with factory sounds, Hera 6 at six voices with its Bass preset, Oracle V at five, Gauze 2 with Delay and Reverb, an arp at a bar rate with swing in 6/8, a Euclid patch, a Steps track with ratchets and micro timing, a 1.19 slot and file still loading, the factory sounds, a power cycle)."}
+  "owner_checks": {"status": "passed", "by": "repository owner", "date": "2026-11-18", "report": "Ship it!", "steps": "D-139: the steps in the pull request's body (the Flash tab install with factory sounds, Hera 6 at six voices with its Bass preset, Oracle V at five, Gauze 2 with Delay and Reverb, an arp at a bar rate with swing in 6/8, a Euclid patch, a Steps track with ratchets and micro timing, a 1.19 slot and file still loading, the factory sounds, a power cycle)."}
 }
