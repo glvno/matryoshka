@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Poly synths with their master effects on leave the FM-1 more room.** When a patch loads, the FM-1 shares its modules between its two cores using what each kind of module costs on a real FM-1, and counts an oscillator's unison voices. On the poly synths with every effect on, a block should end 7 to 10 % of its time sooner (estimated from module times measured on a test FM-1), so they drop voices later (Hera 6, Oracle V, Io 4, Cassia 1, Expander S, Algo Four). Where the new sharing is not clearly better, the FM-1 keeps the old one (#1073).
 - **Resonator patches leave the FM-1 more room, and their rings fade as in the editor.** The FM-1 now plays the Resonator with its floating-point unit, which does its sums about twice as fast, so patches with one (the 808 Kit, Meridian 8, and the gamelan, kalimba, marimba, tabla, tom, rim and other resonator assemblies) use less of the FM-1's CPU. A long ring now fades as it does in the editor down to the FM-1's quietest step, instead of falling away early and stopping about 85 dB down; with nothing playing into it, it still ends in silence (#979).
 
 ## 1.19.0 — 2026-11-17

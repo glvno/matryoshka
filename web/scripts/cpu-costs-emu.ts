@@ -21,7 +21,8 @@
 // again what its choices of dims ask anew: a module alone measures warm or cold from one kit to the next, so near-equal
 // effects change order between runs.
 import { readFileSync, writeFileSync } from 'node:fs';
-import { cpuEstimate, FIRST_ALSO, scheduleBypass, scheduleCost, type CostDim, type CpuTable, type TypeCost } from '../src/cpu';
+import { cpuEstimate, FIRST_ALSO, planCosts, type CostDim, type CpuTable, type PlanTable, type TypeCost } from '../src/cpu';
+import type { PlanCosts } from '../src/schedule';
 import { DEFS } from '../src/modules';
 import { addModule, connect, EDITOR_ONLY, fromUnit, newPatch, type ModuleInst, type ParamDef, type Patch } from '../src/patch';
 import { cpuChecks, startEvents } from '../src/cpu-checks';
@@ -472,6 +473,8 @@ async function loopCosts(): Promise<{ block: number; node: number; output: numbe
 // ------------------------------------------------------------------ the table
 
 const names = Object.keys(DEFS).filter((t) => !EDITOR_ONLY.has(t)); // the Scope never runs on the FM-1
+const FW_PLAN = planCosts(FIRMWARE_TABLE);
+const planData = (c: PlanCosts): PlanTable => ({ cost: Object.fromEntries(names.map((t) => [t, c.cost(t)])), bypass: c.bypass });
 const costs = await Promise.all(names.map(typeCost));
 const types: Record<string, TypeCost> = Object.fromEntries(names.map((n, i) => [n, costs[i]]));
 for (const type of names) {
@@ -496,13 +499,8 @@ const table: CpuTable = {
   cv,
   bypass,
   types,
-  // the two-core schedule's units stay the shipped table's (engine.c DEF_COST): this table must not move them (D-1107)
-  schedule: {
-    cost: Object.fromEntries(names.map((t) => [t, scheduleCost(FIRMWARE_TABLE, t)])),
-    bypass: scheduleBypass(FIRMWARE_TABLE),
-    cyclesPerUs: FIRMWARE_TABLE.cyclesPerUs,
-    note: 'engine.c DEF_COST, DEF_COST_BYPASS: export-defs writes them from src/cpu-costs.json',
-  },
+  // the two-core plan's costs stay the firmware's (engine.c DEF_COST, DEF_TCOST): this table must not move them (D-1107)
+  schedule: { rig: planData(FW_PLAN.rig), table: planData(FW_PLAN.table), cyclesPerUs: FIRMWARE_TABLE.cyclesPerUs, note: 'engine.c DEF_COST, DEF_COST_BYPASS, DEF_TCOST, DEF_TCOST_BYPASS: export-defs writes them from src/plan-costs.json and src/cpu-costs.json' },
   checks: [],
   calibration: {
     method: 'each module type\'s test patches played on the real firmware in the emulator under its timing model (m1emu cpu --modtime, D-1155): the firmware\'s own module times, both cores; the rest of the interrupt from its mean',

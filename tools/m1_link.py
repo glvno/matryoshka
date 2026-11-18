@@ -34,18 +34,22 @@
   tools/m1_link.py cpuclock               (#735, DIAG page 131: the CPU clock from the PLL's multiplier, the rails' levels and
                                            dependent adds a microsecond timed on the 24 MHz timer; reads only, writes nothing;
                                            then the stock supply setup at boot: its result, and the rails before it)
-  tools/m1_link.py blocktime [SECONDS] [--notes N] [--patch NAME] [--json FILE]
+  tools/m1_link.py blocktime [SECONDS] [--notes N] [--patch NAME] [--run] [--json FILE]
                                           (#802, #803, DIAG pages 132..139: what an audio block's time is made of, over
                                            SECONDS (default 3): each part of the audio interrupt, the voices, TIMER5's
                                            interrupts, the second core's busy and idle time and its hand-offs, mean and
-                                           most per block; --patch: a factory patch (firmware/src/presets.h) uploaded live
-                                           first; --notes: hold the first N of the rig survey's 8 notes (C4 E4 G4 B4 C5 E5
-                                           G5 B5) from 1 s before the window to its end; --json: the raw values too. Reads
+                                           most per block; --patch: a factory patch (firmware/src/presets.h) or the path of
+                                           a patch binary, uploaded live first; --notes: hold the first N of the rig survey's 8 notes (C4 E4 G4 B4 C5 E5
+                                           G5 B5) from 1 s before the window to its end; --run: the transport running over
+                                           the same span (MIDI Start, then Stop); --json: the raw values too. Reads
                                            only, except that page 139 holds the main loop 5 ms)
-  tools/m1_link.py modtime [SECONDS] [--notes N] [--patch NAME] [--json FILE]
+  tools/m1_link.py modtime [SECONDS] [--notes N] [--patch NAME] [--run] [--json FILE]
                                           (#802, DIAG pages 144..176: each module's time a half buffer on the FM-1 over
-                                           SECONDS (default 3), on core 0's lane and on core 1's; --patch and --notes as
-                                           blocktime; --json: the raw values. Reads only)
+                                           SECONDS (default 3), on core 0's lane and on core 1's; --patch, --notes and
+                                           --run as blocktime; --json: the raw values. Reads only)
+  tools/m1_link.py loadtime [N] --patch NAME   (#1073, DIAG page 132: the patch loaded N times (default 20) in one
+                                           block-time window; the halves the engine stayed stopped, each load's mean in
+                                           ms: how long a load keeps the sound off, to a fraction of a half over N loads)
   tools/m1_link.py t5 [SECONDS]           (#803, DIAG page 177: TIMER5's time over SECONDS (default 3): the LED and key
                                            scan a tick, the USB / MIDI polls, the dim pulses. Reads only)
   tools/m1_link.py fpubench [--json FILE] (#950, DIAG pages 178..: on a build with the CPU benchmark (tools/build.py
@@ -699,6 +703,8 @@ def main():
         blocktime(link, a[1:])
     elif a[0] == "modtime":
         modtime(link, a[1:])
+    elif a[0] == "loadtime":
+        loadtime(link, a[1:])
     elif a[0] == "t5":
         t5parts(link, a[1:])
     elif a[0] == "fpubench":
@@ -742,7 +748,7 @@ BT_SPANS = [
 
 
 def window_args(a):
-    """blocktime's and modtime's arguments: SECONDS, --notes N, --patch NAME, --json FILE"""
+    """blocktime's and modtime's arguments: SECONDS, --notes N, --patch NAME, --run, --json FILE"""
     def opt(name, conv, default):
         if name in a:
             k = a.index(name)
@@ -753,9 +759,20 @@ def window_args(a):
             return v
         return default
     notes, patch, out = opt("--notes", int, 0), opt("--patch", str, None), opt("--json", str, None)
+    run = "--run" in a
+    if run:
+        a.remove("--run")
     if not 0 <= notes <= len(BT_NOTES):
         sys.exit(f"--notes takes 0..{len(BT_NOTES)}")
-    return float(a[0]) if a else 3.0, BT_NOTES[:notes], patch, out
+    return float(a[0]) if a else 3.0, BT_NOTES[:notes], patch, out, run
+
+
+def window_play(link, held, run, on):
+    """the window's notes, and its transport with --run: on before the window, off after it"""
+    if run:
+        link.out.send(mido.Message("start" if on else "stop"))
+    for k in held:
+        link.out.send(mido.Message("note_on" if on else "note_off", note=k, **({"velocity": 100} if on else {})))
 
 
 def diag_words(link, n):
@@ -764,9 +781,12 @@ def diag_words(link, n):
 
 
 def load_factory(link, patch):
-    """a factory patch (firmware/src/presets.h) uploaded live"""
-    ps = factory_presets()
-    hit = [d for n, d in ps if n.lower() == patch.lower()] or [d for n, d in ps if n.lower().startswith(patch.lower())]
+    """a factory patch (firmware/src/presets.h), or a patch binary at that path, uploaded live"""
+    if os.path.isfile(patch):
+        hit = [open(patch, "rb").read()]
+    else:
+        ps = factory_presets()
+        hit = [d for n, d in ps if n.lower() == patch.lower()] or [d for n, d in ps if n.lower().startswith(patch.lower())]
     if len(hit) != 1:
         sys.exit(f"--patch {patch!r}: {'no' if not hit else 'more than one'} factory patch of that name; "
                  f"names: {', '.join(n for n, _ in ps)}")
@@ -780,16 +800,15 @@ def blocktime(link, a):
     """DIAG pages 132..139 (main.c m1_diag, firmware/src/blk_time.h): one window of SECONDS, optionally on a factory patch
     with notes held"""
     import json
-    secs, held, patch, out = window_args(a)
+    secs, held, patch, out, run = window_args(a)
     page = lambda n: diag_words(link, n)
     if len(page(132)) < 8:
         sys.exit("no block-time pages (a firmware from before #802 / #803)")
     if patch:
         load_factory(link, patch)
     try:
-        for k in held:
-            link.out.send(mido.Message("note_on", note=k, velocity=100))
-        time.sleep(1.0 if held else 0.1)
+        window_play(link, held, run, True)
+        time.sleep(1.0 if held or run else 0.1)
         page(132)                                      # the window starts here
         time.sleep(secs)
         w = page(132)
@@ -800,12 +819,11 @@ def blocktime(link, a):
         j = page(138)
         sp = page(139)
     finally:
-        for k in held:
-            link.out.send(mido.Message("note_off", note=k))
+        window_play(link, held, run, False)
     print_blocktime(w, spans, j, sp, patch, held)
     if out:
         with open(out, "w") as f:
-            json.dump({"patch": patch, "notes": held, "seconds": secs, "page132": w, "page138": j, "page139": sp,
+            json.dump({"patch": patch, "notes": held, "run": run, "seconds": secs, "page132": w, "page138": j, "page139": sp,
                        "spans_ns": {BT_SPANS[i][0]: {"mean": m, "max": x} for i, (m, x) in enumerate(spans[:len(BT_SPANS)])}},
                       f, indent=1)
         print(f"raw values: {out}")
@@ -890,7 +908,7 @@ def modtime(link, a):
     """DIAG pages 144..176 (main.c m1_diag, modular.c mt_sum): each module's mean time a half over one window of SECONDS,
     on core 0's lane and on core 1's, optionally on a factory patch with notes held"""
     import json
-    secs, held, patch, out = window_args(a)
+    secs, held, patch, out, run = window_args(a)
     page = lambda n: diag_words(link, n)
     first = page(144)
     if len(first) < 8:
@@ -900,9 +918,8 @@ def modtime(link, a):
     if patch:
         load_factory(link, patch)
     try:
-        for k in held:
-            link.out.send(mido.Message("note_on", note=k, velocity=100))
-        time.sleep(1.0 if held else 0.1)
+        window_play(link, held, run, True)
+        time.sleep(1.0 if held or run else 0.1)
         page(144)                                      # the window starts here
         time.sleep(secs)
         w = page(144)
@@ -913,8 +930,7 @@ def modtime(link, a):
             rows += [(x[2 * i], x[2 * i + 1]) for i in range(4)]
         rows = rows[:nmod]
     finally:
-        for k in held:
-            link.out.send(mido.Message("note_off", note=k))
+        window_play(link, held, run, False)
     print(f"{patch or 'the running patch'}, {len(held)} notes held; {w[0]} halves counted, {nmod} modules")
     print(f"{'module':>6} {'core 0 us':>10} {'core 1 us':>10}")
     for m, (c0, c1) in enumerate(rows):
@@ -923,9 +939,33 @@ def modtime(link, a):
     print(f"{'sum':>6} {sum(r[0] for r in rows) / 1000:10.1f} {sum(r[1] for r in rows) / 1000:10.1f}")
     if out:
         with open(out, "w") as f:
-            json.dump({"patch": patch, "notes": held, "seconds": secs, "halves": w[0],
+            json.dump({"patch": patch, "notes": held, "run": run, "seconds": secs, "halves": w[0],
                        "modules_ns": [{"core0": c0, "core1": c1} for c0, c1 in rows]}, f, indent=1)
         print(f"raw values: {out}")
+
+
+def loadtime(link, a):
+    """DIAG page 132 (blk_time.h `stopped`: halves the engine did not render): the patch loaded N times in one window. The
+    engine stops for each load (main.c m1_apply), so the stopped halves over N loads give a load's mean silence, to a
+    fraction of a half; the uploads between the loads leave it running"""
+    secs, held, patch, out, run = window_args(a)
+    n = int(secs) if a else 20
+    if not patch:
+        sys.exit("loadtime needs --patch NAME")
+    page = lambda k: diag_words(link, k)
+    if len(page(132)) < 8:
+        sys.exit("no block-time pages (a firmware from before #802 / #803)")
+    load_factory(link, patch)
+    page(132)                                          # the window starts here
+    for _ in range(n):
+        load_factory(link, patch)
+    w = page(132)
+    print(f"{patch}: {n} loads, {w[1]} of {w[0] + w[1]} halves stopped: {w[1] * 2.902 / n:.2f} ms a load "
+          f"({w[1] / n:.2f} halves of 2.902 ms)")
+    if out:
+        import json
+        with open(out, "w") as f:
+            json.dump({"patch": patch, "loads": n, "page132": w}, f, indent=1)
 
 
 def print_blocktime(w, spans, j, sp, patch, held):

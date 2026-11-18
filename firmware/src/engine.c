@@ -11594,10 +11594,13 @@ static void render_mods(uint32_t k0, uint32_t k1, uint32_t n, uint32_t first, ui
 
 /* #802: the patch on two cores. When a patch loads, sched_build puts each item (a copy of a module: one part's, or the
  * module's when it runs once) in lane 0 (core 0) or lane 1 (the second core). In E.order, each item goes to the lane where
- * it would end first, counting its cost (DEF_COST, from the CPU estimate's table), the lane's items before it and the
- * items it waits for (sch_deps); a wait across the lanes costs SCH_SYNC. Each lane renders its items in E.order's order
- * and waits only for items that come before, so the lanes never wait for each other in a circle. The patch keeps the
- * schedule when it ends sooner than one core would, by more than handing the job over costs (SCH_FORK).
+ * it would end first, counting its cost, the lane's items before it and the items it waits for (sch_deps); a wait across
+ * the lanes costs SCH_SYNC. Each lane renders its items in E.order's order and waits only for items that come before, so
+ * the lanes never wait for each other in a circle. Two plans (#1073): one at the CPU table's costs (DEF_TCOST), one at the
+ * costs measured on the test rig (DEF_COST: an oscillator's times its voices, SCH_ITEM more each item). The rig's plan is
+ * kept when, both counted at the rig's costs, it ends sooner than the table's by 1 / SCH_GAIN; where the two are closer,
+ * the costs' own error decides which ends first, and the table's plan is the one the FM-1 played before. The patch keeps
+ * the schedule when it ends sooner than one core would, by more than handing the job over costs (SCH_FORK).
  * The lanes render exactly as one core would. An item starts after every value it reads is complete, and nothing it writes
  * is read or overwritten by the other lane before that lane may: its scratch, dummy output and buffers are its lane's
  * (inst_lane, buf_take), and a value read across the lanes keeps its buffer for the block (buf_end). A Steps module stays in
@@ -11622,6 +11625,8 @@ static int eng_lane_wait(void) { return 0; }                    /* 0: done; else
 #define SCH_KMAX 4u                     /* Reverb kernels with an item of their own (D-1103; a further one runs in m_reverb) */
 #define SCH_KIX (ENG_MAX_INST + 1u)     /* (the first kernel's place in fin and at, after the copies') */
 #define SCH_RV_MIX 16u                  /* a Reverb's own turn once its kernel has an item: the mix (about 1,000 cycles) */
+#define SCH_ITEM 4u                     /* the rig's plan: rendering an item beyond its module's own time (about 1 us) */
+#define SCH_GAIN 25u                    /* the rig's plan is kept when it ends sooner by 1 / SCH_GAIN (4 %) */
 typedef struct {                        /* (sched_build's, on the main loop's stack) */
     uint32_t fin[SCH_KIX + SCH_KMAX];   /* when each copy (then each kernel) would end, DEF_COST units */
     uint8_t at[SCH_KIX + SCH_KMAX];     /* its place in its lane */
@@ -11687,6 +11692,68 @@ static void sch_deps(sch_acc_t *a, uint32_t m, uint32_t v)
         if (a->b->km[w] == m)
             sch_dep(a, SCH_KIX + w);
 }
+/* the copies of an oscillator's wave it plays (m_osc: its unison or its stack's notes, the more; schedule.ts oscVoices) */
+static uint32_t sch_voices(const node_t *nd)
+{
+    int32_t nu = clampi(round_q16(nd->par[OSC_P_UNISON]), 1, 5), nst = STACK_N[clampi(round_q16(nd->par[OSC_P_STACK]), 0, 4)];
+    return (uint32_t)(nu > nst ? nu : nst);
+}
+/* a copy of module m in one plan: at the rig's costs (rig), else at the CPU table's */
+static uint32_t sch_cost(const sch_build_t *b, uint32_t m, int rig)
+{
+    const node_t *nd = &E.node[m];
+    uint32_t v, cost = nd->bypass ? (rig ? DEF_COST_BYPASS : DEF_TCOST_BYPASS) : (rig ? DEF_COST : DEF_TCOST)[nd->type];
+    for (v = 0; v < b->nk; v++)                  /* (D-1104: bypassed when the patch loads) */
+        if (b->km[v] == m && !nd->bypass)
+            return SCH_RV_MIX + (rig ? SCH_ITEM : 0u);
+    if (rig && !nd->bypass && nd->type == T_OSC)
+        cost *= sch_voices(nd);
+    return cost + (rig ? SCH_ITEM : 0u);
+}
+/* one plan (#1073): each item, the kernels first, where it would end first at the rig's costs (rig) or the table's; with
+ * `keep`, in the lanes it has (when the block would end with them). Returns when the block would end; `total`: every
+ * item's cost. Sets each item's lane, fin and place in its lane, and sch.n */
+static uint32_t sch_plan(sch_build_t *b, int rig, int keep, uint32_t *total)
+{
+    uint32_t end[2] = {0, SCH_FORK}, k, v, l;
+    sch.n[0] = sch.n[1] = 0;
+    *total = 0;
+    /* D-1103: each Reverb's kernel first, waiting for nothing (it reads the block before), where it would end first; none
+     * of its cost while the Reverb is bypassed when the patch loads (an off master FX stage: D-1104) */
+    for (k = 0; k < b->nk; k++) {
+        uint32_t cost = (E.node[b->km[k]].bypass ? 0u : (rig ? DEF_COST : DEF_TCOST)[T_REVERB]) + (rig ? SCH_ITEM : 0u);
+        uint32_t best = keep ? b->kl[k] : end[1] + cost < end[0] + cost ? 1u : 0u;
+        b->kl[k] = (uint8_t)best;
+        b->fin[SCH_KIX + k] = end[best] += cost;
+        b->at[SCH_KIX + k] = (uint8_t)sch.n[best]++;
+        *total += cost;
+    }
+    for (k = 0; k < E.norder; k++) {
+        uint32_t m = E.order[k], cost = sch_cost(b, m, rig);
+        const node_t *nd = &E.node[m];
+        for (v = 0; v < nd->ninst; v++) {
+            uint32_t ix = nd->inst0 + v, best = 0, fin = 0, first = 1;
+            for (l = 0; l < (nd->type == T_STEPS ? 1u : 2u); l++) {
+                sch_acc_t a = {b, l, end[l], 0};
+                if (keep && l != LANE_OF(ix))
+                    continue;
+                sch_deps(&a, m, v);
+                if (first || a.t + cost < fin) {
+                    fin = a.t + cost;
+                    best = l;
+                    first = 0;
+                }
+            }
+            lane_set(ix, best);
+            b->fin[ix] = end[best] = fin;
+            b->at[ix] = (uint8_t)sch.n[best]++;
+            *total += cost;
+        }
+    }
+    return end[0] > end[1] ? end[0] : end[1];
+}
+/* the table's plan while the rig's is made (#1073): its lanes and its kernels' */
+static uint8_t sch_keep[(ENG_MAX_INST + 8u) / 8u + SCH_KMAX] ENG_NOINIT;
 #endif
 /* no schedule: the lanes of the poly segments' split (render_split), which the editor's budget counts (rule 1) */
 static void sched_off(void)
@@ -11701,7 +11768,8 @@ static void sched_build(void)
 {
 #if ENG_SCHED
     sch_build_t b;
-    uint32_t end[2] = {0, SCH_FORK}, total = 0, k, v, l, n0, copies = 0;
+    uint32_t k, v, n0, copies = 0, end_t, total_t, end_r, total_r, t_at_rig = 0;
+    int on_t, on_r;
 #endif
     sched_off();
 #if ENG_SCHED
@@ -11709,48 +11777,33 @@ static void sched_build(void)
         b.pos[E.order[k]] = (uint8_t)k;
         copies += E.node[E.order[k]].ninst;
     }
-    sch.n[0] = sch.n[1] = 0;
     b.nk = 0;
-    /* D-1103: each Reverb's kernel first, waiting for nothing (it reads the block before), where it would end first; none
-     * of its cost while the Reverb is bypassed when the patch loads (an off master FX stage: D-1104) */
-    for (k = 0; k < E.norder && b.nk < SCH_KMAX && copies + b.nk < ENG_MAX_INST + 1u; k++) {
-        uint32_t m = E.order[k], r = b.nk, cost = E.node[m].bypass ? 0u : DEF_COST[T_REVERB], best;
-        if (E.node[m].type != T_REVERB)
-            continue;
-        best = end[1] + cost < end[0] + cost ? 1u : 0u;
-        b.km[r] = (uint8_t)m;
-        b.kl[r] = (uint8_t)best;
-        b.fin[SCH_KIX + r] = end[best] += cost;
-        b.at[SCH_KIX + r] = (uint8_t)sch.n[best]++;
-        total += cost;
-        b.nk++;
+    for (k = 0; k < E.norder && b.nk < SCH_KMAX && copies + b.nk < ENG_MAX_INST + 1u; k++)
+        if (E.node[E.order[k]].type == T_REVERB)
+            b.km[b.nk++] = (uint8_t)E.order[k];
+    end_t = sch_plan(&b, 0, 0, &total_t);
+    on_t = sch.n[1] && end_t + SCH_FORK < total_t;
+    if (on_t) {
+        for (k = 0; k < sizeof inst_lane; k++)
+            sch_keep[k] = inst_lane[k];
+        for (k = 0; k < SCH_KMAX; k++)
+            sch_keep[sizeof inst_lane + k] = b.kl[k];
+        t_at_rig = sch_plan(&b, 1, 1, &total_r);
     }
-    for (k = 0; k < E.norder; k++) {
-        uint32_t m = E.order[k];
-        const node_t *nd = &E.node[m];
-        uint32_t cost = nd->bypass ? DEF_COST_BYPASS : DEF_COST[nd->type];   /* (D-1104: bypassed when the patch loads) */
-        for (v = 0; v < b.nk; v++)
-            if (b.km[v] == m && !nd->bypass)
-                cost = SCH_RV_MIX;
-        for (v = 0; v < nd->ninst; v++) {
-            uint32_t ix = nd->inst0 + v, best = 0, fin = 0;
-            for (l = 0; l < (nd->type == T_STEPS ? 1u : 2u); l++) {
-                sch_acc_t a = {&b, l, end[l], 0};
-                sch_deps(&a, m, v);
-                if (l == 0u || a.t + cost < fin) {
-                    fin = a.t + cost;
-                    best = l;
-                }
-            }
-            lane_set(ix, best);
-            b.fin[ix] = end[best] = fin;
-            b.at[ix] = (uint8_t)sch.n[best]++;
-            total += cost;
+    end_r = sch_plan(&b, 1, 0, &total_r);
+    on_r = sch.n[1] && end_r + SCH_FORK < total_r;
+    if (!on_t)
+        t_at_rig = total_r;
+    if (!(on_r && end_r * SCH_GAIN < t_at_rig * (SCH_GAIN - 1u))) {
+        if (!on_t) {
+            sched_off();
+            return;
         }
-    }
-    if (!sch.n[1] || (end[0] > end[1] ? end[0] : end[1]) + SCH_FORK >= total) {
-        sched_off();
-        return;
+        for (k = 0; k < sizeof inst_lane; k++)
+            inst_lane[k] = sch_keep[k];
+        for (k = 0; k < SCH_KMAX; k++)
+            b.kl[k] = sch_keep[sizeof inst_lane + k];
+        sch_plan(&b, 0, 1, &total_t);
     }
     sch.on = 1;
     n0 = sch.n[0];

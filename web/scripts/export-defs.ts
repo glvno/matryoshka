@@ -19,7 +19,7 @@ import { FALLBACK_NAME, fallbackPatch } from '../src/fallback';
 import { factoryPresets, factoryRackPresets } from '../src/factory-presets';
 import { controlsHeader, readmeWithControls } from './controls-h';
 import { PRESET_MIGRATIONS } from '../src/preset-migrate';
-import { CPU, scheduleBypass, scheduleCost } from '../src/cpu';
+import { CPU, planCosts } from '../src/cpu';
 import { readLineage } from './lineage-lib';
 import { CASE_PICKS, casesHeader, migrationCases, migrationSection } from './preset-migration-c';
 import { buildRegion, contentVersion, KIND_REGION, KIND_TIER, readHeader, REGION_SIZE, TIER_SET } from './factory-region';
@@ -245,13 +245,17 @@ for (const t of TYPE_ORDER) {
   w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${d.inputs.reduce((mask, port, i) => mask | (d.params.some((pd) => pd.input === port.name) ? 1 << i : 0), 0)}, ${n}_CVBASE, ${(() => { const t = thruInput(d); return t ? d.inputs.findIndex((p) => p.name === t) : -1; })()}, ${n}_NDATA, ${d.outputs.reduce((mask, o, i) => mask | (o.kind === 'audio' ? 1 << i : 0), 0)}, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF, ${n}_INC` : '0, 0, 0, 0'}, "${d.label.toUpperCase()}", ${has ? `${n}_PN` : '0'}, ${n}_INNAMES, ${has ? `${n}_LOG, ${n}_UNIT, ${n}_CH` : '0, 0, 0'}, ${d.params.some((p) => p.top !== undefined) ? `${n}_TOP` : '0'}, ${d.params.some((p) => p.since !== undefined) ? `${n}_SINCE` : '0'}, ${has ? `${n}_STEP` : '0'}},   /* ${t} */`);
 }
 w('};');
-// what one copy of each type costs a block, in 64 cycles of the CPU table: what the two-core schedule balances (engine.c
-// sched_build, #802; cpu.ts scheduleCost, the editor's mirror)
-w('/* one copy of each type, a block: what the two-core schedule balances (engine.c sched_build, #802), in 64 cycles of');
-w(' * web/src/cpu-costs.json (its run and parameter inputs: cpu.ts scheduleCost) */');
-w(`static const uint16_t DEF_COST[N_TYPES] = {${TYPE_ORDER.map((t) => scheduleCost(CPU, t)).join(', ')}};`);
-w('/* a module bypassed when the patch loads, in the same units: passing an input through (D-1104; cpu.ts scheduleBypass) */');
-w(`#define DEF_COST_BYPASS ${scheduleBypass(CPU)}u`);
+// what one copy of each type costs a block, in 64 cycles: what the two-core plan balances (engine.c sched_build, #802; cpu.ts
+// planCosts, the editor's mirror), measured on the test rig and from the CPU table
+const PLAN_COSTS = planCosts(CPU);
+w('/* one copy of each type, a block: what the two-core plan balances (engine.c sched_build, #802), in 64 cycles: its median');
+w(' * time measured on the test rig (web/src/plan-costs.json; cpu.ts planCosts rig) */');
+w(`static const uint16_t DEF_COST[N_TYPES] = {${TYPE_ORDER.map((t) => PLAN_COSTS.rig.cost(t)).join(', ')}};`);
+w('/* a module bypassed when the patch loads, in the same units: passing an input through (D-1104) */');
+w(`#define DEF_COST_BYPASS ${PLAN_COSTS.rig.bypass}u`);
+w('/* the same from web/src/cpu-costs.json: its run and parameter inputs, and its bypass (cpu.ts planCosts table) */');
+w(`static const uint16_t DEF_TCOST[N_TYPES] = {${TYPE_ORDER.map((t) => PLAN_COSTS.table.cost(t)).join(', ')}};`);
+w(`#define DEF_TCOST_BYPASS ${PLAN_COSTS.table.bypass}u`);
 w('/* Gate-port kinds for pattern authorization, independent of environment grouping (bit n: port n is a gate) */');
 for (const [name, ports] of [['IN', 'inputs'], ['OUT', 'outputs']] as const)
   w(`static const uint32_t PRESET_GATE_${name}[] = {${TYPE_ORDER.map((t) => DEFS[t][ports].reduce((bits, p, i) => bits + (p.kind === 'gate' ? 2 ** i : 0), 0) + 'u').join(',')}};`);

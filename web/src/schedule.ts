@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import type { Patch } from './patch';
+import { DEFS, STACKS } from './modules';
+import type { ModuleInst, Patch } from './patch';
 import type { DeviceGroup } from './poly';
 
 /** engine.c SCH_SYNC and SCH_FORK: a wait across the cores, and handing the job over, in schedule cost units (64 cycles) */
@@ -9,8 +10,25 @@ export const SCH_FORK = 24;
  * its kernel has one (the mix), in schedule cost units; the module copies (sch.it holds one more item) */
 export const SCH_KMAX = 4;
 export const SCH_RV_MIX = 16;
+/** engine.c SCH_ITEM, SCH_GAIN: what the rig's plan adds for each item (rendering an item beyond its module's own time,
+ * measured on the test rig); the CPU table's plan stays unless the rig's ends sooner by 1 / SCH_GAIN, both counted at the
+ * rig's costs (#1073) */
+export const SCH_ITEM = 4;
+export const SCH_GAIN = 25;
 const MAX_INST = 254;
 
+/** one copy's cost in the plan's units (64 cycles) by module type (engine.c DEF_COST or DEF_TCOST), and a module's that is
+ * bypassed when the patch loads (DEF_COST_BYPASS or DEF_TCOST_BYPASS, D-1104: a master FX stage's targets as saved) */
+export interface PlanCosts {
+  cost: (type: string) => number;
+  bypass: number;
+}
+
+/** the copies of an oscillator's wave it plays (engine.c sch_voices, m_osc: its unison or its stack's notes, the more) */
+export function oscVoices(m: ModuleInst): number {
+  const param = (name: string): number => m.params[name] ?? DEFS.osc.params.find((d) => d.name === name)?.default ?? 0;
+  return Math.max(Math.min(5, Math.max(1, Math.round(param('unison')))), STACKS[Math.min(4, Math.max(0, Math.round(param('stack'))))].length);
+}
 /** A patch's two-core schedule on the FM-1 (#802, engine.c sched_build). An item is one copy of a module of the device form:
  * one part's in its poly group, else the module's. `order` is engine.c's E.order (module indices), `copies[m]` a module's
  * copies, `lane[m][v]` the core of its copy v (1: the second core). A Reverb with a kernel item (D-1103: its lines, which
@@ -38,9 +56,13 @@ export function scheduleWork(s: Schedule, work: (m: number) => number): (m: numb
   };
 }
 
-/** Input must be deviceView(source, true); `cost(type)`: one copy's cost in 64 cycles (engine.c DEF_COST); `bypass`: a
- * module's bypassed when the patch loads (DEF_COST_BYPASS, D-1104; a master FX stage's targets as they are saved) */
-export function schedule(p: Patch, groups: DeviceGroup[], cost: (type: string) => number, bypass: number): Schedule {
+/** Input must be deviceView(source, true); `rig`: the plan's costs measured on the test rig (engine.c DEF_COST,
+ * DEF_COST_BYPASS); `table`: the CPU table's (DEF_TCOST, DEF_TCOST_BYPASS); `helpers`: fx-bus.ts fxHelperIds(source), which
+ * play though the patch marks them bypassed. Two plans, each item in E.order where it would end first: one at the table's
+ * costs, one at the rig's (an oscillator's cost times its voices, SCH_ITEM more an item). The rig's plan is kept when, at
+ * the rig's costs, it ends sooner than the table's by 1 / SCH_GAIN (#1073): where the two are closer, the costs' own error
+ * decides which ends first on the FM-1, and the table's plan is the one the FM-1 played before */
+export function schedule(p: Patch, groups: DeviceGroup[], rig: PlanCosts, table: PlanCosts, helpers: Set<number>): Schedule {
   const index = new Map(p.modules.map((m, i) => [m.id, i]));
   const group = p.modules.map((m) => groups.findIndex((g) => g.modules.has(m.id)));
   const copies = group.map((g) => (g < 0 ? 1 : groups[g].cfg.parts));
@@ -83,39 +105,54 @@ export function schedule(p: Patch, groups: DeviceGroup[], cost: (type: string) =
   const kernels: number[] = [];
   for (const m of order)
     if (p.modules[m].type === 'reverb' && kernels.length < SCH_KMAX && total0 + kernels.length < MAX_INST + 1) kernels.push(m);
-  const lane = parity();
-  const fin = copies.map((n) => new Array<number>(n).fill(0));
-  const end = [0, SCH_FORK];
-  const n = [0, 0];
-  let total = 0;
-  const off = (m: number): boolean => !!p.modules[m].bypass && p.modules[m].type !== 'fm1' && p.modules[m].type !== 'output';
   for (const m of kernels) {
-    const c = off(m) ? 0 : cost('reverb');
-    const best = end[1] + c < end[0] + c ? 1 : 0;
-    lane[m][1] = best;
-    fin[m][1] = end[best] += c;
-    n[best]++;
-    total += c;
     deps.set(`${m}/1`, []);
     deps.get(`${m}/0`)!.push([m, 1]);
   }
-  for (const m of order) {
-    const c = off(m) ? bypass : kernels.includes(m) ? SCH_RV_MIX : cost(p.modules[m].type);
-    for (let v = 0; v < copies[m]; v++) {
-      let best = 0, bestFin = 0;
-      for (let l = 0; l < (steps(m) ? 1 : 2); l++) {
-        let t = end[l];
-        for (const [f, w] of deps.get(`${m}/${v}`)!) t = Math.max(t, fin[f][w] + (lane[f][w] !== l ? SCH_SYNC : 0));
-        if (l === 0 || t + c < bestFin) [bestFin, best] = [t + c, l];
-      }
-      lane[m][v] = best;
-      fin[m][v] = end[best] = bestFin;
-      n[best]++;
-      total += c;
+  // (as the patch binary marks them: never the panel, the output or a Reverb stage's helpers)
+  const off = (m: number): boolean => !!p.modules[m].bypass && !helpers.has(p.modules[m].id) && p.modules[m].type !== 'fm1' && p.modules[m].type !== 'output';
+  // one plan at costs `c` (a copy of module m) and `kc` (a kernel): where each item ends first, or with `fixed` lanes when
+  // the block ends with them
+  const plan = (c: (m: number) => number, kc: (m: number) => number, fixed?: number[][]): { lane: number[][]; end: number; total: number; n1: number } => {
+    const lane = fixed ?? parity();
+    const fin = copies.map((n) => new Array<number>(n).fill(0));
+    const end = [0, SCH_FORK];
+    let n1 = 0, total = 0;
+    for (const m of kernels) {
+      const k = kc(m);
+      const best = fixed ? fixed[m][1] : end[1] + k < end[0] + k ? 1 : 0;
+      lane[m][1] = best;
+      fin[m][1] = end[best] += k;
+      n1 += best;
+      total += k;
     }
-  }
+    for (const m of order) {
+      const k = c(m);
+      for (let v = 0; v < copies[m]; v++) {
+        let best = -1, bestFin = 0;
+        for (const l of fixed ? [fixed[m][v]] : steps(m) ? [0] : [0, 1]) {
+          let t = end[l];
+          for (const [f, w] of deps.get(`${m}/${v}`)!) t = Math.max(t, fin[f][w] + (lane[f][w] !== l ? SCH_SYNC : 0));
+          if (best < 0 || t + k < bestFin) [bestFin, best] = [t + k, l];
+        }
+        lane[m][v] = best;
+        fin[m][v] = end[best] = bestFin;
+        n1 += best;
+        total += k;
+      }
+    }
+    return { lane, end: Math.max(end[0], end[1]), total, n1 };
+  };
+  const tc = (m: number): number => (off(m) ? table.bypass : kernels.includes(m) ? SCH_RV_MIX : table.cost(p.modules[m].type));
+  const tk = (m: number): number => (off(m) ? 0 : table.cost('reverb'));
+  const rc = (m: number): number => SCH_ITEM + (off(m) ? rig.bypass : kernels.includes(m) ? SCH_RV_MIX : rig.cost(p.modules[m].type) * (p.modules[m].type === 'osc' ? oscVoices(p.modules[m]) : 1));
+  const rk = (m: number): number => SCH_ITEM + (off(m) ? 0 : rig.cost('reverb'));
+  const on = (x: { end: number; total: number; n1: number }): boolean => x.n1 > 0 && x.end + SCH_FORK < x.total;
+  const a = plan(tc, tk), b = plan(rc, rk);
+  const aAtRig = on(a) ? plan(rc, rk, a.lane).end : b.total;
+  const lane = on(b) && b.end * SCH_GAIN < aAtRig * (SCH_GAIN - 1) ? b.lane : on(a) ? a.lane : undefined;
   const items: [number, number][][] = [[], []];
-  if (!n[1] || Math.max(end[0], end[1]) + SCH_FORK >= total) return { on: false, order, copies, lane: parity(), items, deps, kernels: [] };
+  if (!lane) return { on: false, order, copies, lane: parity(), items, deps, kernels: [] };
   for (const m of kernels) items[lane[m][1]].push([m, 1]);
   for (const m of order) for (let v = 0; v < copies[m]; v++) items[lane[m][v]].push([m, v]);
   return { on: true, order, copies, lane, items, deps, kernels };
