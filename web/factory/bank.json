@@ -34413,7 +34413,7 @@
       "ads": 0
      },
      "att": [
-      1,
+      -0.3,
       -0.35
      ],
      "map": {
@@ -34493,7 +34493,7 @@
       "ads": 0
      },
      "att": [
-      1,
+      -0.3,
       -0.35
      ],
      "map": {
@@ -34573,7 +34573,7 @@
       "ads": 0
      },
      "att": [
-      1,
+      -0.3,
       -0.35
      ],
      "map": {
@@ -34653,7 +34653,7 @@
       "ads": 0
      },
      "att": [
-      1,
+      -0.3,
       -0.35
      ],
      "map": {
@@ -34733,7 +34733,7 @@
       "ads": 0
      },
      "att": [
-      1,
+      -0.3,
       -0.35
      ],
      "map": {
@@ -34813,7 +34813,7 @@
       "ads": 0
      },
      "att": [
-      1,
+      -0.3,
       -0.35
      ],
      "map": {
@@ -34893,7 +34893,7 @@
       "ads": 0
      },
      "att": [
-      1,
+      -0.3,
       -0.35
      ],
      "map": {
@@ -34973,7 +34973,7 @@
       "ads": 0
      },
      "att": [
-      1,
+      -0.3,
       -0.35
      ],
      "map": {
@@ -35838,7 +35838,7 @@
      "factoryPatterns": {
       "version": 1,
       "ids": [
-       "85a95949"
+       "210d5184"
       ]
      }
     },
@@ -35856,6 +35856,612 @@
       "swing": 50
      },
      "bypass": true
+    },
+    {
+     "id": 92,
+     "type": "macro",
+     "x": 20,
+     "y": 6220,
+     "params": {
+      "value": 0.5
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "value"
+      ],
+      "p2": []
+     }
+    },
+    {
+     "id": 93,
+     "type": "const",
+     "x": 20,
+     "y": 6780,
+     "params": {
+      "value": -1
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "value"
+      ],
+      "p2": []
+     }
+    },
+    {
+     "id": 94,
+     "type": "scale",
+     "x": 340,
+     "y": 5660,
+     "params": {
+      "gain": -0.3,
+      "offset": 1
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "gain"
+      ],
+      "p2": [
+       "offset"
+      ]
+     }
+    },
+    {
+     "id": 95,
+     "type": "scale",
+     "x": 980,
+     "y": 5660,
+     "params": {
+      "gain": -0.3,
+      "offset": 1
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "gain"
+      ],
+      "p2": [
+       "offset"
+      ]
+     }
+    },
+    {
+     "id": 96,
+     "type": "scale",
+     "x": 1620,
+     "y": 5660,
+     "params": {
+      "gain": -0.3,
+      "offset": 1
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "gain"
+      ],
+      "p2": [
+       "offset"
+      ]
+     }
+    },
+    {
+     "id": 97,
+     "type": "scale",
+     "x": 2260,
+     "y": 5660,
+     "params": {
+      "gain": -0.3,
+      "offset": 1
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "gain"
+      ],
+      "p2": [
+       "offset"
+      ]
+     }
+    },
+    {
+     "id": 98,
+     "type": "math",
+     "x": 340,
+     "y": 6220,
+     "params": {
+      "ka": 0,
+      "kb": 1,
+      "off": 1
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "ka"
+      ],
+      "p2": [
+       "off"
+      ]
+     },
+     "range": {
+      "p1": {
+       "ka": [
+        0.5,
+        0.625
+       ]
+      },
+      "p2": {
+       "off": [
+        0.625,
+        0.5
+       ]
+      }
+     }
+    },
+    {
+     "id": 99,
+     "type": "math",
+     "x": 340,
+     "y": 6780,
+     "params": {
+      "ka": 1,
+      "kb": 1,
+      "off": 0
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "ka"
+      ],
+      "p2": [
+       "kb"
+      ]
+     }
+    },
+    {
+     "id": 100,
+     "type": "math",
+     "x": 660,
+     "y": 6220,
+     "params": {
+      "ka": 0,
+      "kb": 1,
+      "off": 1
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "ka"
+      ],
+      "p2": [
+       "off"
+      ]
+     },
+     "range": {
+      "p1": {
+       "ka": [
+        0.5,
+        0.625
+       ]
+      },
+      "p2": {
+       "off": [
+        0.625,
+        0.5
+       ]
+      }
+     }
+    },
+    {
+     "id": 101,
+     "type": "math",
+     "x": 660,
+     "y": 6780,
+     "params": {
+      "ka": 1,
+      "kb": 1,
+      "off": 0
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "ka"
+      ],
+      "p2": [
+       "kb"
+      ]
+     }
+    },
+    {
+     "id": 102,
+     "type": "math",
+     "x": 980,
+     "y": 6220,
+     "params": {
+      "ka": 0,
+      "kb": 1,
+      "off": 1
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "ka"
+      ],
+      "p2": [
+       "off"
+      ]
+     },
+     "range": {
+      "p1": {
+       "ka": [
+        0.5,
+        0.625
+       ]
+      },
+      "p2": {
+       "off": [
+        0.625,
+        0.5
+       ]
+      }
+     }
+    },
+    {
+     "id": 103,
+     "type": "math",
+     "x": 980,
+     "y": 6780,
+     "params": {
+      "ka": 1,
+      "kb": 1,
+      "off": 0
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "ka"
+      ],
+      "p2": [
+       "kb"
+      ]
+     }
+    },
+    {
+     "id": 104,
+     "type": "math",
+     "x": 1300,
+     "y": 6220,
+     "params": {
+      "ka": 0,
+      "kb": 1,
+      "off": 1
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "ka"
+      ],
+      "p2": [
+       "off"
+      ]
+     },
+     "range": {
+      "p1": {
+       "ka": [
+        0.5,
+        0.625
+       ]
+      },
+      "p2": {
+       "off": [
+        0.625,
+        0.5
+       ]
+      }
+     }
+    },
+    {
+     "id": 105,
+     "type": "math",
+     "x": 1300,
+     "y": 6780,
+     "params": {
+      "ka": 1,
+      "kb": 1,
+      "off": 0
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "ka"
+      ],
+      "p2": [
+       "kb"
+      ]
+     }
+    },
+    {
+     "id": 106,
+     "type": "math",
+     "x": 1620,
+     "y": 6220,
+     "params": {
+      "ka": 0,
+      "kb": 1,
+      "off": 1
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "ka"
+      ],
+      "p2": [
+       "off"
+      ]
+     },
+     "range": {
+      "p1": {
+       "ka": [
+        0.5,
+        0.625
+       ]
+      },
+      "p2": {
+       "off": [
+        0.625,
+        0.5
+       ]
+      }
+     }
+    },
+    {
+     "id": 107,
+     "type": "math",
+     "x": 1620,
+     "y": 6780,
+     "params": {
+      "ka": 1,
+      "kb": 1,
+      "off": 0
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "ka"
+      ],
+      "p2": [
+       "kb"
+      ]
+     }
+    },
+    {
+     "id": 108,
+     "type": "math",
+     "x": 1940,
+     "y": 6220,
+     "params": {
+      "ka": 0,
+      "kb": 1,
+      "off": 1
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "ka"
+      ],
+      "p2": [
+       "off"
+      ]
+     },
+     "range": {
+      "p1": {
+       "ka": [
+        0.5,
+        0.625
+       ]
+      },
+      "p2": {
+       "off": [
+        0.625,
+        0.5
+       ]
+      }
+     }
+    },
+    {
+     "id": 109,
+     "type": "math",
+     "x": 1940,
+     "y": 6780,
+     "params": {
+      "ka": 1,
+      "kb": 1,
+      "off": 0
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "ka"
+      ],
+      "p2": [
+       "kb"
+      ]
+     }
+    },
+    {
+     "id": 110,
+     "type": "math",
+     "x": 2260,
+     "y": 6220,
+     "params": {
+      "ka": 0,
+      "kb": 1,
+      "off": 1
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "ka"
+      ],
+      "p2": [
+       "off"
+      ]
+     },
+     "range": {
+      "p1": {
+       "ka": [
+        0.5,
+        0.625
+       ]
+      },
+      "p2": {
+       "off": [
+        0.625,
+        0.5
+       ]
+      }
+     }
+    },
+    {
+     "id": 111,
+     "type": "math",
+     "x": 2260,
+     "y": 6780,
+     "params": {
+      "ka": 1,
+      "kb": 1,
+      "off": 0
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "ka"
+      ],
+      "p2": [
+       "kb"
+      ]
+     }
+    },
+    {
+     "id": 112,
+     "type": "math",
+     "x": 2580,
+     "y": 6220,
+     "params": {
+      "ka": 0,
+      "kb": 1,
+      "off": 1
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "ka"
+      ],
+      "p2": [
+       "off"
+      ]
+     },
+     "range": {
+      "p1": {
+       "ka": [
+        0.5,
+        0.625
+       ]
+      },
+      "p2": {
+       "off": [
+        0.625,
+        0.5
+       ]
+      }
+     }
+    },
+    {
+     "id": 113,
+     "type": "math",
+     "x": 2580,
+     "y": 6780,
+     "params": {
+      "ka": 1,
+      "kb": 1,
+      "off": 0
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "ka"
+      ],
+      "p2": [
+       "kb"
+      ]
+     }
     }
    ],
    "cables": [
@@ -35867,16 +36473,6 @@
      "to": {
       "module": 37,
       "port": "in"
-     }
-    },
-    {
-     "from": {
-      "module": 36,
-      "port": "env"
-     },
-     "to": {
-      "module": 37,
-      "port": "cv"
      }
     },
     {
@@ -35901,16 +36497,6 @@
     },
     {
      "from": {
-      "module": 39,
-      "port": "env"
-     },
-     "to": {
-      "module": 40,
-      "port": "cv"
-     }
-    },
-    {
-     "from": {
       "module": 2,
       "port": "g2"
      },
@@ -35927,16 +36513,6 @@
      "to": {
       "module": 43,
       "port": "in"
-     }
-    },
-    {
-     "from": {
-      "module": 42,
-      "port": "env"
-     },
-     "to": {
-      "module": 43,
-      "port": "cv"
      }
     },
     {
@@ -35961,16 +36537,6 @@
     },
     {
      "from": {
-      "module": 45,
-      "port": "env"
-     },
-     "to": {
-      "module": 46,
-      "port": "cv"
-     }
-    },
-    {
-     "from": {
       "module": 2,
       "port": "g4"
      },
@@ -35987,16 +36553,6 @@
      "to": {
       "module": 49,
       "port": "in"
-     }
-    },
-    {
-     "from": {
-      "module": 48,
-      "port": "env"
-     },
-     "to": {
-      "module": 49,
-      "port": "cv"
      }
     },
     {
@@ -36021,16 +36577,6 @@
     },
     {
      "from": {
-      "module": 51,
-      "port": "env"
-     },
-     "to": {
-      "module": 52,
-      "port": "cv"
-     }
-    },
-    {
-     "from": {
       "module": 2,
       "port": "g6"
      },
@@ -36051,16 +36597,6 @@
     },
     {
      "from": {
-      "module": 54,
-      "port": "env"
-     },
-     "to": {
-      "module": 55,
-      "port": "cv"
-     }
-    },
-    {
-     "from": {
       "module": 2,
       "port": "g7"
      },
@@ -36077,16 +36613,6 @@
      "to": {
       "module": 58,
       "port": "in"
-     }
-    },
-    {
-     "from": {
-      "module": 57,
-      "port": "env"
-     },
-     "to": {
-      "module": 58,
-      "port": "cv"
      }
     },
     {
@@ -37358,6 +37884,846 @@
       "module": 91,
       "port": "keys"
      }
+    },
+    {
+     "from": {
+      "module": 74,
+      "port": "out"
+     },
+     "to": {
+      "module": 94,
+      "port": "in"
+     }
+    },
+    {
+     "from": {
+      "module": 75,
+      "port": "out"
+     },
+     "to": {
+      "module": 95,
+      "port": "in"
+     }
+    },
+    {
+     "from": {
+      "module": 76,
+      "port": "out"
+     },
+     "to": {
+      "module": 96,
+      "port": "in"
+     }
+    },
+    {
+     "from": {
+      "module": 77,
+      "port": "out"
+     },
+     "to": {
+      "module": 97,
+      "port": "in"
+     }
+    },
+    {
+     "from": {
+      "module": 2,
+      "port": "v1"
+     },
+     "to": {
+      "module": 98,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 92,
+      "port": "out"
+     },
+     "to": {
+      "module": 98,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 92,
+      "port": "out"
+     },
+     "to": {
+      "module": 98,
+      "port": "p2"
+     }
+    },
+    {
+     "from": {
+      "module": 94,
+      "port": "out"
+     },
+     "to": {
+      "module": 98,
+      "port": "b"
+     }
+    },
+    {
+     "from": {
+      "module": 98,
+      "port": "mul"
+     },
+     "to": {
+      "module": 99,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 36,
+      "port": "env"
+     },
+     "to": {
+      "module": 99,
+      "port": "b"
+     }
+    },
+    {
+     "from": {
+      "module": 99,
+      "port": "mul"
+     },
+     "to": {
+      "module": 37,
+      "port": "cv"
+     }
+    },
+    {
+     "from": {
+      "module": 98,
+      "port": "mul"
+     },
+     "to": {
+      "module": 36,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 93,
+      "port": "out"
+     },
+     "to": {
+      "module": 36,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 2,
+      "port": "v2"
+     },
+     "to": {
+      "module": 100,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 92,
+      "port": "out"
+     },
+     "to": {
+      "module": 100,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 92,
+      "port": "out"
+     },
+     "to": {
+      "module": 100,
+      "port": "p2"
+     }
+    },
+    {
+     "from": {
+      "module": 94,
+      "port": "out"
+     },
+     "to": {
+      "module": 100,
+      "port": "b"
+     }
+    },
+    {
+     "from": {
+      "module": 100,
+      "port": "mul"
+     },
+     "to": {
+      "module": 101,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 39,
+      "port": "env"
+     },
+     "to": {
+      "module": 101,
+      "port": "b"
+     }
+    },
+    {
+     "from": {
+      "module": 101,
+      "port": "mul"
+     },
+     "to": {
+      "module": 40,
+      "port": "cv"
+     }
+    },
+    {
+     "from": {
+      "module": 100,
+      "port": "mul"
+     },
+     "to": {
+      "module": 39,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 93,
+      "port": "out"
+     },
+     "to": {
+      "module": 39,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 2,
+      "port": "v3"
+     },
+     "to": {
+      "module": 102,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 92,
+      "port": "out"
+     },
+     "to": {
+      "module": 102,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 92,
+      "port": "out"
+     },
+     "to": {
+      "module": 102,
+      "port": "p2"
+     }
+    },
+    {
+     "from": {
+      "module": 95,
+      "port": "out"
+     },
+     "to": {
+      "module": 102,
+      "port": "b"
+     }
+    },
+    {
+     "from": {
+      "module": 102,
+      "port": "mul"
+     },
+     "to": {
+      "module": 103,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 42,
+      "port": "env"
+     },
+     "to": {
+      "module": 103,
+      "port": "b"
+     }
+    },
+    {
+     "from": {
+      "module": 103,
+      "port": "mul"
+     },
+     "to": {
+      "module": 43,
+      "port": "cv"
+     }
+    },
+    {
+     "from": {
+      "module": 102,
+      "port": "mul"
+     },
+     "to": {
+      "module": 42,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 93,
+      "port": "out"
+     },
+     "to": {
+      "module": 42,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 2,
+      "port": "v4"
+     },
+     "to": {
+      "module": 104,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 92,
+      "port": "out"
+     },
+     "to": {
+      "module": 104,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 92,
+      "port": "out"
+     },
+     "to": {
+      "module": 104,
+      "port": "p2"
+     }
+    },
+    {
+     "from": {
+      "module": 95,
+      "port": "out"
+     },
+     "to": {
+      "module": 104,
+      "port": "b"
+     }
+    },
+    {
+     "from": {
+      "module": 104,
+      "port": "mul"
+     },
+     "to": {
+      "module": 105,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 45,
+      "port": "env"
+     },
+     "to": {
+      "module": 105,
+      "port": "b"
+     }
+    },
+    {
+     "from": {
+      "module": 105,
+      "port": "mul"
+     },
+     "to": {
+      "module": 46,
+      "port": "cv"
+     }
+    },
+    {
+     "from": {
+      "module": 104,
+      "port": "mul"
+     },
+     "to": {
+      "module": 45,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 93,
+      "port": "out"
+     },
+     "to": {
+      "module": 45,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 2,
+      "port": "v5"
+     },
+     "to": {
+      "module": 106,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 92,
+      "port": "out"
+     },
+     "to": {
+      "module": 106,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 92,
+      "port": "out"
+     },
+     "to": {
+      "module": 106,
+      "port": "p2"
+     }
+    },
+    {
+     "from": {
+      "module": 96,
+      "port": "out"
+     },
+     "to": {
+      "module": 106,
+      "port": "b"
+     }
+    },
+    {
+     "from": {
+      "module": 106,
+      "port": "mul"
+     },
+     "to": {
+      "module": 107,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 48,
+      "port": "env"
+     },
+     "to": {
+      "module": 107,
+      "port": "b"
+     }
+    },
+    {
+     "from": {
+      "module": 107,
+      "port": "mul"
+     },
+     "to": {
+      "module": 49,
+      "port": "cv"
+     }
+    },
+    {
+     "from": {
+      "module": 106,
+      "port": "mul"
+     },
+     "to": {
+      "module": 48,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 93,
+      "port": "out"
+     },
+     "to": {
+      "module": 48,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 2,
+      "port": "v6"
+     },
+     "to": {
+      "module": 108,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 92,
+      "port": "out"
+     },
+     "to": {
+      "module": 108,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 92,
+      "port": "out"
+     },
+     "to": {
+      "module": 108,
+      "port": "p2"
+     }
+    },
+    {
+     "from": {
+      "module": 96,
+      "port": "out"
+     },
+     "to": {
+      "module": 108,
+      "port": "b"
+     }
+    },
+    {
+     "from": {
+      "module": 108,
+      "port": "mul"
+     },
+     "to": {
+      "module": 109,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 51,
+      "port": "env"
+     },
+     "to": {
+      "module": 109,
+      "port": "b"
+     }
+    },
+    {
+     "from": {
+      "module": 109,
+      "port": "mul"
+     },
+     "to": {
+      "module": 52,
+      "port": "cv"
+     }
+    },
+    {
+     "from": {
+      "module": 108,
+      "port": "mul"
+     },
+     "to": {
+      "module": 51,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 93,
+      "port": "out"
+     },
+     "to": {
+      "module": 51,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 2,
+      "port": "v7"
+     },
+     "to": {
+      "module": 110,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 92,
+      "port": "out"
+     },
+     "to": {
+      "module": 110,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 92,
+      "port": "out"
+     },
+     "to": {
+      "module": 110,
+      "port": "p2"
+     }
+    },
+    {
+     "from": {
+      "module": 97,
+      "port": "out"
+     },
+     "to": {
+      "module": 110,
+      "port": "b"
+     }
+    },
+    {
+     "from": {
+      "module": 110,
+      "port": "mul"
+     },
+     "to": {
+      "module": 111,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 54,
+      "port": "env"
+     },
+     "to": {
+      "module": 111,
+      "port": "b"
+     }
+    },
+    {
+     "from": {
+      "module": 111,
+      "port": "mul"
+     },
+     "to": {
+      "module": 55,
+      "port": "cv"
+     }
+    },
+    {
+     "from": {
+      "module": 110,
+      "port": "mul"
+     },
+     "to": {
+      "module": 54,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 93,
+      "port": "out"
+     },
+     "to": {
+      "module": 54,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 2,
+      "port": "v8"
+     },
+     "to": {
+      "module": 112,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 92,
+      "port": "out"
+     },
+     "to": {
+      "module": 112,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 92,
+      "port": "out"
+     },
+     "to": {
+      "module": 112,
+      "port": "p2"
+     }
+    },
+    {
+     "from": {
+      "module": 97,
+      "port": "out"
+     },
+     "to": {
+      "module": 112,
+      "port": "b"
+     }
+    },
+    {
+     "from": {
+      "module": 112,
+      "port": "mul"
+     },
+     "to": {
+      "module": 113,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 57,
+      "port": "env"
+     },
+     "to": {
+      "module": 113,
+      "port": "b"
+     }
+    },
+    {
+     "from": {
+      "module": 113,
+      "port": "mul"
+     },
+     "to": {
+      "module": 58,
+      "port": "cv"
+     }
+    },
+    {
+     "from": {
+      "module": 112,
+      "port": "mul"
+     },
+     "to": {
+      "module": 57,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 93,
+      "port": "out"
+     },
+     "to": {
+      "module": 57,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 1,
+      "port": "at"
+     },
+     "to": {
+      "module": 98,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 1,
+      "port": "at"
+     },
+     "to": {
+      "module": 100,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 1,
+      "port": "at"
+     },
+     "to": {
+      "module": 102,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 1,
+      "port": "at"
+     },
+     "to": {
+      "module": 104,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 1,
+      "port": "at"
+     },
+     "to": {
+      "module": 106,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 1,
+      "port": "at"
+     },
+     "to": {
+      "module": 108,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 1,
+      "port": "at"
+     },
+     "to": {
+      "module": 110,
+      "port": "a"
+     }
+    },
+    {
+     "from": {
+      "module": 1,
+      "port": "at"
+     },
+     "to": {
+      "module": 112,
+      "port": "a"
+     }
     }
    ],
    "assemblies": [
@@ -37396,6 +38762,11 @@
        "module": 37,
        "port": "out",
        "label": "out"
+      },
+      {
+       "module": 36,
+       "port": "env",
+       "label": "env"
       }
      ],
      "params": [
@@ -37456,6 +38827,11 @@
        "module": 40,
        "port": "out",
        "label": "out"
+      },
+      {
+       "module": 39,
+       "port": "env",
+       "label": "env"
       }
      ],
      "params": [
@@ -37516,6 +38892,11 @@
        "module": 43,
        "port": "out",
        "label": "out"
+      },
+      {
+       "module": 42,
+       "port": "env",
+       "label": "env"
       }
      ],
      "params": [
@@ -37576,6 +38957,11 @@
        "module": 46,
        "port": "out",
        "label": "out"
+      },
+      {
+       "module": 45,
+       "port": "env",
+       "label": "env"
       }
      ],
      "params": [
@@ -37636,6 +39022,11 @@
        "module": 49,
        "port": "out",
        "label": "out"
+      },
+      {
+       "module": 48,
+       "port": "env",
+       "label": "env"
       }
      ],
      "params": [
@@ -37696,6 +39087,11 @@
        "module": 52,
        "port": "out",
        "label": "out"
+      },
+      {
+       "module": 51,
+       "port": "env",
+       "label": "env"
       }
      ],
      "params": [
@@ -37756,6 +39152,11 @@
        "module": 55,
        "port": "out",
        "label": "out"
+      },
+      {
+       "module": 54,
+       "port": "env",
+       "label": "env"
       }
      ],
      "params": [
@@ -37816,6 +39217,11 @@
        "module": 58,
        "port": "out",
        "label": "out"
+      },
+      {
+       "module": 57,
+       "port": "env",
+       "label": "env"
       }
      ],
      "params": [
@@ -37912,13 +39318,70 @@
       85,
       86,
       87,
-      88
+      88,
+      92,
+      93,
+      94,
+      95,
+      96,
+      97,
+      98,
+      99,
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111,
+      112,
+      113
      ],
      "inputs": [
       {
        "module": 2,
        "port": "keys",
        "label": "keys"
+      },
+      {
+       "module": 98,
+       "port": "a",
+       "label": "pressure",
+       "also": [
+        {
+         "module": 100,
+         "port": "a"
+        },
+        {
+         "module": 102,
+         "port": "a"
+        },
+        {
+         "module": 104,
+         "port": "a"
+        },
+        {
+         "module": 106,
+         "port": "a"
+        },
+        {
+         "module": 108,
+         "port": "a"
+        },
+        {
+         "module": 110,
+         "port": "a"
+        },
+        {
+         "module": 112,
+         "port": "a"
+        }
+       ]
       }
      ],
      "outputs": [

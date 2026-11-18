@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **No factory patch or preset makes a sound the moment you switch to it.** The drones now wait for PLAY: 8 Lire's Eight Drone, Trill Delay and Feedback Howl and Elvira 2's Deep Drone and Beating Cluster hold their voices as drone notes on the PATTERN track, so PLAY starts them and STOP lets them fade (HOLD and DRONE are still on the card for droning by hand). Every 8 Lire and Elvira 2 preset now brings its own pattern to play on PLAY. Canvas's Sequencer Run, Easel Bongos and FM Chimes no longer run by themselves: each key is a pulse at the level the old pulses had (hold a key with ARP on for the run), and their gate closes fully between notes. A test checks every factory patch and preset, in the editor's engine and the FM-1's, so a new one that sounds at load fails. A factory content update: no firmware release needed (#1086).
+- **8 Lire's plates feel how hard you play.** As on the Lyra-8, a light touch opens a voice partly and slowly, and a hard one opens it fully and fast. How hard is the key's velocity (or a PATTERN note's), plus channel aftertouch from an outside MIDI keyboard pressed into the key (the FM-1's own keys send no aftertouch). With a pair's FAST down its plates open less. Everything the Lyra-8's panel does is now on 8 Lire; only the hardware is missing (outside audio in, the jacks, the plates' feel of skin). 8 Lire still makes no sound until a plate is played or PLAY runs. A saved 8 Lire slot keeps its patch; FACTORY RESET installs the new one (#851).
 
 ## 1.20.0 — 2026-11-18
 
