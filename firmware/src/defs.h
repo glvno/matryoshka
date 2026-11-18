@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 55
+#define N_TYPES 56
 enum {
     T_FM1,
     T_OSC,
@@ -60,6 +60,7 @@ enum {
     T_RANGE,
     T_MATRIX,
     T_HARM,
+    T_LIMIT,
 };
 
 /* fm1: Main */
@@ -1108,6 +1109,22 @@ enum {
 #define HARM_CVBASE -1
 #define HARM_NDATA 0
 
+/* limit: Limiter */
+#define LIMIT_I_IN 0
+#define LIMIT_I_P1 1
+#define LIMIT_I_P2 2
+#define LIMIT_O_OUT 0
+#define LIMIT_O_GR 1
+#define LIMIT_P_CEILING 0
+#define LIMIT_P_RELEASE 1
+#define LIMIT_P_GAIN 2
+#define LIMIT_P_AHEAD 3
+#define LIMIT_NIN 3
+#define LIMIT_NOUT 2
+#define LIMIT_NPAR 4
+#define LIMIT_CVBASE 1
+#define LIMIT_NDATA 0
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 #define DELAY_SYNC_TOP 520   /* ms: the synced note lengths spread over 1..this (modules.ts) */
@@ -1173,6 +1190,9 @@ static const int32_t RATIO_DETUNE_OCT[7] = {-142, -95, -47, 0, 47, 95, 142};
 /* the saw's curve: (1 - e^-x) / x at x = i / 256 (0 .. 0.5), Q30 (engine.c ana_saw) */
 static const int32_t ANALOG_SAWC_T[129] = {1073741824, 1071647400, 1069558421, 1067474872, 1065396737, 1063323999, 1061256643, 1059194653, 1057138014, 1055086710, 1053040725, 1051000044, 1048964651, 1046934531, 1044909669, 1042890048, 1040875655, 1038866473, 1036862488, 1034863684, 1032870046, 1030881560, 1028898209, 1026919980, 1024946857, 1022978825, 1021015869, 1019057976, 1017105130, 1015157315, 1013214519, 1011276726, 1009343921, 1007416091, 1005493220, 1003575294, 1001662299, 999754220, 997851044, 995952756, 994059341, 992170787, 990287078, 988408200, 986534140, 984664883, 982800416, 980940724, 979085795, 977235613, 975390166, 973549439, 971713419, 969882093, 968055446, 966233466, 964416138, 962603449, 960795386, 958991935, 957193084, 955398818, 953609125, 951823990, 950043403, 948267348, 946495813, 944728785, 942966250, 941208197, 939454611, 937705481, 935960793, 934220534, 932484692, 930753253, 929026206, 927303538, 925585235, 923871286, 922161677, 920456397, 918755433, 917058772, 915366402, 913678311, 911994487, 910314916, 908639588, 906968489, 905301608, 903638932, 901980450, 900326149, 898676017, 897030043, 895388214, 893750518, 892116945, 890487481, 888862115, 887240836, 885623631, 884010490, 882401399, 880796348, 879195326, 877598320, 876005319, 874416311, 872831286, 871250232, 869673137, 868099991, 866530781, 864965497, 863404127, 861846660, 860293086, 858743392, 857197568, 855655603, 854117486, 852583206, 851052751, 849526112, 848003276, 846484234, 844968974};
 #define RANGE_T_MAX 64   /* the Range module (#526): t within +-this input ranges with clamp off */
+#define LIMIT_AHEAD 64   /* the Limiter's lookahead line, samples (#1019) */
+#define LIMIT_CHUNK 16   /* its line's chunks, whose peaks it keeps */
+#define LIMIT_KA 109857605   /* its attack with lookahead, Q30: 99.9 % of a step in LIMIT_AHEAD samples */
 #define SHREG_STAGES 8   /* the Shift register's stages (#438) */
 #define SHREG_PAT_SEED 0x5bd1e995u   /* mixed with the instance seed: its starting pattern */
 #define SHREG_FLIP_SEED 0x27d4eb2fu   /* mixed with the instance seed: its flip stream */
@@ -1829,6 +1849,16 @@ static const char *const HARM_CH0[] = {"NONE", "MAJ", "MIN", "DIM", 0};
 static const char *const HARM_CH1[] = {"NONE", "SUS2", "SUS4", "SUS2+4", 0};
 static const char *const HARM_CH2[] = {"NONE", "7", "9", "7+9", 0};
 static const char *const *const HARM_CH[] = {HARM_CH0, HARM_CH1, HARM_CH2, 0, ADSR_CH4, ALLOC_CH6};
+static const char *const LIMIT_INNAMES[] = {"IN", "P1", "P2"};
+static const int32_t LIMIT_MIN[] = {-1966080, 655, 0, 0};
+static const int32_t LIMIT_MAX[] = {0, 131072, 1572864, 65536};
+static const int32_t LIMIT_DEF[] = {-65536, 6554, 0, 65536};
+static const int32_t LIMIT_INC[] = {19661, 1304, 32768, 65536};
+static const int32_t LIMIT_STEP[] = {6554, 655, 32768, 65536};
+static const char *const LIMIT_PN[] = {"CEILING", "RELEASE", "GAIN", "AHEAD"};
+static const uint8_t LIMIT_LOG[] = {0, 1, 0, 0};
+static const char *const LIMIT_UNIT[] = {"DB", "S", "DB", ""};
+static const char *const *const LIMIT_CH[] = {0, 0, 0, ADSR_CH4};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0, FM1_STEP},   /* fm1 */
@@ -1886,12 +1916,13 @@ static const def_t DEFS[N_TYPES] = {
     {RANGE_NIN, RANGE_NOUT, RANGE_NPAR, 0, RANGE_CVBASE, 0, RANGE_NDATA, 0, RANGE_MIN, RANGE_MAX, RANGE_DEF, RANGE_INC, "RANGE", RANGE_PN, RANGE_INNAMES, RANGE_LOG, RANGE_UNIT, RANGE_CH, 0, 0, RANGE_STEP},   /* range */
     {MATRIX_NIN, MATRIX_NOUT, MATRIX_NPAR, 0, MATRIX_CVBASE, -1, MATRIX_NDATA, 15, MATRIX_MIN, MATRIX_MAX, MATRIX_DEF, MATRIX_INC, "MATRIX", MATRIX_PN, MATRIX_INNAMES, MATRIX_LOG, MATRIX_UNIT, MATRIX_CH, 0, 0, MATRIX_STEP},   /* matrix */
     {HARM_NIN, HARM_NOUT, HARM_NPAR, 0, HARM_CVBASE, -1, HARM_NDATA, 0, HARM_MIN, HARM_MAX, HARM_DEF, HARM_INC, "HARMONIZER", HARM_PN, HARM_INNAMES, HARM_LOG, HARM_UNIT, HARM_CH, 0, 0, HARM_STEP},   /* harm */
+    {LIMIT_NIN, LIMIT_NOUT, LIMIT_NPAR, 0, LIMIT_CVBASE, 0, LIMIT_NDATA, 1, LIMIT_MIN, LIMIT_MAX, LIMIT_DEF, LIMIT_INC, "LIMITER", LIMIT_PN, LIMIT_INNAMES, LIMIT_LOG, LIMIT_UNIT, LIMIT_CH, 0, 0, LIMIT_STEP},   /* limit */
 };
 /* one copy of each type, a block: what the two-core schedule balances (engine.c sched_build, #802), in 64 cycles of
  * web/src/cpu-costs.json (its run and parameter inputs: cpu.ts scheduleCost) */
-static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 34, 9, 437, 11, 112, 1568, 3, 40, 96, 39, 328, 178, 326, 156, 89, 36, 36, 40, 49, 72, 548, 266, 54, 361, 105, 54, 37, 468, 271, 534, 668, 11, 15, 1, 11, 53, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4};
+static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 34, 9, 437, 11, 112, 1568, 3, 40, 96, 39, 328, 178, 326, 156, 89, 36, 36, 40, 49, 72, 548, 266, 54, 361, 105, 54, 37, 468, 271, 534, 668, 11, 15, 1, 11, 53, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4, 178};
 /* a module bypassed when the patch loads, in the same units: passing an input through (D-1104; cpu.ts scheduleBypass) */
 #define DEF_COST_BYPASS 18u
 /* Gate-port kinds for pattern authorization, independent of environment grouping (bit n: port n is a gate) */
-static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u};
-static const uint32_t PRESET_GATE_OUT[] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u};
+static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u,0u};
+static const uint32_t PRESET_GATE_OUT[] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u,0u};

@@ -1308,6 +1308,79 @@ const dyn: ModuleImpl<{ env: number }> = {
   },
 };
 
+/** the Limiter's lookahead (#1019): its line holds this many samples (1.45 ms at the FM-1's rate), in chunks of
+ * LIMIT_CHUNK whose loudest samples it keeps */
+export const LIMIT_AHEAD = 64;
+export const LIMIT_CHUNK = 16;
+/** the Limiter's attack with lookahead: a one-pole that reaches 99.9 % of its step in LIMIT_AHEAD samples (engine.c LIMIT_KA) */
+export const LIMIT_KA = 1 - Math.exp(-Math.log(1000) / LIMIT_AHEAD);
+
+interface LimitState { line: Float32Array; w: number; cm: number; c: Float64Array; pm: number; g: number }
+
+/**
+ * Limiter (#1019): a peak limiter that keeps `out` within `ceiling` (dB below full scale). `gain` (dB) drives the input
+ * first. With `ahead` on, the sound is delayed by LIMIT_AHEAD samples and the gain is worked out from the loudest sample
+ * of a window that covers them (the line's chunks' peaks and the chunk being filled: up to LIMIT_CHUNK more), so the gain
+ * has come down before a peak leaves the line: a one-pole that reaches 99.9 % of its step in the lookahead. With `ahead`
+ * off, nothing is delayed and the gain drops at once to what the sample needs. The gain comes back up by `release` (99 %
+ * in that time, the ADSR's rate formula). Last, a hard clip at the ceiling, so no sample ever passes it. `gr` outputs the
+ * gain reduction, 1 − the gain (0 while nothing is limited).
+ */
+const limit: ModuleImpl<LimitState> = {
+  def: {
+    type: 'limit',
+    label: 'Limiter',
+    since: 62,
+    inputs: [audio('in')],
+    outputs: [audio('out'), control('gr')],
+    params: [
+      param('ceiling', -30, 0, -1, { unit: 'dB', step: 0.1 }),
+      param('release', 0.01, 2, 0.1, { unit: 's', step: 0.01, log: true }),
+      param('gain', 0, 24, 0, { unit: 'dB', step: 0.5 }),
+      param('ahead', 0, 1, 1, { step: 1, choices: ['off', 'on'], toggle: true }),
+    ],
+  },
+  init: () => ({ line: new Float32Array(LIMIT_AHEAD), w: 0, cm: 0, c: new Float64Array(LIMIT_AHEAD / LIMIT_CHUNK), pm: 0, g: 1 }),
+  process(c, s) {
+    const ceil = Math.pow(2, (c.p.ceiling ?? -1) / DB_PER_OCT);
+    const drive = Math.pow(2, (c.p.gain ?? 0) / DB_PER_OCT);
+    const kr = 1 - Math.exp(-4.6 / Math.max((c.p.release ?? 0.1) * c.sr, 1));
+    const x = c.inp.in, o = c.out.out, gr = c.out.gr;
+    let g = s.g;
+    if ((c.p.ahead ?? 1) >= 0.5) {
+      const line = s.line, ck = s.c;
+      let w = s.w, cm = s.cm, pm = s.pm;
+      for (let i = 0; i < c.n; i++) {
+        const v = x[i] * drive, a = Math.abs(v);
+        const y = line[w];
+        line[w] = v;
+        if (a > cm) cm = a;
+        const m = cm > pm ? cm : pm;
+        const t = m > ceil ? ceil / m : 1;
+        g += (t < g ? LIMIT_KA : kr) * (t - g);
+        o[i] = Math.max(-ceil, Math.min(ceil, y * g));
+        gr[i] = 1 - g;
+        if ((++w & (LIMIT_CHUNK - 1)) === 0) {        // a chunk filled: its peak replaces the one its samples overwrote
+          ck[(w - 1) / LIMIT_CHUNK | 0] = cm;
+          cm = 0;
+          w &= LIMIT_AHEAD - 1;
+          pm = Math.max(ck[0], ck[1], ck[2], ck[3]);
+        }
+      }
+      s.w = w; s.cm = cm; s.pm = pm;
+    } else {
+      for (let i = 0; i < c.n; i++) {
+        const v = x[i] * drive, a = Math.abs(v);
+        const t = a > ceil ? ceil / a : 1;
+        g = t < g ? t : g + kr * (t - g);
+        o[i] = Math.max(-ceil, Math.min(ceil, v * g));
+        gr[i] = 1 - g;
+      }
+    }
+    s.g = g;
+  },
+};
+
 /** Quantize one audio sample to a signed 16-bit word for bitwise operations. */
 const xorWord = (x: number): number => Math.max(-32768, Math.min(32767, Math.floor(x * 32768)));
 
@@ -4501,7 +4574,7 @@ const harm: ModuleImpl<null> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm];
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm, limit];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

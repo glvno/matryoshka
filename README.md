@@ -219,9 +219,10 @@ During browser playback, sliders and their readouts follow dedicated CV inputs (
 - **Math** takes two signals (`a` scaled by `ka` plus `off`, `b` scaled by `kb`) and outputs their sum, difference, product, min, max, |a| and a gate that is high while a > b: ring modulation, a CV mixer, a comparator, a rectifier.
 - **Logic** combines two gates: `and`, `or`, `xor`, `not` (of `a`), high from `thresh` on. Two clocks into `xor` make a rhythm.
 
-## Compressor
+## Compressor and limiter
 
 - **Compressor** is an envelope follower and compressor in one: `env` outputs the follower (a control: an oscillator's loudness as a CV, a sidechain pump from a kick into a VCA), `out` the signal compressed above `thresh` by `ratio` with `attack`, `release` and makeup `gain`. The `side` input is the sidechain; without it the detector listens to `in`.
+- **Limiter** keeps its output under `ceiling` (dB below full scale), whatever comes in: a feedback patch that runs away stays at the ceiling instead of hurting your ears. `gain` drives the input, `release` sets how fast the gain comes back after a peak, and a last hard clip makes sure nothing passes. With `ahead` on (as made) the sound is delayed 1.45 ms so the gain comes down smoothly before a peak; turn it off inside a feedback loop, where that delay would change the loop. The card shows the gain reduction in dB, and the `gr` output carries it (1 − the gain) for patching.
 
 ## On a phone or tablet
 

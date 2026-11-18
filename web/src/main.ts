@@ -35,6 +35,7 @@ import { ScopeScreens } from './scope-view';
 import { OUTPUT_SCOPE_KEY, OutputScope } from './output-scope';
 import { candidateTitle, renderList, renderProgress, renderRail, SnapSidebar, type SideActions, type SideView } from './snap-side';
 import { OutputLoudness } from './loudness-view';
+import { LimiterMeters } from './limit-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
 import { buildPresetsSection } from './library-presets';
@@ -834,6 +835,8 @@ host.onView = (key, chans, sr, voices) => (key === OUTPUT_SCOPE_KEY ? outScreens
 // the Output card's loudness readout (#940): the reading carries on through rebuilds, a patch opened starts it again
 const loudness = new OutputLoudness();
 host.onLoud = (steps) => loudness.push(steps);
+// the Limiter cards' gain reduction readouts (#1019): each watches its card's gr output
+const limiters = new LimiterMeters((msg) => host.send(msg));
 // listening to one signal (#939): the chip over the canvas says what plays instead of the Output, and goes back
 const listenChip = $('listen-chip');
 const showListen = (label: string | null): void => {
@@ -1122,6 +1125,7 @@ const editor = new Editor($('canvas'), firstPatch, {
   onScreens(list, envList) {
     screens.sync(list);
     envs.sync(envList);
+    limiters.sync();
   },
   onListen(srcs, label) {
     host.listen(srcs);
@@ -1129,6 +1133,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     if (srcs && !host.running) void startAudio();   // (asked to hear something: the audio starts, as Audio on does)
   },
   outputReadout: () => loudness.element(),
+  limitReadout: (id) => limiters.element(id),
   onLayout(p) {
     capabilityInspector?.sync();
     queueSave(p);
@@ -2414,6 +2419,7 @@ function syncSides(): void {
 let watchFrame = 0;
 const watchDirty = new Set<SideKey>();
 host.onWatch = (key, v) => {
+  if (limiters.push(key, v)) return;
   const side = sides.get(key as SideKey);
   if (!side || !editor.patch[key as SideKey]) return;
   side.live = v;

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **A Limiter module, to save your ears in feedback patches.** Put a Limiter before the Output (or inside a feedback loop) and nothing it plays gets louder than its `ceiling`, however hard the patch runs away: the gain comes down on every peak, and a last hard clip catches the rest. Its card shows how many dB it takes off. With `ahead` on it delays the sound 1.45 ms so the gain comes down smoothly; turn it off inside a loop. It plays on the FM-1 too, with 1.19 firmware (#1019).
+
 ## 1.18.5 — 2026-11-17
 
 - **A card's ⏻ always shows whether it is on.** With Live on, pressing LFO on the FM-1 striped the Harmonizer card's header (bypassed) or cleared it, but the card's ⏻ stayed as it was. The same happened for any patch button that switches a card or an assembly on or off, whether pressed on the FM-1, on the deck or sent as MIDI. Clicking a card's ⏻ also left the deck's ARP or LFO light as it was. Now the card's stripes, its ⏻, the assembly's ⏻, the FX switches on the master FX card and the deck's ARP and LFO lights change together, whatever turned the card on or off (#1054).

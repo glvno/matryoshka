@@ -238,6 +238,8 @@ export interface EditorEvents {
   onListen?(srcs: ListenSource[] | null, label: string): void;
   /** the Output card's loudness readout (#940, loudness-view.ts), made again at every rebuild */
   outputReadout?(): HTMLElement;
+  /** a Limiter card's gain reduction readout (#1019, limit-view.ts), made again at every rebuild */
+  limitReadout?(id: number): HTMLElement;
   /** a message for the status line */
   onError(msg: string): void;
   /** "save" on an assembly: put this definition into the library */
@@ -1259,8 +1261,8 @@ export class Editor {
       return { el: this.paramRow(m, def, pd, { open, ...named, ...pos }), input: pd.input ? { module: m.id, port: pd.input } : undefined, gap: i > 0 && starts[i] };
     });
     // a second Main card (from an old patch) keeps its B side under the rows
-    // the Output card: its loudness readout under the level (#940)
-    const readout = def.type === 'output' ? this.ev.outputReadout?.() : undefined;
+    // the Output card: its loudness readout under the level (#940); a Limiter's: its gain reduction (#1019)
+    const readout = def.type === 'output' ? this.ev.outputReadout?.() : def.type === 'limit' ? this.ev.limitReadout?.(m.id) : undefined;
     const extra = def.type === 'fm1' ? [this.morphRow()] : steps ? def.views!.map((pd) => this.paramRow(m, def, pd, { open })) : readout ? [readout] : [];
     body.append(...this.edgeLayout(ins, outs, params, extra));
     el.append(head, body);
