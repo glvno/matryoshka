@@ -17,4 +17,6 @@ done
 $CC -O1 -w -fsyntax-only firmware/test/fm1_sim.c
 $CC -O1 -w -o build/exact_test firmware/test/exact_test.c -lm
 build/exact_test 2000000
+$CC -O2 -w -ffp-contract=off -Ifirmware/src -o build/fpu_probe firmware/test/fpu_probe.c -lm   # (D-1114: the float kernels' bits on the host)
+build/fpu_probe > /dev/null   # (exits 1 when a hash differs from the FM-1's)
 echo "harness-compile: all harnesses compile"

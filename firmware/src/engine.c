@@ -6,7 +6,8 @@
  * its parts. Each group hands the notes to its parts with its own allocator, the rest plays the shared keyboard (one note).
  * Number formats: signals, parameters Q16.16; oscillator phase u32 (2^32 = 1 cycle);
  * filter coefficients Q24; envelope level and rates Q30; a recursive kernel may keep its states and do its arithmetic in
- * single-precision float inside its module (D-1112: the Resonator). Build: -DENG_POOL=... places the big buffers (device:
+ * single-precision float inside its module (D-1112: the Resonator, the Multimode filter, the Ladder, the Formant filter).
+ * Build: -DENG_POOL=... places the big buffers (device:
  * the .pool section), ENG_LOWRAM the second line area, line_low (device: .lowram, below the RAM region, #273). Needs 64-bit multiply (hardware) and, at block rate and on waveform edges, 64/32 division. */
 #include "engine.h"
 #include "defs.h"
@@ -76,12 +77,46 @@ typedef int32_t esig_t;
 /* the per-sample helpers are forced inline: -Os left mulq / mulr as calls, a sixth of a busy patch's cycles went to the
  * call and return (tools/cpu, npm run cpu-hot) */
 #define HOT static inline __attribute__((always_inline))
+/* a sample loop of the per-copy path unrolled 4 times (#1072): the same operations in the same order, so the same output;
+ * on the FM-1 a taken branch costs about 7.5 cycles, a loop's whole body costs a few (tools/emu/timing.txt) */
+#if defined(__clang__)
+#define UNROLL4 _Pragma("clang loop unroll_count(4)")
+#else
+#define UNROLL4
+#endif
 
 HOT int32_t mulq(int32_t a, int32_t b, unsigned s) { return (int32_t)(((int64_t)a * b) >> s); }
 HOT int32_t mul16(int32_t a, int32_t b) { return mulq(a, b, 16); }
 /* rounded to nearest: no bias, which the filter's integrators would turn into a DC offset at low cutoffs */
 HOT int32_t mulr(int32_t a, int32_t b, unsigned s) { return (int32_t)(((int64_t)a * b + ((int64_t)1 << (s - 1))) >> s); }
 HOT int32_t clampi(int32_t v, int32_t lo, int32_t hi) { return v < lo ? lo : v > hi ? hi : v; }
+/* x held to +-l (compares: fminf / fmaxf are library calls in wasm) */
+HOT float clampf(float x, float l) { return x > l ? l : x < -l ? -l : x; }
+/* 2^x without libm (control rate, D-1111), x held to -126 .. 127: the whole part into the exponent, 2^f of the
+ * fraction by the series of e^(f ln 2) to the ninth power (within 1.1e-7) */
+static inline float exp2_f(float x)
+{
+    union { float f; int32_t i; } s;
+    int32_t w;
+    float f;
+    x = x < -126.0f ? -126.0f : x > 127.0f ? 127.0f : x;
+    w = (int32_t)x;                                          /* (toward zero, then down: the floor) */
+    if ((float)w > x)
+        w--;
+    f = (x - (float)w) * 0.69314718f;
+    s.i = (w + 127) << 23;
+    return s.f * (1.0f + f * (1.0f + f * (1.0f / 2.0f) * (1.0f + f * (1.0f / 3.0f) * (1.0f + f * (1.0f / 4.0f) * (1.0f + f * (1.0f / 5.0f)
+           * (1.0f + f * (1.0f / 6.0f) * (1.0f + f * (1.0f / 7.0f) * (1.0f + f * (1.0f / 8.0f) * (1.0f + f * (1.0f / 9.0f))))))))));
+}
+
+/* x rounded to the nearest whole number (ties to even) for |x| < 2^22: the FPU's own rounding, one add (1.5 x 2^23
+ * puts the sum's last mantissa bit at one) */
+HOT int32_t round_f(float x)
+{
+    union { float f; int32_t i; } u;
+    u.f = x + 12582912.0f;
+    return u.i - 0x4B400000;
+}
 
 /* (x << 16) / ENG_SR truncated to 32 bits (a Q16 frequency in Hz -> u32 turns per sample) with two 32-bit divisions
  * instead of a 64-bit one: x = q sr + r, then q 2^16 + floor(r 2^16 / sr) (r < sr < 2^16), equal modulo 2^32 */
@@ -279,20 +314,6 @@ static int32_t sin_turn(uint32_t ph)
     uint32_t i = ph >> 22, fr = (ph >> 6) & 0xFFFFu;
     int32_t s0 = SIN_T[i], s1 = SIN_T[i + 1u];
     return (s0 + (int32_t)(((int64_t)(s1 - s0) * fr) >> 16)) >> 14;
-}
-
-/* The unchanged Newton refinement; d must remain current even when its seed divisor is unchanged. */
-HOT int32_t recip24_refine(int32_t d, int32_t x)
-{
-    int32_t t = (int32_t)(((int64_t)d * x) >> 24);
-    return (int32_t)(((int64_t)x * ((2 << 24) - t)) >> 24);
-}
-
-/* 1 / (d / 2^24) in Q24 for d (Q24) in [2^24, 2^30): 32-bit divide for a first estimate, one Newton step */
-static int32_t recip24(int32_t d)
-{
-    int32_t x = (int32_t)(0xFFFFFFFFu / ((uint32_t)d >> 8)) << 8;
-    return recip24_refine(d, x);
 }
 
 static inline int32_t round_q16(int32_t v) { return (v + 32768) >> 16; }   /* Math.round for the integer params */
@@ -561,14 +582,14 @@ typedef struct {
         struct { uint32_t phase, seed; int32_t held; uint32_t since; int32_t interval; uint16_t ticks; uint8_t clk_hi, rst_hi, wraps, wok; int32_t from, last, wl; } lfo;   /* interval: clock edge distance in samples, Q8; wraps: cycles ended since the last snap; from, last: the random wave's start and its last value; wl: the output at the last stretch's end (#806), set (wok) at the first block from the wave where it starts */
         struct { int32_t y; } gld;         /* Q24 */
         struct { uint32_t seed; int32_t y; } noise;   /* y: the colour one-pole, Q24 */
-        struct { int32_t ic1[3], ic2[3]; uint8_t e; } vow;   /* three band passes, Q20 (Q20 + e, ring_scale) */
+        struct { float ic1[3], ic2[3]; } vow;         /* three band passes (float in steps of Q16, D-1112) */
         struct { uint32_t phase; int32_t ap[4], fbv; } phs;   /* the sweep LFO, the four allpasses' states and the feedback sample (Q20) */
         struct { int32_t held, cnt, xb, ap[16]; } crush;   /* xb, ap: the 2x oversampling (os_up / os_down) */
         struct { int32_t xb, ap[16]; } shp;
         struct { int32_t v, ka, kd, kr, ainc, ad, ar; uint8_t stage, prev, ok; } adsr;   /* k*: the A D R the rates (ainc, ad, ar) were
                                                                                        * worked out for, ok: which are (the divisions run only on a change) */
-        struct { int32_t ic1, ic2, jc1, jc2; uint8_t e; } flt;   /* stage 1 and stage 2 integrators (Q20 + e, ring_scale) */
-        struct { int32_t s[4]; uint8_t e; } lad;      /* the four one-pole states, Q20 (Q20 + e, ring_scale) */
+        struct { float ic1, ic2, jc1, jc2; } flt;     /* stage 1 and stage 2 integrators (float in steps of Q16, D-1112) */
+        struct { float s[4]; } lad;                   /* the four one-pole states (float in steps of Q16, D-1112) */
         struct { int32_t env; } dyn;                  /* the peak follower, Q24 */
         struct { esig_t *buf; int32_t g, cm, pm, c[LIMIT_AHEAD / LIMIT_CHUNK]; uint8_t w; } lim;   /* Limiter (#1019): its lookahead line, the gain (Q30), the peak of the chunk being filled and of the line's chunks (pm: the largest of c), the line's next place */
         struct { int32_t env, lc, hc, pk, prev, y; uint32_t cnt; int32_t frac, t; uint8_t trig, arm, valid; } esp;   /* Q24: the envelope, the band pass's one-poles, its peak hold, its previous sample, the glided pitch; samples since the last crossing, that crossing's fraction (Q16), the measured pitch (Q16 octaves) */
@@ -577,7 +598,7 @@ typedef struct {
         struct { int32_t a[8], b[8], ia; uint32_t phase; } fs;   /* the Hilbert chains (w1 w2 per section), chain A's delayed sample, the quadrature oscillator */
         struct { struct grain_line *ln; uint32_t w, acc, seed; uint8_t prev; } gr;   /* acc: grains per sample, Q24 */
         struct { int16_t *buf; int64_t cur; uint32_t len, w, t, seen, beat; int32_t rate; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev, rk, ph, tp; } dly;   /* len: its line's samples, from its length (dly_samples); cur 64 bits (a long line is more samples than Q16 holds in 32) */   /* t, ring, seen, beat: the clock tempo; cur, rate: the read position's distance behind w (samples Q16, 0 = not yet set) and its glide (dly_glide); rk, ph: a lower rate (#659, dly_slow): the rate step's k the line holds (0 none yet), the sample within a line sample; tp: Tape on (#660, dly_tape) */
-        struct { int16_t *buf; uint16_t li[8], ai[2], pi, oct; int32_t lp[8]; uint32_t ph[2]; int32_t gain[8], size, kp[6]; uint8_t gains_ok, frozen, hw, kdone; uint16_t still, hold; } rev;   /* FDN indices/states/phases; exact decay gains cached until effective size/freeze changes; D-1103: the settings of the block before (kp, the kernel's), the ring's next place (hw), the kernel already run this block (kdone); D-1109 (reverb_kernel's drain): the loudest wet sum since the last input, in bits above one step of the lines (oct), the samples since that input / 16 (still: 23 s, past the longest wait), the samples a tail takes to fall 6 dB (hold: at most 28,300). The 136 bytes the union has (the Delay's) */
+        struct { int16_t *buf; uint16_t li[8], ai[2], pi, oct; float lp[8]; uint32_t ph[2]; float gain[8]; int32_t size, kp[6]; uint8_t gains_ok, frozen, hw, kdone; uint16_t still, hold; } rev;   /* FDN indices/phases; the damping states (float, steps of the lines); decay gains cached until effective size/freeze changes; D-1103: the settings of the block before (kp, the kernel's), the ring's next place (hw), the kernel already run this block (kdone); D-1109 (reverb_kernel's drain): the loudest wet sum since the last input, in bits above one step of the lines (oct), the samples since that input / 16 (still: 23 s, past the longest wait), the samples a tail takes to fall 6 dB (hold: at most 28,300). The 136 bytes the union has (the Delay's) */
         struct { int32_t v; uint32_t t; int32_t rk[4], inc[4], k[4]; uint32_t len[4]; uint8_t stage, prev, ok; } env;  /* Q30, like the ADSR; t: samples
                                                     * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
         rate_env_t rateenv;
@@ -605,7 +626,7 @@ typedef struct {
         struct { int32_t v, c1; } sh;
         struct { uint32_t rnd, rnd0; uint8_t reg, pat, c1, r1; } shr;   /* Shift register: the flip stream and where a reset restarts it; the stages (s1 in bit 7), the pattern a reset restores, clock / reset high at the previous sample */
         struct { uint8_t hi; } cmp;   /* Comparator: gt is high */
-        struct { int32_t vac, y1, y2, t1; } lpg;   /* Low pass gate: the vactrol (Q30), the two one-poles (Q24), strike at the previous sample */
+        struct { float vac, y1, y2; int32_t t1; } lpg;   /* Low pass gate: the vactrol (0..1), the two one-poles (steps of Q16), strike at the previous sample */
         struct { int32_t rem, t1; } pls;
         struct { int32_t w[SELECT_NOUT - 1]; int8_t k; uint8_t fading; } sel;   /* Selector: each input's weight (Q16), the position (-1: none yet) */
         struct { int32_t cvel[ARP_HELD]; uint32_t pend_pos, wait, late, steps, j, cycle, o_ticks, o_frac;
@@ -6825,24 +6846,28 @@ static void m_scale(const node_t *nd, inst_t *it, uint32_t n)
     esig_t *out = it->out[0];
     int32_t g = EF(it, SCALE_P_GAIN), o = EF(it, SCALE_P_OFFSET);
     uint32_t i;
-    if (!g || in == zero_buf)
+    if (!g || in == zero_buf) {
         fill(out, o, n);
-    else if (g == ENG_ONE)
+    } else if (g == ENG_ONE) {
+        UNROLL4
         for (i = 0; i < n; i++)
             out[i] = in[i] + o;
-    else
+    } else {
+        UNROLL4
         for (i = 0; i < n; i++)
             out[i] = mul16(in[i], g) + o;
+    }
 }
 
 static int32_t env_rate(int32_t t_q16);
 static int32_t env_rate_n(uint32_t n);
 
-/* lin glide's step for a time (Q16 s): one unit per that time, Q24 per sample */
+/* lin glide's step for a time (Q16 s): one unit per that time, Q24 per sample (control-rate float, D-1111: the division
+ * only past one sample, never by zero) */
 static int32_t glide_step(int32_t t)
 {
-    int64_t den = (int64_t)t * ENG_SR;                                    /* samples, Q16 */
-    return den > ((int64_t)1 << 16) ? (int32_t)(((int64_t)1 << 40) / den) : 1 << 24;
+    float den = (float)t * ((float)ENG_SR / 65536.0f);                     /* samples */
+    return den > 1.0f ? (int32_t)(16777216.0f / den) : 1 << 24;
 }
 
 /* a one-pole glide: 99 % of a step in `time` (the envelope's rate curve, Q30 per sample). The state is Q24 (+-128):
@@ -7196,32 +7221,41 @@ static void m_vca(const node_t *nd, inst_t *it, uint32_t n)
     int32_t g = EF(it, VCA_P_GAIN);
     uint32_t i;
     (void)nd; /* an unplugged cv reads the zero buffer: a VCA with no control is closed */
-    if (!g || in == zero_buf || cv == zero_buf)
+    if (!g || in == zero_buf || cv == zero_buf) {
         fill(out, 0, n);
-    else if (g == ENG_ONE)
+    } else if (g == ENG_ONE) {
+        UNROLL4
         for (i = 0; i < n; i++)
             out[i] = mul16(in[i], cv[i]);
-    else
+    } else {
+        UNROLL4
         for (i = 0; i < n; i++)
             out[i] = mul16(mul16(in[i], cv[i]), g);
+    }
 }
 
-#define LAD_SAT_KNEE (3 << 19)      /* 1.5 in Q20: the saturator's knee */
-#define LAD_SAT_CUBE 2485513        /* 1 / 6.75 in Q24 */
+/* #969 (D-1109): a ring with no input ends at exactly zero.
+ * The Multimode filter, the Ladder and the Formant filter hold their states and compute in single-precision float
+ * (D-1112), in steps of the Q16 signal. Float rounding neither holds a ring up nor cuts it short while it is above the
+ * output's step; below it a ring would end in the subnormal range, held there by rounding to nearest. So at the end of a
+ * block whose input is all zero, states that are all under RING_END are set to exactly zero. Their outputs are cut toward
+ * zero to a whole step, as the Resonator's (m_modal). */
+#define RING_END (1.0f / 256.0f)    /* a float state's end: 1/256 of the output's step, -144 dBFS */
 
-/* #969 (D-1109): in fixed point a ring with no input ends at exactly zero. The Multimode filter, the Ladder and the
- * Formant filter keep Q20 states and round their products. With no input, a ring that falls by less than one rounding
- * step per sample is held there for ever: a limit cycle (a resonant ring) or a stall (a low pass short of zero), at up
- * to about -55 dBFS with high resonance at low cutoffs. In a block whose input is all zero the states are scaled by 2^e
- * (Q20 + e) so that the largest one's top bit is RING_TOP, whatever the ring's level: a rounding step is then far below
- * the ring's fall per sample, so it decays as in the reference, and once it is under RING_EMAX's floor (-132 dBFS, far
- * below the output's step) the states are set to zero. A block with input scales them back to Q20 first, so the
- * filters play as before whenever they have input. */
-#define RING_TOP 24                 /* the largest scaled state's top bit: 2^24..2^25, room for 64x before 2^31 */
-#define RING_EMAX 27                /* the largest e: the output shift 4 + e stays under 32; there 2^25 is 2^-22 */
+/* is there a ring to end: are the ns float states all under RING_END, and not all zero already? */
+static int ring_endf(const float *s, uint32_t ns)
+{
+    uint32_t i, any = 0;
+    for (i = 0; i < ns; i++) {
+        if (s[i] >= RING_END || s[i] <= -RING_END)
+            return 0;
+        any |= s[i] != 0.0f;
+    }
+    return (int)any;
+}
 
-/* is the block's input all zero? (asked only while the states are not: an audio input is non-zero at its first sample
- * nearly always, one compare; a silent one costs about 2 cycles a sample, in fours) */
+/* is the block's input all zero? (asked only once the states are under RING_END: an audio input is non-zero at its first
+ * sample nearly always, one compare; a silent one costs about 2 cycles a sample, in fours) */
 static int ring_quiet(const esig_t *in, uint32_t n)
 {
     uint32_t i;
@@ -7236,56 +7270,18 @@ static int ring_quiet(const esig_t *in, uint32_t n)
     return 1;
 }
 
-/* the ns states s[] at scale 2^e moved to the scale returned: with quiet, the one that puts the largest's top bit at
- * RING_TOP (not below 2^0; past RING_EMAX the ring is under the floor and the states become 0), else back to 2^0 */
-static uint32_t ring_scale(int32_t *s, uint32_t ns, uint32_t e, int quiet)
-{
-    uint32_t m = 0, i;
-    int32_t ne, d;
-    for (i = 0; i < ns; i++)
-        m |= (uint32_t)(s[i] < 0 ? -s[i] : s[i]);
-    if (!m)
-        return 0;
-    ne = quiet ? (int32_t)e + RING_TOP - (31 - __builtin_clz(m)) : 0;
-    if (ne > RING_EMAX) {
-        for (i = 0; i < ns; i++)
-            s[i] = 0;
-        return 0;
-    }
-    if (ne < 0)
-        ne = 0;
-    d = ne - (int32_t)e;
-    if (d > 0)
-        for (i = 0; i < ns; i++)
-            s[i] = (int32_t)((uint32_t)s[i] << d);   /* compiles to pi32v2's in-memory shift `[rX] <<= rY` (fm1-emu: #982) */
-    else if (d < 0)
-        for (i = 0; i < ns; i++)
-            s[i] = (s[i] + (1 << (-d - 1))) >> -d;
-    return (uint32_t)ne;
-}
-
+/* a stage's coefficients in float (D-1112) for the warped cutoff g and the damping k: a1 = 1 / (1 + g (g + k)), a2 = g a1,
+ * a3 = g a2. 1 + g (g + k) is at least 1 - k^2 / 4: above 0.99 at the lowest k (-0.16, the self-oscillation at res 1),
+ * so the division never meets 0 (D-1114) */
 typedef struct {
-    int32_t g, a1, a2, a3;
-} svf_coef_t;
+    float a1, a2, a3;
+} svf_f_t;
 
-typedef struct { uint32_t key; int32_t seed; } svf_recip_t;
-
-/* the coefficients of one stage for the tan() warped cutoff g */
-static void svf_stage(svf_coef_t *c, int32_t g, int32_t k24, svf_recip_t *cache)
+HOT void svf_stagef(svf_f_t *c, float g, float k)
 {
-    int32_t den = (1 << 24) + mulq(g, g + k24, 24);
-    c->g = g;
-    if (cache) {
-        uint32_t key = (uint32_t)den >> 8;
-        if (cache->key != key) {
-            cache->key = key;
-            cache->seed = (int32_t)(0xFFFFFFFFu / key) << 8;
-        }
-        c->a1 = recip24_refine(den, cache->seed);
-    } else
-        c->a1 = recip24(den);
-    c->a2 = mulq(g, c->a1, 24);
-    c->a3 = mulq(g, c->a2, 24);
+    c->a1 = 1.0f / (1.0f + g * (g + k));
+    c->a2 = g * c->a1;
+    c->a3 = g * c->a2;
 }
 
 /* the warped cutoff g = tan(pi fc / sr) for a cutoff given as a phase increment (cutoff / sr in u32 turns) */
@@ -7302,46 +7298,53 @@ static int32_t svf_g(uint32_t rinc)
     return t0 + (int32_t)(((int64_t)(t1 - t0) * fr) >> 16);
 }
 
-#define SQRT2_24 23726566   /* stage 2's k: sqrt(2) in Q24 (Q 0.7), the resonance comes from stage 1 only */
+#define FLT_K2 1.41421356f   /* stage 2's k: sqrt(2) (Q 0.7), the resonance comes from stage 1 only */
+
+/* svf_g as a float */
+static float svf_gf(uint32_t rinc) { return (float)svf_g(rinc) * (1.0f / 16777216.0f); }
 
 /* Two stages: stage 1 (12 dB) gives lp12, bp, hp (and notch, peak, allpass, and hp6 = hp + 2 bp, a resonant 6 dB high
  * pass, from the same values, only when a cable leaves them); stage 2 filters lp12 again (lp24); mix fades lp24 -> hp by morph.
- * The integrator states are Q20 (+-2048: room for the resonance peak), the signals Q16; products are rounded.
- * Key tracking moves the cutoff by the voice pitch (octaves, C4 = as set), like the host engine, once per block. */
+ * Single-precision float inside the module (D-1112): the states and the signals in steps of Q16 (the input's Q16 value),
+ * the states held to +-1024 (FLT_LIM), the outputs cut toward zero to a whole step; the coefficients from the integer
+ * cutoff (svf_g), worked out in float. Key tracking moves the cutoff by the voice pitch (octaves, C4 = as set), like the
+ * host engine, once per block. */
+#define FLT_LIM 67108864.0f   /* 1024 in steps of Q16 */
+
 static int32_t filter_over(const inst_t *it)   /* how far res is past FILTER_OSC_FROM with osc on, Q16 (0: off) */
 {
     int32_t res = EF(it, FILTER_P_RES);
     return EF(it, FILTER_P_OSC) >= 32768 && res > FILTER_OSC_FROM_Q16 ? res - FILTER_OSC_FROM_Q16 : 0;
 }
 
-/* the damping the drive adds (#670, modules.ts filterDriveLoss), Q24, for a = drive r |bp| (Q20, held to
- * FILTER_DRIVE_TOP): 1 - sat(a) / a, that is a^2 / 6.75 below the knee and 1 - 1 / a above it */
-HOT int32_t filter_drive_loss(int32_t a)
+/* the damping the drive adds (#670, modules.ts filterDriveLoss) for a = drive r |bp| (held to FILTER_DRIVE_TOP):
+ * 1 - sat(a) / a, that is a^2 / 6.75 below the knee and 1 - 1 / a above it (a >= 1.5 there: no division by 0) */
+HOT float filter_drive_loss(float a)
 {
-    if (a >= FILTER_DRIVE_KNEE_Q20)
-        return (1 << 24) - recip24(a << 4);
-    return mulq(mulq(a, a, 20), LAD_SAT_CUBE, 20);
+    if (a >= (float)FILTER_DRIVE_KNEE_Q20 * (1.0f / 1048576.0f))
+        return 1.0f - 1.0f / a;
+    return a * a * (1.0f / 6.75f);
 }
 
-/* osc, drv, e: constants at each call (m_filter), so the ordinary filter carries none of the self-oscillation's or the
- * drive's work, nor the scaling's (e: the states' scale in a silent block, ring_scale; 0 = Q20). drv (#670, drive above
- * 0 and res above 0): the damping grows by r (1 - sat(a) / a), a = drive r |bp|, so stage 1 is solved per sample, as
- * with osc. */
-HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv, uint32_t e)
+/* osc, drv: constants at each call (m_filter), so the ordinary filter carries none of the self-oscillation's or the
+ * drive's work. drv (#670, drive above 0 and res above 0): the damping grows by r (1 - sat(a) / a), a = drive r |bp|,
+ * so stage 1 is solved per sample, as with osc. */
+HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
 {
     const esig_t *in = it->in[FILTER_I_IN], *cv = it->in[FILTER_I_CV], *mo = it->in[FILTER_I_MORPH];
-    int32_t res = EF(it, FILTER_P_RES);
     /* self-oscillation (osc on, res past FILTER_OSC_FROM; modules.ts): the damping falls below 0 near the top and grows
      * with the band-pass state squared (held to +-FILTER_OSC_CLIP), so stage 1 is solved per sample there */
-    int32_t over = osc ? filter_over(it) : 0;   /* Q16 */
-    int32_t k24 = (2 << 24) - mulq(res, 33218888, 16) - mulq(over, FILTER_OSC_K_Q24, 16);   /* 2 - 1.98 res (- the fall) */
-    int32_t gam = mulq(over, FILTER_OSC_GAIN_Q24, 16), gc = 0, ke = k24;                    /* Q24; gc: the current g, ke: the damping */
-    int32_t r24 = mulq(res, 33218888, 16), dr = drv ? mulq(EF(it, FILTER_P_DRIVE), r24, 24) : 0;   /* 1.98 res Q24; drive r Q16 */
-    int32_t cvamt = EF(it, FILTER_P_CVAMT), ic1 = it->s.flt.ic1, ic2 = it->s.flt.ic2, jc1 = it->s.flt.jc1, jc2 = it->s.flt.jc2;
-    int32_t morph = EF(it, FILTER_P_MORPH), tr = EF(it, FILTER_P_TRACK) >= 32768 ? IT_PV(nd, it)->pitch : 0;
+    float over = osc ? (float)filter_over(it) * (1.0f / 65536.0f) : 0.0f;
+    float r = (float)EF(it, FILTER_P_RES) * (1.98f / 65536.0f);                              /* r = 1.98 res */
+    float k = 2.0f - r - over * ((float)FILTER_OSC_K_Q24 * (1.0f / 16777216.0f));           /* the damping (2 - r - the fall) */
+    float gam = over * ((float)FILTER_OSC_GAIN_Q24 * (1.0f / 16777216.0f)) * (1.0f / 4294967296.0f);   /* per step^2 */
+    float dr = drv ? (float)EF(it, FILTER_P_DRIVE) * r * (1.0f / 4294967296.0f) : 0.0f;    /* drive r, per step */
+    float ic1 = it->s.flt.ic1, ic2 = it->s.flt.ic2, jc1 = it->s.flt.jc1, jc2 = it->s.flt.jc2, gc = 0.0f, ke = k;
+    float mf = (float)clampi(EF(it, FILTER_P_MORPH), 0, 65536) * (1.0f / 65536.0f);
+    int32_t cvamt = EF(it, FILTER_P_CVAMT), morph = EF(it, FILTER_P_MORPH), lcv = 0;
+    int32_t tr = EF(it, FILTER_P_TRACK) >= 32768 ? IT_PV(nd, it)->pitch : 0;
     uint32_t base = hz_turns((uint32_t)EF(it, FILTER_P_CUTOFF)), i;
-    svf_coef_t c, d;
-    svf_recip_t reciprocal = {0, 0};   /* block-local: no lane sharing; only the seed division can be reused */
+    svf_f_t c, d;
     int fixed = !cvamt || !(nd->conn & (1u << FILTER_I_CV));   /* zero depth: changing CV cannot move the coefficients */
     int msig = nd->conn & (1u << FILTER_I_MORPH);
     int ext = !IS_DUMMY(it->out[FILTER_O_NOTCH]) || !IS_DUMMY(it->out[FILTER_O_PEAK]) ||
@@ -7354,107 +7357,102 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv, 
     int lp_only = used == (1u << FILTER_O_LP12);
     int hp6_only = used == (1u << FILTER_O_HP6);
     esig_t *single = lp_only ? it->out[FILTER_O_LP12] : it->out[FILTER_O_HP6];
-    int32_t lcv = 0;
-    const uint32_t sh = 4 + e;                   /* the outputs: Q20 + e to Q16, rounded */
-    const int32_t rnd = 1 << (sh - 1);
     if (tr)
         base = exp2_scale(base, tr);
-    if (osc && !ic1 && !ic2)
-        ic1 = FILTER_OSC_SEED_Q20;               /* a filter at rest: a small kick starts the oscillation */
+    if (osc && ic1 == 0.0f && ic2 == 0.0f)
+        ic1 = (float)FILTER_OSC_SEED_Q20 * (1.0f / 16.0f);   /* a filter at rest: a small kick starts the oscillation */
     if (fixed) {
-        int32_t g = svf_g(base);
-        gc = g;
+        gc = svf_gf(base);
         if (!osc && !drv)
-            svf_stage(&c, g, k24, 0);
+            svf_stagef(&c, gc, k);
         if (st2)
-            svf_stage(&d, g, SQRT2_24, 0);
+            svf_stagef(&d, gc, FLT_K2);
     }
     /* Fixed linear MIX-only routing needs both stages, but no dummy-port stores or per-sample routing checks. */
     if (!osc && !drv && fixed && !msig && used == (1u << FILTER_O_MIX)) {
         esig_t *out = it->out[FILTER_O_MIX];
-        const int32_t m = clampi(morph, 0, 65536);
         for (i = 0; i < n; i++) {
-            int32_t v0 = in[i] << 4, v3 = v0 - ic2;
-            int32_t v1 = mulr(c.a1, ic1, 24) + mulr(c.a2, v3, 24);
-            int32_t v2 = ic2 + mulr(c.a2, ic1, 24) + mulr(c.a3, v3, 24);
-            int32_t h, w3, w1, w2;
-            ic1 = clampi(2 * v1 - ic1, -(1 << 30), 1 << 30);
-            ic2 = clampi(2 * v2 - ic2, -(1 << 30), 1 << 30);
-            h = v0 - mulr(v1, k24, 24) - v2;
+            float v0 = (float)in[i], v3 = v0 - ic2;
+            float v1 = c.a1 * ic1 + c.a2 * v3;
+            float v2 = ic2 + c.a2 * ic1 + c.a3 * v3;
+            float h, w3, w1, w2;
+            ic1 = clampf(2.0f * v1 - ic1, FLT_LIM);
+            ic2 = clampf(2.0f * v2 - ic2, FLT_LIM);
+            h = v0 - k * v1 - v2;
             w3 = v2 - jc2;
-            w1 = mulr(d.a1, jc1, 24) + mulr(d.a2, w3, 24);
-            w2 = jc2 + mulr(d.a2, jc1, 24) + mulr(d.a3, w3, 24);
-            jc1 = clampi(2 * w1 - jc1, -(1 << 30), 1 << 30);
-            jc2 = clampi(2 * w2 - jc2, -(1 << 30), 1 << 30);
-            out[i] = (w2 + mul16(h - w2, m) + rnd) >> sh;
+            w1 = d.a1 * jc1 + d.a2 * w3;
+            w2 = jc2 + d.a2 * jc1 + d.a3 * w3;
+            jc1 = clampf(2.0f * w1 - jc1, FLT_LIM);
+            jc2 = clampf(2.0f * w2 - jc2, FLT_LIM);
+            out[i] = (int32_t)(w2 + (h - w2) * mf);
         }
-        it->s.flt.ic1 = ic1;
-        it->s.flt.ic2 = ic2;
-        it->s.flt.jc1 = jc1;
-        it->s.flt.jc2 = jc2;
-        return;
-    }
-    for (i = 0; i < n; i++) {
-        int32_t v0 = in[i] << 4, v3, v1, v2, w3, w1, w2, h, m, kv1;          /* Q20 */
-        /* the coefficients only when the cv moves (the same values again), at most every 4th sample of the block (#787:
-         * the cutoff follows the cv in steps of 4 samples, modules.ts the same) */
-        if (!fixed && (i & 3u) == 0 && (i == 0 || cv[i] != lcv)) {
-            int32_t g;
-            lcv = cv[i];
-            g = svf_g(exp2_scale(base, mul16(lcv, cvamt)));
-            gc = g;
-            if (!osc && !drv)                        /* (with osc or drive stage 1 is solved again below, every sample) */
-                svf_stage(&c, g, k24, 0);
-            if (st2)
-                svf_stage(&d, g, SQRT2_24, 0);
+    } else
+        for (i = 0; i < n; i++) {
+            float v0 = (float)in[i], v3, v1, v2, w3, w1, w2, h, kv1;
+            /* the coefficients only when the cv moves (the same values again), at most every 4th sample of the block
+             * (#787: the cutoff follows the cv in steps of 4 samples, modules.ts the same) */
+            if (!fixed && (i & 3u) == 0 && (i == 0 || cv[i] != lcv)) {
+                lcv = cv[i];
+                gc = svf_gf(exp2_scale(base, mul16(lcv, cvamt)));
+                if (!osc && !drv)                    /* (with osc or drive stage 1 is solved again below, every sample) */
+                    svf_stagef(&c, gc, k);
+                if (st2)
+                    svf_stagef(&d, gc, FLT_K2);
+            }
+            if (osc) {                               /* the damping k + gam b^2 */
+                float b = clampf(ic1, (float)FILTER_OSC_CLIP_Q20 * (1.0f / 16.0f));
+                ke = k + gam * b * b;
+            }
+            if (drv) {                               /* plus r (1 - sat(a) / a), a = drive r |bp| */
+                float a = dr * (ic1 < 0.0f ? -ic1 : ic1), top = (float)FILTER_DRIVE_TOP_Q20 * (1.0f / 1048576.0f);
+                ke = (osc ? ke : k) + r * filter_drive_loss(a > top ? top : a);
+            }
+            if (osc || drv)
+                svf_stagef(&c, gc, ke);
+            v3 = v0 - ic2;
+            v1 = c.a1 * ic1 + c.a2 * v3;
+            v2 = ic2 + c.a2 * ic1 + c.a3 * v3;
+            ic1 = clampf(2.0f * v1 - ic1, FLT_LIM);
+            ic2 = clampf(2.0f * v2 - ic2, FLT_LIM);
+            kv1 = h = 0.0f;
+            if (!lp_only) {
+                kv1 = v1 * (osc || drv ? ke : k);
+                h = v0 - kv1 - v2;
+            }
+            /* One connected LP12 or HP6 output needs no stores to the unused ports. */
+            if (lp_only)
+                single[i] = (int32_t)v2;
+            else if (hp6_only)
+                single[i] = (int32_t)(h + 2.0f * v1);
+            else {
+                it->out[FILTER_O_LP12][i] = (int32_t)v2;
+                it->out[FILTER_O_BP][i] = (int32_t)v1;
+                it->out[FILTER_O_HP][i] = (int32_t)h;
+            }
+            if (st2) {
+                w3 = v2 - jc2;
+                w1 = d.a1 * jc1 + d.a2 * w3;
+                w2 = jc2 + d.a2 * jc1 + d.a3 * w3;
+                jc1 = clampf(2.0f * w1 - jc1, FLT_LIM);
+                jc2 = clampf(2.0f * w2 - jc2, FLT_LIM);
+                if (msig)
+                    mf = (float)clampi(morph + mo[i], 0, 65536) * (1.0f / 65536.0f);
+                it->out[FILTER_O_LP24][i] = (int32_t)w2;
+                it->out[FILTER_O_MIX][i] = (int32_t)(w2 + (h - w2) * mf);
+            }
+            if (ext && !hp6_only) {                  /* notch = in - k bp, peak = lp12 - hp, allpass = in - 2 k bp, hp6 */
+                it->out[FILTER_O_NOTCH][i] = (int32_t)(v0 - kv1);
+                it->out[FILTER_O_PEAK][i] = (int32_t)(v2 - h);
+                it->out[FILTER_O_AP][i] = (int32_t)(v0 - 2.0f * kv1);
+                /* hp + 2 bp: the MS-20 filter's 6 dB high pass (modules.ts). */
+                it->out[FILTER_O_HP6][i] = (int32_t)(h + 2.0f * v1);
+            }
         }
-        if (osc) {                                   /* the damping k + gam b^2 */
-            int32_t b = clampi(ic1, -FILTER_OSC_CLIP_Q20, FILTER_OSC_CLIP_Q20);
-            ke = k24 + mulr(gam, mulr(b, b, 20), 20);
-        }
-        if (drv) {                                   /* plus r (1 - sat(a) / a), a = drive r |bp| */
-            int64_t a = ((int64_t)(ic1 < 0 ? -ic1 : ic1) * dr) >> (16 + e);
-            ke = (osc ? ke : k24) + mulr(r24, filter_drive_loss(a > FILTER_DRIVE_TOP_Q20 ? FILTER_DRIVE_TOP_Q20 : (int32_t)a), 24);
-        }
-        if (osc || drv)
-            svf_stage(&c, gc, ke, &reciprocal);
-        v3 = v0 - ic2;
-        v1 = mulr(c.a1, ic1, 24) + mulr(c.a2, v3, 24);
-        v2 = ic2 + mulr(c.a2, ic1, 24) + mulr(c.a3, v3, 24);
-        ic1 = clampi(2 * v1 - ic1, -(1 << 30), 1 << 30);
-        ic2 = clampi(2 * v2 - ic2, -(1 << 30), 1 << 30);
-        kv1 = h = 0;
-        if (!lp_only) {
-            kv1 = mulr(v1, osc || drv ? ke : k24, 24);
-            h = v0 - kv1 - v2;
-        }
-        /* One connected LP12 or HP6 output needs no stores to the unused ports. */
-        if (lp_only)
-            single[i] = (v2 + rnd) >> sh;
-        else if (hp6_only)
-            single[i] = (h + 2 * v1 + rnd) >> sh;
-        else {
-            it->out[FILTER_O_LP12][i] = (v2 + rnd) >> sh;
-            it->out[FILTER_O_BP][i] = (v1 + rnd) >> sh;
-            it->out[FILTER_O_HP][i] = (h + rnd) >> sh;
-        }
-        if (st2) {
-            w3 = v2 - jc2;
-            w1 = mulr(d.a1, jc1, 24) + mulr(d.a2, w3, 24);
-            w2 = jc2 + mulr(d.a2, jc1, 24) + mulr(d.a3, w3, 24);
-            jc1 = clampi(2 * w1 - jc1, -(1 << 30), 1 << 30);
-            jc2 = clampi(2 * w2 - jc2, -(1 << 30), 1 << 30);
-            m = clampi(msig ? morph + mo[i] : morph, 0, 65536);
-            it->out[FILTER_O_LP24][i] = (w2 + rnd) >> sh;
-            it->out[FILTER_O_MIX][i] = (w2 + mul16(h - w2, m) + rnd) >> sh;
-        }
-        if (ext && !hp6_only) {                      /* notch = in - k bp, peak = lp12 - hp, allpass = in - 2 k bp, hp6 */
-            it->out[FILTER_O_NOTCH][i] = (v0 - kv1 + rnd) >> sh;
-            it->out[FILTER_O_PEAK][i] = (v2 - h + rnd) >> sh;
-            it->out[FILTER_O_AP][i] = (v0 - 2 * kv1 + rnd) >> sh;
-            /* hp + 2 bp: the MS-20 filter's 6 dB high pass (modules.ts). */
-            it->out[FILTER_O_HP6][i] = (h + 2 * v1 + rnd) >> sh;
-        }
+    {
+        /* D-1109: a ring under RING_END at the end of a silent block ends (with osc the ring is meant to go on) */
+        float st[4] = {ic1, ic2, jc1, jc2};
+        if (!osc && ring_endf(st, 4) && ring_quiet(in, n))
+            ic1 = ic2 = jc1 = jc2 = 0.0f;
     }
     it->s.flt.ic1 = ic1;
     it->s.flt.ic2 = ic2;
@@ -7462,170 +7460,121 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv, 
     it->s.flt.jc2 = jc2;
 }
 
-/* #969 (ring_scale), out of line so the ordinary filter's code stays as it was (filter_plain): a ring (states not 0) in
- * a silent block is scaled and run here (1); after one the states go back to Q20 (0: filter_plain runs the block) */
-static __attribute__((noinline)) int filter_ring(const node_t *nd, inst_t *it, uint32_t n)
-{
-    int32_t st[4] = {it->s.flt.ic1, it->s.flt.ic2, it->s.flt.jc1, it->s.flt.jc2};
-    int quiet;
-    uint32_t e;
-    if (!(st[0] | st[1] | st[2] | st[3]))
-        return 0;
-    quiet = !filter_over(it) && ring_quiet(it->in[FILTER_I_IN], n);   /* (with osc the ring is meant to go on) */
-    if (!quiet && !it->s.flt.e)
-        return 0;
-    e = ring_scale(st, 4, it->s.flt.e, quiet);
-    it->s.flt.e = (uint8_t)e;
-    it->s.flt.ic1 = st[0];
-    it->s.flt.ic2 = st[1];
-    it->s.flt.jc1 = st[2];
-    it->s.flt.jc2 = st[3];
-    if (!e)
-        return 0;
-    if (EF(it, FILTER_P_DRIVE) > 0 && EF(it, FILTER_P_RES) > 0)
-        filter_run(nd, it, n, 0, 1, e);
-    else
-        filter_run(nd, it, n, 0, 0, e);
-    return 1;
-}
-
-static __attribute__((noinline)) void filter_plain(const node_t *nd, inst_t *it, uint32_t n)
+static __attribute__((noinline)) void m_filter(const node_t *nd, inst_t *it, uint32_t n)
 {
     int drv = EF(it, FILTER_P_DRIVE) > 0 && EF(it, FILTER_P_RES) > 0;   /* without resonance the drive has nothing to clip */
     if (filter_over(it)) {
         if (drv)
-            filter_run(nd, it, n, 1, 1, 0);
+            filter_run(nd, it, n, 1, 1);
         else
-            filter_run(nd, it, n, 1, 0, 0);
+            filter_run(nd, it, n, 1, 0);
     } else if (drv)
-        filter_run(nd, it, n, 0, 1, 0);
+        filter_run(nd, it, n, 0, 1);
     else
-        filter_run(nd, it, n, 0, 0, 0);
+        filter_run(nd, it, n, 0, 0);
 }
 
-static __attribute__((noinline)) void m_filter(const node_t *nd, inst_t *it, uint32_t n)
-{
-    if (!filter_ring(nd, it, n))
-        filter_plain(nd, it, n);
-}
-
-/* Ladder filter with drive (modules.ts `ladder`): four TPT one-poles (G = g / (1 + g), Q24) in a loop with k = 4 res.
+/* Ladder filter with drive (modules.ts `ladder`): four TPT one-poles (G = g / (1 + g)) in a loop with k = 4 res.
  * The loop is solved linearly per sample (y4 = F (G^4 x + S), S the states' share, F = 1 / (1 + k G^4)), the loop input
  * u = sat(drive x - k y4) then runs through the stages; sat is v - v^3 / 6.75 up to |v| = 1.5, +-1 beyond. The
  * ordinary cutoff comes once per block from the mean of cv, cvamt and key tracking. With fm connected the coefficients
- * also follow each change in its samples. States Q20 (Q20 + e in a silent block, ring_scale), products rounded; the
- * saturator bounds the states, so no clamps. */
-HOT int32_t lad_sat(int32_t u, uint32_t e)   /* the saturator: v - v^3 / 6.75 up to |v| = 1.5, +-1 beyond (Q20 + e) */
+ * also follow each change in its samples. Single-precision float inside the module (D-1112): the states and the signals
+ * in steps of Q16, the outputs cut toward zero to a whole step; the saturator bounds the states, so no clamps. The
+ * divisions are by 1 + g and 1 + k G^4, both at least 1 (D-1114). */
+#define LAD_ONE 65536.0f   /* 1 in steps of Q16 */
+
+HOT float lad_sat(float u)   /* the saturator: v - v^3 / 6.75 up to |v| = 1.5, +-1 beyond (in steps of Q16) */
 {
-    int32_t a = u >> e;                         /* the level, Q20 */
-    if (a >= LAD_SAT_KNEE)
-        return (1 << 20) << e;
-    if (a <= -LAD_SAT_KNEE)
-        return -((1 << 20) << e);
-    return u - mulq(mulq(mulq(a, a, 20), u, 20), LAD_SAT_CUBE, 24);
+    if (u >= 1.5f * LAD_ONE)
+        return LAD_ONE;
+    if (u <= -1.5f * LAD_ONE)
+        return -LAD_ONE;
+    return u - u * u * u * (1.0f / (6.75f * LAD_ONE * LAD_ONE));
 }
 
-/* the same saturator at a stage's input (stsat), in 32-bit products: the cubic from u in Q14 (|u| < 1.5 there, so u^2
- * Q28 and the rest fit), within 2^-14 of lad_sat and about half its cycles (three per sample); scaled (e > 0), the last
- * product in 64 bits, and none once the cubic is 0 (under about -42 dBFS, most of a ring's tail) */
-HOT int32_t lad_sat_st(int32_t u, uint32_t e)
+/* the end of a block: the states stored, and set to zero when they are all under RING_END after a silent input (D-1109) */
+static void ladder_end(inst_t *it, const esig_t *in, uint32_t n, float s0, float s1, float s2, float s3)
 {
-    int32_t a = u >> e, q, c;
-    if (a >= LAD_SAT_KNEE)
-        return (1 << 20) << e;
-    if (a <= -LAD_SAT_KNEE)
-        return -((1 << 20) << e);
-    q = a >> 6;                                 /* Q14 */
-    c = (((q * q) >> 14) * (LAD_SAT_CUBE >> 8)) >> 16;   /* u^2 / 6.75, Q14 */
-    if (e)
-        return c ? u - mulq(c, u, 14) : u;
-    return u - ((c * q) >> 8);
+    float *s = it->s.lad.s;
+    s[0] = s0;
+    s[1] = s1;
+    s[2] = s2;
+    s[3] = s3;
+    if (ring_endf(s, 4) && ring_quiet(in, n))
+        s[0] = s[1] = s[2] = s[3] = 0.0f;
 }
 
-/* stsat (#672), e (the states' scale, ring_scale; 0 = Q20): constants at each call. stsat: the saturator at the input
- * of stages 2, 3 and 4 too */
-HOT void ladder_run(const node_t *nd, inst_t *it, uint32_t n, int audio, int stsat, uint32_t e)
+/* stsat (#672): a constant at each call; the saturator at the input of stages 2, 3 and 4 too */
+HOT void ladder_run(const node_t *nd, inst_t *it, uint32_t n, int audio, int stsat)
 {
     const esig_t *in = it->in[LADDER_I_IN], *cv = it->in[LADDER_I_CV], *fm = it->in[LADDER_I_FM];
     esig_t *lp24 = it->out[LADDER_O_LP24], *lp12 = it->out[LADDER_O_LP12];
-    int32_t *s = it->s.lad.s;
-    const uint32_t sh = 4 + e;                   /* the outputs: Q20 + e to Q16, rounded */
-    const int32_t rnd = 1 << (sh - 1);
-    int32_t drive = EF(it, LADDER_P_DRIVE), cvamt = EF(it, LADDER_P_CVAMT);
-    int32_t k24 = EF(it, LADDER_P_RES) << 10;                                     /* 4 res, Q24 */
-    int32_t tr = EF(it, LADDER_P_TRACK) >= 32768 ? IT_PV(nd, it)->pitch : 0, x = tr;
+    float drive = (float)EF(it, LADDER_P_DRIVE) * (1.0f / 65536.0f), k = (float)EF(it, LADDER_P_RES) * (4.0f / 65536.0f);
+    float G = 0.0f, G2 = 0.0f, G3 = 0.0f, G4 = 0.0f, hG = 0.0f, F = 0.0f;
+    float s0 = it->s.lad.s[0], s1 = it->s.lad.s[1], s2 = it->s.lad.s[2], s3 = it->s.lad.s[3];   /* the four stages written out */
+    int32_t cvamt = EF(it, LADDER_P_CVAMT), x = EF(it, LADDER_P_TRACK) >= 32768 ? IT_PV(nd, it)->pitch : 0;
     uint32_t base = hz_turns((uint32_t)EF(it, LADDER_P_CUTOFF)), i;
-    int32_t G = 0, G2 = 0, G3 = 0, G4 = 0, hG = 0, F = 0;
     if (nd->conn & (1u << LADDER_I_CV)) {
         int64_t sum = 0;
         for (i = 0; i < n; i++)
             sum += cv[i];
         x += mul16(block_mean(sum, n), cvamt);
     }
-#define LADDER_COEFF(octave) do {                             \
-        int32_t oct = (octave);                              \
-        int32_t g = svf_g(oct ? exp2_scale(base, oct) : base); \
-        G = mulq(g, recip24((1 << 24) + g), 24);              \
-        G2 = mulq(G, G, 24);                                 \
-        G3 = mulq(G2, G, 24);                                \
-        G4 = mulq(G3, G, 24);                                \
-        hG = (1 << 24) - G;                                  \
-        F = recip24((1 << 24) + mulq(k24, G4, 24));           \
+#define LADDER_COEFF(octave) do {                               \
+        int32_t oct = (octave);                                \
+        float g = svf_gf(oct ? exp2_scale(base, oct) : base);  \
+        G = g / (1.0f + g);                                    \
+        G2 = G * G;                                            \
+        G3 = G2 * G;                                           \
+        G4 = G3 * G;                                           \
+        hG = 1.0f - G;                                         \
+        F = 1.0f / (1.0f + k * G4);                            \
     } while (0)
     LADDER_COEFF(x + (audio && n ? mul16(fm[0], cvamt) : 0));
-    {
-        int32_t s0 = s[0], s1 = s[1], s2 = s[2], s3 = s[3];     /* the states in registers, the four stages written out */
-        for (i = 0; i < n; i++) {
-            int32_t x20 = in[i] << 4, S, y4, u, v, y2;
-            if (audio && i && fm[i] != fm[i - 1])
-                LADDER_COEFF(x + mul16(fm[i], cvamt));
-            S = mulr(G3, s0, 24) + mulr(G2, s1, 24) + mulr(G, s2, 24) + s3;
-            S = mulr(S, hG, 24);
-            y4 = mulr(F, mulr(G4, x20, 24) + S, 24);
-            u = lad_sat(mulq(x20, drive, 16) - mulq(k24, y4, 24), e);
-            v = mulr(G, u - s0, 24); u = v + s0; s0 = u + v;
-            if (stsat)
-                u = lad_sat_st(u, e);
-            v = mulr(G, u - s1, 24); u = v + s1; s1 = u + v;
-            y2 = u;
-            if (stsat)
-                u = lad_sat_st(u, e);
-            v = mulr(G, u - s2, 24); u = v + s2; s2 = u + v;
-            if (stsat)
-                u = lad_sat_st(u, e);
-            v = mulr(G, u - s3, 24); u = v + s3; s3 = u + v;
-            lp24[i] = (u + rnd) >> sh;
-            lp12[i] = (y2 + rnd) >> sh;
-        }
-        s[0] = s0;
-        s[1] = s1;
-        s[2] = s2;
-        s[3] = s3;
+    for (i = 0; i < n; i++) {
+        float xi = (float)in[i], S, y4, u, v, y2;
+        if (audio && i && fm[i] != fm[i - 1])
+            LADDER_COEFF(x + mul16(fm[i], cvamt));
+        S = (G3 * s0 + G2 * s1 + G * s2 + s3) * hG;
+        y4 = (G4 * xi + S) * F;
+        u = lad_sat(drive * xi - k * y4);
+        v = G * (u - s0); u = v + s0; s0 = u + v;
+        if (stsat)
+            u = lad_sat(u);
+        v = G * (u - s1); u = v + s1; s1 = u + v;
+        y2 = u;
+        if (stsat)
+            u = lad_sat(u);
+        v = G * (u - s2); u = v + s2; s2 = u + v;
+        if (stsat)
+            u = lad_sat(u);
+        v = G * (u - s3); u = v + s3; s3 = u + v;
+        lp24[i] = (int32_t)u;
+        lp12[i] = (int32_t)y2;
     }
 #undef LADDER_COEFF
+    ladder_end(it, in, n, s0, s1, s2, s3);
 }
 
 #define DIODE_RINC_MAX 1288490189u   /* 0.3 of a cycle per sample: the diode mode's cutoff is held under it */
 
 /* The Ladder's diode mode (#671, modules.ts diodeLadder): the linearised diode ladder, four coupled stages
  * (I + g M) y = z + g e1 u with M tri-diagonal [2 -1; -1 2 -1; -1 2 -1; -1 1], g = tan(pi fc / sr) / DIODE_W180,
- * trapezoidal. The tri-diagonal elimination's factors (pivot reciprocals iu0..iu3, multipliers m1..m3, Q24) come once
- * per block, or at each change of fm when it is connected, as in the Moog mode; the loop is solved linearly (y4 =
- * p3 + b3 u), then u = sat((drive x - k p3) F), F = 1 / (1 + k b3), k = DIODE_KCRIT res. The outputs times the makeup
- * mk = (1 + k) / (1 + 4 res) (Q24, once per block): the Moog mode's passband. States Q20 (the Moog mode's s), at scale
- * 2^e (a constant at each call: diode_run 0, ladder_ring the scale). */
-HOT void diode_core(const node_t *nd, inst_t *it, uint32_t n, int audio, uint32_t e)
+ * trapezoidal. The tri-diagonal elimination's factors (pivot reciprocals iu0..iu3, multipliers m1..m3) come once per
+ * block, or at each change of fm when it is connected, as in the Moog mode; the loop is solved linearly (y4 = p3 + b3 u),
+ * then u = sat((drive x - k p3) F), F = 1 / (1 + k b3), k = DIODE_KCRIT res. The outputs times the makeup
+ * mk = (1 + k) / (1 + 4 res) (once per block): the Moog mode's passband. In float as the Moog mode, the same states;
+ * every pivot is at least 1 (each multiplier is under 1), as are 1 + k b3 and 1 + 4 res (D-1114). */
+HOT void diode_run(const node_t *nd, inst_t *it, uint32_t n, int audio)
 {
     const esig_t *in = it->in[LADDER_I_IN], *cv = it->in[LADDER_I_CV], *fm = it->in[LADDER_I_FM];
     esig_t *lp24 = it->out[LADDER_O_LP24], *lp12 = it->out[LADDER_O_LP12];
-    int32_t *s = it->s.lad.s;
-    int32_t drive = EF(it, LADDER_P_DRIVE), cvamt = EF(it, LADDER_P_CVAMT);
-    int32_t k24 = mulq(EF(it, LADDER_P_RES), DIODE_KCRIT_Q24, 16);
-    int32_t mk = mulq((1 << 24) + k24, recip24((1 << 24) + (EF(it, LADDER_P_RES) << 10)), 24);   /* Q24 */
-    int32_t x = EF(it, LADDER_P_TRACK) >= 32768 ? IT_PV(nd, it)->pitch : 0;
+    float res = (float)EF(it, LADDER_P_RES) * (1.0f / 65536.0f), drive = (float)EF(it, LADDER_P_DRIVE) * (1.0f / 65536.0f);
+    float k = res * ((float)DIODE_KCRIT_Q24 * (1.0f / 16777216.0f)), mk = (1.0f + k) / (1.0f + 4.0f * res);
+    float g = 0.0f, m1 = 0.0f, m2 = 0.0f, m3 = 0.0f, iu0 = 0.0f, iu1 = 0.0f, iu2 = 0.0f, iu3 = 0.0f, F = 0.0f;
+    float s0 = it->s.lad.s[0], s1 = it->s.lad.s[1], s2 = it->s.lad.s[2], s3 = it->s.lad.s[3];
+    int32_t cvamt = EF(it, LADDER_P_CVAMT), x = EF(it, LADDER_P_TRACK) >= 32768 ? IT_PV(nd, it)->pitch : 0;
     uint32_t base = hz_turns((uint32_t)EF(it, LADDER_P_CUTOFF)), i;
-    int32_t g = 0, m1 = 0, m2 = 0, m3 = 0, iu0 = 0, iu1 = 0, iu2 = 0, iu3 = 0, F = 0;
-    int32_t s0 = s[0], s1 = s[1], s2 = s[2], s3 = s[3];
     if (nd->conn & (1u << LADDER_I_CV)) {
         int64_t sum = 0;
         for (i = 0; i < n; i++)
@@ -7633,77 +7582,41 @@ HOT void diode_core(const node_t *nd, inst_t *it, uint32_t n, int audio, uint32_
         x += mul16(block_mean(sum, n), cvamt);
     }
     for (i = 0; i < n; i++) {
-        int32_t x20 = in[i] << 4, p3, u, e0, e1, e2, e3, y0, y1, y2, y3;
+        float xi = (float)in[i], p3, u, e0, e1, e2, e3, y0, y1, y2, y3;
         if (i == 0 || (audio && fm[i] != fm[i - 1])) {
-            int32_t oct = x + (audio ? mul16(fm[i], cvamt) : 0), b3;
+            int32_t oct = x + (audio ? mul16(fm[i], cvamt) : 0);
             uint32_t r = oct ? exp2_scale(base, oct) : base;
-            g = mulq(svf_g(r > DIODE_RINC_MAX ? DIODE_RINC_MAX : r), DIODE_IW180_Q24, 24);
-            iu0 = recip24((1 << 24) + 2 * g);
-            m1 = mulq(g, iu0, 24);
-            iu1 = recip24((1 << 24) + 2 * g - mulq(g, m1, 24));
-            m2 = mulq(g, iu1, 24);
-            iu2 = recip24((1 << 24) + 2 * g - mulq(g, m2, 24));
-            m3 = mulq(g, iu2, 24);
-            iu3 = recip24((1 << 24) + g - mulq(g, m3, 24));
-            b3 = mulq(mulq(mulq(mulq(g, m1, 24), m2, 24), m3, 24), iu3, 24);
-            F = recip24((1 << 24) + mulq(k24, b3, 24));
+            g = svf_gf(r > DIODE_RINC_MAX ? DIODE_RINC_MAX : r) * ((float)DIODE_IW180_Q24 * (1.0f / 16777216.0f));
+            iu0 = 1.0f / (1.0f + 2.0f * g);
+            m1 = g * iu0;
+            iu1 = 1.0f / (1.0f + 2.0f * g - g * m1);
+            m2 = g * iu1;
+            iu2 = 1.0f / (1.0f + 2.0f * g - g * m2);
+            m3 = g * iu2;
+            iu3 = 1.0f / (1.0f + g - g * m3);
+            F = 1.0f / (1.0f + k * (g * m1 * m2 * m3 * iu3));
         }
-        p3 = mulr(s3 + mulr(m3, s2 + mulr(m2, s1 + mulr(m1, s0, 24), 24), 24), iu3, 24);
-        u = lad_sat(mulq(mulq(x20, drive, 16) - mulq(k24, p3, 24), F, 24), e);
-        e0 = s0 + mulr(g, u, 24);
-        e1 = s1 + mulr(m1, e0, 24);
-        e2 = s2 + mulr(m2, e1, 24);
-        e3 = s3 + mulr(m3, e2, 24);
-        y3 = mulr(e3, iu3, 24);
-        y2 = mulr(e2 + mulr(g, y3, 24), iu2, 24);
-        y1 = mulr(e1 + mulr(g, y2, 24), iu1, 24);
-        y0 = mulr(e0 + mulr(g, y1, 24), iu0, 24);
-        s0 = 2 * y0 - s0;
-        s1 = 2 * y1 - s1;
-        s2 = 2 * y2 - s2;
-        s3 = 2 * y3 - s3;
-        if (!e) {
-            lp24[i] = mulr(y3, mk, 28);
-            lp12[i] = mulr(y1, mk, 28);
-        } else {                                 /* scaled: Q16 + e, then rounded by e (no 64-bit shift by a variable) */
-            lp24[i] = (mulq(y3, mk, 28) + (1 << (e - 1))) >> e;
-            lp12[i] = (mulq(y1, mk, 28) + (1 << (e - 1))) >> e;
-        }
+        p3 = (s3 + m3 * (s2 + m2 * (s1 + m1 * s0))) * iu3;
+        u = lad_sat((drive * xi - k * p3) * F);
+        e0 = s0 + g * u;
+        e1 = s1 + m1 * e0;
+        e2 = s2 + m2 * e1;
+        e3 = s3 + m3 * e2;
+        y3 = e3 * iu3;
+        y2 = (e2 + g * y3) * iu2;
+        y1 = (e1 + g * y2) * iu1;
+        y0 = (e0 + g * y1) * iu0;
+        s0 = 2.0f * y0 - s0;
+        s1 = 2.0f * y1 - s1;
+        s2 = 2.0f * y2 - s2;
+        s3 = 2.0f * y3 - s3;
+        lp24[i] = (int32_t)(y3 * mk);
+        lp12[i] = (int32_t)(y1 * mk);
     }
-    s[0] = s0;
-    s[1] = s1;
-    s[2] = s2;
-    s[3] = s3;
+    ladder_end(it, in, n, s0, s1, s2, s3);
 }
 
-static void diode_run(const node_t *nd, inst_t *it, uint32_t n, int audio) { diode_core(nd, it, n, audio, 0); }
-
-/* #969 (ring_scale), as filter_ring: a ring in a silent block, scaled and run here, both modes (1); else ladder_plain */
-static __attribute__((noinline)) int ladder_ring(const node_t *nd, inst_t *it, uint32_t n)
-{
-    int32_t *s = it->s.lad.s;
-    int quiet, audio;
-    uint32_t e;
-    if (!(s[0] | s[1] | s[2] | s[3]))
-        return 0;
-    quiet = ring_quiet(it->in[LADDER_I_IN], n);
-    if (!quiet && !it->s.lad.e)
-        return 0;
-    e = ring_scale(s, 4, it->s.lad.e, quiet);
-    it->s.lad.e = (uint8_t)e;
-    if (!e)
-        return 0;
-    audio = EF(it, LADDER_P_CVAMT) != 0 && (nd->conn & (1u << LADDER_I_FM)) != 0;
-    if (EF(it, LADDER_P_DIODE) >= 32768)
-        diode_core(nd, it, n, audio, e);
-    else if (EF(it, LADDER_P_STSAT) >= 32768)
-        ladder_run(nd, it, n, audio, 1, e);
-    else
-        ladder_run(nd, it, n, audio, 0, e);
-    return 1;
-}
-
-static __attribute__((noinline)) void ladder_plain(const node_t *nd, inst_t *it, uint32_t n)
+static __attribute__((noinline)) void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
 {
     /* Constant arguments remove all audio-rate checks (and the stages' saturators) from the ordinary filter loop. */
     int audio = EF(it, LADDER_P_CVAMT) != 0 && (nd->conn & (1u << LADDER_I_FM)) != 0;
@@ -7711,19 +7624,13 @@ static __attribute__((noinline)) void ladder_plain(const node_t *nd, inst_t *it,
         diode_run(nd, it, n, audio);
     else if (EF(it, LADDER_P_STSAT) >= 32768) {
         if (audio)
-            ladder_run(nd, it, n, 1, 1, 0);
+            ladder_run(nd, it, n, 1, 1);
         else
-            ladder_run(nd, it, n, 0, 1, 0);
+            ladder_run(nd, it, n, 0, 1);
     } else if (audio)
-        ladder_run(nd, it, n, 1, 0, 0);
+        ladder_run(nd, it, n, 1, 0);
     else
-        ladder_run(nd, it, n, 0, 0, 0);
-}
-
-static __attribute__((noinline)) void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
-{
-    if (!ladder_ring(nd, it, n))
-        ladder_plain(nd, it, n);
+        ladder_run(nd, it, n, 0, 0);
 }
 
 #define DB_TO_LOG2 10885            /* 1 / 6.0206 in Q16: dB -> octaves (log2) */
@@ -7951,7 +7858,7 @@ static void m_math(const node_t *nd, inst_t *it, uint32_t n)      /* modules.ts 
             esig_t *dst = o[k];
             if (IS_DUMMY(dst))
                 continue;
-#define MATH_ONE(Y) for (i = 0; i < n; i++) { int32_t a = mul16(ia[i], ka) + off, b = mul16(ib[i], kb); (void)b; dst[i] = (Y); }
+#define MATH_ONE(Y) UNROLL4 for (i = 0; i < n; i++) { int32_t a = mul16(ia[i], ka) + off, b = mul16(ib[i], kb); (void)b; dst[i] = (Y); }
             switch (k) {
             case MATH_O_ADD: MATH_ONE(a + b) break;
             case MATH_O_SUB: MATH_ONE(a - b) break;
@@ -7990,7 +7897,7 @@ static void m_logic(const node_t *nd, inst_t *it, uint32_t n)     /* modules.ts 
     int only = only_output(it, LOGIC_NOUT);
     if (only >= 0) {
         esig_t *dst = o[only];
-#define LOGIC_ONE(Y) for (i = 0; i < n; i++) { int a = ia[i] >= t, b = ib[i] >= t; (void)b; dst[i] = (Y) ? ENG_ONE : 0; }
+#define LOGIC_ONE(Y) UNROLL4 for (i = 0; i < n; i++) { int a = ia[i] >= t, b = ib[i] >= t; (void)b; dst[i] = (Y) ? ENG_ONE : 0; }
         switch (only) {
         case LOGIC_O_AND: LOGIC_ONE(a && b) break;
         case LOGIC_O_OR: LOGIC_ONE(a || b) break;
@@ -8189,12 +8096,14 @@ static void m_mixer(const node_t *nd, inst_t *it, uint32_t n)
         fill(out, 0, n);
         break;
     case 1:
+        UNROLL4
         for (i = 0; i < n; i++)
             out[i] = mul16(x[0][i], l[0]);
         break;
     case 2: {
         const esig_t *x0 = x[0], *x1 = x[1];
         const int32_t l0 = l[0], l1 = l[1];
+        UNROLL4
         for (i = 0; i < n; i++)
             out[i] = mul16(x0[i], l0) + mul16(x1[i], l1);
         break;
@@ -8202,11 +8111,13 @@ static void m_mixer(const node_t *nd, inst_t *it, uint32_t n)
     case 3: {
         const esig_t *x0 = x[0], *x1 = x[1], *x2 = x[2];
         const int32_t l0 = l[0], l1 = l[1], l2 = l[2];
+        UNROLL4
         for (i = 0; i < n; i++)
             out[i] = mul16(x0[i], l0) + mul16(x1[i], l1) + mul16(x2[i], l2);
         break;
     }
     default:
+        UNROLL4
         for (i = 0; i < n; i++)
             out[i] = mul16(a[i], la) + mul16(b[i], lb) + mul16(c[i], lc) + mul16(d[i], ld);
     }
@@ -8302,24 +8213,23 @@ static void __attribute__((noinline)) dly_glide(inst_t *it, const esig_t *in, es
     it->s.dly.rate = rate;
 }
 
-/* a lower rate's low pass over a block (modules.ts delaySlow): two sections in direct form I, lp their state (x1 x2 u1 u2
- * v1 v2 y1 y2, Q26; the second section's input is the first's output, so v1 v2 are always u1 u2 and only stored), c their
- * coefficients (DELAY_AA, Q30). Each product is one multiply-high (Q24), so a section loses the lowest two bits of Q26 to
- * its three roundings: about -140 dB. The input is clamped to +-4, what the line holds. ys gets the filtered input (Q16)
- * at each sample the line is written (ph = k - 1, counting from ph). A pass of its own, so the line's loop keeps its
- * registers. */
-static void dly_aa(int32_t *lp, const int32_t *c, const esig_t *in, uint32_t n, uint32_t ph, uint32_t k, int32_t *ys)
+/* a lower rate's low pass over a block (modules.ts delaySlow): two sections in direct form I in single-precision float
+ * (D-1112), lp their state (x1 x2 u1 u2 v1 v2 y1 y2 in steps of Q16; the second section's input is the first's output, so
+ * v1 v2 are always u1 u2 and only stored), c their coefficients (DELAY_AA). The input is clamped to +-4, what the line
+ * holds. ys gets the filtered input (Q16, rounded) at each sample the line is written (ph = k - 1, counting from ph). A
+ * pass of its own, so the line's loop keeps its registers. */
+static void dly_aa(float *lp, const float *c, const esig_t *in, uint32_t n, uint32_t ph, uint32_t k, int32_t *ys)
 {
-    const int32_t c0 = c[0], c1 = c[1], c2 = c[2], c3 = c[3], c4 = c[4], c5 = c[5];
-    int32_t x1 = lp[0], x2 = lp[1], u1 = lp[2], u2 = lp[3], y1 = lp[6], y2 = lp[7];
+    const float c0 = c[0], c1 = c[1], c2 = c[2], c3 = c[3], c4 = c[4], c5 = c[5];
+    float x1 = lp[0], x2 = lp[1], u1 = lp[2], u2 = lp[3], y1 = lp[6], y2 = lp[7];
     uint32_t i;
     for (i = 0; i < n; i++) {
-        int32_t x = clampi(in[i], -4 * ENG_ONE, 4 * ENG_ONE) * 1024, u, y;   /* Q26 */
-        u = (mulh32(c0, x + 2 * x1 + x2) - mulh32(c1, u1) - mulh32(c2, u2)) * 4;
-        y = (mulh32(c3, u + 2 * u1 + u2) - mulh32(c4, y1) - mulh32(c5, y2)) * 4;
+        float x = (float)clampi(in[i], -4 * ENG_ONE, 4 * ENG_ONE), u, y;
+        u = c0 * (x + 2.0f * x1 + x2) - c1 * u1 - c2 * u2;
+        y = c3 * (u + 2.0f * u1 + u2) - c4 * y1 - c5 * y2;
         x2 = x1; x1 = x; u2 = u1; u1 = u; y2 = y1; y1 = y;
         if (ph == k - 1u) {
-            *ys++ = (y + 512) >> 10;
+            *ys++ = round_f(y);
             ph = 0;
         } else
             ph++;
@@ -8388,7 +8298,7 @@ static void __attribute__((noinline)) dly_slow(inst_t *it, const esig_t *in, esi
     uint32_t w = it->s.dly.w, ph = it->s.dly.ph, i;
     int32_t dry = ENG_ONE - mix, rate = it->s.dly.rate, rdi, rdf;
     int64_t cur = it->s.dly.cur, lo = (int64_t)k << 16, hi = ((int64_t)(nl - 1u) << sh) << 16, rd;
-    dly_aa((int32_t *)(void *)(buf + len), DELAY_AA[sh - 1u], in, n, ph, k, ys);   /* (len is even: 4-byte aligned) */
+    dly_aa((float *)(void *)(buf + len), DELAY_AA[sh - 1u], in, n, ph, k, ys);   /* (len is even: 4-byte aligned) */
     if (swell)
         fb = (int32_t)((int64_t)fb * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
     if (w >= nl)
@@ -8461,23 +8371,24 @@ static void __attribute__((noinline)) dly_slow(inst_t *it, const esig_t *in, esi
     it->s.dly.rate = rate;
 }
 
-/* Tape's loop (modules.ts delayTape): the echo e times fb through a one-pole low pass (*l) and a high pass (the low
- * pass's output less a slower low pass of it, *h); Q24 states, Q16 in and out */
-static inline int32_t tape_loop(int32_t *l, int32_t *h, int32_t e, int32_t fb, uint32_t pl, uint32_t phq)
+/* Tape's loop (modules.ts delayTape): the echo e times fb (fbf, a float of Q16) through a one-pole low pass (*l) and a
+ * high pass (the low pass's output less a slower low pass of it, *h), poles pl and ph; float states in steps of Q16
+ * (D-1112), Q16 in and out (rounded) */
+HOT int32_t tape_loop(float *l, float *h, int32_t e, float fbf, float pl, float ph)
 {
-    int32_t v = clampi(MUL_E(e, fb), -32 * ENG_ONE, 32 * ENG_ONE) << 8;
-    *l += (int32_t)(((int64_t)(v - *l) * (int64_t)pl) >> 32);       /* (pl, phq: the Q24 poles x 256, unsigned: a */
-    *h += (int32_t)(((int64_t)(*l - *h) * (int64_t)phq) >> 32);      /* multiply-high, (x pole) >> 24 exactly) */
-    return (*l - *h + 128) >> 8;
+    float v = clampf((float)e * fbf, (float)(32 * ENG_ONE));
+    *l += (v - *l) * pl;
+    *h += (*l - *h) * ph;
+    return round_f(*l - *h);
 }
 
 /* the Delay with Tape on (modules.ts delayTape, #660), at any rate (k = 1 << sh): the heads (bit j of mask: head j + 1 at
  * j + 1 times the time, clamped to the line) read the line between two samples at their distance plus the wow and flutter
  * offset (two sines, worked out per block and ramped across it in whole steps), and sound together at 1 / n each. The
- * feedback runs through a one-pole low pass and high pass (DELAY_TAPE_LPQ / HPQ, Q24) and, with the input (through the
+ * feedback runs through a one-pole low pass and high pass (DELAY_TAPE_LP / HP, float) and, with the input (through the
  * rate's low pass, dly_aa, at a lower rate), through dly_soft into the line. Distances in 1/256 samples (32 bits). The
- * state in the line's tail: the rate's low pass in words 0..7, Tape's loop filters (A low, A high, B low, B high), the wow
- * and flutter phases and the last offset in 8..14.
+ * state in the line's tail: the rate's low pass in words 0..7, Tape's loop filters (A low, A high, B low, B high; float
+ * like the low pass's), the wow and flutter phases and the last offset in 8..14.
  * While the time stands and every head stays inside the line for the whole block (the usual case), each head's read point
  * moves by the same amount every sample: q, the distance of the write head's time ahead of the head's in 1/256 samples
  * (modulo the line), steps by 256 less the offset's step, and the read is at q / k. That is the same sample and fraction
@@ -8489,13 +8400,15 @@ static inline int32_t tape_loop(int32_t *l, int32_t *h, int32_t e, int32_t fb, u
  * filters (A low, A high, B low, B high), ys the input to write */
 HOT void tape_fast(const int pp, const int nh, int16_t *buf, uint32_t nl, uint32_t sh, uint32_t *wp, uint32_t *php,
                    int32_t *q, int32_t M, int32_t g, const esig_t *in, const int32_t *yp, esig_t *out,
-                   esig_t *outr, uint32_t n, int32_t fb, int32_t mix, uint32_t pl, uint32_t phq, int32_t *st)
+                   esig_t *outr, uint32_t n, int32_t fb, int32_t mix, float pl, float phq, float *st)
 {
     int16_t *bb = buf + nl;
     const uint32_t k1 = (1u << sh) - 1u;
     const int32_t dry = ENG_ONE - mix;
+    const float fbf = (float)fb * (1.0f / 65536.0f);
     uint32_t w = *wp, ph = *php, i;
-    int32_t q0 = q[0], q1 = nh > 1 ? q[1] : 0, q2 = nh > 2 ? q[2] : 0, lA = st[0], hA = st[1], lB = st[2], hB = st[3];
+    int32_t q0 = q[0], q1 = nh > 1 ? q[1] : 0, q2 = nh > 2 ? q[2] : 0;
+    float lA = st[0], hA = st[1], lB = st[2], hB = st[3];
     const int32_t inc0 = q[3], inc1 = nh > 1 ? q[4] : 0, inc2 = nh > 2 ? q[5] : 0;
     for (i = 0; i < n; i++) {
         int32_t ea, eb = 0, pos, i0, i1, fr;
@@ -8525,10 +8438,10 @@ HOT void tape_fast(const int pp, const int nh, int16_t *buf, uint32_t nl, uint32
         }
         if (ph == k1) {
             if (pp) {
-                bb[w] = DLY_PACK_SOFT(tape_loop(&lB, &hB, ea, fb, pl, phq));
-                buf[w] = DLY_PACK_SOFT(*yp + tape_loop(&lA, &hA, eb, fb, pl, phq));
+                bb[w] = DLY_PACK_SOFT(tape_loop(&lB, &hB, ea, fbf, pl, phq));
+                buf[w] = DLY_PACK_SOFT(*yp + tape_loop(&lA, &hA, eb, fbf, pl, phq));
             } else
-                buf[w] = DLY_PACK_SOFT(*yp + tape_loop(&lA, &hA, ea, fb, pl, phq));
+                buf[w] = DLY_PACK_SOFT(*yp + tape_loop(&lA, &hA, ea, fbf, pl, phq));
             yp++;
             ph = 0;
             if (++w == nl)
@@ -8552,19 +8465,22 @@ static void __attribute__((noinline)) dly_tape(inst_t *it, const esig_t *in, esi
     const int32_t sub = (int32_t)(256u >> sh), lo8 = (int32_t)k << 8, hi8 = (int32_t)(((nl - 1u) << sh) << 8);
     int16_t *buf = it->s.dly.buf, *bb = buf + H;
     int32_t *tl = (int32_t *)(void *)(buf + len);
-    const uint32_t pl = (uint32_t)DELAY_TAPE_LPQ[sh] << 8, phq = (uint32_t)DELAY_TAPE_HPQ[sh] << 8;
-    int32_t hj[3], nh = 0, g, lA = tl[8], hA = tl[9], lB = tl[10], hB = tl[11];
+    float *tf = (float *)(void *)tl;               /* (the filters' words: float) */
+    const float pl = DELAY_TAPE_LP[sh], phq = DELAY_TAPE_HP[sh];
+    int32_t hj[3], nh = 0, g;
+    float lA = tf[8], hA = tf[9], lB = tf[10], hB = tf[11], fbf;
     int32_t ys[ENG_BLOCK / 2u], *yp = ys;           /* the input at the line's writes (through the rate's low pass) */
     int moving = it->s.dly.cur != tq || it->s.dly.rate;
     uint32_t w = it->s.dly.w, ph = it->s.dly.ph, i, wph, fph;
     int32_t dry = ENG_ONE - mix, rate = it->s.dly.rate, m0 = tl[14], m1, step, cur8;
     int64_t cur = it->s.dly.cur, lo = (int64_t)k << 16, hi = ((int64_t)(nl - 1u) << sh) << 16;
     if (sh)
-        dly_aa(tl, DELAY_AA[sh - 1u], in, n, ph, k, ys);
+        dly_aa(tf, DELAY_AA[sh - 1u], in, n, ph, k, ys);
     else
         yp = (int32_t *)in;                         /* (read only) */
     if (swell)
         fb = (int32_t)((int64_t)fb * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
+    fbf = (float)fb * (1.0f / 65536.0f);
     if (w >= nl)
         w = 0;
     wph = (uint32_t)tl[12] + DELAY_WOW_INC * n;
@@ -8598,7 +8514,7 @@ static void __attribute__((noinline)) dly_tape(inst_t *it, const esig_t *in, esi
                 q[j] += M;
         }
         if (j == nh) {
-            int32_t st[4] = {lA, hA, lB, hB};
+            float st[4] = {lA, hA, lB, hB};
             if (pp) {
                 if (nh == 1) tape_fast(1, 1, buf, nl, sh, &w, &ph, q, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
                 else if (nh == 2) tape_fast(1, 2, buf, nl, sh, &w, &ph, q, M, g, in, yp, out, outr, n, fb, mix, pl, phq, st);
@@ -8647,10 +8563,10 @@ static void __attribute__((noinline)) dly_tape(inst_t *it, const esig_t *in, esi
         }
         if (ph == k - 1u) {
             if (pp) {
-                bb[w] = DLY_PACK_SOFT((tape_loop(&lB, &hB, ea, fb, pl, phq)));
-                buf[w] = DLY_PACK_SOFT((*yp + tape_loop(&lA, &hA, eb, fb, pl, phq)));
+                bb[w] = DLY_PACK_SOFT((tape_loop(&lB, &hB, ea, fbf, pl, phq)));
+                buf[w] = DLY_PACK_SOFT((*yp + tape_loop(&lA, &hA, eb, fbf, pl, phq)));
             } else
-                buf[w] = DLY_PACK_SOFT((*yp + tape_loop(&lA, &hA, ea, fb, pl, phq)));
+                buf[w] = DLY_PACK_SOFT((*yp + tape_loop(&lA, &hA, ea, fbf, pl, phq)));
             yp++;
             ph = 0;
             if (++w == nl)
@@ -8664,7 +8580,7 @@ static void __attribute__((noinline)) dly_tape(inst_t *it, const esig_t *in, esi
         }
     }
 done:
-    tl[8] = lA; tl[9] = hA; tl[10] = lB; tl[11] = hB;
+    tf[8] = lA; tf[9] = hA; tf[10] = lB; tf[11] = hB;
     tl[14] = m0 + step * (int32_t)n;
     it->s.dly.w = w;
     it->s.dly.ph = (uint8_t)ph;
@@ -8709,6 +8625,7 @@ static void __attribute__((noinline)) dly_change(inst_t *it, uint32_t sh, int ta
     const uint32_t len = it->s.dly.len, ko = it->s.dly.rk, kn = 1u << sh;
     const uint32_t lo = ko > 1u || it->s.dly.tp ? len - DELAY_TAIL : len, ln = sh || tape ? len - DELAY_TAIL : len;
     int32_t *tl = (int32_t *)(void *)(buf + len - DELAY_TAIL);
+    float *tf = (float *)(void *)tl;               /* (words 0..11, the filters' states: float) */
     uint32_t w = it->s.dly.w, w2, i;
     if (lo != ln) {
         if (!pp)
@@ -8732,18 +8649,18 @@ static void __attribute__((noinline)) dly_change(inst_t *it, uint32_t sh, int ta
         }
         it->s.dly.w = w;
     }
-    if (ln < lo)
-        for (i = 0; i < DELAY_TAIL / 2u; i++)
+    if (ln < lo || (tape && !it->s.dly.tp)) {
+        for (i = ln < lo ? 0u : 8u; i < 12u; i++)
+            tf[i] = 0.0f;
+        for (i = 12; i < DELAY_TAIL / 2u; i++)
             tl[i] = 0;
-    else if (tape && !it->s.dly.tp)
-        for (i = 8; i < DELAY_TAIL / 2u; i++)
-            tl[i] = 0;
+    }
     if (ko == kn)
         return;
     if (ko == 1u) {
-        int32_t x = clampi(x0, -4 * ENG_ONE, 4 * ENG_ONE) * 1024;   /* (dly_aa: Q26) */
+        float x = (float)clampi(x0, -4 * ENG_ONE, 4 * ENG_ONE);   /* (dly_aa's states, settled on x0) */
         for (i = 0; i < 8u; i++)
-            tl[i] = x;
+            tf[i] = x;
     }
     {   /* the read point w - (k - 1 - ph + cur) / k line samples stays, with ph 0 from here */
         int64_t a = ((int64_t)(ko - 1u - it->s.dly.ph) << 16) + it->s.dly.cur, c;
@@ -8884,28 +8801,28 @@ held:
         it->s.dly.rate = hold > n ? DLY_HOLD + (int32_t)(hold - n) : 0;
 }
 
-/* ---- reverb: the same Freeverb-style network as modules.ts, in Q16 with int16 (Q13) delay memory */
+/* ---- reverb: the same Freeverb-style network as modules.ts, int16 (Q13) delay memory, float inside (D-1112) */
 
 /* Reverb (modules.ts `reverb`; freeze holds the tail): an eight-line FDN with a Householder feedback matrix (f_k = t_k - sum(t) / 4), a one-pole
  * damping filter and a decay gain in every line (g_k = 2^(-9.966 L_k / (T sr)): 60 dB in T = 0.2 x 2^(5 size) s), two
  * input diffusion allpasses (g 0.5), a pre-delay of up to 40 ms, and a sine modulation of the read position of lines 0
- * and 1 (mod x 6 samples at 0.5 / 0.83 Hz, linear interpolation). All lines int16 Q13 in one block (RV_LEN).
+ * and 1 (mod x 6 samples at 0.5 / 0.83 Hz, linear interpolation). All lines int16 Q13 in one block (RV_LEN). The
+ * damping states, the gains and every product are single-precision float, in steps of the lines.
  * D-1109: a tail with no input falls to exactly zero. Rounded to nearest, the int16 line writes hold a quiet tail at a
  * few steps of the lines for ever (about -85 dBFS at size 0.95, -82 with full damping: a write within half a step of
  * its old value keeps it). So the lines play rounded to nearest, as always, until nothing has entered for as long as the
- * loudest tail heard since takes to fall under one step of the lines (reverb_kernel); then they drain: every product
- * (damping, decay gain), line write and allpass write is cut toward zero, never up in magnitude. The matrix keeps the
- * lines' energy, the gains below 1 take some away every sample and no rounding gives any back, so it reaches zero. A
- * frozen tail never drains. */
+ * loudest tail heard since takes to fall under one step of the lines (reverb_kernel); then they drain: every line write
+ * and allpass write is cut toward zero, never up in magnitude. The matrix keeps the lines' energy, the gains below 1
+ * take some away every sample, and a float product's rounding (a 2^-24 part of it, under 0.002 of a step) gives back
+ * far less than a cut takes, so it reaches zero; the output is the lines' sum, so it is zero then too. A frozen tail
+ * never drains. */
 static const uint16_t RV_LINE[8] = {331, 439, 547, 661, 773, 881, 991, 1117};
 static const uint16_t RV_DIFF[2] = {223, 347};
 #define RV_PRE 1764u                 /* 40 ms */
-#define RV_GIN 8192                  /* the input into every line: 0.125 */
-#define RV_GOUT 32768                /* the sum of the line outputs: 0.5 */
+#define RV_GIN (0.125f / 8.0f)       /* the input into every line: 0.125, Q16 steps to steps of the lines */
 #define RV_MOD (6 << 16)             /* the modulation depth at mod 1: samples, Q16 */
 static const uint32_t RV_MOD_INC[2] = {48696u, 80836u};   /* 0.5 and 0.83 Hz in u32 turns per sample */
-#define RV_LOG2_T0 (-152169)         /* log2(0.2) Q16 */
-#define RV_DB60 653118               /* 3 / log10(2) = 9.966 Q16: the octaves of gain lost per T */
+#define RV_DB60 9.965784f            /* 3 / log10(2): the octaves of gain lost per T */
 
 /* A slow sine stays in one table interval for many samples. Cache its endpoints, retaining sin_turn's exact interpolation. */
 typedef struct { uint32_t index; int32_t first, delta; } slow_sine_t;
@@ -8920,18 +8837,14 @@ HOT int32_t slow_sine(uint32_t ph, slow_sine_t *c)
     return (c->first + (int32_t)(((int64_t)c->delta * fr) >> 16)) >> 14;
 }
 
-/* a x b >> 16 cut toward zero, one multiply-high: |a| < 2^18 (a line sample or a damping state), b8 = 8 b, 0 <= b <= 2^16 */
-HOT int32_t mul16_tz(int32_t a, int32_t b8)
-{
-    int32_t s = a >> 31;
-    return (mulh32(((a ^ s) - s) * 8192, b8) ^ s) - s;
-}
-
 /* Inline only the sample loop: the fully wet master bus folds away both final mix products, with one block dispatch.
  * Keep setup / gain-cache writes in m_reverb and preserve sample-order stores for aliased input and output.
- * drain (a constant at each call: two copies of the loop) cuts every product, line write and allpass write toward
- * zero (D-1109), else they are rounded to nearest. Returns the OR of the wet sum's magnitudes (Q16, under 2^22; not
- * worked out while draining), with RV_HEARD set if an input sample reached RV_QUIET. */
+ * Single-precision float inside (D-1112): the damping states, the products and the matrix in steps of the lines (one
+ * step = 8 Q16 steps); the lines, the pre-delay and the allpasses stay int16 and integer. drain (a constant at each
+ * call: two copies of the loop) cuts every line write and allpass write toward zero (D-1109), else they are rounded to
+ * nearest. The output is the wet sum (fully wet) in Q16. Returns the OR of the wet sum's magnitudes (Q16, under 2^22;
+ * not worked out while draining), with RV_HEARD set if an input sample reached RV_QUIET. (Running the lines one at a
+ * time over the whole block measured slower on the test rig.) */
 #define RV_HEARD 0x80000000u
 #ifndef RV_QUIET
 #define RV_QUIET 32                  /* -66 dBFS (Q16, a power of two): quieter, an input enters the lines (x 1/8) under
@@ -8939,21 +8852,21 @@ HOT int32_t mul16_tz(int32_t a, int32_t b8)
                                       * Granular) still drains */
 #endif
 HOT uint32_t reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *out, int16_t *const line[8],
-                            int16_t *const ap[2], int16_t *pre, const int32_t g[8],
-                            int32_t d, int32_t depth, uint32_t dpre, int32_t gin, int32_t mix, const int drain)
+                            int16_t *const ap[2], int16_t *pre, const float g[8],
+                            float d, int32_t depth, uint32_t dpre, float gin, const int drain)
 {
     uint32_t i, k, peak = 0, heard = 0;
-    int32_t t[8], dry = ENG_ONE - mix;
     /* the indices and states in locals (the int16 line writes could alias them in it->s), the lines written out */
     uint32_t li[8], ai0 = it->s.rev.ai[0], ai1 = it->s.rev.ai[1], pi = it->s.rev.pi, ph0 = it->s.rev.ph[0], ph1 = it->s.rev.ph[1];
-    int32_t lp[8], od = ENG_ONE - d;
+    float lp[8], t[8], od = 1.0f - d;
     slow_sine_t sine[2] = {{UINT32_MAX, 0, 0}, {UINT32_MAX, 0, 0}};
     for (k = 0; k < 8u; k++) {
         li[k] = it->s.rev.li[k];
         lp[k] = it->s.rev.lp[k];
     }
     for (i = 0; i < n; i++) {
-        int32_t x = in[i], u = x, wet = 0, sum = 0, bo, y, o;
+        int32_t x = in[i], u = x, bo, y, q;
+        float wet = 0.0f, sum = 0.0f, o, uf;
         heard |= (uint32_t)(x ^ (x >> 31));
         if (dpre) {
             uint32_t rp = pi + RV_PRE - dpre;
@@ -8976,12 +8889,11 @@ HOT uint32_t reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *ou
         if (++ai1 == 347u)
             ai1 = 0;
         u = y;
-        u = mulr(u, gin, 16);
-        /* Q13 taps times od plus rounding fit int32: -32768*65536+8191 .. 32767*65536+4096. */
-#define RV_DAMP(k, sample)                                                              \
+        uf = (float)u * gin;
+#define RV_DAMP(k)                                                                      \
         wet += o;                                                                   \
-        lp[k] = (sample) + (drain ? mul16_tz(lp[k], d * 8) : mulr(lp[k], d, 16));   \
-        t[k] = drain ? mul16_tz(lp[k], g[k] * 8) : mulr(lp[k], g[k], 16);           \
+        lp[k] = o * od + lp[k] * d;                                                 \
+        t[k] = lp[k] * g[k];                                                        \
         sum += t[k];
 #define RV_MODTAP(k, ph)                                                                \
         {                                                                          \
@@ -8989,44 +8901,36 @@ HOT uint32_t reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *ou
             int32_t sn = slow_sine(ph, &sine[k]);                                   \
             int32_t dl = (int32_t)((L - 2u) << 16) - mulq(depth, 32768 + (sn >> 1), 16);   /* the delay, samples Q16 */ \
             uint32_t di = (uint32_t)dl >> 16, fr = (uint32_t)dl & 0xFFFFu, ra = w + L - di, rb;   \
-            int32_t a, b;                                                           \
+            float a;                                                                \
             if (ra >= L)                                                            \
                 ra -= L;                                                            \
             rb = ra ? ra - 1u : L - 1u;                                             \
-            a = (int32_t)line[k][ra] * 8;                                           \
-            b = (int32_t)line[k][rb] * 8;                                           \
-            o = a + (int32_t)(((int64_t)(b - a) * fr) >> 16);                       \
+            a = (float)line[k][ra];                                                 \
+            o = a + ((float)line[k][rb] - a) * ((float)fr * (1.0f / 65536.0f));     \
         }                                                                          \
-        RV_DAMP(k, drain ? mul16_tz(o, od * 8) : mulr(o, od, 16))
+        RV_DAMP(k)
 #define RV_TAP(k)                                                                       \
-        o = (int32_t)line[k][li[k]] * 8;                                            \
-        RV_DAMP(k, drain ? ((o >> 3) * od + (((o >> 3) * od >> 31) & 8191)) >> 13 : ((o >> 3) * od + 4096) >> 13)
+        o = (float)line[k][li[k]];                                                  \
+        RV_DAMP(k)
         if (depth > 0) {
             RV_MODTAP(0, ph0)
             RV_MODTAP(1, ph1)
         } else {
-            /* The same Q13 bound as the six fixed taps applies when modulation is off. */
+            /* (the fixed taps' reads when modulation is off) */
             RV_TAP(0) RV_TAP(1)
         }
         RV_TAP(2) RV_TAP(3) RV_TAP(4) RV_TAP(5) RV_TAP(6) RV_TAP(7)
 #undef RV_TAP
 #undef RV_MODTAP
 #undef RV_DAMP
-        /* drain: the writes from Q18 (4 x Q16, so the matrix's quarter is exact), cut toward zero */
-        if (!drain)
-            sum >>= 2;
-        else
-            sum -= 4 * u;
+        /* the matrix's feedback t_k - sum / 4 plus the input; drain: cut toward zero (the conversion's own rounding) */
+        sum = sum * 0.25f - uf;
         /* Constant indices, as in the taps above: keep line lengths and feedback values visible to the compiler. */
 #define RV_WRITE(k)                                                                     \
         {                                                                          \
             uint32_t w = li[k];                                                     \
-            if (drain) {                                                            \
-                int32_t v = 4 * t[k] - sum;                                         \
-                line[k][w] = (int16_t)clampi((v + ((v >> 31) & 31)) >> 5, -32768, 32767);   \
-            } else {                                                                \
-                line[k][w] = dly_pack(u + t[k] - sum);                              \
-            }                                                                      \
+            float v = clampf(t[k] - sum, 32767.0f);                                 \
+            line[k][w] = (int16_t)(drain ? (int32_t)v : round_f(v));                \
             if (++w == RV_LINE[k])                                                  \
                 w = 0;                                                             \
             li[k] = w;                                                             \
@@ -9036,9 +8940,10 @@ HOT uint32_t reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *ou
 #undef RV_WRITE
         ph0 += RV_MOD_INC[0];
         ph1 += RV_MOD_INC[1];
-        out[i] = mulr(x, dry, 16) + mulr(mulr(wet, RV_GOUT, 16), mix, 16);
+        q = round_f(wet * 4.0f);                    /* Q16: the lines' sum x RV_GOUT (8 x 0.5) */
+        out[i] = q;
         if (!drain)
-            peak |= (uint32_t)(wet ^ (wet >> 31));
+            peak |= (uint32_t)(q ^ (q >> 31)) * 2u;
     }
     for (k = 0; k < 8u; k++) {
         it->s.rev.li[k] = (uint16_t)li[k];
@@ -9058,30 +8963,34 @@ HOT uint32_t reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *ou
  * as an item of its own with nothing to wait for (sched_build), else m_reverb runs it first. m_reverb then mixes the wet
  * with this block's dry input, keeps that input in the ring and its settings (kp) for the next block. */
 #define RV_RING(it) ((int32_t *)((it)->s.rev.buf + RV_LEN))
-static __attribute__((noinline)) void reverb_kernel(inst_t *it, uint32_t n)   /* (one copy for both callers) */
+/* the decay gains for the effective size and freeze, cached until either changes (reverb_kernel, eng_fpu_probe) */
+static void reverb_gains(inst_t *it, int32_t size, int frz)
 {
-    int16_t *base = it->s.rev.buf, *line[8], *ap[2], *pre;
-    const int32_t *kp = it->s.rev.kp;
-    int32_t d = mul16(kp[REVERB_P_DAMP], 52429);   /* damp x 0.8 */
-    int32_t depth = mul16(kp[REVERB_P_MOD], RV_MOD), size = kp[REVERB_P_SIZE], g[8], *ring = RV_RING(it);
-    uint32_t dpre = (uint32_t)((mulq(kp[REVERB_P_PRE], ENG_SR, 16) + 500) / 1000), k, off = 0, a, hw = it->s.rev.hw, n0 = n, st = 0;
-    int frz = kp[REVERB_P_FREEZE] >= 32768, drain;   /* freeze: every gain 1, no damping, nothing new into the lines */
-    int32_t gin = frz ? 0 : RV_GIN;
-    if (frz)
-        d = 0;
+    uint32_t k;
     if (!it->s.rev.gains_ok || it->s.rev.size != size || it->s.rev.frozen != frz) {
-        int32_t tq = (int32_t)exp2_q16(mul16(size, 5 << 16) + RV_LOG2_T0 + (16 << 16));
-        if (tq < 1)
-            tq = 1;
-        for (k = 0; k < 8u; k++) {
-            int64_t e = -(((int64_t)RV_LINE[k] * RV_DB60) << 16) / ((int64_t)tq * ENG_SR);
-            it->s.rev.gain[k] = frz ? ENG_ONE : (int32_t)exp2_q16((int32_t)(e < -(16 << 16) ? -(16 << 16) : e) + (16 << 16));
-        }
-        it->s.rev.hold = (uint16_t)(((int64_t)tq * ENG_SR * 6576) >> 32);   /* samples to fall 6.02 dB: T x 0.1003 */
+        /* T sr: the samples a line takes to fall 60 dB, T = 0.2 x 2^(5 size) s, at least 0.2 s (D-1114: never zero) */
+        float tsr = 0.2f * (float)ENG_SR * exp2_f((float)size * (5.0f / 65536.0f)), e = -RV_DB60 / tsr;
+        for (k = 0; k < 8u; k++)
+            it->s.rev.gain[k] = frz ? 1.0f : exp2_f(e * (float)RV_LINE[k]);
+        it->s.rev.hold = (uint16_t)(tsr * 0.10034f);  /* samples to fall 6.02 dB: T x 0.1003 */
         it->s.rev.size = size;
         it->s.rev.frozen = (uint8_t)frz;
         it->s.rev.gains_ok = 1;
     }
+}
+
+static __attribute__((noinline)) void reverb_kernel(inst_t *it, uint32_t n)   /* (one copy for both callers) */
+{
+    int16_t *base = it->s.rev.buf, *line[8], *ap[2], *pre;
+    const int32_t *kp = it->s.rev.kp;
+    float d = (float)kp[REVERB_P_DAMP] * (0.8f / 65536.0f), g[8];   /* damp x 0.8 */
+    int32_t depth = mul16(kp[REVERB_P_MOD], RV_MOD), size = kp[REVERB_P_SIZE], *ring = RV_RING(it);
+    uint32_t dpre = (uint32_t)((mulq(kp[REVERB_P_PRE], ENG_SR, 16) + 500) / 1000), k, off = 0, a, hw = it->s.rev.hw, n0 = n, st = 0;
+    int frz = kp[REVERB_P_FREEZE] >= 32768, drain;   /* freeze: every gain 1, no damping, nothing new into the lines */
+    float gin = frz ? 0.0f : RV_GIN;
+    if (frz)
+        d = 0.0f;
+    reverb_gains(it, size, frz);
     /* D-1109: drain once nothing has entered for as long as the loudest wet sum heard since (oct: its bits above one step
      * of the lines) takes to fall under one step, plus RV_LEN; until something enters again. Never while frozen. */
     drain = !frz && (uint32_t)it->s.rev.still * 16u >= (uint32_t)it->s.rev.hold * it->s.rev.oct + RV_LEN;
@@ -9099,8 +9008,8 @@ static __attribute__((noinline)) void reverb_kernel(inst_t *it, uint32_t n)   /*
     pre = base + off;
     while (n) {                                  /* (the ring's end, then its start: a block shorter than ENG_BLOCK) */
         a = ENG_BLOCK - hw < n ? ENG_BLOCK - hw : n;
-        st |= drain ? reverb_samples(it, a, ring + hw, ring + hw, line, ap, pre, g, d, depth, dpre, gin, ENG_ONE, 1)
-                    : reverb_samples(it, a, ring + hw, ring + hw, line, ap, pre, g, d, depth, dpre, gin, ENG_ONE, 0);
+        st |= drain ? reverb_samples(it, a, ring + hw, ring + hw, line, ap, pre, g, d, depth, dpre, gin, 1)
+                    : reverb_samples(it, a, ring + hw, ring + hw, line, ap, pre, g, d, depth, dpre, gin, 0);
         n -= a;
         hw = hw + a == ENG_BLOCK ? 0u : hw + a;
     }
@@ -9446,7 +9355,7 @@ static void m_env8(const node_t *nd, inst_t *it, uint32_t n)
     it->s.env8.prev = prev;
 }
 
-#define LOG2_1000_Q16 653124        /* log2(1000): decay is the time to -60 dB */
+#define LOG2_1000 9.9657843f                /* log2(1000): decay is the time to -60 dB */
 
 /* The String's and the Comb filter's loop (modules.ts string, comb; it->s.str): a delay line of one period, read with
  * linear interpolation, through a one-pole damping lowpass, times the loop gain k (the String's decay, the Comb's
@@ -9505,7 +9414,7 @@ static void __attribute__((noinline)) str_run(inst_t *it, const esig_t *x, esig_
 {
     int16_t *b = it->s.str.buf;
     int32_t cl = ENG_ONE - mul16(damp, 58982);                            /* 1 - 0.9 damp */
-    int32_t d = per - (int32_t)(((int64_t)(ENG_ONE - cl) << 16) / cl);    /* less the one-pole's low-frequency delay */
+    int32_t d = per - (int32_t)((float)(ENG_ONE - cl) * 65536.0f / (float)cl);   /* less the one-pole's low-frequency delay (cl >= 0.1) */
     int32_t lp = it->s.str.lp, err = it->s.str.err, ex = it->s.str.ex, peak = it->s.str.peak, cnt = it->s.str.cnt, v1;
     int32_t inp = it->s.str.mode & 2u, passive = it->s.str.mode & 1u, restart = 0, w4 = wet * 4, zk = it->s.str.zk, fr, s, rnd, cut, emask, sh;
     uint32_t c32 = cl >= ENG_ONE ? 0xFFFFFFFFu : (uint32_t)cl << 16, w = it->s.str.w, zc = it->s.str.zc, zold = 0, rp, di, f, i;   /* c32: cl, Q32 */
@@ -9626,10 +9535,8 @@ static void m_string(const node_t *nd, inst_t *it, uint32_t n)
     uint32_t seed = it->s.str.seed, i;
     int32_t per = str_period(pitch[0] + EF(it, STRING_P_COARSE) / 12), g, bl, kind = round_q16(EF(it, STRING_P_BURST));
     int32_t s1 = it->s.str.s1, burst = it->s.str.burst, blen = it->s.str.blen;
-    int64_t e;
-    e = -(((int64_t)LOG2_1000_Q16 * per) >> 16);                           /* -log2(1000) * period, Q16 */
-    e = (e << 16) / ((int64_t)EF(it, STRING_P_DECAY) * ENG_SR);           /* / (decay * sr): octaves, Q16 */
-    g = (int32_t)exp2_scale(ENG_ONE, (int32_t)(e < -(47 << 16) ? -(47 << 16) : e));
+    float ds = (float)EF(it, STRING_P_DECAY) * ((float)ENG_SR / 65536.0f);   /* decay x sr: at least 2205 (0.05 s), held to 1 (D-1114) */
+    g = (int32_t)(exp2_f(-LOG2_1000 * (float)per * (1.0f / 65536.0f) / (ds > 1.0f ? ds : 1.0f)) * 65536.0f);   /* Q16 */
     bl = (per + 32768) >> 16;
     for (i = 0; i < n; i++) {                                             /* the excitation, into out */
         int32_t x = exc[i];
@@ -9673,15 +9580,11 @@ static void m_comb(const node_t *nd, inst_t *it, uint32_t n)
  * exact ring: rounded to the nearest, a ring under one step would go on as a toggling step until it fell under half a
  * step). Float rounding neither holds a ring up nor cuts it short while it is above the output's step (#840, D-1109);
  * below that it would end in the subnormal range, held there by rounding to nearest, so a mode whose u and v are both
- * under MODAL_END at the end of a block is set to exactly zero: with no input a ring ends at exactly zero, within 14 s of
+ * under RING_END at the end of a block is set to exactly zero: with no input a ring ends at exactly zero, within 14 s of
  * the clamp at the longest decay (5 s). The input, u and v are held to +-8. */
 #define MODAL_N 6
 #define MODAL_LIM 524288.0f                 /* 8 in steps of Q16 */
-#define MODAL_END (1.0f / 256.0f)           /* 1/256 of the output's step, -144 dBFS */
 static const float MODAL_BAR[MODAL_N] = {1.0f, 2.756f, 5.404f, 8.933f, 13.34f, 18.64f};   /* a free bar's partial ratios */
-
-/* x held to +-l (compares: fminf / fmaxf are library calls in wasm) */
-HOT float clampf(float x, float l) { return x > l ? l : x < -l ? -l : x; }
 
 /* e^x for |x| < 0.04 (a Resonator's ln r and -ln r): its series to x^5, within 3e-12 */
 HOT float modal_exp(float x)
@@ -9753,7 +9656,7 @@ static void m_modal(const node_t *nd, inst_t *it, uint32_t n)
             out[k] = (int32_t)y;                                                            /* (cut toward zero; |y| <= 6 x 8 x 2^16) */
         }
         for (i = 0; i < MODAL_N; i++) {
-            if (u[i] < MODAL_END && u[i] > -MODAL_END && v[i] < MODAL_END && v[i] > -MODAL_END)
+            if (u[i] < RING_END && u[i] > -RING_END && v[i] < RING_END && v[i] > -RING_END)
                 u[i] = v[i] = 0.0f;
             su[i] = u[i];
             sv[i] = v[i];
@@ -11054,44 +10957,50 @@ static void m_comp(const node_t *nd, inst_t *it, uint32_t n)
 }
 
 /* Low pass gate (modules.ts lpg, #1018), ported from KITTEN RACK's m_lpg (https://github.com/BlackKittenDevices/kitten-rack,
- * a GPL-3.0 fork of Matryoshka): the vactrol (Q30) opens two one-poles (Q24) and, in combo, the gain. res (added here)
- * feeds the second one-pole back against the input, the input raised by as much, at LPG_RES_K x res x (1 - vac^2)^2, so
- * it rings while the gate is nearly closed and stays stable as it opens. vca runs no filter. */
+ * a GPL-3.0 fork of Matryoshka): the vactrol opens two one-poles and, in combo, the gain. res (added here) feeds the
+ * second one-pole back against the input, the input raised by as much, at LPG_RES_K x res x (1 - vac^2)^2, so it rings
+ * while the gate is nearly closed and stays stable as it opens. vca runs no filter. Single-precision float inside
+ * (D-1112): the vactrol 0..1, the one-poles in steps of Q16; the output is cut toward zero to a whole step. D-1109: one-poles
+ * both under LPG_END at the end of a block are set to exactly zero, so a ring with no input ends at exactly zero. */
+#define LPG_END (1.0f / 256.0f)             /* 1/256 of the output's step */
 static void m_lpg(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *in = it->in[LPG_I_IN], *cv = it->in[LPG_I_CV], *st = it->in[LPG_I_STRIKE];
     esig_t *out = it->out[LPG_O_OUT];
-    int32_t ka = env_rate(LPG_ATTACK_Q16), kd = env_rate(EF(it, LPG_P_DECAY)), off = EF(it, LPG_P_OFFSET), lvl = EF(it, LPG_P_LEVEL);
-    int32_t kr = mul16(EF(it, LPG_P_RES), LPG_RES_K_Q16);   /* Q16 */
+    const float clip = (float)(LPG_CLIP_Q24 >> 8), q30 = 1.0f / 1073741824.0f, q16 = 1.0f / 65536.0f;
+    float ka = (float)env_rate(LPG_ATTACK_Q16) * q30, kd = (float)env_rate(EF(it, LPG_P_DECAY)) * q30;
+    float kr = (float)EF(it, LPG_P_RES) * ((float)LPG_RES_K_Q16 * q16 * q16), lvl = (float)EF(it, LPG_P_LEVEL) * q16;
+    int32_t off = EF(it, LPG_P_OFFSET), t1 = it->s.lpg.t1;
     int mode = round_q16(EF(it, LPG_P_MODE));
-    int32_t vac = it->s.lpg.vac, y1 = it->s.lpg.y1, y2 = it->s.lpg.y2, t1 = it->s.lpg.t1;
+    float vac = it->s.lpg.vac, y1 = it->s.lpg.y1, y2 = it->s.lpg.y2;
     uint32_t i;
     for (i = 0; i < n; i++) {
-        int32_t d, x, y;
+        float d, x, y;
         if (st[i] >= 32768 && t1 < 32768)
-            vac = 1 << 30;                                  /* strike: open at once */
+            vac = 1.0f;                                     /* strike: open at once */
         t1 = st[i];
-        d = (clampi(cv[i] + off, 0, ENG_ONE) << 14) - vac;
-        if (d > 0)
-            vac += mulq(d, ka, 30);
+        d = (float)clampi(cv[i] + off, 0, ENG_ONE) * q16 - vac;
+        if (d > 0.0f)
+            vac += d * ka;
         else                                                /* the release slows down as it closes: kd (0.25 + 0.75 vac) */
-            vac += mulq(d, mulq(kd, (1 << 28) + mulq(vac, 805306368, 30), 30), 30);
-        x = clampi(in[i], -(LPG_CLIP_Q24 >> 8), (LPG_CLIP_Q24 >> 8) - 1);
+            vac += d * (kd * (0.25f + 0.75f * vac));
+        x = clampf((float)in[i], clip);
         if (mode == 2)
-            y = mulq(x, vac, 30);
+            y = x * vac;
         else {
-            int32_t v2 = mulq(vac, vac, 30), g = 2147484 + mulq(966367642, v2, 30), u = x << 8;   /* g: 0.002 + 0.9 vac^2, Q30 */
-            if (kr > 0) {
-                int32_t w = (1 << 30) - v2;
-                int64_t f = (int64_t)u + (((int64_t)(u - y2) * mulq(kr, mulq(w, w, 30), 30)) >> 16);
-                u = f > LPG_CLIP_Q24 ? LPG_CLIP_Q24 : f < -LPG_CLIP_Q24 ? -LPG_CLIP_Q24 : (int32_t)f;
+            float v2 = vac * vac, g = 0.002f + 0.9f * v2, u = x;
+            if (kr > 0.0f) {
+                float w = 1.0f - v2;
+                u = clampf(x + kr * (w * w) * (x - y2), clip);
             }
-            y1 += mulq(u - y1, g, 30);
-            y2 += mulq(y1 - y2, g, 30);
-            y = mode == 1 ? y2 >> 8 : mulq(y2 >> 8, vac, 30);
+            y1 += (u - y1) * g;
+            y2 += (y1 - y2) * g;
+            y = mode == 1 ? y2 : y2 * vac;
         }
-        out[i] = mul16(y, lvl);
+        out[i] = (int32_t)(y * lvl);
     }
+    if (y1 < LPG_END && y1 > -LPG_END && y2 < LPG_END && y2 > -LPG_END)
+        y1 = y2 = 0.0f;
     it->s.lpg.vac = vac;
     it->s.lpg.y1 = y1;
     it->s.lpg.y2 = y2;
@@ -11280,6 +11189,7 @@ static void m_xfade(const node_t *nd, inst_t *it, uint32_t n)
     esig_t *out = it->out[0];
     int32_t base = EF(it, XFADE_P_MIX);
     uint32_t i;
+    UNROLL4
     for (i = 0; i < n; i++) {
         int32_t m = clampi(base + pos[i], 0, ENG_ONE);
         out[i] = mul16(a[i], ENG_ONE - m) + mul16(b[i], m);
@@ -11314,9 +11224,11 @@ static void m_select(inst_t *it, uint32_t n)
         int32_t v = EF(it, SELECT_P_V1 + k);
         if (x == zero_buf)
             fill(out, v, n);
-        else if (!IS_DUMMY(out))
+        else if (!IS_DUMMY(out)) {
+            UNROLL4
             for (i = 0; i < n; i++)
                 out[i] = x[i] + v;
+        }
     } else {
         int32_t *w = it->s.sel.w;
         uint32_t busy = 0;
@@ -11336,73 +11248,61 @@ static void m_select(inst_t *it, uint32_t n)
             busy |= (uint32_t)(w[j] != ((int32_t)j == k ? ENG_ONE : 0));
         it->s.sel.fading = (uint8_t)busy;
     }
-    for (j = 0; j < SEL_N; j++) {
-        esig_t *g = it->out[SELECT_O_G1 + j], v = (int32_t)j == k ? ENG_ONE : 0;
-        if (IS_DUMMY(g))
-            continue;
-        for (i = 0; i < n; i++)
-            g[i] = v;
-    }
+    for (j = 0; j < SEL_N; j++)                  /* the gates (fill: nothing for an unconnected one) */
+        fill(it->out[SELECT_O_G1 + j], (int32_t)j == k ? ENG_ONE : 0, n);
 }
 
 /* the formants (Hz) of A E I O U; gains 1, 1/2, 1/4 */
 static const int16_t FORMANT_HZ[5][3] = {{730, 1090, 2440}, {530, 1840, 2480}, {390, 1990, 2550}, {570, 840, 2410}, {440, 1020, 2240}};
 
-/* the Formant filter's band passes over the block, their states at scale 2^e (a constant at each call, m_vowel) */
-HOT void vowel_run(inst_t *it, const svf_coef_t *c, int32_t k24, int32_t lvl, uint32_t n, uint32_t e)
-{
-    const esig_t *in = it->in[VOWEL_I_IN];
-    esig_t *out = it->out[0];
-    const uint32_t sh = 4 + e;                   /* the output: Q20 + e to Q16, rounded */
-    uint32_t i, f;
-    for (i = 0; i < n; i++) {
-        int32_t v0 = in[i] << 4, sum = 0;
-        for (f = 0; f < 3u; f++) {
-            int32_t ic1 = it->s.vow.ic1[f], ic2 = it->s.vow.ic2[f];
-            int32_t v3 = v0 - ic2;
-            int32_t v1 = mulr(c[f].a1, ic1, 24) + mulr(c[f].a2, v3, 24);
-            int32_t v2 = ic2 + mulr(c[f].a2, ic1, 24) + mulr(c[f].a3, v3, 24);
-            it->s.vow.ic1[f] = clampi(2 * v1 - ic1, -(1 << 30), 1 << 30);
-            it->s.vow.ic2[f] = clampi(2 * v2 - ic2, -(1 << 30), 1 << 30);
-            sum += mulr(v1, k24, 24) >> f;
-        }
-        out[i] = mul16((sum + (1 << (sh - 1))) >> sh, lvl);
-    }
-}
-
-/* three parallel SVF band passes (normalized band k v1, peak 1) at the formants of vowel + input, set once per block */
+/* three parallel SVF band passes (normalized band k v1, peak 1) at the formants of vowel + input, set once per block.
+ * Single-precision float inside the module (D-1112), as the Multimode filter's stage 1: the states in steps of Q16, held
+ * to +-1024, the output cut toward zero to a whole step; k = 1 / (2 + 18 res) divides by at least 2 (D-1114). */
 static void m_vowel(const node_t *nd, inst_t *it, uint32_t n)
 {
-    const esig_t *vin = it->in[VOWEL_I_VOWEL];
-    int32_t v = clampi(EF(it, VOWEL_P_VOWEL) + vin[0], 0, 4 << 16), vi = v >> 16, t, lvl = EF(it, VOWEL_P_LEVEL);
-    int32_t q16 = (2 << 16) + 18 * EF(it, VOWEL_P_RES), k24 = (int32_t)(((int64_t)1 << 40) / q16);
-    svf_coef_t c[3];
-    uint32_t f;
-    int quiet = (it->s.vow.ic1[0] | it->s.vow.ic1[1] | it->s.vow.ic1[2] | it->s.vow.ic2[0] | it->s.vow.ic2[1] | it->s.vow.ic2[2]) &&
-                ring_quiet(it->in[VOWEL_I_IN], n);
-    if (quiet || it->s.vow.e) {                  /* (#969, as m_filter) */
-        int32_t st[6];
-        for (f = 0; f < 3u; f++) {
-            st[f] = it->s.vow.ic1[f];
-            st[3 + f] = it->s.vow.ic2[f];
-        }
-        it->s.vow.e = (uint8_t)ring_scale(st, 6, it->s.vow.e, quiet);
-        for (f = 0; f < 3u; f++) {
-            it->s.vow.ic1[f] = st[f];
-            it->s.vow.ic2[f] = st[3 + f];
-        }
-    }
+    const esig_t *vin = it->in[VOWEL_I_VOWEL], *in = it->in[VOWEL_I_IN];
+    esig_t *out = it->out[0];
+    int32_t v = clampi(EF(it, VOWEL_P_VOWEL) + vin[0], 0, 4 << 16), vi = v >> 16, t;
+    float k = 1.0f / (2.0f + (float)EF(it, VOWEL_P_RES) * (18.0f / 65536.0f));
+    float kl = k * (float)EF(it, VOWEL_P_LEVEL) * (1.0f / 65536.0f), w[3];
+    float *s1 = it->s.vow.ic1, *s2 = it->s.vow.ic2;
+    float p0 = s1[0], p1 = s1[1], p2 = s1[2], q0 = s2[0], q1 = s2[1], q2 = s2[2];   /* the states in registers */
+    svf_f_t c[3];
+    uint32_t i, f;
+    (void)nd;
     if (vi > 3)
         vi = 3;
     t = v - (vi << 16);
     for (f = 0; f < 3u; f++) {
         int32_t hz = ((int32_t)FORMANT_HZ[vi][f] << 16) + (int32_t)((int64_t)(FORMANT_HZ[vi + 1][f] - FORMANT_HZ[vi][f]) * t);
-        svf_stage(&c[f], svf_g(hz_turns((uint32_t)hz)), k24, 0);
+        svf_stagef(&c[f], svf_gf(hz_turns((uint32_t)hz)), k);
+        w[f] = kl;                                                          /* the gains 1, 1/2, 1/4 times k and the level */
+        kl *= 0.5f;
     }
-    if (it->s.vow.e)
-        vowel_run(it, c, k24, lvl, n, it->s.vow.e);
-    else
-        vowel_run(it, c, k24, lvl, n, 0);
+    for (i = 0; i < n; i++) {
+        float v0 = (float)in[i], y = 0.0f, v1, v2, v3;
+#define BAND(f, ic1, ic2)                                                   \
+        v3 = v0 - ic2;                                                      \
+        v1 = c[f].a1 * ic1 + c[f].a2 * v3;                                  \
+        v2 = ic2 + c[f].a2 * ic1 + c[f].a3 * v3;                            \
+        ic1 = clampf(2.0f * v1 - ic1, FLT_LIM);                             \
+        ic2 = clampf(2.0f * v2 - ic2, FLT_LIM);                             \
+        y += w[f] * v1;
+        BAND(0, p0, q0) BAND(1, p1, q1) BAND(2, p2, q2)
+#undef BAND
+        out[i] = (int32_t)y;
+    }
+    {
+        float st[6] = {p0, p1, p2, q0, q1, q2};
+        if (ring_endf(st, 6) && ring_quiet(in, n))      /* D-1109 */
+            p0 = p1 = p2 = q0 = q1 = q2 = 0.0f;
+    }
+    s1[0] = p0;
+    s1[1] = p1;
+    s1[2] = p2;
+    s2[0] = q0;
+    s2[1] = q1;
+    s2[2] = q2;
 }
 
 #define INC_20HZ ((uint32_t)((20ull << 32) / ENG_SR))   /* 20 Hz as a phase increment */
@@ -11410,13 +11310,14 @@ static void m_vowel(const node_t *nd, inst_t *it, uint32_t n)
 /* four first-order allpasses in series with one coefficient a = (g - 1) / (g + 1), g = tan(pi f / sr), f = center *
  * 2^(2 depth tri) from a triangle sweep, once per block; feedback from stage 4 into stage 1. Each stage is a one-multiplier
  * (wave digital) section with one state w: v = a (x - w), y = v + w, w <- v + x, the allpass (a + z^-1) / (1 + a z^-1)
- * (modules.ts phaser). Values are Q20, a is Q31. Each product (the feedback's and v) is the high word, floored; the
- * feedback, y and the new w are then each moved one step up when negative, so none is larger in magnitude than its exact
- * value (D-1109) and a ring with no input ends at exactly zero: a section keeps (1 + a)(x^2 - y^2) = (1 - a)(w'^2 - w^2)
- * and every stage has the same a, so with feedback under 1 the sum of the four w^2 can't grow, whatever the sweep does;
- * it stays put only while every value is exact and stage 4 puts out 0, which a nonzero state can't keep up. (#969: the
- * direct form, x1 / y1 states with floored products, held a quiet ring at a steady level: floor(-a y1) keeps y1 = -k for
- * k < 1 / (1 - |a|), about 24 steps at 300 Hz) */
+ * (modules.ts phaser). Values are Q20, a is Q31 (worked out in float once a block, D-1111). Each product (the feedback's
+ * and v) is the high word, floored; the feedback, y and the new w are then each moved one step up when negative, so none
+ * is larger in magnitude than its exact value (D-1109) and a ring with no input ends at exactly zero: a section keeps
+ * (1 + a)(x^2 - y^2) = (1 - a)(w'^2 - w^2) and every stage has the same a, so with feedback under 1 the sum of the four
+ * w^2 can't grow, whatever the sweep does; it stays put only while every value is exact and stage 4 puts out 0, which a
+ * nonzero state can't keep up. (#969: the direct form, x1 / y1 states with floored products, held a quiet ring at a
+ * steady level: floor(-a y1) keeps y1 = -k for k < 1 / (1 - |a|), about 24 steps at 300 Hz.) In float (D-1112) the
+ * stages cost more on the FM-1 than these multiply-highs: each sample's two conversions outweigh what they save. */
 static void m_phaser(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *in = it->in[PHASER_I_IN];
@@ -11424,12 +11325,13 @@ static void m_phaser(const node_t *nd, inst_t *it, uint32_t n)
     uint32_t dt = hz_turns((uint32_t)EF(it, PHASER_P_RATE)), phase = it->s.phs.phase, i, k;
     int32_t tri = wave_tri(phase), oct = mul16(2 * EF(it, PHASER_P_DEPTH), tri);
     uint32_t rinc = exp2_scale(hz_turns((uint32_t)EF(it, PHASER_P_CENTER)), oct);
-    int32_t g, a, fb = clampi(EF(it, PHASER_P_FB), 0, ENG_ONE - 1) << 15, mix = EF(it, PHASER_P_MIX), dry = ENG_ONE - mix;
+    int32_t a, fb = clampi(EF(it, PHASER_P_FB), 0, ENG_ONE - 1) << 15, mix = EF(it, PHASER_P_MIX), dry = ENG_ONE - mix;
     int32_t fbv = it->s.phs.fbv, *ap = it->s.phs.ap;
+    float g;
     if (rinc < INC_20HZ)
         rinc = INC_20HZ;
-    g = svf_g(rinc);
-    a = (int32_t)((int64_t)(g - (1 << 24)) * ((int64_t)1 << 31) / (g + (1 << 24)));
+    g = (float)svf_g(rinc) * (1.0f / 16777216.0f);                                  /* tan(pi f / sr), f <= 0.45 sr */
+    a = (int32_t)((g - 1.0f) / (g + 1.0f) * 2147483648.0f);                         /* (g + 1 > 1: |a| < 1) */
     for (i = 0; i < n; i++) {
         int32_t x0 = in[i], x = mulh32(fb, fbv * 2);
         x = clampi(clampi(x0, -(16 << 16), 16 << 16) * 16 + x + (int32_t)((uint32_t)x >> 31), -(8 << 20), 8 << 20);
@@ -11498,7 +11400,7 @@ static int32_t signal_mean(const esig_t *src, uint32_t n)
 {
     int64_t sum = 0;
     uint32_t i;
-    for (i = 0; i < n; i++)
+    for (i = 0; i < n; i++)          /* (not UNROLL4: unrolled, the compiler stops inlining it, which costs more) */
         sum += src[i];
     return block_mean(sum, n);
 }
@@ -11636,7 +11538,7 @@ static void m_bypass(const node_t *nd, inst_t *it, uint32_t n)
         esig_t *o = it->out[j];
         if (IS_DUMMY(o))
             continue;
-        for (i = 0; i < n; i++)
+        for (i = 0; i < n; i++)      /* (not UNROLL4, as signal_mean) */
             o[i] = src[i];
     }
 }
@@ -11703,6 +11605,173 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     default: break;                      /* output: read by eng_render */
     }
 }
+
+/* D-1114, #979: the float kernels' result bits, to compare the second core with core 0, the emulator and the host for
+ * the same input (main.c DIAG pages 140..142, firmware/test/fpu_probe.c). Each case renders one copy of a module from
+ * rest through PROBE_BLOCKS blocks of PROBE_N samples: PROBE_LOUD of them with a fixed input (a saw plus a pseudo-random
+ * part, loud enough to reach the saturators; a moving cv, morph and fm where the case cables them), then silence. h[c]
+ * is an FNV-1a hash of every word its cabled outputs wrote and of its own state's bytes after each block (its struct in
+ * inst_t's union: floats and 32-bit words, laid out alike on every host; the whole union holds pointers). The unconnected
+ * outputs go to the lane's dummy buffer (lane 1: the second core's). Everything is on the caller's stack (about 1 KB).
+ * The last case, the Reverb, runs its sample loop (reverb_samples) on a short copy of its lines (probe_reverb). */
+#define PROBE_N 16u
+#define PROBE_BLOCKS 8u
+#define PROBE_LOUD 5u
+
+static uint32_t probe_hash(uint32_t h, const void *p, uint32_t len)
+{
+    const uint8_t *b = (const uint8_t *)p;
+    uint32_t i;
+    for (i = 0; i < len; i++)
+        h = (h ^ b[i]) * 0x01000193u;
+    return h;
+}
+
+/* The Reverb's case: its whole lines (16 KB) fit no stack, so reverb_samples runs RVP_BLOCKS blocks of PROBE_N samples
+ * on short lines of RVP_LINE samples, filled with a fixed pattern loud enough to reach the clamp, and no pre-delay. The
+ * lines do not wrap in that time; the taps (the modulated two included) read the pattern, and every float product, the
+ * damping, the matrix and the rounded line writes run as in a patch. The last block drains (D-1109). h is an FNV-1a hash
+ * of the wet output and of the state's fixed-size part (from li, after the buffer's pointer) after each block, then of
+ * the lines. About 2 KB of stack (a frame apart from the filters' cases). */
+#define RVP_BLOCKS 4u
+#define RVP_LINE (RVP_BLOCKS * PROBE_N + 16u)   /* the writes reach RVP_BLOCKS x PROBE_N; the taps read up to 8 past */
+static __attribute__((noinline)) uint32_t probe_reverb(void)
+{
+    int16_t mem[8u * RVP_LINE + 3u * RVP_BLOCKS * PROBE_N], *line[8], *ap[2], *pre;
+    esig_t in[PROBE_N], out[PROBE_N];
+    inst_t it;
+    const int32_t *kp = DEFS[T_REVERB].pdef;
+    float d = (float)kp[REVERB_P_DAMP] * (0.8f / 65536.0f);
+    uint32_t h = 0x811C9DC5u, seed = 12345u, b, i, j, t = 0;
+    const uint8_t *st = (const uint8_t *)it.s.rev.li;
+    const uint32_t stlen = (uint32_t)((const uint8_t *)(&it.s.rev.hold + 1) - st);
+    uint8_t *z = (uint8_t *)&it;
+    for (j = 0; j < sizeof it; j++)
+        z[j] = 0;
+    for (j = 0; j < sizeof mem / sizeof mem[0]; j++) {
+        seed = seed * 1664525u + 1013904223u;
+        mem[j] = (int16_t)(seed >> 16);
+    }
+    for (j = 0; j < 8u; j++)
+        line[j] = mem + j * RVP_LINE;
+    ap[0] = mem + 8u * RVP_LINE;
+    ap[1] = ap[0] + RVP_BLOCKS * PROBE_N;
+    pre = ap[1] + RVP_BLOCKS * PROBE_N;
+    reverb_gains(&it, kp[REVERB_P_SIZE], 0);
+    for (b = 0; b < RVP_BLOCKS; b++) {
+        for (i = 0; i < PROBE_N; i++, t++) {
+            seed = seed * 1664525u + 1013904223u;
+            in[i] = b + 1u < RVP_BLOCKS ? ((int32_t)((t * 4093u) & 0x1FFFFu) - 65536 + (int32_t)(seed >> 17) - 16384) * 3 / 2 : 0;
+        }
+        if (b + 1u < RVP_BLOCKS)
+            reverb_samples(&it, PROBE_N, in, out, line, ap, pre, it.s.rev.gain, d, RV_MOD, 0u, RV_GIN, 0);
+        else
+            reverb_samples(&it, PROBE_N, in, out, line, ap, pre, it.s.rev.gain, d, RV_MOD, 0u, RV_GIN, 1);
+        h = probe_hash(h, out, sizeof out);
+        h = probe_hash(h, st, stlen);
+    }
+    return probe_hash(h, mem, sizeof mem);
+}
+
+static __attribute__((noinline)) void probe_modules(uint32_t lane, uint32_t *h)
+{
+    /* the cases: the filter with osc, drive, cv and morph, every output; the filter's lp12 alone; the Ladder with stsat
+     * and an audio-rate fm; its diode mode; the Formant filter; the Resonator */
+    static const uint8_t TYPE[ENG_PROBE_CASES - 1u] = {T_FILTER, T_FILTER, T_LADDER, T_LADDER, T_VOWEL, T_MODAL};
+    esig_t in[3][PROBE_N], out[FILTER_NOUT][PROBE_N];
+    int32_t eff[MAX_PAR];
+    node_t nd;
+    inst_t it;
+    uint32_t c, b, i, j, t, seed;
+    for (c = 0; c < ENG_PROBE_CASES - 1u; c++) {
+        const def_t *d = &DEFS[TYPE[c]];
+        uint8_t *z = (uint8_t *)&nd;
+        for (j = 0; j < sizeof nd; j++)
+            z[j] = 0;
+        z = (uint8_t *)&it;
+        for (j = 0; j < sizeof it; j++)
+            z[j] = 0;
+        nd.type = TYPE[c];
+        nd.ninst = 1;
+        nd.conn = 1u;                                /* in: input 0 in every case */
+        for (j = 0; j < d->npar; j++)
+            eff[j] = d->pdef[j];
+        it.eff = eff;
+        for (j = 0; j < MAX_IN; j++)
+            it.in[j] = zero_buf;
+        it.in[0] = in[0];
+        for (j = 0; j < MAX_OUT; j++)
+            it.out[j] = lane ? dummy_out1 : dummy_out;
+        for (j = 0; j < d->nout; j++)
+            it.out[j] = out[j];
+        switch (c) {
+        case 0:
+            eff[FILTER_P_CUTOFF] = 700 << 16;
+            eff[FILTER_P_RES] = 63570;               /* 0.97 */
+            eff[FILTER_P_OSC] = ENG_ONE;
+            eff[FILTER_P_DRIVE] = 3 << 16;
+            eff[FILTER_P_CVAMT] = 2 << 16;
+            eff[FILTER_P_MORPH] = 19661;
+            nd.conn |= 1u << FILTER_I_CV | 1u << FILTER_I_MORPH;
+            it.in[FILTER_I_CV] = in[1];
+            it.in[FILTER_I_MORPH] = in[2];
+            break;
+        case 1:
+            eff[FILTER_P_CUTOFF] = 1500 << 16;
+            eff[FILTER_P_RES] = 32768;
+            for (j = 0; j < d->nout; j++)
+                if (j != FILTER_O_LP12)
+                    it.out[j] = lane ? dummy_out1 : dummy_out;
+            break;
+        case 2:
+            eff[LADDER_P_CUTOFF] = 900 << 16;
+            eff[LADDER_P_RES] = 58982;               /* 0.9 */
+            eff[LADDER_P_DRIVE] = 4 << 16;
+            eff[LADDER_P_STSAT] = ENG_ONE;
+            eff[LADDER_P_CVAMT] = ENG_ONE;
+            nd.conn |= 1u << LADDER_I_FM;
+            it.in[LADDER_I_FM] = in[1];
+            break;
+        case 3:
+            eff[LADDER_P_CUTOFF] = 600 << 16;
+            eff[LADDER_P_RES] = 62259;               /* 0.95 */
+            eff[LADDER_P_DRIVE] = 2 << 16;
+            eff[LADDER_P_DIODE] = ENG_ONE;
+            break;
+        case 4:
+            eff[VOWEL_P_VOWEL] = 85197;              /* 1.3 */
+            eff[VOWEL_P_RES] = 52429;
+            eff[VOWEL_P_LEVEL] = 58982;
+            break;
+        default:
+            break;
+        }
+        h[c] = 0x811C9DC5u;
+        seed = 12345u;
+        t = 0;
+        for (b = 0; b < PROBE_BLOCKS; b++) {
+            for (i = 0; i < PROBE_N; i++, t++) {
+                seed = seed * 1664525u + 1013904223u;
+                in[0][i] = b < PROBE_LOUD ? ((int32_t)((t * 4093u) & 0x1FFFFu) - 65536 + (int32_t)(seed >> 17) - 16384) * 3 / 2 : 0;
+                in[1][i] = (int32_t)((t * 911u) & 0xFFFFu) - 32768;
+                in[2][i] = (int32_t)((t * 2309u) & 0x1FFFFu) - 65536;
+            }
+            process(&nd, &it, PROBE_N);
+            for (j = 0; j < d->nout; j++)
+                if (it.out[j] == out[j])
+                    h[c] = probe_hash(h[c], out[j], sizeof out[j]);
+            h[c] = probe_hash(h[c], &it.s, TYPE[c] == T_FILTER ? sizeof it.s.flt : TYPE[c] == T_LADDER ? sizeof it.s.lad :
+                                           TYPE[c] == T_VOWEL ? sizeof it.s.vow : sizeof it.s.mod);
+        }
+    }
+}
+
+void eng_fpu_probe(uint32_t lane, uint32_t *h)
+{
+    probe_modules(lane, h);
+    h[ENG_PROBE_CASES - 1u] = probe_reverb();
+}
+
 /* A signal within +-IDLE_Q16 (Q16) counts as silent: idle parts (part_quiet) and a natural master FX tail (m_fx). */
 #define IDLE_Q16 6
 /* Discard only an exhausted tail, never a saved parameter. Keeping the physical line and its capacity avoids allocation
@@ -11949,21 +12018,25 @@ static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, 
             const esig_t *a = p[0], *b = p[1], *c = p[2];
             if (sm->n >= 4u) {
                 const esig_t *d = p[3];
+                UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] = a[i] + b[i] + c[i] + d[i];
                 q = 4;
             } else {
+                UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] = a[i] + b[i] + c[i];
                 q = 3;
             }
             for (; q + 3u <= sm->n; q += 3u) {
                 a = p[q], b = p[q + 1u], c = p[q + 2u];
+                UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] += a[i] + b[i] + c[i];
             }
             for (; q < sm->n; q++) {
                 a = p[q];
+                UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] += a[i];
             }
@@ -11972,13 +12045,15 @@ static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, 
         if (sm->n >= 2) {                           /* the first two sources in one pass, the rest added */
             const esig_t *a = E.sum_src[sm->first], *b = E.sum_src[sm->first + 1u];
             const int32_t wa = E.sum_w[sm->first], wb = E.sum_w[sm->first + 1u];
-            if (!wa && !wb)
+            if (!wa && !wb) {
+                UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] = a[i] + b[i];
-            else if (wa && wb)
+            } else if (wa && wb) {
+                UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] = mul16(a[i], wa) + mul16(b[i], wb);
-            else
+            } else
                 for (i = 0; i < n; i++)
                     dst[i] = (wa ? mul16(a[i], wa) : a[i]) + (wb ? mul16(b[i], wb) : b[i]);
             q = 2;
@@ -11996,12 +12071,15 @@ static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, 
         for (; q < sm->n; q++) {
             const esig_t *src = E.sum_src[sm->first + q];
             const int32_t w = E.sum_w[sm->first + q];
-            if (w)
+            if (w) {
+                UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] += mul16(src[i], w);
-            else
+            } else {
+                UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] += src[i];
+            }
         }
     }
     ENG_PROF(1, m, IT_V(nd, it));
@@ -12058,10 +12136,13 @@ static void render_mods(uint32_t k0, uint32_t k1, uint32_t n, uint32_t first, ui
 
 /* #802: the patch on two cores. When a patch loads, sched_build puts each item (a copy of a module: one part's, or the
  * module's when it runs once) in lane 0 (core 0) or lane 1 (the second core). In E.order, each item goes to the lane where
- * it would end first, counting its cost (DEF_COST, from the CPU estimate's table), the lane's items before it and the
- * items it waits for (sch_deps); a wait across the lanes costs SCH_SYNC. Each lane renders its items in E.order's order
- * and waits only for items that come before, so the lanes never wait for each other in a circle. The patch keeps the
- * schedule when it ends sooner than one core would, by more than handing the job over costs (SCH_FORK).
+ * it would end first, counting its cost, the lane's items before it and the items it waits for (sch_deps); a wait across
+ * the lanes costs SCH_SYNC. Each lane renders its items in E.order's order and waits only for items that come before, so
+ * the lanes never wait for each other in a circle. Two plans (#1073): one at the CPU table's costs (DEF_TCOST), one at the
+ * costs measured on the test rig (DEF_COST: an oscillator's times its voices, SCH_ITEM more each item). The rig's plan is
+ * kept when, both counted at the rig's costs, it ends sooner than the table's by 1 / SCH_GAIN; where the two are closer,
+ * the costs' own error decides which ends first, and the table's plan is the one the FM-1 played before. The patch keeps
+ * the schedule when it ends sooner than one core would, by more than handing the job over costs (SCH_FORK).
  * The lanes render exactly as one core would. An item starts after every value it reads is complete, and nothing it writes
  * is read or overwritten by the other lane before that lane may: its scratch, dummy output and buffers are its lane's
  * (inst_lane, buf_take), and a value read across the lanes keeps its buffer for the block (buf_end). A Steps module stays in
@@ -12086,17 +12167,33 @@ static int eng_lane_wait(void) { return 0; }                    /* 0: done; else
 #define SCH_KMAX 4u                     /* Reverb kernels with an item of their own (D-1103; a further one runs in m_reverb) */
 #define SCH_KIX (ENG_MAX_INST + 1u)     /* (the first kernel's place in fin and at, after the copies') */
 #define SCH_RV_MIX 16u                  /* a Reverb's own turn once its kernel has an item: the mix (about 1,000 cycles) */
+#define SCH_ITEM 4u                     /* the rig's plan: rendering an item beyond its module's own time (about 1 us) */
+#define SCH_GAIN 25u                    /* the rig's plan is kept when it ends sooner by 1 / SCH_GAIN (4 %) */
 typedef struct {                        /* (sched_build's, on the main loop's stack) */
     uint32_t fin[SCH_KIX + SCH_KMAX];   /* when each copy (then each kernel) would end, DEF_COST units */
     uint8_t at[SCH_KIX + SCH_KMAX];     /* its place in its lane */
     uint8_t pos[ENG_MAX_MODULES];       /* a module's place in E.order */
     uint8_t km[SCH_KMAX], kl[SCH_KMAX], nk;   /* the kernels: their Reverb, their lane; how many */
+    const uint16_t *wl, *wat, *wn;      /* each copy's waits as sch_deps finds them (wl from wat[ix], wn[ix] of them), recorded
+                                         * once in the arena's free bytes; wl 0: no room, found again each time */
 } sch_build_t;
-typedef struct { const sch_build_t *b; uint32_t lane, t, need; } sch_acc_t;   /* an item in `lane`: when it may start; the
-                                                                               * other lane's items it needs */
+typedef struct {                        /* an item in `lane`: when it may start; the other lane's items it needs; with rec,
+                                         * what it waits for, recorded instead (up to cap; nrec past cap: no room) */
+    const sch_build_t *b;
+    uint32_t lane, t, need;
+    uint16_t *rec;
+    uint32_t nrec, cap;
+} sch_acc_t;
 static void sch_dep(sch_acc_t *a, uint32_t d)          /* the item waits for copy d (or kernel d - SCH_KIX) */
 {
-    uint32_t t = a->b->fin[d];
+    uint32_t t;
+    if (a->rec) {
+        if (a->nrec < a->cap)
+            a->rec[a->nrec] = (uint16_t)d;
+        a->nrec++;
+        return;
+    }
+    t = a->b->fin[d];
     if ((d >= SCH_KIX ? a->b->kl[d - SCH_KIX] : LANE_OF(d)) != a->lane) {
         t += SCH_SYNC;
         if (a->b->at[d] + 1u > a->need)
@@ -12151,6 +12248,79 @@ static void sch_deps(sch_acc_t *a, uint32_t m, uint32_t v)
         if (a->b->km[w] == m)
             sch_dep(a, SCH_KIX + w);
 }
+/* what copy v of module m waits for (sch_deps), from the record when there is one */
+static void sch_waits(sch_acc_t *a, uint32_t m, uint32_t v)
+{
+    uint32_t ix = E.node[m].inst0 + v, k;
+    if (!a->b->wl) {
+        sch_deps(a, m, v);
+        return;
+    }
+    for (k = 0; k < a->b->wn[ix]; k++)
+        sch_dep(a, a->b->wl[a->b->wat[ix] + k]);
+}
+/* the copies of an oscillator's wave it plays (m_osc: its unison or its stack's notes, the more; schedule.ts oscVoices) */
+static uint32_t sch_voices(const node_t *nd)
+{
+    int32_t nu = clampi(round_q16(nd->par[OSC_P_UNISON]), 1, 5), nst = STACK_N[clampi(round_q16(nd->par[OSC_P_STACK]), 0, 4)];
+    return (uint32_t)(nu > nst ? nu : nst);
+}
+/* a copy of module m in one plan: at the rig's costs (rig), else at the CPU table's */
+static uint32_t sch_cost(const sch_build_t *b, uint32_t m, int rig)
+{
+    const node_t *nd = &E.node[m];
+    uint32_t v, cost = nd->bypass ? (rig ? DEF_COST_BYPASS : DEF_TCOST_BYPASS) : (rig ? DEF_COST : DEF_TCOST)[nd->type];
+    for (v = 0; v < b->nk; v++)                  /* (D-1104: bypassed when the patch loads) */
+        if (b->km[v] == m && !nd->bypass)
+            return SCH_RV_MIX + (rig ? SCH_ITEM : 0u);
+    if (rig && !nd->bypass && nd->type == T_OSC)
+        cost *= sch_voices(nd);
+    return cost + (rig ? SCH_ITEM : 0u);
+}
+/* one plan (#1073): each item, the kernels first, where it would end first at the rig's costs (rig) or the table's; with
+ * `keep`, in the lanes it has (when the block would end with them). Returns when the block would end; `total`: every
+ * item's cost. Sets each item's lane, fin and place in its lane, and sch.n */
+static uint32_t sch_plan(sch_build_t *b, int rig, int keep, uint32_t *total)
+{
+    uint32_t end[2] = {0, SCH_FORK}, k, v, l;
+    sch.n[0] = sch.n[1] = 0;
+    *total = 0;
+    /* D-1103: each Reverb's kernel first, waiting for nothing (it reads the block before), where it would end first; none
+     * of its cost while the Reverb is bypassed when the patch loads (an off master FX stage: D-1104) */
+    for (k = 0; k < b->nk; k++) {
+        uint32_t cost = (E.node[b->km[k]].bypass ? 0u : (rig ? DEF_COST : DEF_TCOST)[T_REVERB]) + (rig ? SCH_ITEM : 0u);
+        uint32_t best = keep ? b->kl[k] : end[1] + cost < end[0] + cost ? 1u : 0u;
+        b->kl[k] = (uint8_t)best;
+        b->fin[SCH_KIX + k] = end[best] += cost;
+        b->at[SCH_KIX + k] = (uint8_t)sch.n[best]++;
+        *total += cost;
+    }
+    for (k = 0; k < E.norder; k++) {
+        uint32_t m = E.order[k], cost = sch_cost(b, m, rig);
+        const node_t *nd = &E.node[m];
+        for (v = 0; v < nd->ninst; v++) {
+            uint32_t ix = nd->inst0 + v, best = 0, fin = 0, first = 1;
+            for (l = 0; l < (nd->type == T_STEPS ? 1u : 2u); l++) {
+                sch_acc_t a = {b, l, end[l], 0};
+                if (keep && l != LANE_OF(ix))
+                    continue;
+                sch_waits(&a, m, v);
+                if (first || a.t + cost < fin) {
+                    fin = a.t + cost;
+                    best = l;
+                    first = 0;
+                }
+            }
+            lane_set(ix, best);
+            b->fin[ix] = end[best] = fin;
+            b->at[ix] = (uint8_t)sch.n[best]++;
+            *total += cost;
+        }
+    }
+    return end[0] > end[1] ? end[0] : end[1];
+}
+/* the table's plan while the rig's is made (#1073): its lanes and its kernels' */
+static uint8_t sch_keep[(ENG_MAX_INST + 8u) / 8u + SCH_KMAX] ENG_NOINIT;
 #endif
 /* no schedule: the lanes of the poly segments' split (render_split), which the editor's budget counts (rule 1) */
 static void sched_off(void)
@@ -12165,7 +12335,8 @@ static void sched_build(void)
 {
 #if ENG_SCHED
     sch_build_t b;
-    uint32_t end[2] = {0, SCH_FORK}, total = 0, k, v, l, n0, copies = 0;
+    uint32_t k, v, n0, copies = 0, end_t, total_t, end_r, total_r, t_at_rig = 0, lo = ar_lo;
+    int on_t, on_r;
 #endif
     sched_off();
 #if ENG_SCHED
@@ -12173,48 +12344,61 @@ static void sched_build(void)
         b.pos[E.order[k]] = (uint8_t)k;
         copies += E.node[E.order[k]].ninst;
     }
-    sch.n[0] = sch.n[1] = 0;
     b.nk = 0;
-    /* D-1103: each Reverb's kernel first, waiting for nothing (it reads the block before), where it would end first; none
-     * of its cost while the Reverb is bypassed when the patch loads (an off master FX stage: D-1104) */
-    for (k = 0; k < E.norder && b.nk < SCH_KMAX && copies + b.nk < ENG_MAX_INST + 1u; k++) {
-        uint32_t m = E.order[k], r = b.nk, cost = E.node[m].bypass ? 0u : DEF_COST[T_REVERB], best;
-        if (E.node[m].type != T_REVERB)
-            continue;
-        best = end[1] + cost < end[0] + cost ? 1u : 0u;
-        b.km[r] = (uint8_t)m;
-        b.kl[r] = (uint8_t)best;
-        b.fin[SCH_KIX + r] = end[best] += cost;
-        b.at[SCH_KIX + r] = (uint8_t)sch.n[best]++;
-        total += cost;
-        b.nk++;
-    }
-    for (k = 0; k < E.norder; k++) {
-        uint32_t m = E.order[k];
-        const node_t *nd = &E.node[m];
-        uint32_t cost = nd->bypass ? DEF_COST_BYPASS : DEF_COST[nd->type];   /* (D-1104: bypassed when the patch loads) */
-        for (v = 0; v < b.nk; v++)
-            if (b.km[v] == m && !nd->bypass)
-                cost = SCH_RV_MIX;
-        for (v = 0; v < nd->ninst; v++) {
-            uint32_t ix = nd->inst0 + v, best = 0, fin = 0;
-            for (l = 0; l < (nd->type == T_STEPS ? 1u : 2u); l++) {
-                sch_acc_t a = {&b, l, end[l], 0};
-                sch_deps(&a, m, v);
-                if (l == 0u || a.t + cost < fin) {
-                    fin = a.t + cost;
-                    best = l;
+    for (k = 0; k < E.norder && b.nk < SCH_KMAX && copies + b.nk < ENG_MAX_INST + 1u; k++)
+        if (E.node[E.order[k]].type == T_REVERB)
+            b.km[b.nk++] = (uint8_t)E.order[k];
+    b.wl = 0;
+    {   /* each copy's waits, recorded once for every pass below, in the arena's free bytes (given back at the end: the
+         * buffers and the lines are placed after this) */
+        uint32_t room = arena_free() / 2u > 65535u ? 65535u : arena_free() / 2u, used = 0, m;
+        uint16_t *w;
+#ifdef ENG_SCH_NORECORD                         /* (host tests, tools/sched_record.sh: every pass finds the waits again) */
+        room = 0;
+#endif
+        w = room > 2u * (ENG_MAX_INST + 1u) ? (uint16_t *)arena_lo(2u * room) : 0;
+        if (w) {
+            uint16_t *at = w, *n = w + ENG_MAX_INST + 1u, *list = n + ENG_MAX_INST + 1u;
+            room -= 2u * (ENG_MAX_INST + 1u);
+            for (k = 0; k < E.norder && used <= room; k++)
+                for (m = E.order[k], v = 0; v < E.node[m].ninst; v++) {
+                    sch_acc_t a = {&b, 0, 0, 0, list + used, 0, room > used ? room - used : 0u};
+                    sch_deps(&a, m, v);
+                    at[E.node[m].inst0 + v] = (uint16_t)used;
+                    n[E.node[m].inst0 + v] = (uint16_t)a.nrec;
+                    used += a.nrec;
                 }
+            if (used <= room) {
+                b.wl = list;
+                b.wat = at;
+                b.wn = n;
             }
-            lane_set(ix, best);
-            b.fin[ix] = end[best] = fin;
-            b.at[ix] = (uint8_t)sch.n[best]++;
-            total += cost;
         }
     }
-    if (!sch.n[1] || (end[0] > end[1] ? end[0] : end[1]) + SCH_FORK >= total) {
-        sched_off();
-        return;
+    end_t = sch_plan(&b, 0, 0, &total_t);
+    on_t = sch.n[1] && end_t + SCH_FORK < total_t;
+    if (on_t) {
+        for (k = 0; k < sizeof inst_lane; k++)
+            sch_keep[k] = inst_lane[k];
+        for (k = 0; k < SCH_KMAX; k++)
+            sch_keep[sizeof inst_lane + k] = b.kl[k];
+        t_at_rig = sch_plan(&b, 1, 1, &total_r);
+    }
+    end_r = sch_plan(&b, 1, 0, &total_r);
+    on_r = sch.n[1] && end_r + SCH_FORK < total_r;
+    if (!on_t)
+        t_at_rig = total_r;
+    if (!(on_r && end_r * SCH_GAIN < t_at_rig * (SCH_GAIN - 1u))) {
+        if (!on_t) {
+            ar_lo = lo;
+            sched_off();
+            return;
+        }
+        for (k = 0; k < sizeof inst_lane; k++)
+            inst_lane[k] = sch_keep[k];
+        for (k = 0; k < SCH_KMAX; k++)
+            b.kl[k] = sch_keep[sizeof inst_lane + k];
+        sch_plan(&b, 0, 1, &total_t);
     }
     sch.on = 1;
     n0 = sch.n[0];
@@ -12237,12 +12421,13 @@ static void sched_build(void)
         for (v = 0; v < nd->ninst; v++) {
             uint32_t ix = nd->inst0 + v, slot = (LANE_OF(ix) ? n0 : 0u) + b.at[ix];
             sch_acc_t a = {&b, LANE_OF(ix), 0, 0};
-            sch_deps(&a, m, v);
+            sch_waits(&a, m, v);
             sch.need[slot] = (uint8_t)a.need;
             if (a.need)
                 sch.it[(LANE_OF(ix) ? 0u : n0) + a.need - 1u] |= SCH_PUB;
         }
     }
+    ar_lo = lo;
 #endif
 }
 
@@ -12445,6 +12630,7 @@ static void render_sched(uint32_t n)
 static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the patch, clamped */
 {
     uint32_t off, i, k, v;
+    UNROLL4
     for (i = 0; i < total; i++)
         left[i] = right[i] = 0;
     cko.n = 0;
@@ -12654,6 +12840,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             const inst_t *it = &inst_pool[o->inst0];
             int32_t lvl = it->eff[OUTPUT_P_LEVEL];
             const esig_t *l = it->in[OUTPUT_I_L], *r = (o->conn & (1u << OUTPUT_I_R)) ? it->in[OUTPUT_I_R] : it->in[OUTPUT_I_L];
+            UNROLL4
             for (i = 0; i < n; i++) {
                 left[off + i] += mul16(l[i], lvl);
                 right[off + i] += mul16(r[i], lvl);
@@ -12685,6 +12872,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         }
         ENG_PROF(5, 0, 0);
     }
+    UNROLL4
     for (i = 0; i < total; i++) {
         left[i] = clampi(left[i], -ENG_ONE, ENG_ONE);
         right[i] = clampi(right[i], -ENG_ONE, ENG_ONE);

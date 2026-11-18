@@ -20,7 +20,7 @@ import { FALLBACK_NAME, fallbackPatch } from '../src/fallback';
 import { factoryPresets, factoryRackPresets } from '../src/factory-presets';
 import { controlsHeader, readmeWithControls } from './controls-h';
 import { PRESET_MIGRATIONS } from '../src/preset-migrate';
-import { CPU, scheduleBypass, scheduleCost } from '../src/cpu';
+import { CPU, planCosts } from '../src/cpu';
 import { readLineage } from './lineage-lib';
 import { CASE_PICKS, casesHeader, migrationCases, migrationSection } from './preset-migration-c';
 import { buildRegion, contentVersion, KIND_REGION, KIND_TIER, readHeader, REGION_SIZE, TIER_SET } from './factory-region';
@@ -69,13 +69,15 @@ w(`#define DELAY_LENGTH_MAX ${DELAY_LENGTH_MAX}`);
 w(`#define DELAY_REACH_MAX ${DELAY_REACH_MAX}   /* ms: the longest time, the longest length at the lowest rate (#659) */`);
 w(`#define DELAY_NRATE ${DELAY_RATES.length}   /* the Delay's rate row (#659): step r keeps every (1 << r)-th sample */`);
 w(`#define DELAY_TAIL ${DELAY_TAIL}   /* samples at the line end with a lower rate or Tape on: the filters' state (modules.ts) */`);
-w(`/* the low pass in front of a lower rate's line (modules.ts delayAaCoefs at DEVICE_SR), per rate step 1..: two sections, b0 a1 a2 Q30 (engine.c dly_aa) */`);
-w(`static const int32_t DELAY_AA[DELAY_NRATE - 1][6] = {${[2, 4].map((k) => `{${delayAaCoefs(DEVICE_SR, k).flat().map((c) => Math.round(c * 2 ** 30)).join(', ')}}`).join(', ')}};`);
-w(`/* Tape (#660): the loop's one-pole low pass and high pass per rate step (Q24, at a line written every 1 << r samples), the
+/** a C float literal: the single-precision value nearest c, printed to 9 digits (enough to read back the same float) */
+const cFloat = (c: number): string => `${Math.fround(c).toPrecision(9)}f`;
+w(`/* the low pass in front of a lower rate's line (modules.ts delayAaCoefs at DEVICE_SR), per rate step 1..: two sections, b0 a1 a2 (engine.c dly_aa, float) */`);
+w(`static const float DELAY_AA[DELAY_NRATE - 1][6] = {${[2, 4].map((k) => `{${delayAaCoefs(DEVICE_SR, k).flat().map(cFloat).join(', ')}}`).join(', ')}};`);
+w(`/* Tape (#660): the loop's one-pole low pass and high pass per rate step (float, at a line written every 1 << r samples), the
  * wow and flutter increments (u32 turns a sample) and depths at the wow row's top (1/256 samples), the heads (bit j: head
  * j + 1 at j + 1 times the time) and 1 / n of n heads (Q16) */`);
-w(`static const int32_t DELAY_TAPE_LPQ[DELAY_NRATE] = {${[1, 2, 4].map((k) => Math.round(delayTapePole(DELAY_TAPE_LP, DEVICE_SR, k) * 2 ** 24)).join(', ')}};`);
-w(`static const int32_t DELAY_TAPE_HPQ[DELAY_NRATE] = {${[1, 2, 4].map((k) => Math.round(delayTapePole(DELAY_TAPE_HP, DEVICE_SR, k) * 2 ** 24)).join(', ')}};`);
+w(`static const float DELAY_TAPE_LP[DELAY_NRATE] = {${[1, 2, 4].map((k) => cFloat(delayTapePole(DELAY_TAPE_LP, DEVICE_SR, k))).join(', ')}};`);
+w(`static const float DELAY_TAPE_HP[DELAY_NRATE] = {${[1, 2, 4].map((k) => cFloat(delayTapePole(DELAY_TAPE_HP, DEVICE_SR, k))).join(', ')}};`);
 w(`#define DELAY_WOW_INC ${turnInc(DELAY_WOW_HZ, DEVICE_SR)}u`);
 w(`#define DELAY_FLUTTER_INC ${turnInc(DELAY_FLUTTER_HZ, DEVICE_SR)}u`);
 w(`#define DELAY_WOW_D8 ${delayDepth8(DELAY_WOW_MS, DEVICE_SR)}`);
@@ -256,13 +258,17 @@ for (const t of TYPE_ORDER) {
   w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${d.inputs.reduce((mask, port, i) => mask | (d.params.some((pd) => pd.input === port.name) ? 1 << i : 0), 0)}, ${n}_CVBASE, ${(() => { const t = thruInput(d); return t ? d.inputs.findIndex((p) => p.name === t) : -1; })()}, ${n}_NDATA, ${d.outputs.reduce((mask, o, i) => mask | (o.kind === 'audio' ? 1 << i : 0), 0)}, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF, ${n}_INC` : '0, 0, 0, 0'}, "${d.label.toUpperCase()}", ${has ? `${n}_PN` : '0'}, ${n}_INNAMES, ${has ? `${n}_LOG, ${n}_UNIT, ${n}_CH` : '0, 0, 0'}, ${d.params.some((p) => p.top !== undefined) ? `${n}_TOP` : '0'}, ${d.params.some((p) => p.since !== undefined) ? `${n}_SINCE` : '0'}, ${has ? `${n}_STEP` : '0'}},   /* ${t} */`);
 }
 w('};');
-// what one copy of each type costs a block, in 64 cycles of the CPU table: what the two-core schedule balances (engine.c
-// sched_build, #802; cpu.ts scheduleCost, the editor's mirror)
-w('/* one copy of each type, a block: what the two-core schedule balances (engine.c sched_build, #802), in 64 cycles of');
-w(' * web/src/cpu-costs.json (its run and parameter inputs: cpu.ts scheduleCost) */');
-w(`static const uint16_t DEF_COST[N_TYPES] = {${TYPE_ORDER.map((t) => scheduleCost(CPU, t)).join(', ')}};`);
-w('/* a module bypassed when the patch loads, in the same units: passing an input through (D-1104; cpu.ts scheduleBypass) */');
-w(`#define DEF_COST_BYPASS ${scheduleBypass(CPU)}u`);
+// what one copy of each type costs a block, in 64 cycles: what the two-core plan balances (engine.c sched_build, #802; cpu.ts
+// planCosts, the editor's mirror), measured on the test rig and from the CPU table
+const PLAN_COSTS = planCosts(CPU);
+w('/* one copy of each type, a block: what the two-core plan balances (engine.c sched_build, #802), in 64 cycles: its median');
+w(' * time measured on the test rig (web/src/plan-costs.json; cpu.ts planCosts rig) */');
+w(`static const uint16_t DEF_COST[N_TYPES] = {${TYPE_ORDER.map((t) => PLAN_COSTS.rig.cost(t)).join(', ')}};`);
+w('/* a module bypassed when the patch loads, in the same units: passing an input through (D-1104) */');
+w(`#define DEF_COST_BYPASS ${PLAN_COSTS.rig.bypass}u`);
+w('/* the same from web/src/cpu-costs.json: its run and parameter inputs, and its bypass (cpu.ts planCosts table) */');
+w(`static const uint16_t DEF_TCOST[N_TYPES] = {${TYPE_ORDER.map((t) => PLAN_COSTS.table.cost(t)).join(', ')}};`);
+w(`#define DEF_TCOST_BYPASS ${PLAN_COSTS.table.bypass}u`);
 w('/* Gate-port kinds for pattern authorization, independent of environment grouping (bit n: port n is a gate) */');
 for (const [name, ports] of [['IN', 'inputs'], ['OUT', 'outputs']] as const)
   w(`static const uint32_t PRESET_GATE_${name}[] = {${TYPE_ORDER.map((t) => DEFS[t][ports].reduce((bits, p, i) => bits + (p.kind === 'gate' ? 2 ** i : 0), 0) + 'u').join(',')}};`);

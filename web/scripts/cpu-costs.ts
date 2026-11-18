@@ -51,28 +51,28 @@ const CORES = {
   survey: 'docs/measurements/cpu-survey-2026-11-14-rig-reverb-split-off.json against -reverb.json (CI run 43615466841); the idle cost: -2026-11-05-rig-release-1.10-head.json against -rig-merged-split.json',
 };
 /** Each factory engine's factor on its modules' cycles (src/cpu.ts CpuTable.rig), fitted by scripts/cpu-rig-fit.ts to the
- * test rig's survey of the 1.14 bank on the firmware with modulation every 16 samples (#806, D-1106, at SURVEY's scale):
- * the smallest that makes the estimate read at least the rig's steady peak for every voice count its factory patch played
- * on the rig, transport stopped and running. The counted engine misses what the FM-1 spends beyond its instructions (its
- * caches and memory, the hardware's own timing, how the two cores share the block), and that differs from engine to
- * engine: the factors run from 0.59 to 1.5. The poly engines the rig measured at more voices than they play (Oracle V and
- * Cassia 1 at 5, Algo Four at 8, Expander S and Hera at 6) have a factor for their modules inside the poly group
- * (`voices`) beside the one for the rest (`engines`, at most 1.5): the pair that reads at least the rig at each count with
- * the least over-read, so the estimate follows the rig's slope as voices are added (one factor over-read Hera at 6 voices
- * by 17 points). Canvas is fitted to its survey with the envelope's linear fall (#689, format 56) instead. The patches
- * outside the 1.14 bank (basic poly, drift poly, mono lead, supersaw stack) keep the factors of the 2026-11-09 survey. */
+ * test rig's survey of the 1.14 bank on the 1.20 headroom build (float kernels, D-1112; hot code in RAM, D-398; the
+ * two-core plan from the rig's module costs, D-1101; at SURVEY's scale): the smallest that makes the estimate read at
+ * least the rig's steady peak for every voice count its factory patch played on the rig, transport stopped and running.
+ * The counted engine misses what the FM-1 spends beyond its instructions (its caches and memory, the hardware's own
+ * timing, how the two cores share the block), and that differs from engine to engine: the factors run from 0.38 to 1.46.
+ * The poly engines the rig measured at more voices than they play (Oracle V and Cassia 1 at 5, Algo Four at 8, Expander S
+ * and Hera at 6) have a factor for their modules inside the poly group (`voices`) beside the one for the rest (`engines`,
+ * at most 1.5): the pair that reads at least the rig at each count with the least over-read, so the estimate follows the
+ * rig's slope as voices are added (one factor over-read Hera at 6 voices by 17 points). The patches outside the 1.14 bank
+ * (basic poly, drift poly, mono lead, supersaw stack) keep the factors of the 2026-11-09 survey. */
 const RIG = {
   engines: {
-    '8 Lire': 0.59, '808 kit': 0.85, '909 kit': 0.78, 'Algo Four': 1.22, 'Briefcase 3': 0.74,
-    'Canvas': 0.83, 'Cassia 1': 0.88, 'Elvira 2': 0.95, 'Expander S': 1.42,
-    'Hera 4': 1.08, 'Io 4': 0.68, 'Meridian 8': 0.71, 'Monolith D': 0.73,
-    'Oracle V': 1.46, 'Perun 4': 0.83, 'Sallen 20': 0.9, 'Scrounge': 0.85,
-    'Silver Box': 0.92, 'Spokes 6': 0.85, 'Vernon 100': 0.61, 'Verona Drum 1': 0.92,
-    'Wanderer': 1.06, 'basic poly': 0.92, 'drift poly': 0.92, 'mono lead': 1.28,
+    '8 Lire': 0.54, '808 kit': 0.9, '909 kit': 0.65, 'Algo Four': 1.36, 'Briefcase 3': 0.62,
+    'Canvas': 0.77, 'Cassia 1': 0.38, 'Elvira 2': 0.8, 'Expander S': 1.38,
+    'Hera 4': 0.88, 'Io 4': 0.68, 'Meridian 8': 0.74, 'Monolith D': 0.7,
+    'Oracle V': 1.46, 'Perun 4': 0.73, 'Sallen 20': 0.95, 'Scrounge': 0.8,
+    'Silver Box': 0.7, 'Spokes 6': 0.79, 'Vernon 100': 0.55, 'Verona Drum 1': 0.83,
+    'Wanderer': 1.02, 'basic poly': 0.92, 'drift poly': 0.92, 'mono lead': 1.28,
     'supersaw stack': 0.88,
   } as Record<string, number>,
-  voices: { 'Algo Four': 0.6, 'Cassia 1': 0.59, 'Expander S': 0.72, 'Hera 4': 0.5, 'Oracle V': 0.61 } as Record<string, number>,
-  survey: 'docs/measurements/cpu-survey-2026-11-14-rig-modctl.json and -run.json (CI run 43652865098, the 22 patches of the 1.14 bank); the voices: -step7-voices.json and -hera-voices.json (main at 0b7b930a); Canvas: -canvas-linear.json and -run.json (CI run 43668448074)',
+  voices: { 'Algo Four': 0.51, 'Cassia 1': 0.64, 'Expander S': 0.68, 'Hera 4': 0.51, 'Oracle V': 0.61 } as Record<string, number>,
+  survey: 'docs/measurements/cpu-survey-2026-11-18-rig-headroom120-bank114.json and -run.json (CI run 44262067788, the 22 patches of the 1.14 bank); the voices: -voices114.json and -run.json (the same build)',
 };
 const BLOCKS = 24;
 const SKIP = 3; // blocks before the maximum is taken for a module kit (the first notes, envelopes starting)

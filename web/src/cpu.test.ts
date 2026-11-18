@@ -110,16 +110,17 @@ describe('CPU estimate', () => {
     expect(reverb).toBeLessThan(0.3);
   });
 });
-// The factory patches on the test rig (docs/measurements/cpu-survey-2026-11-14-rig-modctl*.json: the longest audio interrupt
-// at rest and with 1 / 4 / 8 keys held, the transport stopped and running, on the firmware with modulation every 16 samples,
-// D-1106), which the engines' factors were fitted to (scripts/cpu-rig-fit.ts, frozen in cpu-costs.ts RIG). The estimate is
+// The factory patches on the test rig (docs/measurements/cpu-survey-2026-11-18-rig-headroom120-bank114*.json: the longest
+// audio interrupt at rest and with 1 / 4 / 8 keys held, the transport stopped and running, on the 1.20 headroom build: float
+// kernels, hot code in RAM, the two-core plan from the rig's module costs), which the engines' factors were fitted to
+// (scripts/cpu-rig-fit.ts, frozen in cpu-costs.ts RIG). The estimate is
 // each patch's worst case, every voice playing; the rig's figure is its steady peak (the median of a phase's samples after the first, the most
 // over the phases). A patch whose overload guard dropped parts counts at the voices it kept; one the guard muted is left
 // out. A new survey after large engine or firmware changes replaces the files and the fit.
-describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-11-14-rig-modctl*.json)', () => {
+describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-11-18-rig-headroom120-bank114*.json)', () => {
   type Reading = { name: string } & Record<string, number[] | number>;
   const read = (f: string) => JSON.parse(readFileSync(new URL(`../../docs/measurements/${f}`, import.meta.url), 'utf8')) as Reading[];
-  const files = [read('cpu-survey-2026-11-14-rig-modctl.json'), read('cpu-survey-2026-11-14-rig-modctl-run.json')];
+  const files = [read('cpu-survey-2026-11-18-rig-headroom120-bank114.json'), read('cpu-survey-2026-11-18-rig-headroom120-bank114-run.json')];
   const median = (v: number[]): number => [...v].sort((a, b) => a - b)[(v.length - 1) >> 1];
   /** the rig's steady peak (us) of each factory patch, the phases it played without shedding */
   const rig = new Map<string, number>();

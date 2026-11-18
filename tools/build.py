@@ -55,12 +55,29 @@ SPEED = "-O2"                       # the app's audio path (#798, tools/size_fns
 # what JieLi's AC79 SDK and FM1 Open compile with (#950, #979): the single-precision FPU (-mcpu=r3 -mfprev1), and every
 # float result rounded as written (no fused multiply-add)
 FPU_FLAGS = ["-mcpu=r3", "-mfprev1", "-ffp-contract=off"]
-# (spike) hot engine functions that run from SRAM: their compiled sections (-ffunction-sections: .text.NAME) are renamed
+# Functions that run from SRAM (#1072, #803): their compiled sections (-ffunction-sections: .text.NAME) are renamed
 # .fast_text.NAME in matryoshka.o before the link, so the code is the compiler's own, only placed elsewhere (app.ld .fast_text,
 # in NOINIT, copied there at boot by main.c). Only functions the compiler keeps out of line everywhere: a section attribute in
-# the source would instead stop this compiler inlining across the two sections and change the code.
-FAST_TEXT = ("m_osc", "exp2_scale", "sin_turn", "fill", "svf_g", "svf_stage", "env_rate_q8", "signal_mean", "flaw_scale",
-             "morph_value") if os.environ.get("ENG_RAMCODE", "0") == "1" else ()
+# the source would instead stop this compiler inlining across the two sections and change the code. Code from the flash
+# runs through a 32 KB instruction cache that a block's code overflows, so most of it is fetched again every block (about
+# 2 us a 64-byte line); the list is the code with the most of those fetches per byte, in the emulator's timing model over
+# the poly benchmark (web/scripts/poly-bench.ts, `m1emu cpu --modtime` with M1EMU_PROF on a build with ENG_RAMCODE=0;
+# docs/measurements/2026-11-18-poly-headroom.md), whole functions, greedy up to 12.64 KB. Profiled on the 1.20 headroom
+# build (float filters, Reverb, Delay and Low pass gate; #979), whose hot code differs from the fixed-point build's.
+# It must fit in NOINIT after .noinit (build.py checks), and nothing in it may run before fm1_cstart copies it there (the
+# P33 helpers that read the reset reason do). Only this file's functions: the compiler-rt helpers are not renamed.
+# Calls and tail calls between the flash and NOINIT are the 4-byte forms, within their +-4 MiB reach
+# (tools/emu/src/isa_tests.rs). ENG_RAMCODE=0 leaves everything in the flash. A benchmark build (M1_BENCH=1) defaults to
+# 0: its buffers in NOINIT (bench.c, about 4.8 KB) leave no room for the list there.
+RAMCODE = os.environ.get("ENG_RAMCODE", "0" if os.environ.get("M1_BENCH") == "1" else "1")
+FAST_TEXT = (
+    "toast_wanted", "bt_c1_job", "usb_retry", "eng_find", "eng_transport_running", "eng_steps_module", "eng_steps_take",
+    "pages_select", "panel_key_queue", "exp2_scale", "fm1_led_key", "env_rate_q8", "seq_rec_sync", "pages_at",
+    "unit_of", "fm1_adc_read", "uac_tap", "host_poll", "keys_report", "uac_render_start", "ctl_rate", "div64_lu",
+    "fm1_timer2_irq", "ctl_ramp16", "value_of", "fm1_alnk0_irq", "eng_lane_run", "eng_section_at", "reverb_kernel",
+    "group_cables", "fm1__sr_bits", "eng_records_end", "sch_lane", "eng_steps_rec", "eng_click_mix", "eng_rec_size",
+    "ana_init", "eng_udivmod64", "batt_mark_sync", "ctl_ramp30", "lcd_blit",
+) if RAMCODE == "1" else ()
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 
 # SDK files of AC79NN_SDK_V1.2.1_2023-12-13 (the tested version)
@@ -411,7 +428,7 @@ def build_app():
                        check=True)
         tc("cc", *[f for f in sflags if not f.startswith(("-I", "-D", "-W"))], "-c",
            OUT / "matryoshka_size.ll", "-o", OUT / "matryoshka.o")
-    if FAST_TEXT:                                       # (spike) see FAST_TEXT; the toolchain's objcopy cannot rename
+    if FAST_TEXT:                                       # see FAST_TEXT; the toolchain's objcopy cannot rename
         loc = llvm_objcopy()
         subprocess.run([loc, *[a for f in FAST_TEXT for a in ("--rename-section", f".text.{f}=.fast_text.{f}")],
                         OUT / "matryoshka.o"], check=True)
@@ -439,13 +456,20 @@ def build_app():
     img = bytearray((OUT / "text.bin").read_bytes())
     # .ram_text, .c1_text (the second core's waiting loop, #271) and .data follow .text at their load addresses; the boot
     # copies them by words (main.c fm1_cstart)
-    # (spike) and .fast_text, the hot engine code in NOINIT (FAST_TEXT), after .data
-    for sect, lname in (("ramtext.bin", "_rt_load"), ("c1text.bin", "_c1_load"), ("data.bin", "_data_load"),
-                        ("fasttext.bin", "_ft_load")):
+    # and .fast_text, the hot code in NOINIT (FAST_TEXT), after .data
+    # The boot copies END - START bytes from the load address to START; objcopy's blob starts at the section's own start.
+    # They agree only when START is the section's start: padding before START (an output section that begins unaligned)
+    # would shift every copied byte (it did: .fast_text after an odd-sized .noinit, #1072).
+    for sect, lname, start, end in (("ramtext.bin", "_rt_load", "_rt_start", "_rt_end"),
+                                    ("c1text.bin", "_c1_load", "_c1_start", "_c1_end"),
+                                    ("data.bin", "_data_load", "_data_start", "_data_end"),
+                                    ("fasttext.bin", "_ft_load", "_ft_start", "_ft_end")):
         load = symv(lname)
         if load % 4:
             raise SystemExit(f"{lname} {load:#x} is not word aligned")
         blob = (OUT / sect).read_bytes() if (OUT / sect).exists() else b""
+        if len(blob) != symv(end) - symv(start):
+            raise SystemExit(f"{sect}: {len(blob)} B, but the boot copies {start}..{end} ({symv(end) - symv(start)} B)")
         if blob:
             if load - APP_XIP < len(img):
                 raise SystemExit(f"{lname} overlaps the image")
@@ -651,7 +675,7 @@ def main():
     side = json.dumps({"version": version, "product": PRODUCT, "size": len(pkg), "sha256": hashlib.sha256(pkg).hexdigest(),
                        "app_sha256": hashlib.sha256(img).hexdigest(),
                        "build": {"ENG_AOT": int(os.environ.get("ENG_AOT", "0")),
-                                 "ENG_RAMCODE": int(os.environ.get("ENG_RAMCODE", "0")),
+                                 "ENG_RAMCODE": int(RAMCODE),
                                  "ENG_BUF_REUSE": int(os.environ.get("ENG_BUF_REUSE", "1")),
                                  "FELUCCA_SPEED": os.environ.get("FELUCCA_SPEED", SPEED),
                                  # Missing overrides use defaults in the recorded source commit.

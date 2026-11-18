@@ -4,7 +4,7 @@
  * <old-emitter> > <old.raw>; <new-emitter> > <new.raw>; cmp <old.raw> <new.raw>
  * Renders the real multimode kernel through m_filter, including all four specialization paths.
  * Only samples and the four original integrators are serialized: never pointers, padding or cache fields.
- * Return 2: output overrun; 3: seed-edge scenario unavailable; 5: write failure; 6: flush failure.
+ * Return 2: output overrun; 5: write failure; 6: flush failure.
  */
 #include <stdio.h>
 #include <string.h>
@@ -44,9 +44,9 @@ static inst_t *fixture_init(filter_fixture_t *f, uint32_t voice, uint32_t trial)
         it->out[k] = dummy_out;
     for (k = 0; k < FILTER_NPAR; k++)
         f->params[k] = FILTER_DEF[k];
-    /* Large but representable Q20 integrators, with both signs and different stage histories. */
+    /* Large but representable integrators (float in steps of Q16), with both signs and different stage histories. */
     if (trial) {
-        int32_t a = trial == 1 ? (1 << 28) - 1 : -((1 << 28) - 1);
+        float a = trial == 1 ? 16777215.0f : -16777215.0f;
         it->s.flt.ic1 = a;
         it->s.flt.ic2 = -a / 2;
         it->s.flt.jc1 = -a;
@@ -60,7 +60,7 @@ static int render(filter_fixture_t *f, inst_t *it, uint32_t n, uint32_t live,
 {
     uint32_t k, i;
     uint32_t record[] = {scenario, block, n, live};
-    int32_t state[4];
+    float state[4];
     for (k = 0; k < FILTER_NOUT; k++) {
         it->out[k] = live & (1u << k) ? f->output[k] : dummy_out;
         for (i = 0; i < ENG_BLOCK; i++)
@@ -87,85 +87,6 @@ static int render(filter_fixture_t *f, inst_t *it, uint32_t n, uint32_t live,
     return 0;
 }
 
-/* Scenario selection only, not a replacement filter or an oracle for rendered results. The first two CVs
- * give different full denominators/refined reciprocals but the same denominator >> 8. The third crosses
- * the seed key boundary and changes the integer division result. Select independently for each stage.
- */
-static int32_t selection_den(int32_t cv, int32_t damping)
-{
-    int32_t g = svf_g(exp2_scale(hz_turns(1200 * ENG_ONE), cv));
-    return (1 << 24) + mulq(g, g + damping, 24);
-}
-
-static int32_t selection_recip(int32_t d)
-{
-    int32_t x = (int32_t)(0xffffffffu / ((uint32_t)d >> 8)) << 8;
-    int32_t t = (int32_t)(((int64_t)d * x) >> 24);
-    return (int32_t)(((int64_t)x * ((2 << 24) - t)) >> 24);
-}
-
-static int select_seed_edge(int32_t damping, int32_t cv[3])
-{
-    int32_t first = -ENG_ONE, last = first;
-    int32_t first_den = selection_den(first, damping), last_den = first_den;
-    int32_t v;
-    for (v = first + 1; v <= ENG_ONE; v++) {
-        int32_t den = selection_den(v, damping);
-        if (((uint32_t)den >> 8) != ((uint32_t)first_den >> 8)) {
-            if (selection_recip(first_den) != selection_recip(last_den) &&
-                0xffffffffu / ((uint32_t)last_den >> 8) != 0xffffffffu / ((uint32_t)den >> 8)) {
-                cv[0] = first;
-                cv[1] = last;
-                cv[2] = v;
-                return 1;
-            }
-            first = v;
-            first_den = den;
-        }
-        last = v;
-        last_den = den;
-    }
-    return 0;
-}
-
-static int seed_edges(void)
-{
-    static const uint32_t lengths[] = {128, 1, 127, 0, 1, 7, 128, 2};
-    static const uint32_t order[] = {0, 0, 1, 1, 0, 2, 2, 1, 0, 1, 2, 0};
-    filter_fixture_t f;
-    uint32_t stage, trial, b, i;
-    int32_t damping = (2 << 24) - mulq(ENG_ONE / 2, 33218888, 16);
-    for (stage = 0; stage < 2; stage++) {
-        int32_t cv[3];
-        if (!select_seed_edge(stage ? SQRT2_24 : damping, cv))
-            return 3;
-        for (trial = 0; trial < 3; trial++) {
-            inst_t *it = fixture_init(&f, 0, trial);
-            f.node.conn = (1u << FILTER_I_IN) | (1u << FILTER_I_CV) | (1u << FILTER_I_MORPH);
-            it->in[FILTER_I_CV] = f.cv;
-            it->in[FILTER_I_MORPH] = f.morph;
-            f.params[FILTER_P_CUTOFF] = 1200 * ENG_ONE;
-            f.params[FILTER_P_RES] = ENG_ONE / 2;
-            f.params[FILTER_P_CVAMT] = ENG_ONE;
-            for (b = 0; b < 128; b++) {
-                uint32_t n = lengths[b % (sizeof lengths / sizeof lengths[0])];
-                int result;
-                for (i = 0; i < ENG_BLOCK; i++) {
-                    /* Fine CV motion is genuine audio input. Repeated keys occur both within blocks and
-                     * across one-sample calls; moving back also forces invalidation in both directions. */
-                    f.cv[i] = cv[order[(b + i) % (sizeof order / sizeof order[0])]];
-                    f.input[i] = ((b + i) & 1u) ? -4 * ENG_ONE : 4 * ENG_ONE;
-                    f.morph[i] = (int32_t)((b * 131u + i * 977u) % (3u * ENG_ONE)) - ENG_ONE;
-                }
-                result = render(&f, it, n, FILTER_ALL_OUTPUTS, 100u + stage * 3u + trial, b);
-                if (result)
-                    return result;
-            }
-        }
-    }
-    return 0;
-}
-
 int main(void)
 {
     static const uint32_t lengths[] = {0, 1, 127, 128, 2, 7, 31, 63, 128, 1};
@@ -184,9 +105,7 @@ int main(void)
     filter_fixture_t fixtures[2];
     inst_t *instances[2];
     uint32_t trial, b, voice, i, seed = 0x78abcdefu;
-    int result = seed_edges();
-    if (result)
-        return result;
+    int result;
     for (trial = 0; trial < 3; trial++) {
         for (voice = 0; voice < 2; voice++)
             instances[voice] = fixture_init(&fixtures[voice], voice, (trial + voice) % 3u);

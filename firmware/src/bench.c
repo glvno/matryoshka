@@ -28,7 +28,8 @@ static esig_t bench_in[BENCH_N] ENG_NOINIT, bench_out[BENCH_N] ENG_NOINIT;      
 static float bench_inf[BENCH_N] ENG_NOINIT, bench_outf[BENCH_N] ENG_NOINIT, bench_zero[BENCH_N] ENG_NOINIT;
 static float bench_arg[4][64] ENG_NOINIT;      /* arguments: sin / cos, exp, log2, exp2 */
 static int32_t bench_pitch[64] ENG_NOINIT;     /* bench_arg[3] as Q16 octaves */
-static float bench_bq[6] ENG_NOINIT;           /* DELAY_AA[0] as float */
+static float bench_bq[6] ENG_NOINIT;           /* DELAY_AA[0] */
+static int32_t bench_bqq[6] ENG_NOINIT;        /* DELAY_AA[0] in Q30 (the engine's dly_aa before #979) */
 static int32_t bench_rq[3][6] ENG_NOINIT;      /* six two-pole modes (the engine before #840): g, c1, c2 (Q30) */
 static float bench_rf[3][6] ENG_NOINIT;
 static int32_t bench_cq[4][6] ENG_NOINIT;      /* six rotated modes (m_modal): b, rc, rs, -rc (Q31) */
@@ -248,14 +249,26 @@ static uint32_t k_exp2_p(void)
 
 /* ---- the engine's kernels against the same job in float, a block from a buffer to a buffer */
 
-static uint32_t k_bq_q(void)                              /* two biquad sections: the engine's dly_aa, every 2nd sample out */
+static uint32_t k_bq_q(void)                              /* two biquad sections: dly_aa before #979, word for word */
 {
-    int32_t lp[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-    dly_aa(lp, DELAY_AA[0], bench_in, BENCH_N, 0u, 2u, bench_out);
-    return (uint32_t)lp[6];
+    const int32_t c0 = bench_bqq[0], c1 = bench_bqq[1], c2 = bench_bqq[2], c3 = bench_bqq[3], c4 = bench_bqq[4], c5 = bench_bqq[5];
+    int32_t x1 = 0, x2 = 0, u1 = 0, u2 = 0, y1 = 0, y2 = 0, *ys = bench_out;
+    uint32_t i, ph = 0, k = 2;
+    for (i = 0; i < BENCH_N; i++) {
+        int32_t x = clampi(bench_in[i], -4 * ENG_ONE, 4 * ENG_ONE) * 1024, u, y;   /* Q26 */
+        u = (mulh32(c0, x + 2 * x1 + x2) - mulh32(c1, u1) - mulh32(c2, u2)) * 4;
+        y = (mulh32(c3, u + 2 * u1 + u2) - mulh32(c4, y1) - mulh32(c5, y2)) * 4;
+        x2 = x1; x1 = x; u2 = u1; u1 = u; y2 = y1; y1 = y;
+        if (ph == k - 1u) {
+            *ys++ = (y + 512) >> 10;
+            ph = 0;
+        } else
+            ph++;
+    }
+    return (uint32_t)y1;
 }
 
-static uint32_t k_bq_f(void)                              /* dly_aa in float: the same coefficients, clamp and output */
+static uint32_t k_bq_f(void)                              /* in float: the same coefficients, clamp and output (the engine's dly_aa) */
 {
     const float c0 = bench_bq[0], c1 = bench_bq[1], c2 = bench_bq[2], c3 = bench_bq[3], c4 = bench_bq[4], c5 = bench_bq[5];
     float x1 = 0.0f, x2 = 0.0f, u1 = 0.0f, u2 = 0.0f, y1 = 0.0f, y2 = 0.0f, *ys = bench_outf;
@@ -543,8 +556,10 @@ static void bench_prepare(void)
         bench_arg[3][j] = -4.0f + 8.0f * t;
         bench_pitch[j] = (int32_t)(bench_arg[3][j] * 65536.0f);
     }
-    for (i = 0; i < 6u; i++)
-        bench_bq[i] = (float)DELAY_AA[0][i] * (1.0f / 1073741824.0f);
+    for (i = 0; i < 6u; i++) {
+        bench_bq[i] = DELAY_AA[0][i];
+        bench_bqq[i] = (int32_t)(DELAY_AA[0][i] * 1073741824.0f);
+    }
     for (i = 0; i < 6u; i++) {                            /* modes at 220 Hz x (i + 1), r = 0.9995 */
         float th = 6.28318531f * 220.0f * (float)(i + 1u) / (float)ENG_SR, r = 0.9995f;
         bench_rf[0][i] = 0.2f * sinf(th);
