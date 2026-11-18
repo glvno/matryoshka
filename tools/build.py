@@ -12,9 +12,9 @@ Identity: FM-1_7MMmmpp (7, then major, minor and patch as two digits each: 1.8.0
 FM-1_7000000 (#216).
 See BUILDING.md for the toolchain and the SDK.
 
-Measurement builds (#950, never released): M1_BENCH=1 compiles in the CPU benchmark (firmware/src/bench.c, DIAG pages
-178.., tools/m1_link.py fpubench) and links the toolchain's libm; FM1_FPU=1 compiles the app for the AC791N's FPU
-(FPU_FLAGS) and links the toolchain's r3 libraries, whose libm and float helpers use it. Both default to 0.
+Every build is for the AC791N's single-precision FPU (FPU_FLAGS, the toolchain's r3 libraries; #979, D-1111). M1_BENCH=1
+(a measurement build, never released, #950) compiles in the CPU benchmark (firmware/src/bench.c, DIAG pages 178..,
+tools/m1_link.py fpubench) and links the toolchain's libm. It defaults to 0.
 
 The JieLi toolchain is Linux x86-64 only. JIELI_TOOLCHAIN points at it; on
 macOS (or with JIELI_DOCKER=1) each tool runs in a linux/amd64 container.
@@ -52,8 +52,8 @@ APP_SWITCHES = ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_O
                 "FELUCCA_CDC_DEFAULT", "FELUCCA_UAC_AS_FIRST", "FELUCCA_UAC_MIDI_LAST", "FELUCCA_USB_HS", "M1_EMU_MIDI",
                 "ENG_AOT", "ENG_BUF_REUSE", "M1_BENCH")
 SPEED = "-O2"                       # the app's audio path (#798, tools/size_fns.py); FELUCCA_SPEED=0 builds it at -Os
-# (#950, measurement only) FM1_FPU=1: what JieLi's AC79 SDK and FM1 Open compile with, the single-precision FPU
-# (-mcpu=r3 -mfprev1), and every float result rounded as written (no fused multiply-add)
+# what JieLi's AC79 SDK and FM1 Open compile with (#950, #979): the single-precision FPU (-mcpu=r3 -mfprev1), and every
+# float result rounded as written (no fused multiply-add)
 FPU_FLAGS = ["-mcpu=r3", "-mfprev1", "-ffp-contract=off"]
 # (spike) hot engine functions that run from SRAM: their compiled sections (-ffunction-sections: .text.NAME) are renamed
 # .fast_text.NAME in matryoshka.o before the link, so the code is the compiler's own, only placed elsewhere (app.ld .fast_text,
@@ -249,14 +249,138 @@ def llvm_objcopy():
     raise SystemExit("build: FAST_TEXT needs llvm-objcopy on the host (apt install llvm, brew install llvm)")
 
 
+# ---- the FPU's instructions in the disassembly (#979)
+# JieLi's objdump cannot print the FPU's instructions (`3f e5` / `3f f5`) nor the float compares: it prints their first two
+# bytes as "<unknown instruction>" and reads the rest as an instruction of its own, which can run on into the instruction
+# after it and hide that one. The checks read every instruction (check, ram_code_check), so fpu_reread finds the FPU's
+# instructions by their encodings (fm1-emu's crates/fm1-isa/src/fpu.rs at the commit tools/emu/Cargo.toml pins),
+# disassembles a copy of the ELF with each one replaced by nops, and puts them back in that listing, one line each.
+INSN = re.compile(r"^\s*([0-9a-f]+): +((?:[0-9a-f]{2} )+)\s*(\t.*|<unknown instruction>)$")   # also objdump's unknowns
+NOP = b"\x00\x00"
+FPU_UNARY = {0x1F: "ftoi", 0x5F: "ftou", 0x8F: "itof", 0x9F: "utof"}       # ftoi / ftou truncate
+FPU_BINARY = {0: "{d} = {a} + {b}", 1: "{d} = {a} - {b}", 2: "{d} = {a} * {b}", 3: "{d} = {a} / {b}", 5: "{d} = fmin({a}, {b})",
+              6: "{d} = fmax({a}, {b})", 7: "{d} += {a} * {b}", 8: "{d} -= {a} * {b}"}
+FCMP = {0: ("==", "!="), 1: ("u>=", "<"), 4: ("u>", "<="), 5: (">=", "u<"), 6: (">", "u<=")}   # family: (plain, negated)
+
+
+def insn_len(b0, b1):
+    """an instruction's length from its first two bytes (every instruction objdump prints in the firmware has it)"""
+    return 6 if b1 == 0xFF else 4 if b1 >= 0xE0 else 2
+
+
+def fpu_text(b):
+    """what the FPU instruction or float compare b (its bytes) does, as objdump would print it; None if it is neither"""
+    w = int.from_bytes(b, "little")
+    if len(b) == 4 and b[0] == 0x3F and b[1] in (0xE5, 0xF5):     # f5: the head of a dual-issue pair
+        pair = " #" if b[1] == 0xF5 else ""
+        if b[2] in FPU_UNARY:
+            return f"r{b[3] >> 4} = {FPU_UNARY[b[2]]}(r{b[3] & 15}) (f){pair}"
+        op = FPU_BINARY.get(b[2] & 15)
+        return op and op.format(d=f"r{b[3] >> 4}", a=f"r{b[2] >> 4}", b=f"r{b[3] & 15}") + f" (f){pair}"
+    if len(b) == 4 and b[1] in (0xE8, 0xE9, 0xEC, 0xED, 0xEE):
+        op = FCMP[b[1] & 7][b[0] >> 7]
+        if b[0] & 0x70 == 0 and w >> 27 & 1:                     # if (rA op rB) goto, the float flag in bit 27
+            off = (w >> 16 & 0xFF) | (w >> 24 & 1) << 8
+            return f"iff (r{w >> 28} {op} r{w & 15}) goto {2 * (off - 512 if off & 256 else off)}"
+        if b[0] & 0x70 == 0x10 and w >> 23 & 1:                  # if (rA op rB) {, the float flag in bit 23
+            return f"iff (r{w >> 28} {op} r{w & 15}) {{"
+    if len(b) == 6 and b[1] == 0xFF and b[0] >> 4 == 4 and w >> 23 & 1 and b[0] >> 1 & 7 in FCMP:
+        off = w >> 32 & 0xFFFF
+        return (f"iff (r{w >> 28 & 15} {FCMP[b[0] >> 1 & 7][b[0] & 1]} r{w >> 24 & 15}) goto "
+                f"{2 * (off - 65536 if off & 32768 else off)}")
+    return None
+
+
+def fpu_scan(dis):
+    """the FPU's instructions in an objdump listing: address -> (bytes, what it does). Each run of instruction lines
+    (contiguous addresses, restarted at every label) is walked by instruction length (insn_len), so an instruction that
+    objdump's misread swallowed is found as well; one objdump printed itself is left to objdump"""
+    found, run = {}, []
+
+    def walk():
+        mem, said = {}, {}
+        for a, b, t in run:
+            said[a] = (len(b), t)
+            mem.update((a + i, x) for i, x in enumerate(b))
+        pc, end = (run[0][0], run[-1][0] + len(run[-1][1])) if run else (0, 0)
+        while pc + 1 < end:
+            n = insn_len(mem[pc], mem[pc + 1])
+            s = said.get(pc)
+            if pc + n <= end and not (s and s[0] == n and "unknown instruction" not in s[1]):
+                b = bytes(mem[pc + i] for i in range(n))
+                if t := fpu_text(b):
+                    found[pc] = (b, t)
+            pc += n
+        run.clear()
+
+    for ln in dis.splitlines():
+        m = INSN.match(ln)
+        if m:
+            a = int(m.group(1), 16)
+            if run and run[-1][0] + len(run[-1][1]) != a:
+                walk()
+            run.append((a, bytes.fromhex(m.group(2)), m.group(3)))
+        elif ln.rstrip().endswith(":"):                          # a label, or a section's start
+            walk()
+    walk()
+    return found
+
+
+def elf_blank(elf, found, out):
+    """write a copy of the ELF with each instruction of found (address -> (bytes, _)) replaced by nops"""
+    d = bytearray(elf.read_bytes())
+    if d[:6] != b"\x7fELF\x01\x01":
+        raise SystemExit(f"{elf}: not a 32-bit little-endian ELF")
+    shoff, = struct.unpack_from("<I", d, 32)
+    size, count = struct.unpack_from("<HH", d, 46)
+    code = [s for s in (struct.unpack_from("<6I", d, shoff + i * size) for i in range(count))
+            if s[1] == 1 and s[2] & 4]                          # name, type, flags, address, offset, size: code
+    for a, (b, _) in found.items():
+        s = next((s for s in code if s[3] <= a and a + len(b) <= s[3] + s[5]), None)
+        o = s and s[4] + a - s[3]
+        if s is None or d[o:o + len(b)] != b:
+            raise SystemExit(f"{elf}: no code section holds {b.hex(' ')} at {a:#x}")
+        d[o:o + len(b)] = NOP * (len(b) // 2)
+    out.write_bytes(d)
+
+
+def fpu_merge(dis, found, whole=False):
+    """the listing of elf_blank's copy with the FPU's instructions back in place of their nops (whole: the listing of
+    every section, which must hold each of them)"""
+    out, put, lo, hi = [], set(), 0, 0
+    for ln in dis.splitlines():
+        m = INSN.match(ln)
+        a = int(m.group(1), 16) if m else -1
+        if a in found:
+            b, t = found[a]
+            out.append(f" {a:x}:    {b.hex(' ') + ' ':<18}\t{t}")
+            put.add(a)
+            lo, hi = a, a + len(b)
+        elif not lo < a < hi:
+            out.append(ln)
+    if whole and put != found.keys():
+        raise SystemExit(f"build: the second listing has no instruction at {min(found.keys() - put):#x}")
+    return "\n".join(out) + "\n"
+
+
+def fpu_reread(elf, dis, rt, c1):
+    """the listings (whole, .ram_text, .c1_text) with every FPU instruction on a line of its own and every other
+    instruction as objdump prints it; unchanged, with no second objdump, when the firmware has none"""
+    found = fpu_scan(dis)
+    if not found:
+        return dis, rt, c1
+    copy = elf.with_name(elf.stem + "-nofpu.elf")
+    elf_blank(elf, found, copy)
+    again = tc_all(("common/bin/objdump", "-d", copy), ("common/bin/objdump", "-d", "-j", ".ram_text", copy),
+                   ("common/bin/objdump", "-d", "-j", ".c1_text", copy))
+    return tuple(fpu_merge(t, found, i == 0) for i, t in enumerate(again))
+
+
 def build_app():
-    for switch in ("ENG_AOT", "ENG_RAMCODE", "ENG_BUF_REUSE", "FM1_FPU", "M1_BENCH"):
+    for switch in ("ENG_AOT", "ENG_RAMCODE", "ENG_BUF_REUSE", "M1_BENCH"):
         if os.environ.get(switch, "0") not in ("0", "1"):
             raise SystemExit(f"{switch} must be 0 or 1")
-    fpu = os.environ.get("FM1_FPU", "0") == "1"
-    flags = [*CFLAGS, *(FPU_FLAGS if fpu else []), "-Ifirmware/hal", "-Ifirmware/src"]
-    if fpu:
-        flags.append("-DM1_FPU=1")
+    flags = [*CFLAGS, *FPU_FLAGS, "-Ifirmware/hal", "-Ifirmware/src"]
     for flag in APP_SWITCHES:      # unset: defaults in the pinned firmware source
         v = os.environ.get(flag)    # unset: the default in firmware/src/modular.c
         if v in ("0", "1"):
@@ -292,10 +416,10 @@ def build_app():
         subprocess.run([loc, *[a for f in FAST_TEXT for a in ("--rename-section", f".text.{f}=.fast_text.{f}")],
                         OUT / "matryoshka.o"], check=True)
     elf = OUT / "matryoshka.elf"
-    lib = toolchain() / "pi32v2" / "lib" / ("r3" if fpu else "")   # r3: the FPU's libm and float helpers
+    lib = toolchain() / "pi32v2" / "lib" / "r3"     # the FPU's libm and float helpers (FPU_FLAGS)
     libm = [str(lib / "libm.a")] if os.environ.get("M1_BENCH") == "1" else []   # the benchmark's sinf, expf, ...
     tc("pi32v2/bin/ld", "-T", FW / "app.ld", OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o", OUT / "fm1_cpu1.o",
-       OUT / "matryoshka.o", *libm, str(lib / "libcompiler-rt.a"), "-o", elf)   # soft float (unless FM1_FPU), 64-bit helpers
+       OUT / "matryoshka.o", *libm, str(lib / "libcompiler-rt.a"), "-o", elf)   # float and 64-bit helpers
     for sect in ("text.bin", "data.bin", "ramtext.bin", "c1text.bin", "fasttext.bin"):
         (OUT / sect).unlink(missing_ok=True)
     *_, syms, dis, rt, c1 = tc_all(("common/bin/objcopy", "-O", "binary", "-j", ".text", elf, OUT / "text.bin"),
@@ -307,6 +431,7 @@ def build_app():
                                    ("common/bin/objdump", "-d", elf),
                                    ("common/bin/objdump", "-d", "-j", ".ram_text", elf),
                                    ("common/bin/objdump", "-d", "-j", ".c1_text", elf))
+    dis, rt, c1 = fpu_reread(elf, dis, rt, c1)
     (OUT / "matryoshka.dis").write_text(dis)
 
     def symv(name):
@@ -331,19 +456,21 @@ def build_app():
     return bytes(img), syms, dis, (rt, c1)
 
 
-def check(img, syms, dis, rts):
+def unknown(dis):
+    """the instructions objdump could not print that fpu_reread did not put back: neither the FPU's nor known to objdump"""
+    return [ln.strip() for ln in dis.splitlines() if "<unknown instruction>" in ln]
+
+
+def ram_code_check(rt, c1):
+    """.ram_text and .c1_text (their listings after fpu_reread): (errors, notes)"""
     errors, notes = [], []
-    m = re.search(r"^([0-9a-f]+) .*\s_start$", syms, re.M)
-    if not m or int(m.group(1), 16) != APP_XIP:
-        errors.append(f"_start is not at {APP_XIP:#x}")
-    if img[:4] != bytes.fromhex("04818000"):
-        errors.append(f"image starts with {img[:4].hex()}, not the entry stub")
-    rt, c1 = rts
     rt_calls = [ln for ln in rt.splitlines() if re.search(r"\bcall\b", ln)]
     # (#656) nor an address in the XIP window: a constant or a jump table the compiler put in .rodata would be read there
     rt_xip = [mm.group(3) for mm in map(LINE.match, rt.splitlines()) if mm
               for v in re.findall(r"(?<![\w.])(-?\d+)\b", mm.group(3)) if 0x02000000 <= int(v) & 0xFFFFFFFF < 0x02100000]
-    if rt_calls:                    # RAM code runs with the flash off: no calls into XIP
+    if unknown(rt):                 # (#979) an instruction the checks cannot read
+        errors.append(f".ram_text holds instructions nobody can read: {unknown(rt)[:3]}")
+    elif rt_calls:                  # RAM code runs with the flash off: no calls into XIP
         errors.append(f".ram_text contains calls: {rt_calls[:3]}")
     elif rt_xip:
         errors.append(f".ram_text reaches the flash: {rt_xip[:3]}")
@@ -358,10 +485,25 @@ def check(img, syms, dis, rts):
     c1_jobs = sum(1 for i in c1_ins if re.search(r"\bcall\b", i))
     if not c1_ins:
         errors.append(".c1_text is empty: the second core's waiting loop is missing (hal/fm1_cpu1.h)")
+    elif unknown(c1):
+        errors.append(f".c1_text holds instructions nobody can read: {unknown(c1)[:3]}")
     elif c1_fixed or c1_xip:
         errors.append(f".c1_text reaches the flash: {(c1_fixed + c1_xip)[:3]}")
     else:
         notes.append(f".c1_text: {len(c1_ins)} insns, {c1_jobs} call through a register (the job), no flash address")
+    return errors, notes
+
+
+def check(img, syms, dis, rts):
+    errors, notes = ram_code_check(*rts)
+    m = re.search(r"^([0-9a-f]+) .*\s_start$", syms, re.M)
+    if not m or int(m.group(1), 16) != APP_XIP:
+        errors.append(f"_start is not at {APP_XIP:#x}")
+    if img[:4] != bytes.fromhex("04818000"):
+        errors.append(f"image starts with {img[:4].hex()}, not the entry stub")
+    if unknown(dis):
+        errors.append(f"{len(unknown(dis))} instructions nobody can read (not the FPU's, unknown to objdump): "
+                      f"{unknown(dis)[:3]}")
     fn = "?"
     for ln in dis.splitlines():     # nothing may call an address in the chip ROM
         mm = LINE.match(ln)
@@ -479,8 +621,8 @@ def main():
     name = "matryoshka.fwsc"
     check_identity(PRODUCT)
     if a.release:                   # two digits each for major, minor and patch (#216); VERSION: MENU > SYSTEM, the splash
-        if "1" in (os.environ.get("FM1_FPU"), os.environ.get("M1_BENCH")):
-            ap.error("FM1_FPU=1 and M1_BENCH=1 are measurement builds (#950), never a release")
+        if os.environ.get("M1_BENCH") == "1":
+            ap.error("M1_BENCH=1 is a measurement build (#950), never a release")
         PRODUCT, VERSION, FW_VERSION = release_identity(a.release)
         name = f"matryoshka-{a.release}.fwsc"
     fm1pkg_make.SDK = a.sdk
@@ -511,7 +653,6 @@ def main():
                        "build": {"ENG_AOT": int(os.environ.get("ENG_AOT", "0")),
                                  "ENG_RAMCODE": int(os.environ.get("ENG_RAMCODE", "0")),
                                  "ENG_BUF_REUSE": int(os.environ.get("ENG_BUF_REUSE", "1")),
-                                 **({"FM1_FPU": 1} if os.environ.get("FM1_FPU") == "1" else {}),
                                  "FELUCCA_SPEED": os.environ.get("FELUCCA_SPEED", SPEED),
                                  # Missing overrides use defaults in the recorded source commit.
                                  "defines": {k: os.environ[k] for k in APP_SWITCHES

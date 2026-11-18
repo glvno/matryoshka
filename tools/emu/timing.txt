@@ -11,6 +11,11 @@
 # against -Os with RAM code on CI run 42673451565, and the module times of CI run 43568683497): `miss` (720, where the
 # bench's cold block of sequential code measured 480) and `dual` (0.1: both cores sharing the bus and the caches while
 # core 1 runs a job). With them the residual scale came out at 1.005, so it is left at 1.
+# The FPU (#979), measured on the test rig with our firmware (docs/measurements/2026-11-16-fpu.md, firmware/src/bench.c),
+# each operation in a chain of dependent ones: an add, subtract or multiply 1.6 (fpu), a divide 3.0 (fpu_div), a
+# conversion between int and float 2.3 (fpu_cvt); subnormal operands cost the same. A multiply then an add measured 3.0
+# together; the multiply-accumulate instructions, which our compiler does not emit, are charged fpu_div. The fitted
+# numbers above came from builds with no FPU instruction, so these costs do not change them.
 clock_mhz 360
 alu 1
 load 2
@@ -23,6 +28,9 @@ taken 6.5
 multi 2
 word 1
 sys 1
+fpu 1.6
+fpu_div 3.0
+fpu_cvt 2.3
 flash_hit -1
 ram_code 0
 cache_bytes 32768

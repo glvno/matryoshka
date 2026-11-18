@@ -23,7 +23,7 @@ on:
         type: boolean
         default: false
       fpu:
-        description: 'also build the FPU measurement variants (#950: FM1_FPU=1, M1_BENCH=1; for the test rig only)'
+        description: 'also build the FPU benchmark (#950: M1_BENCH=1; for the test rig only)'
         type: boolean
         default: false
 
@@ -160,10 +160,10 @@ jobs:
           path: build/variants/
           if-no-files-found: error
 
-  # #950, measurement only: the FPU (FM1_FPU=1) and benchmark (M1_BENCH=1) builds for the test rig. Nothing installs
-  # them by default and --release refuses them; the normal build above does not change (it is built here again only to
-  # compare). Each variant's folder holds what the rig needs: matryoshka.fwsc for tools/fm1_install.py --rig, and
-  # matryoshka.bin with its M1_EMU_MIDI=1 twin matryoshka-emu.bin for npm run emu:boot.
+  # #950, #979, measurement only: the benchmark build (M1_BENCH=1) for the test rig, beside the normal build (both for the
+  # FPU). Nothing installs it by default and --release refuses it. Each variant's folder holds what the rig needs:
+  # matryoshka.fwsc for tools/fm1_install.py --rig, and matryoshka.bin with its M1_EMU_MIDI=1 twin matryoshka-emu.bin for
+  # npm run emu:boot.
   fpu-measure:
     if: github.event_name == 'workflow_dispatch' && inputs.fpu
     runs-on: ubuntu-latest
@@ -185,7 +185,7 @@ jobs:
             https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/.jieli/ac79-sdk
           git -C ~/.jieli/ac79-sdk sparse-checkout set cpu/wl82/tools
           git -C ~/.jieli/ac79-sdk checkout
-      - name: the normal build, FM1_FPU=1, and the benchmark with software float and with the FPU, no warnings
+      - name: the normal build and the benchmark, no warnings
         run: |
           set -o pipefail
           export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
@@ -203,11 +203,9 @@ jobs:
             fi
           }
           one normal 0
-          one fpu 1 FM1_FPU=1
-          one bench-soft 1 M1_BENCH=1
-          one bench-fpu 1 M1_BENCH=1 FM1_FPU=1
+          one bench 1 M1_BENCH=1
           cp build/fpu-logs/*.log build/fpu/
-      - name: what the FPU flags change, and the 64-bit multiply erratum's exposure (tools/fpu_compare.py)
+      - name: the FPU instructions each build holds, and the 64-bit multiply erratum's exposure (tools/fpu_compare.py)
         run: set -o pipefail; python3 tools/fpu_compare.py build/fpu | tee build/fpu/compare.txt
       - uses: actions/upload-artifact@v4
         with:
