@@ -186,6 +186,21 @@ export const HAND_MAPS: HandMap[] = [
       'macro#19.value': { from: 'const#19.value' }, 'macro#24.value': { from: 'const#24.value' },
     },
   },
+  // ---- the lighter set (#858): RESO and the delay's MIX carry over; CUTOFF and the LFOs' FREQ are 0..1 Macros now (a log
+  // scale no line can follow), so they start at Init; LFO 2's wave is the Oscillator's (S&H and random become its S&H
+  // mode); its amount into BITE drives a VCA before the fold instead of the fold's drive (about 1.4 times the depth)
+  {
+    engine: 'Elvira 2', from: '2596beed', to: '7857b726', why: 'issue #858: twelve filter types, the reverb, audio-rate LFOs, the sequencer, OUCH feedback',
+    rows: {
+      'macro#51.value': 'init', 'macro#52.value': { from: 'ladder#28.res' },
+      'delay#70.mix+reverb#71.mix': { from: 'delay#29.mix' },
+      'shape#76.drive': { from: 'shape#30.drive' }, 'mixer#78.l1': { from: 'shape#30.level' },
+      'macro#2.value': 'init', 'macro#8.value': 'init',
+      'osc#10.wave': { table: ['lfo#3.wave'], lo: [0], n: [6], v: [0, 1, 2, 3, 3, 3] },
+      'select#17.pos': { table: ['lfo#3.wave'], lo: [0], n: [6], v: [1, 1, 1, 1, 2, 2] },
+      'scale#19.gain': { line: 'scale#5.gain', mul: [1.4], add: [0], min: -4, max: 4 },
+    },
+  },
 
   // ---- 1.7.0, issue #430 (D-706): Cassia 1's line controls follow the CZ-1's. A line's wave was a number 0..7 (saw ..
   // reso 3) and is now a Selector at that position + 1; wave 2 was 0..8 (off, saw .. reso 3) and is now a Selector of off

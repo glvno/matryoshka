@@ -151,16 +151,16 @@ Pair interaction, sharpness and delay feedback are central to the Lyra-inspired 
 
 ## Elvira 2
 
-Digital voice forms, saturation, feedback and modulation allow both soft and abrasive drones. Deep Drone now uses a less aggressive voice/feedback combination. Pulse Lantern and Beating Cluster replace two overly forceful roles with pulsed and beating textures. Rusty Bells retains a clearly labelled abrasive role. No preset sounds until a key or PLAY ([D-1205](ledger/patches-and-presets.md#D-1205)): Deep Drone and Beating Cluster hold their voices as drone notes on the PATTERN track, and every preset has a demonstration pattern. DRONE stays on the card at 0 for droning without PLAY. [Reference](https://neutral-labs.com/elmyra2/downloads).
+Digital voice forms, saturation, feedback and modulation allow both soft and abrasive drones. Deep Drone now uses a less aggressive voice/feedback combination. Pulse Lantern and Beating Cluster replace two overly forceful roles with pulsed and beating textures. Rusty Bells retains a clearly labelled abrasive role. No preset sounds until a key or PLAY ([D-1205](ledger/patches-and-presets.md#D-1205)): Deep Drone and Beating Cluster hold their voices as drone notes on the PATTERN track, and every preset has a demonstration pattern. DRONE stays on the card at 0 for droning without PLAY. The presets use the lighter set of the Elmyra 2's parts ([D-1058](ledger/fidelity.md#D-1058), Proposed) where their roles fit them: Deep Drone sits in the reverb, Rusty Bells rings through OUCH's feedback and diode, Pulse Lantern pulses on the tempo and walks two sequences while PLAY runs, and Beating Cluster takes a 1.2 s delay. [Reference](https://neutral-labs.com/elmyra2/downloads).
 
 | Preset | Intended use |
 |---|---|
 | Init | General mixed-voice drone starting point. |
 | Fifths Pad | Stable interval bed for slow harmonic changes. |
-| Deep Drone | Low, less brittle sustained foundation. |
-| Rusty Bells | Rough ringing accents; deliberate saturation and bright texture. |
-| Pulse Lantern | Pulsed sustained texture with reduced bite and feedback. |
-| Beating Cluster | Close-frequency beating with a restrained upper spectrum. |
+| Deep Drone | Low, less brittle sustained foundation in a dark reverb. |
+| Rusty Bells | Rough ringing accents; deliberate saturation, OUCH feedback and bright texture. |
+| Pulse Lantern | Pulsed texture on the tempo; with PLAY, voices 1 and 2 step through short sequences. |
+| Beating Cluster | Close-frequency beating with a restrained upper spectrum and long echoes. |
 
 ## Scrounge
 

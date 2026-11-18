@@ -63,6 +63,9 @@ export function around(name: string, asm: string, o: { pitchGate?: boolean; poly
     plugIn(p, main.id, 'gate', a, 'gate');
   } else plugIn(p, main.id, 'keys', a, 'keys');
   if (a.inputs.some((x) => x.label === 'wheel')) plugIn(p, main.id, 'mod', a, 'wheel');
+  // an engine's own sequencers (Elvira 2's) step on Main's clock and restart with the transport
+  if (a.inputs.some((x) => x.label === 'clock')) plugIn(p, main.id, 'clock', a, 'clock');
+  if (a.inputs.some((x) => x.label === 'run')) plugIn(p, main.id, 'run', a, 'run');
   if (a.outputs.some((x) => x.label === 'l')) {
     plugOut(p, a, 'l', out.id, 'l');
     plugOut(p, a, 'r', out.id, 'r');
