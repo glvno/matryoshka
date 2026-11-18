@@ -101,7 +101,7 @@ export const LOFI_PRESET_DESIGNS: Record<string, LofiPresetDesign[]> = {
         'operator 4 / d 4': 0.12,
         'operator 4 / s 4': 0,
         'operator 4 / r 4': 0.15,
-        'voice / volume': 0.41,
+        'voice / volume': 0.36,
       },
       fx: {
         reason: 'An articulated 187 ms stereo answer places the short harmonic strike in front of a predelayed dark hall; no drive clouds the crystalline attack.',

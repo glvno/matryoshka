@@ -9,7 +9,7 @@ import PLAN from './plan-costs.json';
 import { DEFS, LFO_RANGE_K, MATRIX_N, matrixPin, STACKS, TRACK_POLY } from './modules';
 import { allModules, assembliesOf, parentOf } from './assembly';
 import { flawOf, hasMorph, type ModuleInst, type Patch } from './patch';
-import { fxHelperIds } from './fx-bus';
+import { fxBusOf, fxHelperIds } from './fx-bus';
 import { deviceView } from './poly';
 import { schedule, scheduleTime, scheduleWork, SCH_FORK, SCH_SYNC, type PlanCosts, type Schedule } from './schedule';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
@@ -118,8 +118,9 @@ export interface CpuTable {
    * that name), the factor on its modules' cycles that makes the estimate read what the rig measured for its factory patch
    * (its steady peak; the scale and the fixed time per block are fitted on every patch together). `voices`: for an engine
    * the rig measured at several voice counts, the factor on its modules inside a poly group instead (the rest keep
-   * `engines`'), so the estimate follows the rig's slope as voices are added */
-  rig?: { engines: Record<string, number>; voices?: Record<string, number>; survey: string };
+   * `engines`'), so the estimate follows the rig's slope as voices are added. `fx`: the factor on the modules of the
+   * patch's master FX bus (fx-bus.ts fxBusOf), fitted to the rig's poly factory patches as shipped and with every stage on */
+  rig?: { engines: Record<string, number>; voices?: Record<string, number>; fx?: number; survey: string };
 }
 
 export const CPU: CpuTable = TABLE as CpuTable;
@@ -294,12 +295,16 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
   const ninst = (id: number): number => copies.get(id) ?? 1;
   const morph = hasMorph(p);
   // the rig's factor of each module of a factory engine (CpuTable.rig), by its id (deviceView keeps the source's ids); a
-  // module inside a poly group takes the engine's voice factor where the rig measured it at several voice counts
+  // module inside a poly group takes the engine's voice factor where the rig measured it at several voice counts; the
+  // master FX bus's modules take the bus's own factor
   const factor = new Map<number, number>();
   for (const a of assembliesOf(source)) {
     const k = table.rig?.engines[a.name], kv = table.rig?.voices?.[a.name];
     if (k !== undefined && !parentOf(source, a.id)) for (const id of allModules(source, a)) factor.set(id, kv !== undefined && groupOf.has(id) ? kv : k);
   }
+  const kfx = table.rig?.fx, bus = kfx === undefined ? null : fxBusOf(source);
+  const busRoot = bus && source.assemblies?.find((a) => a.id === bus.assembly);
+  if (busRoot) for (const id of allModules(source, busRoot)) factor.set(id, kfx!);
   let total = table.block, split = 0, counted = table.block;
   const splitGroups = new Set<number>();
   const modules: CpuModule[] = [];

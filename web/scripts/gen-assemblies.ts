@@ -32,6 +32,8 @@ interface B {
   /** add a module at grid column / row; returns its local id */
   add(type: string, col: number, row: number, params?: Record<string, number>, o?: { p1?: string; p2?: string; att?: [number, number] }): number;
   wire(a: number, ap: string, b: number, bp: string): void;
+  /** take out a cable wired above (a part added later that goes between two modules) */
+  unwire(a: number, ap: string, b: number, bp: string): void;
   input(label: string, module: number, port: string, ...also: [number, string][]): void;
   output(label: string, module: number, port: string): void;
   /** `col`: a new column of the card starts here; `head`: a heading above it; `span`: a display reaches across this many
@@ -86,6 +88,11 @@ function build(name: string, category: string, f: (b: B) => void, poly?: PolyCar
       check(a, ap, 'outputs');
       check(bb, bp, 'inputs');
       cables.push({ from: { module: a, port: ap }, to: { module: bb, port: bp } });
+    },
+    unwire(a, ap, bb, bp) {
+      const i = cables.findIndex((c) => c.from.module === a && c.from.port === ap && c.to.module === bb && c.to.port === bp);
+      if (i < 0) throw new Error(`${name}: no cable ${a}.${ap} -> ${bb}.${bp}`);
+      cables.splice(i, 1);
     },
     input(label, module, port, ...also) {
       check(module, port, 'inputs');
@@ -829,7 +836,7 @@ asm('Oracle V', 'Voices', (b) => {
   const wheel = b.add('vca', 0, 1);
   const wFreqA = b.add('scale', 0, 2, { gain: 0.24, offset: 0 });
   const nz = b.add('noise', 1, 0, { level: 1 });
-  const part = b.add('alloc', 1, 2, { voices: 4 });
+  const part = b.add('alloc', 1, 2, { voices: 5 });
   const gl = b.add('glide', 2, 1, { time: 0.001 });
   const oscB = b.add('osc', 2, 0, { wave: 2, level: 1, fine: 7, analog: 1 }, { p1: 'fine' });
   const oscA = b.add('osc', 3, 0, { wave: 2, level: 1, analog: 1 }, { p1: 'fine' });
@@ -1390,7 +1397,7 @@ const CZ_STEPS = (s: [number, number][], sus: number, end: number): Record<strin
 /** Cassia 1's chorus at Init (#658, the owner's feature parity by default: the CZ-1's chorus on) */
 const CASSIA_CHORUS = 0.5;
 asm('Cassia 1', 'Voices', (b) => {
-  const part = b.add('alloc', 0, 4, { voices: 4 });
+  const part = b.add('alloc', 0, 4, { voices: 5 });
   const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5.5, depth: 1 / 12 });
   const vibS = b.add('scale', 0, 0.5, { gain: 0, offset: 0 }); // the vibrato's depth in semitones (negative: the CZ's saw down)
   const nz = b.add('noise', 0, 1, { level: 1, color: 0 });
@@ -2006,7 +2013,7 @@ const ALGO_PATHS: [number, number, number[]][] = [
 ];
 
 asm('Algo Four', 'Voices', (b) => {
-  const part = b.add('alloc', 0, 2, { voices: 6, stack: 1 });
+  const part = b.add('alloc', 0, 2, { voices: 8, stack: 1 });
   const op: number[] = [];
   const env: number[] = [];
   const vca: number[] = [];
@@ -3358,9 +3365,9 @@ const plates = (b: B): number => b.add('drummap', 0, 0, { ...Object.fromEntries(
 // TIME 2), each moved by MOD 1 / MOD 2 from the LFO or its own level (SELF / LFO: one row, both lines), feeding each other
 // through a soft clip by FB (the Lyra's one FB, its cross feedback), MIX of the dry voices and the lines. The DISTORTION:
 // DRIVE, MIX of clean and driven, VOL. Cables that close a loop (FM between pairs, TOTAL FB, the lines' cross feedback)
-// run one block late. FAST (the release), PITCH per group and VIBRATO (a sine LFO per voice) come last. Left out on the
-// FM-1 (8 Lire XL has them): plate pressure, FAST's other effects
-// than the release, the crosstalk, the rear jacks.
+// run one block late. FAST (the release), PITCH per group, VIBRATO (a sine LFO per voice) and the pressure plates (#851:
+// velocity plus aftertouch open each envelope, as 8 Lire XL) come last. Left out on the FM-1 (8 Lire XL has them): FAST's
+// effect on HOLD, the crosstalk, the rear jacks.
 /** 8 Lire's rows that set both delay lines (their line 2 modules, set by the builder) and its switches' position names */
 const lireAlso = { how: 0, cross: 0 };
 const LIRE_NAMES: Record<string, string[]> = {
@@ -3510,6 +3517,41 @@ asm('8 Lire', 'Voices', (b) => {
     b.wire(vibrato, 'out', vlfo, 'p1');
     b.wire(vlfo, 'out', v.osc, 'pitch');
   });
+  // (#851, added after the modules above so their numbers stay) the pressure plates, as 8 Lire XL builds them: how hard a
+  // plate is touched (its velocity, which the Drum map holds from the touch on, plus the pressure: Main's aftertouch, from
+  // an outside MIDI keyboard) sets how far its envelope opens and how fast. A pair's plates open less with FAST down
+  // (0.7). TOUCH is a Macro inside the assembly, not on the card (the Lyra has no such knob): 0.5; 0 opens every touch fully
+  const touch = b.add('macro', 0, 11, { value: 0.5 });
+  const minusOne = b.add('const', 0, 12, { value: -1 });
+  const sens = fast.map((f, p) => {
+    const s = b.add('scale', 1 + 2 * p, 10, { gain: -0.3, offset: 1 });
+    b.wire(f, 'out', s, 'in');
+    return s;
+  });
+  const opens = voices.map((v, i) => {
+    // how far the plate opens the envelope: (1 - TOUCH + TOUCH x (velocity + pressure)) x the pair's sensitivity
+    const open = b.add('math', 1 + i, 11, { ka: 0, kb: 1, off: 1 }, { p1: 'ka', p2: 'off' });
+    b.module(open).range = { p1: { ka: [0.5, 0.5 + 1 / 8] }, p2: { off: [0.5 + 1 / 8, 0.5] } }; // 0 .. 1, 1 .. 0
+    b.wire(map, `v${i + 1}`, open, 'a');
+    b.wire(touch, 'out', open, 'p1');
+    b.wire(touch, 'out', open, 'p2');
+    b.wire(sens[i >> 1], 'out', open, 'b');
+    // the envelope times the opening into the VCA, in place of the envelope alone
+    const level = b.add('math', 1 + i, 12, { ka: 1, kb: 1, off: 0 });
+    b.unwire(v.env, 'env', v.vca, 'cv');
+    b.wire(open, 'mul', level, 'a');
+    b.wire(v.env, 'env', level, 'b');
+    b.wire(level, 'mul', v.vca, 'cv');
+    // a plate opened less also opens more slowly: attack + 0.3 x (1 - opening) of its range
+    b.wire(open, 'mul', v.env, 'p1');
+    b.wire(minusOne, 'out', v.env, 'p1');
+    const env = b.module(v.env);
+    env.map!.p1 = ['a'];
+    env.att = [-0.3, env.att![1]];
+    b.nestOutput('env', v.env, 'env'); // (the envelope now leaves its voice's card, for the opening's Math)
+    return open;
+  });
+  b.input('pressure', opens[0], 'a', ...opens.slice(1).map((o) => [o, 'a'] as [number, string]));
   // the card: the Lyra-8's controls, named as its panel names them
   for (const [q, name] of [[0, '1-4'], [1, '5-8']] as const) {
     b.param('hold', hold[q], 'value', { col: q === 0 ? undefined : true, head: name });

@@ -34,8 +34,10 @@ mkdirSync(OUT, { recursive: true });
  * (absent: 1; rec: 1 on, 0 off; cc: controller value 0..127; thon / thoff: the note played into that track's keys in, at
  * velocity 100 / let go: engine.ts thru, engine.c eng_steps_thru, #368)]; take: the notes recorded so far go into their
  * tracks (the editor's overdub, the panel's); kon / koff: a note the Harmonizers take as a root whatever it is (the FM-1's
- * keys: engine.ts noteOn root, engine.c eng_harm_zone); cbon / cboff: chord button `note` (engine.ts chordButton, #598) */
-type Ev = [number, 'on' | 'off' | 'kon' | 'koff' | 'cbon' | 'cboff' | 'run' | 'stop' | 'once' | 'cin' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'armx' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff' | 'fill' | 'meter', number, number?];
+ * keys: engine.ts noteOn root, engine.c eng_harm_zone); cbon / cboff: chord button `note` (engine.ts chordButton, #598);
+ * von: a note on channel 1 at velocity `ch` (1..127); at: channel aftertouch, `note` 0..127 (engine.ts aftertouch,
+ * engine.c ENG_CTL_AT, #851) */
+type Ev = [number, 'on' | 'off' | 'von' | 'at' | 'kon' | 'koff' | 'cbon' | 'cboff' | 'run' | 'stop' | 'once' | 'cin' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'armx' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff' | 'fill' | 'meter', number, number?];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -279,6 +281,19 @@ for (const [k, [andOr, depth]] of [[2, 1.5], [1, 0.6]].entries()) {
   set('vibrato', 2);
   tests[name] = p;
   events[name] = [[128 * 10, 'on', 53], [128 * 10, 'on', 60], [128 * 150, 'off', 53], [128 * 150, 'off', 60]];
+  ends[name] = 128 * 300;
+}
+// 8 Lire's pressure plates (#851): a light touch on voice 1 (velocity 30) and a hard one on voice 3 (127, its pair on
+// FAST: the plate opens 0.7 as far), then the pressure (aftertouch) rising and falling under both before release
+{
+  const name = 'lire-plates';
+  const p = FM1_PRESETS['8 Lire']();
+  const card = p.assemblies!.find((a) => a.params.some((r) => r.label === 'vibrato'))!;
+  const row = card.params.find((r) => r.label === 'fast 3-4')!;
+  p.modules.find((m) => m.id === row.module)!.params[row.param] = 2;
+  tests[name] = p;
+  events[name] = [[128 * 10, 'von', 53, 30], [128 * 10, 'von', 57, 127], [128 * 60, 'at', 40], [128 * 90, 'at', 127],
+    [128 * 120, 'at', 0], [128 * 150, 'off', 53], [128 * 150, 'off', 57]];
   ends[name] = 128 * 300;
 }
 for (const [cc, port] of [[2, 'breath'], [64, 'sustain'], [65, 'foot']] as const) {
@@ -4434,6 +4449,8 @@ for (const [name, patch] of Object.entries(tests)) {
     else if (kind === 'pat') e.setPattern(note);
     else if (kind === 'song') e.setSong(note);
     else if (kind === 'on') e.noteOn(note, 1, ch ?? 1);
+    else if (kind === 'von') e.noteOn(note, (ch ?? 127) / 127, 1);
+    else if (kind === 'at') e.aftertouch(note / 127);
     else if (kind === 'off') e.noteOff(note, ch ?? 1);
     else if (kind === 'kon') e.noteOn(note, 1, 1, true);
     else if (kind === 'koff') e.noteOff(note, 1, true);
@@ -4461,7 +4478,7 @@ for (const [name, patch] of Object.entries(tests)) {
   // must take exactly (host_test checks): the FM-1's memory is counted from them (#649)
   if (!bins[name]) { const b = deviceBudget(patch); writeFileSync(new URL(`${f}.par`, OUT), `${b.params} ${b.buffers} ${b.instances} ${b.lines.nodes}\n`); }
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
-  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'kon' ? `${fr} kon ${n} 127` : k === 'bon' || k === 'boff' || k === 'koff' || k === 'cbon' || k === 'cboff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' || k === 'cin' || k === 'fill' || k === 'meter' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' || k === 'thon' || k === 'thoff' || k === 'armx' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
+  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'von' ? `${fr} on ${n} ${ch ?? 127} 1` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'kon' ? `${fr} kon ${n} 127` : k === 'bon' || k === 'boff' || k === 'koff' || k === 'cbon' || k === 'cboff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' || k === 'cin' || k === 'fill' || k === 'meter' || k === 'at' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' || k === 'thon' || k === 'thoff' || k === 'armx' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
 // protocol test input: upload of the acid kit, then a cutoff change on its filter
 {

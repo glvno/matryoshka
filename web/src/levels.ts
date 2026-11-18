@@ -204,6 +204,10 @@ export const SHORT: Record<string, number> = {
   'Briefcase 3 / Sea Noise': 8.8,
   // the slow trapezoid drone: reverb / level at its top (1) with the Output at 1
   'Briefcase 3 / Space Drone': 8.9,
+  // each key one pulse of what ran by itself until #1086: the level the self-running sound had (owner, 2026-11-18, D-1206)
+  'Canvas / Easel Bongos': 7.6,
+  'Canvas / FM Chimes': 5.6,
+  'Canvas / Sequencer Run': 6.7,
   'Drift Poly / Drift Bass': 5.6,
   // short zero-sustain chord swells: output / level at its top (2); the peak cap would bind before the target
   'Expander S / Dusk Chord': 6.4,

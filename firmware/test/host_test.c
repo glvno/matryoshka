@@ -109,7 +109,7 @@ int main(int argc, char **argv)
             }
             else if (!strcmp(kind, "rec") || !strcmp(kind, "cc") || !strcmp(kind, "thon") || !strcmp(kind, "thoff"))
                 fscanf(ev, "%u %u", &note, &vel);
-            else if (!strcmp(kind, "pat") || !strcmp(kind, "song") || !strcmp(kind, "cin") || !strcmp(kind, "fill") || !strcmp(kind, "meter"))
+            else if (!strcmp(kind, "pat") || !strcmp(kind, "song") || !strcmp(kind, "cin") || !strcmp(kind, "fill") || !strcmp(kind, "meter") || !strcmp(kind, "at"))
                 fscanf(ev, "%u", &note);
         }
         rewind(ev);
@@ -211,6 +211,9 @@ int main(int argc, char **argv)
                 eng_arm_mask(s);
             }
 #endif
+        } else if (!strcmp(kind, "at")) {      /* (#851) channel aftertouch, 0..127 */
+            fscanf(ev, "%u", &note);
+            eng_ctl(ENG_CTL_AT, (int32_t)(note * 65536u / 127u));
         } else if (!strcmp(kind, "cc")) {
             fscanf(ev, "%u %u", &note, &vel);
 #ifdef FM1_O_BREATH /* engine_exact.sh also builds this harness with older engine headers */

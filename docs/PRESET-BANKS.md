@@ -138,7 +138,7 @@ Oscillator sync, sample-and-hold movement and ring modulation give distinct role
 
 ## 8 Lire
 
-Pair interaction, sharpness and delay feedback are central to the Lyra-inspired instrument. Pair FM Bells uses shallow cross-modulation and rounded waves. Feedback Howl uses slower, shallower feedback movement and lower tuning. A self-holding voice can keep sounding after note release. The SOMA manual describes behavior, not numerical parity for this implementation. [Reference](https://somasynths.com/wp-content/uploads/2020/11/LYRA-8_manual_Eng_V2_1.pdf).
+Pair interaction, sharpness and delay feedback are central to the Lyra-inspired instrument. Pair FM Bells uses shallow cross-modulation and rounded waves. Feedback Howl uses slower, shallower feedback movement and lower tuning. No preset sounds until a key or PLAY ([D-1205](ledger/patches-and-presets.md#D-1205)): Eight Drone, Trill Delay's low bed and Feedback Howl hold their plates as drone notes on the PATTERN track, and every preset has a demonstration pattern. HOLD stays on the card at 0 for droning without PLAY. The SOMA manual describes behavior, not numerical parity for this implementation. [Reference](https://somasynths.com/wp-content/uploads/2020/11/LYRA-8_manual_Eng_V2_1.pdf).
 
 | Preset | Intended use |
 |---|---|
@@ -151,7 +151,7 @@ Pair interaction, sharpness and delay feedback are central to the Lyra-inspired 
 
 ## Elvira 2
 
-Digital voice forms, saturation, feedback and modulation allow both soft and abrasive drones. Deep Drone now uses a less aggressive voice/feedback combination. Pulse Lantern and Beating Cluster replace two overly forceful roles with pulsed and beating textures. Rusty Bells retains a clearly labelled abrasive role. [Reference](https://neutral-labs.com/elmyra2/downloads).
+Digital voice forms, saturation, feedback and modulation allow both soft and abrasive drones. Deep Drone now uses a less aggressive voice/feedback combination. Pulse Lantern and Beating Cluster replace two overly forceful roles with pulsed and beating textures. Rusty Bells retains a clearly labelled abrasive role. No preset sounds until a key or PLAY ([D-1205](ledger/patches-and-presets.md#D-1205)): Deep Drone and Beating Cluster hold their voices as drone notes on the PATTERN track, and every preset has a demonstration pattern. DRONE stays on the card at 0 for droning without PLAY. [Reference](https://neutral-labs.com/elmyra2/downloads).
 
 | Preset | Intended use |
 |---|---|

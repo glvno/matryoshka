@@ -18,6 +18,8 @@ Edit `web/presets/cards/<instrument>.txt`. Use existing card-row names and units
 
 A drum sound also needs its own intentional groove. Author the notes in `web/presets/patterns/defaults.json`: each row names a MIDI note, `X` is a strong hit, `x` a softer hit and `.` a rest. Use timing and instrumentation to demonstrate the sound. Avoid a renamed copy of another groove. Init may preserve the original packed notes. `web/scripts/preset-pattern-build.ts` validates the names, creates packed notes and rejects duplicate patterns within a bank.
 
+No factory sound may play by itself when it is loaded or switched to ([D-1205](ledger/patches-and-presets.md#D-1205)). A drone, a pulsing texture or a self-clocked figure plays from the PATTERN track instead, so PLAY starts it. In a lane, `-` holds the note before it one step longer, and `~` is a drone: a note tied across the loop point onto itself, which holds while the pattern plays. The drone engines 8 Lire and Elvira 2 have a pattern for every preset; their `hold` and `drone` rows stay at 0. `web/scripts/quiet-load.test.ts` fails a preset that sounds with no key held and the transport stopped; `npx vite-node scripts/quiet-audit.ts` lists every factory case with its level.
+
 Use each kit’s actual Drum map when choosing notes: the same note can play a hat in one kit and a tom in another. Main grooves leave space for the kick, snare and hats. Tonal percussion is an occasional accent unless it is the sound’s stated role.
 
 Spokes listening arrangements live in `web/scripts/audition-arrangements.ts`. They are saved in the audition patches. Sound selection does not replace the musician’s tone or chord tracks.
