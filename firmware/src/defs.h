@@ -1152,13 +1152,13 @@ enum {
 #define DELAY_REACH_MAX 15200   /* ms: the longest time, the longest length at the lowest rate (#659) */
 #define DELAY_NRATE 3   /* the Delay's rate row (#659): step r keeps every (1 << r)-th sample */
 #define DELAY_TAIL 48   /* samples at the line end with a lower rate or Tape on: the filters' state (modules.ts) */
-/* the low pass in front of a lower rate's line (modules.ts delayAaCoefs at DEVICE_SR), per rate step 1..: two sections, b0 a1 a2 Q30 (engine.c dly_aa) */
-static const int32_t DELAY_AA[DELAY_NRATE - 1][6] = {{197464337, -353234944, 69350466, 271980430, -486533384, 500713280}, {66448722, -1125925222, 317978288, 83704984, -1418320004, 679398114}};
-/* Tape (#660): the loop's one-pole low pass and high pass per rate step (Q24, at a line written every 1 << r samples), the
+/* the low pass in front of a lower rate's line (modules.ts delayAaCoefs at DEVICE_SR), per rate step 1..: two sections, b0 a1 a2 (engine.c dly_aa, float) */
+static const float DELAY_AA[DELAY_NRATE - 1][6] = {{0.183902994f, -0.328975677f, 0.0645876527f, 0.253301501f, -0.453119516f, 0.466325581f}, {0.0618851967f, -1.04859960f, 0.296140343f, 0.0779563412f, -1.32091343f, 0.632738829f}};
+/* Tape (#660): the loop's one-pole low pass and high pass per rate step (float, at a line written every 1 << r samples), the
  * wow and flutter increments (u32 turns a sample) and depths at the wow row's top (1/256 samples), the heads (bit j: head
  * j + 1 at j + 1 times the time) and 1 / n of n heads (Q16) */
-static const int32_t DELAY_TAPE_LPQ[DELAY_NRATE] = {7286151, 11408010, 15058911};
-static const int32_t DELAY_TAPE_HPQ[DELAY_NRATE] = {190065, 377977, 747438};
+static const float DELAY_TAPE_LP[DELAY_NRATE] = {0.434288412f, 0.679970384f, 0.897581041f};
+static const float DELAY_TAPE_HP[DELAY_NRATE] = {0.0113287587f, 0.0225291774f, 0.0445507914f};
 #define DELAY_WOW_INC 58411u
 #define DELAY_FLUTTER_INC 652257u
 #define DELAY_WOW_D8 11294
@@ -1954,7 +1954,7 @@ static const def_t DEFS[N_TYPES] = {
 };
 /* one copy of each type, a block: what the two-core schedule balances (engine.c sched_build, #802), in 64 cycles of
  * web/src/cpu-costs.json (its run and parameter inputs: cpu.ts scheduleCost) */
-static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 34, 9, 437, 11, 112, 1568, 3, 40, 96, 39, 328, 178, 326, 156, 89, 36, 36, 40, 49, 72, 548, 266, 54, 361, 105, 54, 37, 468, 271, 448, 668, 11, 15, 1, 11, 53, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4, 231, 178};
+static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 34, 9, 437, 11, 112, 1209, 3, 40, 96, 39, 331, 178, 326, 156, 89, 36, 36, 40, 49, 72, 548, 222, 54, 361, 105, 54, 37, 468, 278, 448, 668, 11, 15, 1, 11, 53, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4, 179, 178};
 /* a module bypassed when the patch loads, in the same units: passing an input through (D-1104; cpu.ts scheduleBypass) */
 #define DEF_COST_BYPASS 18u
 /* Gate-port kinds for pattern authorization, independent of environment grouping (bit n: port n is a gate) */
