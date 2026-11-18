@@ -64,6 +64,8 @@ engine: Elvira 2
 
 # Keys F3..B3 and C4..F4 each trigger one of the four voices at its own tune; the
 # tunes below are intervals, so a preset is a chord. "mod" is the crush rate (1 = clean).
+# Every preset is silent until a key or PLAY (#1086): a drone is held notes on the PATTERN
+# track (presets/patterns/defaults.json), so PLAY starts it and STOP lets it go; drone stays 0.
 
 preset: Fifths Pad
 # Gentle, played from the keys: C / G / C / G over two octaves, soft analog and organ waves.
@@ -99,25 +101,21 @@ lfo 1 → cutoff = 0.4
   vol = 0.56
 
 preset: Deep Drone
-# Self-running dark ambient: all four drones up on C2 / G2 / C3 / G3, a closed ladder breathing slowly.
+# Dark ambient drone on PLAY: all four voices held on C2 / G2 / C3 / G3, a closed ladder breathing slowly.
 voice 1 / tune = -24 st
 voice 1 / wave = 0.1
 voice 1 / page = analog
-voice 1 / drone = 1
 voice 2 / tune = -17 st
 voice 2 / fine = 6 ct
 voice 2 / wave = 0.25
 voice 2 / page = organ
-voice 2 / drone = 1
 voice 3 / tune = -12 st
 voice 3 / fine = -5 ct
 voice 3 / wave = 0.2
 voice 3 / page = analog
-voice 3 / drone = 1
 voice 4 / tune = -5 st
 voice 4 / wave = 0.4
 voice 4 / page = analog
-voice 4 / drone = 0.8
 cutoff = 600 Hz
 reso = 0.35
 time = 650 ms
@@ -125,7 +123,7 @@ fdbk = 0.4
 mix = 0.4
 bite = 1
 choke = 4000 Hz
-  vol = 0.99
+  vol = 0.85
 lfo 1 freq = 0.05 Hz
 lfo 1 → cutoff = 0.35
 
@@ -208,27 +206,23 @@ lfo 2 wav = square
 lfo 2 → bite = 0.35
 
 preset: Beating Cluster
-# Self-running close-interval bed: four drones a semitone apart with detuned beating, eml color waves, a slow filter sweep and a long delay.
+# Close-interval bed on PLAY, its voices entering one by one: four drones a semitone apart with detuned beating, eml color waves, a slow filter sweep and a long delay.
 voice 1 / tune = -3 st
 voice 1 / fine = -14 ct
 voice 1 / wave = 0.45
 voice 1 / page = eml color
-voice 1 / drone = 0.9
 voice 2 / tune = -2 st
 voice 2 / fine = 12 ct
 voice 2 / wave = 0.55
 voice 2 / page = eml color
-voice 2 / drone = 0.9
 voice 3 / tune = 0 st
 voice 3 / fine = -8 ct
 voice 3 / wave = 0.35
 voice 3 / page = formant
-voice 3 / drone = 0.9
 voice 4 / tune = 1 st
 voice 4 / fine = 15 ct
 voice 4 / wave = 0.65
 voice 4 / page = analog
-voice 4 / drone = 0.9
 cutoff = 1200 Hz
 reso = 0.4
 time = 620 ms

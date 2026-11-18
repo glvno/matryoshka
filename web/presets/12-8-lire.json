@@ -2348,7 +2348,33 @@
      "rate"
     ]
    },
-   "name": "PATTERN"
+   "name": "PATTERN",
+   "notes": [
+    {
+     "at": 0,
+     "len": 8,
+     "note": 53,
+     "vel": 100
+    },
+    {
+     "at": 8,
+     "len": 4,
+     "note": 57,
+     "vel": 100
+    },
+    {
+     "at": 12,
+     "len": 4,
+     "note": 60,
+     "vel": 100
+    }
+   ],
+   "factoryPatterns": {
+    "version": 1,
+    "ids": [
+     "85a95949"
+    ]
+   }
   },
   {
    "id": 91,
@@ -4893,6 +4919,7 @@
      "col": true
     }
    ],
+   "preset": "Init",
    "children": [
     1,
     2,

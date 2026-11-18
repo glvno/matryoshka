@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **No factory patch or preset makes a sound the moment you switch to it.** The drones now wait for PLAY: 8 Lire's Eight Drone, Trill Delay and Feedback Howl and Elvira 2's Deep Drone and Beating Cluster hold their voices as drone notes on the PATTERN track, so PLAY starts them and STOP lets them fade (HOLD and DRONE are still on the card for droning by hand). Every 8 Lire and Elvira 2 preset now brings its own pattern to play on PLAY. Canvas's Sequencer Run, Easel Bongos and FM Chimes no longer run by themselves: each key is a pulse at the level the old pulses had (hold a key with ARP on for the run), and their gate closes fully between notes. A test checks every factory patch and preset, in the editor's engine and the FM-1's, so a new one that sounds at load fails. A factory content update: no firmware release needed (#1086).
+
 ## 1.20.0 — 2026-11-18
 
 - **More voices on the FM-1: Oracle V plays all five, Hera 6 all six.** With the faster 1.20 engine, Oracle V gets back the fifth voice of the Prophet-5, and Hera 6 plays the Juno-106's six. Expander S's VOICES row now reaches six and Algo Four's seven; Cassia 1's stays at four. On the test rig, with up to 8 keys held and every effect of the patch on, transport stopped or running, nothing dropped a voice and the busiest steady load was 79.9 % (Oracle V at five; Hera 6 at six 77.7 %, Expander S at six 74.7 %, Algo Four at seven 76.3 %). Hera 6's Bass preset is quieter (level 0.76 → 0.55), so six keys at once stay under the headroom limit (they peak at 0.93). A saved slot keeps its patch; FACTORY RESET installs the new ones (#782).
