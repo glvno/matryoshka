@@ -4370,8 +4370,8 @@ export class Editor {
   }
 
   /**
-   * On an exposed input inside an expanded assembly: a "merge into…" list of the other exposed inputs of the same kind, a
-   * badge with the count on a merged jack and a button to split it again.
+   * On an exposed input inside an expanded assembly: a "merge into…" list of the other exposed inputs a cable could
+   * share (keys only with keys), a badge with the count on a merged jack and a button to split it again.
    */
   private mergeTools(a: AssemblyInst, m: ModuleInst, p: PortDef, ref: PortRef | undefined, tools: boolean): HTMLElement[] {
     if (!ref) return [];
@@ -4387,11 +4387,11 @@ export class Editor {
       if (primary && tools) out.push(this.button('split', `Split "${ref.label}": one jack per input again`, () => this.change(() => unmergePort(a, m.id, p.name))));
     }
     const kindOf = (t: Target): string => DEFS[this.patch.modules.find((x) => x.id === t.module)!.type].inputs.find((q) => q.name === t.port)!.kind;
-    const others = a.inputs.filter((r) => r !== ref && kindOf(r) === p.kind);
+    const others = a.inputs.filter((r) => r !== ref && (kindOf(r) === 'keys') === (p.kind === 'keys'));
     if (!others.length || !tools) return out; // merging is part of choosing the card: pick mode only
     const sel = document.createElement('select');
     sel.className = 'merge';
-    sel.title = `Merge "${ref.label}" into another jack of the "${a.label}" card: one jack feeds both`;
+    sel.title = `Merge "${ref.label}" into another jack of the "${a.label}" card: one jack feeds both, as a mult splits a signal`;
     sel.setAttribute('aria-label', `merge ${ref.label} into`);
     sel.append(new Option('merge…', ''));
     for (const r of others) sel.append(new Option(r.label, `${r.module}:${r.port}`));

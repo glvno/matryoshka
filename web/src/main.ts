@@ -1985,6 +1985,9 @@ const commands = (): Command[] => {
     ...editor.patch.modules.filter((m) => m.name && m.type !== 'steps' && DEFS[m.type]).map((m) => ({ kind: 'module in patch', tags: ['module'], label: m.name!, detail: moduleName(m.type, DEFS[m.type].label), keywords: 'select find named', run: inPatch(() => editor.reveal(m.id)) })),
     // the same lists as + Add module, the assembly browser and the Open picker (catalog.ts)
     ...addableModules(DEFS).map((m) => ({ kind: 'add module', tags: ['module'], label: m.name, keywords: moduleKeywords(m.type, m.def.label), run: () => editor.add(m.type) })),
+    // a splitter is a question, not a module (#1004): last in the module list, the answer shows in the list, and it opens
+    // the help card at it
+    { kind: 'how to', tags: ['module'], label: 'Splitter / mult: cable an output again', detail: 'an output feeds any number of inputs; in an assembly, card · N › merge… makes one jack feed several', keywords: 'split splitter mult multiple multiply fan out fanout y cable copy duplicate one to many distribute stackable buffered', run: () => { help.showModal(); $('help-mult').scrollIntoView({ block: 'center' }); } },
     ...assemblyShelves().filter((a, i, all) => all.findIndex((b) => b.def === a.def) === i).map((a) => assembly(a.def, a.shelf)), // the drum kit once
     ...openableGroups(device.bufferAllocation).flatMap((g) => g.items.map((o) => ({ kind: 'load patch', label: o.author ? `${o.name} · ${o.author}` : o.name, detail: g.label, run: () => loadNamed(o.load(), { from: o.from }) }))),
   ];

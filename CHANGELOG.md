@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Splitting a signal: find it, and merge any two jacks of an assembly.** Matryoshka has no Splitter or Mult module because it does not need one: cable an output again and it feeds every input it reaches. Inside an assembly, a merged jack does the splitting: while you choose the card (the frame's **card · N**), **merge…** on an input joins it to another, and the collapsed card shows one jack that feeds both. Searching **splitter** or **mult** in Commands or + Module now says so and opens the help at it. Two jacks now merge whenever one cable could reach both (keys only with keys), so a gate jack can also feed an audio input. A cable already plugged into either jack now reaches every input of the merged jack; before, the newly joined input stayed silent until you patched it again (#1004).
+
 ## 1.18.5 — 2026-11-17
 
 - **A card's ⏻ always shows whether it is on.** With Live on, pressing LFO on the FM-1 striped the Harmonizer card's header (bypassed) or cleared it, but the card's ⏻ stayed as it was. The same happened for any patch button that switches a card or an assembly on or off, whether pressed on the FM-1, on the deck or sent as MIDI. Clicking a card's ⏻ also left the deck's ARP or LFO light as it was. Now the card's stripes, its ⏻, the assembly's ⏻, the FX switches on the master FX card and the deck's ARP and LFO lights change together, whatever turned the card on or off (#1054).
