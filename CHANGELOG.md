@@ -3,6 +3,9 @@
 ## Unreleased
 
 - **Resonator patches leave the FM-1 more room, and their rings fade as in the editor.** The FM-1 now plays the Resonator with its floating-point unit, which does its sums about twice as fast, so patches with one (the 808 Kit, Meridian 8, and the gamelan, kalimba, marimba, tabla, tom, rim and other resonator assemblies) use less of the FM-1's CPU. A long ring now fades as it does in the editor down to the FM-1's quietest step, instead of falling away early and stopping about 85 dB down; with nothing playing into it, it still ends in silence (#979).
+- **Arpeggios that fit the bar.** The Arpeggiator's rate has four new choices, 1/2 bar, 1 bar, 2 bars and 4 bars: a triad and a four-note chord now take the same time to loop. Each note sits at its exact share of the bar, the loop starts on the bar line while the transport runs, and a chord change takes effect at the next loop. Needs firmware 1.20 on the FM-1 (#1010).
+- **Arpeggiator swing.** A new swing row, as Steps has: every second note comes late, from 50 % (straight) to 80 %. With the bar rates it swings the fitted notes. Needs firmware 1.20 on the FM-1 (#1012).
+- **Time signature.** GLO › PANEL has a second page with TIME SIG (2/4, 3/4, 4/4, 5/4, 6/8, 7/8, 9/8, 12/8; 4/4 as made), and the editor has a Time signature list under Tempo. It sets the bar play once and REC count in, with a click on each beat, and the bar the arpeggiator's bar rates fill. Older firmware and patches play 4/4 (#1011).
 
 ## 1.19.0 — 2026-11-17
 

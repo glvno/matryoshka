@@ -31,6 +31,7 @@ interface Exports {
   fm1e_once(): void;
   fm1e_count_in(bars: number): void;
   fm1e_tempo(bpm: number): void;
+  fm1e_meter(m: number): void;
   fm1e_clock_tick(): void;
   fm1e_clock_external(on: number): void;
   fm1e_pattern(p: number): void;
@@ -134,6 +135,7 @@ export class Fm1Engine {
       case 'once': x.fm1e_once(); break;
       case 'cin': x.fm1e_count_in(m.bars); break;
       case 'tempo': x.fm1e_tempo(m.bpm === null ? 0 : Math.round(m.bpm)); break;
+      case 'meter': x.fm1e_meter(m.meter); break;
       case 'button': x.fm1e_button(m.i, m.on ? 1 : 0); break;
       case 'pattern': x.fm1e_pattern(m.p); break;
       case 'song': x.fm1e_song(m.n); break;

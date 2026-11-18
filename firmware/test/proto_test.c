@@ -188,7 +188,13 @@ static uint32_t m1_test_screen(uint32_t k, uint8_t *out)
 static uint32_t m1_test_peak(void) { return 1234u | 1u << 16 | 1u << 17; }
 #include "../src/tempo_glo.h"
 static int tempo_calls;
-static void m1_tempo(uint32_t patch, uint32_t bpm) { tempo_calls++; gt_set(patch, bpm, 1000u); }   /* (main.c's) */
+static void m1_tempo(uint32_t patch, uint32_t bpm, uint32_t meter)   /* (main.c's) */
+{
+    tempo_calls++;
+    gt_set(patch, bpm, 1000u);
+    if (meter < METER_N)
+        gt_set_meter(meter, 1000u);
+}
 static int arms_calls;
 static eng_mset_t arms_last;                                  /* (what the link carried, before the engine keeps the patch's) */
 static void m1_arms(eng_mset_t mask) { arms_calls++; arms_last = mask; eng_arm_mask(mask); }   /* (main.c's, #191) */
@@ -1093,7 +1099,7 @@ int main(int argc, char **argv)
     /* TEMPO (D-907, feature bit 16): GLOBAL at a tempo, PATCH; Main's tempo shows what plays, the patch keeps its own */
     {
         int m = eng_find(T_FM1);
-        uint8_t q[16] = {0x7D, 0x4D, 0x31, C_TEMPO}, pl[3], p[8];
+        uint8_t q[16] = {0x7D, 0x4D, 0x31, C_TEMPO}, pl[4], p[8];
         uint32_t n, rec, own;
         CHECK(m >= 0);
         rec = m1_record((uint32_t)m) + eng_rec_head(m1_cur[1]) + 4u * FM1_P_TEMPO;
@@ -1114,8 +1120,8 @@ int main(int argc, char **argv)
             CHECK(gt_poll(2000u, 1) & 1u);                     /* (main.c then tells the editor: TEMPO_NOW) */
             nreplies = 0;
             m1_tempo_now();
-            CHECK(nreplies == 1 && replies[0][4] == R_TEMPO_NOW && m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p) == 3u
-                  && p[0] == 0u && p[1] == 140u && p[2] == 0u);
+            CHECK(nreplies == 1 && replies[0][4] == R_TEMPO_NOW && m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p) == 4u
+                  && p[0] == 0u && p[1] == 140u && p[2] == 0u && p[3] == METER_DEFAULT);   /* (the 4th: the time signature, #1011) */
         }
         pl[0] = 1; pl[1] = 0; pl[2] = 0;                       /* PATCH (the global tempo stays) */
         n = 4u + m1_pack7(pl, 3u, q + 4);
@@ -1127,6 +1133,20 @@ int main(int argc, char **argv)
         m1_patch_param((uint32_t)m, FM1_P_TEMPO, (int32_t)own);
         eng_set_param((uint32_t)m, FM1_P_TEMPO, (int32_t)own);
         CHECK(m1_handle(q, 5) == 1 && tempo_calls == 2);       /* (too short: not taken) */
+        pl[0] = 1; pl[1] = 0; pl[2] = 0; pl[3] = 6;            /* the time signature as a 4th byte (#1011): 9/8 */
+        n = 4u + m1_pack7(pl, 4u, q + 4);
+        CHECK(m1_handle(q, n) == 1 && tempo_calls == 3 && gt_meter == 6u && eng_meter_get() == 6u && gt_patch == 1u);
+        n = 4u + m1_pack7(pl, 3u, q + 4);                      /* without it (an editor before #1011): the meter stays */
+        CHECK(m1_handle(q, n) == 1 && tempo_calls == 4 && gt_meter == 6u);
+        nreplies = 0;
+        m1_tempo_now();
+        CHECK(nreplies == 1 && m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p) == 4u && p[3] == 6u);
+        pl[3] = 200;                                           /* out of range: the meter stays */
+        n = 4u + m1_pack7(pl, 4u, q + 4);
+        CHECK(m1_handle(q, n) == 1 && tempo_calls == 5 && gt_meter == 6u);
+        pl[3] = METER_DEFAULT;
+        n = 4u + m1_pack7(pl, 4u, q + 4);
+        CHECK(m1_handle(q, n) == 1 && gt_meter == METER_DEFAULT && eng_meter_get() == METER_DEFAULT);
         printf("tempo ok\n");
     }
     /* SANDBOX: the frame web/src/protocol.ts made (golden.ts), parsed field by field; one byte short: not taken, no reply */

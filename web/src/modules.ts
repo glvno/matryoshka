@@ -2,7 +2,7 @@
 // The module library: definitions (shared with the editor) and DSP implementations.
 
 import { fixedDoes } from './controls';
-import { ARP_MODES, ARP_RATES } from './arpeggiator';
+import { ARP_MODES, ARP_RATE_CHOICES, ARP_RATES } from './arpeggiator';
 import { HARM_EXT, HARM_SUS, HARM_TYPES, HARM_VOICING } from './harmonizer';
 import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
 import { COND_FILL, COND_FIRST, COND_NEI, COND_NOT, COND_PRE, isDrone, STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepLock, type StepNote } from './track';
@@ -3284,8 +3284,11 @@ const alloc: ModuleImpl<null> = {
 
 /**
  * Arpeggiator: keys in, keys out (between the Main module and a Voice allocator). It plays the held keys one at a time
- * (arpeggiator.ts: mode, octaves, tempo rate or continuous Hz input, clock-edge override, gate length, latch). It runs once
- * (SHARED_TYPES); the engine runs its notes, not process(): the keys output only shows the gate of the note it plays.
+ * (arpeggiator.ts: mode, octaves, tempo rate or continuous Hz input, clock-edge override, gate length, latch, swing). The
+ * bar rates (#1010: a pass of the pattern fills 1/2, 1, 2 or 4 bars of the global time signature) are a stretch of the
+ * rate (ParamDef.top) appended in format 63, and `swing` (#1012, as Steps': 50 % straight, 80 % the most, past 75 % a
+ * stretch) too: pins, macro ranges and the morph span what they did before. It runs once (SHARED_TYPES); the engine runs
+ * its notes, not process(): the keys output only shows the gate of the note it plays.
  */
 const arp: ModuleImpl<null> = {
   def: {
@@ -3295,10 +3298,11 @@ const arp: ModuleImpl<null> = {
     outputs: [keys('keys')],
     params: [
       param('mode', 0, ARP_MODES.length - 1, 0, { step: 1, choices: ARP_MODES }),
-      param('rate', 0, ARP_RATES.length - 1, 4, { step: 1, choices: ARP_RATES }),
+      param('rate', 0, ARP_RATES.length - 1, 4, { step: 1, choices: ARP_RATE_CHOICES, top: ARP_RATE_CHOICES.length - 1, grew: { since: 63, from: ARP_RATES.length - 1 } }),
       param('octaves', 1, 4, 1, { step: 1 }),
       param('gate', 0.1, 1, 0.5, { step: 0.01 }),
       param('latch', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
+      param('swing', 50, SWING_PIN_MAX, 50, { step: 1, unit: '%', top: SWING_MAX, since: 63 }),
     ],
   },
   init: () => null,
@@ -3316,10 +3320,21 @@ export interface StepsSound { key: number; left: number; cnt: number; thru?: num
 export const SND_WRAP = 0x80;
 /** how many notes a Steps track sounds at once (a further note ends the oldest) */
 export const TRACK_POLY = 8;
-/** play once (#632, Engine.playOnce; engine.c eng_play_once): the count-in's bar in clock ticks (four beats of 24), and
- * its click on each beat: a square wave that falls to nothing in CLICK_MS, at CLICK_LEVEL (Q16 of full scale), CLICK_HZ
- * on beats 2..4 and CLICK_ACCENT_HZ on beat 1 */
-export const ONCE_BAR = 96;
+/** the global time signature (#1011): its meters, in the order the FM-1's GLO > PANEL > TIME SIG and the editor list them;
+ * `bar`: a bar in clock ticks (24 a quarter note: the tempo counts quarter notes in every meter, as MIDI clock does);
+ * `beat`: a count-in click's ticks (a quarter in x/4, a dotted quarter in 6/8, 9/8 and 12/8, an eighth in 7/8).
+ * METER_DEFAULT (4/4) is what plays when no time signature was set (older settings, older firmware). */
+export const METERS: readonly { name: string; bar: number; beat: number }[] = [
+  { name: '2/4', bar: 48, beat: 24 }, { name: '3/4', bar: 72, beat: 24 }, { name: '4/4', bar: 96, beat: 24 },
+  { name: '5/4', bar: 120, beat: 24 }, { name: '6/8', bar: 72, beat: 36 }, { name: '7/8', bar: 84, beat: 12 },
+  { name: '9/8', bar: 108, beat: 36 }, { name: '12/8', bar: 144, beat: 36 },
+];
+export const METER_DEFAULT = 2;
+/** a meter index as both engines take it: 0..METERS.length - 1, anything else 4/4 */
+export const meterOf = (m: number | null | undefined): number => (typeof m === 'number' && Number.isInteger(m) && m >= 0 && m < METERS.length ? m : METER_DEFAULT);
+/** play once (#632, Engine.playOnce; engine.c eng_play_once): one bar of the meter is counted in, with a click on each of
+ * its beats: a square wave that falls to nothing in CLICK_MS, at CLICK_LEVEL (Q16 of full scale), CLICK_HZ on the other
+ * beats and CLICK_ACCENT_HZ on beat 1 */
 export const CLICK_MS = 25;
 export const CLICK_LEVEL_Q16 = 16384;
 export const CLICK_HZ = 1000;

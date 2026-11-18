@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { clockPeriod } from './clock-out';
 import { Engine } from './engine';
-import { DEFS } from './modules';
+import { DEFS, METER_DEFAULT, METERS } from './modules';
 import { addModule, emptyPatch, type Patch } from './patch';
 import { CMD, FEATURE_TEMPO, frame, parse, parseInfo, parseTempoNow, tempoFrame } from './protocol';
 import { clampBpm, isGlobalTempo, patchTempo, readTempo, Tempo, tempo, tempoNow } from './tempo';
@@ -25,11 +25,28 @@ function ticks(e: Engine, samples: number): number {
 
 describe('the setting (tempo.ts)', () => {
   it('is Global at the open patch\'s tempo on a first visit, and reads what was stored', () => {
-    expect(readTempo(null, 124)).toEqual({ mode: 'global', bpm: 124 });
-    expect(readTempo('not json', 90.4)).toEqual({ mode: 'global', bpm: 90 });
-    expect(readTempo(JSON.stringify({ mode: 'patch', bpm: 133 }), 124)).toEqual({ mode: 'patch', bpm: 133 });
-    expect(readTempo(JSON.stringify({ mode: 'global', bpm: 999 }), 124)).toEqual({ mode: 'global', bpm: 300 });
-    expect(readTempo(JSON.stringify({ mode: 'other', bpm: 100 }), 124)).toEqual({ mode: 'global', bpm: 124 });
+    expect(readTempo(null, 124)).toEqual({ mode: 'global', bpm: 124, meter: METER_DEFAULT });
+    expect(readTempo('not json', 90.4)).toEqual({ mode: 'global', bpm: 90, meter: METER_DEFAULT });
+    expect(readTempo(JSON.stringify({ mode: 'patch', bpm: 133 }), 124)).toEqual({ mode: 'patch', bpm: 133, meter: METER_DEFAULT });
+    expect(readTempo(JSON.stringify({ mode: 'global', bpm: 999 }), 124)).toEqual({ mode: 'global', bpm: 300, meter: METER_DEFAULT });
+    expect(readTempo(JSON.stringify({ mode: 'other', bpm: 100 }), 124)).toEqual({ mode: 'global', bpm: 124, meter: METER_DEFAULT });
+  });
+
+  it('keeps the time signature beside the tempo, 4/4 when none or an invalid one is stored (#1011)', () => {
+    expect(METERS[METER_DEFAULT].name).toBe('4/4');
+    expect(readTempo(JSON.stringify({ mode: 'global', bpm: 100, meter: 6 }), 124).meter).toBe(6);
+    expect(readTempo(JSON.stringify({ mode: 'global', bpm: 100, meter: 8 }), 124).meter).toBe(METER_DEFAULT);
+    expect(readTempo(JSON.stringify({ mode: 'global', bpm: 100, meter: 'x' }), 124).meter).toBe(METER_DEFAULT);
+    const t = new Tempo();
+    const heard: number[] = [];
+    t.listen((s) => heard.push(s.meter));
+    expect(t.meter).toBe(METER_DEFAULT);
+    t.set({ meter: 4 });
+    t.set({ meter: 4 });
+    t.set({ bpm: 90 });
+    t.set({ meter: -1 });
+    expect(heard).toEqual([4, 4, METER_DEFAULT]);
+    expect(t.setting).toEqual({ mode: 'global', bpm: 90, meter: METER_DEFAULT });
   });
 
   it('plays the global tempo while Global, the patch\'s own while Patch', () => {
@@ -66,12 +83,15 @@ describe('the setting (tempo.ts)', () => {
 
 describe('the wire (protocol.ts TEMPO / TEMPO_NOW, feature bit 16)', () => {
   it('sends the setting and the tempo, and reads the FM-1\'s', () => {
-    const f = parse(tempoFrame(true, 300))!;
+    const f = parse(tempoFrame(true, 300, METER_DEFAULT))!;
     expect(f.cmd).toBe(CMD.tempo);
-    expect(f.payload).toEqual([0, 300 & 255, 1]);
-    expect(parse(tempoFrame(false, 0))!.payload).toEqual([1, 0, 0]);
-    expect(parseTempoNow([0, 124, 0])).toEqual({ global: true, bpm: 124 });
+    expect(f.payload).toEqual([0, 300 & 255, 1, METER_DEFAULT]);
+    expect(parse(tempoFrame(false, 0, 7))!.payload).toEqual([1, 0, 0, 7]);
+    expect(parse(tempoFrame(false, 0, 99))!.payload).toEqual([1, 0, 0, METER_DEFAULT]);
+    expect(parseTempoNow([0, 124, 0])).toEqual({ global: true, bpm: 124 });   // (firmware before #1011: no meter, the editor keeps its own)
     expect(parseTempoNow([1, 44, 1])).toEqual({ global: false, bpm: 300 });
+    expect(parseTempoNow([0, 124, 0, 6])).toEqual({ global: true, bpm: 124, meter: 6 });
+    expect(parseTempoNow([0, 124, 0, 40])).toEqual({ global: true, bpm: 124, meter: METER_DEFAULT });
     expect(parseTempoNow([1, 44])).toBeNull();
   });
 

@@ -1236,7 +1236,7 @@ static void panel_status(void)
         }
         if (st == 1 && !help_on) {
             uint32_t b = eng_once_beat();
-            if (b != beat_seen && b < 4u) {
+            if (b != beat_seen && b < eng_bar_ticks() / eng_beat_ticks()) {   /* (the time signature's beats, #1011: 7 at most) */
                 char m[] = MSG_COUNT_IN " 1";
                 m[sizeof m - 2u] = (char)('1' + b);
                 ui_msg(m, 4000);
@@ -1431,7 +1431,7 @@ static void panel_align(const uint8_t *g)
         ui_dirty = 2;
     if (want == PAGE_MENU) {
         menu_tab = (uint8_t)(g[6] & 127u);
-        menu_sys2 = (uint8_t)(g[6] >> 7);                   /* (SYSTEM's second page, #702) */
+        menu_page2 = (uint8_t)(menu_two(menu_tab) && g[6] >> 7);   /* (the tab's second page, #702, #1011) */
     }
     if (want != page) {
         if (want == PAGE_SONG)

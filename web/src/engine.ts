@@ -9,7 +9,7 @@ import { chainedHarmonizer, keyFeed, keyReach, keyRouteError } from './key-routi
 // held). A module reading another group's per-part output gets the sum over those parts; a per-part module reading a
 // shared output gets that one buffer.
 
-import { CLICK_ACCENT_HZ, CLICK_HZ, CLICK_MS, clickSample, ONCE_BAR, type DrumMapState, dropRows, stepsGo, stepsTurnAt, stepsPattern, type StepsConds, type StepsSong, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, voicingSetting, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
+import { CLICK_ACCENT_HZ, CLICK_HZ, CLICK_MS, clickSample, METER_DEFAULT, METERS, meterOf, type DrumMapState, dropRows, stepsGo, stepsTurnAt, stepsPattern, type StepsConds, type StepsSong, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, voicingSetting, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
 import { defaultMap, FLAW_TARGETS, flawOf, MAX_PARTS, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, rangeShare, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
 import { ALLOC, deviceView, keysInto, VOICING_CABLE_INPUTS } from './poly';
 import { armView, type DeviceKey } from './arm';
@@ -217,6 +217,9 @@ export class Engine {
   private ext = false;
   /** the global tempo (D-907, tempo.ts; engine.c tempo_glo): every patch plays at it while set, null: the Main module's */
   tempoGlobal: number | null = null;
+  /** the global time signature (#1011, tempo.ts; engine.c meter): an index into METERS, whose bar play once and REC count
+   * in and the Arpeggiator's bar rates fill (4/4 until set) */
+  meter = METER_DEFAULT;
   /** MIDI clock: samples since its last tick, and per tick as last measured (0: not yet) */
   private extSince = 0;
   private extLen = 0;
@@ -696,7 +699,7 @@ export class Engine {
 
   private arpParams(a: ArpRun): ArpParams {
     const p = a.node.params;
-    return { mode: p.mode ?? 0, rate: p.rate ?? 4, octaves: p.octaves ?? 1, gate: p.gate ?? 0.5, latch: p.latch ?? 0 };
+    return { mode: p.mode ?? 0, rate: p.rate ?? 4, octaves: p.octaves ?? 1, gate: p.gate ?? 0.5, latch: p.latch ?? 0, swing: p.swing ?? 50 };
   }
 
   /** the groups an arpeggiator plays */
@@ -1320,8 +1323,8 @@ export class Engine {
     this.cinReq = { at: at >>> 0, bars };
   }
 
-  /** play once (#632; engine.c eng_play_once, the same): the transport stops, a bar of four beats is counted in on the
-   * clock with a click on each beat (CLICK_*: beat 1 higher), from the next block's first sample; then the transport
+  /** play once (#632; engine.c eng_play_once, the same): the transport stops, a bar of the meter is counted in on the
+   * clock with a click on each of its beats (CLICK_*: beat 1 higher), from the next block's first sample; then the transport
    * starts and each Steps track the clock steps plays its pattern once, or the song's entries once each, and plays no
    * step after; when every such track is done the transport stops by itself */
   playOnce(): void {
@@ -1714,7 +1717,8 @@ export class Engine {
     const all = [this.kb, ...this.groups];
     for (let off = 0; off < total; off += BLOCK) {
       const n = Math.min(BLOCK, total - off);
-      if (this.once === 1 && this.cin >= ONCE_BAR) this.onceStart();
+      const { bar, beat } = METERS[meterOf(this.meter)]; // (the global time signature's, #1011)
+      if (this.once === 1 && this.cin >= bar) this.onceStart();
       const start = this.running && !this.ran, was = this.ticks; // (REC's count-in: the ticks before this block's)
       if (start) this.runTicks = this.ticks;
       this.ran = this.running;
@@ -1749,14 +1753,14 @@ export class Engine {
         }
       }
       const clock = seen && this.running; // the Main module's clock output: one pulse per block that saw a tick while running
-      // play once's count-in (#632): beat 1's click on this block's first sample, then one on each 24th tick
+      // play once's count-in (#632): beat 1's click on this block's first sample, then one on each beat of the bar
       let clickAt = -1, accent = false;
       if (this.once === 1) {
         if (this.cinFirst) (clickAt = 0), (accent = true), (this.cinFirst = false);
         else if (seen) {
           const before = this.cin;
           this.cin += nt;
-          if (this.cin < ONCE_BAR && Math.floor(this.cin / PPQN) > Math.floor(before / PPQN)) clickAt = Math.max(0, tick);
+          if (this.cin < bar && Math.floor(this.cin / beat) > Math.floor(before / beat)) clickAt = Math.max(0, tick);
         }
       }
       // REC's count-in (D-803, as the FM-1's REC counts the bars): a click on each beat from the bar it starts on, beat 1 higher
@@ -1766,22 +1770,29 @@ export class Engine {
         if (this.cinReq) { // (asked for: taken once the transport runs)
           const at = (this.cinReq.at - this.runTicks) | 0;
           this.cinOn = this.cinReq.bars !== 0;
-          this.cinFrom = at > 0 ? Math.ceil(at / ONCE_BAR) * ONCE_BAR : 0;
-          this.cinEnd = this.cinFrom + this.cinReq.bars * ONCE_BAR;
+          this.cinFrom = at > 0 ? Math.ceil(at / bar) * bar : 0;
+          this.cinEnd = this.cinFrom + this.cinReq.bars * bar;
           this.cinReq = null;
         }
         if (this.cinOn) {
           if (start && this.cinFrom === 0) (clickAt = 0), (accent = true); // (beat 1 on the start's first sample)
           for (let r = r0 + 1; r <= r1; r++)
-            if (r >= this.cinFrom && r < this.cinEnd && r % PPQN === 0) (clickAt = Math.max(0, tick)), (accent = (r - this.cinFrom) % ONCE_BAR === 0);
+            if (r >= this.cinFrom && r < this.cinEnd && (r - this.cinFrom) % beat === 0) (clickAt = Math.max(0, tick)), (accent = (r - this.cinFrom) % bar === 0);
           if (r1 >= this.cinEnd) this.cinOn = false;
         }
       }
       this.trackKeys();
-      for (const a of this.arps)
-        if (!a.node.bypass) // (bypassed it plays nothing of its own: the keys it hears went straight on)
-          arpBlock(a.st, this.arpParams(a), n, this.ticks, a.node.connected.clk ? a.node.inst[0].inp.clk : null, a.clk, bpm, this.sampleRate,
-            (note, vel) => this.arpOn(a, note, vel), (note) => { this.mapKeys(a.node.id, note, 0); for (const g of this.arpGroups(a)) this.groupOff(g, note); }, a.node.connected.rate ? a.node.inst[0].inp.rate : null);
+      if (this.arps.length) {
+        // the clock as the arpeggiators read it (arpeggiator.ts ArpClock; engine.c arp_block the same): the part of the
+        // next tick gone by, the tempo's accumulator or, with MIDI clock, the samples since its tick over a measured tick
+        const whole = 60 * this.sampleRate;
+        const frac = this.ext ? (this.extLen > 0 ? Math.min(whole - 1, Math.floor((this.extSince * whole) / this.extLen)) : 0) : this.tickAcc;
+        const clock = { ticks: this.ticks, frac, whole, tickLen, bpm, sr: this.sampleRate, run: this.running, runTicks: this.runTicks, bar };
+        for (const a of this.arps)
+          if (!a.node.bypass) // (bypassed it plays nothing of its own: the keys it hears went straight on)
+            arpBlock(a.st, this.arpParams(a), n, clock, a.node.connected.clk ? a.node.inst[0].inp.clk : null, a.clk,
+              (note, vel) => this.arpOn(a, note, vel), (note) => { this.mapKeys(a.node.id, note, 0); for (const g of this.arpGroups(a)) this.groupOff(g, note); }, a.node.connected.rate ? a.node.inst[0].inp.rate : null);
+      }
       this.morphT = this.hasB ? this.morphPosition(n) : 0;
       const hold = walkHold(this.sampleRate, DRIFT_RATE);
       for (const g of this.groups)

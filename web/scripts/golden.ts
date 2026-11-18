@@ -35,7 +35,7 @@ mkdirSync(OUT, { recursive: true });
  * velocity 100 / let go: engine.ts thru, engine.c eng_steps_thru, #368)]; take: the notes recorded so far go into their
  * tracks (the editor's overdub, the panel's); kon / koff: a note the Harmonizers take as a root whatever it is (the FM-1's
  * keys: engine.ts noteOn root, engine.c eng_harm_zone); cbon / cboff: chord button `note` (engine.ts chordButton, #598) */
-type Ev = [number, 'on' | 'off' | 'kon' | 'koff' | 'cbon' | 'cboff' | 'run' | 'stop' | 'once' | 'cin' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'armx' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff' | 'fill', number, number?];
+type Ev = [number, 'on' | 'off' | 'kon' | 'koff' | 'cbon' | 'cboff' | 'run' | 'stop' | 'once' | 'cin' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'armx' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff' | 'fill' | 'meter', number, number?];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -2991,6 +2991,41 @@ for (const mode of ['fixed', 'moving', 'paused', 'clock'] as const) {
     ends['arp-rate-clock-control'] = ends[name];
   }
 }
+// the bar rates (#1010) and swing (#1012). Up-down over two octaves, a pass in half a bar, the transport running: the first
+// key lands inside a pass (it plays that pass alone: the chord a pass plays is the one held as it began), the next keys
+// join at the next pass, a fourth key two passes later; the transport stops and the passes go on where they are
+arpVoice('arp-fit-run', { mode: 2, rate: 7, octaves: 2, gate: 0.5 }, 1, 240);
+events['arp-fit-run'] = [[128 * 5, 'run', 0], [128 * 40, 'on', 60], [128 * 41, 'on', 64], [128 * 42, 'on', 67], [128 * 400, 'on', 72],
+  [128 * 600, 'stop', 0], [128 * 800, 'off', 60], [128 * 800, 'off', 64], [128 * 800, 'off', 67], [128 * 800, 'off', 72]];
+ends['arp-fit-run'] = 128 * 900;
+// five notes in a bar of 7/8 (84 ticks: 16.8 a step), stopped (from the first key), swung 66 %; then two notes
+arpVoice('arp-fit-78-swing', { mode: 0, rate: 8, octaves: 1, gate: 0.7, swing: 66 }, 1, 150);
+events['arp-fit-78-swing'] = [[0, 'meter', 5], ...[60, 62, 64, 65, 67].map((k): Ev => [128 * 10, 'on', k]), ...[60, 62, 64, 65, 67].map((k): Ev => [128 * 700, 'off', k]),
+  [128 * 760, 'on', 55], [128 * 761, 'on', 59], [128 * 900, 'off', 55], [128 * 900, 'off', 59]];
+ends['arp-fit-78-swing'] = 128 * 1000;
+// swing on a clock rate: every second 1/16 late by 40 % of a step
+arpVoice('arp-swing-tick', { mode: 0, rate: 4, octaves: 2, gate: 0.6, swing: 70 }, 2, 132);
+events['arp-swing-tick'] = [[0, 'on', 60], [128 * 3, 'on', 63], [128 * 300, 'off', 60], [128 * 300, 'off', 63]];
+ends['arp-swing-tick'] = 128 * 360;
+// a bar rate under clk (a step an edge; the first step's length a pass's share), swung 75 %; and the bar rate on MIDI clock
+// (a pass of 2 bars from the first key, the steps placed in a tick by the samples since it over a measured tick; its
+// notes are long, so the allocator's gate and pitch are compared, not the oscillator's pitch-grid drift)
+arpVoice('arp-fit-clk', { mode: 4, rate: 9, octaves: 1, gate: 0.5, swing: 75 }, 2, 120, true);
+events['arp-fit-clk'] = [[0, 'on', 67], [128 * 5, 'on', 60], [128 * 9, 'on', 63], [128 * 180, 'off', 67], [128 * 180, 'off', 60], [128 * 180, 'off', 63]];
+ends['arp-fit-clk'] = 128 * 240;
+arpVoice('arp-fit-ext', { mode: 1, rate: 9, octaves: 1, gate: 0.4 }, 1, 120);
+{
+  const p = tests['arp-fit-ext'], alloc = p.modules.find((m) => m.type === 'alloc')!, out = p.modules.find((m) => m.type === 'output')!;
+  p.cables = p.cables.filter((c) => c.to.module !== out.id);
+  p.cables.push({ from: { module: alloc.id, port: 'gate' }, to: { module: out.id, port: 'l' } }, { from: { module: alloc.id, port: 'pitch' }, to: { module: out.id, port: 'r' } });
+}
+{
+  const ev: Ev[] = [[0, 'ext', 0], [128 * 2, 'on', 62], [128 * 2, 'on', 65], [128 * 2, 'on', 69]];
+  for (let t = 0; t < 400; t++) ev.push([128 * 4 + 700 * t - (t % 5 === 2 ? 300 : 0), 'tick', 0]);
+  ev.push([128 * 4 + 700 * 400, 'off', 62], [128 * 4 + 700 * 400, 'off', 65], [128 * 4 + 700 * 400, 'off', 69]);
+  events['arp-fit-ext'] = ev;
+  ends['arp-fit-ext'] = 128 * 4 + 700 * 400 + 128 * 40;
+}
 // the Main module's clock (24 ppqn while the transport runs) through a divider into an envelope; run opens a second VCA
 tests['main-clock-run'] = make('main-clock-run', (add, wire) => {
   const kb = add('fm1', 0, 0, { tempo: 150 });
@@ -3833,6 +3868,14 @@ tests['rec-count-in'] = structuredClone(tests['steps-kit']);
 events['rec-count-in'] = [[128 * 5, 'run', 0], [128 * 5, 'cin', 2], [128 * 1300, 'cin', 1], [128 * 2500, 'cin', 1], [128 * 2600, 'cin', 0],
   [128 * 2700, 'cin', 2], [128 * 2720, 'stop', 0], [128 * 2760, 'run', 0]];
 ends['rec-count-in'] = 128 * 3000;
+// the time signature (#1011): play once counts in a bar of 6/8 (two dotted-quarter clicks), REC two bars of 7/8 (seven
+// eighth clicks a bar) and, running, one from the next bar line of 7/8; a bar of 5/4 for play once after
+tests['play-once-68'] = structuredClone(tests['steps-kit']);
+events['play-once-68'] = [[0, 'meter', 4], [128 * 5, 'once', 0], [128 * 900, 'stop', 0], [128 * 920, 'meter', 3], [128 * 930, 'once', 0]];
+ends['play-once-68'] = 128 * 1500;
+tests['rec-count-in-78'] = structuredClone(tests['steps-kit']);
+events['rec-count-in-78'] = [[0, 'meter', 5], [128 * 5, 'run', 0], [128 * 5, 'cin', 2], [128 * 1300, 'cin', 1]];
+ends['rec-count-in-78'] = 128 * 2000;
 
 // arming as a set (#191): two Voicing modules on Main's keys (A's gate left, B's right) and a Drum map on them (its first
 // row's gate added right); armed: only the armed ones hear Main, several at once; none: the cables again
@@ -4319,6 +4362,7 @@ for (const [name, patch] of Object.entries(tests)) {
     else if (kind === 'tick') e.clockTick();
     else if (kind === 'once') e.playOnce();
     else if (kind === 'cin') e.countIn(note);
+    else if (kind === 'meter') e.meter = note;
     else if (kind === 'fill') e.setFill(!!note);
     else e.transport(kind === 'run');
   }
@@ -4336,7 +4380,7 @@ for (const [name, patch] of Object.entries(tests)) {
   // must take exactly (host_test checks): the FM-1's memory is counted from them (#649)
   if (!bins[name]) { const b = deviceBudget(patch); writeFileSync(new URL(`${f}.par`, OUT), `${b.params} ${b.buffers} ${b.instances} ${b.lines.nodes}\n`); }
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
-  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'kon' ? `${fr} kon ${n} 127` : k === 'bon' || k === 'boff' || k === 'koff' || k === 'cbon' || k === 'cboff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' || k === 'cin' || k === 'fill' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' || k === 'thon' || k === 'thoff' || k === 'armx' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
+  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'kon' ? `${fr} kon ${n} 127` : k === 'bon' || k === 'boff' || k === 'koff' || k === 'cbon' || k === 'cboff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' || k === 'cin' || k === 'fill' || k === 'meter' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' || k === 'thon' || k === 'thoff' || k === 'armx' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
 // protocol test input: upload of the acid kit, then a cutoff change on its filter
 {

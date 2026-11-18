@@ -978,7 +978,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     },
@@ -3545,7 +3546,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     }
@@ -6228,7 +6230,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     },
@@ -8086,7 +8089,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     }
@@ -10654,7 +10658,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     },
@@ -12733,7 +12738,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     }
@@ -14560,7 +14566,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     }
@@ -17818,7 +17825,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     }
@@ -21931,7 +21939,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     },
@@ -25337,7 +25346,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     }
@@ -28980,7 +28990,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     },
@@ -32007,7 +32018,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     },
@@ -35814,7 +35826,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     }
@@ -39194,7 +39207,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     }
@@ -48818,7 +48832,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     }
@@ -66643,7 +66658,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     },
@@ -76375,7 +76391,8 @@
       "rate": 4,
       "octaves": 1,
       "gate": 0.5,
-      "latch": 0
+      "latch": 0,
+      "swing": 50
      },
      "bypass": true
     }

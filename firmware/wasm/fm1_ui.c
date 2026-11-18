@@ -78,9 +78,10 @@ static void m1_locks_now(uint32_t mod, uint32_t pat)
         js_locks(mod, pat, l, (uint32_t)(n > 64 ? 64 : n));
 }
 static void m1_arms_now(eng_mset_t s) { js_arms(s.w[0], s.w[1], s.w[2], s.w[3]); }
-/* GLO > PANEL > TEMPO or the global tempo changed here (the menu, PLAY held + PRESET, Main's tempo row while GLOBAL): the
- * page's setting follows (D-907; as the device link's TEMPO_NOW). patch: 0 GLOBAL, 1 PATCH */
-WASM_IMPORT("tempo") void js_tempo(uint32_t patch, uint32_t bpm);
+/* GLO > PANEL > TEMPO, the global tempo or TIME SIG changed here (the menu, PLAY held + PRESET, Main's tempo row while
+ * GLOBAL): the page's setting follows (D-907, #1011; as the device link's TEMPO_NOW). patch: 0 GLOBAL, 1 PATCH; meter
+ * the index into METER_NAME */
+WASM_IMPORT("tempo") void js_tempo(uint32_t patch, uint32_t bpm, uint32_t meter);
 static void m1_tempo_now(void);
 WASM_IMPORT("origin") void js_origin(uint32_t mod, uint32_t pattern, uint32_t identity);
 #define HOST_ORIGIN_HOOK
@@ -104,7 +105,7 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
     if ((int)mod == eng_find(T_FM1) && par == FM1_P_TEMPO && !eng_tempo_row(mod, par))   /* (the global tempo: fm1w_tick) */
         js_param(mod, par, v);
 }
-static void m1_tempo_now(void) { js_tempo(gt_patch, gt_bpm); }
+static void m1_tempo_now(void) { js_tempo(gt_patch, gt_bpm, gt_meter); }
 static void m1_panel_on(uint32_t mask) { (void)mask; }
 static void m1_patch_bypass(uint32_t mod, int on) { (void)mod; (void)on; }   /* (the page hears of a Toggle through its button) */
 /* what the panel's keys play (#467): the note panel.c gives the engine (a key's own, a Drum map row's for black keys
@@ -297,11 +298,13 @@ WASM_EXPORT("fm1w_tick") void fm1w_tick(uint32_t ms)
     panel_draw();
 }
 
-/* the page's GLO > PANEL > TEMPO (patch: 0 GLOBAL, 1 PATCH) and global tempo (bpm 20..300; 0 keeps it): the engine and
- * the menu follow (D-907) */
-WASM_EXPORT("fm1w_tempo") void fm1w_tempo(uint32_t patch, uint32_t bpm)
+/* the page's GLO > PANEL > TEMPO (patch: 0 GLOBAL, 1 PATCH), global tempo (bpm 20..300; 0 keeps it) and time signature
+ * (meter: the index into METER_NAME; METER_N or more keeps it): the engine and the menu follow (D-907, #1011) */
+WASM_EXPORT("fm1w_tempo") void fm1w_tempo(uint32_t patch, uint32_t bpm, uint32_t meter)
 {
     gt_set(patch, bpm, fm1_ms);
+    if (meter < METER_N)
+        gt_set_meter(meter, fm1_ms);
     (void)eng_tempo_moved();
     ui_dirty = 2;
     panel_draw();
