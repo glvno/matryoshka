@@ -54,7 +54,7 @@ import { newPatch } from './patch';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { longName } from './labels';
-import { addModule, connect, emptyPatch, removeModule, validatePatch, type Patch } from './patch';
+import { addModule, connect, emptyPatch, removeModule, sameEnd, validatePatch, type Patch } from './patch';
 import { encodePatch } from './patchbin';
 import { engineBytes } from './test-bin';
 import { PRESETS } from './presets';
@@ -592,8 +592,6 @@ describe('assemblies', () => {
     mergePorts(p, a, DEFS, { module: e1, port: 'gate' }, { module: e2, port: 'gate' });
     expect(a.inputs.map((r) => r.label)).toEqual(['pitch', 'gate']);
     expect(targetsOf(a.inputs[1])).toEqual([{ module: e1, port: 'gate' }, { module: e2, port: 'gate' }]);
-    // a different kind cannot merge
-    expect(() => mergePorts(p, a, DEFS, { module: osc, port: 'pitch' }, { module: e1, port: 'gate' })).toThrow(/cannot merge/);
     // a cable to every target: the group stays one port, and it cannot be hidden while wired
     for (const t of targetsOf(a.inputs[1])) connect(p, DEFS, { module: kb, port: 'gate' }, t);
     reconcileAll(p, DEFS);
@@ -615,6 +613,30 @@ describe('assemblies', () => {
     mergePorts(q, b, DEFS, ts[0], ts[1]);
     removeMember(q, b, ts[1].module);
     expect(b.inputs.find((r) => r.label === 'gate')!.also).toBeUndefined();
+  });
+
+  it('merges any two jacks a cable could join, keys only with keys, and a jack\'s outside cable reaches every input it feeds (#1004)', () => {
+    const { p, kb, e1, e2, vca, osc } = twoEnv();
+    const al = addModule(p, DEFS.alloc, 0, 300).id;
+    const gate = { module: kb, port: 'gate' };
+    expect(connect(p, DEFS, gate, { module: e1, port: 'gate' })).toBe(true);
+    expect(connect(p, DEFS, { module: kb, port: 'keys' }, { module: al, port: 'keys' })).toBe(true);
+    const a = makeAssembly(p, [osc, e1, e2, vca, al], 'voice');
+    const fed = (to: { module: number; port: string }): boolean => p.cables.some((c) => sameEnd(c.from, gate) && sameEnd(c.to, to));
+    exposePort(a, 'in', e2, 'gate');
+    expect(fed({ module: e2, port: 'gate' })).toBe(false);
+    mergePorts(p, a, DEFS, { module: e1, port: 'gate' }, { module: e2, port: 'gate' });
+    expect(fed({ module: e2, port: 'gate' })).toBe(true);
+    // an audio input joins a gate jack, as a cable from the gate could reach it
+    exposePort(a, 'in', osc, 'pm');
+    mergePorts(p, a, DEFS, { module: e1, port: 'gate' }, { module: osc, port: 'pm' });
+    expect(targetsOf(findRef(a, 'in', e1, 'gate')!)).toEqual([{ module: e1, port: 'gate' }, { module: e2, port: 'gate' }, { module: osc, port: 'pm' }]);
+    expect(fed({ module: osc, port: 'pm' })).toBe(true);
+    // keys stay apart, both ways
+    expect(() => mergePorts(p, a, DEFS, { module: al, port: 'keys' }, { module: osc, port: 'pitch' })).toThrow(/cannot merge/);
+    expect(() => mergePorts(p, a, DEFS, { module: osc, port: 'pitch' }, { module: al, port: 'keys' })).toThrow(/cannot merge/);
+    reconcileAll(p, DEFS);
+    expect(a.inputs.map((r) => r.label)).toEqual(['pitch', 'gate', 'keys']);
   });
 
   it('finds the first free grid cell for an inserted card', () => {
