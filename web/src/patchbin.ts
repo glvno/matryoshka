@@ -47,7 +47,9 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //   with flag bit 4: the tracks' notes (#133): u8 count, then per Steps module with notes, in module order: u8 module index,
 //                u8 n (1..TRACK_NOTES_MAX), n u32 LE words (track.ts noteWords), sorted by start, then note; bit 31 of a
 //                word (format 50, NOTE_WRAP): tied across the loop point; format 60 (#674, FORMAT_CONDS): a note with a trig
-//                condition (chance code NOTE_COND) is followed by its condition word (velocity 0), which n counts
+//                condition (chance code NOTE_COND) is followed by its condition word (velocity 0), which n counts; format 63
+//                (#675, #677, FORMAT_1_20): a note with a ratchet or micro timing is followed by its timing word (velocity 0,
+//                bit 31), after its condition word, which n counts too
 //   with flag bit 10 (format 48, written only when used: patternRecord): the patterns and songs (track.ts Pattern, SeqState):
 //                u8 the selected pattern (0-based), u8 the song playing (0 none, 1..SONGS_MAX); u8 track count, per Steps module
 //                with patterns past its first, in module order: u8 module index, u8 P, then patterns 2..P+1, each u8 n: 0xFF the
@@ -110,7 +112,7 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DRUM_ROWS, drumRowName, LIMIT_AHEAD, PANEL_BUTTONS } from './modules';
 import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } from './buttons';
 import { defaultMap, EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, MODULES_1_10, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef, type Patch } from './patch';
-import { noteWords, patternWords, wordCount } from './track';
+import { hasTiming, noteWords, patternWords, wordCount } from './track';
 import { payloadHash } from './pattern-store';
 import { lockPlan, PATCH_LOCKS_MAX } from './locks';
 import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS } from './poly';
@@ -131,7 +133,7 @@ export const GROUP_REC = 4 + 5 * MAX_PARTS + 4;
 /** bytes of the panel section (engine.h ENG_PANEL_BYTES): two masks and the labels */
 export const PANEL_BYTES = 4 + PANEL_LABEL_KEYS.length * PANEL_LABEL_MAX;
 export const MAX_CABLES = 255;
-export const VERSION = 63; // 63 (release 1.20, FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid module (euclid, #1018) appended after the Limiter; 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14; ordinary patches retain their lowest format
+export const VERSION = 63; // 63 (release 1.20, FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid module (euclid, #1018) appended after the Limiter, Steps notes' timing words, ratchets and micro timing (#675, #677); 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14; ordinary patches retain their lowest format
 /**
  * The lowest format the encoder writes: a patch that uses no parameter appended after it (ParamDef.since past it: a value
  * off its default on either morph side, a pin, macro range, input route or card row on it) is written in this format, its
@@ -288,14 +290,16 @@ function uses119(dev: Patch): boolean {
 }
 /**
  * The 1.20 format: release 1.20's one format change, shared by everything in the release that needs one (D-1022). It
- * appends the Arpeggiator's `swing` and lets its `rate` reach the bar rates (ParamDef.since / grew, #1010, #1012), and
- * takes the module types added with it (ModuleDef.since: the Euclid, #1018). A patch is written in it only when it uses
- * one of these.
+ * appends the Arpeggiator's `swing` and lets its `rate` reach the bar rates (ParamDef.since / grew, #1010, #1012), takes
+ * the module types added with it (ModuleDef.since: the Euclid, #1018) and Steps notes' timing words (#675, #677). A patch
+ * is written in it only when it uses one of these.
  */
 export const FORMAT_1_20 = 63;
-/** what a patch uses of FORMAT_1_20 besides its parameters (`dev`: its device form): a module of a type added with it */
+/** what a patch uses of FORMAT_1_20 besides its parameters (`dev`: its device form): a module of a type added with it, a
+ * Steps note with a ratchet or micro timing (a timing word), in any pattern */
 function uses120(dev: Patch): boolean {
-  return dev.modules.some((m) => (DEFS[m.type]?.since ?? 0) >= FORMAT_1_20);
+  return dev.modules.some((m) => (DEFS[m.type]?.since ?? 0) >= FORMAT_1_20 ||
+    (m.type === 'steps' && [m.notes, ...(m.patterns ?? []).map((x) => x?.notes)].some((ns) => ns?.some(hasTiming))));
 }
 /** what a patch uses of FORMAT_1_10 (`dev`: its device form): a note tied across the loop point, in any pattern */
 function uses110(dev: Patch): boolean {

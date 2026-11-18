@@ -525,6 +525,10 @@ static void panel_encoders(int32_t *st)
         patch_turn(st[6]);
         return;
     }
+    if (page == PAGE_SEQ && st[6] && seq_held >= 0 && !sr_on) {   /* PRESET with a step held: its ratchet (#675) */
+        seq_timing(st[6], 0);
+        return;
+    }
     if ((page == PAGE_SEQ || page == PAGE_SONG) && st[6]) {   /* PRESET on the SEQ / SONG page: the patch's pattern (#375,
                                                      * D-541), as on ENV and a device page it is the page's list */
         seq_pattern_step(st[6]);
@@ -1069,6 +1073,10 @@ static void panel_edges(uint32_t p, uint32_t rel)
         int roll = seq_module() >= 0 && seq_map() < 0;
         if (sr_on && (p & (1u << BTN_LFO)))
             sr_lfo();
+        if (!sr_on && seq_held >= 0 && oct_rel) {   /* OCT- / OCT+ with a step held: its micro timing (#677) */
+            seq_timing(0, (int32_t)(oct_rel >> BTN_OCT_UP & 1u) - (int32_t)(oct_rel >> BTN_OCT_DOWN & 1u));
+            oct_rel = 0;
+        }
         if (!sr_on && (!roll || !(panel_held >> BTN_ACC & 1u))) {
             if (oct_rel && seq_module() >= 0 && seq_len(seq_module()) <= 16)
                 ui_msg(MSG_ALL_STEPS_SHOWN, NUDGE_MS);   /* (one page of steps: nothing to page to, D-249) */

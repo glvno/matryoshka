@@ -1712,6 +1712,12 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .step.drone::before { content: ''; position: absolute; left: 0; width: 3px; height: 6px; bottom: calc(50% - 3px); background: var(--ink); pointer-events: none; }
 /* a trig condition (#674): a corner, top left, as the FM-1's SEQ page marks it */
 .step.cond::after { content: ''; position: absolute; left: 0; top: 0; border-top: 5px solid #5ab4e6; border-right: 5px solid transparent; pointer-events: none; }
+/* a ratchet (#675): the fill cut into as many slices; micro timing (#677): a lilac foot, left early, right late, as the
+ * FM-1's SEQ page marks them */
+.step.ratchet > i { mask: repeating-linear-gradient(to right, #000 0 calc(100% / var(--ratchet) - 1px), transparent 0 calc(100% / var(--ratchet))); }
+.step.early::before, .step.late::before { content: ''; position: absolute; bottom: 0; width: 4px; height: 3px; background: #c5a3e8; pointer-events: none; }
+.step.early::before { left: 0; }
+.step.late::before { right: 0; }
 .step.play::after { content: ''; position: absolute; inset: 0; border-radius: 2px; box-shadow: inset 0 0 0 2px var(--gate), 0 0 0 1px var(--gate); pointer-events: none; }
 .step.play { overflow: visible; z-index: 1; }
 .step.past { opacity: .25; cursor: default; }
@@ -2128,6 +2134,8 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 /* a note tied across the loop point (#384): open at the track's end, and its part from the first step open at its start */
 .roll-note:has(+ .roll-note.wrapped), .roll-note.drone { border-right-style: dashed; border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .roll-note.cond { box-shadow: inset 3px 3px 0 -1px #5ab4e6; }
+.roll-note.ratchet::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: min(100%, var(--sw)); pointer-events: none;
+  background: repeating-linear-gradient(to right, transparent 0 calc(var(--sw) / var(--ratchet) - 1px), color-mix(in srgb, var(--panel) 75%, transparent) 0 calc(var(--sw) / var(--ratchet))); }
 .roll-note.wrapped { border-left-style: dashed; border-top-left-radius: 0; border-bottom-left-radius: 0; }
 .roll-past { position: absolute; top: 0; bottom: 0; right: 0; background: color-mix(in srgb, var(--panel) 55%, transparent); pointer-events: none; }
 .roll-playhead { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--ink) 10%, transparent); border-left: 2px solid var(--ink); box-sizing: border-box; pointer-events: none; }

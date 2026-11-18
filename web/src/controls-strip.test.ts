@@ -106,10 +106,10 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
     expect(v.everywhere).toEqual([]);
   });
 
-  it('a held drum step: velocity, chance, condition and locks, with K1..K4 named after them', () => {
+  it('a held drum step: velocity, chance, condition, ratchet, micro timing and locks, with K1..K4 named after them', () => {
     const v = stripView(at('drum', { stepHeld: true }));
     expect(v.held).toBe('step');
-    expect(ids(v.rows)).toEqual(['held-velocity', 'held-chance-select', 'held-cond', 'lock-pages', 'lock-rows']);
+    expect(ids(v.rows)).toEqual(['held-velocity', 'held-chance-select', 'held-cond', 'held-ratchet', 'held-micro', 'lock-pages', 'lock-rows']);
     expect(v.knobs).toEqual(['p-lock rows', 'velocity', 'p-lock rows', 'trig condition']);
   });
 

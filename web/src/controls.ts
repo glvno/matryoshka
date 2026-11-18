@@ -56,7 +56,7 @@ export const EFFECTS = [
   'entry', 'entry_pattern', 'add_entry', 'dup_entry', 'transpose', 'song_play', 'song', 'delete_entry', 'back_steps',
   'tab', 'scroll', 'set', 'save_close', 'run_row',
   'editor', 'analog_out', 'chord_button', 'fx_page', 'fx_toggle', 'fx_row',
-  'pattern_save', 'pattern_new', 'pattern_load', 'condition', 'fill',
+  'pattern_save', 'pattern_new', 'pattern_load', 'condition', 'fill', 'ratchet', 'micro',
 ] as const;
 export type Effect = (typeof EFFECTS)[number];
 
@@ -229,6 +229,10 @@ export const CONTROLS: ControlRow[] = [
   { id: 'held-chance-select', gesture: { hold: 'step', do: [E('SELECT')] }, does: 'chance', sheet: { drum: 120 }, effect: 'chance', hint: 'SELECT chance' },
   { id: 'held-cond', gesture: { hold: 'step', do: [K('4')] }, does: 'trig condition', sheet: { drum: 125 }, effect: 'condition', hint: 'K4 cond',
     help: 'the selected row’s note on the held step plays only when its trig condition holds (the roll: the note of the selected pitch): one click a step through OFF, FILL, NOT FILL, PRE, NOT PRE, NEI, NOT NEI, 1ST, NOT 1ST, 1:2 .. 8:8 (pass A of every B), NOT 1:2 .. NOT 8:8. A condition takes the chance’s place; the bar names it (COND 3:4) and the cell gets a blue corner' },
+  { id: 'held-ratchet', gesture: { hold: 'step', do: [E('PRESET')] }, does: 'ratchet', sheet: { drum: 126 }, effect: 'ratchet', hint: 'PRESET ratchet',
+    help: 'the selected row’s note on the held step plays 1 to 5 times inside its step, evenly spaced, each hit the gate of its slice (the roll: the note of the selected pitch); one click one more or one fewer. The bar names it (RATCHET X3, at one RATCHET OFF) and the cell is cut into as many slices' },
+  { id: 'held-micro', gesture: { hold: 'step', do: [B('OCT-'), B('OCT+')] }, does: 'microtiming', plain: 'micro timing', sheet: { drum: 127 }, effect: 'micro', hint: 'OCT micro',
+    help: 'micro timing: the selected row’s note on the held step plays 1/24 of a step earlier (OCT-) or later (OCT+) a press, up to 23/24 either way (the roll: the note of the selected pitch). An early note on a pass’s first step plays at the end of the pass before when the pattern plays again. The bar names it (MICRO +5/24, MICRO OFF) and the cell gets a lilac foot, left early, right late' },
   { id: 'lock-pages', gesture: { hold: 'step', do: [E('ALGO')] }, does: 'p-lock pages', sheet: { drum: 150 }, effect: 'lock_page', hint: 'ALGO lock',
     help: 'P-locks: pages through the device the track plays (its first stop is the step’s note, velocity and chance)' },
   { id: 'lock-rows', gesture: { hold: 'step', do: [K('1234')] }, does: 'p-lock rows', sheet: { drum: 160 }, effect: 'lock', hint: 'K1-K4 lock',
@@ -345,6 +349,7 @@ const STRIP: Record<string, string | ({ _: string } & Partial<Record<HelpState, 
   clear: 'clear the whole track (press REC again to confirm)', 'steps-page': 'show the next or previous 16 steps',
   tie: 'tie the note on through that step (on its own step: a drone)', 'row-drone': 'make the selected row one long held note (a drone)', 'held-pitch': "change this step's pitch", 'held-velocity': "change this step's velocity",
   'held-chance': 'change the chance this step plays', 'held-chance-select': 'change the chance this step plays', 'held-cond': 'choose when this step plays: FILL, 1ST, every Nth pass',
+  'held-ratchet': 'repeat this step 2 to 5 times inside the step', 'held-micro': 'push this step a little earlier or later',
   track: 'pick which track to edit (the keys play it)', 'lock-pages': 'pick a device page to lock values on this step',
   'lock-rows': 'lock these values on this step only (P-lock)', 'roll-view': 'show the next or previous 8 pitches',
   'roll-pitch': 'scroll the view one pitch', pen: "jump the view to that key's pitch", 'keys-octave': "move the keys' octave instead of the grid",

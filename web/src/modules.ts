@@ -5,7 +5,7 @@ import { fixedDoes } from './controls';
 import { ARP_MODES, ARP_RATE_CHOICES, ARP_RATES } from './arpeggiator';
 import { HARM_EXT, HARM_SUS, HARM_TYPES, HARM_VOICING } from './harmonizer';
 import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
-import { COND_FILL, COND_FIRST, COND_NEI, COND_NOT, COND_PRE, isDrone, STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepLock, type StepNote } from './track';
+import { COND_FILL, COND_FIRST, COND_NEI, COND_NOT, COND_PRE, isDrone, MICRO_STEPS, STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepLock, type StepNote } from './track';
 import WT from './wavetables.json';
 import { rateEnvelopeInit, rateEnvelopeProcess } from './rate-envelope';
 import { formatValue } from './labels';
@@ -3437,9 +3437,19 @@ export function clickSample(k: number, len: number, half: number): number {
 export interface StepsPattern { notes: StepNote[]; len?: number; rate?: number; locks?: StepLock[] }
 /** the patch's song state the engine shares with its tracks (Main's `seq`): the song playing (0 none) and the songs */
 export interface StepsSong { song: number; songs: SongEntry[][] }
-/** what the engine shares with its tracks for trig conditions (#674, D-830): FILL held (Engine.setFill), and the tracks'
- * states in module order (a NEI condition reads the track before its own, StepsState.trk) */
-export interface StepsConds { fill: boolean; tracks: StepsState[] }
+/** what the engine shares with its tracks: for trig conditions (#674, D-830) FILL held (Engine.setFill) and the tracks'
+ * states in module order (a NEI condition reads the track before its own, StepsState.trk); for ratchets and micro timing
+ * (#675, #677) the hits to come, STEPS_HITS slots for every track together (engine.c steps_hits) */
+export interface StepsConds { fill: boolean; tracks: StepsState[]; hits: (StepsHit | null)[] }
+/** a note's hits to come (a ratchet's further hits, a note played late or early by its micro timing): its track, its note
+ * (before a song entry's shift) and velocity, the steps it lasts after the one it starts on (as StepsSound.left: the last
+ * hit's; every step that starts before the hit counts it down), hits still to play, samples between hits (0: one hit,
+ * which lasts the gate of a step; else each lasts the gate of this), samples to the next, tied across the loop point,
+ * and the step it plays early for before that step starts (-1: none; cleared at its first hit) */
+export interface StepsHit { trk: number; note: number; vel: number; left: number; hits: number; every: number; cnt: number; wrap: boolean; early: number }
+/** the hits to come all tracks of a patch hold at once (engine.c STEPS_HITS): a note that finds no free slot plays only
+ * the hit that falls on its step's start */
+export const STEPS_HITS = 16;
 
 /** the Steps module's state: its patterns (ModuleInst.notes, .patterns, loaded by the engine), the notes of the one it
  * plays, and where it plays */
@@ -3487,6 +3497,9 @@ export interface StepsState {
   pre: boolean;
   trk: number;
   conds: StepsConds;
+  /** micro timing (#677): the step whose early notes (negative micro timing) were judged and queued at the step before
+   * it, so its own start skips them (-1: none) */
+  early: number;
   /** a step half a tick after a tick (1/64): samples to go (0: none) */
   half: number;
   /** a swung step waiting: samples to go (0: none) and which step */
@@ -3525,12 +3538,13 @@ export function notePlays(seed: number, loop: number, k: number, j: number, chan
   const code = Math.min(19, Math.max(0, Math.round((100 - chance) / 5)));
   return !code || hash32((seed ^ Math.imul(loop, 0x9e3779b9) ^ Math.imul(k + 1, 0x85ebca6b) ^ Math.imul(j, 0xc2b2ae35)) >>> 0) % 100 < 100 - 5 * code;
 }
-/** does a note with trig condition `c` (track.ts COND_*) play now on track s; every condition but PRE and NEI leaves what
- * it gave for them (engine.c steps_cond, the same) */
-export function condPlays(s: StepsState, c: number): boolean {
+/** does a note with trig condition `c` (track.ts COND_*) play now on track s, on its pass `pass` (a note queued early for
+ * the next pass's first step: the next one); every condition but PRE and NEI leaves what it gave for them (engine.c
+ * steps_cond, the same) */
+export function condPlays(s: StepsState, c: number, pass = s.pass): boolean {
   const b = (c >> 3) & 7, a = c & 7, not = !!(c & COND_NOT);
   if (!b && (a === COND_PRE || a === COND_NEI)) return not !== (a === COND_PRE ? s.pre : !!s.conds.tracks[s.trk - 1]?.pre);
-  const r = not !== (b ? s.pass % (b + 1) === a : a === COND_FILL ? s.conds.fill : a === COND_FIRST && s.pass === 0);
+  const r = not !== (b ? pass % (b + 1) === a : a === COND_FILL ? s.conds.fill : a === COND_FIRST && pass === 0);
   s.pre = r;
   return r;
 }
@@ -3638,7 +3652,7 @@ const steps: ModuleImpl<StepsState> = {
     ],
     data: TRACK_NAME_MAX,
   },
-  init: () => ({ notes: [], pats: [{ notes: [] }], pat: 0, queued: -1, songPos: -1, shift: 0, drum: false, song: { song: 0, songs: [] }, pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, once: 0, onceAt: -1, run: false, c1: 0, r1: 0, count: 0, pos: -1, visit: 0, loop: 0, pass: 0, pre: false, trk: 0, conds: { fill: false, tracks: [] }, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], coalesce: false, evSnapshot: [], thru: [], thruSnapshot: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
+  init: () => ({ notes: [], pats: [{ notes: [] }], pat: 0, queued: -1, songPos: -1, shift: 0, drum: false, song: { song: 0, songs: [] }, pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, once: 0, onceAt: -1, run: false, c1: 0, r1: 0, count: 0, pos: -1, visit: 0, loop: 0, pass: 0, pre: false, trk: 0, conds: { fill: false, tracks: [], hits: [] }, early: -1, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], coalesce: false, evSnapshot: [], thru: [], thruSnapshot: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
   seed(s, seed) {
     s.seed = seed;
   },
@@ -3675,49 +3689,132 @@ const steps: ModuleImpl<StepsState> = {
       emit(s.snd[j].key, 0);
       s.snd.splice(j, 1);
     };
+    // a step's samples as a note's length counts them (fire, the hits to come)
+    const slNow = (): number => (ext && s.period > 0 ? s.period : ext ? 6 * v.tickLen : step);
+    // a note's samples from here: through to the next step while more follow (two steps at most), else the gate of a step
+    // (of a ratchet's hit: of the samples between its hits)
+    const hold = (left: number, sl: number, every = 0): number => (left > 0 ? 2 * sl : Math.max(1, Math.floor((gate * (every || sl)) / 65536)));
+    const semisAt = (i: number): number => Math.floor((q16(transpose[i]) * 12 + 32768) / 65536);
+    // a note starts sounding on key `key` (a note on the same key ends first, the oldest when TRACK_POLY sound)
+    const start = (key: number, vel: number, left: number, cnt: number, dr?: number): void => {
+      const same = s.snd.findIndex((x) => x.key === key);
+      if (same >= 0) end(same);
+      if (s.snd.length >= TRACK_POLY) end(0);
+      s.snd.push({ key, left, cnt, ...(dr ? { dr } : {}) });
+      emit(key | 0x80, vel);
+    };
+    // the hits to come (#675, #677): one more hit of slot h's note now, on sample i; muted, the note's hits go
+    const pool = s.conds.hits;
+    const hit = (h: number, i: number): void => {
+      const e = pool[h]!;
+      if (s.mute) {
+        pool[h] = null;
+        return;
+      }
+      const note = Math.max(0, Math.min(127, e.note + s.shift)), last = e.hits === 1, left = last ? e.left : 0;
+      const was = s.snd.some((x) => x.cnt > 0);
+      start(Math.max(0, Math.min(127, note + semisAt(i))), e.vel, left, hold(left, slNow(), e.every), last && e.wrap ? SND_WRAP : 0);
+      s.pitch = stepPitch(note);
+      s.vel = e.vel / 127;
+      s.gap = was;
+      e.early = -1;
+      if (--e.hits > 0) e.cnt = e.every;
+      else pool[h] = null;
+    };
+    // a note's hits queued in the first free slot, the first `cnt` samples from now (none free: they are not played)
+    const queue = (n: StepNote, cnt: number, every: number, hits: number, left: number, early: number): void => {
+      const h = pool.indexOf(null);
+      if (h >= 0) pool[h] = { trk: s.trk, note: n.note, vel: n.vel, left, hits, every, cnt, wrap: !!n.wrap, early };
+    };
+    // a note's chance or trig condition judged (j: its place among its step's notes; loop, pass: the step's)
+    const judge = (n: StepNote, k: number, j: number, loop: number, pass: number): boolean => {
+      if (n.cond) return condPlays(s, n.cond, pass);
+      if (Math.min(19, Math.max(0, Math.round((100 - (n.chance ?? 100)) / 5)))) return (s.pre = notePlays(s.seed, loop, k, j, n.chance));
+      return true;
+    };
+    // a swung step's delay: every second visit (engine.c, the same)
+    const swingOf = (visit: number): number => {
+      const sw = ext ? s.period : step;
+      return visit & 1 && swing > 0 && sw > 0 ? Math.floor((swing * sw) / (50 * 65536)) : 0;
+    };
     const fire = (k: number, i: number): void => {
-      const sl = ext && s.period > 0 ? s.period : ext ? 6 * v.tickLen : step;
-      // a note's samples from here: through to the next step while more follow (two steps at most), else gate of a step
-      const hold = (left: number): number => (left > 0 ? 2 * sl : Math.max(1, Math.floor((gate * sl) / 65536)));
-      const semis = Math.floor((q16(transpose[i]) * 12 + 32768) / 65536);
+      const sl = slNow();
+      const semis = semisAt(i);
       const keyOf = (n: StepNote): number => Math.max(0, Math.min(127, Math.max(0, Math.min(127, n.note + s.shift)) + semis));
       // a drone holds while its note is still a drone of the pattern playing, at the key it sounds (#384); else its gate tail
       const lives = (x: StepsSound): boolean => s.notes.some((n) => n.at === ((x.dr ?? 0) & 0x7f) - 1 && isDrone(n) && keyOf(n) === x.key);
       for (const x of s.snd)
         if (x.left > 0 && x.cnt > 0 && !s.mute) {
-          if (!((x.dr ?? 0) & 0x7f)) x.cnt = hold(--x.left);
-          else if (lives(x)) x.cnt = hold(1);
-          else x.cnt = hold(x.left = 0);
+          if (!((x.dr ?? 0) & 0x7f)) x.cnt = hold(--x.left, sl);
+          else if (lives(x)) x.cnt = hold(1, sl);
+          else x.cnt = hold(x.left = 0, sl);
         }
+      for (const e of pool) if (e?.trk === s.trk && e.left > 0 && !s.mute) e.left--; // (the hits to come count the step too)
+      const early = s.early;
+      s.early = -1;
       if (s.mute || (s.once === 1 && s.onceAt >= 0 && i >= s.onceAt)) return; // (play once: its passes played, it loops on until the last track's end, then no note more: D-820)
+      // notes queued early for a step: this one's first hit now, if the clock came early; another step's go (a reset)
+      for (let h = 0; h < pool.length; h++) {
+        const e = pool[h];
+        if (e?.trk !== s.trk || e.early < 0) continue;
+        if (e.early === k) hit(h, i);
+        else pool[h] = null;
+      }
       const was = s.snd.some((x) => x.cnt > 0);
       let j = 0, any = false;
       for (const n of s.notes) {
         if (n.at !== k) continue;
-        const code = Math.min(19, Math.max(0, Math.round((100 - (n.chance ?? 100)) / 5)));
-        let plays = true;
-        if (n.cond) plays = condPlays(s, n.cond);
-        else if (code) s.pre = plays = notePlays(s.seed, s.loop, k, j, n.chance);
-        j++;
+        const drone = isDrone(n);
+        if (early === k && (n.micro ?? 0) < 0 && !drone) { // (judged and queued at the step before: #677)
+          j++;
+          continue;
+        }
+        const plays = judge(n, k, j++, s.loop, s.pass);
         if (plays) {
           const note = Math.max(0, Math.min(127, n.note + s.shift)); // (a song entry's shift)
           const key = Math.max(0, Math.min(127, note + semis));
-          const drone = isDrone(n);
           if (drone && s.snd.some((x) => x.dr === (SND_WRAP | (k + 1)) && x.key === key && x.cnt > 0)) continue; // (tied onto itself)
-          const same = s.snd.findIndex((x) => x.key === key);
-          if (same >= 0) end(same);
-          if (s.snd.length >= TRACK_POLY) end(0);
           // a note tied across the loop point counts its length on into the next pass; a drone holds (#384)
           const left = drone ? 1 : n.wrap ? n.len - 1 : Math.min(n.len, Math.max(1, stepCycle(len, dir) - s.visit)) - 1;
-          s.snd.push({ key, left, cnt: hold(left), ...(n.wrap ? { dr: drone ? SND_WRAP | (k + 1) : SND_WRAP } : {}) });
-          emit(key | 0x80, n.vel);
+          // a ratchet's hits (#675) a step's 1 / ratchet apart, each the gate of that long, the last one its length; micro
+          // timing (#677) late: all of them later (early: on the step, unless queued at the step before)
+          const r = drone ? 1 : n.ratchet ?? 1, every = r > 1 ? Math.max(1, Math.floor(sl / r)) : 0;
+          const off = !drone && (n.micro ?? 0) > 0 ? Math.trunc((n.micro! * sl) / MICRO_STEPS) : 0;
+          if (off > 0) {
+            queue(n, off, every, r, left, -1);
+            continue;
+          }
+          start(key, n.vel, r > 1 ? 0 : left, hold(r > 1 ? 0 : left, sl, every), n.wrap && r === 1 ? (drone ? SND_WRAP | (k + 1) : SND_WRAP) : 0);
+          if (r > 1) queue(n, every, every, r - 1, left, -1);
           s.pitch = stepPitch(note);
           s.vel = n.vel / 127;
           any = true;
         }
       }
       if (any) s.gap = was;
+      // micro timing early (#677): the next step's early notes are judged now and queued to play before it starts, within
+      // the pass, or into the next pass when it plays this pattern again (no song, nothing queued, not play once)
+      const y = nextStep(s, len, dir);
+      if (y.visit === 0 && (s.song.songs[s.song.song - 1]?.length || s.queued >= 0 || s.once)) return;
+      const pass = y.visit === 0 ? s.pass + 1 : s.pass, ahead = sl - swingOf(s.visit) + swingOf(y.visit);
+      let jj = 0;
+      for (const n of s.notes) {
+        if (n.at !== y.pos) continue;
+        if ((n.micro ?? 0) >= 0 || isDrone(n) || !judge(n, y.pos, jj, y.loop, pass)) {
+          jj++;
+          continue;
+        }
+        jj++;
+        const left = n.wrap ? n.len - 1 : Math.min(n.len, Math.max(1, stepCycle(len, dir) - y.visit)) - 1;
+        const r = n.ratchet ?? 1;
+        queue(n, Math.max(1, ahead + Math.trunc((n.micro! * sl) / MICRO_STEPS)), r > 1 ? Math.max(1, Math.floor(sl / r)) : 0, r, left > 0 ? left + 1 : 0, y.pos);
+      }
+      s.early = y.pos;
     };
+    if (!ext && !v.run && s.run) { // stopped: the hits to come go
+      for (let h = 0; h < pool.length; h++) if (pool[h]?.trk === s.trk) pool[h] = null;
+      s.early = -1;
+    }
     const live = s.rec && s.pos >= 0 && s.sl > 0 && (ext || v.run);
     if (s.thru.length) {
       // the armed track's keys in: each into keys out (transposed as the track's notes) and the mono outputs; recording
@@ -3790,6 +3887,10 @@ const steps: ModuleImpl<StepsState> = {
             s.count = -1;
           }
         }
+      }
+      for (let h = 0; h < pool.length; h++) { // the hits to come (#675, #677), in slot order
+        const e = pool[h];
+        if (e?.trk === s.trk && --e.cnt === 0) hit(h, i);
       }
       if (s.pend > 0 && --s.pend === 0 && (dir === 0 || s.pstep < len)) fire(s.pstep, i);
       s.ago++;

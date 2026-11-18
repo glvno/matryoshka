@@ -9,7 +9,7 @@ import { chainedHarmonizer, keyFeed, keyReach, keyRouteError } from './key-routi
 // held). A module reading another group's per-part output gets the sum over those parts; a per-part module reading a
 // shared output gets that one buffer.
 
-import { CLICK_ACCENT_HZ, CLICK_HZ, CLICK_MS, clickSample, METER_DEFAULT, METERS, meterOf, type DrumMapState, dropRows, stepsGo, stepsTurnAt, stepsPattern, type StepsConds, type StepsSong, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, voicingSetting, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
+import { CLICK_ACCENT_HZ, CLICK_HZ, CLICK_MS, clickSample, METER_DEFAULT, METERS, meterOf, type DrumMapState, dropRows, stepsGo, stepsTurnAt, stepsPattern, type StepsConds, type StepsSong, STEPS_HITS, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, voicingSetting, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
 import { defaultMap, FLAW_TARGETS, flawOf, MAX_PARTS, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, rangeShare, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
 import { ALLOC, deviceView, keysInto, VOICING_CABLE_INPUTS } from './poly';
 import { armView, type DeviceKey } from './arm';
@@ -338,6 +338,7 @@ export class Engine {
     this.song.songs = (mainSeq?.songs ?? []).map((x) => x.map((e) => ({ ...e })));
     this.pattern = mainSeq?.pattern ?? 0;
     this.conds.tracks = [];
+    this.conds.hits = Array(STEPS_HITS).fill(null); // (a load drops the hits to come: engine.c eng_load)
     for (const [mi, m] of patch.modules.entries()) {
       const impl = IMPLS[m.type];
       if (!impl) throw new Error(`unknown module type "${m.type}"`);
@@ -386,6 +387,7 @@ export class Engine {
           st.conds = this.conds;
           st.trk = this.conds.tracks.length;
           this.conds.tracks.push(st);
+          st.early = -1; // (its queued early notes went with the hits to come)
           if (!keep) {
             st.pat = Math.min(PATTERNS_MAX - 1, Math.max(0, mainSeq?.pattern ?? 0));
             st.songPos = -1;
@@ -787,8 +789,9 @@ export class Engine {
   /** the song state the tracks share (Main's `seq`) and the selected pattern */
   private song: StepsSong = { song: 0, songs: [] };
   private pattern = 0;
-  /** what trig conditions read (#674): FILL, and the tracks in module order (a load makes the list again) */
-  private conds: StepsConds = { fill: false, tracks: [] };
+  /** what trig conditions read (#674): FILL, and the tracks in module order (a load makes the list again); the hits to come
+   * of ratchets and micro timing (#675, #677) */
+  private conds: StepsConds = { fill: false, tracks: [], hits: Array(STEPS_HITS).fill(null) };
   /** FILL held or let go (#674, the FM-1's SEQ + FX, the editor's FILL): notes with a FILL condition play while it is
    * held, NOT FILL ones while it is not */
   setFill(on: boolean): void {

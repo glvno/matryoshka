@@ -3762,6 +3762,55 @@ for (const dir of [0, 2, 3]) {
   if (encodePatch(tests['steps-conds'], true)[1] !== 60) throw new Error('steps-conds: not format 60');
 }
 
+// Ratchets and micro timing (#675, #677, format 63): a swung melody track with ratchets (one with a trig condition, one on
+// a chord, one on a note three steps long, one tied across the loop point), notes late and early (the pass's first step
+// early from the pass before; an early note with a chance) and a pattern 2 the track changes to (no early note across that
+// pass's end); a drum track on a clock in clk, ping-pong, its early notes queued ahead of the clock's edges; a chord
+// track whose late notes take more hit slots than there are (STEPS_HITS: the rest are not played); stop and run again
+{
+  const t = (x: StepNote, ratchet: number, micro = 0): StepNote => ({ ...x, ...(ratchet > 1 ? { ratchet } : {}), ...(micro ? { micro } : {}) });
+  tests['steps-ratchets'] = make('steps-ratchets', (add, wire) => {
+    add('fm1', 0, 0, { tempo: 160 });
+    const out = add('output', 1600, 0, { level: 0.5 });
+    for (const [i, port] of [[0, 'l'], [1, 'r'], [2, 'l']] as const) {
+      const st = add('steps', 200, 300 * i, [{ len: 8, rate: 4, gate: 0.5, swing: 62 }, { len: 6, gate: 0.4, dir: 2 }, { len: 4, rate: 3, gate: 0.3 }][i]);
+      const al = add('alloc', 400, 300 * i, { voices: 4, legato: 0 });
+      const o = add('osc', 600, 300 * i, { wave: 2, level: 0.3 });
+      const e = add('adsr', 600, 300 * i + 150, { a: 0.002, d: 0.04, s: 0.4, r: 0.02 });
+      const v = add('vca', 800, 300 * i);
+      wire(st, 'keys', al, 'keys');
+      wire(al, 'pitch', o, 'pitch');
+      wire(al, 'gate', e, 'gate');
+      wire(o, 'out', v, 'in');
+      wire(e, 'env', v, 'cv');
+      wire(v, 'out', out, port);
+    }
+    add('lfo', 1000, 600, { wave: 3, rate: 5, depth: 1 });
+  });
+  const p = tests['steps-ratchets'];
+  const [a, b, c] = p.modules.filter((m) => m.type === 'steps');
+  const lfo = p.modules.find((m) => m.type === 'lfo')!;
+  p.cables.push({ from: { module: lfo.id, port: 'out' }, to: { module: b.id, port: 'clk' } });
+  a.notes = [t(n(0, 1, 48), 2, -6), t(n(1, 1, 50), 5, 6), t(n(2, 1, 52), 1, -8), t(n(3, 1, 55), 3, -4), t(n(3, 1, 59, 90), 3, -4),
+    { ...t(n(4, 1, 57), 4), cond: condAB(1, 2) }, t(n(5, 3, 60, 127), 2), t(n(6, 1, 62, 100, 50), 1, -12), { ...t(n(7, 3, 64), 3, 20), wrap: true }];
+  a.patterns = [{ len: 4, notes: [t(n(0, 1, 47), 1, -10), t(n(1, 1, 49), 2, 3), t(n(3, 2, 53), 1, 23)] }];
+  b.notes = [t(n(0, 1, 36), 4), t(n(1, 1, 38), 1, -9), n(2, 1, 42), t(n(3, 1, 42), 2, -20), t(n(4, 1, 39), 3, 11), t(n(5, 1, 36), 1, -1)];
+  c.notes = Array.from({ length: 12 }, (_, k) => t(n(0, 1, 60 + k, 80), 2, 2)).concat([t(n(2, 1, 72), 1, -3)]);
+  events['steps-ratchets'] = [[128 * 5, 'run', 0], [128 * 380, 'pat', 1], [128 * 560, 'pat', 0], [128 * 760, 'stop', 0], [128 * 800, 'run', 0]];
+  ends['steps-ratchets'] = 128 * 1000;
+  if (encodePatch(tests['steps-ratchets'], true)[1] !== 63) throw new Error('steps-ratchets: not format 63');
+  // the same tracks' trig outputs straight out (the internally clocked melody track left, the chord track right): every
+  // hit's start and end on the same sample in both engines, or the error is a whole step of the gate
+  const g = structuredClone(p);
+  g.name = 'steps-ratchets-trig';
+  const outG = g.modules.find((m) => m.type === 'output')!;
+  g.cables = g.cables.filter((x) => x.to.module !== outG.id);
+  g.cables.push({ from: { module: a.id, port: 'trig' }, to: { module: outG.id, port: 'l' } }, { from: { module: c.id, port: 'trig' }, to: { module: outG.id, port: 'r' } });
+  tests['steps-ratchets-trig'] = g;
+  events['steps-ratchets-trig'] = events['steps-ratchets'];
+  ends['steps-ratchets-trig'] = ends['steps-ratchets'];
+}
+
 // P-locks (#524, format 49): a melody track into an oscillator and a filter, its steps locking the filter's cutoff and
 // resonance and the oscillator's wave (a choice) on some steps, every other step back at the normal values; pattern 2 with
 // locks of its own, pattern 3 the track has not got (it plays pattern 1's notes and locks), stop (the locks let go) and
