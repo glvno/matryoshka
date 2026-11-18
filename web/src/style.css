@@ -1337,6 +1337,11 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 .sidebar .view-row button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); font-size: 11px; letter-spacing: .06em; }
 .sidebar .view-row button:hover { border-color: var(--secondary); color: var(--ink); filter: none; }
 .view-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+/* VIEW: Scroll wheel: auto / zoom / pan (#1075) */
+.wheel-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.sidebar .wheel-row select { min-height: 26px; padding: 2px 6px; border-radius: 5px; border-color: var(--line); background: var(--bar); font: 500 12px/1.2 'Barlow', system-ui, sans-serif; }
+/* a right- or middle-drag pans the canvas (#1075): the hand grabs, over cards and controls too */
+html.panning, html.panning * { cursor: grabbing !important; user-select: none; }
 /* PATCH: + Module and + Assembly side by side (#166; their names still say Add module / Add assembly) */
 .add-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 /* LEARN: the tutorial and the demo side by side */

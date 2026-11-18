@@ -92,6 +92,7 @@ import { FlawPanel } from './flaws-panel';
 import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
 import { GUTTER_ROOM, ribbons, type RibbonCable, type RibbonFrame } from './ribbons';
 import { pinchStart, pinchStep, type Pinch } from './touch';
+import { edgeSpeed, KEY_ZOOM, PanPress, WheelGestures, wheelPx, wheelZoom, type WheelSetting } from './canvas-nav';
 import { scopeTools, type ScreenSpec } from './scope-view';
 import { listenable, type ListenSource } from './listen';
 import type { EnvSpec } from './env-view';
@@ -412,7 +413,7 @@ export class Editor {
       this.layoutFrames(); this.sizeCanvas(); this.positionCables();
     });
     canvas.addEventListener('pointerdown', (e) => this.rubberBand(e));
-    // right-click on the empty canvas: its menu (Add comment, #518)
+    // right-click on the empty canvas: its menu (Add comment, #518); a right-drag pans instead (mousePan, #1075)
     canvas.addEventListener('contextmenu', (e) => {
       const t = e.target as HTMLElement;
       if (t.closest('.module, .fhead, .comment-box, .ctx, button, input, select, textarea, a')) return;
@@ -429,6 +430,8 @@ export class Editor {
     });
     window.addEventListener('pointerdown', (e) => { if (!(e.target instanceof Node && canvas.contains(e.target))) this.hover = null; }, true);
     this.touchGestures();
+    this.mousePan();
+    this.wheelNav();
     const raise = (event: Event): void => {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -2815,7 +2818,23 @@ export class Editor {
 
   /** every card in view: the zoom that fits the cards' extent into the canvas, scrolled to its top left */
   zoomToFit(): void {
-    const elements = [...this.cards.values(), ...this.containers.values(), ...this.frames.values()];
+    this.fitElements([...this.cards.values(), ...this.containers.values(), ...this.frames.values()], false);
+  }
+
+  /** Shift+2 (#1075): the zoom that fits the selected cards, assemblies and comments, centred; false with nothing selected */
+  zoomToSelection(): boolean {
+    const els = [
+      ...[...this.selected].map((id) => this.cards.get(id)),
+      ...[...this.selectedAsm].map((id) => this.frames.get(id) ?? this.containers.get(id)),
+      ...[...this.selectedComments].map((id) => this.commentEls.get(id)),
+    ].filter((el): el is HTMLElement => !!el);
+    if (!els.length) return false;
+    this.fitElements(els, true);
+    return true;
+  }
+
+  /** the zoom that fits `elements` (at most 150 %), scrolled to their top left, or with them centred */
+  private fitElements(elements: HTMLElement[], centre: boolean): void {
     if (!elements.length) return;
     const PAD = 24;
     // an open frame's cables run in a gutter round it (ribbons.ts): fit that too
@@ -2824,8 +2843,164 @@ export class Editor {
     const y0 = Math.max(0, Math.min(...elements.map((el) => el.offsetTop - out(el))) - PAD);
     const w = Math.max(...elements.map((el) => el.offsetLeft + el.offsetWidth + out(el))) + PAD - x0;
     const h = Math.max(...elements.map((el) => el.offsetTop + el.offsetHeight + out(el))) + PAD - y0;
-    this.setZoom(Math.min(1.5, this.canvas.clientWidth / w, this.canvas.clientHeight / h));
-    this.canvas.scrollTo(x0 * this.zoom, y0 * this.zoom);
+    const c = this.canvas;
+    this.setZoom(Math.min(1.5, c.clientWidth / w, c.clientHeight / h));
+    const z = this.zoom;
+    if (centre) c.scrollTo(Math.max(0, (x0 + w / 2) * z - c.clientWidth / 2), Math.max(0, (y0 + h / 2) * z - c.clientHeight / 2));
+    else c.scrollTo(x0 * z, y0 * z);
+  }
+
+  /** Ctrl / Cmd + = and − (#1075): one step in or out, around the canvas's centre */
+  zoomStep(dir: 1 | -1): void {
+    this.zoomAround(this.zoom * KEY_ZOOM ** dir);
+  }
+
+  /** the plain wheel's setting (VIEW's Scroll wheel, kept per browser by the host): auto tells a mouse from a trackpad */
+  wheelMode: WheelSetting = 'auto';
+  /** auto mode decided a wheel gesture by guessing the device (the host's one-time hint) */
+  onWheelGuess: (action: 'zoom' | 'pan') => void = () => {};
+
+  /**
+   * The wheel over the canvas (#1075), classified per gesture in canvas-nav.ts: a mouse wheel zooms at the cursor, a
+   * trackpad's two-finger scroll is left to the browser (it pans), a pinch (Ctrl + wheel) and Ctrl / Cmd + wheel zoom,
+   * Shift + wheel pans sideways. Holding 1..4 turns a knob instead: the host's window listener takes the event first.
+   * The zoom of one gesture is gathered unrounded, so a slow pinch adds up past the whole-percent steps. Only the view.
+   */
+  private wheelNav(): void {
+    const gestures = new WheelGestures();
+    let target = this.zoom;
+    this.canvas.addEventListener('wheel', (e) => {
+      if (e.defaultPrevented || isTextEntry(e.target)) return;
+      const deltaMode = e.deltaMode; // (read first: Firefox reports lines only to a listener that asks for the mode first)
+      const legacy = (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
+      const s = { deltaX: e.deltaX, deltaY: e.deltaY, deltaMode, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey, timeStamp: e.timeStamp, wheelDeltaY: legacy, scale: devicePixelRatio };
+      const { action, fresh, guess } = gestures.classify(s, this.wheelMode);
+      if (action === 'pan-x') {
+        // (a Mac turns Shift + wheel sideways itself: deltaX; elsewhere the vertical delta is turned here)
+        if (e.deltaX || !e.deltaY) return;
+        e.preventDefault();
+        this.canvas.scrollBy(wheelPx(e.deltaY, deltaMode, this.canvas.clientWidth), 0);
+        return;
+      }
+      if (guess) this.onWheelGuess(action);
+      if (action === 'pan') return;
+      e.preventDefault();
+      if (fresh || Math.abs(target - this.zoom) > 0.011) target = this.zoom;
+      target = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, target * wheelZoom(s)));
+      this.zoomAround(target, false, { x: e.clientX, y: e.clientY });
+    }, { passive: false });
+  }
+
+  /**
+   * Right- or middle-drag pans the canvas grab-style, anywhere on it, over cards and cables too (#1075). The listeners are
+   * in the capture phase, so a card's handle, a jack or a slider never sees the press. Moved no further than `PAN_SLOP`,
+   * a right press is a right-click: the menu the target would have opened opens at the release (the browser's
+   * contextmenu event, which a Mac sends at the press, is held until then), and after a pan none opens. Text fields keep
+   * their own right-click, and a press while the left button holds a control is left alone. A touch pans as before.
+   */
+  private mousePan(): void {
+    let press: { id: number; button: number; pan: PanPress; target: Element; at: Pt } | null = null;
+    /** the part of a pan step the scroll could not take (it moves in whole pixels): added to the next, at most a pixel */
+    let carry = { x: 0, y: 0 };
+    /** the browser's contextmenu that arrived during the press (a Mac's, at the press): re-sent at a click's release */
+    let held: MouseEvent | null = null;
+    /** a pan just ended: the contextmenu Windows sends after the release is dropped */
+    let swallow = 0;
+    const root = document.documentElement;
+    const skip = (e: PointerEvent): boolean => e.pointerType === 'touch' || (e.button !== 1 && e.button !== 2) || (e.buttons & 1) !== 0
+      || isTextEntry(e.target) || (e.target instanceof Element && !!e.target.closest('select'));
+    this.canvas.addEventListener('pointerdown', (e) => {
+      if (press || skip(e)) return;
+      e.stopPropagation(); // (no card drag, cable, slider or rubber band)
+      press = { id: e.pointerId, button: e.button, pan: new PanPress({ x: e.clientX, y: e.clientY }), target: e.target as Element, at: { x: e.clientX, y: e.clientY } };
+      held = null;
+      carry = { x: 0, y: 0 };
+      window.addEventListener('pointermove', move, true);
+      window.addEventListener('pointerup', up, true);
+      window.addEventListener('pointercancel', cancel, true);
+    }, true);
+    // the middle button's autoscroll and the right one's text selection start at mousedown
+    this.canvas.addEventListener('mousedown', (e) => {
+      if (press && e.button === press.button) e.preventDefault();
+    }, true);
+    const move = (e: PointerEvent): void => {
+      if (!press || e.pointerId !== press.id) return;
+      const scroll = press.pan.move({ x: e.clientX, y: e.clientY });
+      if (!scroll) return;
+      root.classList.add('panning');
+      e.preventDefault();
+      const c = this.canvas, x = c.scrollLeft, y = c.scrollTop;
+      const want = { x: scroll.x + carry.x, y: scroll.y + carry.y };
+      c.scrollBy(want.x, want.y);
+      const clamp = (v: number): number => Math.max(-1, Math.min(1, v));
+      carry = { x: clamp(want.x - (c.scrollLeft - x)), y: clamp(want.y - (c.scrollTop - y)) };
+    };
+    const finish = (): void => {
+      window.removeEventListener('pointermove', move, true);
+      window.removeEventListener('pointerup', up, true);
+      window.removeEventListener('pointercancel', cancel, true);
+      root.classList.remove('panning');
+      press = null;
+      held = null;
+    };
+    const cancel = (e: PointerEvent): void => {
+      if (press && e.pointerId === press.id) finish();
+    };
+    const up = (e: PointerEvent): void => {
+      if (!press || e.pointerId !== press.id || e.button !== press.button) return;
+      const p = press, menu = held;
+      finish();
+      if (p.pan.panning) {
+        swallow = e.timeStamp;
+        return;
+      }
+      if (!menu) return; // (Windows sends it after the release: it goes through)
+      const target = p.target.isConnected ? p.target : document.elementFromPoint(p.at.x, p.at.y);
+      target?.dispatchEvent(new MouseEvent('contextmenu', {
+        bubbles: true, cancelable: true, composed: true, view: window, button: 2, clientX: menu.clientX, clientY: menu.clientY,
+        screenX: menu.screenX, screenY: menu.screenY, ctrlKey: menu.ctrlKey, shiftKey: menu.shiftKey, altKey: menu.altKey, metaKey: menu.metaKey,
+      }));
+    };
+    window.addEventListener('contextmenu', (e) => {
+      if (!e.isTrusted) return; // (the one re-sent above)
+      if (press?.button === 2) held = e;
+      else if (!(swallow && e.timeStamp - swallow < 500)) return;
+      swallow = 0;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }, true);
+  }
+
+  /**
+   * Auto-pan (#1075): while a drag (a card, a cable end, a rubber band) holds the pointer in the band along the canvas's
+   * edges, the canvas scrolls every frame, faster the deeper (canvas-nav.ts edgeSpeed). `step` gets what it scrolled
+   * (client px) so the drag can follow. Touch drags never auto-pan.
+   */
+  private edgePan(step: (dx: number, dy: number) => void = () => {}): { move: (e: PointerEvent) => void; stop: () => void } {
+    let at: Pt | null = null;
+    let frame = 0;
+    const tick = (): void => {
+      frame = 0;
+      if (!at) return;
+      const v = edgeSpeed(at, this.canvas.getBoundingClientRect());
+      if (!v.x && !v.y) return;
+      const c = this.canvas, x = c.scrollLeft, y = c.scrollTop;
+      c.scrollBy(v.x, v.y);
+      const dx = c.scrollLeft - x, dy = c.scrollTop - y;
+      if (dx || dy) step(dx, dy);
+      frame = requestAnimationFrame(tick);
+    };
+    return {
+      move: (e) => {
+        at = e.pointerType === 'touch' ? null : { x: e.clientX, y: e.clientY };
+        if (!frame) tick();
+      },
+      stop: () => {
+        at = null;
+        cancelAnimationFrame(frame);
+        frame = 0;
+      },
+    };
   }
 
   /** two fingers are (or were, until every finger is up) on the canvas: the view's, no control's */
@@ -2838,17 +3013,12 @@ export class Editor {
    * start (.canvas has touch-action: none, so the browser leaves the gesture to us). The listeners are in the capture
    * phase, so fingers on controls that stop propagation count too. When the second finger lands, what the first one did is
    * put back: a card drag or a slider's change (the open gesture's snapshot), a cable being drawn. A pinch is only the
-   * view, never an undo step. Ctrl / Cmd + wheel zooms (trackpads).
+   * view, never an undo step. (A trackpad's pinch is Ctrl + wheel: wheelNav.)
    */
   private touchGestures(): void {
     const pts = new Map<number, Pt>();
     let pinch: Pinch | null = null;
     let prev: [Pt, Pt] | null = null;
-    this.canvas.addEventListener('wheel', (e) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
-      e.preventDefault();
-      this.zoomAround(this.zoom * Math.exp(-e.deltaY / 400), false, { x: e.clientX, y: e.clientY });
-    }, { passive: false });
     const two = (): [Pt, Pt] => [...pts.values()].slice(0, 2) as [Pt, Pt];
     this.canvas.addEventListener('pointerdown', (e) => {
       if (e.pointerType !== 'touch') return;
@@ -5745,6 +5915,11 @@ export class Editor {
           if (m) this.contextMenu(m, DEFS[m.type], { x: m.x + 20, y: m.y + 30 });
         }, LONG_PRESS_MS);
       }
+      // near the canvas's edge it scrolls on its own (#1075): what is dragged moves along, so it stays under the pointer
+      const edge = this.edgePan((dx, dy) => {
+        move(dx / this.zoom, dy / this.zoom);
+        this.sizeCanvas();
+      });
       const onMove = (ev: PointerEvent): void => {
         if (press && Math.hypot(ev.clientX - sx, ev.clientY - sy) > 8) {
           clearTimeout(press);
@@ -5753,10 +5928,12 @@ export class Editor {
         move((ev.clientX - lx) / this.zoom, (ev.clientY - ly) / this.zoom);
         lx = ev.clientX;
         ly = ev.clientY;
+        edge.move(ev);
       };
       // `drop`: stop without finishing (a second finger landed; the pinch puts the patch back)
       const stop = (): void => {
         if (press) clearTimeout(press);
+        edge.stop();
         press = 0;
         if (this.oneFinger === drop) this.oneFinger = null;
         window.removeEventListener('pointermove', onMove);
@@ -6025,12 +6202,21 @@ export class Editor {
     box.className = rowMode ? 'rubber rows' : 'rubber';
     this.modulesEl.append(box);
     let r: Rect = { x: o.x, y: o.y, w: 0, h: 0 };
-    const move = (ev: PointerEvent): void => {
+    let last = e;
+    const draw = (ev: PointerEvent): void => {
       const p = at(ev);
       r = { x: Math.min(o.x, p.x), y: Math.min(o.y, p.y), w: Math.abs(p.x - o.x), h: Math.abs(p.y - o.y) };
       Object.assign(box.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` });
     };
+    // near the canvas's edge it scrolls on its own (#1075), and the band grows with it
+    const edge = this.edgePan(() => draw(last));
+    const move = (ev: PointerEvent): void => {
+      last = ev;
+      draw(ev);
+      edge.move(ev);
+    };
     const up = (): void => {
+      edge.stop();
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       if (rowMode) {
@@ -7005,9 +7191,13 @@ export class Editor {
     const kind = start.dataset.dir;
     const { path, move, stop } = this.ghostCable(start);
     this.setPatching(true);
+    // near the canvas's edge it scrolls on its own (#1075); the ghost cable follows the scroll
+    const edge = this.edgePan();
     const cancel = (): void => {
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('pointermove', edge.move);
+      edge.stop();
       stop();
       this.drag = null;
       this.setPatching(false);
@@ -7034,6 +7224,7 @@ export class Editor {
     };
     this.drag = { path, cancel };
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointermove', edge.move);
     window.addEventListener('pointercancel', cancel);
     move(e);
   }

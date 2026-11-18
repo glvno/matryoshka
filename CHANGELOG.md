@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Get round the canvas with the mouse: right-drag moves it, the wheel zooms.** Right- or middle-drag anywhere on the canvas, over cards and cables too, and the canvas follows the hand in any direction; a right-click without moving still opens the menu (Add comment, a card's menu). A mouse wheel zooms at the pointer, while a trackpad's two-finger scroll still moves the canvas and a pinch zooms; Ctrl/Cmd+wheel always zooms and Shift+wheel moves sideways. The editor tells a mouse from a trackpad by itself; **Scroll wheel** in the sidebar's Canvas panel (auto, zoom or pan) settles an unusual mouse. New keys: Shift+1 fits every card (as Alt+Z), Shift+2 the selection, Ctrl/Cmd + = / − / 0 zoom in, out and to 100 %; they are in the ? card and the palette. Dragging a card, a cable or an area near the canvas's edge now moves the canvas along. Holding 1..4 and turning the wheel still turns K1..K4 (#1075).
+
 ## 1.20.0 — 2026-11-18
 
 - **More voices on the FM-1: Oracle V plays all five, Hera 6 all six.** With the faster 1.20 engine, Oracle V gets back the fifth voice of the Prophet-5, and Hera 6 plays the Juno-106's six. Expander S's VOICES row now reaches six and Algo Four's seven; Cassia 1's stays at four. On the test rig, with up to 8 keys held and every effect of the patch on, transport stopped or running, nothing dropped a voice and the busiest steady load was 79.9 % (Oracle V at five; Hera 6 at six 77.7 %, Expander S at six 74.7 %, Algo Four at seven 76.3 %). Hera 6's Bass preset is quieter (level 0.76 → 0.55), so six keys at once stay under the headroom limit (they peak at 0.93). A saved slot keeps its patch; FACTORY RESET installs the new ones (#782).
