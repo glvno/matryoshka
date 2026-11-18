@@ -824,22 +824,29 @@ asm('basic poly', 'Voices', (b) => {
 // Outside the voices, once, as on the instrument: the LFO (saw, triangle and square at once, the triangle and square made
 // from the saw, so in phase) and the noise; Wheel-Mod: the LFO / noise source mix through the mod wheel (plug Main's mod
 // into `wheel`) plus the LFO's initial amount and aftertouch, into frequency A, frequency B, pulse width A, pulse width B
-// and the filter, each by its own amount. Frequency A and B move each oscillator's fine tune once a block (`freq A` 0.24 =
-// +-48 cents at full). Velocity (Rev 4) to the filter envelope's amount and to the amplifier, each OFF / ON; aftertouch
+// and the filter, each by its own amount. Frequency A and B reach each oscillator's pitch at audio rate (`freq A` 0.24 =
+// +-48 cents at full), so the LFO's top rates still frequency-modulate. The LFO's frequency spans the guide's 0.022 to
+// 500 Hz (chapter 2, LFO Controls: "Frequency: 0...10"): an Oscillator's saw on a Const and a Scale, equal ratios per step
+// (the guide gives the ends, not the curve). Velocity (Rev 4) to the filter envelope's amount and to the amplifier, each OFF / ON; aftertouch
 // (plug Main's at into `at`) to the filter and to the LFO amount. The keys: unison with its voice count and detune, key
 // priority, retrigger, transpose (octaves, rounded to semitones), master tune (semitones) and the Release switch (OFF:
 // both envelopes release fast). The flaws are a mild out-of-tune set as on a well-kept vintage unit. Left out: the filter's
 // Rev 1 / 2 character (it needs a filter model of its own, issue #658's follow-up), vintage, chord memory, A-440.
+/** Oracle V's LFO frequency: `lfo freq` -4..4 spans the Prophet-5's 0.022 to 500 Hz, equal ratios per step. The LFO
+ * Oscillator sits 4 octaves down (coarse -48), so the Scale's offset stays inside its -4..4. */
+const ORACLE_LFO = { gain: Math.log2(500 / 0.022) / 8, offset: Math.log2(Math.sqrt(500 * 0.022) / 261.6255653) + 4 };
+/** the `lfo freq` value of a rate in Hz */
+const oracleLfoFreq = (hz: number): number => Math.round(((Math.log2(hz / 261.6255653) + 4 - ORACLE_LFO.offset) / ORACLE_LFO.gain) * 100) / 100;
 asm('Oracle V', 'Voices', (b) => {
   // (modules 1..17 keep the ids Oracle V XL edits, scripts/xl/oracle-v.ts)
-  const lfo = b.add('lfo', 0, 0, { wave: 2, rate: 5, depth: 1 });
+  const lfo = b.add('osc', 0, 0, { wave: 2, level: 1, coarse: -48 }); // the LFO: a saw 4 octaves down, then ORACLE_LFO's Scale
   const wheel = b.add('vca', 0, 1);
   const wFreqA = b.add('scale', 0, 2, { gain: 0.24, offset: 0 });
   const nz = b.add('noise', 1, 0, { level: 1 });
   const part = b.add('alloc', 1, 2, { voices: 5 });
   const gl = b.add('glide', 2, 1, { time: 0.001 });
-  const oscB = b.add('osc', 2, 0, { wave: 2, level: 1, fine: 7, analog: 1 }, { p1: 'fine' });
-  const oscA = b.add('osc', 3, 0, { wave: 2, level: 1, analog: 1 }, { p1: 'fine' });
+  const oscB = b.add('osc', 2, 0, { wave: 2, level: 1, fine: 7, analog: 1 });
+  const oscA = b.add('osc', 3, 0, { wave: 2, level: 1, analog: 1 });
   const polyEnv = b.add('scale', 3, 1, { gain: 0, offset: 0 });
   const sync = b.add('scale', 3, 2, { gain: 0, offset: 0 });
   const fenv = b.add('adsr', 4, 1, { a: 0.01, d: 0.6, s: 0.35, r: 0.4 }, { p2: 'r' });
@@ -911,6 +918,9 @@ asm('Oracle V', 'Voices', (b) => {
   const tune = b.add('const', 0, 5.5, { value: 0 });                   // master tune, semitones
   const tuneOct = b.add('scale', 0.5, 5.5, { gain: 1 / 12, offset: 0 }, { p1: 'offset', att: [1 / 8, 1] }); // (+ transpose on p1: offset's range is 8)
   const fltMod = b.add('scale', 0.5, 4, { gain: 1, offset: 0 });       // aftertouch and Wheel-Mod into the filter, once
+  const lfoFreq = b.add('const', 0, 6, { value: oracleLfoFreq(5) });   // the LFO's frequency (lfo freq), 5 Hz
+  const lfoPitch = b.add('scale', 1, 6, { gain: ORACLE_LFO.gain, offset: ORACLE_LFO.offset });
+  const wFreq = b.add('scale', 2, 6, { gain: 1 / 6, offset: 0 }); // the Wheel-Mod into pitch: 1 = 200 cents, as the fine row moved
 
   // (the modules 1.11 added, laid out on the grid to the right of the first 17: the voice's, then those once)
   {
@@ -995,9 +1005,13 @@ asm('Oracle V', 'Voices', (b) => {
   b.wire(atLfo, 'out', wheel, 'cv');
   b.wire(atFilter, 'out', fltMod, 'in');
   b.wire(fltMod, 'out', flt, 'cv');
-  for (const d of [wFreqA, wFreqB, wPwA, wPwB, wFilter]) b.wire(wheel, 'out', d, 'in');
-  b.wire(wFreqA, 'out', oscA, 'p1');
-  b.wire(wFreqB, 'out', oscB, 'p1');
+  b.wire(lfoFreq, 'out', lfoPitch, 'in');
+  b.wire(lfoPitch, 'out', lfo, 'pitch');
+  b.wire(wheel, 'out', wFreq, 'in');
+  for (const d of [wFreqA, wFreqB]) b.wire(wFreq, 'out', d, 'in');
+  for (const d of [wPwA, wPwB, wFilter]) b.wire(wheel, 'out', d, 'in');
+  b.wire(wFreqA, 'out', oscA, 'pitch');
+  b.wire(wFreqB, 'out', oscB, 'pitch');
   b.wire(wPwA, 'out', pwA, 'in');
   b.wire(wPwB, 'out', pwB, 'in');
   b.wire(wFilter, 'out', fltMod, 'in');
@@ -1014,8 +1028,8 @@ asm('Oracle V', 'Voices', (b) => {
   b.nestInput('pitch', gl, 'in');
   b.nestInput('gate', fenv, 'gate', [aenv, 'gate']);
   b.nestInput('noise', mix, 'in3');
-  b.nestInput('freq A', oscA, 'p1');
-  b.nestInput('freq B', oscB, 'p1');
+  b.nestInput('freq A', oscA, 'pitch');
+  b.nestInput('freq B', oscB, 'pitch');
   b.nestInput('pw A', pwA, 'in');
   b.nestInput('pw B', pwB, 'in');
   b.nestInput('filter', flt, 'cv');
@@ -1071,7 +1085,7 @@ asm('Oracle V', 'Voices', (b) => {
   b.param('freq A', toFreqA, 'pos', { inner: 'pmod freq A' });
   b.param('pw A', toPwA, 'pos', { inner: 'pmod pw A' });
   b.param('filter', toFilter, 'pos', { inner: 'pmod filter' });
-  b.param('lfo rate', lfo, 'rate', { head: 'lfo' });
+  b.param('lfo freq', lfoFreq, 'value', { head: 'lfo' });
   b.param('saw', lfoSaw, 'pos', { inner: 'lfo saw' });
   b.param('tri', lfoTriOn, 'pos', { inner: 'lfo tri' });
   b.param('square', lfoSqOn, 'pos', { inner: 'lfo square' });

@@ -7,21 +7,25 @@
   "modules": [
     {
       "id": 1,
-      "type": "lfo",
+      "type": "osc",
       "x": 0,
       "y": 0,
       "params": {
         "wave": 2,
-        "rate": 5,
-        "depth": 1,
-        "sync": 0,
-        "div": 6,
-        "bpm": 120,
-        "phase": 0,
-        "range": 0,
-        "dir": 0,
-        "mult": 3,
-        "wide": 4
+        "pw": 0.5,
+        "coarse": -48,
+        "fine": 0,
+        "pm": 0,
+        "level": 1,
+        "fb": 0,
+        "unison": 1,
+        "detune": 10,
+        "blend": 0.5,
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0,
+        "analog": 0,
+        "phase": 0
       },
       "att": [
         1,
@@ -32,7 +36,7 @@
           "wave"
         ],
         "p2": [
-          "rate"
+          "pw"
         ]
       }
     },
@@ -168,7 +172,7 @@
       ],
       "map": {
         "p1": [
-          "fine"
+          "wave"
         ],
         "p2": [
           "pw"
@@ -203,7 +207,7 @@
       ],
       "map": {
         "p1": [
-          "fine"
+          "wave"
         ],
         "p2": [
           "pw"
@@ -1534,6 +1538,69 @@
           "offset"
         ]
       }
+    },
+    {
+      "id": 64,
+      "type": "const",
+      "x": 0,
+      "y": 3360,
+      "params": {
+        "value": 0.33
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "value"
+        ],
+        "p2": []
+      }
+    },
+    {
+      "id": 65,
+      "type": "scale",
+      "x": 320,
+      "y": 3360,
+      "params": {
+        "gain": 1.8090171188358597,
+        "offset": -2.3016439042027104
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": [
+          "offset"
+        ]
+      }
+    },
+    {
+      "id": 66,
+      "type": "scale",
+      "x": 640,
+      "y": 3360,
+      "params": {
+        "gain": 0.16666666666666666,
+        "offset": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": [
+          "offset"
+        ]
+      }
     }
   ],
   "cables": [
@@ -2279,7 +2346,37 @@
     },
     {
       "from": {
+        "module": 64,
+        "port": "out"
+      },
+      "to": {
+        "module": 65,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 65,
+        "port": "out"
+      },
+      "to": {
+        "module": 1,
+        "port": "pitch"
+      }
+    },
+    {
+      "from": {
         "module": 2,
+        "port": "out"
+      },
+      "to": {
+        "module": 66,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 66,
         "port": "out"
       },
       "to": {
@@ -2289,7 +2386,7 @@
     },
     {
       "from": {
-        "module": 2,
+        "module": 66,
         "port": "out"
       },
       "to": {
@@ -2334,7 +2431,7 @@
       },
       "to": {
         "module": 8,
-        "port": "p1"
+        "port": "pitch"
       }
     },
     {
@@ -2344,7 +2441,7 @@
       },
       "to": {
         "module": 7,
-        "port": "p1"
+        "port": "pitch"
       }
     },
     {
@@ -2798,9 +2895,9 @@
       ]
     },
     {
-      "module": 1,
-      "param": "rate",
-      "label": "lfo rate",
+      "module": 64,
+      "param": "value",
+      "label": "lfo freq",
       "head": "lfo"
     },
     {
@@ -2937,6 +3034,16 @@
           "module": 31,
           "port": "in3",
           "label": "noise"
+        },
+        {
+          "module": 8,
+          "port": "pitch",
+          "label": "freq A"
+        },
+        {
+          "module": 7,
+          "port": "pitch",
+          "label": "freq B"
         },
         {
           "module": 22,
@@ -3161,11 +3268,6 @@
           "module": 36,
           "param": "pos",
           "label": "pmod filter"
-        },
-        {
-          "module": 8,
-          "param": "fine",
-          "label": "fine tune"
         }
       ],
       "poly": {
