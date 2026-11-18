@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Resonator patches leave the FM-1 more room, and their rings fade as in the editor.** The FM-1 now plays the Resonator with its floating-point unit, which does its sums about twice as fast, so patches with one (the 808 Kit, Meridian 8, and the gamelan, kalimba, marimba, tabla, tom, rim and other resonator assemblies) use less of the FM-1's CPU. A long ring now fades as it does in the editor down to the FM-1's quietest step, instead of falling away early and stopping about 85 dB down; with nothing playing into it, it still ends in silence (#979).
+- **Filter patches leave the FM-1 more room.** The FM-1 now plays the Multimode filter, the Ladder (both modes) and the Formant filter with its floating-point unit, so patches built on them (Hera 6, Io 4, Oracle V, Briefcase 3, the 909 Kit, Verona Drum 1, Canvas, Meridian 8 and others) use less of the FM-1's CPU. They sound as before, self-oscillation and drive included, and a ring with nothing playing into it still ends in silence (#979).
 
 ## 1.19.0 — 2026-11-17
 
