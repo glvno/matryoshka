@@ -169,6 +169,17 @@ for (const [n, p] of Object.entries(audioPresets)) tests[n] = p();
 // D-1004: Oracle V with a morph B side on its filter and envelopes (every module has a B side, as the editor makes one;
 // format 51 writes only the B values off A): played half way
 tests['oracle-morph'] = oracleMorph();
+// #862: Oracle V's LFO at its top, 500 Hz (an Oscillator 13.5 octaves under C4 at the bottom, 500 Hz at the top), by its
+// initial amount into frequency A at audio rate
+tests['oracle-lfo-500'] = (() => {
+  const p = PRESETS['Oracle V']();
+  const rows = p.assemblies!.find((a) => a.label === 'Oracle V')!.params;
+  for (const [label, v] of [['lfo freq', 4], ['lfo amount', 1]] as const) {
+    const r = rows.find((x) => x.label === label)!;
+    p.modules.find((m) => m.id === r.module)!.params[r.param] = v;
+  }
+  return p;
+})();
 // #649: an XL the FM-1's one memory arena holds (Hera 6 XL: 151 module copies, past the 128 of the fixed pools before it;
 // Wanderer XL fitted too and took Wanderer's factory slot, D-348)
 for (const n of ['Hera 6 XL']) tests[n] = relocatedPatches[n]();
