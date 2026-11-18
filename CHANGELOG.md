@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.20.0 — 2026-11-18
 
 - **More voices on the FM-1: Oracle V plays all five, Hera 6 all six.** With the faster 1.20 engine, Oracle V gets back the fifth voice of the Prophet-5, and Hera 6 plays the Juno-106's six. Expander S's VOICES row now reaches six and Algo Four's seven; Cassia 1's stays at four. On the test rig, with up to 8 keys held and every effect of the patch on, transport stopped or running, nothing dropped a voice and the busiest steady load was 79.9 % (Oracle V at five; Hera 6 at six 77.7 %, Expander S at six 74.7 %, Algo Four at seven 76.3 %). Hera 6's Bass preset is quieter (level 0.76 → 0.55), so six keys at once stay under the headroom limit (they peak at 0.93). A saved slot keeps its patch; FACTORY RESET installs the new ones (#782).
 - **Steps notes can ratchet and move off the grid: ratchets and micro timing.** A note can play 2 to 5 times inside its step, evenly spaced (a ratchet), and up to 23/24 of a step early or late (micro timing); an early note on a pass's first step plays at the end of the pass before. On the FM-1's SEQ page, hold a step and turn PRESET for the ratchet, or press OCT- / OCT+ for the micro timing; the bar names it, a ratcheted cell is cut into slices and a moved one gets a lilac foot. In the editor, set both in a step's popover (right-click the step), or press X / Shift+X and , / . in the piano roll. A patch with either needs this firmware (patch format 63) (#675, #677).
