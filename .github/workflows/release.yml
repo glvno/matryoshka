@@ -26,7 +26,7 @@ jobs:
     env:
       # Both variants use the same production options; only the bridge transport differs.
       ENG_AOT: '0'
-      ENG_RAMCODE: '1'
+      ENG_RAMCODE: '0'
       ENG_BUF_REUSE: '1'
       FELUCCA_SPEED: '-O2'
       M1_EMU_MIDI: '0'

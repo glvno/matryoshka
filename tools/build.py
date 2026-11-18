@@ -73,7 +73,7 @@ FAST_TEXT = (
     "value_of", "eng_steps_thru", "seq_rec_sync", "ctl_keeps", "m1_arms_now", "m1_slot_now", "eng_click_mix",
     "eng_lane_run", "eng_steps_rec", "group_cables", "fm1_led_key", "morph_value", "host_poll", "batt_mark_sync",
     "unit_of", "unison_switch", "ana_init", "lfo_free", "eng_set_range", "eng_type_at",
-) if os.environ.get("ENG_RAMCODE", "1") == "1" else ()
+) if os.environ.get("ENG_RAMCODE", "0") == "1" else ()
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 
 # SDK files of AC79NN_SDK_V1.2.1_2023-12-13 (the tested version)
@@ -667,7 +667,7 @@ def main():
     side = json.dumps({"version": version, "product": PRODUCT, "size": len(pkg), "sha256": hashlib.sha256(pkg).hexdigest(),
                        "app_sha256": hashlib.sha256(img).hexdigest(),
                        "build": {"ENG_AOT": int(os.environ.get("ENG_AOT", "0")),
-                                 "ENG_RAMCODE": int(os.environ.get("ENG_RAMCODE", "1")),
+                                 "ENG_RAMCODE": int(os.environ.get("ENG_RAMCODE", "0")),
                                  "ENG_BUF_REUSE": int(os.environ.get("ENG_BUF_REUSE", "1")),
                                  "FELUCCA_SPEED": os.environ.get("FELUCCA_SPEED", SPEED),
                                  # Missing overrides use defaults in the recorded source commit.
