@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **No factory patch or preset makes a sound the moment you switch to it.** The drones now wait for PLAY: 8 Lire's Eight Drone, Trill Delay and Feedback Howl and Elvira 2's Deep Drone and Beating Cluster hold their voices as drone notes on the PATTERN track, so PLAY starts them and STOP lets them fade (HOLD and DRONE are still on the card for droning by hand). Every 8 Lire and Elvira 2 preset now brings its own pattern to play on PLAY. Canvas's Sequencer Run, Easel Bongos and FM Chimes no longer run by themselves: each key is a pulse (hold a key with ARP on for the run), and their gate closes fully between notes. A test checks every factory patch and preset, in the editor's engine and the FM-1's, so a new one that sounds at load fails. A factory content update: no firmware release needed (#1086).
+- **No factory patch or preset makes a sound the moment you switch to it.** The drones now wait for PLAY: 8 Lire's Eight Drone, Trill Delay and Feedback Howl and Elvira 2's Deep Drone and Beating Cluster hold their voices as drone notes on the PATTERN track, so PLAY starts them and STOP lets them fade (HOLD and DRONE are still on the card for droning by hand). Every 8 Lire and Elvira 2 preset now brings its own pattern to play on PLAY. Canvas's Sequencer Run, Easel Bongos and FM Chimes no longer run by themselves: each key is a pulse at the level the old pulses had (hold a key with ARP on for the run), and their gate closes fully between notes. A test checks every factory patch and preset, in the editor's engine and the FM-1's, so a new one that sounds at load fails. A factory content update: no firmware release needed (#1086).
 
 ## 1.20.0 — 2026-11-18
 

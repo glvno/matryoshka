@@ -127,7 +127,7 @@ preset: Sequencer Run
   mode 1 = combination
   level 1 proc = 1
   reverb = 0.25
-  chan a = 1.39
+  chan a = 0.64
   chan b = 0
 
 # The complex oscillator folded hard, the mod osc a fifth up in f.m. with the envelope opening the index: a keyboard lead.
@@ -180,7 +180,7 @@ preset: Easel Bongos
   mode 1 = combination
   level 1 proc = 1.3
   reverb = 0.3
-  chan a = 1.46
+  chan a = 0.61
   chan b = 0
 
 # The folder at its deepest, the mod osc six octaves under the keys' C (range low, off the keys) in a.m. as a slow
@@ -238,5 +238,5 @@ preset: FM Chimes
   mode 1 = combination
   level 1 proc = 1
   reverb = 0.5
-  chan a = 1.12
+  chan a = 0.59
   chan b = 0
