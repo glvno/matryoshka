@@ -104,7 +104,7 @@
 # ouch
 #   bite = 1                           1..32
 #   choke = 16000 Hz                   20..16000 Hz
-#   vol = 0.64                         0..1
+#   vol = 0.56                         0..1
 #   feedback = 0                       0..1
 #   diode = 0                          -1..1
 # lfos
@@ -160,7 +160,7 @@ fdbk = 0.35
 mix = 0.25
 lfo 1 freq = 0.13
 lfo 1 → cutoff = 0.4
-  vol = 0.56
+  vol = 0.49
 
 preset: Deep Drone
 # Dark ambient drone on PLAY: all four voices held on C2 / G2 / C3 / G3, a closed ladder breathing slowly in the reverb.
@@ -188,7 +188,7 @@ size = 0.8
 damp = 0.5
 bite = 1
 choke = 4000 Hz
-  vol = 0.85
+  vol = 0.99
 lfo 1 freq = 0.08
 lfo 1 → cutoff = 0.35
 
@@ -228,11 +228,10 @@ mix = 0.35
 bite = 3
 choke = 9000 Hz
 feedback = 0.3
-diode = 0.3
 lfo 2 freq = 0.28
 lfo 2 mode = S&H
 lfo 2 → bite = 0.7
-  vol = 0.44
+  vol = 0.33
 
 preset: Pulse Lantern
 # Muted rhythmic pulses on a minor-seventh cluster: short plucks, a drive pulse on the tempo and a short delay; with PLAY voices 1 and 2 walk their sequences.
@@ -267,7 +266,7 @@ fdbk = 0.45
 mix = 0.5
 bite = 1.5
 choke = 2200 Hz
-  vol = 0.93
+  vol = 0.81
 lfo 2 freq = 0.45
 lfo 2 wav = square
 lfo 2 sync = sync
@@ -304,6 +303,6 @@ fdbk = 0.45
 mix = 0.45
 bite = 1.3
 choke = 1800 Hz
-  vol = 0.61
+  vol = 0.5
 lfo 1 freq = 0.04
 lfo 1 → cutoff = 0.4
