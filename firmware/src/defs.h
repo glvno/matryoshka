@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 57
+#define N_TYPES 58
 enum {
     T_FM1,
     T_OSC,
@@ -62,6 +62,7 @@ enum {
     T_HARM,
     T_LPG,
     T_LIMIT,
+    T_EUCLID,
 };
 
 /* fm1: Main */
@@ -1145,6 +1146,25 @@ enum {
 #define LIMIT_CVBASE 1
 #define LIMIT_NDATA 0
 
+/* euclid: Euclid */
+#define EUCLID_I_CLOCK 0
+#define EUCLID_I_RESET 1
+#define EUCLID_I_P1 2
+#define EUCLID_I_P2 3
+#define EUCLID_O_TRIG 0
+#define EUCLID_O_OFF 1
+#define EUCLID_O_ACCENT 2
+#define EUCLID_P_STEPS 0
+#define EUCLID_P_HITS 1
+#define EUCLID_P_ROTATE 2
+#define EUCLID_P_ACCENT 3
+#define EUCLID_P_RATE 4
+#define EUCLID_NIN 4
+#define EUCLID_NOUT 3
+#define EUCLID_NPAR 5
+#define EUCLID_CVBASE 2
+#define EUCLID_NDATA 0
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 #define DELAY_SYNC_TOP 520   /* ms: the synced note lengths spread over 1..this (modules.ts) */
@@ -1213,6 +1233,8 @@ static const int32_t ANALOG_SAWC_T[129] = {1073741824, 1071647400, 1069558421, 1
 #define LIMIT_AHEAD 64   /* the Limiter's lookahead line, samples (#1019) */
 #define LIMIT_CHUNK 16   /* its line's chunks, whose peaks it keeps */
 #define LIMIT_KA 109857605   /* its attack with lookahead, Q30: 99.9 % of a step in LIMIT_AHEAD samples */
+#define EUCLID_STEPS_MAX 32   /* Euclid's longest pattern, steps (#1018) */
+static const uint8_t EUCLID_RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};   /* its rates on the engine's clock: clock ticks a step */
 #define SHREG_STAGES 8   /* the Shift register's stages (#438) */
 #define SHREG_PAT_SEED 0x5bd1e995u   /* mixed with the instance seed: its starting pattern */
 #define SHREG_FLIP_SEED 0x27d4eb2fu   /* mixed with the instance seed: its flip stream */
@@ -1903,6 +1925,17 @@ static const char *const LIMIT_PN[] = {"CEILING", "RELEASE", "GAIN", "AHEAD"};
 static const uint8_t LIMIT_LOG[] = {0, 1, 0, 0};
 static const char *const LIMIT_UNIT[] = {"DB", "S", "DB", ""};
 static const char *const *const LIMIT_CH[] = {0, 0, 0, ADSR_CH4};
+static const char *const EUCLID_INNAMES[] = {"CLOCK", "RESET", "P1", "P2"};
+static const int32_t EUCLID_MIN[] = {65536, 0, 0, 0, 0};
+static const int32_t EUCLID_MAX[] = {2097152, 2097152, 2031616, 2097152, 393216};
+static const int32_t EUCLID_DEF[] = {524288, 196608, 0, 0, 262144};
+static const int32_t EUCLID_INC[] = {65536, 65536, 65536, 65536, 65536};
+static const int32_t EUCLID_STEP[] = {65536, 65536, 65536, 65536, 65536};
+static const char *const EUCLID_PN[] = {"STEPS", "HITS", "ROTATE", "ACCENT", "RATE"};
+static const uint8_t EUCLID_LOG[] = {0, 0, 0, 0, 0};
+static const char *const EUCLID_UNIT[] = {"", "", "", "", ""};
+static const char *const EUCLID_CH4[] = {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", 0};
+static const char *const *const EUCLID_CH[] = {0, 0, 0, 0, EUCLID_CH4};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0, FM1_STEP},   /* fm1 */
@@ -1962,12 +1995,13 @@ static const def_t DEFS[N_TYPES] = {
     {HARM_NIN, HARM_NOUT, HARM_NPAR, 0, HARM_CVBASE, -1, HARM_NDATA, 0, HARM_MIN, HARM_MAX, HARM_DEF, HARM_INC, "HARMONIZER", HARM_PN, HARM_INNAMES, HARM_LOG, HARM_UNIT, HARM_CH, 0, 0, HARM_STEP},   /* harm */
     {LPG_NIN, LPG_NOUT, LPG_NPAR, 0, LPG_CVBASE, 0, LPG_NDATA, 1, LPG_MIN, LPG_MAX, LPG_DEF, LPG_INC, "LOW PASS GATE", LPG_PN, LPG_INNAMES, LPG_LOG, LPG_UNIT, LPG_CH, 0, 0, LPG_STEP},   /* lpg */
     {LIMIT_NIN, LIMIT_NOUT, LIMIT_NPAR, 0, LIMIT_CVBASE, 0, LIMIT_NDATA, 1, LIMIT_MIN, LIMIT_MAX, LIMIT_DEF, LIMIT_INC, "LIMITER", LIMIT_PN, LIMIT_INNAMES, LIMIT_LOG, LIMIT_UNIT, LIMIT_CH, 0, 0, LIMIT_STEP},   /* limit */
+    {EUCLID_NIN, EUCLID_NOUT, EUCLID_NPAR, 0, EUCLID_CVBASE, -1, EUCLID_NDATA, 0, EUCLID_MIN, EUCLID_MAX, EUCLID_DEF, EUCLID_INC, "EUCLID", EUCLID_PN, EUCLID_INNAMES, EUCLID_LOG, EUCLID_UNIT, EUCLID_CH, 0, 0, EUCLID_STEP},   /* euclid */
 };
 /* one copy of each type, a block: what the two-core schedule balances (engine.c sched_build, #802), in 64 cycles of
  * web/src/cpu-costs.json (its run and parameter inputs: cpu.ts scheduleCost) */
-static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 34, 9, 437, 11, 112, 1568, 3, 40, 96, 39, 328, 178, 326, 156, 89, 36, 36, 40, 49, 72, 548, 266, 54, 361, 105, 54, 37, 468, 271, 448, 668, 11, 15, 1, 12, 55, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4, 231, 178};
+static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 34, 9, 437, 11, 112, 1568, 3, 40, 96, 39, 328, 178, 326, 156, 89, 36, 36, 40, 49, 72, 548, 266, 54, 361, 105, 54, 37, 468, 271, 448, 668, 11, 15, 1, 12, 55, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4, 231, 178, 31};
 /* a module bypassed when the patch loads, in the same units: passing an input through (D-1104; cpu.ts scheduleBypass) */
 #define DEF_COST_BYPASS 18u
 /* Gate-port kinds for pattern authorization, independent of environment grouping (bit n: port n is a gate) */
-static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u,4u,0u};
-static const uint32_t PRESET_GATE_OUT[] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u,0u,0u};
+static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u,4u,0u,3u};
+static const uint32_t PRESET_GATE_OUT[] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u,0u,0u,7u};
