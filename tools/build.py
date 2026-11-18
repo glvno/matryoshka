@@ -62,14 +62,15 @@ FPU_FLAGS = ["-mcpu=r3", "-mfprev1", "-ffp-contract=off"]
 # runs through a 32 KB instruction cache that a block's code overflows, so most of it is fetched again every block (about
 # 2 us a 64-byte line); the list is the code with the most of those fetches per byte, in the emulator's timing model over
 # the poly benchmark (web/scripts/poly-bench.ts, `m1emu cpu` with M1EMU_PROF; docs/measurements/2026-11-17-poly-headroom.md).
-# It must fit in NOINIT after .noinit (build.py checks). ENG_RAMCODE=0 leaves everything in the flash.
+# It must fit in NOINIT after .noinit (build.py checks), and nothing in it may run before fm1_cstart copies it there (the
+# P33 helpers that read the reset reason do). ENG_RAMCODE=0 leaves everything in the flash.
 FAST_TEXT = (
-    "sch_job", "eng_once_beat", "eng_transport_running", "exp2_scale", "uac_tap", "eng_ctl", "fm1__p33_xfer",
+    "sch_job", "eng_once_beat", "eng_transport_running", "exp2_scale", "uac_tap", "eng_ctl",
     "toast_wanted", "div64_lu", "env_rate_q8", "ui_msg", "m1_param_now", "pages_select", "usb_retry", "eng_records_end",
     "ctl_ramp16", "uac_render_start", "eng_section_at", "fm1_alnk0_irq", "seq_cond_at", "eng_steps_take", "eng_rec_size",
     "value_of", "eng_steps_thru", "seq_rec_sync", "ctl_keeps", "m1_arms_now", "m1_slot_now", "eng_click_mix",
     "eng_lane_run", "eng_steps_rec", "group_cables", "fm1_led_key", "morph_value", "host_poll", "batt_mark_sync",
-    "unit_of", "fm1__p33_op", "unison_switch", "ana_init", "lfo_free", "eng_set_range", "eng_type_at",
+    "unit_of", "unison_switch", "ana_init", "lfo_free", "eng_set_range", "eng_type_at",
 ) if os.environ.get("ENG_RAMCODE", "1") == "1" else ()
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 
