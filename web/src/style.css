@@ -693,6 +693,16 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .mutate-lock { display: inline-block; width: 8px; height: 9px; margin-left: 4px; vertical-align: -1px; background: var(--muted);
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 9'%3E%3Cpath d='M2 4V2.6a2 2 0 0 1 4 0V4h1v5H1V4zm1 0h2V2.6a1 1 0 0 0-2 0z'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 9'%3E%3Cpath d='M2 4V2.6a2 2 0 0 1 4 0V4h1v5H1V4zm1 0h2V2.6a1 1 0 0 0-2 0z'/%3E%3C/svg%3E") center / contain no-repeat; }
+/* a row a MIDI source moves (MIDI learn, #1067): a small five-pin socket after its name; the row waiting for its source pulses */
+.midi-learned { display: inline-block; width: 9px; height: 9px; margin-left: 4px; vertical-align: -1px; background: var(--secondary);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Ccircle cx='5' cy='5' r='4.3' fill='none' stroke='black' stroke-width='1.2'/%3E%3Ccircle cx='2.9' cy='5.5' r='.8'/%3E%3Ccircle cx='3.5' cy='3.5' r='.8'/%3E%3Ccircle cx='5' cy='2.9' r='.8'/%3E%3Ccircle cx='6.5' cy='3.5' r='.8'/%3E%3Ccircle cx='7.1' cy='5.5' r='.8'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Ccircle cx='5' cy='5' r='4.3' fill='none' stroke='black' stroke-width='1.2'/%3E%3Ccircle cx='2.9' cy='5.5' r='.8'/%3E%3Ccircle cx='3.5' cy='3.5' r='.8'/%3E%3Ccircle cx='5' cy='2.9' r='.8'/%3E%3Ccircle cx='6.5' cy='3.5' r='.8'/%3E%3Ccircle cx='7.1' cy='5.5' r='.8'/%3E%3C/svg%3E") center / contain no-repeat; }
+.param.learning { outline: 1.5px dashed var(--secondary); outline-offset: 1px; border-radius: 3px; animation: midi-learning 0.9s ease-in-out infinite alternate; }
+@keyframes midi-learning { from { outline-color: var(--secondary); } to { outline-color: transparent; } }
+@media (prefers-reduced-motion: reduce) { .param.learning { animation: none; } }
+.routing-controls .midi-learn-line { display: flex; gap: 6px; margin: 0 0 8px; }
+.midi-learn-list { display: flex; flex-direction: column; gap: 4px; }
+.midi-learn-list .midi-learn-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .routing-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .routing-head strong { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .routing-controls output { margin-left: auto; }

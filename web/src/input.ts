@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Computer-keyboard and Web MIDI note input.
 import type { AudioHost } from './audio';
+import type { HostMsg } from './worklet';
 import type { Editor } from './editor';
 import { PANEL_BUTTONS } from './modules';
 import { OCTAVE_MAX, OCTAVE_MIN } from './patch';
@@ -119,10 +119,11 @@ export function editorCc(cc: { n: number; v: number }, editor: Pick<Editor, 'tur
  * `inputs` hears the number of inputs as it changes; `skip` names an input to ignore for now (an FM-1 whose panel the
  * mirror follows: its keys, knobs and buttons come in through the mirror, and here they would arrive twice).
  * `noClock` names an input whose MIDI clock (0xF8) is ignored: an FM-1, which sends its clock all the time (#473), so the
- * editor's tempo does not follow it unasked.
+ * editor's tempo does not follow it unasked. A control change and pitch bend come with their input (`from`), for MIDI
+ * learn (#1067: never from an FM-1).
  */
 export async function attachMidi(
-  host: Pick<AudioHost, 'send'>,
+  host: { send(msg: HostMsg, from?: MIDIInput): void },
   status: (s: string) => void,
   inputs?: (n: number) => void,
   skip: (port: MIDIInput) => boolean = () => false,
@@ -154,8 +155,8 @@ export async function attachMidi(
       held.delete(a | (ch << 7));
       host.send({ t: 'off', note: a, ch });
     } else if (cmd === 0xb0 && a === 123) host.send({ t: 'panic' });
-    else if (cmd === 0xb0) host.send({ t: 'cc', n: a, v: b }); // CC 1 = mod wheel, 16..19 = the Main module's knobs
-    else if (cmd === 0xe0) host.send({ t: 'bend', v: (((b << 7) | a) - 8192) / 8192 });
+    else if (cmd === 0xb0) host.send({ t: 'cc', n: a, v: b }, ev.target as MIDIInput); // CC 1 = mod wheel, 16..19 = the Main module's knobs
+    else if (cmd === 0xe0) host.send({ t: 'bend', v: (((b << 7) | a) - 8192) / 8192 }, ev.target as MIDIInput);
     else if (cmd === 0xd0) host.send({ t: 'at', v: a / 127 });
   };
   const hook = (): void => {

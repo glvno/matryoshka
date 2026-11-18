@@ -330,6 +330,10 @@ An editable assembly of ordinary modules between an instrument and Output, with 
 
 One of the Matrix module's 16 amounts, from −1 to 1, that sets how much of one input goes to one output. Not a [Pin](#pin), the hidden parameter input p1 or p2 every module has.
 
+### MIDI learn
+
+Teaching a card row to follow one control of a MIDI controller: a control change (CC) number or pitch bend. The editor waits for the control that moves, and from then on that control moves the row. The patch keeps what it learned, in the editor only.
+
 ### MIDI profile
 
 A per-firmware table that turns a connected FM-1's MIDI messages into panel inputs, so the web app can follow any firmware.

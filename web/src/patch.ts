@@ -4,6 +4,7 @@ import type { AssemblyInst } from './assembly';
 import { migratePatchParts, migrateVoicing } from './poly';
 import { migrateKnobs } from './knob-migrate';
 import { fixLocks, fixNotes, fixPatterns, fixSeq, migrateSteps, type Pattern, type SeqState, type StepLock, type StepNote } from './track';
+import { fixMidiLearn, type MidiBinding } from './midi-learn';
 // Patch data model, shared by the editor, the WebAudio engine and (later) the firmware encoder.
 
 /** keys: the held keys from Main to a Voice allocator (only into a keys input) */
@@ -382,6 +383,9 @@ export interface Patch {
   /** free text boxes on the canvas, like Max comments (#518; comments.ts): no ports, absent while there are none. Editor
    * only, like `notes`: they travel in a link and a .json file; the binary format and the FM-1 ignore them */
   comments?: CommentBox[];
+  /** MIDI learn (#1067, midi-learn.ts): a controller's CC or pitch bend and the row each moves, absent while there are none.
+   * Editor only, like `comments`: it travels in a link, a .json file and undo; the binary format and the FM-1 ignore it */
+  midiLearn?: MidiBinding[];
 }
 
 /** a comment box on the canvas (Patch.comments): its id (its own series, not a module id), top left and size in layout
@@ -924,6 +928,9 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
   const comments = fixComments(p.comments);
   if (comments.length) p.comments = comments;
   else delete p.comments;
+  const learn = fixMidiLearn(p.midiLearn, p.modules, defs);
+  if (learn.length) p.midiLearn = learn;
+  else delete p.midiLearn;
   for (const a of p.assemblies ?? []) if (a && a.mutateLockAll !== true) delete a.mutateLockAll;
   if (!hasMorph(p as Patch) || typeof p.morphName !== 'string') delete p.morphName;
   for (const k of SIDE_KEYS) if (!sideSourceOk(p as Patch, k, defs)) delete p[k];

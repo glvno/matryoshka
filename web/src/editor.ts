@@ -73,6 +73,7 @@ import {
   type CommentBox,
 } from './patch';
 import { addComment, COMMENT_H, COMMENT_W, moveComments, pasteComments, removeComments, setCommentText, sizeComment } from './comments';
+import { bindingOfRow, bindRow, MidiLearn, sourceJob, sourceName, unbindRow, unbindSource, type LearnRow, type LearnSource, type MidiBinding } from './midi-learn';
 import { patternStrip, type PatternStrip } from './pattern-strip';
 import { SongView } from './song';
 import type { PatternView } from './engine';
@@ -236,6 +237,8 @@ export interface EditorEvents {
   onScreens?(screens: ScreenSpec[], envs: EnvSpec[]): void;
   /** listening to one signal changed (#939, listen.ts): the outputs heard instead of the Output and their name; null: the Output */
   onListen?(srcs: ListenSource[] | null, label: string): void;
+  /** MIDI learn (#1067): a row waits for its source (its name) or stopped waiting (null) */
+  onLearn?(row: string | null): void;
   /** the Output card's loudness readout (#940, loudness-view.ts), made again at every rebuild */
   outputReadout?(): HTMLElement;
   /** a Limiter card's gain reduction readout (#1019, limit-view.ts), made again at every rebuild */
@@ -2217,6 +2220,7 @@ export class Editor {
     row.addEventListener('pointerdown', (e) => {
       if (e.altKey && this.addRowToList(m.id, pd.name)) { e.stopPropagation(); e.preventDefault(); return; }
       this.focusRow(m.id, pd.name);
+      this.lastRow = { module: m.id, param: pd.name };   // (the palette's MIDI learn… acts on it, #1067)
     }, true);
     const name = document.createElement('span');
     name.textContent = o.label ?? longName(def.type, pd.name);
@@ -2245,6 +2249,19 @@ export class Editor {
       lock.setAttribute('aria-label', lock.title);
       name.append(lock);
     }
+    // learned by a MIDI source (#1067): a small socket after its name, the source in its tooltip; pulsing while it waits
+    const learnable = DEFS[m.type].params.some((q) => q.name === pd.name);
+    const learned = learnable ? bindingOfRow(this.patch, { module: m.id, param: pd.name }) : undefined;
+    if (learned) {
+      const job = sourceJob(learned.src);
+      const mark = document.createElement('span');
+      mark.className = 'midi-learned';
+      mark.title = `MIDI learn: ${sourceName(learned.src)} moves this row${job ? `, and no longer ${job}` : ''}. Unlearn it from the ⋮ menu`;
+      mark.setAttribute('aria-label', mark.title);
+      name.append(mark);
+    }
+    const waiting = this.learn.waitingRow;
+    if (waiting?.module === m.id && waiting.param === pd.name) row.classList.add('learning');
     // a Selector's position: over the positions in use (1..count, #358), by the names its card row gives them
     const range = (): ParamDef => rowRange(m.type, m.params, pd);
     const posNames = o.names && m.type === 'select' && pd.name === 'pos' ? o.names : undefined;
@@ -2484,12 +2501,22 @@ export class Editor {
       row.classList.toggle('automated', automated);
     } });
     row.append(name, choice ? sel!.element : pd.toggle ? document.createElement('span') : val);
-    // the ⋮ menu: modulation (a parameter that takes it), Mutate's lock, and Rename… for a card row (#1025: the name
-    // itself is part of the slider, so a press on it sets the value like the rest of the bar)
-    if (canPatch || o.rename) {
+    // the ⋮ menu: modulation (a parameter that takes it), Mutate's lock, MIDI learn (#1067) and Rename… for a card row
+    // (#1025: the name itself is part of the slider, so a press on it sets the value like the rest of the bar)
+    if (canPatch || o.rename || learnable) {
       const key = `${m.id}:${pd.name}`;
       const lock = mutable ? { own: !!m.mutateLock?.includes(pd.name), card: isLocked(this.patch, { ...m, mutateLock: undefined }, pd.name), set: (on: boolean) => this.lockParam(m, pd.name, on) } : undefined;
-      row.append(parameterMenu(m, def, pd, { ...this.ev, patch: () => this.patch, change: (fn) => this.change(fn), touch: () => this.touch(), lock, rename: o.rename, routing: canPatch }, this.routingOpen.has(key), (on) => {
+      const at = { module: m.id, param: pd.name };
+      const learn = learnable ? {
+        row: o.label ?? longName(def.type, pd.name),
+        src: learned ? sourceName(learned.src) : null,
+        job: learned ? sourceJob(learned.src) : null,
+        waiting: () => this.learn.waitingRow?.module === m.id && this.learn.waitingRow.param === pd.name,
+        start: () => this.startLearn(at),
+        cancel: () => void this.learn.cancel(),
+        unlearn: () => this.unlearn(at),
+      } : undefined;
+      row.append(parameterMenu(m, def, pd, { ...this.ev, patch: () => this.patch, change: (fn) => this.change(fn), touch: () => this.touch(), lock, learn, rename: o.rename, routing: canPatch }, this.routingOpen.has(key), (on) => {
         if (on) {
           this.routingOpen.clear();
           this.routingOpen.add(key);
@@ -6378,15 +6405,88 @@ export class Editor {
   /** a knob turned elsewhere (MIDI CC 16..19, the FM-1): K(i + 1) to position u (0..1) of its row's range */
   turnKnob(i: number, u: number): void {
     const r = this.focusedPage()?.rows[i];
-    const m = r && this.patch.modules.find((x) => x.id === r.module);
-    const pd = m && DEFS[m.type].params.find((q) => q.name === r!.param);
-    if (!r || !m || !pd) return;
+    if (r) this.setRowAt(r.module, r.param, u);
+  }
+
+  /** a row to position u (0..1) of its range, as a knob turns it (K1..K4, a learned MIDI source): choices and switches snap */
+  setRowAt(module: number, param: string, u: number): void {
+    const m = this.patch.modules.find((x) => x.id === module);
+    const pd = m && DEFS[m.type].params.find((q) => q.name === param);
+    if (!m || !pd) return;
     const x = Math.min(1, Math.max(0, u));
     const rd = rowRange(m.type, m.params, pd);   // (a Selector's positions in use, #358: as the FM-1's pages_set_unit)
     // (a row without a grid: by steps from its value, so a value typed off the grid stays off it, #538)
     const v = pd.toggle ? (x >= 0.5 ? 1 : 0) : pd.choices ? Math.round(x * (pd.choices.length - 1)) : rd !== pd ? Math.round(fromUnit(rd, x))
-      : wholeSteps(pd) ? Number(fromUnit(pd, x).toFixed(6)) : stepToward(pd, this.shownParam(m, r.param), fromUnit(pd, x), { hi: pd.max });
-    this.setParam(m.id, r.param, v);
+      : wholeSteps(pd) ? Number(fromUnit(pd, x).toFixed(6)) : stepToward(pd, this.shownParam(m, param), fromUnit(pd, x), { hi: pd.max });
+    this.setParam(m.id, param, v);
+  }
+
+  // ---- MIDI learn (#1067, midi-learn.ts)
+
+  /** the learn wait and the learned sources' moves: main.ts hands it every message from a MIDI controller (not an FM-1) */
+  readonly learn = new MidiLearn({
+    patch: () => this.patch,
+    setRow: (module, param, u) => this.setRowAt(module, param, u),
+    learned: (b) => this.bindLearned(b),
+    waiting: (row) => {
+      for (const el of this.modulesEl.querySelectorAll<HTMLElement>('.param.learning')) el.classList.remove('learning');
+      if (row) for (const el of this.modulesEl.querySelectorAll<HTMLElement>(`.param[data-mod="${row.module}"][data-param="${row.param}"]`)) el.classList.add('learning');
+      this.ev.onLearn?.(row && this.rowName(row));
+    },
+  });
+  /** the row last pressed: the palette's MIDI learn… acts on it */
+  private lastRow: LearnRow | null = null;
+
+  /** a row's name for the status line and the bindings list: its device and its card row ("Briefcase 3 › x") */
+  rowName(r: LearnRow): string {
+    const at = findRow(this.devices, r.module, r.param);
+    if (at) return `${this.devices[at.device].name} › ${this.devices[at.device].pages[at.page].rows[at.row].label}`;
+    const m = this.patch.modules.find((x) => x.id === r.module);
+    return m ? `${m.name || moduleName(m.type, DEFS[m.type].label)} › ${longName(m.type, r.param)}` : r.param;
+  }
+
+  /** the row the palette's MIDI learn… acts on: the one row selected in pick or Arrange mode, else the row last pressed */
+  learnTarget(): LearnRow | null {
+    const sel = this.selectedRows();
+    const r = sel.length === 1 ? sel[0] : this.lastRow;
+    return r && this.patch.modules.some((m) => m.id === r.module) ? r : null;
+  }
+
+  /** wait for the MIDI source of a row (its ⋮ menu, the palette). A switch or a two-way choice may take a button */
+  startLearn(r: LearnRow): void {
+    const m = this.patch.modules.find((x) => x.id === r.module);
+    const pd = m && DEFS[m.type].params.find((q) => q.name === r.param);
+    if (pd) this.learn.start(r, !!pd.toggle || pd.choices?.length === 2);
+  }
+
+  /** learn found the row's source: an undo step that reloads nothing */
+  private bindLearned(b: MidiBinding): void {
+    this.editBindings((p) => bindRow(p, b));
+    const job = sourceJob(b.src);
+    this.ev.onError(`${sourceName(b.src)} now moves ${this.rowName(b)}.${job ? ` While it is learned, it no longer moves ${job}.` : ''} Unlearn it from the row’s ⋮ menu or in FM-1 & MIDI.`);
+  }
+
+  /** forget a row's MIDI source (its ⋮ menu, the palette): an undo step */
+  unlearn(r: LearnRow): void {
+    this.editBindings((p) => unbindRow(p, r));
+  }
+
+  /** forget a MIDI source (the list in FM-1 & MIDI): an undo step */
+  removeBinding(src: LearnSource): void {
+    this.editBindings((p) => unbindSource(p, src));
+  }
+
+  /** the patch's learned sources for the list in FM-1 & MIDI: each with its row's name and the job it gets back once removed */
+  bindings(): { src: LearnSource; source: string; row: string; job: string | null }[] {
+    return (this.patch.midiLearn ?? []).filter((b) => this.patch.modules.some((m) => m.id === b.module))
+      .map((b) => ({ src: b.src, source: sourceName(b.src), row: this.rowName(b), job: sourceJob(b.src) }));
+  }
+
+  /** a change to the bindings: one undo step, no engine reload (editor-only data, as Mutate's locks) */
+  private editBindings(fn: (p: Patch) => void): void {
+    const before = this.mark();
+    fn(this.patch);
+    if (this.commit(before)) (this.rebuild(), this.ev.onLayout(this.patch));
   }
 
   /** the rows of the page in focus (the FM-1's device page, the knobs' targets) */
