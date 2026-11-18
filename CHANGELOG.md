@@ -1,9 +1,5 @@
 # Changelog
 
-## 1.19.1 — 2026-11-17
-
-- **MIDI learn: any knob, fader, pad axis or pitch bend wheel can move a card row.** Open a row's ⋮ menu and choose **MIDI learn…** (or click the row and pick **MIDI learn…** in the palette), then move the control on your MIDI controller: from then on it moves that row, whatever page is in focus, on a collapsed card too. A Korg nanoPAD2's X-Y pad can drive Briefcase 3's joystick x and y this way; learn each axis on its own, as the first control that moves wins and the pad's touch switch is never taken. Esc cancels. A small socket after the row's name shows it is learned (hover it for the control). While a control is learned it does only that: a learned CC 1 no longer moves the mod wheel. The patch keeps what it learned, in its saves, files, share links and undo; the FM-1 never gets it, and the patch is the same size on it. With Live on, the FM-1 follows the row as it follows a slider. **Unlearn** in the ⋮ menu, or the list in **FM-1 & MIDI**, lets go. CC 80..86 (the patch buttons), CC 120..127 (panic among them) and an FM-1's own knobs cannot be learned (#1067).
-
 ## 1.19.0 — 2026-11-17
 
 - **Splitting a signal: find it, and merge any two jacks of an assembly.** Matryoshka has no Splitter or Mult module because it does not need one: cable an output again and it feeds every input it reaches. Inside an assembly, a merged jack does the splitting: while you choose the card (the frame's **card · N**), **merge…** on an input joins it to another, and the collapsed card shows one jack that feeds both. Searching **splitter** or **mult** in Commands or + Module now says so and opens the help at it. Two jacks now merge whenever one cable could reach both (keys only with keys), so a gate jack can also feed an audio input. A cable already plugged into either jack now reaches every input of the merged jack; before, the newly joined input stayed silent until you patched it again (#1004).
