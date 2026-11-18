@@ -67,7 +67,9 @@ FPU_FLAGS = ["-mcpu=r3", "-mfprev1", "-ffp-contract=off"]
 # It must fit in NOINIT after .noinit (build.py checks), and nothing in it may run before fm1_cstart copies it there (the
 # P33 helpers that read the reset reason do). Only this file's functions: the compiler-rt helpers are not renamed.
 # Calls and tail calls between the flash and NOINIT are the 4-byte forms, within their +-4 MiB reach
-# (tools/emu/src/isa_tests.rs). ENG_RAMCODE=0 leaves everything in the flash.
+# (tools/emu/src/isa_tests.rs). ENG_RAMCODE=0 leaves everything in the flash. A benchmark build (M1_BENCH=1) defaults to
+# 0: its buffers in NOINIT (bench.c, about 4.8 KB) leave no room for the list there.
+RAMCODE = os.environ.get("ENG_RAMCODE", "0" if os.environ.get("M1_BENCH") == "1" else "1")
 FAST_TEXT = (
     "toast_wanted", "bt_c1_job", "usb_retry", "eng_find", "eng_transport_running", "eng_steps_module", "eng_steps_take",
     "pages_select", "panel_key_queue", "exp2_scale", "fm1_led_key", "env_rate_q8", "seq_rec_sync", "pages_at",
@@ -75,7 +77,7 @@ FAST_TEXT = (
     "fm1_timer2_irq", "ctl_ramp16", "value_of", "fm1_alnk0_irq", "eng_lane_run", "eng_section_at", "reverb_kernel",
     "group_cables", "fm1__sr_bits", "eng_records_end", "sch_lane", "eng_steps_rec", "eng_click_mix", "eng_rec_size",
     "ana_init", "eng_udivmod64", "batt_mark_sync", "ctl_ramp30", "lcd_blit",
-) if os.environ.get("ENG_RAMCODE", "1") == "1" else ()
+) if RAMCODE == "1" else ()
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 
 # SDK files of AC79NN_SDK_V1.2.1_2023-12-13 (the tested version)
@@ -673,7 +675,7 @@ def main():
     side = json.dumps({"version": version, "product": PRODUCT, "size": len(pkg), "sha256": hashlib.sha256(pkg).hexdigest(),
                        "app_sha256": hashlib.sha256(img).hexdigest(),
                        "build": {"ENG_AOT": int(os.environ.get("ENG_AOT", "0")),
-                                 "ENG_RAMCODE": int(os.environ.get("ENG_RAMCODE", "1")),
+                                 "ENG_RAMCODE": int(RAMCODE),
                                  "ENG_BUF_REUSE": int(os.environ.get("ENG_BUF_REUSE", "1")),
                                  "FELUCCA_SPEED": os.environ.get("FELUCCA_SPEED", SPEED),
                                  # Missing overrides use defaults in the recorded source commit.
