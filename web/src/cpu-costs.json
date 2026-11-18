@@ -30075,22 +30075,22 @@
    ]
   },
   "ladder": {
-   "run": 22852,
+   "run": 10178,
    "cv": 280,
    "dims": [
-    {
-     "param": "diode",
-     "values": [
-      0,
-      1
-     ]
-    },
     {
      "param": "cvamt",
      "above": 0
     },
     {
      "input": "fm"
+    },
+    {
+     "param": "diode",
+     "values": [
+      0,
+      1
+     ]
     },
     {
      "param": "stsat",
@@ -30100,81 +30100,81 @@
      ]
     },
     {
+     "input": "cv"
+    },
+    {
      "param": "drive",
      "points": [
       1,
       8
      ]
-    },
-    {
-     "input": "cv"
     }
    ],
    "grid": [
-    22847,
-    24412,
-    22847,
-    24412,
-    28223,
-    29783,
-    28223,
-    29783,
-    22847,
-    24412,
-    22847,
-    24412,
-    28223,
-    29783,
-    28223,
-    29783,
-    22852,
-    24458,
-    22852,
-    24458,
-    28228,
-    29829,
-    28228,
-    29829,
-    48922,
-    50581,
-    48922,
-    50581,
-    54427,
-    56086,
-    54427,
-    56086,
-    33082,
-    34649,
-    33082,
-    34649,
-    33082,
-    34649,
-    33082,
-    34649,
-    33082,
-    34649,
-    33082,
-    34649,
-    33082,
-    34649,
-    33082,
-    34649,
-    33087,
-    34695,
-    33087,
-    34695,
-    33087,
-    34695,
-    33087,
-    34695,
-    82786,
-    84449,
-    82786,
-    84449,
-    82786,
-    84449,
-    82786,
-    84449
+    10174,
+    10174,
+    11733,
+    11733,
+    15395,
+    15395,
+    16954,
+    16954,
+    13685,
+    13685,
+    15247,
+    15247,
+    13685,
+    13685,
+    15247,
+    15247,
+    10174,
+    10174,
+    11733,
+    11733,
+    15395,
+    15395,
+    16954,
+    16954,
+    13685,
+    13685,
+    15247,
+    15247,
+    13685,
+    13685,
+    15247,
+    15247,
+    10178,
+    10178,
+    11786,
+    11786,
+    15399,
+    15399,
+    17007,
+    17007,
+    13689,
+    13689,
+    15316,
+    15316,
+    13689,
+    13689,
+    15316,
+    15316,
+    26906,
+    26906,
+    28561,
+    28561,
+    33017,
+    33017,
+    34672,
+    34672,
+    33783,
+    33783,
+    35441,
+    35441,
+    33783,
+    33783,
+    35441,
+    35441
    ]
   },
   "dyn": {
@@ -37639,15 +37639,15 @@
  "checks": [
   {
    "name": "Monolith D",
-   "cycles": 231565
+   "cycles": 220845
   },
   {
    "name": "Oracle V",
-   "cycles": 714157
+   "cycles": 662517
   },
   {
    "name": "Silver Box",
-   "cycles": 164864
+   "cycles": 145398
   },
   {
    "name": "Hera 6",
@@ -37667,19 +37667,19 @@
   },
   {
    "name": "Canvas",
-   "cycles": 458198
+   "cycles": 432714
   },
   {
    "name": "Wanderer",
-   "cycles": 291537
+   "cycles": 278627
   },
   {
    "name": "Briefcase 3",
-   "cycles": 482804
+   "cycles": 463505
   },
   {
    "name": "Io 4",
-   "cycles": 559976
+   "cycles": 508336
   },
   {
    "name": "Vernon 100",
@@ -37691,11 +37691,11 @@
   },
   {
    "name": "Elvira 2",
-   "cycles": 187020
+   "cycles": 174289
   },
   {
    "name": "Scrounge",
-   "cycles": 543896
+   "cycles": 531135
   },
   {
    "name": "Meridian 8",
@@ -37719,7 +37719,7 @@
   },
   {
    "name": "Shush 101",
-   "cycles": 224253
+   "cycles": 211493
   },
   {
    "name": "Acid, 4 parts",
@@ -37759,19 +37759,19 @@
   },
   {
    "name": "assembly bowed glass",
-   "cycles": 93940
+   "cycles": 81187
   },
   {
    "name": "assembly bowed string",
-   "cycles": 67942
+   "cycles": 55181
   },
   {
    "name": "assembly Briefcase 3",
-   "cycles": 338005
+   "cycles": 318607
   },
   {
    "name": "assembly Canvas",
-   "cycles": 453260
+   "cycles": 427776
   },
   {
    "name": "assembly Cassia 1",
@@ -37811,7 +37811,7 @@
   },
   {
    "name": "assembly Elvira 2",
-   "cycles": 181052
+   "cycles": 168284
   },
   {
    "name": "assembly envelope filter",
@@ -37855,7 +37855,7 @@
   },
   {
    "name": "assembly Io 4",
-   "cycles": 502397
+   "cycles": 450757
   },
   {
    "name": "assembly kalimba",
@@ -37879,11 +37879,11 @@
   },
   {
    "name": "assembly mono lead",
-   "cycles": 71431
+   "cycles": 58670
   },
   {
    "name": "assembly Monolith D",
-   "cycles": 163598
+   "cycles": 152899
   },
   {
    "name": "assembly noise voice",
@@ -37899,7 +37899,7 @@
   },
   {
    "name": "assembly Oracle V",
-   "cycles": 645682
+   "cycles": 594042
   },
   {
    "name": "assembly overdrive",
@@ -37939,7 +37939,7 @@
   },
   {
    "name": "assembly Scrounge",
-   "cycles": 346701
+   "cycles": 334001
   },
   {
    "name": "assembly shimmer",
@@ -37947,7 +37947,7 @@
   },
   {
    "name": "assembly Shush 101",
-   "cycles": 164387
+   "cycles": 151627
   },
   {
    "name": "assembly sidechain pump",
@@ -37955,7 +37955,7 @@
   },
   {
    "name": "assembly Silver Box",
-   "cycles": 106914
+   "cycles": 87448
   },
   {
    "name": "assembly slicer",
@@ -38023,7 +38023,7 @@
   },
   {
    "name": "assembly Wanderer",
-   "cycles": 225567
+   "cycles": 212657
   },
   {
    "name": "assembly wavetable pad",
