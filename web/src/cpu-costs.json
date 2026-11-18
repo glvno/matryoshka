@@ -56,11 +56,11 @@
  },
  "cv": {
   "pin": -16,
-  "lin": 1423,
-  "log": 2365,
+  "lin": 1894,
+  "log": 2836,
   "morph": 1
  },
- "bypass": 740,
+ "bypass": 1166,
  "types": {
   "fm1": {
    "run": 791,
@@ -38879,99 +38879,99 @@
  "checks": [
   {
    "name": "Monolith D",
-   "cycles": 192438
+   "cycles": 202827
   },
   {
    "name": "Oracle V",
-   "cycles": 589710
+   "cycles": 595950
   },
   {
    "name": "Silver Box",
-   "cycles": 124371
+   "cycles": 131934
   },
   {
    "name": "Hera 6",
-   "cycles": 545915
+   "cycles": 549475
   },
   {
    "name": "Sallen 20",
-   "cycles": 244543
+   "cycles": 250267
   },
   {
    "name": "Expander S",
-   "cycles": 460801
+   "cycles": 472603
   },
   {
    "name": "Algo Four",
-   "cycles": 736816
+   "cycles": 741553
   },
   {
    "name": "Canvas",
-   "cycles": 380108
+   "cycles": 385126
   },
   {
    "name": "Wanderer",
-   "cycles": 246414
+   "cycles": 253506
   },
   {
    "name": "Briefcase 3",
-   "cycles": 403604
+   "cycles": 408005
   },
   {
    "name": "Io 4",
-   "cycles": 462046
+   "cycles": 471168
   },
   {
    "name": "Vernon 100",
-   "cycles": 292814
+   "cycles": 303203
   },
   {
    "name": "8 Lire",
-   "cycles": 316481
+   "cycles": 325856
   },
   {
    "name": "Elvira 2",
-   "cycles": 165486
+   "cycles": 166383
   },
   {
    "name": "Scrounge",
-   "cycles": 532914
+   "cycles": 541863
   },
   {
    "name": "Meridian 8",
-   "cycles": 520336
+   "cycles": 521233
   },
   {
    "name": "808 Kit",
-   "cycles": 606215
+   "cycles": 616106
   },
   {
    "name": "909 Kit",
-   "cycles": 638465
+   "cycles": 641762
   },
   {
    "name": "Cassia 1",
-   "cycles": 646715
+   "cycles": 660547
   },
   {
    "name": "Verona Drum 1",
-   "cycles": 545141
+   "cycles": 547496
   },
   {
    "name": "Shush 101",
-   "cycles": 185596
+   "cycles": 192217
   },
   {
    "name": "Acid, 4 parts",
-   "cycles": 194337
+   "cycles": 195279
   },
   {
    "name": "Acid, morph",
-   "cycles": 62102
+   "cycles": 63044
   },
   {
    "name": "assembly 8 Lire",
-   "cycles": 310228
+   "cycles": 319177
   },
   {
    "name": "assembly adsr operator",
@@ -39011,11 +39011,11 @@
   },
   {
    "name": "assembly Canvas",
-   "cycles": 375761
+   "cycles": 379058
   },
   {
    "name": "assembly Cassia 1",
-   "cycles": 600926
+   "cycles": 611759
   },
   {
    "name": "assembly clap",
@@ -39035,7 +39035,7 @@
   },
   {
    "name": "assembly drift poly",
-   "cycles": 238877
+   "cycles": 246413
   },
   {
    "name": "assembly drum kit",
@@ -39051,7 +39051,7 @@
   },
   {
    "name": "assembly Elvira 2",
-   "cycles": 159818
+   "cycles": 160289
   },
   {
    "name": "assembly envelope filter",
@@ -39059,7 +39059,7 @@
   },
   {
    "name": "assembly Expander S",
-   "cycles": 410037
+   "cycles": 417102
   },
   {
    "name": "assembly filter voice",
@@ -39087,7 +39087,7 @@
   },
   {
    "name": "assembly Hera 4",
-   "cycles": 497915
+   "cycles": 499328
   },
   {
    "name": "assembly hihat",
@@ -39095,7 +39095,7 @@
   },
   {
    "name": "assembly Io 4",
-   "cycles": 413152
+   "cycles": 419275
   },
   {
    "name": "assembly kalimba",
@@ -39111,19 +39111,19 @@
   },
   {
    "name": "assembly master FX",
-   "cycles": 35556
+   "cycles": 40736
   },
   {
    "name": "assembly Meridian 8",
-   "cycles": 484363
+   "cycles": 484834
   },
   {
    "name": "assembly mono lead",
-   "cycles": 56286
+   "cycles": 56757
   },
   {
    "name": "assembly Monolith D",
-   "cycles": 138000
+   "cycles": 143652
   },
   {
    "name": "assembly noise voice",
@@ -39139,7 +39139,7 @@
   },
   {
    "name": "assembly Oracle V",
-   "cycles": 533875
+   "cycles": 536230
   },
   {
    "name": "assembly overdrive",
@@ -39147,7 +39147,7 @@
   },
   {
    "name": "assembly Perun 4",
-   "cycles": 225689
+   "cycles": 228044
   },
   {
    "name": "assembly pluck",
@@ -39175,11 +39175,11 @@
   },
   {
    "name": "assembly Sallen 20",
-   "cycles": 217046
+   "cycles": 218459
   },
   {
    "name": "assembly Scrounge",
-   "cycles": 316166
+   "cycles": 322289
   },
   {
    "name": "assembly shimmer",
@@ -39187,7 +39187,7 @@
   },
   {
    "name": "assembly Shush 101",
-   "cycles": 139240
+   "cycles": 141124
   },
   {
    "name": "assembly sidechain pump",
@@ -39195,11 +39195,11 @@
   },
   {
    "name": "assembly Silver Box",
-   "cycles": 79052
+   "cycles": 81878
   },
   {
    "name": "assembly slicer",
-   "cycles": 58450
+   "cycles": 58921
   },
   {
    "name": "assembly snare",
@@ -39207,7 +39207,7 @@
   },
   {
    "name": "assembly Spokes 6",
-   "cycles": 296586
+   "cycles": 298470
   },
   {
    "name": "assembly stack voice",
@@ -39215,7 +39215,7 @@
   },
   {
    "name": "assembly stutter",
-   "cycles": 68817
+   "cycles": 69288
   },
   {
    "name": "assembly sub bass",
@@ -39235,7 +39235,7 @@
   },
   {
    "name": "assembly time smear",
-   "cycles": 45694
+   "cycles": 46165
   },
   {
    "name": "assembly tom",
@@ -39243,11 +39243,11 @@
   },
   {
    "name": "assembly Vernon 100",
-   "cycles": 242860
+   "cycles": 248512
   },
   {
    "name": "assembly Verona Drum 1",
-   "cycles": 527748
+   "cycles": 530103
   },
   {
    "name": "assembly vibrato",
@@ -39263,11 +39263,11 @@
   },
   {
    "name": "assembly Wanderer",
-   "cycles": 193602
+   "cycles": 195957
   },
   {
    "name": "assembly wavetable pad",
-   "cycles": 50440
+   "cycles": 50911
   }
  ],
  "calibration": {

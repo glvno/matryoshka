@@ -86,6 +86,12 @@ function stageGraph(p: Patch, a: AssemblyInst): StageGraph | null {
     rows: PARAMETERS.reverb.map((param) => [{ module: param === 'mix' ? mix.id : kernel.id, param: param === 'mix' ? 'value' : param }]), internal };
 }
 
+/** the modules of a one-kernel Reverb stage beside its kernel: the stage's wrapper switches them, so the patch binary never
+ * marks them bypassed (patchbin.ts) and the FM-1's two-core plan counts them as playing (schedule.ts) */
+export function fxHelperIds(p: Patch): Set<number> {
+  return new Set(fxBusOf(p)?.stages.flatMap((s) => (s.kind === 'reverb' && s.targets.length === 1 ? s.helpers : [])) ?? []);
+}
+
 /** Recognize an exact terminal stereo master insert with one to four ordered, present stages. */
 export function fxBusOf(p: Patch): FxBus | null {
   const assemblies = p.assemblies ?? [];

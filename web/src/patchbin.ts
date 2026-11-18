@@ -119,11 +119,11 @@ import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS 
 import { devicesOf, NAME_MAX, type Device, type PageRow } from './pages';
 import { allModules, assemblyById, ROW_NAMES_MAX } from './assembly';
 import { structureAndRows } from './structure';
-import { CPU, cpuEstimate, scheduleBypass, scheduleCost, type CpuEstimate } from './cpu';
+import { CPU, cpuEstimate, planCosts, type CpuEstimate } from './cpu';
 import { schedule, type Schedule } from './schedule';
 import { instIsEngine } from './engines';
 import { engineUnreached } from './arm';
-import { FX_STAGE_TARGET_MAX, fxBusOf, type FxStageKind } from './fx-bus';
+import { FX_STAGE_TARGET_MAX, fxBusOf, fxHelperIds, type FxStageKind } from './fx-bus';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 export const TYPE_ORDER: string[] = Object.keys(DEFS).filter((t) => !EDITOR_ONLY.has(t));
@@ -615,7 +615,7 @@ export function buttonRecord(source: Patch, p: Patch): number[] {
   const index = new Map(p.modules.map((m, i) => [m.id, i]));
   // Ordinary assembly Toggles still own the real kernel, but cannot mute a
   // format55 wet-only return helper while that kernel is spilling its tail.
-  const wetHelpers = new Set(fxBusOf(source)?.stages.flatMap(s => s.kind === 'reverb' && s.targets.length === 1 ? s.helpers : []) ?? []);
+  const wetHelpers = fxHelperIds(source);
   const out = PANEL_BUTTONS.map((b) => KIND_CODE[kindOf(panel, b)]);
   let total = 0;
   for (const b of PANEL_BUTTONS) {
@@ -970,7 +970,7 @@ export function encodePatch(source: Patch, anyway = false, counted = false, allo
   const fx = fxRecord(source, p, devs);
   // Saved/portable graphs bypass the ordinary helpers with their stage. Format55's
   // wet-only kernel wrapper owns OFF/tails, so only its compiled helper flags are active.
-  const fxHelpers = new Set(fxBusOf(source)?.stages.flatMap(s => s.kind === 'reverb' && s.targets.length === 1 ? s.helpers : []) ?? []);
+  const fxHelpers = fxHelperIds(source);
   const short = cables3(p, ver);
   const out = new Uint8Array(size);
   const dv = new DataView(out.buffer);
@@ -1273,9 +1273,11 @@ export function scheduleFits(p: Patch, groups: DeviceGroup[], s: Schedule): bool
   return linesOf(p, copiesOf(groups), { ...poolUse(p, groups, 1), physicalBuffers: signalBuffers(p, groups, false, s).physical }).fits;
 }
 /** the physical signal buffers engine.c allocates (rule 1): its two-core schedule's while they fit, else the one-core
- * allocation's. Input: deviceView(source, true) */
-export function deviceBuffers(p: Patch, groups: DeviceGroup[]): number {
-  const s = schedule(p, groups, (type) => scheduleCost(CPU, type), scheduleBypass(CPU));
+ * allocation's */
+export function deviceBuffers(source: Patch): number {
+  const { patch: p, groups } = deviceView(source, true);
+  const { rig, table } = planCosts(CPU);
+  const s = schedule(p, groups, rig, table, fxHelperIds(source));
   return signalBuffers(p, groups, false, s.on && scheduleFits(p, groups, s) ? s : undefined).physical;
 }
 export const KEY_ROUTING_BYTES = 8040;

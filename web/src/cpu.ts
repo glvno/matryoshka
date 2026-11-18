@@ -5,11 +5,13 @@
 // measured on the test rig (a scale plus a fixed time per block, and a factor for each factory engine: `rig`); a table
 // measured on the FM-1 itself can replace it (`source`). Every figure here is an estimate.
 import TABLE from './cpu-costs.json';
+import PLAN from './plan-costs.json';
 import { DEFS, LFO_RANGE_K, MATRIX_N, matrixPin, STACKS, TRACK_POLY } from './modules';
 import { allModules, assembliesOf, parentOf } from './assembly';
 import { flawOf, hasMorph, type ModuleInst, type Patch } from './patch';
+import { fxHelperIds } from './fx-bus';
 import { deviceView } from './poly';
-import { schedule, scheduleTime, scheduleWork, SCH_FORK, SCH_SYNC, type Schedule } from './schedule';
+import { schedule, scheduleTime, scheduleWork, SCH_FORK, SCH_SYNC, type PlanCosts, type Schedule } from './schedule';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 /** what changes a module's cost: a choice / switch / small integer (its measured values, the nearest one counts), a number
@@ -107,10 +109,11 @@ export interface CpuTable {
   checks: { name: string; cycles: number }[];
   /** how the scale was found */
   calibration: Record<string, number | string>;
-  /** a table that is not the firmware's (scripts/cpu-costs-emu.ts): the two-core schedule's cost of one copy of each type
-   * and of a bypassed module, in 64 cycles of a table at `cyclesPerUs`, as the shipped table gives them (engine.c DEF_COST,
-   * DEF_COST_BYPASS, which export-defs writes from it), so the estimate plans the schedule the firmware plans */
-  schedule?: { cost: Record<string, number>; bypass: number; cyclesPerUs: number; note: string };
+  /** a table that is not the firmware's (scripts/cpu-costs-emu.ts): the two-core plan's costs of one copy of each type and
+   * of a bypassed module, in 64 cycles of a table at `cyclesPerUs`, as the firmware has them (engine.c DEF_COST and
+   * DEF_COST_BYPASS, the rig's; DEF_TCOST and DEF_TCOST_BYPASS, the shipped table's; planCosts), so the estimate plans the
+   * schedule the firmware plans */
+  schedule?: { rig: PlanTable; table: PlanTable; cyclesPerUs: number; note: string };
   /** the test rig's survey of the factory patches (scripts/cpu-costs.ts RIG): per factory engine (a top-level assembly of
    * that name), the factor on its modules' cycles that makes the estimate read what the rig measured for its factory patch
    * (its steady peak; the scale and the fixed time per block are fitted on every patch together). `voices`: for an engine
@@ -260,13 +263,24 @@ function slope(p: Patch, id: number, seen = new Set<number>()): number {
 /** does a signal from module `id` change about every sample (the oscillator works out its increments only when the pitch moves)? */
 const keepsMoving = (p: Patch, id: number): boolean => slope(p, id) >= 0.5;
 
-/** what the two-core schedule counts for one copy of a module type (engine.c DEF_COST, made from this table by
- * export-defs): its run and parameter inputs, in 64 cycles; a table that is not the firmware's gives the firmware's units
- * (CpuTable.schedule) */
-export const scheduleCost = (table: CpuTable, type: string): number =>
-  table.schedule ? table.schedule.cost[type] ?? 1 : Math.max(1, Math.round(((table.types[type]?.run ?? 0) + (table.types[type]?.cv ?? 0)) / 64));
-/** what it counts for a module bypassed when the patch loads (engine.c DEF_COST_BYPASS, D-1104): passing an input through */
-export const scheduleBypass = (table: CpuTable): number => table.schedule?.bypass ?? Math.max(1, Math.round(table.bypass / 64));
+/** the two-core plan's costs (schedule.ts schedule, engine.c sched_build; export-defs writes engine.c's from them), in 64
+ * cycles: `rig`, each type's median time per copy measured on the test rig (plan-costs.json, scripts/plan-costs.ts;
+ * Proposed amendment of D-1101, #1073), and passing an input through at that scale; `table`, the CPU table's run and
+ * parameter inputs, and its bypass. A table that is not the firmware's gives the firmware's (CpuTable.schedule) */
+export function planCosts(table: CpuTable): { rig: PlanCosts; table: PlanCosts } {
+  const own = (t: PlanTable): PlanCosts => ({ cost: (type) => t.cost[type] ?? 1, bypass: t.bypass });
+  if (table.schedule) return { rig: own(table.schedule.rig), table: own(table.schedule.table) };
+  const units = (type: string): number => Math.max(1, Math.round(((table.types[type]?.run ?? 0) + (table.types[type]?.cv ?? 0)) / 64));
+  return {
+    rig: { cost: (type) => (PLAN.types as Record<string, number>)[type] ?? units(type), bypass: PLAN.bypass },
+    table: { cost: units, bypass: Math.max(1, Math.round(table.bypass / 64)) },
+  };
+}
+/** one set of the plan's costs as data (CpuTable.schedule) */
+export interface PlanTable {
+  cost: Record<string, number>;
+  bypass: number;
+}
 
 /** cores: 2, the FM-1 since #271 (core 0's time: the second core's share of a two-core schedule, #802, or of the split poly
  * groups' odd parts, plus an idle second core's cost); 1 as with core 1 held. `scheduleFits`: whether the schedule's buffers
@@ -379,7 +393,8 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
   const c = table.cores;
   let parted = splitGroups.size;
   if (cores === 2 && c) {
-    const s = schedule(p, groups, (type) => scheduleCost(table, type), scheduleBypass(table));
+    const { rig, table: tc } = planCosts(table);
+    const s = schedule(p, groups, rig, tc, fxHelperIds(source));
     if (s.on && (scheduleFits?.(s) ?? true)) {
       const each = (m: number): number => work.get(p.modules[m].id) ?? 0;
       const items = s.order.reduce((n, m) => n + each(m) * s.copies[m], 0);

@@ -72,7 +72,7 @@ const report = fixtures.map(([name, p], i) => {
   const bin = encodePatch(p, true), file = `${String(i).padStart(2, '0')}.m1p`;
   writeFileSync(new URL(file, out), bin);
   return { name, file, bytes: bin.length, sha256: createHash('sha256').update(bin).digest('hex'), ...count,
-    scheduledPhysical: deviceBuffers(patch, groups),   // (the default firmware's: the two-core schedule's while it fits, #802)
+    scheduledPhysical: deviceBuffers(p),   // (the default firmware's: the two-core schedule's while it fits, #802)
     recoverableBytes: (count.values - count.physical) * BUF_BYTES,
     lineArenaBytes: (() => {
       const sizes = memory.modules.flatMap((m) => Array(m.copies).fill(m.bytes / m.copies));
