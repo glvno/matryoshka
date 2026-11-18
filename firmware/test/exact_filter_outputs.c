@@ -26,7 +26,7 @@ static int output_masks(void)
                     for (b = 0; b < sizeof lengths / sizeof lengths[0]; b++) {
                         uint32_t n = lengths[b], live = mask;
                         uint32_t record[] = {mode, lane, trial, mask, b, n};
-                        int32_t state[4];
+                        float state[4];
                         int32_t alias = -1;
                         const esig_t *before = 0;
                         /* Reconnect everything after a one-sample run, exposing any incorrectly skipped state. */

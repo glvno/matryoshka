@@ -6,7 +6,8 @@
  * its parts. Each group hands the notes to its parts with its own allocator, the rest plays the shared keyboard (one note).
  * Number formats: signals, parameters Q16.16; oscillator phase u32 (2^32 = 1 cycle);
  * filter coefficients Q24; envelope level and rates Q30; a recursive kernel may keep its states and do its arithmetic in
- * single-precision float inside its module (D-1112: the Resonator). Build: -DENG_POOL=... places the big buffers (device:
+ * single-precision float inside its module (D-1112: the Resonator, the Multimode filter). Build: -DENG_POOL=... places
+ * the big buffers (device:
  * the .pool section), ENG_LOWRAM the second line area, line_low (device: .lowram, below the RAM region, #273). Needs 64-bit multiply (hardware) and, at block rate and on waveform edges, 64/32 division. */
 #include "engine.h"
 #include "defs.h"
@@ -567,7 +568,7 @@ typedef struct {
         struct { int32_t xb, ap[16]; } shp;
         struct { int32_t v, ka, kd, kr, ainc, ad, ar; uint8_t stage, prev, ok; } adsr;   /* k*: the A D R the rates (ainc, ad, ar) were
                                                                                        * worked out for, ok: which are (the divisions run only on a change) */
-        struct { int32_t ic1, ic2, jc1, jc2; uint8_t e; } flt;   /* stage 1 and stage 2 integrators (Q20 + e, ring_scale) */
+        struct { float ic1, ic2, jc1, jc2; } flt;     /* stage 1 and stage 2 integrators (float in steps of Q16, D-1112) */
         struct { int32_t s[4]; uint8_t e; } lad;      /* the four one-pole states, Q20 (Q20 + e, ring_scale) */
         struct { int32_t env; } dyn;                  /* the peak follower, Q24 */
         struct { esig_t *buf; int32_t g, cm, pm, c[LIMIT_AHEAD / LIMIT_CHUNK]; uint8_t w; } lim;   /* Limiter (#1019): its lookahead line, the gain (Q30), the peak of the chunk being filled and of the line's chunks (pm: the largest of c), the line's next place */
@@ -6997,16 +6998,37 @@ static void m_vca(const node_t *nd, inst_t *it, uint32_t n)
 #define LAD_SAT_KNEE (3 << 19)      /* 1.5 in Q20: the saturator's knee */
 #define LAD_SAT_CUBE 2485513        /* 1 / 6.75 in Q24 */
 
-/* #969 (D-1109): in fixed point a ring with no input ends at exactly zero. The Multimode filter, the Ladder and the
- * Formant filter keep Q20 states and round their products. With no input, a ring that falls by less than one rounding
- * step per sample is held there for ever: a limit cycle (a resonant ring) or a stall (a low pass short of zero), at up
- * to about -55 dBFS with high resonance at low cutoffs. In a block whose input is all zero the states are scaled by 2^e
- * (Q20 + e) so that the largest one's top bit is RING_TOP, whatever the ring's level: a rounding step is then far below
- * the ring's fall per sample, so it decays as in the reference, and once it is under RING_EMAX's floor (-132 dBFS, far
- * below the output's step) the states are set to zero. A block with input scales them back to Q20 first, so the
- * filters play as before whenever they have input. */
+/* #969 (D-1109): a ring with no input ends at exactly zero.
+ * The Multimode filter holds its states and computes in single-precision float (D-1112), in steps of the Q16 signal.
+ * Float rounding neither holds a ring up nor cuts it short while it is above the output's step; below it a ring would
+ * end in the subnormal range, held there by rounding to nearest. So at the end of a block whose input is all zero, states
+ * that are all under RING_END are set to exactly zero. Its outputs are cut toward zero to a whole step, as the
+ * Resonator's (m_modal).
+ * The Ladder and the Formant filter keep Q20 states and round their products. With no input, a ring that falls by less
+ * than one rounding step per sample is held there for ever: a limit cycle (a resonant ring) or a stall (a low pass short
+ * of zero), at up to about -55 dBFS with high resonance at low cutoffs. In a block whose input is all zero the states are
+ * scaled by 2^e (Q20 + e) so that the largest one's top bit is RING_TOP, whatever the ring's level: a rounding step is
+ * then far below the ring's fall per sample, so it decays as in the reference, and once it is under RING_EMAX's floor
+ * (-132 dBFS, far below the output's step) the states are set to zero. A block with input scales them back to Q20
+ * first, so the filters play as before whenever they have input. */
+#define RING_END (1.0f / 256.0f)    /* a float state's end: 1/256 of the output's step, -144 dBFS */
 #define RING_TOP 24                 /* the largest scaled state's top bit: 2^24..2^25, room for 64x before 2^31 */
 #define RING_EMAX 27                /* the largest e: the output shift 4 + e stays under 32; there 2^25 is 2^-22 */
+
+/* x held to +-l (compares: fminf / fmaxf are library calls in wasm) */
+HOT float clampf(float x, float l) { return x > l ? l : x < -l ? -l : x; }
+
+/* is there a ring to end: are the ns float states all under RING_END, and not all zero already? */
+static int ring_endf(const float *s, uint32_t ns)
+{
+    uint32_t i, any = 0;
+    for (i = 0; i < ns; i++) {
+        if (s[i] >= RING_END || s[i] <= -RING_END)
+            return 0;
+        any |= s[i] != 0.0f;
+    }
+    return (int)any;
+}
 
 /* is the block's input all zero? (asked only while the states are not: an audio input is non-zero at its first sample
  * nearly always, one compare; a silent one costs about 2 cycles a sample, in fours) */
@@ -7056,24 +7078,27 @@ typedef struct {
     int32_t g, a1, a2, a3;
 } svf_coef_t;
 
-typedef struct { uint32_t key; int32_t seed; } svf_recip_t;
-
 /* the coefficients of one stage for the tan() warped cutoff g */
-static void svf_stage(svf_coef_t *c, int32_t g, int32_t k24, svf_recip_t *cache)
+static void svf_stage(svf_coef_t *c, int32_t g, int32_t k24)
 {
-    int32_t den = (1 << 24) + mulq(g, g + k24, 24);
     c->g = g;
-    if (cache) {
-        uint32_t key = (uint32_t)den >> 8;
-        if (cache->key != key) {
-            cache->key = key;
-            cache->seed = (int32_t)(0xFFFFFFFFu / key) << 8;
-        }
-        c->a1 = recip24_refine(den, cache->seed);
-    } else
-        c->a1 = recip24(den);
+    c->a1 = recip24((1 << 24) + mulq(g, g + k24, 24));
     c->a2 = mulq(g, c->a1, 24);
     c->a3 = mulq(g, c->a2, 24);
+}
+
+/* the same in float (D-1112) for the warped cutoff g and the damping k: a1 = 1 / (1 + g (g + k)), a2 = g a1, a3 = g a2.
+ * 1 + g (g + k) is at least 1 - k^2 / 4: above 0.99 at the lowest k (-0.16, the self-oscillation at res 1), so the
+ * division never meets 0 (D-1114) */
+typedef struct {
+    float a1, a2, a3;
+} svf_f_t;
+
+HOT void svf_stagef(svf_f_t *c, float g, float k)
+{
+    c->a1 = 1.0f / (1.0f + g * (g + k));
+    c->a2 = g * c->a1;
+    c->a3 = g * c->a2;
 }
 
 /* the warped cutoff g = tan(pi fc / sr) for a cutoff given as a phase increment (cutoff / sr in u32 turns) */
@@ -7090,46 +7115,53 @@ static int32_t svf_g(uint32_t rinc)
     return t0 + (int32_t)(((int64_t)(t1 - t0) * fr) >> 16);
 }
 
-#define SQRT2_24 23726566   /* stage 2's k: sqrt(2) in Q24 (Q 0.7), the resonance comes from stage 1 only */
+#define FLT_K2 1.41421356f   /* stage 2's k: sqrt(2) (Q 0.7), the resonance comes from stage 1 only */
+
+/* svf_g as a float */
+static float svf_gf(uint32_t rinc) { return (float)svf_g(rinc) * (1.0f / 16777216.0f); }
 
 /* Two stages: stage 1 (12 dB) gives lp12, bp, hp (and notch, peak, allpass, and hp6 = hp + 2 bp, a resonant 6 dB high
  * pass, from the same values, only when a cable leaves them); stage 2 filters lp12 again (lp24); mix fades lp24 -> hp by morph.
- * The integrator states are Q20 (+-2048: room for the resonance peak), the signals Q16; products are rounded.
- * Key tracking moves the cutoff by the voice pitch (octaves, C4 = as set), like the host engine, once per block. */
+ * Single-precision float inside the module (D-1112): the states and the signals in steps of Q16 (the input's Q16 value),
+ * the states held to +-1024 (FLT_LIM), the outputs cut toward zero to a whole step; the coefficients from the integer
+ * cutoff (svf_g), worked out in float. Key tracking moves the cutoff by the voice pitch (octaves, C4 = as set), like the
+ * host engine, once per block. */
+#define FLT_LIM 67108864.0f   /* 1024 in steps of Q16 */
+
 static int32_t filter_over(const inst_t *it)   /* how far res is past FILTER_OSC_FROM with osc on, Q16 (0: off) */
 {
     int32_t res = EF(it, FILTER_P_RES);
     return EF(it, FILTER_P_OSC) >= 32768 && res > FILTER_OSC_FROM_Q16 ? res - FILTER_OSC_FROM_Q16 : 0;
 }
 
-/* the damping the drive adds (#670, modules.ts filterDriveLoss), Q24, for a = drive r |bp| (Q20, held to
- * FILTER_DRIVE_TOP): 1 - sat(a) / a, that is a^2 / 6.75 below the knee and 1 - 1 / a above it */
-HOT int32_t filter_drive_loss(int32_t a)
+/* the damping the drive adds (#670, modules.ts filterDriveLoss) for a = drive r |bp| (held to FILTER_DRIVE_TOP):
+ * 1 - sat(a) / a, that is a^2 / 6.75 below the knee and 1 - 1 / a above it (a >= 1.5 there: no division by 0) */
+HOT float filter_drive_loss(float a)
 {
-    if (a >= FILTER_DRIVE_KNEE_Q20)
-        return (1 << 24) - recip24(a << 4);
-    return mulq(mulq(a, a, 20), LAD_SAT_CUBE, 20);
+    if (a >= (float)FILTER_DRIVE_KNEE_Q20 * (1.0f / 1048576.0f))
+        return 1.0f - 1.0f / a;
+    return a * a * (1.0f / 6.75f);
 }
 
-/* osc, drv, e: constants at each call (m_filter), so the ordinary filter carries none of the self-oscillation's or the
- * drive's work, nor the scaling's (e: the states' scale in a silent block, ring_scale; 0 = Q20). drv (#670, drive above
- * 0 and res above 0): the damping grows by r (1 - sat(a) / a), a = drive r |bp|, so stage 1 is solved per sample, as
- * with osc. */
-HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv, uint32_t e)
+/* osc, drv: constants at each call (m_filter), so the ordinary filter carries none of the self-oscillation's or the
+ * drive's work. drv (#670, drive above 0 and res above 0): the damping grows by r (1 - sat(a) / a), a = drive r |bp|,
+ * so stage 1 is solved per sample, as with osc. */
+HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv)
 {
     const esig_t *in = it->in[FILTER_I_IN], *cv = it->in[FILTER_I_CV], *mo = it->in[FILTER_I_MORPH];
-    int32_t res = EF(it, FILTER_P_RES);
     /* self-oscillation (osc on, res past FILTER_OSC_FROM; modules.ts): the damping falls below 0 near the top and grows
      * with the band-pass state squared (held to +-FILTER_OSC_CLIP), so stage 1 is solved per sample there */
-    int32_t over = osc ? filter_over(it) : 0;   /* Q16 */
-    int32_t k24 = (2 << 24) - mulq(res, 33218888, 16) - mulq(over, FILTER_OSC_K_Q24, 16);   /* 2 - 1.98 res (- the fall) */
-    int32_t gam = mulq(over, FILTER_OSC_GAIN_Q24, 16), gc = 0, ke = k24;                    /* Q24; gc: the current g, ke: the damping */
-    int32_t r24 = mulq(res, 33218888, 16), dr = drv ? mulq(EF(it, FILTER_P_DRIVE), r24, 24) : 0;   /* 1.98 res Q24; drive r Q16 */
-    int32_t cvamt = EF(it, FILTER_P_CVAMT), ic1 = it->s.flt.ic1, ic2 = it->s.flt.ic2, jc1 = it->s.flt.jc1, jc2 = it->s.flt.jc2;
-    int32_t morph = EF(it, FILTER_P_MORPH), tr = EF(it, FILTER_P_TRACK) >= 32768 ? IT_PV(nd, it)->pitch : 0;
+    float over = osc ? (float)filter_over(it) * (1.0f / 65536.0f) : 0.0f;
+    float r = (float)EF(it, FILTER_P_RES) * (1.98f / 65536.0f);                              /* r = 1.98 res */
+    float k = 2.0f - r - over * ((float)FILTER_OSC_K_Q24 * (1.0f / 16777216.0f));           /* the damping (2 - r - the fall) */
+    float gam = over * ((float)FILTER_OSC_GAIN_Q24 * (1.0f / 16777216.0f)) * (1.0f / 4294967296.0f);   /* per step^2 */
+    float dr = drv ? (float)EF(it, FILTER_P_DRIVE) * r * (1.0f / 4294967296.0f) : 0.0f;    /* drive r, per step */
+    float ic1 = it->s.flt.ic1, ic2 = it->s.flt.ic2, jc1 = it->s.flt.jc1, jc2 = it->s.flt.jc2, gc = 0.0f, ke = k;
+    float mf = (float)clampi(EF(it, FILTER_P_MORPH), 0, 65536) * (1.0f / 65536.0f);
+    int32_t cvamt = EF(it, FILTER_P_CVAMT), morph = EF(it, FILTER_P_MORPH), lcv = 0;
+    int32_t tr = EF(it, FILTER_P_TRACK) >= 32768 ? IT_PV(nd, it)->pitch : 0;
     uint32_t base = hz_turns((uint32_t)EF(it, FILTER_P_CUTOFF)), i;
-    svf_coef_t c, d;
-    svf_recip_t reciprocal = {0, 0};   /* block-local: no lane sharing; only the seed division can be reused */
+    svf_f_t c, d;
     int fixed = !cvamt || !(nd->conn & (1u << FILTER_I_CV));   /* zero depth: changing CV cannot move the coefficients */
     int msig = nd->conn & (1u << FILTER_I_MORPH);
     int ext = !IS_DUMMY(it->out[FILTER_O_NOTCH]) || !IS_DUMMY(it->out[FILTER_O_PEAK]) ||
@@ -7142,107 +7174,102 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv, 
     int lp_only = used == (1u << FILTER_O_LP12);
     int hp6_only = used == (1u << FILTER_O_HP6);
     esig_t *single = lp_only ? it->out[FILTER_O_LP12] : it->out[FILTER_O_HP6];
-    int32_t lcv = 0;
-    const uint32_t sh = 4 + e;                   /* the outputs: Q20 + e to Q16, rounded */
-    const int32_t rnd = 1 << (sh - 1);
     if (tr)
         base = exp2_scale(base, tr);
-    if (osc && !ic1 && !ic2)
-        ic1 = FILTER_OSC_SEED_Q20;               /* a filter at rest: a small kick starts the oscillation */
+    if (osc && ic1 == 0.0f && ic2 == 0.0f)
+        ic1 = (float)FILTER_OSC_SEED_Q20 * (1.0f / 16.0f);   /* a filter at rest: a small kick starts the oscillation */
     if (fixed) {
-        int32_t g = svf_g(base);
-        gc = g;
+        gc = svf_gf(base);
         if (!osc && !drv)
-            svf_stage(&c, g, k24, 0);
+            svf_stagef(&c, gc, k);
         if (st2)
-            svf_stage(&d, g, SQRT2_24, 0);
+            svf_stagef(&d, gc, FLT_K2);
     }
     /* Fixed linear MIX-only routing needs both stages, but no dummy-port stores or per-sample routing checks. */
     if (!osc && !drv && fixed && !msig && used == (1u << FILTER_O_MIX)) {
         esig_t *out = it->out[FILTER_O_MIX];
-        const int32_t m = clampi(morph, 0, 65536);
         for (i = 0; i < n; i++) {
-            int32_t v0 = in[i] << 4, v3 = v0 - ic2;
-            int32_t v1 = mulr(c.a1, ic1, 24) + mulr(c.a2, v3, 24);
-            int32_t v2 = ic2 + mulr(c.a2, ic1, 24) + mulr(c.a3, v3, 24);
-            int32_t h, w3, w1, w2;
-            ic1 = clampi(2 * v1 - ic1, -(1 << 30), 1 << 30);
-            ic2 = clampi(2 * v2 - ic2, -(1 << 30), 1 << 30);
-            h = v0 - mulr(v1, k24, 24) - v2;
+            float v0 = (float)in[i], v3 = v0 - ic2;
+            float v1 = c.a1 * ic1 + c.a2 * v3;
+            float v2 = ic2 + c.a2 * ic1 + c.a3 * v3;
+            float h, w3, w1, w2;
+            ic1 = clampf(2.0f * v1 - ic1, FLT_LIM);
+            ic2 = clampf(2.0f * v2 - ic2, FLT_LIM);
+            h = v0 - k * v1 - v2;
             w3 = v2 - jc2;
-            w1 = mulr(d.a1, jc1, 24) + mulr(d.a2, w3, 24);
-            w2 = jc2 + mulr(d.a2, jc1, 24) + mulr(d.a3, w3, 24);
-            jc1 = clampi(2 * w1 - jc1, -(1 << 30), 1 << 30);
-            jc2 = clampi(2 * w2 - jc2, -(1 << 30), 1 << 30);
-            out[i] = (w2 + mul16(h - w2, m) + rnd) >> sh;
+            w1 = d.a1 * jc1 + d.a2 * w3;
+            w2 = jc2 + d.a2 * jc1 + d.a3 * w3;
+            jc1 = clampf(2.0f * w1 - jc1, FLT_LIM);
+            jc2 = clampf(2.0f * w2 - jc2, FLT_LIM);
+            out[i] = (int32_t)(w2 + (h - w2) * mf);
         }
-        it->s.flt.ic1 = ic1;
-        it->s.flt.ic2 = ic2;
-        it->s.flt.jc1 = jc1;
-        it->s.flt.jc2 = jc2;
-        return;
-    }
-    for (i = 0; i < n; i++) {
-        int32_t v0 = in[i] << 4, v3, v1, v2, w3, w1, w2, h, m, kv1;          /* Q20 */
-        /* the coefficients only when the cv moves (the same values again), at most every 4th sample of the block (#787:
-         * the cutoff follows the cv in steps of 4 samples, modules.ts the same) */
-        if (!fixed && (i & 3u) == 0 && (i == 0 || cv[i] != lcv)) {
-            int32_t g;
-            lcv = cv[i];
-            g = svf_g(exp2_scale(base, mul16(lcv, cvamt)));
-            gc = g;
-            if (!osc && !drv)                        /* (with osc or drive stage 1 is solved again below, every sample) */
-                svf_stage(&c, g, k24, 0);
-            if (st2)
-                svf_stage(&d, g, SQRT2_24, 0);
+    } else
+        for (i = 0; i < n; i++) {
+            float v0 = (float)in[i], v3, v1, v2, w3, w1, w2, h, kv1;
+            /* the coefficients only when the cv moves (the same values again), at most every 4th sample of the block
+             * (#787: the cutoff follows the cv in steps of 4 samples, modules.ts the same) */
+            if (!fixed && (i & 3u) == 0 && (i == 0 || cv[i] != lcv)) {
+                lcv = cv[i];
+                gc = svf_gf(exp2_scale(base, mul16(lcv, cvamt)));
+                if (!osc && !drv)                    /* (with osc or drive stage 1 is solved again below, every sample) */
+                    svf_stagef(&c, gc, k);
+                if (st2)
+                    svf_stagef(&d, gc, FLT_K2);
+            }
+            if (osc) {                               /* the damping k + gam b^2 */
+                float b = clampf(ic1, (float)FILTER_OSC_CLIP_Q20 * (1.0f / 16.0f));
+                ke = k + gam * b * b;
+            }
+            if (drv) {                               /* plus r (1 - sat(a) / a), a = drive r |bp| */
+                float a = dr * (ic1 < 0.0f ? -ic1 : ic1), top = (float)FILTER_DRIVE_TOP_Q20 * (1.0f / 1048576.0f);
+                ke = (osc ? ke : k) + r * filter_drive_loss(a > top ? top : a);
+            }
+            if (osc || drv)
+                svf_stagef(&c, gc, ke);
+            v3 = v0 - ic2;
+            v1 = c.a1 * ic1 + c.a2 * v3;
+            v2 = ic2 + c.a2 * ic1 + c.a3 * v3;
+            ic1 = clampf(2.0f * v1 - ic1, FLT_LIM);
+            ic2 = clampf(2.0f * v2 - ic2, FLT_LIM);
+            kv1 = h = 0.0f;
+            if (!lp_only) {
+                kv1 = v1 * (osc || drv ? ke : k);
+                h = v0 - kv1 - v2;
+            }
+            /* One connected LP12 or HP6 output needs no stores to the unused ports. */
+            if (lp_only)
+                single[i] = (int32_t)v2;
+            else if (hp6_only)
+                single[i] = (int32_t)(h + 2.0f * v1);
+            else {
+                it->out[FILTER_O_LP12][i] = (int32_t)v2;
+                it->out[FILTER_O_BP][i] = (int32_t)v1;
+                it->out[FILTER_O_HP][i] = (int32_t)h;
+            }
+            if (st2) {
+                w3 = v2 - jc2;
+                w1 = d.a1 * jc1 + d.a2 * w3;
+                w2 = jc2 + d.a2 * jc1 + d.a3 * w3;
+                jc1 = clampf(2.0f * w1 - jc1, FLT_LIM);
+                jc2 = clampf(2.0f * w2 - jc2, FLT_LIM);
+                if (msig)
+                    mf = (float)clampi(morph + mo[i], 0, 65536) * (1.0f / 65536.0f);
+                it->out[FILTER_O_LP24][i] = (int32_t)w2;
+                it->out[FILTER_O_MIX][i] = (int32_t)(w2 + (h - w2) * mf);
+            }
+            if (ext && !hp6_only) {                  /* notch = in - k bp, peak = lp12 - hp, allpass = in - 2 k bp, hp6 */
+                it->out[FILTER_O_NOTCH][i] = (int32_t)(v0 - kv1);
+                it->out[FILTER_O_PEAK][i] = (int32_t)(v2 - h);
+                it->out[FILTER_O_AP][i] = (int32_t)(v0 - 2.0f * kv1);
+                /* hp + 2 bp: the MS-20 filter's 6 dB high pass (modules.ts). */
+                it->out[FILTER_O_HP6][i] = (int32_t)(h + 2.0f * v1);
+            }
         }
-        if (osc) {                                   /* the damping k + gam b^2 */
-            int32_t b = clampi(ic1, -FILTER_OSC_CLIP_Q20, FILTER_OSC_CLIP_Q20);
-            ke = k24 + mulr(gam, mulr(b, b, 20), 20);
-        }
-        if (drv) {                                   /* plus r (1 - sat(a) / a), a = drive r |bp| */
-            int64_t a = ((int64_t)(ic1 < 0 ? -ic1 : ic1) * dr) >> (16 + e);
-            ke = (osc ? ke : k24) + mulr(r24, filter_drive_loss(a > FILTER_DRIVE_TOP_Q20 ? FILTER_DRIVE_TOP_Q20 : (int32_t)a), 24);
-        }
-        if (osc || drv)
-            svf_stage(&c, gc, ke, &reciprocal);
-        v3 = v0 - ic2;
-        v1 = mulr(c.a1, ic1, 24) + mulr(c.a2, v3, 24);
-        v2 = ic2 + mulr(c.a2, ic1, 24) + mulr(c.a3, v3, 24);
-        ic1 = clampi(2 * v1 - ic1, -(1 << 30), 1 << 30);
-        ic2 = clampi(2 * v2 - ic2, -(1 << 30), 1 << 30);
-        kv1 = h = 0;
-        if (!lp_only) {
-            kv1 = mulr(v1, osc || drv ? ke : k24, 24);
-            h = v0 - kv1 - v2;
-        }
-        /* One connected LP12 or HP6 output needs no stores to the unused ports. */
-        if (lp_only)
-            single[i] = (v2 + rnd) >> sh;
-        else if (hp6_only)
-            single[i] = (h + 2 * v1 + rnd) >> sh;
-        else {
-            it->out[FILTER_O_LP12][i] = (v2 + rnd) >> sh;
-            it->out[FILTER_O_BP][i] = (v1 + rnd) >> sh;
-            it->out[FILTER_O_HP][i] = (h + rnd) >> sh;
-        }
-        if (st2) {
-            w3 = v2 - jc2;
-            w1 = mulr(d.a1, jc1, 24) + mulr(d.a2, w3, 24);
-            w2 = jc2 + mulr(d.a2, jc1, 24) + mulr(d.a3, w3, 24);
-            jc1 = clampi(2 * w1 - jc1, -(1 << 30), 1 << 30);
-            jc2 = clampi(2 * w2 - jc2, -(1 << 30), 1 << 30);
-            m = clampi(msig ? morph + mo[i] : morph, 0, 65536);
-            it->out[FILTER_O_LP24][i] = (w2 + rnd) >> sh;
-            it->out[FILTER_O_MIX][i] = (w2 + mul16(h - w2, m) + rnd) >> sh;
-        }
-        if (ext && !hp6_only) {                      /* notch = in - k bp, peak = lp12 - hp, allpass = in - 2 k bp, hp6 */
-            it->out[FILTER_O_NOTCH][i] = (v0 - kv1 + rnd) >> sh;
-            it->out[FILTER_O_PEAK][i] = (v2 - h + rnd) >> sh;
-            it->out[FILTER_O_AP][i] = (v0 - 2 * kv1 + rnd) >> sh;
-            /* hp + 2 bp: the MS-20 filter's 6 dB high pass (modules.ts). */
-            it->out[FILTER_O_HP6][i] = (h + 2 * v1 + rnd) >> sh;
-        }
+    {
+        /* D-1109: a ring under RING_END at the end of a silent block ends (with osc the ring is meant to go on) */
+        float st[4] = {ic1, ic2, jc1, jc2};
+        if (!osc && ring_endf(st, 4) && ring_quiet(in, n))
+            ic1 = ic2 = jc1 = jc2 = 0.0f;
     }
     it->s.flt.ic1 = ic1;
     it->s.flt.ic2 = ic2;
@@ -7250,51 +7277,18 @@ HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc, int drv, 
     it->s.flt.jc2 = jc2;
 }
 
-/* #969 (ring_scale), out of line so the ordinary filter's code stays as it was (filter_plain): a ring (states not 0) in
- * a silent block is scaled and run here (1); after one the states go back to Q20 (0: filter_plain runs the block) */
-static __attribute__((noinline)) int filter_ring(const node_t *nd, inst_t *it, uint32_t n)
-{
-    int32_t st[4] = {it->s.flt.ic1, it->s.flt.ic2, it->s.flt.jc1, it->s.flt.jc2};
-    int quiet;
-    uint32_t e;
-    if (!(st[0] | st[1] | st[2] | st[3]))
-        return 0;
-    quiet = !filter_over(it) && ring_quiet(it->in[FILTER_I_IN], n);   /* (with osc the ring is meant to go on) */
-    if (!quiet && !it->s.flt.e)
-        return 0;
-    e = ring_scale(st, 4, it->s.flt.e, quiet);
-    it->s.flt.e = (uint8_t)e;
-    it->s.flt.ic1 = st[0];
-    it->s.flt.ic2 = st[1];
-    it->s.flt.jc1 = st[2];
-    it->s.flt.jc2 = st[3];
-    if (!e)
-        return 0;
-    if (EF(it, FILTER_P_DRIVE) > 0 && EF(it, FILTER_P_RES) > 0)
-        filter_run(nd, it, n, 0, 1, e);
-    else
-        filter_run(nd, it, n, 0, 0, e);
-    return 1;
-}
-
-static __attribute__((noinline)) void filter_plain(const node_t *nd, inst_t *it, uint32_t n)
+static __attribute__((noinline)) void m_filter(const node_t *nd, inst_t *it, uint32_t n)
 {
     int drv = EF(it, FILTER_P_DRIVE) > 0 && EF(it, FILTER_P_RES) > 0;   /* without resonance the drive has nothing to clip */
     if (filter_over(it)) {
         if (drv)
-            filter_run(nd, it, n, 1, 1, 0);
+            filter_run(nd, it, n, 1, 1);
         else
-            filter_run(nd, it, n, 1, 0, 0);
+            filter_run(nd, it, n, 1, 0);
     } else if (drv)
-        filter_run(nd, it, n, 0, 1, 0);
+        filter_run(nd, it, n, 0, 1);
     else
-        filter_run(nd, it, n, 0, 0, 0);
-}
-
-static __attribute__((noinline)) void m_filter(const node_t *nd, inst_t *it, uint32_t n)
-{
-    if (!filter_ring(nd, it, n))
-        filter_plain(nd, it, n);
+        filter_run(nd, it, n, 0, 0);
 }
 
 /* Ladder filter with drive (modules.ts `ladder`): four TPT one-poles (G = g / (1 + g), Q24) in a loop with k = 4 res.
@@ -9461,15 +9455,11 @@ static void m_comb(const node_t *nd, inst_t *it, uint32_t n)
  * exact ring: rounded to the nearest, a ring under one step would go on as a toggling step until it fell under half a
  * step). Float rounding neither holds a ring up nor cuts it short while it is above the output's step (#840, D-1109);
  * below that it would end in the subnormal range, held there by rounding to nearest, so a mode whose u and v are both
- * under MODAL_END at the end of a block is set to exactly zero: with no input a ring ends at exactly zero, within 14 s of
+ * under RING_END at the end of a block is set to exactly zero: with no input a ring ends at exactly zero, within 14 s of
  * the clamp at the longest decay (5 s). The input, u and v are held to +-8. */
 #define MODAL_N 6
 #define MODAL_LIM 524288.0f                 /* 8 in steps of Q16 */
-#define MODAL_END (1.0f / 256.0f)           /* 1/256 of the output's step, -144 dBFS */
 static const float MODAL_BAR[MODAL_N] = {1.0f, 2.756f, 5.404f, 8.933f, 13.34f, 18.64f};   /* a free bar's partial ratios */
-
-/* x held to +-l (compares: fminf / fmaxf are library calls in wasm) */
-HOT float clampf(float x, float l) { return x > l ? l : x < -l ? -l : x; }
 
 /* e^x for |x| < 0.04 (a Resonator's ln r and -ln r): its series to x^5, within 3e-12 */
 HOT float modal_exp(float x)
@@ -9541,7 +9531,7 @@ static void m_modal(const node_t *nd, inst_t *it, uint32_t n)
             out[k] = (int32_t)y;                                                            /* (cut toward zero; |y| <= 6 x 8 x 2^16) */
         }
         for (i = 0; i < MODAL_N; i++) {
-            if (u[i] < MODAL_END && u[i] > -MODAL_END && v[i] < MODAL_END && v[i] > -MODAL_END)
+            if (u[i] < RING_END && u[i] > -RING_END && v[i] < RING_END && v[i] > -RING_END)
                 u[i] = v[i] = 0.0f;
             su[i] = u[i];
             sv[i] = v[i];
@@ -10934,7 +10924,7 @@ static void m_vowel(const node_t *nd, inst_t *it, uint32_t n)
     t = v - (vi << 16);
     for (f = 0; f < 3u; f++) {
         int32_t hz = ((int32_t)FORMANT_HZ[vi][f] << 16) + (int32_t)((int64_t)(FORMANT_HZ[vi + 1][f] - FORMANT_HZ[vi][f]) * t);
-        svf_stage(&c[f], svf_g(hz_turns((uint32_t)hz)), k24, 0);
+        svf_stage(&c[f], svf_g(hz_turns((uint32_t)hz)), k24);
     }
     if (it->s.vow.e)
         vowel_run(it, c, k24, lvl, n, it->s.vow.e);
@@ -11239,6 +11229,118 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     default: break;                      /* output: read by eng_render */
     }
 }
+
+/* D-1114, #979: the float kernels' result bits, to compare the second core with core 0, the emulator and the host for
+ * the same input (main.c DIAG pages 140..142, firmware/test/fpu_probe.c). Each case renders one copy of a module from
+ * rest through PROBE_BLOCKS blocks of PROBE_N samples: PROBE_LOUD of them with a fixed input (a saw plus a pseudo-random
+ * part, loud enough to reach the saturators; a moving cv, morph and fm where the case cables them), then silence. h[c]
+ * is an FNV-1a hash of every word its cabled outputs wrote and of its state's bytes after each block. The unconnected
+ * outputs go to the lane's dummy buffer (lane 1: the second core's). Everything is on the caller's stack (about 1 KB). */
+#define PROBE_N 16u
+#define PROBE_BLOCKS 8u
+#define PROBE_LOUD 5u
+
+static uint32_t probe_hash(uint32_t h, const void *p, uint32_t len)
+{
+    const uint8_t *b = (const uint8_t *)p;
+    uint32_t i;
+    for (i = 0; i < len; i++)
+        h = (h ^ b[i]) * 0x01000193u;
+    return h;
+}
+
+void eng_fpu_probe(uint32_t lane, uint32_t *h)
+{
+    /* the cases: the filter with osc, drive, cv and morph, every output; the filter's lp12 alone; the Ladder with stsat
+     * and an audio-rate fm; its diode mode; the Formant filter; the Resonator */
+    static const uint8_t TYPE[ENG_PROBE_CASES] = {T_FILTER, T_FILTER, T_LADDER, T_LADDER, T_VOWEL, T_MODAL};
+    esig_t in[3][PROBE_N], out[FILTER_NOUT][PROBE_N];
+    int32_t eff[MAX_PAR];
+    node_t nd;
+    inst_t it;
+    uint32_t c, b, i, j, t, seed;
+    for (c = 0; c < ENG_PROBE_CASES; c++) {
+        const def_t *d = &DEFS[TYPE[c]];
+        uint8_t *z = (uint8_t *)&nd;
+        for (j = 0; j < sizeof nd; j++)
+            z[j] = 0;
+        z = (uint8_t *)&it;
+        for (j = 0; j < sizeof it; j++)
+            z[j] = 0;
+        nd.type = TYPE[c];
+        nd.ninst = 1;
+        nd.conn = 1u;                                /* in: input 0 in every case */
+        for (j = 0; j < d->npar; j++)
+            eff[j] = d->pdef[j];
+        it.eff = eff;
+        for (j = 0; j < MAX_IN; j++)
+            it.in[j] = zero_buf;
+        it.in[0] = in[0];
+        for (j = 0; j < MAX_OUT; j++)
+            it.out[j] = lane ? dummy_out1 : dummy_out;
+        for (j = 0; j < d->nout; j++)
+            it.out[j] = out[j];
+        switch (c) {
+        case 0:
+            eff[FILTER_P_CUTOFF] = 700 << 16;
+            eff[FILTER_P_RES] = 63570;               /* 0.97 */
+            eff[FILTER_P_OSC] = ENG_ONE;
+            eff[FILTER_P_DRIVE] = 3 << 16;
+            eff[FILTER_P_CVAMT] = 2 << 16;
+            eff[FILTER_P_MORPH] = 19661;
+            nd.conn |= 1u << FILTER_I_CV | 1u << FILTER_I_MORPH;
+            it.in[FILTER_I_CV] = in[1];
+            it.in[FILTER_I_MORPH] = in[2];
+            break;
+        case 1:
+            eff[FILTER_P_CUTOFF] = 1500 << 16;
+            eff[FILTER_P_RES] = 32768;
+            for (j = 0; j < d->nout; j++)
+                if (j != FILTER_O_LP12)
+                    it.out[j] = lane ? dummy_out1 : dummy_out;
+            break;
+        case 2:
+            eff[LADDER_P_CUTOFF] = 900 << 16;
+            eff[LADDER_P_RES] = 58982;               /* 0.9 */
+            eff[LADDER_P_DRIVE] = 4 << 16;
+            eff[LADDER_P_STSAT] = ENG_ONE;
+            eff[LADDER_P_CVAMT] = ENG_ONE;
+            nd.conn |= 1u << LADDER_I_FM;
+            it.in[LADDER_I_FM] = in[1];
+            break;
+        case 3:
+            eff[LADDER_P_CUTOFF] = 600 << 16;
+            eff[LADDER_P_RES] = 62259;               /* 0.95 */
+            eff[LADDER_P_DRIVE] = 2 << 16;
+            eff[LADDER_P_DIODE] = ENG_ONE;
+            break;
+        case 4:
+            eff[VOWEL_P_VOWEL] = 85197;              /* 1.3 */
+            eff[VOWEL_P_RES] = 52429;
+            eff[VOWEL_P_LEVEL] = 58982;
+            break;
+        default:
+            break;
+        }
+        h[c] = 0x811C9DC5u;
+        seed = 12345u;
+        t = 0;
+        for (b = 0; b < PROBE_BLOCKS; b++) {
+            for (i = 0; i < PROBE_N; i++, t++) {
+                seed = seed * 1664525u + 1013904223u;
+                in[0][i] = b < PROBE_LOUD ? ((int32_t)((t * 4093u) & 0x1FFFFu) - 65536 + (int32_t)(seed >> 17) - 16384) * 3 / 2 : 0;
+                in[1][i] = (int32_t)((t * 911u) & 0xFFFFu) - 32768;
+                in[2][i] = (int32_t)((t * 2309u) & 0x1FFFFu) - 65536;
+            }
+            process(&nd, &it, PROBE_N);
+            for (j = 0; j < d->nout; j++)
+                if (it.out[j] == out[j])
+                    h[c] = probe_hash(h[c], out[j], sizeof out[j]);
+            h[c] = probe_hash(h[c], &it.s, sizeof it.s);
+        }
+    }
+}
+
 /* A signal within +-IDLE_Q16 (Q16) counts as silent: idle parts (part_quiet) and a natural master FX tail (m_fx). */
 #define IDLE_Q16 6
 /* Discard only an exhausted tail, never a saved parameter. Keeping the physical line and its capacity avoids allocation
