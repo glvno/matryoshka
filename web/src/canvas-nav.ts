@@ -1,9 +1,41 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Getting round the canvas with a mouse (#1075): right- or middle-drag pans, the mouse wheel zooms at the cursor while a
-// trackpad's two-finger scroll pans, keys for fit and zoom, and auto-pan while a drag nears the canvas's edge. The pure
-// parts live here so they can be tested; editor.ts and main.ts wire them to the canvas and the keys.
+// trackpad's two-finger scroll pans, keys for fit and zoom, and auto-pan while a drag nears the canvas's edge. The canvas
+// is endless: the scroll space always reaches a viewport beyond the cards and the view on every side. The pure parts live
+// here so they can be tested; editor.ts and main.ts wire them to the canvas and the keys.
 
 export interface Pt { x: number; y: number }
+export interface Rect { x: number; y: number; w: number; h: number }
+
+// ---- the endless canvas: layout px (where cards are, any sign) in a scroll space that grows round them
+//
+// The scroll space starts at layout point `-origin`, so a layout point p is at scroll px (p + origin) * zoom. The camera
+// is the layout point at the view's top left: what the patch's saved view keeps.
+
+/** the camera of a scroll position */
+export const cameraOf = (scroll: Pt, origin: Pt, zoom: number): Pt => ({ x: scroll.x / zoom - origin.x, y: scroll.y / zoom - origin.y });
+
+/** the scroll position that shows the camera */
+export const scrollFor = (camera: Pt, origin: Pt, zoom: number): Pt => ({ x: (camera.x + origin.x) * zoom, y: (camera.y + origin.y) * zoom });
+
+/** the camera after a zoom from `z0` to `z1` that holds the point `at` (px from the view's top left) under it */
+export const zoomCamera = (camera: Pt, at: Pt, z0: number, z1: number): Pt => ({ x: camera.x + at.x / z0 - at.x / z1, y: camera.y + at.y / z0 - at.y / z1 });
+
+/**
+ * The scroll space, in layout px: the cards' extent (`content`, null for none) and the view, each side one viewport
+ * further out, so the view can always pan a viewport in any direction and a zoom around any point in it stays in the
+ * space. Its edges fall on whole screen pixels at `zoom`, so the origin moves the scroll by whole pixels only.
+ */
+export function spaceExtent(content: Rect | null, view: Rect, zoom: number): Rect {
+  const c = content ?? view;
+  const x0 = Math.floor((Math.min(c.x, view.x) - view.w) * zoom) / zoom, y0 = Math.floor((Math.min(c.y, view.y) - view.h) * zoom) / zoom;
+  const x1 = Math.ceil((Math.max(c.x + c.w, view.x + view.w) + view.w) * zoom) / zoom, y1 = Math.ceil((Math.max(c.y + c.h, view.y + view.h) + view.h) * zoom) / zoom;
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** the view has come within half a viewport of an edge of the scroll space: time to lay it out again round the view */
+export const nearEdge = (space: Rect, view: Rect): boolean => view.x - space.x < view.w / 2 || view.y - space.y < view.h / 2
+  || space.x + space.w - (view.x + view.w) < view.w / 2 || space.y + space.h - (view.y + view.h) < view.h / 2;
 
 // ---- right / middle drag
 

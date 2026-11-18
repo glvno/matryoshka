@@ -373,8 +373,8 @@ export interface Patch {
   /** the computer keyboard's octave (Z / X, the octave buttons) when the patch was last played, so a bass patch opens low;
    * absent = 0. Editor only: the engine, the encoder and the FM-1 ignore it */
   octave?: number;
-  /** where the canvas was looked at: the user's zoom and the scroll position of the view's top left in unzoomed layout
-   * pixels (Editor.restoreView / stampView). Editor only */
+  /** where the canvas was looked at: the user's zoom and the layout point at the view's top left, in unzoomed layout
+   * pixels, of any sign: the canvas is endless (Editor.restoreView / stampView, #1075). Editor only */
   view?: { zoom: number; x: number; y: number };
   /** what the patch is about, in the author's words (the share sheet's "What's going on"; at most NOTES_MAX characters).
    * Editor only, like the name: it travels in a link and a .json file; the binary format and the FM-1 ignore it */
@@ -420,8 +420,8 @@ export function fixComments(raw: unknown): CommentBox[] {
     ids.add(r.id as number);
     out.push({
       id: r.id as number,
-      x: Math.max(0, Number(r.x) || 0),
-      y: Math.max(0, Number(r.y) || 0),
+      x: Number(r.x) || 0,
+      y: Number(r.y) || 0,
       w: size(r.w, COMMENT_MIN_W, 200),
       h: size(r.h, COMMENT_MIN_H, 60),
       text: r.text.slice(0, COMMENT_MAX),
@@ -930,7 +930,7 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
   if (!Number.isInteger(p.octave) || p.octave === 0 || p.octave! < OCTAVE_MIN || p.octave! > OCTAVE_MAX) delete p.octave;
   const v = p.view as { zoom?: unknown; x?: unknown; y?: unknown } | undefined;
   if (v && typeof v === 'object' && [v.zoom, v.x, v.y].every((n) => typeof n === 'number' && Number.isFinite(n)) && (v.zoom as number) > 0)
-    p.view = { zoom: v.zoom as number, x: Math.max(0, v.x as number), y: Math.max(0, v.y as number) };
+    p.view = { zoom: v.zoom as number, x: v.x as number, y: v.y as number };
   else delete p.view;
   return p as Patch;
 }

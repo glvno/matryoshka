@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { edgeSpeed, EDGE_SPEED, GESTURE_GAP_MS, navKey, NOTCH_ZOOM, notches, PAN_SLOP, PanPress, WheelGestures, wheelZoom, type WheelSample, type WheelSetting } from './canvas-nav';
+import { cameraOf, edgeSpeed, EDGE_SPEED, GESTURE_GAP_MS, navKey, nearEdge, NOTCH_ZOOM, notches, PAN_SLOP, PanPress, scrollFor, spaceExtent, WheelGestures, wheelZoom, zoomCamera, type WheelSample, type WheelSetting } from './canvas-nav';
 
 /** a recorded-style gesture: deltas every `dt` ms from `t0` */
 function gesture(deltas: Partial<WheelSample>[], t0 = 0, dt = 16): WheelSample[] {
@@ -146,5 +146,49 @@ describe('auto-pan near the canvas edge (#1075)', () => {
     expect(edgeSpeed({ x: 820, y: 590 }, r)).toEqual({ x: EDGE_SPEED, y: expect.closeTo(EDGE_SPEED * (22 / 32) ** 2) });
     // far outside (over the sidebar): no pan
     expect(edgeSpeed({ x: -100, y: 300 }, r)).toEqual({ x: 0, y: 0 });
+  });
+});
+
+describe('the endless canvas (#1075)', () => {
+  it('maps the camera and the scroll both ways, at negative positions too', () => {
+    const origin = { x: 1500, y: 900 }, z = 0.5;
+    const cam = { x: -400, y: -120 };
+    const s = scrollFor(cam, origin, z);
+    expect(s).toEqual({ x: 550, y: 390 });
+    expect(cameraOf(s, origin, z)).toEqual(cam);
+  });
+
+  it('a zoom holds the point under the pointer, also at the cards\' top left, and the space holds the new view', () => {
+    // cards from 0,0; the view at the cards' top left, the pointer 100 px into it, zoom 100 % -> 30 %
+    const content = { x: -32, y: -32, w: 1600, h: 900 };
+    const cam = { x: 0, y: 0 }, at = { x: 100, y: 80 };
+    const next = zoomCamera(cam, at, 1, 0.3);
+    // the layout point under the pointer before and after
+    expect(cam.x + at.x / 1).toBeCloseTo(next.x + at.x / 0.3);
+    expect(cam.y + at.y / 1).toBeCloseTo(next.y + at.y / 0.3);
+    expect(next.x).toBeLessThan(0); // (left of the old origin: a bounded scroll would have stopped at 0)
+    const view = { x: next.x, y: next.y, w: 800 / 0.3, h: 600 / 0.3 };
+    const space = spaceExtent(content, view, 0.3);
+    const origin = { x: -space.x, y: -space.y };
+    const s = scrollFor(next, origin, 0.3);
+    expect(s.x).toBeGreaterThanOrEqual(0);
+    expect(s.y).toBeGreaterThanOrEqual(0);
+    expect(s.x + 800).toBeLessThanOrEqual(space.w * 0.3);
+    expect(cameraOf(s, origin, 0.3).x).toBeCloseTo(next.x);
+  });
+
+  it('lays the space a viewport beyond the cards and the view, on whole screen pixels', () => {
+    const view = { x: 100, y: 50, w: 800, h: 600 };
+    expect(spaceExtent({ x: -500, y: 0, w: 300, h: 300 }, view, 1)).toEqual({ x: -1300, y: -600, w: 3000, h: 1850 });
+    expect(spaceExtent(null, view, 1)).toEqual({ x: -700, y: -550, w: 2400, h: 1800 });
+    const s = spaceExtent({ x: 0.3, y: 0, w: 10, h: 10 }, { x: 0, y: 0, w: 100.7, h: 50 }, 1.25);
+    expect(Number.isInteger(Math.round(s.x * 1.25 * 1e9) / 1e9)).toBe(true);
+  });
+
+  it('grows the space only once the view comes within half a viewport of an edge', () => {
+    const space = { x: -800, y: -600, w: 2400, h: 1800 };
+    expect(nearEdge(space, { x: 0, y: 0, w: 800, h: 600 })).toBe(false);
+    expect(nearEdge(space, { x: -500, y: 0, w: 800, h: 600 })).toBe(true);
+    expect(nearEdge(space, { x: 0, y: 700, w: 800, h: 600 })).toBe(true);
   });
 });

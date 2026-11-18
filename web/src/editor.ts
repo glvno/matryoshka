@@ -92,7 +92,7 @@ import { FlawPanel } from './flaws-panel';
 import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
 import { GUTTER_ROOM, ribbons, type RibbonCable, type RibbonFrame } from './ribbons';
 import { pinchStart, pinchStep, type Pinch } from './touch';
-import { edgeSpeed, KEY_ZOOM, PanPress, WheelGestures, wheelPx, wheelZoom, type WheelSetting } from './canvas-nav';
+import { cameraOf, edgeSpeed, KEY_ZOOM, nearEdge, PanPress, scrollFor, spaceExtent, WheelGestures, wheelPx, wheelZoom, zoomCamera, type WheelSetting } from './canvas-nav';
 import { scopeTools, type ScreenSpec } from './scope-view';
 import { listenable, type ListenSource } from './listen';
 import type { EnvSpec } from './env-view';
@@ -350,7 +350,8 @@ export class Editor {
   private glowLayer: SVGSVGElement | null = null;
   private preview: SVGSVGElement;
   private world: HTMLElement;
-  private space: HTMLElement;
+  /** #canvas-space: the scroll space's element */
+  private spaceEl: HTMLElement;
   private ports = new Map<string, HTMLElement>();
   private cards = new Map<number, HTMLElement>();
   private frames = new Map<number, HTMLElement>();
@@ -400,7 +401,7 @@ export class Editor {
     this.preview = canvas.querySelector('#patch-preview')! as unknown as SVGSVGElement;
     this.glowLayer = canvas.querySelector('#cable-glow') as unknown as SVGSVGElement | null;
     this.world = canvas.querySelector('#patch-world')!;
-    this.space = canvas.querySelector('#canvas-space')!;
+    this.spaceEl = canvas.querySelector('#canvas-space')!;
     this.report(fixAssemblies(this.patch, DEFS));
     new ResizeObserver(() => { this.sizeCanvas(); this.positionCables(); }).observe(canvas);
     if (dock) {
@@ -458,7 +459,11 @@ export class Editor {
       else this.undo();
     });
     this.rebuild();
-    canvas.addEventListener('scroll', () => this.queueView(), { passive: true });
+    canvas.addEventListener('scroll', () => {
+      // the endless canvas: a view near an edge of the scroll space gets more room (the camera stays)
+      if (this.shown && nearEdge(this.space, this.viewRect())) this.sizeCanvas();
+      this.queueView();
+    }, { passive: true });
     this.restoreView();
   }
 
@@ -509,7 +514,7 @@ export class Editor {
     } finally {
       this.restoring = false;
     }
-    this.canvas.scrollTo(v.x * this.zoom, v.y * this.zoom);
+    this.sizeCanvas({ x: v.x, y: v.y });
   }
 
   private queueView(): void {
@@ -519,8 +524,8 @@ export class Editor {
 
   /** write the current view into the patch, saved like a layout change (no undo step, no engine reload) */
   private stampView(): void {
-    const c = this.canvas;
-    const v = { zoom: this.userZoom, x: Math.round(c.scrollLeft / this.zoom), y: Math.round(c.scrollTop / this.zoom) };
+    const cam = this.camera;
+    const v = { zoom: this.userZoom, x: Math.round(cam.x), y: Math.round(cam.y) };
     const o = this.patch.view;
     if (o && o.zoom === v.zoom && o.x === v.x && o.y === v.y) return;
     this.patch.view = v;
@@ -536,8 +541,8 @@ export class Editor {
 
   /** the canvas's view in patch layout pixels (what is scrolled into sight, at the zoom) */
   private viewRect(): Rect {
-    const c = this.canvas, z = this.zoom;
-    return { x: c.scrollLeft / z, y: c.scrollTop / z, w: c.clientWidth / z, h: c.clientHeight / z };
+    const c = this.canvas, z = this.zoom, cam = this.camera;
+    return { x: cam.x, y: cam.y, w: c.clientWidth / z, h: c.clientHeight / z };
   }
 
   /** the host's controls and panels drawn over the canvas (the view switch, ?, the diff, the tutorial card), in patch layout px */
@@ -581,14 +586,14 @@ export class Editor {
   /** scroll just enough to show a new card (its element, else `fallback`), its top left first when it is larger than the view */
   private scrollToCard(el: HTMLElement | undefined, fallback: Rect): void {
     const r = el?.offsetWidth ? { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight } : fallback;
-    const c = this.canvas, z = this.zoom, PAD = 12;
-    const axis = (pos: number, len: number, scroll: number, size: number): number => {
-      const a = (pos - PAD) * z, b = (pos + len + PAD) * z;
-      if (b - a > size || a < scroll) return a;
-      return b > scroll + size ? b - size : scroll;
+    const v = this.viewRect(), PAD = 12;
+    const axis = (pos: number, len: number, at: number, size: number): number => {
+      const a = pos - PAD, b = pos + len + PAD;
+      if (b - a > size || a < at) return a;
+      return b > at + size ? b - size : at;
     };
-    const x = axis(r.x, r.w, c.scrollLeft, c.clientWidth), y = axis(r.y, r.h, c.scrollTop, c.clientHeight);
-    if (x !== c.scrollLeft || y !== c.scrollTop) c.scrollTo(Math.max(0, x), Math.max(0, y));
+    const x = axis(r.x, r.w, v.x, v.w), y = axis(r.y, r.h, v.y, v.h);
+    if (x !== v.x || y !== v.y) this.sizeCanvas({ x, y });
   }
 
   add(type: string): void {
@@ -993,14 +998,52 @@ export class Editor {
     }));
   }
 
-  private sizeCanvas(): void {
+  // ---- the endless canvas (#1075): cards sit at any layout position, negative too. The scroll space (#canvas-space) is
+  // laid out round the cards and the view, a viewport further out on every side (canvas-nav.ts spaceExtent), and the world
+  // (layout 0, 0) sits at `origin` in it. It grows as the view nears an edge, and the camera (the layout point at the
+  // view's top left) stays put whenever it is laid out again.
+
+  /** where layout 0, 0 is in the scroll space, in layout px */
+  private origin: Pt = { x: 0, y: 0 };
+  /** the scroll space in layout px */
+  private space: Rect = { x: 0, y: 0, w: 0, h: 0 };
+  /** the camera as last laid out: kept while the canvas is hidden (another view), where it loses its scroll position */
+  private cam: Pt = { x: 0, y: 0 };
+  /** the scroll position is the camera's (the canvas was laid out while shown) */
+  private shown = false;
+
+  /** the layout point at the view's top left */
+  private get camera(): Pt {
+    const c = this.canvas;
+    if (this.shown && c.clientWidth) this.cam = cameraOf({ x: c.scrollLeft, y: c.scrollTop }, this.origin, this.zoom);
+    return this.cam;
+  }
+
+  /** lay the scroll space out round the cards and the view at `cam` (by default where it is), and scroll to `cam` */
+  private sizeCanvas(cam: Pt = this.camera): void {
     const elements = [...this.cards.values(), ...this.containers.values(), ...this.frames.values(), ...this.commentEls.values()];
-    const w = Math.max(this.canvas.clientWidth / this.zoom, ...elements.map((el) => el.offsetLeft + el.offsetWidth + 32));
-    const h = Math.max(this.canvas.clientHeight / this.zoom, ...elements.map((el) => el.offsetTop + el.offsetHeight + 32));
-    this.world.style.width = `${w}px`;
-    this.world.style.height = `${h}px`;
-    this.space.style.width = `${Math.ceil(w * this.zoom)}px`;
-    this.space.style.height = `${Math.ceil(h * this.zoom)}px`;
+    const c = this.canvas, z = this.zoom;
+    const MARGIN = 32;
+    let content: Rect | null = null;
+    if (elements.length) {
+      const x0 = Math.min(...elements.map((el) => el.offsetLeft)) - MARGIN, y0 = Math.min(...elements.map((el) => el.offsetTop)) - MARGIN;
+      const x1 = Math.max(...elements.map((el) => el.offsetLeft + el.offsetWidth)) + MARGIN, y1 = Math.max(...elements.map((el) => el.offsetTop + el.offsetHeight)) + MARGIN;
+      content = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      // (the world's own box reaches the cards' far edges: the cable layers fill it)
+      this.world.style.width = `${Math.max(0, x1)}px`;
+      this.world.style.height = `${Math.max(0, y1)}px`;
+    }
+    this.space = spaceExtent(content, { x: cam.x, y: cam.y, w: c.clientWidth / z, h: c.clientHeight / z }, z);
+    this.origin = { x: -this.space.x, y: -this.space.y };
+    const o = { x: Math.round(this.origin.x * z), y: Math.round(this.origin.y * z) };
+    this.world.style.transform = o.x || o.y || z !== 1 ? `translate(${o.x}px, ${o.y}px) scale(${z})` : '';
+    this.spaceEl.style.width = `${Math.ceil(this.space.w * z)}px`;
+    this.spaceEl.style.height = `${Math.ceil(this.space.h * z)}px`;
+    this.cam = cam;
+    this.shown = c.clientWidth > 0;
+    if (!this.shown) return;
+    const s = scrollFor(cam, this.origin, z);
+    if (c.scrollLeft !== s.x || c.scrollTop !== s.y) c.scrollTo(s.x, s.y);
   }
 
   /** ×N on a card or assembly that runs once per part of its poly assembly */
@@ -2732,7 +2775,6 @@ export class Editor {
       this.userZoom = next;
       this.queueView();
     }
-    this.world.style.transform = this.zoom === 1 ? '' : `scale(${this.zoom})`;
     this.sizeCanvas();
     // a live zoom only moves the cables' ends (the same cables); the user's redraws them
     if (live) this.positionCables();
@@ -2771,7 +2813,7 @@ export class Editor {
     this.tidied = this.layoutKey();
     if (!changed) return this.ev.onError('already tidy');
     this.rebuild();
-    this.canvas.scrollTo(0, 0);
+    this.sizeCanvas({ x: 0, y: 0 });
     this.ev.onLayout(this.patch);
   }
 
@@ -2807,18 +2849,17 @@ export class Editor {
   zoomAround(z: number, live = false, at?: Pt): void {
     const c = this.canvas;
     const r = c.getBoundingClientRect();
-    const px = at ? at.x - r.left - c.clientLeft : c.clientWidth / 2, py = at ? at.y - r.top - c.clientTop : c.clientHeight / 2;
-    const cx = (c.scrollLeft + px) / this.zoom, cy = (c.scrollTop + py) / this.zoom;
-    const was = this.zoom;
+    const p = at ? { x: at.x - r.left - c.clientLeft, y: at.y - r.top - c.clientTop } : { x: c.clientWidth / 2, y: c.clientHeight / 2 };
+    const cam = this.camera, was = this.zoom;
     this.setZoom(z, live);
     if (this.zoom === was) return;
-    c.scrollLeft = cx * this.zoom - px;
-    c.scrollTop = cy * this.zoom - py;
+    // the space is laid out round the new view, so the point holds even at the cards' top left (no scroll 0 to stop at)
+    this.sizeCanvas(zoomCamera(cam, p, was, this.zoom));
   }
 
-  /** every card in view: the zoom that fits the cards' extent into the canvas, scrolled to its top left */
+  /** every card in view: the zoom that fits the cards' extent into the canvas, centred */
   zoomToFit(): void {
-    this.fitElements([...this.cards.values(), ...this.containers.values(), ...this.frames.values()], false);
+    this.fitElements([...this.cards.values(), ...this.containers.values(), ...this.frames.values()]);
   }
 
   /** Shift+2 (#1075): the zoom that fits the selected cards, assemblies and comments, centred; false with nothing selected */
@@ -2829,25 +2870,24 @@ export class Editor {
       ...[...this.selectedComments].map((id) => this.commentEls.get(id)),
     ].filter((el): el is HTMLElement => !!el);
     if (!els.length) return false;
-    this.fitElements(els, true);
+    this.fitElements(els);
     return true;
   }
 
-  /** the zoom that fits `elements` (at most 150 %), scrolled to their top left, or with them centred */
-  private fitElements(elements: HTMLElement[], centre: boolean): void {
+  /** the zoom that fits `elements` (at most 150 %), with them centred */
+  private fitElements(elements: HTMLElement[]): void {
     if (!elements.length) return;
     const PAD = 24;
     // an open frame's cables run in a gutter round it (ribbons.ts): fit that too
     const out = (el: HTMLElement): number => (el.classList.contains('frame') ? GUTTER_ROOM : 0);
-    const x0 = Math.max(0, Math.min(...elements.map((el) => el.offsetLeft - out(el))) - PAD);
-    const y0 = Math.max(0, Math.min(...elements.map((el) => el.offsetTop - out(el))) - PAD);
+    const x0 = Math.min(...elements.map((el) => el.offsetLeft - out(el))) - PAD;
+    const y0 = Math.min(...elements.map((el) => el.offsetTop - out(el))) - PAD;
     const w = Math.max(...elements.map((el) => el.offsetLeft + el.offsetWidth + out(el))) + PAD - x0;
     const h = Math.max(...elements.map((el) => el.offsetTop + el.offsetHeight + out(el))) + PAD - y0;
     const c = this.canvas;
     this.setZoom(Math.min(1.5, c.clientWidth / w, c.clientHeight / h));
     const z = this.zoom;
-    if (centre) c.scrollTo(Math.max(0, (x0 + w / 2) * z - c.clientWidth / 2), Math.max(0, (y0 + h / 2) * z - c.clientHeight / 2));
-    else c.scrollTo(x0 * z, y0 * z);
+    this.sizeCanvas({ x: x0 + w / 2 - c.clientWidth / z / 2, y: y0 + h / 2 - c.clientHeight / z / 2 });
   }
 
   /** Ctrl / Cmd + = and − (#1075): one step in or out, around the canvas's centre */
@@ -3251,7 +3291,7 @@ export class Editor {
       };
       menu.append(b);
     }
-    Object.assign(menu.style, { left: `${Math.max(0, at.x)}px`, top: `${Math.max(0, at.y)}px` });
+    Object.assign(menu.style, { left: `${at.x}px`, top: `${at.y}px` });
     this.modulesEl.append(menu);
     const away = (e: Event): void => {
       if (!menu.contains(e.target as Node)) {
@@ -3298,8 +3338,8 @@ export class Editor {
     this.touch();
     moveComments(notes, dx, dy);
     for (const m of set.mods) {
-      m.x = Math.max(0, m.x + dx);
-      m.y = Math.max(0, m.y + dy);
+      m.x += dx;
+      m.y += dy;
     }
     for (const a of set.asms) moveAssembly(this.patch, a, dx, dy);
     this.rebuild();
@@ -3366,7 +3406,7 @@ export class Editor {
     this.clipKey = key;
     const off = PASTE_STEP * this.clipPastes;
     return this.change(() => {
-      const got = pasteClip(this.patch, DEFS, clip, Math.max(0, clip.x + off), Math.max(0, clip.y + off));
+      const got = pasteClip(this.patch, DEFS, clip, clip.x + off, clip.y + off);
       this.selected.clear();
       for (const id of got.modules) this.selected.add(id);
       this.selectedAsm.clear();
@@ -5886,8 +5926,8 @@ export class Editor {
       if (!el) continue;
       const r = this.frameRect(a, exclude, excludeAsm) ?? this.frameRect(a);
       if (!r) continue;
-      el.style.left = `${Math.max(0, r.x)}px`;
-      el.style.top = `${Math.max(0, r.y)}px`;
+      el.style.left = `${r.x}px`;
+      el.style.top = `${r.y}px`;
       el.style.width = `${r.w}px`;
       el.style.height = `${r.h}px`;
     }
@@ -5953,8 +5993,8 @@ export class Editor {
   }
 
   private place(m: ModuleInst, dx: number, dy: number): void {
-    m.x = Math.max(0, m.x + dx);
-    m.y = Math.max(0, m.y + dy);
+    m.x += dx;
+    m.y += dy;
     const el = this.cards.get(m.id);
     if (el) {
       el.style.left = `${m.x}px`;
@@ -6067,7 +6107,7 @@ export class Editor {
     this.change(() => {
       removeMember(this.patch, a, m.id);
       if (up && assembliesOf(this.patch).includes(up)) addMember(this.patch, up, m.id);
-      if (r) { m.x = Math.max(0, r.x + r.w + 24); m.y = Math.max(0, r.y); }
+      if (r) { m.x = r.x + r.w + 24; m.y = r.y; }
     });
   }
 
@@ -6079,7 +6119,7 @@ export class Editor {
       if (up && assembliesOf(this.patch).includes(up)) addChild(this.patch, up, a.id);
       if (r) {
         const box = a.open ? this.frameRect(a) : { x: a.x, y: a.y };
-        if (box) moveAssembly(this.patch, a, Math.max(0, r.x + r.w + 24) - box.x, Math.max(0, r.y) - box.y);
+        if (box) moveAssembly(this.patch, a, r.x + r.w + 24 - box.x, r.y - box.y);
       }
     });
   }
@@ -6195,8 +6235,11 @@ export class Editor {
       this.oneFinger = stop; // a second finger: the pinch pans
       return;
     }
-    const base = this.canvas.getBoundingClientRect();
-    const at = (ev: PointerEvent): Pt => ({ x: (ev.clientX - base.left) / this.zoom + this.canvas.scrollLeft / this.zoom, y: (ev.clientY - base.top) / this.zoom + this.canvas.scrollTop / this.zoom });
+    // (the world's box moves as the canvas scrolls and its space grows: read it at every move)
+    const at = (ev: PointerEvent): Pt => {
+      const w = this.world.getBoundingClientRect();
+      return { x: (ev.clientX - w.left) / this.zoom, y: (ev.clientY - w.top) / this.zoom };
+    };
     const o = at(e);
     const box = document.createElement('div');
     box.className = rowMode ? 'rubber rows' : 'rubber';

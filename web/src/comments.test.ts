@@ -26,14 +26,14 @@ describe('comment boxes (#518)', () => {
     const a = addComment(p, 10, 20, 'hello');
     const b = addComment(p, -5, 40);
     expect([a.id, b.id]).toEqual([1, 2]);
-    expect(b.x).toBe(0);
+    expect(b.x).toBe(-5); // (the canvas is endless, #1075)
     expect(setCommentText(p, a.id, 'x'.repeat(COMMENT_MAX + 10))).toBe(true);
     expect(p.comments![0].text).toHaveLength(COMMENT_MAX);
     expect(setCommentText(p, a.id, p.comments![0].text)).toBe(false);
     sizeComment(a, 1, 99999);
     expect([a.w, a.h]).toEqual([80, 2000]);
     moveComments([a], -100, 5);
-    expect([a.x, a.y]).toEqual([0, 25]);
+    expect([a.x, a.y]).toEqual([-90, 25]);
     removeComments(p, [a.id, b.id]);
     expect(p.comments).toBeUndefined();
   });
@@ -57,7 +57,7 @@ describe('comment boxes (#518)', () => {
     ]);
     expect(got).toEqual([
       { id: 1, x: 5, y: 6, w: 80, h: 2000, text: 'a' },
-      { id: 3, x: 0, y: 0, w: 200, h: 60, text: 'y'.repeat(COMMENT_MAX) },
+      { id: 3, x: 0, y: -4, w: 200, h: 60, text: 'y'.repeat(COMMENT_MAX) },
     ]);
     expect(fixComments('nope')).toEqual([]);
   });
