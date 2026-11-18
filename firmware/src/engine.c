@@ -606,6 +606,7 @@ typedef struct {
         struct { int32_t v, c1; } sh;
         struct { uint32_t rnd, rnd0; uint8_t reg, pat, c1, r1; } shr;   /* Shift register: the flip stream and where a reset restarts it; the stages (s1 in bit 7), the pattern a reset restores, clock / reset high at the previous sample */
         struct { uint8_t hi; } cmp;   /* Comparator: gt is high */
+        struct { int32_t vac, y1, y2, t1; } lpg;   /* Low pass gate: the vactrol (Q30), the two one-poles (Q24), strike at the previous sample */
         struct { int32_t rem, t1; } pls;
         struct { int32_t w[SELECT_NOUT - 1]; int8_t k; uint8_t fading; } sel;   /* Selector: each input's weight (Q16), the position (-1: none yet) */
     } s;
@@ -10530,6 +10531,52 @@ static void m_comp(const node_t *nd, inst_t *it, uint32_t n)
     (void)nd;
 }
 
+/* Low pass gate (modules.ts lpg, #1018), ported from KITTEN RACK's m_lpg (https://github.com/BlackKittenDevices/kitten-rack,
+ * a GPL-3.0 fork of Matryoshka): the vactrol (Q30) opens two one-poles (Q24) and, in combo, the gain. res (added here)
+ * feeds the second one-pole back against the input, the input raised by as much, at LPG_RES_K x res x (1 - vac^2)^2, so
+ * it rings while the gate is nearly closed and stays stable as it opens. vca runs no filter. */
+static void m_lpg(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *in = it->in[LPG_I_IN], *cv = it->in[LPG_I_CV], *st = it->in[LPG_I_STRIKE];
+    esig_t *out = it->out[LPG_O_OUT];
+    int32_t ka = env_rate(LPG_ATTACK_Q16), kd = env_rate(EF(it, LPG_P_DECAY)), off = EF(it, LPG_P_OFFSET), lvl = EF(it, LPG_P_LEVEL);
+    int32_t kr = mul16(EF(it, LPG_P_RES), LPG_RES_K_Q16);   /* Q16 */
+    int mode = round_q16(EF(it, LPG_P_MODE));
+    int32_t vac = it->s.lpg.vac, y1 = it->s.lpg.y1, y2 = it->s.lpg.y2, t1 = it->s.lpg.t1;
+    uint32_t i;
+    for (i = 0; i < n; i++) {
+        int32_t d, x, y;
+        if (st[i] >= 32768 && t1 < 32768)
+            vac = 1 << 30;                                  /* strike: open at once */
+        t1 = st[i];
+        d = (clampi(cv[i] + off, 0, ENG_ONE) << 14) - vac;
+        if (d > 0)
+            vac += mulq(d, ka, 30);
+        else                                                /* the release slows down as it closes: kd (0.25 + 0.75 vac) */
+            vac += mulq(d, mulq(kd, (1 << 28) + mulq(vac, 805306368, 30), 30), 30);
+        x = clampi(in[i], -(LPG_CLIP_Q24 >> 8), (LPG_CLIP_Q24 >> 8) - 1);
+        if (mode == 2)
+            y = mulq(x, vac, 30);
+        else {
+            int32_t v2 = mulq(vac, vac, 30), g = 2147484 + mulq(966367642, v2, 30), u = x << 8;   /* g: 0.002 + 0.9 vac^2, Q30 */
+            if (kr > 0) {
+                int32_t w = (1 << 30) - v2;
+                int64_t f = (int64_t)u + (((int64_t)(u - y2) * mulq(kr, mulq(w, w, 30), 30)) >> 16);
+                u = f > LPG_CLIP_Q24 ? LPG_CLIP_Q24 : f < -LPG_CLIP_Q24 ? -LPG_CLIP_Q24 : (int32_t)f;
+            }
+            y1 += mulq(u - y1, g, 30);
+            y2 += mulq(y1 - y2, g, 30);
+            y = mode == 1 ? y2 >> 8 : mulq(y2 >> 8, vac, 30);
+        }
+        out[i] = mul16(y, lvl);
+    }
+    it->s.lpg.vac = vac;
+    it->s.lpg.y1 = y1;
+    it->s.lpg.y2 = y2;
+    it->s.lpg.t1 = t1;
+    (void)nd;
+}
+
 /* the Range module's curve on t (Q16; modules.ts rangeCurve): t + c t (t - 1) inside 0..1, straight on with the end's
  * slope outside it (1 - c below, 1 + c above) */
 static int32_t range_curve(int32_t t, int32_t c)
@@ -11111,6 +11158,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_COMP: m_comp(nd, it, n); break;
     case T_RANGE: m_range(nd, it, n); break;
     case T_MATRIX: m_matrix(nd, it, n); break;
+    case T_LPG: m_lpg(nd, it, n); break;
     case T_QUANT: m_quant(nd, it, n); break;
     case T_PULSE: m_pulse(nd, it, n); break;
     case T_PAN: m_pan(nd, it, n); break;

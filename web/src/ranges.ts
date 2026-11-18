@@ -199,6 +199,7 @@ export const OUTPUT_RANGES: Record<string, Record<string, Range>> = {
     lt: `${GATE} (1 while a is below b + thresh)`,
     trig: `${GATE} (a one-sample pulse each time gt rises)`,
   },
+  lpg: { out: (p) => `${FOLLOWS} × level (${num(get(p, 'level', 1))}), closed at 0; resonance can lift it` },
 };
 
 /** the range an output carries, worked out from the module's parameters now ('' for an output without one) */

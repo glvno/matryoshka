@@ -589,6 +589,30 @@ kit('comp-thresh', (add, wire) => {
   wire(vca, 'out', out, 'l');
   wire(cmp, 'gt', out, 'r');
 });
+// Low pass gate (#1018, ported from KITTEN RACK's kr-lpg kits): struck by a square LFO in combo, opened by a slow
+// triangle in lp; vca struck at 9 Hz; resonance in combo struck and in lp swept by cv (the peak rings as it closes)
+kit('lpg-strike', (add, wire) => {
+  const clock = add('lfo', 0, 0, { wave: 3, rate: 6, depth: 1 }), slow = add('lfo', 0, 0, { wave: 1, rate: 1.3, depth: 1 });
+  const osc = add('osc', 0, 0, { wave: 2, coarse: -12, level: 0.8 });
+  const a = add('lpg', 0, 0, { mode: 0, decay: 0.3 }), b = add('lpg', 0, 0, { mode: 1, decay: 0.8, offset: 0.1 });
+  const out = add('output', 0, 0);
+  wire(clock, 'out', a, 'strike'); wire(osc, 'out', a, 'in'); wire(osc, 'out', b, 'in'); wire(slow, 'out', b, 'cv');
+  wire(a, 'out', out, 'l'); wire(b, 'out', out, 'r');
+});
+kit('lpg-vca', (add, wire) => {
+  const clock = add('lfo', 0, 0, { wave: 3, rate: 9, depth: 1 }), osc = add('osc', 0, 0, { wave: 0, level: 0.8 });
+  const a = add('lpg', 0, 0, { mode: 2, decay: 0.15, level: 1.5 }), out = add('output', 0, 0);
+  wire(clock, 'out', a, 'strike'); wire(osc, 'out', a, 'in'); wire(a, 'out', out, 'l');
+});
+kit('lpg-res', (add, wire) => {
+  const clock = add('lfo', 0, 0, { wave: 3, rate: 4, depth: 1 }), slow = add('lfo', 0, 0, { wave: 0, rate: 0.7, depth: 1 });
+  const osc = add('osc', 0, 0, { wave: 2, coarse: -12, level: 0.8 });
+  const a = add('lpg', 0, 0, { mode: 0, decay: 0.6, res: 1 }), b = add('lpg', 0, 0, { mode: 1, decay: 0.5, res: 0.6 }, { map: { p1: ['offset'] } });
+  const out = add('output', 0, 0);
+  wire(clock, 'out', a, 'strike'); wire(osc, 'out', a, 'in'); wire(osc, 'out', b, 'in'); wire(slow, 'out', b, 'cv'); wire(slow, 'out', b, 'p1');
+  wire(a, 'out', out, 'l'); wire(b, 'out', out, 'r');
+});
+for (const k of ['lpg-strike', 'lpg-vca', 'lpg-res']) ends[k] = 128 * 600;
 // modulation scaling (#526): the Range module (a curve, unclamped past its input range; clamped and inverted), its curve
 // moved through p1; a depth past 1 (up to 2) on both pins; a bipolar macro range next to a plain one
 kit('range-curve', (add, wire) => {

@@ -4501,7 +4501,72 @@ const harm: ModuleImpl<null> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm];
+// Low pass gate (#1018): ported from KITTEN RACK (https://github.com/BlackKittenDevices/kitten-rack, a GPL-3.0 fork of
+// Matryoshka; its modules.ts lpg and engine.c m_lpg), with a resonance row added.
+export const LPG_MODES = ['combo', 'lp', 'vca'];
+/** the vactrol's attack, s (131 / 65536: what the firmware's Q16 constant holds, LPG_ATTACK_Q16) */
+export const LPG_ATTACK = 131 / 65536;
+/** the resonance's feedback at res 1 while the gate is closed; it falls as (1 - vactrol²)² while the gate opens, so the
+ *  filter stays stable however high its cutoff goes (at most about half the feedback that would make it ring on) */
+export const LPG_RES_K = 24;
+/** the filter's input and inner signal are held to ±this (the firmware's Q24 states) */
+export const LPG_CLIP = 32;
+interface LpgState { vac: number; y1: number; y2: number; t1: number }
+/**
+ * Low pass gate (#1018, after the Buchla 292; ported from KITTEN RACK's lpg): a vactrol (a lamp and a light-dependent
+ * resistor: a fast attack, a release that slows down as it closes) opens a two-pole low pass and, in combo, a VCA
+ * together. cv + offset sets how far it opens; a rising strike opens it all at once, and it closes in `decay` (a ping, the
+ * wooden "bonk"). lp: the filter only, vca: the gain only. `res` feeds the filter's output back against its input (the
+ * level kept: the input is raised by as much), a peak that rings while the gate is nearly closed and fades as it opens;
+ * 0, the default, is KITTEN RACK's sound exactly. engine.c m_lpg the same in fixed point (vactrol Q30, filter Q24).
+ */
+const lpg: ModuleImpl<LpgState> = {
+  def: {
+    type: 'lpg',
+    label: 'Low pass gate',
+    since: 62,
+    inputs: [audio('in'), control('cv'), gate('strike')],
+    outputs: [audio('out')],
+    params: [
+      param('mode', 0, 2, 0, { step: 1, choices: LPG_MODES }),
+      param('decay', 0.02, 3, 0.4, { unit: 's', step: 0.01, log: true }),
+      param('offset', 0, 1, 0, { step: 0.01 }),
+      param('level', 0, 2, 1, { step: 0.01 }),
+      param('res', 0, 1, 0, { step: 0.01 }),
+    ],
+  },
+  init: () => ({ vac: 0, y1: 0, y2: 0, t1: 0 }),
+  process(c, s) {
+    const ka = 1 - Math.exp(-4.6 / Math.max(LPG_ATTACK * c.sr, 1)), kd = 1 - Math.exp(-4.6 / Math.max((c.p.decay ?? 0.4) * c.sr, 1));
+    const mode = Math.round(c.p.mode ?? 0), off = c.p.offset ?? 0, lvl = c.p.level ?? 1, kr = LPG_RES_K * (c.p.res ?? 0);
+    const { in: inp, cv, strike } = c.inp, out = c.out.out;
+    for (let i = 0; i < c.n; i++) {
+      const st = strike[i];
+      if (st >= 0.5 && s.t1 < 0.5) s.vac = 1;
+      s.t1 = st;
+      const tgt = Math.min(1, Math.max(0, cv[i] + off));
+      if (tgt > s.vac) s.vac += (tgt - s.vac) * ka;
+      else s.vac += (tgt - s.vac) * kd * (0.25 + 0.75 * s.vac);
+      const x = Math.min(LPG_CLIP, Math.max(-LPG_CLIP, inp[i]));
+      let y: number;
+      if (mode === 2) y = x * s.vac;
+      else {
+        const v2 = s.vac * s.vac, g = 0.002 + 0.9 * v2;
+        let u = x;
+        if (kr > 0) {
+          const w = 1 - v2;
+          u = Math.min(LPG_CLIP, Math.max(-LPG_CLIP, x + kr * w * w * (x - s.y2)));
+        }
+        s.y1 += g * (u - s.y1);
+        s.y2 += g * (s.y1 - s.y2);
+        y = mode === 1 ? s.y2 : s.y2 * s.vac;
+      }
+      out[i] = y * lvl;
+    }
+  },
+};
+
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm, lpg];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

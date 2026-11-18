@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 55
+#define N_TYPES 56
 enum {
     T_FM1,
     T_OSC,
@@ -60,6 +60,7 @@ enum {
     T_RANGE,
     T_MATRIX,
     T_HARM,
+    T_LPG,
 };
 
 /* fm1: Main */
@@ -1108,6 +1109,24 @@ enum {
 #define HARM_CVBASE -1
 #define HARM_NDATA 0
 
+/* lpg: Low pass gate */
+#define LPG_I_IN 0
+#define LPG_I_CV 1
+#define LPG_I_STRIKE 2
+#define LPG_I_P1 3
+#define LPG_I_P2 4
+#define LPG_O_OUT 0
+#define LPG_P_MODE 0
+#define LPG_P_DECAY 1
+#define LPG_P_OFFSET 2
+#define LPG_P_LEVEL 3
+#define LPG_P_RES 4
+#define LPG_NIN 5
+#define LPG_NOUT 1
+#define LPG_NPAR 5
+#define LPG_CVBASE 3
+#define LPG_NDATA 0
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 #define DELAY_SYNC_TOP 520   /* ms: the synced note lengths spread over 1..this (modules.ts) */
@@ -1177,6 +1196,9 @@ static const int32_t ANALOG_SAWC_T[129] = {1073741824, 1071647400, 1069558421, 1
 #define SHREG_PAT_SEED 0x5bd1e995u   /* mixed with the instance seed: its starting pattern */
 #define SHREG_FLIP_SEED 0x27d4eb2fu   /* mixed with the instance seed: its flip stream */
 #define SHREG_PAT_ZERO 0xa5u   /* the starting pattern when the seed gives all zeros */
+#define LPG_ATTACK_Q16 131   /* the Low pass gate's vactrol attack, s (#1018) */
+#define LPG_RES_K_Q16 1572864   /* its resonance feedback at res 1 with the gate closed */
+#define LPG_CLIP_Q24 536870912   /* its filter's input and inner signal are held to +-this */
 #define ADSR_LONG_Q16 157286   /* the ADSR's long: decay and release x 2.4 */
 
 #define TRACK_STEPS 64        /* a Steps track's most steps (track.ts); its name follows its pins in the record */
@@ -1829,6 +1851,17 @@ static const char *const HARM_CH0[] = {"NONE", "MAJ", "MIN", "DIM", 0};
 static const char *const HARM_CH1[] = {"NONE", "SUS2", "SUS4", "SUS2+4", 0};
 static const char *const HARM_CH2[] = {"NONE", "7", "9", "7+9", 0};
 static const char *const *const HARM_CH[] = {HARM_CH0, HARM_CH1, HARM_CH2, 0, ADSR_CH4, ALLOC_CH6};
+static const char *const LPG_INNAMES[] = {"IN", "CV", "STRIKE", "P1", "P2"};
+static const int32_t LPG_MIN[] = {0, 1311, 0, 0, 0};
+static const int32_t LPG_MAX[] = {131072, 196608, 65536, 131072, 65536};
+static const int32_t LPG_DEF[] = {0, 26214, 0, 65536, 0};
+static const int32_t LPG_INC[] = {65536, 1953, 655, 1311, 655};
+static const int32_t LPG_STEP[] = {65536, 655, 655, 655, 655};
+static const char *const LPG_PN[] = {"MODE", "DECAY", "OFFSET", "LEVEL", "RES"};
+static const uint8_t LPG_LOG[] = {0, 1, 0, 0, 0};
+static const char *const LPG_UNIT[] = {"", "S", "", "", ""};
+static const char *const LPG_CH0[] = {"COMBO", "LP", "VCA", 0};
+static const char *const *const LPG_CH[] = {LPG_CH0, 0, 0, 0, 0};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0, FM1_STEP},   /* fm1 */
@@ -1886,12 +1919,13 @@ static const def_t DEFS[N_TYPES] = {
     {RANGE_NIN, RANGE_NOUT, RANGE_NPAR, 0, RANGE_CVBASE, 0, RANGE_NDATA, 0, RANGE_MIN, RANGE_MAX, RANGE_DEF, RANGE_INC, "RANGE", RANGE_PN, RANGE_INNAMES, RANGE_LOG, RANGE_UNIT, RANGE_CH, 0, 0, RANGE_STEP},   /* range */
     {MATRIX_NIN, MATRIX_NOUT, MATRIX_NPAR, 0, MATRIX_CVBASE, -1, MATRIX_NDATA, 15, MATRIX_MIN, MATRIX_MAX, MATRIX_DEF, MATRIX_INC, "MATRIX", MATRIX_PN, MATRIX_INNAMES, MATRIX_LOG, MATRIX_UNIT, MATRIX_CH, 0, 0, MATRIX_STEP},   /* matrix */
     {HARM_NIN, HARM_NOUT, HARM_NPAR, 0, HARM_CVBASE, -1, HARM_NDATA, 0, HARM_MIN, HARM_MAX, HARM_DEF, HARM_INC, "HARMONIZER", HARM_PN, HARM_INNAMES, HARM_LOG, HARM_UNIT, HARM_CH, 0, 0, HARM_STEP},   /* harm */
+    {LPG_NIN, LPG_NOUT, LPG_NPAR, 0, LPG_CVBASE, 0, LPG_NDATA, 1, LPG_MIN, LPG_MAX, LPG_DEF, LPG_INC, "LOW PASS GATE", LPG_PN, LPG_INNAMES, LPG_LOG, LPG_UNIT, LPG_CH, 0, 0, LPG_STEP},   /* lpg */
 };
 /* one copy of each type, a block: what the two-core schedule balances (engine.c sched_build, #802), in 64 cycles of
  * web/src/cpu-costs.json (its run and parameter inputs: cpu.ts scheduleCost) */
-static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 34, 9, 437, 11, 112, 1568, 3, 40, 96, 39, 328, 178, 326, 156, 89, 36, 36, 40, 49, 72, 548, 266, 54, 361, 105, 54, 37, 468, 271, 534, 668, 11, 15, 1, 11, 53, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4};
+static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 34, 9, 437, 11, 112, 1568, 3, 40, 96, 39, 328, 178, 326, 156, 89, 36, 36, 40, 49, 72, 548, 266, 54, 361, 105, 54, 37, 468, 271, 534, 668, 11, 15, 1, 11, 53, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4, 1};
 /* a module bypassed when the patch loads, in the same units: passing an input through (D-1104; cpu.ts scheduleBypass) */
 #define DEF_COST_BYPASS 18u
 /* Gate-port kinds for pattern authorization, independent of environment grouping (bit n: port n is a gate) */
-static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u};
-static const uint32_t PRESET_GATE_OUT[] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u};
+static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u,4u};
+static const uint32_t PRESET_GATE_OUT[] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u,0u};

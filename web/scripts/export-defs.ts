@@ -8,6 +8,7 @@
 // Run from web/: npx vite-node scripts/export-defs.ts
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { ADSR_LONG, ANALOG_CURVE, ANALOG_DIP, ANALOG_DIP_S, ANALOG_PWO, ANALOG_SKEW, ANALOG_TOL, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, FILTER_DRIVE_KNEE, FILTER_DRIVE_TOP, DIODE_W180, DIODE_KCRIT, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_REACH_MAX, DELAY_RATES, DELAY_TAIL, delayAaCoefs, DEVICE_SR, DELAY_TAPE_LP, DELAY_TAPE_HP, delayTapePole, DELAY_WOW_HZ, DELAY_FLUTTER_HZ, DELAY_WOW_MS, DELAY_FLUTTER_MS, turnInc, delayDepth8, DELAY_HEADS, DELAY_HEAD_MASK, DELAY_HEAD_GAIN, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, LFO_TEMPO, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY, ONCE_BAR, CLICK_MS, CLICK_LEVEL_Q16, CLICK_HZ, CLICK_ACCENT_HZ } from '../src/modules';
+import { LPG_ATTACK, LPG_CLIP, LPG_RES_K } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16, VERSION, deviceBudget, DEVICE } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
 import { ACCENT_VEL, TRACK_NOTES_MAX } from '../src/track';
@@ -127,6 +128,9 @@ w(`#define SHREG_STAGES ${SHREG_STAGES}   /* the Shift register's stages (#438) 
 w(`#define SHREG_PAT_SEED 0x${SHREG_PAT_SEED.toString(16)}u   /* mixed with the instance seed: its starting pattern */`);
 w(`#define SHREG_FLIP_SEED 0x${SHREG_FLIP_SEED.toString(16)}u   /* mixed with the instance seed: its flip stream */`);
 w(`#define SHREG_PAT_ZERO 0x${SHREG_PAT_ZERO.toString(16)}u   /* the starting pattern when the seed gives all zeros */`);
+w(`#define LPG_ATTACK_Q16 ${Math.round(LPG_ATTACK * 65536)}   /* the Low pass gate's vactrol attack, s (#1018) */`);
+w(`#define LPG_RES_K_Q16 ${LPG_RES_K * 65536}   /* its resonance feedback at res 1 with the gate closed */`);
+w(`#define LPG_CLIP_Q24 ${LPG_CLIP * (1 << 24)}   /* its filter's input and inner signal are held to +-this */`);
 w(`#define ADSR_LONG_Q16 ${Math.round(ADSR_LONG * 65536)}   /* the ADSR's long: decay and release x ${ADSR_LONG} */`);
 w();
 // poly assemblies (patch.ts PolyCfg): the group records of the binary
