@@ -27,6 +27,8 @@
     "web/src/cpu-costs.json",
     "web/src/controls.ts",
     "web/src/cpu.ts",
+    "web/src/plan-costs.json",
+    "web/src/schedule.ts",
     "web/src/device-compile.ts",
     "web/src/device-shown.ts",
     "web/src/engine.ts",
