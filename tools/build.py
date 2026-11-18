@@ -59,7 +59,7 @@ FPU_FLAGS = ["-mcpu=r3", "-mfprev1", "-ffp-contract=off"]
 # .fast_text.NAME in matryoshka.o before the link, so the code is the compiler's own, only placed elsewhere (app.ld .fast_text,
 # in NOINIT, copied there at boot by main.c). Only functions the compiler keeps out of line everywhere: a section attribute in
 # the source would instead stop this compiler inlining across the two sections and change the code.
-FAST_TEXT = ("m_osc", "exp2_scale", "sin_turn", "fill", "svf_g", "svf_stage", "env_rate_q8", "signal_mean", "flaw_scale",
+FAST_TEXT = ("m_osc", "exp2_scale", "sin_turn", "fill", "svf_g", "env_rate_q8", "signal_mean", "flaw_scale",
              "morph_value") if os.environ.get("ENG_RAMCODE", "0") == "1" else ()
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 

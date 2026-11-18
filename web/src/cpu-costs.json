@@ -30035,7 +30035,7 @@
    "cv": 208
   },
   "vowel": {
-   "run": 34810,
+   "run": 17377,
    "cv": 223
   },
   "phaser": {
@@ -37699,7 +37699,7 @@
   },
   {
    "name": "Meridian 8",
-   "cycles": 590415
+   "cycles": 572870
   },
   {
    "name": "808 Kit",
@@ -37875,7 +37875,7 @@
   },
   {
    "name": "assembly Meridian 8",
-   "cycles": 552504
+   "cycles": 534959
   },
   {
    "name": "assembly mono lead",
@@ -37991,7 +37991,7 @@
   },
   {
    "name": "assembly talking filter",
-   "cycles": 54090
+   "cycles": 36645
   },
   {
    "name": "assembly time smear",
@@ -38019,7 +38019,7 @@
   },
   {
    "name": "assembly vowel voice",
-   "cycles": 62256
+   "cycles": 44699
   },
   {
    "name": "assembly Wanderer",

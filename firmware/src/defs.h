@@ -1954,7 +1954,7 @@ static const def_t DEFS[N_TYPES] = {
 };
 /* one copy of each type, a block: what the two-core schedule balances (engine.c sched_build, #802), in 64 cycles of
  * web/src/cpu-costs.json (its run and parameter inputs: cpu.ts scheduleCost) */
-static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 34, 9, 322, 11, 112, 1568, 3, 40, 96, 39, 328, 178, 326, 156, 89, 36, 36, 40, 49, 72, 547, 266, 54, 163, 105, 54, 37, 468, 271, 448, 668, 11, 15, 1, 11, 53, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4, 231, 178};
+static const uint16_t DEF_COST[N_TYPES] = {14, 81, 36, 53, 9, 9, 34, 9, 322, 11, 112, 1568, 3, 40, 96, 39, 328, 178, 326, 156, 89, 36, 36, 40, 49, 72, 275, 266, 54, 163, 105, 54, 37, 468, 271, 448, 668, 11, 15, 1, 11, 53, 9, 16, 134, 36, 16, 177, 10, 12, 13, 66, 94, 15, 4, 231, 178};
 /* a module bypassed when the patch loads, in the same units: passing an input through (D-1104; cpu.ts scheduleBypass) */
 #define DEF_COST_BYPASS 18u
 /* Gate-port kinds for pattern authorization, independent of environment grouping (bit n: port n is a gate) */
