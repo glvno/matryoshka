@@ -48,7 +48,7 @@ pub struct Params {
     pub residual: f64,
 }
 
-const CLASS_NAMES: [&str; cost::CLASSES] = ["alu", "load", "store", "mul", "div", "branch", "multi", "sys"];
+const CLASS_NAMES: [&str; cost::CLASSES] = ["alu", "load", "store", "mul", "div", "branch", "multi", "sys", "fpu", "fpu_div", "fpu_cvt"];
 
 impl Params {
     /// The emulator's own timing: one 240 MHz cycle an instruction.
@@ -333,10 +333,24 @@ mod tests {
     fn identity_owes_nothing() {
         let mut t = Timing::new(Params::IDENTITY);
         for i in 0..1000u32 {
-            t.retire(0, 0x0200_0000 + 6 * (i % 300) * 7, 4, (i % 8) as u8, i * 0x0001_0001);
+            t.retire(0, 0x0200_0000 + 6 * (i % 300) * 7, 4, (i % cost::CLASSES as u32) as u8, i * 0x0001_0001);
             t.data(0, 0x0200_8000 + 64 * i);
         }
         assert_eq!(t.take(0), 0);
+    }
+
+    #[test]
+    fn fpu_ops_cost_their_classes() {
+        // at 240 MHz one device cycle is one emulator cycle: an add 1.6, a divide 3.0, a conversion 2.3 (#979)
+        let p = Params::parse("clock_mhz 240\nfpu 1.6\nfpu_div 3.0\nfpu_cvt 2.3\n").unwrap();
+        let mut t = Timing::new(p);
+        t.next[0] = 0x0100_0000;
+        for (k, cls) in [cost::FPU, cost::FPU_DIV, cost::FPU_CVT].into_iter().enumerate() {
+            t.retire(0, 0x0100_0000 + 4 * k as u32, 4, cls, 0);
+        }
+        assert_eq!(t.counts[0].insns[cost::FPU as usize..], [1, 1, 1]);
+        assert!((t.counts[0].cycles - 6.9).abs() < 1e-9);
+        assert_eq!(t.take(0), 3); // 6.9 device cycles at 240 MHz, less the 3 the instructions took: 3.9 owed
     }
 
     #[test]

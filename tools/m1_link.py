@@ -867,7 +867,7 @@ def print_fpubench(r, out=print):
     c, n = r["cycles_per_tick"], r["frames"]
     cyc = lambda ticks: ticks * c / n
     base = cyc(r["kernels"][0]["ticks_min"])
-    out(f"build: {'FPU (FM1_FPU=1)' if r['fpu'] else 'software float'}; CPU {c * 24:.0f} MHz (timed adds); "
+    out(f"build: {'FPU' if r['fpu'] else 'software float (#950)'}; CPU {c * 24:.0f} MHz (timed adds); "
         f"{n} frames a block, the fastest of {r['runs']} runs")
     out(f"{'kernel':<20} {'cyc/sample':>10} {'less loop':>10} {'per op':>8} {'slowest':>8}  result")
     for k in r["kernels"]:

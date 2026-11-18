@@ -132,7 +132,7 @@ class FpuBench(unittest.TestCase):
     def test_prints_cycles_per_sample_less_the_loop(self):
         out = []
         m1_link.print_fpubench(m1_link.fpubench_read(self.Bench()), out=out.append)
-        self.assertIn("FPU (FM1_FPU=1); CPU 384 MHz", out[0])
+        self.assertIn("build: FPU; CPU 384 MHz", out[0])
         loop, fadd = out[2].split(), out[3].split()
         self.assertEqual(loop[2], "30.0")                        # 240 ticks x 16 / 128
         self.assertEqual(fadd[3:6], ["158.0", "128.0", "16.0"])  # less the loop: 128 cycles, 16 per add

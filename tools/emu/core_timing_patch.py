@@ -57,7 +57,21 @@ pub mod cost {
     pub const MULTI: u8 = 6;
     /// interrupt enable, special registers
     pub const SYS: u8 = 7;
-    pub const CLASSES: usize = 8;
+    /// the FPU (#979): an add, subtract, multiply, min or max; a divide or a multiply-accumulate; a conversion between
+    /// int and float
+    pub const FPU: u8 = 8;
+    pub const FPU_DIV: u8 = 9;
+    pub const FPU_CVT: u8 = 10;
+    pub const CLASSES: usize = 11;
+
+    /// an FPU op's class from its op (fm1-isa's fpu.rs: binary 0..8 = byte 2 & 15, unary = byte 2)
+    fn fpu(op: u8) -> u8 {
+        match op {
+            3 | 7 | 8 => FPU_DIV,
+            0x1f | 0x5f | 0x8f | 0x9f => FPU_CVT,
+            _ => FPU,
+        }
+    }
 
     fn words(n: u32) -> u8 {
         (n.min(15) as u8) << 4
@@ -81,6 +95,7 @@ pub mod cost {
                 Fast::BlockMove { mask, .. } => MULTI | words(mask.count_ones()),
                 Fast::PopRets => MULTI | words(2),
                 Fast::SetIe { .. } | Fast::IcfgRd { .. } | Fast::IcfgWr { .. } => SYS,
+                Fast::FOp { op, .. } => fpu(op),
                 Fast::Raw { route: 21 | 22, .. } => ALU,
                 Fast::Raw { route: 27, .. } => MULTI | words(4),
                 Fast::Raw { .. } => LOAD,

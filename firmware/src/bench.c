@@ -2,8 +2,8 @@
  * Copyright (C) 2026 morgulbrut
  * Modified for Matryoshka (glvno). */
 /* CPU benchmark (#950): what one 128-frame block costs per kernel, fixed point against float, so the FPU question
- * (D-352) is ruled on measured numbers. Built only with M1_BENCH=1 (tools/build.py). FM1_FPU=1 builds the same kernels
- * for the AC791N's FPU (-mcpu=r3 -mfprev1, the toolchain's r3 libm); without it float is the toolchain's software float.
+ * (D-352) is ruled on measured numbers. Built only with M1_BENCH=1 (tools/build.py), for the AC791N's FPU as every build
+ * is (-mcpu=r3 -mfprev1, the toolchain's r3 libm; #979). The software float figures came from builds before that.
  * DIAG page BENCH_PAGE (main.c m1_diag) runs every kernel BENCH_RUNS times, each run one block with the interrupts off,
  * and answers the build and the clock probe; page BENCH_PAGE + 1 + k answers kernel k: its fastest and slowest run in
  * 24 MHz ticks, its result's bits, the operations it chains per sample and its name (tools/m1_link.py fpubench prints
@@ -15,9 +15,6 @@
 #define BENCH_PAGE 178u
 #define BENCH_VERSION 1u
 #define BENCH_MAGIC 1178748482u
-#ifndef M1_FPU
-#define M1_FPU 0
-#endif
 
 float sinf(float);
 float cosf(float);
@@ -582,7 +579,8 @@ static void bench_run(uint32_t k)
     bench_res[k][2] = res;
 }
 
-/* main.c m1_diag: page BENCH_PAGE runs the benchmark and answers v[0] BENCH_VERSION, v[1] the kernel count, v[2] M1_FPU,
+/* main.c m1_diag: page BENCH_PAGE runs the benchmark and answers v[0] BENCH_VERSION, v[1] the kernel count, v[2] 1 (built
+ * for the FPU; the software float builds of #950 answered 0),
  * v[3] BENCH_N, v[4] BENCH_RUNS, v[5] / v[6] the clock probe's 16384 / 49152 dependent adds in ticks (hal/fm1_clock.h:
  * their difference gives the CPU cycles a tick), v[7] PLL2_CON1; page BENCH_PAGE + 1 + k: kernel k's fastest and slowest
  * run and result bits (three words), its ops (a byte) and name (19 bytes, zero padded); past the last kernel nothing */
@@ -598,7 +596,7 @@ static uint32_t bench_diag(uint32_t page, uint8_t *out)
         fm1_clock_probe(c);
         v[0] = BENCH_VERSION;
         v[1] = BENCH_K;
-        v[2] = M1_FPU;
+        v[2] = 1;
         v[3] = BENCH_N;
         v[4] = BENCH_RUNS;
         v[5] = c[3];

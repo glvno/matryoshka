@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""#950 (measurement only): what the FPU flags change, from the fpu-measure CI job's builds.
+"""#950, #979 (measurement only): what the FPU builds hold, from the fpu-measure CI job's builds.
 
-  tools/fpu_compare.py [DIR]      (default build/fpu: DIR/normal, DIR/fpu, DIR/bench-soft, DIR/bench-fpu, each with
-                                   matryoshka.bin and matryoshka.dis; the CI artifact matryoshka-fpu-measure)
+  tools/fpu_compare.py [DIR]      (default build/fpu: DIR/normal and DIR/bench, each with matryoshka.bin and
+                                   matryoshka.dis; the CI artifact matryoshka-fpu-measure)
 
-Prints each app's size and sha256; whether FM1_FPU=1 changes the normal firmware's code (the functions whose
-instructions differ, numbers ignored, and the instruction forms only one side has); in the two benchmark builds, how
-many FPU instructions and calls to the software float helpers each holds; and, for the 64-bit multiply erratum
-(felucca-bsp docs/CPU.md: an inlined 32 x 32 -> 64-bit multiply among 16-bit loads now and then leaves a register one
-bit off), each function of the normal build with a 64-bit multiply within WINDOW instructions of a 16-bit load.
+Every build is for the FPU (tools/build.py FPU_FLAGS, #979). Prints each app's size and sha256; in each, how many FPU
+instructions and float compares it holds (tools/build.py puts them in matryoshka.dis, which JieLi's objdump cannot),
+how many calls to the software float helpers (none expected), and how many instructions nobody could print (none
+expected); and, for the 64-bit multiply erratum (felucca-bsp docs/CPU.md: an inlined 32 x 32 -> 64-bit multiply among
+16-bit loads now and then leaves a register one bit off), each function of the normal build with a 64-bit multiply
+within WINDOW instructions of a 16-bit load.
 """
-import collections
 import hashlib
 import re
 import sys
@@ -21,9 +21,7 @@ LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")   # tools
 HEAD = re.compile(r"^([^\s.<][^\s<]*):\s*$")                               # a function's label (JieLi objdump: "name:")
 MUL64 = re.compile(r"\br\d+_r\d+ [-+]?= r\d+ \* r\d+")                     # mul / madd / msub .prr
 LOAD16 = re.compile(r"= h\[")
-FPU_OP = ("3f e5", "3f f5")   # the FPU's arithmetic and conversions (fm1-emu fpu.rs: 0xe53f, its parallel twin 0xf53f);
-RAW = re.compile(r"^\s*[0-9a-f]+:\s+((?:[0-9a-f]{2} )+)\s*(.*)$")   # JieLi's objdump prints them, without a tab, as
-#                                                                    "<unknown instruction>" (LINE skips those lines)
+FPU_OP = ("3f e5", "3f f5")   # the FPU's arithmetic and conversions (fm1-emu fpu.rs: 0xe53f, its parallel twin 0xf53f)
 SOFT = re.compile(r"<__(?:add|sub|mul|div|neg|fix|fixuns|float|floatun|extend|trunc|eq|ne|lt|le|gt|ge|unord|cmp)\w*sf\w*")
 WINDOW = 3
 
@@ -40,42 +38,20 @@ def functions(dis):
     return fs
 
 
-def shape(ins):
-    return re.sub(r"(?<![\w.])-?\d+\b", "N", ins)
-
-
 def main(argv):
     d = Path(argv[1] if len(argv) > 1 else "build/fpu")
-    dis = {v: (d / v / "matryoshka.dis").read_text() for v in ("normal", "fpu", "bench-soft", "bench-fpu")}
-    for v in dis:
+    dis = {v: (d / v / "matryoshka.dis").read_text() for v in ("normal", "bench")}
+    for v, text in dis.items():
         b = (d / v / "matryoshka.bin").read_bytes()
-        print(f"{v:<11} app {len(b):7d} B  sha256 {hashlib.sha256(b).hexdigest()}")
-
-    n, f = functions(dis["normal"]), functions(dis["fpu"])
-    if (d / "normal" / "matryoshka.bin").read_bytes() == (d / "fpu" / "matryoshka.bin").read_bytes():
-        print("\nFM1_FPU=1 builds the normal firmware byte for byte the same")
-    else:
-        changed = sorted(k for k in n.keys() & f.keys() if list(map(shape, n[k])) != list(map(shape, f[k])))
-        print(f"\nFM1_FPU=1 changes the normal firmware: {len(changed)} of {len(n)} functions differ (numbers ignored); "
-              f"only in normal: {sorted(n.keys() - f.keys())[:20]}; only with FM1_FPU: {sorted(f.keys() - n.keys())[:20]}")
-        for k in changed[:60]:
-            print(f"  {k}: {len(n[k])} -> {len(f[k])} instructions")
-        cn = collections.Counter(shape(i) for v in n.values() for i in v)
-        cf = collections.Counter(shape(i) for v in f.values() for i in v)
-        diff = sorted(((cf[s] - cn[s], s) for s in cn.keys() | cf.keys() if cf[s] != cn[s]), key=lambda x: -abs(x[0]))
-        print("  instruction forms whose count changed (FM1_FPU minus normal):")
-        for k, s in diff[:40]:
-            print(f"    {k:+6d}  {s}")
-
-    print()
-    for v in ("bench-soft", "bench-fpu"):
-        lines = [m for m in map(RAW.match, dis[v].splitlines()) if m]
-        print(f"{v:<11} FPU instructions {sum(1 for m in lines if m.group(1).startswith(FPU_OP)):5d}, calls to software "
-              f"float helpers {sum(1 for m in lines if SOFT.search(m.group(2))):5d}, instructions objdump cannot print "
-              f"{sum(1 for m in lines if 'unknown instruction' in m.group(2)):5d}")
+        lines = [m for m in map(LINE.match, text.splitlines()) if m]
+        print(f"{v:<7} app {len(b):7d} B  sha256 {hashlib.sha256(b).hexdigest()}  FPU instructions "
+              f"{sum(1 for m in lines if m.group(2).startswith(FPU_OP)):5d}, float compares "
+              f"{sum(1 for m in lines if m.group(3).startswith('iff (')):4d}, calls to software float helpers "
+              f"{sum(1 for m in lines if SOFT.search(m.group(3))):4d}, instructions nobody could print "
+              f"{text.count('<unknown instruction>'):4d}")
 
     hits = {}
-    for name, ins in n.items():
+    for name, ins in functions(dis["normal"]).items():
         mul = [i for i, x in enumerate(ins) if MUL64.search(x)]
         ld = [i for i, x in enumerate(ins) if LOAD16.search(x)]
         if mul:
