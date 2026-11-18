@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Polyphonic synths with effects play all their voices on the FM-1.** The FM-1 now runs its busiest small pieces of code from its fast internal memory instead of fetching them again from flash every block, so a patch takes less of its CPU. The owner's Hera 6 "gauze 2", Oracle V and Hera 6 with every master effect on no longer drop voices; the polyphonic factory synths with effects use 1 to 10 points less CPU (#1073, #1072).
 - **Resonator patches leave the FM-1 more room, and their rings fade as in the editor.** The FM-1 now plays the Resonator with its floating-point unit, which does its sums about twice as fast, so patches with one (the 808 Kit, Meridian 8, and the gamelan, kalimba, marimba, tabla, tom, rim and other resonator assemblies) use less of the FM-1's CPU. A long ring now fades as it does in the editor down to the FM-1's quietest step, instead of falling away early and stopping about 85 dB down; with nothing playing into it, it still ends in silence (#979).
 
 ## 1.19.0 — 2026-11-17

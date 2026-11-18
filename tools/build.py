@@ -427,7 +427,7 @@ def build_app():
                        check=True)
         tc("cc", *[f for f in sflags if not f.startswith(("-I", "-D", "-W"))], "-c",
            OUT / "matryoshka_size.ll", "-o", OUT / "matryoshka.o")
-    if FAST_TEXT:                                       # (spike) see FAST_TEXT; the toolchain's objcopy cannot rename
+    if FAST_TEXT:                                       # see FAST_TEXT; the toolchain's objcopy cannot rename
         loc = llvm_objcopy()
         subprocess.run([loc, *[a for f in FAST_TEXT for a in ("--rename-section", f".text.{f}=.fast_text.{f}")],
                         OUT / "matryoshka.o"], check=True)
@@ -455,7 +455,7 @@ def build_app():
     img = bytearray((OUT / "text.bin").read_bytes())
     # .ram_text, .c1_text (the second core's waiting loop, #271) and .data follow .text at their load addresses; the boot
     # copies them by words (main.c fm1_cstart)
-    # (spike) and .fast_text, the hot engine code in NOINIT (FAST_TEXT), after .data
+    # and .fast_text, the hot code in NOINIT (FAST_TEXT), after .data
     # The boot copies END - START bytes from the load address to START; objcopy's blob starts at the section's own start.
     # They agree only when START is the section's start: padding before START (an output section that begins unaligned)
     # would shift every copied byte (it did: .fast_text after an odd-sized .noinit, #1072).
