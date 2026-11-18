@@ -11102,7 +11102,8 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
  * the same input (main.c DIAG pages 140..142, firmware/test/fpu_probe.c). Each case renders one copy of a module from
  * rest through PROBE_BLOCKS blocks of PROBE_N samples: PROBE_LOUD of them with a fixed input (a saw plus a pseudo-random
  * part, loud enough to reach the saturators; a moving cv, morph and fm where the case cables them), then silence. h[c]
- * is an FNV-1a hash of every word its cabled outputs wrote and of its state's bytes after each block. The unconnected
+ * is an FNV-1a hash of every word its cabled outputs wrote and of its own state's bytes after each block (its struct in
+ * inst_t's union: floats and 32-bit words, laid out alike on every host; the whole union holds pointers). The unconnected
  * outputs go to the lane's dummy buffer (lane 1: the second core's). Everything is on the caller's stack (about 1 KB). */
 #define PROBE_N 16u
 #define PROBE_BLOCKS 8u
@@ -11204,7 +11205,8 @@ void eng_fpu_probe(uint32_t lane, uint32_t *h)
             for (j = 0; j < d->nout; j++)
                 if (it.out[j] == out[j])
                     h[c] = probe_hash(h[c], out[j], sizeof out[j]);
-            h[c] = probe_hash(h[c], &it.s, sizeof it.s);
+            h[c] = probe_hash(h[c], &it.s, TYPE[c] == T_FILTER ? sizeof it.s.flt : TYPE[c] == T_LADDER ? sizeof it.s.lad :
+                                           TYPE[c] == T_VOWEL ? sizeof it.s.vow : sizeof it.s.mod);
         }
     }
 }
