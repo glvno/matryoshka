@@ -17,6 +17,10 @@ html { touch-action: pan-x pan-y; }
 ::-webkit-scrollbar-thumb { border-radius: 3px; background: color-mix(in srgb, var(--ink) 14%, transparent); }
 ::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--ink) 28%, transparent); }
 ::-webkit-scrollbar-corner { background: transparent; }
+/* except the canvas's (#1075): it is endless, so a scroll bar shows nothing useful; it still scrolls natively (wheel,
+   trackpad, touch, right- and middle-drag) */
+#canvas { scrollbar-width: none; }
+#canvas::-webkit-scrollbar { display: none; }
 /* The synth is the workspace: a control rail beside an uninterrupted patch field. */
 .workspace { display: grid; grid-template-columns: 208px auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto auto; height: 100dvh; }
 /* the sidebar runs down to the keyboard; the Main panel sits under the canvas only, so every cable reaches its jack; the
