@@ -614,7 +614,8 @@ static void seq_row_drone(void)
                 w[m++] = x | ENG_NOTE_WRAP | 63u << 6;
                 seq_msg_due = MSG_DRONE;
             }
-        } else if (((ws[i] >> 12) & 127u) != note || (i == first + 1 && !(ws[i] >> 19 & 127u)))   /* (its condition stays) */
+        } else if (((ws[i] >> 12) & 127u) != note || (!(ws[i] >> 19 & 127u) && !((ws[i] ^ ws[first]) & 0x7F03Fu)))   /* (its
+                                                     * condition and timing words stay: #674, #675) */
             w[m++] = ws[i];
     (void)eng_steps_set_notes((uint32_t)mod, w, (uint32_t)m);
     seq_sync(mod);
@@ -1067,6 +1068,52 @@ static void seq_cond(int32_t clicks)
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
 
+/* ratchets and micro timing (#675, #677; track.ts RATCHET_MAX, MICRO_STEPS, microName): with a step held, PRESET turned
+ * steps the selected row's note's ratchet (x1 .. x5, a click one), OCT- / OCT+ its micro timing (a press 1/24 of a step
+ * earlier / later, -23/24 .. +23/24); the bar names it: RATCHET x3, MICRO +5/24 (OFF at x1 and 0) */
+static void seq_timing(int32_t ratchet_clicks, int32_t micro_clicks)
+{
+    int mod = seq_module(), map = seq_map();
+    uint32_t w, x, note, r;
+    int32_t m;
+    char msg[24], num[8], *p;
+    if (mod < 0 || seq_held < 0 || !(w = seq_grid_held(map, mod)))
+        return;
+    seq_held_tap = 0;                            /* (the step used: its release switches nothing) */
+    note = (w >> 12) & 127u;
+    x = eng_steps_time((uint32_t)mod, (uint32_t)seq_held, note);
+    r = (uint32_t)clampi((int32_t)(x ? ENG_TIME_RATCHET(x) : 1u) + ratchet_clicks, 1, (int32_t)RATCHET_MAX);
+    m = clampi((x ? ENG_TIME_MICRO(x) : 0) + micro_clicks, -MICRO_MAX, MICRO_MAX);
+    if (eng_steps_time_set((uint32_t)mod, (uint32_t)seq_held, note, r, m) < 0) {
+        ui_msg("TRACK FULL: 128 NOTES", 1500);
+        return;
+    }
+    seq_sync(mod);
+    if (ratchet_clicks) {
+        p = put(msg, "RATCHET ");
+        if (r > 1u) {
+            *p++ = 'X';
+            fmt_int(num, (int32_t)r);
+            p = put(p, num);
+        } else
+            p = put(p, "OFF");
+    } else {
+        p = put(msg, "MICRO ");
+        if (m) {
+            if (m > 0)
+                *p++ = '+';
+            fmt_int(num, m);
+            p = put(put(p, num), "/");
+            fmt_int(num, MICRO_STEPS);
+            p = put(p, num);
+        } else
+            p = put(p, "OFF");
+    }
+    *p = 0;
+    ui_msg(msg, 1000);
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+
 /* a note number as the LCD writes it: C4, F#2 (60 = C4) */
 static char *seq_note_name(char *p, uint32_t n)
 {
@@ -1117,12 +1164,15 @@ static void seq_value(int32_t note_clicks, int32_t vel_clicks, int fast)
                 c--, p = q;
         }
         if (p != (int32_t)((w >> 12) & 127u)) {
-            uint32_t c = eng_steps_cond((uint32_t)mod, (uint32_t)seq_held, (w >> 12) & 127u);   /* (its condition goes along) */
+            uint32_t c = eng_steps_cond((uint32_t)mod, (uint32_t)seq_held, (w >> 12) & 127u);   /* (its condition goes along, */
+            uint32_t tw = eng_steps_time((uint32_t)mod, (uint32_t)seq_held, (w >> 12) & 127u);  /* and its ratchet and micro timing) */
             eng_steps_toggle((uint32_t)mod, (uint32_t)seq_held, (w >> 12) & 127u, STEP_VEL);   /* (off: it is there) */
             w = (w & ~(127u << 12)) | (uint32_t)p << 12;
             eng_steps_overdub((uint32_t)mod, w);
             if (c)
                 (void)eng_steps_cond_set((uint32_t)mod, (uint32_t)seq_held, (uint32_t)p, c);
+            if (tw)
+                (void)eng_steps_time_set((uint32_t)mod, (uint32_t)seq_held, (uint32_t)p, ENG_TIME_RATCHET(tw), ENG_TIME_MICRO(tw));
             seq_roll_show(p, 0);
         }
     }
@@ -1732,6 +1782,9 @@ static int seq_lock_line(int mod, char *line, uint32_t max)
 #define GRID_LOCK 0x200u                /* a cell's code: its step has P-locks (#524): a gold corner mark, top right */
 #define GRID_DRONE 0x400u               /* a cell's code: a drone starts there (#384): the tie's band comes in at its left */
 #define GRID_COND 0x800u                /* a cell's code: its note has a trig condition (#674): a sky corner mark, top left */
+#define GRID_TIME_SHIFT 12u             /* a cell's code, bits 12..15: its note's (ratchet - 1) x 3 + micro timing (0 none, 1
+                                         * early, 2 late: #675, #677): the hit cut in as many slices, a lilac foot left
+                                         * (early) or right (late) */
 static uint16_t seq_grid_cell[ENG_DRUM_ROWS][16];  /* the cells as drawn (seq_grid_state's codes) */
 static int8_t seq_grid_row = -1, seq_grid_tick = -2; /* the selected row, the playhead's column as drawn (-1 none) */
 static int8_t seq_grid_cur = -2;        /* step record's cursor column as drawn (-1 none) */
@@ -1795,6 +1848,13 @@ static void seq_grid_paint(uint32_t r, uint32_t i, uint32_t s, uint32_t was)
         lcd_fill(x + GRID_CW - 3u, y + 1u, 3, 1, P_GOLD);
         lcd_fill(x + GRID_CW - 2u, y + 2u, 2, 1, P_GOLD);
         lcd_fill(x + GRID_CW - 1u, y + 3u, 1, 1, P_GOLD);
+    }
+    if (s >> GRID_TIME_SHIFT) {                  /* a ratchet: thin cuts through the hit; micro timing: a foot of 3 x 2 px */
+        uint32_t v = s >> GRID_TIME_SHIFT, rt = v / 3u + 1u, k;
+        for (k = 1; k < rt; k++)
+            lcd_fill(x + GRID_CW * k / rt, y + GRID_CH - fill, 1, fill, empty);
+        if (v % 3u)
+            lcd_fill(v % 3u == 1u ? x : x + GRID_CW - 3u, y + GRID_CH - 2u, 3, 2, P_LILAC);
     }
 }
 
@@ -1864,6 +1924,7 @@ static void seq_grid_ground(void)
 static void seq_grid_draw(int full, int mod, int map, const char *info)
 {
     uint32_t cell[ENG_DRUM_ROWS][16], note[ENG_DRUM_ROWS], r, i, lo = map >= 0 ? 0xFFu : seq_roll_lo, mark = 0, locked = 0, hit = 0;
+    uint8_t tim[ENG_DRUM_ROWS][16];              /* each hit's GRID_TIME_SHIFT code (#675, #677) */
     const uint32_t *ws;
     int nn = eng_steps_notes((uint32_t)mod, &ws), j, pos = eng_steps_pos((uint32_t)mod), tick;
     int32_t len = seq_len(mod), k0 = seq_pg * 16;
@@ -1886,6 +1947,7 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
         note[r] = seq_grid_note(map, r);
         for (i = 0; i < 16u; i++)
             cell[r][i] = 0;
+        memset(tim[r], 0, sizeof tim[r]);
     }
     for (j = 0; j < nn; j++) {
         int k = (int)(ws[j] & 63u) - k0, c;
@@ -1898,6 +1960,8 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
             if (((ws[j] >> 12) & 127u) == note[r]) {
                 if (k >= 0 && k < 16 && cell[r][k] <= 1u)
                     cell[r][k] = ws[j];
+                else if (k >= 0 && k < 16 && ENG_IS_TIME(ws[j]) && !((cell[r][k] ^ ws[j]) & 0x7F03Fu) && !eng_note_drone(cell[r][k]))
+                    tim[r][k] = (uint8_t)((ENG_TIME_RATCHET(ws[j]) - 1u) * 3u + (ENG_TIME_MICRO(ws[j]) < 0 ? 1u : ENG_TIME_MICRO(ws[j]) > 0 ? 2u : 0u));
                 for (c = 0; c < 16; c++)         /* (the steps it goes on through, across the loop point too: #384) */
                     if (!cell[r][c] && eng_note_through(ws[j], (uint32_t)(k0 + c), (uint32_t)len))
                         cell[r][c] = 1u;
@@ -1926,6 +1990,8 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
                 s |= GRID_DRONE;
             if (s != GRID_PAST && cell[r][i] > 1u && ((cell[r][i] >> 26) & 31u) == ENG_NOTE_COND)
                 s |= GRID_COND;
+            if (s != GRID_PAST && cell[r][i] > 1u)
+                s |= (uint32_t)tim[r][i] << GRID_TIME_SHIFT;
             if (s != seq_grid_cell[r][i]) {
                 seq_grid_paint(r, i, s, seq_grid_cell[r][i]);
                 seq_grid_cell[r][i] = (uint16_t)s;

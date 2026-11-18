@@ -1253,6 +1253,10 @@ static const uint8_t EUCLID_RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};   /* its r
 static const uint8_t METER_BAR[METER_N] = {48, 72, 96, 120, 72, 84, 108, 144};   /* ... a bar in clock ticks */
 static const uint8_t METER_BEAT[METER_N] = {24, 24, 24, 24, 36, 12, 36, 36};   /* ... a count-in click's ticks */
 static const char *const METER_NAME[METER_N] = {"2/4", "3/4", "4/4", "5/4", "6/8", "7/8", "9/8", "12/8"};
+#define RATCHET_MAX 5u         /* a note's most hits inside its step (#675, track.ts) */
+#define MICRO_STEPS 24         /* micro timing's unit, a step's share (#677, track.ts) ... */
+#define MICRO_MAX 23           /* ... and its most either way */
+#define STEPS_HITS 16u         /* the hits to come every track holds together (modules.ts) */
 #define CLICK_MS 25u           /* ... its click on each beat: ms to nothing, level (Q16), Hz on beats 2..4 and on beat 1 */
 #define CLICK_LEVEL_Q16 16384
 #define CLICK_HZ 1000u

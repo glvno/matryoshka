@@ -27,9 +27,9 @@ describe('a Steps track\'s notes (#133)', () => {
 
   it('the step view: on where notes start (the lowest one\'s values), tied where a note goes on through', () => {
     const t = [n(0, 3, 60, 127), n(0, 1, 67, 50), n(4, 1, 62, 90, 40)];
-    expect(stepView(t, 0)).toEqual({ on: true, accent: true, chance: 100, cond: 0, tie: false, note: 60, vel: 127 });
+    expect(stepView(t, 0)).toEqual({ on: true, accent: true, chance: 100, cond: 0, ratchet: 1, micro: 0, tie: false, note: 60, vel: 127 });
     expect(stepView(t, 2).tie).toBe(true);
-    expect(stepView(t, 3)).toEqual({ on: false, accent: false, chance: 100, cond: 0, tie: false, note: 60, vel: 100 });
+    expect(stepView(t, 3)).toEqual({ on: false, accent: false, chance: 100, cond: 0, ratchet: 1, micro: 0, tie: false, note: 60, vel: 100 });
     expect(stepView(t, 4)).toMatchObject({ on: true, chance: 40, note: 62, vel: 90 });
   });
 

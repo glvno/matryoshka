@@ -30,7 +30,7 @@ eng_step_entry_t *eng_steps_entry_memory(void); /* NULL for legacy routes */
 
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 63   /* 63 (release 1.20, patchbin.ts FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid type (T_EUCLID, #1018) appended after the Limiter; 62 (release 1.19, patchbin.ts FORMAT_1_19): the Low pass gate (T_LPG, #1018) and the Limiter (T_LIMIT, #1019) types appended after the Harmonizer; 61: a cable into a Part's priority input (PART_I_PRIORITY, #976); 60: trig conditions, a note's condition word after it (ENG_NOTE_COND, #674); 59: the stored pattern links (ENG_FLAG_LINKS, #901) after the P-locks; 58: the Oscillator's `phase` (where sync restarts the cycle, #691) appended; 57: the ADSR's `ads` (release at the decay's time, D-745) appended; 56: Env L/R's `curve` (a linear fall, #689) appended; 55: optional validated master FX bus after format54 origins and before macro ranges */
+#define ENG_PATCH_VERSION 63   /* 63 (release 1.20, patchbin.ts FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid type (T_EUCLID, #1018) appended after the Limiter, and Steps notes' timing words, ratchets and micro timing (ENG_TIME_BIT, #675, #677); 62 (release 1.19, patchbin.ts FORMAT_1_19): the Low pass gate (T_LPG, #1018) and the Limiter (T_LIMIT, #1019) types appended after the Harmonizer; 61: a cable into a Part's priority input (PART_I_PRIORITY, #976); 60: trig conditions, a note's condition word after it (ENG_NOTE_COND, #674); 59: the stored pattern links (ENG_FLAG_LINKS, #901) after the P-locks; 58: the Oscillator's `phase` (where sync restarts the cycle, #691) appended; 57: the ADSR's `ads` (release at the decay's time, D-745) appended; 56: Env L/R's `curve` (a linear fall, #689) appended; 55: optional validated master FX bus after format54 origins and before macro ranges */
 #define ENG_COUNTED 51                /* the first format whose module records carry their parameter count (patchbin.ts COUNTED, #667) */
 /* Format 51's record (patchbin.ts, D-1000): u8 type, u8 count (bits 0..5: the parameters it holds; bit 7, ENG_REC_TEMPLATE,
  * on a type with parameter inputs: its attenuverters and p1 / p2 masks are at their template, eng_mask_template, and left
@@ -482,7 +482,7 @@ void eng_steps_toggle(uint32_t module, uint32_t k, uint32_t note, uint32_t vel);
  * onto its own step (eng_note_drone). The helpers below are track.ts noteThrough, endOn, cutBefore on a word, in grid
  * order on a pattern of `len` steps */
 #define ENG_NOTE_WRAP 0x80000000u
-static inline int eng_note_drone(uint32_t w) { return (w & ENG_NOTE_WRAP) && ((w >> 6) & 63u) == 63u; }
+static inline int eng_note_drone(uint32_t w) { return (w & ENG_NOTE_WRAP) && ((w >> 6) & 63u) == 63u && (w & 127u << 19); }   /* (a timing word, #675, is no note) */
 /* does the note sound on step k without starting there */
 static inline int eng_note_through(uint32_t w, uint32_t k, uint32_t len)
 {
@@ -525,6 +525,19 @@ void eng_fill(int on);
 int eng_fill_on(void);
 uint32_t eng_steps_cond(uint32_t module, uint32_t k, uint32_t note);
 int eng_steps_cond_set(uint32_t module, uint32_t k, uint32_t note, uint32_t cond);
+/* ratchets and micro timing (#675, #677, format 63; track.ts StepNote.ratchet / micro, timeWord): a note with either is
+ * followed by its timing word, after its condition word if it has one: velocity 0, the note's start and note, bit 31
+ * (ENG_TIME_BIT, which a condition word never has), micro timing + 32 in bits 6..11 (MICRO_STEPS-ths of a step,
+ * -MICRO_MAX..MICRO_MAX: negative early) and the ratchet - 1 in bits 26..28 (it plays 1..RATCHET_MAX times inside its
+ * step). A note's timing word (0: none) and setting it (ratchet 1 and micro 0: none; -1 when there is no such note or no
+ * room for the word) */
+#define ENG_TIME_BIT 0x80000000u
+#define ENG_IS_TIME(x) (!((x) & 127u << 19) && ((x) & ENG_TIME_BIT))
+#define ENG_TIME_WORD(w, r, m) (((w) & 0x7F03Fu) | (uint32_t)((int32_t)(m) + 32) << 6 | ((uint32_t)(r) - 1u) << 26 | ENG_TIME_BIT)
+#define ENG_TIME_RATCHET(x) ((((x) >> 26) & 7u) + 1u)
+#define ENG_TIME_MICRO(x) ((int32_t)(((x) >> 6) & 63u) - 32)
+uint32_t eng_steps_time(uint32_t module, uint32_t k, uint32_t note);
+int eng_steps_time_set(uint32_t module, uint32_t k, uint32_t note, uint32_t ratchet, int32_t micro);
 
 /* Install a patch from its binary form (web/src/patchbin.ts) into the selected voice. 0 on success, negative on error
  * (the voice is then silent). Resets all module state. Never call while eng_render runs (stop the audio ISR's call first). */

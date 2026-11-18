@@ -23,7 +23,7 @@
 // value, to edit from there).
 import { NOTE_NAMES } from './modules';
 import { STEPS_MAX, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef } from './patch';
-import { chordFits, COND_ORDER, condName, isDrone, locksAt, setChord, setCond, setLock, setStep, setStepValue, STEP_NOTE, STEP_VEL, stepView, type StepLock, type StepNote, type StepView } from './track';
+import { chordFits, COND_ORDER, condName, isDrone, locksAt, MICRO_MAX, MICRO_STEPS, microName, RATCHET_MAX, setChord, setCond, setLock, setStep, setStepValue, setTiming, STEP_NOTE, STEP_VEL, stepView, type StepLock, type StepNote, type StepView } from './track';
 
 /** a row of the track's device a step can lock (#524): its module's parameter, its label ("filter cutoff"), its definition
  * and its normal value now */
@@ -222,7 +222,8 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   const tip = (k: number): string => {
     const s = view(m, k);
     const chord = (m.notes ?? []).filter((n) => n.at === k).map((n) => NOTE_NAMES[n.note]);
-    const what = s.tie ? ': tied (the note before goes on)' : s.on ? `${droneAt(m, k) ? ', a drone (tied round the loop onto itself)' : ''}${s.accent ? ', accented' : ''}${s.chance < 100 ? `, ${s.chance} %` : ''}${s.cond ? `, plays on ${condName(s.cond)}` : ''}` : ': off';
+    const timing = s.on && !droneAt(m, k) ? `${s.ratchet > 1 ? `, ×${s.ratchet}` : ''}${s.micro ? `, ${microName(s.micro)} ${s.micro > 0 ? 'late' : 'early'}` : ''}` : '';
+    const what = s.tie ? ': tied (the note before goes on)' : s.on ? `${droneAt(m, k) ? ', a drone (tied round the loop onto itself)' : ''}${s.accent ? ', accented' : ''}${s.chance < 100 ? `, ${s.chance} %` : ''}${s.cond ? `, plays on ${condName(s.cond)}` : ''}${timing}` : ': off';
     const vals = s.on ? ` · ${chord.join(' ')}, velocity ${s.vel}` : '';
     const how = { steps: 'click: on / off, Shift-click: accent, Ctrl / Cmd-click: tie, drag up / down: chance', note: 'drag up / down: note (Shift: octaves), double click: C4', vel: 'press and sweep: velocity, double click: default' }[lane];
     return `step ${k + 1}${what}${vals}\n${how}`;
@@ -236,6 +237,11 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
     c.classList.toggle('tie', s.tie);
     c.classList.toggle('drone', s.on && droneAt(m, k));
     c.classList.toggle('cond', s.on && s.cond > 0);
+    const timed = s.on && !droneAt(m, k);        // (ratchets and micro timing, #675, #677; a drone ignores them)
+    c.classList.toggle('ratchet', timed && s.ratchet > 1);
+    c.classList.toggle('early', timed && s.micro < 0);
+    c.classList.toggle('late', timed && s.micro > 0);
+    c.style.setProperty('--ratchet', String(s.ratchet));
     let v = s.on ? s.chance / 100 : 0;
     if (lane === 'vel') v = s.on ? s.vel / 127 : 0;
     c.style.setProperty('--chance', String(v));
@@ -355,7 +361,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
       box.replaceChildren();
       const h = document.createElement('div');
       h.className = 'lock-head';
-      h.textContent = `step ${k + 1}: condition, P-locks`;
+      h.textContent = `step ${k + 1}: condition, timing, P-locks`;
       const x = document.createElement('button');
       x.type = 'button';
       x.textContent = '×';
@@ -372,6 +378,22 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
         sel.value = String(view(m, k).cond);
         sel.onchange = () => { ops.notes(setCond(m.notes, (n) => n.at === k, Number(sel.value))); paintAll(); draw(); };
         line.append(sel);
+        box.append(line);
+      }
+      if (view(m, k).on && !droneAt(m, k)) {     // its ratchet (#675) and micro timing (#677)
+        const line = document.createElement('div');
+        line.className = 'lock-row lock-cond';
+        const rat = document.createElement('select');
+        rat.title = 'ratchet: the step\'s notes play this many times inside the step, evenly spaced (on the FM-1: the step held + PRESET)';
+        for (let r = 1; r <= RATCHET_MAX; r++) rat.append(new Option(r > 1 ? `ratchet ×${r}` : 'plays once', String(r)));
+        rat.value = String(view(m, k).ratchet);
+        rat.onchange = () => { ops.notes(setTiming(m.notes, (n) => n.at === k, { ratchet: Number(rat.value) })); paintAll(); draw(); };
+        const mic = document.createElement('select');
+        mic.title = `micro timing: the step's notes play this many ${MICRO_STEPS}ths of a step early or late (on the FM-1: the step held + OCT- / OCT+)`;
+        for (let v = -MICRO_MAX; v <= MICRO_MAX; v++) mic.append(new Option(v ? `${microName(v)} ${v > 0 ? 'late' : 'early'}` : 'on the step', String(v)));
+        mic.value = String(view(m, k).micro);
+        mic.onchange = () => { ops.notes(setTiming(m.notes, (n) => n.at === k, { micro: Number(mic.value) })); paintAll(); draw(); };
+        line.append(rat, mic);
         box.append(line);
       }
       const mine = locksAt(m.locks, k);
