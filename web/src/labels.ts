@@ -30,6 +30,7 @@ const BY_TYPE: Record<string, Record<string, string>> = {
   shreg: { in: 'data in', len: 'loop length', flip: 'flip chance', bits: 'dac bits' },
   comp: { thresh: 'threshold', hyst: 'hysteresis', gt: 'a above b', lt: 'a below b', trig: 'rise trigger' },
   range: { inlo: 'in low', inhi: 'in high', outlo: 'out low', outhi: 'out high' },
+  limit: { gr: 'gain reduction', ahead: 'lookahead' },
   matrix: {
     ...Object.fromEntries([1, 2, 3, 4].flatMap((k) => [[`in${k}`, `in ${k}`], [`out${k}`, `out ${k}`]])),
     ...Object.fromEntries([1, 2, 3, 4].flatMap((i) => [1, 2, 3, 4].map((o) => [`i${i}o${o}`, `in ${i} → out ${o}`]))),
@@ -100,6 +101,10 @@ const HINTS: Record<string, string> = {
   'filter.drive': 'Drive: how hard the signal pushes the resonance. Above 0, the resonance passes a soft clip inside the filter, as in a Korg MS-20: a quiet signal plays as before, a loud one has its resonance squashed and roughened. More drive clips at a lower level. It does nothing without resonance. 0: off, the clean filter, exactly as before.',
   'ladder.diode': 'Diode: the diode ladder of the Roland TB-303 and the EMS VCS3 instead of the Moog ladder. Its four stages load each other, so it falls more gently near the cutoff (about 18 dB per octave) and the cutoff is where its resonance peaks. Its level follows the resonance as the Moog ladder\'s does, so switching it keeps the patch\'s level. Stage saturation does not apply in this mode.',
   'ladder.stsat': 'Stage saturation: the soft clip at the input of every stage, not only where the signal enters the loop, as in a Moog ladder\'s transistor pairs. A driven filter growls more; a quiet one plays as before. Off: exactly as before.',
+  'limit.ceiling': 'The loudest the output gets, in dB below full scale. Nothing passes it: a last hard clip catches what the gain has not.',
+  'limit.gain': 'Drive into the limiter, in dB. More gain makes the sound louder up to the ceiling, and squashes it more.',
+  'limit.release': 'How fast the gain comes back after a peak: 99 % of the way in this time. Short times pump and distort low notes; long times duck the sound after a loud hit.',
+  'limit.ahead': 'Lookahead: the sound is delayed 1.45 ms, so the gain has come down smoothly by the time a peak arrives. Off: no delay, for a limiter inside a feedback loop; the gain drops at once on a peak, which is harsher.',
 };
 export const paramHint = (type: string, name: string): string | undefined => HINTS[`${type}.${name}`];
 
@@ -126,6 +131,7 @@ const TAGS: Record<string, [string, TagFamily]> = {
   mixer: ['MIX', 'util'], math: ['MATH', 'util'], logic: ['LOGIC', 'util'], const: ['DC', 'util'], macro: ['MACRO', 'util'], scale: ['SCALE', 'util'],
   output: ['OUT', 'util'], fm1: ['MAIN', 'util'], part: ['PART', 'util'], alloc: ['VOICES', 'util'], scope: ['SCOPE', 'util'],
   drummap: ['MAP', 'mod'], pd: ['PD', 'src'], select: ['SEL', 'util'], shreg: ['SHREG', 'mod'], comp: ['COMP', 'util'], range: ['RANGE', 'util'], matrix: ['MATRIX', 'util'], lpg: ['LPG', 'shp'],
+  limit: ['LIMIT', 'shp'],
 };
 
 /** the short tag before a card's title and the family that colours it */
@@ -151,6 +157,7 @@ const ALIASES: Record<string, string> = {
   matrix: 'pin matrix routing mixer router patch bay crosspoint',
   harm: 'chord chords orchid chord memory one finger triad seventh ninth sus inversion voicing',
   lpg: 'lpg lowpass gate lopass gate low pass gate vactrol buchla 292 pluck ping bongo strike filter vca',
+  limit: 'brickwall peak ceiling clip maximizer loudness ear safety protect headphones feedback master dynamics',
 };
 
 /** the words a module is found by in the palette and + Add module besides its name: its label, its card tag, its former

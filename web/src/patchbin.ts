@@ -107,7 +107,7 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 // Type indices are the position in TYPE_ORDER (append only: the firmware has the same list in defs.h).
 // Port indices are positions in ModuleDef.outputs / inputs (explicit ports first, then the `<param>_cv` inputs).
 
-import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DRUM_ROWS, drumRowName, PANEL_BUTTONS } from './modules';
+import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DRUM_ROWS, drumRowName, LIMIT_AHEAD, PANEL_BUTTONS } from './modules';
 import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } from './buttons';
 import { defaultMap, EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, MODULES_1_10, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef, type Patch } from './patch';
 import { noteWords, patternWords, wordCount } from './track';
@@ -131,7 +131,7 @@ export const GROUP_REC = 4 + 5 * MAX_PARTS + 4;
 /** bytes of the panel section (engine.h ENG_PANEL_BYTES): two masks and the labels */
 export const PANEL_BYTES = 4 + PANEL_LABEL_KEYS.length * PANEL_LABEL_MAX;
 export const MAX_CABLES = 255;
-export const VERSION = 62; // 62 (release 1.19, FORMAT_1_19): the Low pass gate module (lpg, #1018) appended after the Harmonizer, written only by patches that use it (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14; ordinary patches retain their lowest format
+export const VERSION = 62; // 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14; ordinary patches retain their lowest format
 /**
  * The lowest format the encoder writes: a patch that uses no parameter appended after it (ParamDef.since past it: a value
  * off its default on either morph side, a pin, macro range, input route or card row on it) is written in this format, its
@@ -143,8 +143,8 @@ export const WRITE_FLOOR = 46;
 /** the formats past WRITE_FLOOR that only add something the encoder writes when the patch uses it (format 48: the patterns
  * and songs, flag bit 10; format 50: a note word's bit 31, NOTE_WRAP; format 51: counted records, when the patch would not
  * fit otherwise, COUNTED; format 59: stored pattern links, flag bit 15; format 60: trig conditions, FORMAT_CONDS; format
- * 61: a cable into a Part's priority input, FORMAT_PRIORITY_CABLE); every other format past WRITE_FLOOR appends parameters
- * (ParamDef.since) */
+ * 61: a cable into a Part's priority input, FORMAT_PRIORITY_CABLE; format 62: the 1.19 module types, FORMAT_1_19); every
+ * other format past WRITE_FLOOR appends parameters (ParamDef.since) */
 export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase', 59: 'stored pattern links', 60: 'trig conditions', 61: 'note priority on a cable', 62: 'the 1.19 modules' };
 /** the flag (u16 at offset 6) of the P-locks section (format 49, #524) */
 export const FLAG_LOCKS = 2048;
@@ -275,6 +275,17 @@ function uses111(source: Patch, dev: Patch): boolean {
 function uses112(dev: Patch): boolean {
   return dev.modules.some((m) => (DEFS[m.type]?.since ?? 0) >= FORMAT_1_12);
 }
+/**
+ * The 1.19 format (#1018, #1019): release 1.19's format change. It adds module types (ModuleDef.since: the Low pass gate,
+ * then the Limiter). A patch is written in it only when such a module reaches the FM-1's patch, so every other patch keeps
+ * its lower format. Later 1.19 work extends this format (new types with `since: FORMAT_1_19`, other uses in uses119),
+ * never a new one.
+ */
+export const FORMAT_1_19 = 62;
+/** what a patch uses of FORMAT_1_19 (`dev`: its device form): a module of a type added with it (the Low pass gate, the Limiter) */
+function uses119(dev: Patch): boolean {
+  return dev.modules.some((m) => (DEFS[m.type]?.since ?? 0) >= FORMAT_1_19);
+}
 /** what a patch uses of FORMAT_1_10 (`dev`: its device form): a note tied across the loop point, in any pattern */
 function uses110(dev: Patch): boolean {
   return dev.modules.some((m) => m.type === 'steps' && [m.notes, ...(m.patterns ?? []).map((x) => x?.notes)].some((ns) => ns?.some((n) => n.wrap)));
@@ -293,16 +304,6 @@ export const FORMAT_PRIORITY_CABLE = 61;
 function usesPriorityCable(dev: Patch): boolean {
   const parts = new Set(dev.modules.filter((m) => m.type === 'part').map((m) => m.id));
   return dev.cables.some((c) => parts.has(c.to.module) && c.to.port === 'priority');
-}
-/**
- * The 1.19 format (#1018): release 1.19's format change. It adds the Low pass gate module (ModuleDef.since). A patch
- * without one stays in an older format. Later 1.19 work extends this format (new types with `since: FORMAT_1_19`, other
- * uses in uses119), never a new one.
- */
-export const FORMAT_1_19 = 62;
-/** what a patch uses of FORMAT_1_19 (`dev`: its device form): a module of a type added with it (the Low pass gate, #1018) */
-function uses119(dev: Patch): boolean {
-  return dev.modules.some((m) => (DEFS[m.type]?.since ?? 0) >= FORMAT_1_19);
 }
 /** a device of the device pages section's kind 2 (format 49): a plain module with its own name */
 export const NAMED_MODULE = 2;
@@ -1127,9 +1128,10 @@ export function encodePatch(source: Patch, anyway = false, counted = false, allo
 const lineBytes = (n: number): number => (n + 3) & ~3;
 /** the lines of the fixed-size line modules, bytes (engine.c): a string or comb line per copy (STR_LEN), the granular's 1 s
  * and its grain records (grain_line_t), the reverb's eight lines, allpasses and pre-delay (RV_LEN) and its ring of the last
- * block's inputs (RV_MEM, D-1103: 128 int32), the chorus's (CH_LEN) */
+ * block's inputs (RV_MEM, D-1103: 128 int32), the chorus's (CH_LEN), the Limiter's lookahead (LIMIT_AHEAD int32) */
 export const LINES = {
   string: lineBytes(2 * 1104), grain: lineBytes(2 * 44118 + 8 * 24), reverb: lineBytes(2 * 8074 + 4 * 128), chorus: lineBytes(2 * 927),
+  limit: lineBytes(4 * LIMIT_AHEAD),
 } as const;
 /** a Delay's line, bytes, from its length (modules.ts delayLine; engine.c dly_samples) */
 export const delayBytes = (ms: number): number => lineBytes(2 * delayLine(ms));
@@ -1172,9 +1174,9 @@ export const overText = (i: BudgetItem): string => (i.key === 'cpu' ? `CPU ${i.u
   : i.key === 'memory' ? `Memory ${kb(i.used)} of ${kb(i.max)} KB${i.used <= i.max ? ' (the lines do not fit what is left)' : ''}` : `${i.used} ${i.label} of ${i.max}`);
 
 /** the types whose modules take lines from the FM-1's memory */
-export const LINE_TYPES = ['delay', 'string', 'comb', 'grain', 'reverb', 'chorus'];
+export const LINE_TYPES = ['delay', 'string', 'comb', 'grain', 'reverb', 'chorus', 'limit'];
 /** the line of each fixed-size line type, bytes (the comb uses a string line) */
-const FIXED_LINE: Record<string, number> = { string: LINES.string, comb: LINES.string, grain: LINES.grain, reverb: LINES.reverb, chorus: LINES.chorus };
+const FIXED_LINE: Record<string, number> = { string: LINES.string, comb: LINES.string, grain: LINES.grain, reverb: LINES.reverb, chorus: LINES.chorus, limit: LINES.limit };
 
 /**
  * Where the FM-1 puts lines of these sizes (bytes), as engine.c line_place does when a patch loads: the largest first (of

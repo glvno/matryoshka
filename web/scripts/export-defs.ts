@@ -9,6 +9,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { ADSR_LONG, ANALOG_CURVE, ANALOG_DIP, ANALOG_DIP_S, ANALOG_PWO, ANALOG_SKEW, ANALOG_TOL, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, FILTER_DRIVE_KNEE, FILTER_DRIVE_TOP, DIODE_W180, DIODE_KCRIT, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_REACH_MAX, DELAY_RATES, DELAY_TAIL, delayAaCoefs, DEVICE_SR, DELAY_TAPE_LP, DELAY_TAPE_HP, delayTapePole, DELAY_WOW_HZ, DELAY_FLUTTER_HZ, DELAY_WOW_MS, DELAY_FLUTTER_MS, turnInc, delayDepth8, DELAY_HEADS, DELAY_HEAD_MASK, DELAY_HEAD_GAIN, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, LFO_TEMPO, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY, ONCE_BAR, CLICK_MS, CLICK_LEVEL_Q16, CLICK_HZ, CLICK_ACCENT_HZ } from '../src/modules';
 import { LPG_ATTACK, LPG_CLIP, LPG_RES_K } from '../src/modules';
+import { LIMIT_AHEAD, LIMIT_CHUNK, LIMIT_KA } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16, VERSION, deviceBudget, DEVICE } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
 import { ACCENT_VEL, TRACK_NOTES_MAX } from '../src/track';
@@ -124,6 +125,9 @@ w(`#define ANALOG_DIP_SAMPLES_Q16 ${Math.round(ANALOG_DIP_S * DEVICE_SR * 65536)
 w(`/* the saw's curve: (1 - e^-x) / x at x = i / 256 (0 .. 0.5), Q30 (engine.c ana_saw) */`);
 w(`static const int32_t ANALOG_SAWC_T[129] = {${Array.from({ length: 129 }, (_, i) => { const x = i / 256; return Math.round((x ? -Math.expm1(-x) / x : 1) * 2 ** 30); }).join(', ')}};`);
 w(`#define RANGE_T_MAX ${RANGE_T_MAX}   /* the Range module (#526): t within +-this input ranges with clamp off */`);
+w(`#define LIMIT_AHEAD ${LIMIT_AHEAD}   /* the Limiter's lookahead line, samples (#1019) */`);
+w(`#define LIMIT_CHUNK ${LIMIT_CHUNK}   /* its line's chunks, whose peaks it keeps */`);
+w(`#define LIMIT_KA ${Math.round(LIMIT_KA * 2 ** 30)}   /* its attack with lookahead, Q30: 99.9 % of a step in LIMIT_AHEAD samples */`);
 w(`#define SHREG_STAGES ${SHREG_STAGES}   /* the Shift register's stages (#438) */`);
 w(`#define SHREG_PAT_SEED 0x${SHREG_PAT_SEED.toString(16)}u   /* mixed with the instance seed: its starting pattern */`);
 w(`#define SHREG_FLIP_SEED 0x${SHREG_FLIP_SEED.toString(16)}u   /* mixed with the instance seed: its flip stream */`);

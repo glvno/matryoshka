@@ -214,6 +214,9 @@ function bends(values: number[], costs: number[][], thr: number, step: boolean):
 const GRID_MAX = 16384;
 /** more settings a type's choices are tried in: the Delay's heads (#660) cost only with Tape on */
 const CHOICE_CONTEXTS: Record<string, KitCfg[]> = { delay: [{ params: { tape: 1 } }] };
+/** more settings a type's inputs are tried in: the Limiter works only on a signal over its ceiling, and the feed (an
+ * oscillator at 0.8) is under its default −1 dB */
+const INPUT_CONTEXTS: Record<string, KitCfg[]> = { limit: [{ params: { ceiling: -30 } }] };
 /** settings with exact fast paths in engine.c (cpu.ts CostDim exact): those values, then one ordinary value counted for
  * every other (a Scale's or VCA's gain of 0 or 1; a fully wet Chorus or Reverb drops its dry and mix products) */
 const EXACT: Record<string, Record<string, { exact: number[]; other: number }>> = {
@@ -298,7 +301,7 @@ async function typeCost(type: string): Promise<TypeCost> {
   // 3. inputs, alone and with each mode on (an oscillator's pm input does nothing until its pm index is above 0; its feedback
   // would hide that, it turns on the same FM mode)
   const off = Object.fromEntries(modes.map((q) => [q.name, q.min]));
-  const modeContexts: KitCfg[] = [{}, { inputs: allInputs }, ...modes.map((q) => ({ params: { ...off, [q.name]: q.ref } }))];
+  const modeContexts: KitCfg[] = [{}, { inputs: allInputs }, ...modes.map((q) => ({ params: { ...off, [q.name]: q.ref } })), ...(INPUT_CONTEXTS[type] ?? [])];
   const flag = (cfg: KitCfg, key: 'inputs' | 'outputs', name: string, on: number): void => void (on && (cfg[key] = [...(cfg[key] ?? []), name]));
   await Promise.all(
     allInputs.map(async (name, i) => {
