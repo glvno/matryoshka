@@ -11810,7 +11810,11 @@ static void sched_build(void)
     {   /* each copy's waits, recorded once for every pass below, in the arena's free bytes (given back at the end: the
          * buffers and the lines are placed after this) */
         uint32_t room = arena_free() / 2u > 65535u ? 65535u : arena_free() / 2u, used = 0, m;
-        uint16_t *w = room > 2u * (ENG_MAX_INST + 1u) ? (uint16_t *)arena_lo(2u * room) : 0;
+        uint16_t *w;
+#ifdef ENG_SCH_NORECORD                         /* (host tests, tools/sched_record.sh: every pass finds the waits again) */
+        room = 0;
+#endif
+        w = room > 2u * (ENG_MAX_INST + 1u) ? (uint16_t *)arena_lo(2u * room) : 0;
         if (w) {
             uint16_t *at = w, *n = w + ENG_MAX_INST + 1u, *list = n + ENG_MAX_INST + 1u;
             room -= 2u * (ENG_MAX_INST + 1u);
