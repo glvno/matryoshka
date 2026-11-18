@@ -1,13 +1,33 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// A small RV32IM interpreter that runs tools/cpu/prof.c (the engine built for rv32im) and counts what each module costs.
+// A small RV32IMF interpreter that runs tools/cpu/prof.c (the engine built for rv32imf) and counts what each module costs.
 // Cycles are a simple in-order model: 1 per instruction, +1 for a load, +2 for a taken branch or a jump, +32 for a
-// division. The FM-1's core is not RISC-V; only the ratios matter, the scale comes from patches measured on the device.
+// division; a float operation costs what the FM-1's FPU takes against its 1-cycle integer operations (add, subtract,
+// multiply, compare, min / max 1.6, divide 3.0, a conversion between int and float 2.3: docs/measurements/2026-11-16-fpu.md).
+// The FM-1's core is not RISC-V; only the ratios matter, the scale comes from patches measured on the device.
 import { readFileSync } from 'node:fs';
 
 const MEM = 16 << 20;
 
 /** cycle cost by kind: the only place the model's weights live */
-export const WEIGHTS = { base: 1, load: 1, taken: 2, jump: 2, div: 32 };
+export const WEIGHTS = { base: 1, load: 1, taken: 2, jump: 2, div: 32, fpu: 0.6, fdiv: 2, fcvt: 1.3 };
+
+/** the bits of a float32 and back */
+const F32 = new Float32Array(1), I32 = new Int32Array(F32.buffer);
+const fbits = (v) => ((F32[0] = v), I32[0]);
+const ffrom = (b) => ((I32[0] = b), F32[0]);
+/** v rounded to an integer by RISC-V rounding mode rm (7: the dynamic mode, round to nearest as the engine leaves it) */
+function fround(v, rm) {
+  switch (rm) {
+    case 1: return Math.trunc(v);
+    case 2: return Math.floor(v);
+    case 3: return Math.ceil(v);
+    case 4: return v < 0 ? -Math.round(-v) : Math.round(v);
+    default: {
+      const r = Math.round(v);
+      return r - v === 0.5 && r % 2 !== 0 ? r - 1 : r;
+    }
+  }
+}
 
 function loadElf(buf, mem) {
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
@@ -40,7 +60,7 @@ export function profile(elf, patch, events, w = WEIGHTS, hist = null) {
   const W = { ...WEIGHTS, ...w };
   const mem = new Uint8Array(MEM);
   const dv = new DataView(mem.buffer);
-  const x = new Int32Array(32);
+  const x = new Int32Array(32), f = new Float32Array(32);
   let pc = loadElf(elf, mem);
   let cycles = 0, evi = 0;
   const blocks = [];
@@ -159,6 +179,56 @@ export function profile(elf, patch, events, w = WEIGHTS, hist = null) {
         if (rd) x[rd] = v | 0;
         break;
       }
+      case 0x07: {                                                                 // flw
+        if (f3 !== 2) throw new Error(`bad float load at ${pc.toString(16)}`);
+        f[rd] = dv.getFloat32((x[rs1] + (ins >> 20)) >>> 0, true);
+        cycles += W.load;
+        break;
+      }
+      case 0x27: {                                                                 // fsw
+        if (f3 !== 2) throw new Error(`bad float store at ${pc.toString(16)}`);
+        dv.setFloat32((x[rs1] + (((ins >> 25) << 5) | ((ins >> 7) & 31))) >>> 0, f[rs2], true);
+        break;
+      }
+      case 0x53: {                                                                 // op-fp (F extension, single precision)
+        const a = f[rs1], b = f[rs2];
+        switch (f7) {
+          case 0x00: f[rd] = a + b; cycles += W.fpu; break;
+          case 0x04: f[rd] = a - b; cycles += W.fpu; break;
+          case 0x08: f[rd] = a * b; cycles += W.fpu; break;
+          case 0x0c: f[rd] = a / b; cycles += W.fdiv; break;
+          case 0x2c: f[rd] = Math.sqrt(a); cycles += W.fdiv; break;
+          case 0x10: {                                                             // fsgnj / fsgnjn / fsgnjx (fmv, fneg, fabs)
+            const sa = fbits(a), sb = fbits(b);
+            const s = f3 === 0 ? sb : f3 === 1 ? ~sb : sa ^ sb;
+            f[rd] = ffrom((sa & 0x7fffffff) | (s & 0x80000000));
+            break;
+          }
+          case 0x14:                                                               // fmin / fmax (a NaN gives the other)
+            f[rd] = Number.isNaN(a) ? b : Number.isNaN(b) ? a : f3 === 0 ? Math.min(a, b) : Math.max(a, b);
+            cycles += W.fpu;
+            break;
+          case 0x50:                                                               // fle / flt / feq
+            if (rd) x[rd] = f3 === 0 ? +(a <= b) : f3 === 1 ? +(a < b) : +(a === b);
+            cycles += W.fpu;
+            break;
+          case 0x60: {                                                             // fcvt.w.s / fcvt.wu.s (saturating)
+            const v = Number.isNaN(a) ? Infinity : fround(a, f3);
+            const r = rs2 === 0 ? Math.max(-0x80000000, Math.min(0x7fffffff, v)) | 0 : Math.max(0, Math.min(0xffffffff, v)) | 0;
+            if (rd) x[rd] = r;
+            cycles += W.fcvt;
+            break;
+          }
+          case 0x68: f[rd] = rs2 === 0 ? x[rs1] : x[rs1] >>> 0; cycles += W.fcvt; break;   // fcvt.s.w / fcvt.s.wu
+          case 0x70:                                                               // fmv.x.w
+            if (f3 !== 0) throw new Error(`fclass at ${pc.toString(16)}`);
+            if (rd) x[rd] = fbits(a);
+            break;
+          case 0x78: f[rd] = ffrom(x[rs1]); break;                                 // fmv.w.x
+          default: throw new Error(`unsupported float operation ${f7.toString(16)} at ${pc.toString(16)}`);
+        }
+        break;
+      }
       case 0x0f: break;                                                            // fence
       case 0x73: {                                                                 // ecall: the host calls of prof.c
         if (ins !== 0x73) throw new Error(`unsupported system instruction at ${pc.toString(16)}`);
@@ -173,7 +243,7 @@ export function profile(elf, patch, events, w = WEIGHTS, hist = null) {
         } else if (n === 2) {
           if (a0 === 6) cur = { start: cycles, total: 0, nodes: new Map() };
           else if (a0 === 7) {
-            cur.total = cycles - cur.start;
+            cur.total = Math.round(cycles - cur.start);                            // (whole cycles: the float weights are not)
             blocks.push({ total: cur.total, nodes: cur.nodes });
             cur = null;
           } else if (cur && a0 <= 3) {
@@ -181,7 +251,7 @@ export function profile(elf, patch, events, w = WEIGHTS, hist = null) {
             if (a0 > 0) {
               let e = cur.nodes.get(stageNode);
               if (!e) cur.nodes.set(stageNode, (e = { sum: 0, cv: 0, run: 0 }));
-              e[a0 === 1 ? 'sum' : a0 === 2 ? 'cv' : 'run'] += cycles - mark;
+              e[a0 === 1 ? 'sum' : a0 === 2 ? 'cv' : 'run'] += Math.round(cycles - mark);
             }
             stageNode = key;
             mark = cycles;

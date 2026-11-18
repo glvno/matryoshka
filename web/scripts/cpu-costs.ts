@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The CPU cost table (src/cpu-costs.json) for the editor's estimate (src/cpu.ts). Counts the fixed-point engine on an rv32im
+// The CPU cost table (src/cpu-costs.json) for the editor's estimate (src/cpu.ts). Counts the FM-1's engine on an rv32imf
 // model (tools/cpu: build.sh builds it, rv32.mjs runs it) module by module:
 //   - every module type alone, every setting changed one at a time (alone and with every input patched), to find what changes
 //     its cost (dims); the settings that do are measured in all combinations (grid), numbers at the points where their cost
@@ -540,7 +540,7 @@ types.steps.thru = thru;
 console.log(`steps thru ${thru} per key`);
 const { cyclesPerUs, fixedUs } = SURVEY;
 const table: CpuTable = {
-  source: 'estimate: the fixed-point engine counted on an rv32im model (tools/cpu), calibrated on the factory patches measured on the test rig (2026-11-09)',
+  source: 'estimate: the FM-1 engine counted on an rv32imf model (tools/cpu), calibrated on the factory patches measured on the test rig (2026-11-09)',
   cyclesPerUs,
   fixedUs,
   cores: CORES,

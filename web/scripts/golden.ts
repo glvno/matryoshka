@@ -1582,6 +1582,24 @@ kit('moving-rates', (add, wire) => {
   events['gamelan-tail'] = [[0, 'on', 60], [128 * 172, 'off', 60]];
   ends['gamelan-tail'] = 128 * 1400;
 }
+// every other factory assembly with a Resonator (the float kernel of D-1112, #979), each in a new patch with Main's pitch
+// and gate on the inputs of those names (the resonator bank's `in` struck by the gate), two notes, then its tail. The drum
+// kit plays in the 808 Kit's kits; the glass bell is left out, its frequency shifter's output being 5.5 % off the
+// reference with either Resonator
+for (const name of ['bowed glass', 'kalimba', 'marimba', 'rain', 'resonator bank', 'rim', 'tabla', 'tom']) {
+  const key = `modal-${name.replace(/ /g, '-')}`;
+  const p = newPatch(DEFS, key);
+  const main = p.modules.find((m) => m.type === 'fm1')!, out = p.modules.find((m) => m.type === 'output')!;
+  const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === name)!, 300, 300);
+  for (const i of a.inputs) {
+    const from = i.port === 'in' ? 'gate' : (['pitch', 'gate'] as const).find((k) => i.port === k || i.label === k);
+    if (from && !connect(p, DEFS, { module: main.id, port: from }, { module: i.module, port: i.port })) throw new Error(`${key}: ${from}`);
+  }
+  for (const o of a.outputs) connect(p, DEFS, { module: o.module, port: o.port }, { module: out.id, port: 'l' });
+  tests[key] = p;
+  events[key] = [[0, 'on', 60], [128 * 60, 'off', 60], [128 * 200, 'on', 67], [128 * 260, 'off', 67]];
+  ends[key] = 128 * 700;
+}
 kit('modal-long', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const pl = add('pulse', 0, 0, { time: 0.002 });

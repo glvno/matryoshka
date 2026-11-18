@@ -5,13 +5,18 @@
  * instance (inst_t) per part of its group, everything else has one; an input reading another group's per-part output sums
  * its parts. Each group hands the notes to its parts with its own allocator, the rest plays the shared keyboard (one note).
  * Number formats: signals, parameters Q16.16; oscillator phase u32 (2^32 = 1 cycle);
- * filter coefficients Q24; envelope level and rates Q30. Build: -DENG_POOL=... places the big buffers (device:
+ * filter coefficients Q24; envelope level and rates Q30; a recursive kernel may keep its states and do its arithmetic in
+ * single-precision float inside its module (D-1112: the Resonator). Build: -DENG_POOL=... places the big buffers (device:
  * the .pool section), ENG_LOWRAM the second line area, line_low (device: .lowram, below the RAM region, #273). Needs 64-bit multiply (hardware) and, at block rate and on waveform edges, 64/32 division. */
 #include "engine.h"
 #include "defs.h"
 #include "dsp_tables.h"
 #include "wt_tables.h"
 #include "rate_envelope.h"
+
+#if defined(__clang__)
+#pragma STDC FP_CONTRACT OFF            /* float as the FM-1 computes it (tools/build.py -ffp-contract=off), on every host */
+#endif
 
 #ifndef ENG_POOL
 #define ENG_POOL
@@ -274,14 +279,6 @@ static int32_t sin_turn(uint32_t ph)
     uint32_t i = ph >> 22, fr = (ph >> 6) & 0xFFFFu;
     int32_t s0 = SIN_T[i], s1 = SIN_T[i + 1u];
     return (s0 + (int32_t)(((int64_t)(s1 - s0) * fr) >> 16)) >> 14;
-}
-
-/* the same in Q30 (the modal resonator needs cos near 1 to better than Q16) */
-static int32_t sin_turn30(uint32_t ph)
-{
-    uint32_t i = ph >> 22, fr = (ph >> 6) & 0xFFFFu;
-    int32_t s0 = SIN_T[i], s1 = SIN_T[i + 1u];
-    return s0 + (int32_t)(((int64_t)(s1 - s0) * fr) >> 16);
 }
 
 /* The unchanged Newton refinement; d must remain current even when its seed divisor is unchanged. */
@@ -575,8 +572,8 @@ typedef struct {
         struct { int32_t env; } dyn;                  /* the peak follower, Q24 */
         struct { esig_t *buf; int32_t g, cm, pm, c[LIMIT_AHEAD / LIMIT_CHUNK]; uint8_t w; } lim;   /* Limiter (#1019): its lookahead line, the gain (Q30), the peak of the chunk being filled and of the line's chunks (pm: the largest of c), the line's next place */
         struct { int32_t env, lc, hc, pk, prev, y; uint32_t cnt; int32_t frac, t; uint8_t trig, arm, valid; } esp;   /* Q24: the envelope, the band pass's one-poles, its peak hold, its previous sample, the glided pitch; samples since the last crossing, that crossing's fraction (Q16), the measured pitch (Q16 octaves) */
-        struct { int32_t u[6], v[6], r30[6], gn[6], b[6], kdec, kdamp, kbr; uint8_t ok; } mod;   /* the modal resonators' state pairs, Q26;
-                                                    * r30, gn, b: the modes' radii, normalised gains and input gains for kdec kdamp / kbr, ok: which are worked out */
+        struct { float u[6], v[6], r[6], b[6]; int32_t kdec, kdamp, kbr; uint8_t ok; } mod;   /* the modal resonators' state pairs (float in steps of Q16,
+                                                    * D-1112), the modes' radii and input gains for kdec kdamp kbr (ok: worked out) */
         struct { int32_t a[8], b[8], ia; uint32_t phase; } fs;   /* the Hilbert chains (w1 w2 per section), chain A's delayed sample, the quadrature oscillator */
         struct { struct grain_line *ln; uint32_t w, acc, seed; uint8_t prev; } gr;   /* acc: grains per sample, Q24 */
         struct { int16_t *buf; int64_t cur; uint32_t len, w, t, seen, beat; int32_t rate; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev, rk, ph, tp; } dly;   /* len: its line's samples, from its length (dly_samples); cur 64 bits (a long line is more samples than Q16 holds in 32) */   /* t, ring, seen, beat: the clock tempo; cur, rate: the read position's distance behind w (samples Q16, 0 = not yet set) and its glide (dly_glide); rk, ph: a lower rate (#659, dly_slow): the rate step's k the line holds (0 none yet), the sample within a line sample; tp: Tape on (#660, dly_tape) */
@@ -9455,101 +9452,97 @@ static void m_comb(const node_t *nd, inst_t *it, uint32_t n)
     (void)nd;
 }
 
-#define MODAL_N 6
-static const int32_t MODAL_BAR_Q16[MODAL_N] = {65536, 180617, 354157, 585433, 874250, 1221591};   /* a free bar's partial ratios */
-
 /* The modal resonator (modules.ts modal): six resonators with poles r e^(+-j th) and impulse response a r^n sin((n + 1) th),
  * each a pair of states (u, v) turned by th and shrunk by r every sample:
  *     u += b x;   (u, v) <- (rc u - rs v, rs u + rc v);   out = v
- * with rc = r cos(th), rs = r sin(th), b = a / r (Q31), the states Q26 (doubled before a product, so a high word is Q26).
- * Each new state is the difference of two products' high words (within a step of the exact value), moved a step toward
- * zero: never longer than the exact pair, which the turn makes r times shorter, so with no input a ring falls to exactly
- * zero (D-1109; #840: a two-pole recursion y = g x + c1 y1 - c2 y2 with rounded products holds a quiet ring for ever).
- * The step toward zero makes the end of a long ring fall faster than the reference's: a 5 s ring stays within 1 dB of it
- * down to -60 dBFS and stops at about -85 dBFS (exact 64-bit sums would carry it lower at about 1.5 times the cycles).
- * The input, u and v are held to +-8. Coefficients once per block from the block's first pitch. */
+ * with rc = r cos(th), rs = r sin(th), b = a / r. Single-precision float inside the module (D-1112): r, a and b on a change
+ * of decay, damp or bright; th, rc and rs once per block from the block's first pitch; the states in steps of the Q16
+ * signal, so x is the input's Q16 value and out the sum of the v cut toward zero to a whole step (never louder than the
+ * exact ring: rounded to the nearest, a ring under one step would go on as a toggling step until it fell under half a
+ * step). Float rounding neither holds a ring up nor cuts it short while it is above the output's step (#840, D-1109);
+ * below that it would end in the subnormal range, held there by rounding to nearest, so a mode whose u and v are both
+ * under MODAL_END at the end of a block is set to exactly zero: with no input a ring ends at exactly zero, within 14 s of
+ * the clamp at the longest decay (5 s). The input, u and v are held to +-8. */
+#define MODAL_N 6
+#define MODAL_LIM 524288.0f                 /* 8 in steps of Q16 */
+#define MODAL_END (1.0f / 256.0f)           /* 1/256 of the output's step, -144 dBFS */
+static const float MODAL_BAR[MODAL_N] = {1.0f, 2.756f, 5.404f, 8.933f, 13.34f, 18.64f};   /* a free bar's partial ratios */
+
+/* x held to +-l (compares: fminf / fmaxf are library calls in wasm) */
+HOT float clampf(float x, float l) { return x > l ? l : x < -l ? -l : x; }
+
+/* e^x for |x| < 0.04 (a Resonator's ln r and -ln r): its series to x^5, within 3e-12 */
+HOT float modal_exp(float x)
+{
+    return 1.0f + x * (1.0f + x * (1.0f / 2.0f) * (1.0f + x * (1.0f / 3.0f) * (1.0f + x * (1.0f / 4.0f) * (1.0f + x * (1.0f / 5.0f)))));
+}
+
 static void m_modal(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *in = it->in[MODAL_I_IN], *pitch = it->in[MODAL_I_PITCH];
     esig_t *out = it->out[0];
-    int32_t *su = it->s.mod.u, *sv = it->s.mod.v, *bq = it->s.mod.b;
-    int32_t st = EF(it, MODAL_P_STRUCT), damp = EF(it, MODAL_P_DAMP), decay = EF(it, MODAL_P_DECAY);
-    int32_t br = EF(it, MODAL_P_BRIGHT), b[MODAL_N], rc[MODAL_N], rs[MODAL_N], nrc[MODAL_N];
-    int32_t base = pitch[0] + EF(it, MODAL_P_COARSE) / 12;
-    int32_t *r30c = it->s.mod.r30, *gn = it->s.mod.gn;
-    uint32_t i, k, fresh = 0;
-    if (!(it->s.mod.ok & 1u) || it->s.mod.kdec != decay || it->s.mod.kdamp != damp) {   /* the divisions only on a change */
+    float *su = it->s.mod.u, *sv = it->s.mod.v, *r = it->s.mod.r, *bk = it->s.mod.b;
+    int32_t damp = EF(it, MODAL_P_DAMP), decay = EF(it, MODAL_P_DECAY), br = EF(it, MODAL_P_BRIGHT);
+    float st = (float)EF(it, MODAL_P_STRUCT) * (1.0f / 65536.0f), rc[MODAL_N], rs[MODAL_N], b[MODAL_N], dt0;
+    uint32_t i, k;
+    if (!it->s.mod.ok || it->s.mod.kdec != decay || it->s.mod.kdamp != damp || it->s.mod.kbr != br) {   /* on a change only */
+        /* ln r = -ln 1000 / (decay_i sr), decay_i = decay / (1 + 2 damp i): decay is at least 0.05 s (D-1114: no division by
+         * a value that can be zero), so ln r is at least -0.035 (damp 1, the sixth mode); b = a / r = a e^-ln r is below
+         * 0.73 (a <= 0.7, r >= 0.96) */
+        float k0 = -6.9077553f / ((float)decay * (1.0f / 65536.0f) * (float)ENG_SR), d2 = (float)damp * (2.0f / 65536.0f);
+        float bw = 0.3f + 0.7f * ((float)br * (1.0f / 65536.0f)), sum = 0.0f, g = 1.0f;
         for (i = 0; i < MODAL_N; i++) {
-            int32_t dec_i = (int32_t)(((int64_t)decay << 16) / (ENG_ONE + 2 * (int32_t)i * damp));   /* decay / (1 + 2 damp i) */
-            int64_t e = -(((int64_t)LOG2_1000_Q16 << 24) / ((int64_t)dec_i * ENG_SR));              /* octaves per sample, Q24 */
-            if (e < -((int64_t)47 << 24))
-                e = -((int64_t)47 << 24);
-            /* 2^e: its Q16 part from the table, the 8 bits below as 1 + f ln 2 (e in Q16 alone would make a 5 s decay 7.4 s) */
-            r30c[i] = mulq((int32_t)exp2_scale(1u << 30, (int32_t)(e >> 8)), (1 << 30) + (int32_t)(((e & 255) * 2907270) >> 16), 30);
+            sum += g;
+            g *= bw;
+        }
+        g = 1.0f / sum;                                                                      /* (sum >= 1) */
+        for (i = 0; i < MODAL_N; i++) {
+            float lr = k0 * (1.0f + d2 * (float)i);
+            r[i] = modal_exp(lr);
+            bk[i] = g * modal_exp(-lr);
+            g *= bw;
         }
         it->s.mod.kdec = decay;
         it->s.mod.kdamp = damp;
-        it->s.mod.ok |= 1u;
-        fresh = 1;
-    }
-    if (!(it->s.mod.ok & 2u) || it->s.mod.kbr != br) {
-        int32_t bw = 19661 + mul16(br, 45875), amp[MODAL_N], sum = 0, a = ENG_ONE;
-        for (i = 0; i < MODAL_N; i++) {
-            amp[i] = a;
-            sum += a;
-            a = mul16(a, bw);
-        }
-        for (i = 0; i < MODAL_N; i++)
-            gn[i] = (int32_t)(((int64_t)amp[i] << 16) / sum);
         it->s.mod.kbr = br;
-        it->s.mod.ok |= 2u;
-        fresh = 1;
+        it->s.mod.ok = 1u;
     }
-    if (fresh)
-        for (i = 0; i < MODAL_N; i++) {   /* b = a / r, Q31: below 1 (a <= 0.71, r > 0.71 above a 0.5 ms decay; r = 0: silent) */
-            int64_t q = r30c[i] > 0 ? ((int64_t)gn[i] << 45) / r30c[i] : 0;
-            bq[i] = (int32_t)(q > INT32_MAX ? INT32_MAX : q);
-        }
+    dt0 = (float)exp2_scale(INC_C4, pitch[0] + EF(it, MODAL_P_COARSE) / 12) * (3.14159265f / 4294967296.0f);   /* f0's th / 2 */
     for (i = 0; i < MODAL_N; i++) {
-        int32_t ratio = ((int32_t)(i + 1u) << 16) + mul16(st, MODAL_BAR_Q16[i] - ((int32_t)(i + 1u) << 16));
-        uint32_t dt = exp2_scale(INC_C4, base + log2_q16((uint32_t)ratio) - (16 << 16));   /* f0 x ratio as a phase increment */
-        int64_t c;
-        int32_t sh;
-        b[i] = rc[i] = rs[i] = nrc[i] = 0;
-        if (dt >= DT_MAX)
+        float h = dt0 * ((float)(i + 1u) + st * (MODAL_BAR[i] - (float)(i + 1u))), h2 = h * h, s, c;   /* th / 2 */
+        b[i] = rc[i] = rs[i] = 0.0f;
+        if (h >= 0.45f * 3.14159265f)                                                        /* at or above 0.45 sr: left out */
             continue;
-        sh = sin_turn30(dt >> 1);                                                            /* cos th = 1 - 2 sin^2(th / 2): the pole's */
-        c = (int64_t)r30c[i] * ((1 << 30) - mulq(sh, sh, 29));                               /* frequency needs cos accurate near 1 */
-        c = (c < 0 ? c + (1 << 29) - 1 : c) >> 29;                                           /* both cut toward zero: rc^2 + rs^2 <= r^2 */
-        b[i] = bq[i];
-        rc[i] = (int32_t)(c > INT32_MAX ? INT32_MAX : c);
-        nrc[i] = -rc[i];
-        rs[i] = (int32_t)(((int64_t)r30c[i] * sin_turn30(dt)) >> 29);                        /* (sin th > 0 below half a cycle) */
+        /* sin and cos of th / 2 (below 1.42) by their series, to h^11 and h^12 (within 2e-8); cos th = 1 - 2 sin^2(th / 2) */
+        s = h * (1.0f + h2 * (-1.0f / 6.0f + h2 * (1.0f / 120.0f + h2 * (-1.0f / 5040.0f + h2 * (1.0f / 362880.0f + h2 * (-1.0f / 39916800.0f))))));
+        c = 1.0f + h2 * (-1.0f / 2.0f + h2 * (1.0f / 24.0f + h2 * (-1.0f / 720.0f + h2 * (1.0f / 40320.0f + h2 * (-1.0f / 3628800.0f + h2 * (1.0f / 479001600.0f))))));
+        b[i] = bk[i];
+        rc[i] = r[i] * (1.0f - 2.0f * s * s);
+        rs[i] = r[i] * (2.0f * s * c);
     }
     {
-        /* the states in locals (out[] is int32 too and could alias them in it->s), the six modes written out */
-        int32_t u[MODAL_N], v[MODAL_N];
+        /* the states in locals, the six modes written out */
+        float u[MODAL_N], v[MODAL_N];
         for (i = 0; i < MODAL_N; i++) {
             u[i] = su[i];
             v[i] = sv[i];
         }
         for (k = 0; k < n; k++) {
-            int32_t x = clampi(in[k], -(8 << 16), 8 << 16) << 11, y = 0, ui, vi, nu, nv;   /* x Q27; u + b x < 16, doubled < 2^31 */
-#define HI(a, b) ((int32_t)(((int64_t)(a) * (b)) >> 32))
+            float x = (float)clampi(in[k], -(8 << 16), 8 << 16), y = 0.0f, ui, nu, nv;
 #define MODE(i)                                                                                             \
-            ui = (u[i] + HI(b[i], x)) << 1;                                                                \
-            vi = v[i] << 1;                                                                                 \
-            nu = HI(rc[i], ui) - HI(rs[i], vi);                                                             \
-            nv = HI(rs[i], ui) - HI(nrc[i], vi);                                                            \
-            u[i] = clampi(nu - (nu > 0) + (nu < 0), -(8 << 26), 8 << 26);                                   \
-            v[i] = clampi(nv - (nv > 0) + (nv < 0), -(8 << 26), 8 << 26);                                   \
-            y += v[i] >> 3;
+            ui = u[i] + b[i] * x;                                                                           \
+            nu = rc[i] * ui - rs[i] * v[i];                                                                 \
+            nv = rs[i] * ui + rc[i] * v[i];                                                                 \
+            u[i] = clampf(nu, MODAL_LIM);                                                                   \
+            v[i] = clampf(nv, MODAL_LIM);                                                                   \
+            y += v[i];
             MODE(0) MODE(1) MODE(2) MODE(3) MODE(4) MODE(5)
 #undef MODE
-#undef HI
-            out[k] = (y + 64) >> 7;
+            out[k] = (int32_t)y;                                                            /* (cut toward zero; |y| <= 6 x 8 x 2^16) */
         }
         for (i = 0; i < MODAL_N; i++) {
+            if (u[i] < MODAL_END && u[i] > -MODAL_END && v[i] < MODAL_END && v[i] > -MODAL_END)
+                u[i] = v[i] = 0.0f;
             su[i] = u[i];
             sv[i] = v[i];
         }

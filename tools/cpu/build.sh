@@ -1,6 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
-# Build the rv32im programs that tools/cpu/rv32.mjs counts (any clang with the RISC-V target and ld.lld; runs on macOS):
+# Build the rv32imf programs that tools/cpu/rv32.mjs counts (any clang with the RISC-V target and ld.lld; runs on macOS;
+# the F extension stands in for the FM-1's single-precision FPU, D-1112, and changes no integer code):
 #   build/cpu/prof.elf   the engine with the ENG_PROF hooks (per module costs)
 #   build/cpu/plain.elf  the engine without them (totals)
 #   build/cpu/aot.elf    plain.elf with the compiled factory assemblies (#808, firmware/src/aot.c; prof.elf and plain.elf
@@ -16,7 +17,7 @@ PIN=$(cat tools/cpu/clang-version)
 clang --version | head -1 | grep -qE " version $PIN( |$)" || echo "warning: $(clang --version | head -1), not clang $PIN (tools/cpu/clang-version): the counts will differ from the committed cpu-costs.json" >&2
 OUT=build/cpu
 mkdir -p "$OUT/old"
-CC="clang --target=riscv32-unknown-elf -march=rv32im -mabi=ilp32 -Os -ffunction-sections -fno-builtin -ffreestanding -nostdlib -Wall -Wno-unused-function -fuse-ld=lld -Wl,-T,tools/cpu/link.ld"
+CC="clang --target=riscv32-unknown-elf -march=rv32imf -mabi=ilp32 -Os -ffunction-sections -fno-builtin -ffreestanding -nostdlib -Wall -Wno-unused-function -fuse-ld=lld -Wl,-T,tools/cpu/link.ld"
 $CC -Ifirmware/src -DENG_AOT=0 -o "$OUT/prof.elf" tools/cpu/prof.c
 $CC -Ifirmware/src -DENG_AOT=0 -DNO_PROF -o "$OUT/plain.elf" tools/cpu/prof.c
 $CC -Ifirmware/src -DENG_AOT=1 -DNO_PROF -o "$OUT/aot.elf" tools/cpu/prof.c

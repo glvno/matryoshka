@@ -1611,8 +1611,9 @@ const MODAL_BAR = [1, 2.756, 5.404, 8.933, 13.34, 18.64];
  * the fundamental's time to -60 dB, partial i decays in decay / (1 + 2 damp i); the amplitudes a fall as
  * (0.3 + 0.7 bright)^i and are normalised to a sum of 1. Partials above 0.45 sr are left out. Each mode is a pair of
  * states (u, v) turned by th and shrunk by r every sample: u += (a / r) x; (u, v) <- r (u cos th - v sin th,
- * u sin th + v cos th); out = v (D-1109). A pitch change keeps a ring's level, and in the fixed-point engine a ring falls
- * to exactly zero (a two-pole recursion y = g x + c1 y1 - c2 y2 with rounded products holds a quiet ring for ever, #840).
+ * u sin th + v cos th); out = v (D-1109). A pitch change keeps a ring's level, and in the FM-1's engine (single-precision
+ * float, D-1112) a ring ends at exactly zero (a two-pole recursion y = g x + c1 y1 - c2 y2 with rounded fixed-point
+ * products holds a quiet ring for ever, #840).
  * The input and the states are held to +-8: excite it with short bursts (a pulse, a plucked string, a gated noise); a
  * steady input builds up to the clamp.
  */
@@ -1648,7 +1649,7 @@ const modal: ModuleImpl<{ u: Float64Array; v: Float64Array }> = {
       if (f >= c.sr * 0.45) continue;
       const th = (2 * Math.PI * f) / c.sr;
       const r = Math.pow(2, -LOG2_1000 / ((decay / (1 + 2 * damp * i)) * c.sr));
-      b[i] = r > 0 ? Math.min(1, amp[i] / sum / r) : 0;   // (below 1: the firmware keeps it in Q31)
+      b[i] = r > 0 ? Math.min(1, amp[i] / sum / r) : 0;   // (below 0.73 at every setting)
       rc[i] = r * Math.cos(th);
       rs[i] = r * Math.sin(th);
     }
