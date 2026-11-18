@@ -30,12 +30,14 @@ const BY_TYPE: Record<string, Record<string, string>> = {
   shreg: { in: 'data in', len: 'loop length', flip: 'flip chance', bits: 'dac bits' },
   comp: { thresh: 'threshold', hyst: 'hysteresis', gt: 'a above b', lt: 'a below b', trig: 'rise trigger' },
   range: { inlo: 'in low', inhi: 'in high', outlo: 'out low', outhi: 'out high' },
+  limit: { gr: 'gain reduction', ahead: 'lookahead' },
   matrix: {
     ...Object.fromEntries([1, 2, 3, 4].flatMap((k) => [[`in${k}`, `in ${k}`], [`out${k}`, `out ${k}`]])),
     ...Object.fromEntries([1, 2, 3, 4].flatMap((i) => [1, 2, 3, 4].map((o) => [`i${i}o${o}`, `in ${i} → out ${o}`]))),
   },
   steps: { dir: 'play mode' },
   harm: { type: 'chord', sus: 'sus / add', ext: '7th / 9th' },
+  lpg: { cv: 'open (cv)' },
   rateenv: { ar: 'attack rate', d1r: 'decay 1 rate', d1l: 'decay 1 level', d2r: 'decay 2 rate', rr: 'release rate', krs: 'key rate scaling' },
   env8: { ...Object.fromEntries(Array.from({ length: 8 }, (_, i) => [[`l${i + 1}`, `level ${i + 1}`], [`r${i + 1}`, `rate ${i + 1}`]]).flat()), sus: 'sustain step', end: 'end step' },
   seq: { s1: 'step 1', s2: 'step 2', s3: 'step 3', s4: 'step 4', s5: 'step 5', s6: 'step 6', s7: 'step 7', s8: 'step 8' },
@@ -91,10 +93,18 @@ const HINTS: Record<string, string> = {
   'delay.heads': 'With Tape on: which playback heads sound. Head 1 plays at the time, head 2 at twice it, head 3 at three times it, all from the same memory. Several heads share the level: each plays at a half or a third. A head past the Delay\'s length plays at its end.',
   'delay.rate': 'The rate this Delay keeps its sound at. 44k keeps every sample: full quality. 22k keeps every second sample: twice the time in the same memory, and only frequencies up to about 9 kHz. 11k keeps every fourth sample: four times the time, up to about 4.4 kHz. So echoes at a lower rate sound darker. The length row shows the time at this rate (at most 3.8 s, 7.6 s, 15.2 s, in a small patch). A new rate while it plays is a tape changing speed: the echoes already in it play on, lower at a lower rate and higher at a higher one, then the echo glides back to the time.',
   'glide.fall': 'The time a falling input takes. A rising input moves at the time row, a falling one at this: a vactrol (a lopass gate\'s light and photocell) opens quickly and closes slowly. 0: falling takes the time row too.',
+  'lpg.mode': 'combo: the low pass and the gain open together, as on a Buchla 292 (a pluck darkens as it fades). lp: the low pass only, at full level. vca: the gain only, no filter.',
+  'lpg.decay': 'How long the gate takes to close after a strike or when cv falls. Like a vactrol (a lamp and a light-dependent resistor), it opens in about 2 ms and closes more slowly as it nears closed.',
+  'lpg.offset': 'How far the gate stays open with nothing in cv, 0..1; cv adds to it. A strike opens it fully, then it closes back to this.',
+  'lpg.res': 'Resonance: a peak near the cutoff, loudest while the gate is nearly closed and gone once it is open, so a struck note rings as it fades. Its level stays the same. 0: no peak. Not used in vca mode.',
   'delay.pingpong': 'Ping-pong: half per side. Both sides share the Delay\'s line, so each echoes up to half its length.',
   'filter.drive': 'Drive: how hard the signal pushes the resonance. Above 0, the resonance passes a soft clip inside the filter, as in a Korg MS-20: a quiet signal plays as before, a loud one has its resonance squashed and roughened. More drive clips at a lower level. It does nothing without resonance. 0: off, the clean filter, exactly as before.',
   'ladder.diode': 'Diode: the diode ladder of the Roland TB-303 and the EMS VCS3 instead of the Moog ladder. Its four stages load each other, so it falls more gently near the cutoff (about 18 dB per octave) and the cutoff is where its resonance peaks. Its level follows the resonance as the Moog ladder\'s does, so switching it keeps the patch\'s level. Stage saturation does not apply in this mode.',
   'ladder.stsat': 'Stage saturation: the soft clip at the input of every stage, not only where the signal enters the loop, as in a Moog ladder\'s transistor pairs. A driven filter growls more; a quiet one plays as before. Off: exactly as before.',
+  'limit.ceiling': 'The loudest the output gets, in dB below full scale. Nothing passes it: a last hard clip catches what the gain has not.',
+  'limit.gain': 'Drive into the limiter, in dB. More gain makes the sound louder up to the ceiling, and squashes it more.',
+  'limit.release': 'How fast the gain comes back after a peak: 99 % of the way in this time. Short times pump and distort low notes; long times duck the sound after a loud hit.',
+  'limit.ahead': 'Lookahead: the sound is delayed 1.45 ms, so the gain has come down smoothly by the time a peak arrives. Off: no delay, for a limiter inside a feedback loop; the gain drops at once on a peak, which is harsher.',
 };
 export const paramHint = (type: string, name: string): string | undefined => HINTS[`${type}.${name}`];
 
@@ -120,7 +130,8 @@ const TAGS: Record<string, [string, TagFamily]> = {
   comb: ['COMB', 'fx'], modal: ['MODAL', 'fx'],
   mixer: ['MIX', 'util'], math: ['MATH', 'util'], logic: ['LOGIC', 'util'], const: ['DC', 'util'], macro: ['MACRO', 'util'], scale: ['SCALE', 'util'],
   output: ['OUT', 'util'], fm1: ['MAIN', 'util'], part: ['PART', 'util'], alloc: ['VOICES', 'util'], scope: ['SCOPE', 'util'],
-  drummap: ['MAP', 'mod'], pd: ['PD', 'src'], select: ['SEL', 'util'], shreg: ['SHREG', 'mod'], comp: ['COMP', 'util'], range: ['RANGE', 'util'], matrix: ['MATRIX', 'util'],
+  drummap: ['MAP', 'mod'], pd: ['PD', 'src'], select: ['SEL', 'util'], shreg: ['SHREG', 'mod'], comp: ['COMP', 'util'], range: ['RANGE', 'util'], matrix: ['MATRIX', 'util'], lpg: ['LPG', 'shp'],
+  limit: ['LIMIT', 'shp'],
 };
 
 /** the short tag before a card's title and the family that colours it */
@@ -145,6 +156,8 @@ const ALIASES: Record<string, string> = {
   range: 'scale map rescale bipolar unipolar curve clamp limit',
   matrix: 'pin matrix routing mixer router patch bay crosspoint',
   harm: 'chord chords orchid chord memory one finger triad seventh ninth sus inversion voicing',
+  lpg: 'lpg lowpass gate lopass gate low pass gate vactrol buchla 292 pluck ping bongo strike filter vca',
+  limit: 'brickwall peak ceiling clip maximizer loudness ear safety protect headphones feedback master dynamics',
 };
 
 /** the words a module is found by in the palette and + Add module besides its name: its label, its card tag, its former

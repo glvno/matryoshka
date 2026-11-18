@@ -1595,6 +1595,12 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .loud-mark { width: 3px; margin-left: -1px; background: var(--ink); }
 .loud-mark[data-rule="on"] { background: var(--secondary); }
 .loud-mark[data-rule="hot"] { background: var(--warning); }
+/* a Limiter card's gain reduction readout (#1019, limit-view.ts): dB taken off now, and a bar of 0..24 dB from the left */
+.gr-readout { display: flex; align-items: center; gap: 4px; margin: 4px 0 2px; padding: 0 8px; font: 500 10px/1.25 'Barlow', system-ui, sans-serif; color: var(--muted); white-space: nowrap; }
+.gr-readout b { color: var(--ink); font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; min-width: 2.6em; text-align: right; }
+.gr-k { text-transform: uppercase; letter-spacing: .06em; }
+.gr-bar { position: relative; flex: 1 1 auto; height: 8px; margin-left: 4px; border-radius: 2px; background: color-mix(in srgb, var(--line) 60%, transparent); overflow: hidden; }
+.gr-bar > span { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: var(--warning); }
 /* listening to one signal (#939): the chip under the view switch, the jack and cable listened to ringed in the accent */
 .listen-chip { position: absolute; top: 46px; left: 50%; transform: translateX(-50%); z-index: 8; display: flex; align-items: center; gap: 8px;
   max-width: calc(100% - 32px); padding: 4px 4px 4px 10px; border: 1.5px solid var(--accent); border-radius: 8px; background: var(--panel); color: var(--ink);

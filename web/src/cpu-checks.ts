@@ -52,8 +52,8 @@ export function cpuChecks(note: number): { name: string; patch: Patch; notes: nu
   return out;
 }
 
-/** modules whose cost depends on what they are fed (grains alive, a compressor working): the table holds their worst case */
-export const BUSY_TYPES = new Set(['grain', 'dyn']);
+/** modules whose cost depends on what they are fed (grains alive, a compressor or a limiter working): the table holds their worst case */
+export const BUSY_TYPES = new Set(['grain', 'dyn', 'limit']);
 
 /** Checks whose data-dependent work the table conservatively charges at its worst case:
  * busy modules, repeated-value quantizers, or filters whose moving Q16 cutoff may hold across samples. */

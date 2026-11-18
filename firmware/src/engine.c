@@ -573,6 +573,7 @@ typedef struct {
         struct { int32_t ic1, ic2, jc1, jc2; uint8_t e; } flt;   /* stage 1 and stage 2 integrators (Q20 + e, ring_scale) */
         struct { int32_t s[4]; uint8_t e; } lad;      /* the four one-pole states, Q20 (Q20 + e, ring_scale) */
         struct { int32_t env; } dyn;                  /* the peak follower, Q24 */
+        struct { esig_t *buf; int32_t g, cm, pm, c[LIMIT_AHEAD / LIMIT_CHUNK]; uint8_t w; } lim;   /* Limiter (#1019): its lookahead line, the gain (Q30), the peak of the chunk being filled and of the line's chunks (pm: the largest of c), the line's next place */
         struct { int32_t env, lc, hc, pk, prev, y; uint32_t cnt; int32_t frac, t; uint8_t trig, arm, valid; } esp;   /* Q24: the envelope, the band pass's one-poles, its peak hold, its previous sample, the glided pitch; samples since the last crossing, that crossing's fraction (Q16), the measured pitch (Q16 octaves) */
         struct { int32_t u[6], v[6], r30[6], gn[6], b[6], kdec, kdamp, kbr; uint8_t ok; } mod;   /* the modal resonators' state pairs, Q26;
                                                     * r30, gn, b: the modes' radii, normalised gains and input gains for kdec kdamp / kbr, ok: which are worked out */
@@ -606,6 +607,7 @@ typedef struct {
         struct { int32_t v, c1; } sh;
         struct { uint32_t rnd, rnd0; uint8_t reg, pat, c1, r1; } shr;   /* Shift register: the flip stream and where a reset restarts it; the stages (s1 in bit 7), the pattern a reset restores, clock / reset high at the previous sample */
         struct { uint8_t hi; } cmp;   /* Comparator: gt is high */
+        struct { int32_t vac, y1, y2, t1; } lpg;   /* Low pass gate: the vactrol (Q30), the two one-poles (Q24), strike at the previous sample */
         struct { int32_t rem, t1; } pls;
         struct { int32_t w[SELECT_NOUT - 1]; int8_t k; uint8_t fading; } sel;   /* Selector: each input's weight (Q16), the position (-1: none yet) */
     } s;
@@ -989,7 +991,7 @@ typedef struct grain_line { int16_t buf[GRAIN_LEN]; grain_t g[GRAIN_MAX]; } grai
 typedef char eng_inst_bytes_check[sizeof(inst_t) == ENG_INST_BYTES ? 1 : -1];   /* (patchbin.ts INST_BYTES follows it) */
 #endif
 /* The lines of the line-type modules: the Delays (their length, dly_samples), the strings and combs (a line per copy),
- * the granulars, the reverbs and the choruses (D-375). They share two areas, divided when a patch loads (line_place):
+ * the granulars, the reverbs, the choruses (D-375) and the Limiters' lookahead (a line per copy). They share two areas, divided when a patch loads (line_place):
  * what the arena has left, and line_low in .lowram (D-373), as big as the reverb and chorus lines were there and 8 KiB
  * more. The editor's budget models the same (web/src/patchbin.ts linePlace, memoryBudget): a patch fits when every line
  * does. A new line-type module only needs its bytes in line_bytes. */
@@ -1078,6 +1080,7 @@ static uint32_t line_bytes(uint32_t t, const int32_t *par)
     case T_GRAIN: return LINE_BYTES(sizeof(grain_line_t));
     case T_REVERB: return LINE_BYTES(2u * RV_MEM);
     case T_CHORUS: return LINE_BYTES(2u * CH_LEN);
+    case T_LIMIT: return LINE_BYTES(4u * LIMIT_AHEAD);
     default: return 0;
     }
 }
@@ -1295,6 +1298,9 @@ static void init_state(const node_t *nd, inst_t *it, uint32_t mod, uint32_t v)
     case T_STRING:
         it->s.str.seed = 0x3779b97fu;
         it->s.str.blen = 1;
+        break;
+    case T_LIMIT:
+        it->s.lim.g = 1 << 30;
         break;
     case T_STEPS:                        /* modules.ts steps.seed with engine.ts instSeed(module index, part) */
         it->s.stp.seed = (mod * 8u + v + 1u) * 0x9e3779b9u;
@@ -2843,6 +2849,8 @@ int eng_load(const uint8_t *p, uint32_t len)
                 it->s.ch.buf = (int16_t *)ln;
             else if (nd->type == T_GRAIN)
                 it->s.gr.ln = (grain_line_t *)ln;
+            else if (nd->type == T_LIMIT)
+                it->s.lim.buf = (esig_t *)ln;
         }
     }
     E.nout = 0;
@@ -7538,6 +7546,65 @@ static void m_dyn(const node_t *nd, inst_t *it, uint32_t n)
     it->s.dyn.env = env;
 }
 
+/* Limiter (modules.ts limit, #1019): out = in x drive x the gain, held within +-ceiling by a last hard clip. With ahead on,
+ * the input goes through a line of LIMIT_AHEAD samples and the gain's target is ceiling / the loudest sample of the line's
+ * chunks and the chunk being filled, reached by a one-pole (LIMIT_KA) before that sample leaves the line; with ahead off,
+ * the gain drops at once to ceiling / |sample|. Both come back up at the release (env_rate). The target is one 32-bit
+ * division (Q15, rounded down: never louder) when the peak changes; gr = 1 - the gain, Q16. */
+static void m_limit(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *in = it->in[LIMIT_I_IN];
+    esig_t *out = it->out[LIMIT_O_OUT], *gro = it->out[LIMIT_O_GR];
+    int32_t top = (int32_t)exp2_q16(mul16(EF(it, LIMIT_P_CEILING), DB_TO_LOG2) + (16 << 16)), drive = (int32_t)exp2_q16(mul16(EF(it, LIMIT_P_GAIN), DB_TO_LOG2) + (16 << 16));
+    int32_t kr = env_rate(EF(it, LIMIT_P_RELEASE)), g = it->s.lim.g;
+    uint32_t num = (uint32_t)top << 15, i;                   /* (the ceiling is at most 0 dB, 1.0: num at most 2^31) */
+    (void)nd;
+    if (EF(it, LIMIT_P_AHEAD) >= ENG_ONE / 2) {
+        esig_t *line = it->s.lim.buf;
+        int32_t cm = it->s.lim.cm, pm = it->s.lim.pm, mk = -1, t = 1 << 30;
+        uint32_t w = it->s.lim.w;
+        for (i = 0; i < n; i++) {
+            int64_t v64 = ((int64_t)in[i] * drive) >> 16;
+            int32_t v = v64 > 0x7FFFFFFF ? 0x7FFFFFFF : v64 < -0x7FFFFFFF ? -0x7FFFFFFF : (int32_t)v64, a = v < 0 ? -v : v, y = line[w], m, o;
+            line[w] = v;
+            if (a > cm)
+                cm = a;
+            m = cm > pm ? cm : pm;
+            if (m != mk) {
+                mk = m;
+                t = m > top ? (int32_t)((num / (uint32_t)m) << 15) : 1 << 30;
+            }
+            g += mulq(t < g ? LIMIT_KA : kr, t - g, 30);
+            o = (int32_t)(((int64_t)y * g) >> 30);
+            out[i] = o > top ? top : o < -top ? -top : o;
+            gro[i] = ((1 << 30) - g + 8192) >> 14;
+            if (!(++w & (LIMIT_CHUNK - 1u))) {                /* a chunk filled: its peak replaces the one its samples overwrote */
+                int32_t *c = it->s.lim.c;
+                c[(w - 1u) / LIMIT_CHUNK] = cm;
+                cm = 0;
+                w &= LIMIT_AHEAD - 1u;
+                pm = c[0] > c[1] ? c[0] : c[1];
+                pm = c[2] > pm ? c[2] : pm;
+                pm = c[3] > pm ? c[3] : pm;
+            }
+        }
+        it->s.lim.cm = cm;
+        it->s.lim.pm = pm;
+        it->s.lim.w = (uint8_t)w;
+    } else {
+        for (i = 0; i < n; i++) {
+            int64_t v64 = ((int64_t)in[i] * drive) >> 16;
+            int32_t v = v64 > 0x7FFFFFFF ? 0x7FFFFFFF : v64 < -0x7FFFFFFF ? -0x7FFFFFFF : (int32_t)v64, a = v < 0 ? -v : v, t, o;
+            t = a > top ? (int32_t)((num / (uint32_t)a) << 15) : 1 << 30;
+            g = t < g ? t : g + mulq(kr, t - g, 30);
+            o = (int32_t)(((int64_t)v * g) >> 30);
+            out[i] = o > top ? top : o < -top ? -top : o;
+            gro[i] = ((1 << 30) - g + 8192) >> 14;
+        }
+    }
+    it->s.lim.g = g;
+}
+
 #define LOG2_C4_Q16 526343            /* log2(261.6255653 Hz): pitch 0 */
 #define ESP_K_HZ 12282814ull          /* 4.6 / (2 pi) in Q24: a one-pole at f Hz is env_rate's curve over 4.6 / (2 pi f) s */
 
@@ -10530,6 +10597,52 @@ static void m_comp(const node_t *nd, inst_t *it, uint32_t n)
     (void)nd;
 }
 
+/* Low pass gate (modules.ts lpg, #1018), ported from KITTEN RACK's m_lpg (https://github.com/BlackKittenDevices/kitten-rack,
+ * a GPL-3.0 fork of Matryoshka): the vactrol (Q30) opens two one-poles (Q24) and, in combo, the gain. res (added here)
+ * feeds the second one-pole back against the input, the input raised by as much, at LPG_RES_K x res x (1 - vac^2)^2, so
+ * it rings while the gate is nearly closed and stays stable as it opens. vca runs no filter. */
+static void m_lpg(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *in = it->in[LPG_I_IN], *cv = it->in[LPG_I_CV], *st = it->in[LPG_I_STRIKE];
+    esig_t *out = it->out[LPG_O_OUT];
+    int32_t ka = env_rate(LPG_ATTACK_Q16), kd = env_rate(EF(it, LPG_P_DECAY)), off = EF(it, LPG_P_OFFSET), lvl = EF(it, LPG_P_LEVEL);
+    int32_t kr = mul16(EF(it, LPG_P_RES), LPG_RES_K_Q16);   /* Q16 */
+    int mode = round_q16(EF(it, LPG_P_MODE));
+    int32_t vac = it->s.lpg.vac, y1 = it->s.lpg.y1, y2 = it->s.lpg.y2, t1 = it->s.lpg.t1;
+    uint32_t i;
+    for (i = 0; i < n; i++) {
+        int32_t d, x, y;
+        if (st[i] >= 32768 && t1 < 32768)
+            vac = 1 << 30;                                  /* strike: open at once */
+        t1 = st[i];
+        d = (clampi(cv[i] + off, 0, ENG_ONE) << 14) - vac;
+        if (d > 0)
+            vac += mulq(d, ka, 30);
+        else                                                /* the release slows down as it closes: kd (0.25 + 0.75 vac) */
+            vac += mulq(d, mulq(kd, (1 << 28) + mulq(vac, 805306368, 30), 30), 30);
+        x = clampi(in[i], -(LPG_CLIP_Q24 >> 8), (LPG_CLIP_Q24 >> 8) - 1);
+        if (mode == 2)
+            y = mulq(x, vac, 30);
+        else {
+            int32_t v2 = mulq(vac, vac, 30), g = 2147484 + mulq(966367642, v2, 30), u = x << 8;   /* g: 0.002 + 0.9 vac^2, Q30 */
+            if (kr > 0) {
+                int32_t w = (1 << 30) - v2;
+                int64_t f = (int64_t)u + (((int64_t)(u - y2) * mulq(kr, mulq(w, w, 30), 30)) >> 16);
+                u = f > LPG_CLIP_Q24 ? LPG_CLIP_Q24 : f < -LPG_CLIP_Q24 ? -LPG_CLIP_Q24 : (int32_t)f;
+            }
+            y1 += mulq(u - y1, g, 30);
+            y2 += mulq(y1 - y2, g, 30);
+            y = mode == 1 ? y2 >> 8 : mulq(y2 >> 8, vac, 30);
+        }
+        out[i] = mul16(y, lvl);
+    }
+    it->s.lpg.vac = vac;
+    it->s.lpg.y1 = y1;
+    it->s.lpg.y2 = y2;
+    it->s.lpg.t1 = t1;
+    (void)nd;
+}
+
 /* the Range module's curve on t (Q16; modules.ts rangeCurve): t + c t (t - 1) inside 0..1, straight on with the end's
  * slope outside it (1 - c below, 1 + c above) */
 static int32_t range_curve(int32_t t, int32_t c)
@@ -11111,6 +11224,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_COMP: m_comp(nd, it, n); break;
     case T_RANGE: m_range(nd, it, n); break;
     case T_MATRIX: m_matrix(nd, it, n); break;
+    case T_LPG: m_lpg(nd, it, n); break;
     case T_QUANT: m_quant(nd, it, n); break;
     case T_PULSE: m_pulse(nd, it, n); break;
     case T_PAN: m_pan(nd, it, n); break;
@@ -11120,6 +11234,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_PHASER: m_phaser(nd, it, n); break;
     case T_LADDER: m_ladder(nd, it, n); break;
     case T_DYN: m_dyn(nd, it, n); break;
+    case T_LIMIT: m_limit(nd, it, n); break;
     case T_ESP: m_esp(nd, it, n); break;
     case T_MATH: m_math(nd, it, n); break;
     case T_LOGIC: m_logic(nd, it, n); break;

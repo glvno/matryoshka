@@ -36,8 +36,9 @@ export const PRESET_DRAW = 0.5;
  * level, the voices and key range, a pattern's length and rate, the arpeggio, the drum notes, the chords, a Scope) */
 export const MUTATE_SKIP: Record<string, true> = { fm1: true, output: true, alloc: true, steps: true, arp: true, drummap: true, harm: true, scope: true, part: true };
 
-/** the level rows besides `level` itself: the Mixer's inputs, the VCA's gain, the Dynamics' make-up gain */
-const LEVELS: Record<string, readonly string[]> = { mixer: ['l1', 'l2', 'l3', 'l4'], vca: ['gain'], dyn: ['gain'] };
+/** the level rows besides `level` itself: the Mixer's inputs, the VCA's gain, the Dynamics' make-up gain, the Limiter's
+ * drive and ceiling */
+const LEVELS: Record<string, readonly string[]> = { mixer: ['l1', 'l2', 'l3', 'l4'], vca: ['gain'], dyn: ['gain'], limit: ['gain', 'ceiling'] };
 /** a level row: Mutate and Randomize never raise it above the larger of its value and its default */
 export const isLevel = (type: string, param: string): boolean => param === 'level' || !!LEVELS[type]?.includes(param);
 

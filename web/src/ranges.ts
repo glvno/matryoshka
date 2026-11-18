@@ -115,6 +115,10 @@ export const OUTPUT_RANGES: Record<string, Record<string, Range>> = {
     out: (p) => `${FOLLOWS}, compressed, then +${num(get(p, 'gain', 0))} dB`,
     env: '0 and up: the level the compressor hears (1 = a full-scale signal)',
   },
+  limit: {
+    out: (p) => `audio within ${sym(Math.pow(10, get(p, 'ceiling', -1) / 20))} (the ceiling, ${num(get(p, 'ceiling', -1))} dB)`,
+    gr: '0..1: the gain reduction, 1 − the gain (0 while nothing is limited, 0.5 = 6 dB less)',
+  },
   math: {
     add: (p) => { const { a, b } = mathSpan(p); return span(a[0] + b[0], a[1] + b[1]) + ONE_IN; },
     sub: (p) => { const { a, b } = mathSpan(p); return span(a[0] - b[1], a[1] - b[0]) + ONE_IN; },
@@ -199,6 +203,7 @@ export const OUTPUT_RANGES: Record<string, Record<string, Range>> = {
     lt: `${GATE} (1 while a is below b + thresh)`,
     trig: `${GATE} (a one-sample pulse each time gt rises)`,
   },
+  lpg: { out: (p) => `${FOLLOWS} × level (${num(get(p, 'level', 1))}), closed at 0; resonance can lift it` },
 };
 
 /** the range an output carries, worked out from the module's parameters now ('' for an output without one) */
