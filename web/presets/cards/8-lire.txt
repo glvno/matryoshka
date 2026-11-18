@@ -138,7 +138,7 @@ time 2 = 596 ms
 fb = 0.4
 mod delay / mix = 0.3
 drive = 1.2
-  vol = 0.59
+  vol = 0.8
 
 preset: Eight Drone
 # Drone on PLAY: all eight plates held on low fifths and octaves with slow beating, a touch of cross FM and a slow hyper LFO wandering the delay.
