@@ -61,19 +61,22 @@ FPU_FLAGS = ["-mcpu=r3", "-mfprev1", "-ffp-contract=off"]
 # the source would instead stop this compiler inlining across the two sections and change the code. Code from the flash
 # runs through a 32 KB instruction cache that a block's code overflows, so most of it is fetched again every block (about
 # 2 us a 64-byte line); the list is the code with the most of those fetches per byte, in the emulator's timing model over
-# the poly benchmark (web/scripts/poly-bench.ts, `m1emu cpu` with M1EMU_PROF; docs/measurements/2026-11-17-poly-headroom.md).
+# the poly benchmark (web/scripts/poly-bench.ts, `m1emu cpu` with M1EMU_PROF; docs/measurements/2026-11-18-poly-headroom.md),
+# whole functions up to 12.8 KB.
 # It must fit in NOINIT after .noinit (build.py checks), and nothing in it may run before fm1_cstart copies it there (the
-# P33 helpers that read the reset reason do). A tail call (`goto`) between the flash and .fast_text is refused (check): its
-# far form halted the emulator (sch_job's tail call to sch_lane, ui_msg's callers), so such pairs stay together.
-# ENG_RAMCODE=0 leaves everything in the flash.
+# P33 helpers that read the reset reason do). Only this file's functions: the compiler-rt helpers are not renamed.
+# Calls and tail calls between the flash and NOINIT are the 4-byte forms, within their +-4 MiB reach
+# (tools/emu/src/isa_tests.rs). ENG_RAMCODE=0 leaves everything in the flash.
 FAST_TEXT = (
-    "eng_once_beat", "eng_transport_running", "exp2_scale", "uac_tap", "eng_ctl",
-    "toast_wanted", "div64_lu", "env_rate_q8", "m1_param_now", "pages_select", "usb_retry", "eng_records_end",
-    "ctl_ramp16", "uac_render_start", "eng_section_at", "fm1_alnk0_irq", "seq_cond_at", "eng_steps_take", "eng_rec_size",
-    "value_of", "eng_steps_thru", "seq_rec_sync", "ctl_keeps", "m1_arms_now", "m1_slot_now", "eng_click_mix",
-    "eng_lane_run", "eng_steps_rec", "group_cables", "fm1_led_key", "morph_value", "host_poll", "batt_mark_sync",
-    "unit_of", "unison_switch", "ana_init", "lfo_free", "eng_set_range", "eng_type_at",
-) if os.environ.get("ENG_RAMCODE", "0") == "1" else ()
+    "eng_once_beat", "delay_div", "eng_transport_running", "eng_ctl", "div64_lu", "uac_render_start", "eng_find",
+    "seq_rec_sync", "toast_wanted", "ui_msg", "m1_param_now", "exp2_scale", "pages_select", "eng_records_end",
+    "eng_locks_end", "uac_tap", "eng_steps_module", "signal_mean", "eng_section_at", "fm1_alnk0_irq", "value_of",
+    "unit_of", "m1_arms_now", "ctl_ramp16", "m_bypass", "eng_steps_take", "eng_rec_size", "env_rate_q8", "m1_slot_now",
+    "m1_pack7", "panel_key_queue", "group_cables", "midi_enqueue", "eng_steps_rec", "eng_click_mix", "eng_steps_thru",
+    "eng_lane_run", "ctl_ramp30", "batt_mark_sync", "fm1_led_key", "splash_art", "host_poll", "sch_item", "ana_init",
+    "keys_report", "ctl_keeps", "update_screen", "eng_udivmod64", "eng_type_at", "ring_scale", "unison_switch",
+    "morph_value", "eng_set_range", "pages_ensure",
+) if os.environ.get("ENG_RAMCODE", "1") == "1" else ()
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 
 # SDK files of AC79NN_SDK_V1.2.1_2023-12-13 (the tested version)
@@ -453,12 +456,19 @@ def build_app():
     # .ram_text, .c1_text (the second core's waiting loop, #271) and .data follow .text at their load addresses; the boot
     # copies them by words (main.c fm1_cstart)
     # (spike) and .fast_text, the hot engine code in NOINIT (FAST_TEXT), after .data
-    for sect, lname in (("ramtext.bin", "_rt_load"), ("c1text.bin", "_c1_load"), ("data.bin", "_data_load"),
-                        ("fasttext.bin", "_ft_load")):
+    # The boot copies END - START bytes from the load address to START; objcopy's blob starts at the section's own start.
+    # They agree only when START is the section's start: padding before START (an output section that begins unaligned)
+    # would shift every copied byte (it did: .fast_text after an odd-sized .noinit, #1072).
+    for sect, lname, start, end in (("ramtext.bin", "_rt_load", "_rt_start", "_rt_end"),
+                                    ("c1text.bin", "_c1_load", "_c1_start", "_c1_end"),
+                                    ("data.bin", "_data_load", "_data_start", "_data_end"),
+                                    ("fasttext.bin", "_ft_load", "_ft_start", "_ft_end")):
         load = symv(lname)
         if load % 4:
             raise SystemExit(f"{lname} {load:#x} is not word aligned")
         blob = (OUT / sect).read_bytes() if (OUT / sect).exists() else b""
+        if len(blob) != symv(end) - symv(start):
+            raise SystemExit(f"{sect}: {len(blob)} B, but the boot copies {start}..{end} ({symv(end) - symv(start)} B)")
         if blob:
             if load - APP_XIP < len(img):
                 raise SystemExit(f"{lname} overlaps the image")
@@ -530,9 +540,6 @@ def check(img, syms, dis, rts):
             val = int(v, 16) & 0xFFFFFFFF
             if 0xFFC00000 <= val < 0xFFD00000:
                 errors.append(f"call to ROM address {val:#010x} in {fn}: {mm.group(3).strip()[:100]}")
-        for v in re.findall(r"goto -?\d+ <[^:>]*: ([0-9a-f]+) >", mm.group(3)):
-            if (int(mm.group(1), 16) >= 0x02000000) != (int(v, 16) >= 0x02000000):
-                errors.append(f"tail call between the flash and RAM code in {fn}: {mm.group(3).strip()[:100]}")
     if len(img) > APP_SLOT:
         errors.append(f"image {len(img)} B exceeds the app slot")
 
@@ -667,7 +674,7 @@ def main():
     side = json.dumps({"version": version, "product": PRODUCT, "size": len(pkg), "sha256": hashlib.sha256(pkg).hexdigest(),
                        "app_sha256": hashlib.sha256(img).hexdigest(),
                        "build": {"ENG_AOT": int(os.environ.get("ENG_AOT", "0")),
-                                 "ENG_RAMCODE": int(os.environ.get("ENG_RAMCODE", "0")),
+                                 "ENG_RAMCODE": int(os.environ.get("ENG_RAMCODE", "1")),
                                  "ENG_BUF_REUSE": int(os.environ.get("ENG_BUF_REUSE", "1")),
                                  "FELUCCA_SPEED": os.environ.get("FELUCCA_SPEED", SPEED),
                                  # Missing overrides use defaults in the recorded source commit.

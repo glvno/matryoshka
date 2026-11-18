@@ -40,10 +40,12 @@ SECTIONS
     .bss (NOLOAD) : { _bss_start = .; *(.bss*) *(.sbss*) *(COMMON) . = ALIGN(4); _bss_end = .; } > RAM
     .pool (NOLOAD) : { _pool_start = .; *(.pool*) . = ALIGN(4); _pool_end = .; } > POOL
     .noinit (NOLOAD) : { *(.noinit*) } > NOINIT
-    /* (spike) hot engine code (tools/build.py FAST_TEXT) in the rest of NOINIT, copied from its load address at every boot
+    /* hot engine code (tools/build.py FAST_TEXT) in the rest of NOINIT, copied from its load address at every boot
      * (main.c fm1_cstart), so what the boot ROM leaves there does not matter. Within a call's reach (+-4 MiB) of the
-     * code in XIP; the RAM below 0x01C80000 - 4 MiB is not. */
-    .fast_text : { . = ALIGN(4); _ft_start = .; KEEP(*(.fast_text*)) . = ALIGN(4); _ft_end = .; } > NOINIT AT > XIP
+     * code in XIP; the RAM below 0x01C80000 - 4 MiB is not. The section itself is word aligned (ALIGN(4) after the
+     * colon), so _ft_start is its first byte and the load address's: .noinit can end on any byte (tools/build.py
+     * checks). */
+    .fast_text : ALIGN(4) { _ft_start = .; KEEP(*(.fast_text*)) . = ALIGN(4); _ft_end = .; } > NOINIT AT > XIP
     _ft_load = LOADADDR(.fast_text);
     _c1_ustack = 0x01C74000; _c1_ustack_top = 0x01C74E00; _c1_sstack_top = 0x01C75000;
     _guard0 = 0x01C75000; _ustack_lo = 0x01C75100; _ustack_top = 0x01C7A000;
