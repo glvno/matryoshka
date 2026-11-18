@@ -14,6 +14,9 @@ typedef struct {
 } eng_step_entry_t;
 uint32_t eng_generation(void); /* changes before every load, including a failed load */
 eng_step_entry_t *eng_steps_entry_memory(void); /* NULL for legacy routes */
+/* D-1114, #979: the float kernels' result bits for a fixed input, one hash a case (engine.c), on lane 0 (core 0) or 1 */
+#define ENG_PROBE_CASES 6u
+void eng_fpu_probe(uint32_t lane, uint32_t *h);
 
 #define ENG_SR 44118u          /* the FM-1's I2S rate (M-VAVE fm1_open, FM1_AUDIO_HARDWARE_RATE); was 44100 until 1.1 */
 /* Allocation-rule discovery (#824). Comparison builds retain conservative admission. */
