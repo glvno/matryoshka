@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "version": "1.20.0",
+  "firmware_product": "FM-1_7012000",
+  "source_commit": "83b92f6090c033a115c810420e7e499edaadea33",
+  "source_tree": "1f7ff878eb9271a20896be0930a0d2b5bc0424d3",
+  "status": "automated and rig checks passed; owner device check and release approval pending",
+  "release_approval": {
+    "status": "pending",
+    "scope": "Publication of v1.20.0 from the merge of this record, whose firmware/ and tools/ equal the qualified source 83b92f60 (D-105)."
+  },
+  "build_manifest_sha256": "bb28de542e7a75f8ff3f9113ef7eb9c8b545ff0d92f32c9daab135261da03f05",
+  "artifacts": {
+    "package": {"name": "matryoshka-1.20.0.fwsc", "size": 610641, "sha256": "bde941c55bf115471dcb988e1bf03dae4f3b7b83f0979e45c627379c4d01268b"},
+    "normal": {"name": "matryoshka-1.20.0-app.bin", "size": 555992, "sha256": "69edad3ee55a0080d504c7f6b229d9c3495c3711b2831e154ae97546737cb303"},
+    "normal_elf": {"name": "matryoshka-1.20.0-app.elf", "size": 622068, "sha256": "9d8bee3cdcbe9be01714e1fa99617b735fadb85bbbca8b72f7fd3a740d4532a9"},
+    "normal_sidecar": {"name": "matryoshka-1.20.0.json", "size": 411, "sha256": "bda87c02495840adccf9204dd059274e8b3fb59e4f322d0c3473c51a3fc5c525"},
+    "bridge": {"name": "matryoshka-emu.bin", "size": 553236, "sha256": "166913fcc8371ff9bcf4f0f5e984df1996740c5445c4ea7c5ba35d85c9c99f64"}
+  },
+  "build": "release run 44324522229: image 555992 B; RAM .data+.bss 20100 B of 24576 (4476 B free); pool 409592 B of 417792 (8200 B headroom, the floor 8192: passes); .lowram 28500 B (48 B free after it); RAM code (.fast_text) 12604 B in NOINIT, 156 B free after it; build options ENG_RAMCODE 1, ENG_BUF_REUSE 1, ENG_AOT 0, -O2; no compiler warnings",
+  "ci_runs": {"release": 44324522229, "web_rc": 44324528118},
+  "full_host": "PASS in release run 44324522229 (rc mode on the frozen commit)",
+  "full_web": {
+    "rc_run": 44324528118,
+    "run_success": true,
+    "result": "coverage run, the six parallel slow-render jobs and the coverage seal passed (D-1157 rc layout).",
+    "coverage_record": "release/coverage/v1.20.0/ (measured on 83b92f60, D-147)"
+  },
+  "full_boot": {"checks": 32, "failed": 0, "on": "the release app with the run's bridge", "handshake_identity": "FM-1_7012000"},
+  "full_smoke": {"checks": 301, "failed": 0, "level_warnings": 0, "on": "the release app, sha256 69edad3e...", "note": "run beside the scenarios in the one emulator slot (D-1157)"},
+  "full_scenarios": {
+    "passed": 347,
+    "failed": 0,
+    "shards": 4,
+    "on_bridge_sha256": "166913fcc8371ff9bcf4f0f5e984df1996740c5445c4ea7c5ba35d85c9c99f64",
+    "note": "the seven editor-side scenarios of D-1158 run per pull request, not here; focusTurns passed first time (no #1044 flake)"
+  },
+  "emulator_stage_seconds": 367,
+  "rig_install": {"run": 44324522229, "gate": "boot (emu:boot, D-123)", "result": "the registered test rig at USB location 0x01140000 runs FM-1_7012000, firmware 1.20.0 (from a CI build, FM-1_7000000); factory content installed: region valid, layout 1, format 55, version 13, set 39ee30, 10 patches, firmware tier 11, 21 factory patches in all; left running 1.20.0, not in update mode"},
+  "hardware": {
+    "scope": "D-1151: only the scenarios whose result needs the hardware, on the registered test rig running the release bytes.",
+    "rig_scenarios": {
+      "passed": 55,
+      "failed": 0,
+      "skipped": 3,
+      "by_design_skips": ["MONO, MONO L and MONO loudness: USB audio is taken before OUTPUT's mix (D-140); the emulator's I2S proves them"],
+      "flash_write": "checkFlashWrite 7 of 7 on the first run (no #953 stall: 3.30 s of audio came in 3.32 s); the settings record, SAVE and a preset store each wrote the flash with C4 held and no dropout over 1.5 ms; 639 write steps, every suspend taken, longest off 480 us",
+      "dual_core": "checkDualCore: 16 of 16 (Io 4, Hera 4 and Cassia 1 with 8 keys: nothing shed, no overload, no late half, CPU row 45 / 50 / 54 %); m1_link cores before and after the surveys: 2 cores, split on, not barred, self-test failures 0, refused jobs 0, core 1 stack 2484 B used at most"
+    },
+    "fpucheck": "tools/m1_link.py --rig fpucheck on Canvas (its Reverb on core 1) and on Hera 6 gauze 2: core 0 (32 runs), core 1 and the host (firmware/test/fpu_probe.c) give the same hashes in all seven cases; files docs/measurements/fpucheck-2026-11-18-rig-1.20.0-canvas.json and -gauze2.json",
+    "cpu_survey": {
+      "files": "docs/measurements/cpu-survey-2026-11-18-rig-1.20.0.json and -run.json (the 21 factory patches of firmware/src/presets.h, transport stopped and running, 0 / 1 / 4 / 8 keys, 2 s a phase); -polyfx.json and -polyfx-run.json (web/scripts/poly-bench.ts with the owner's Hera 6 gauze 2); -ratchets.json and -ratchets-run.json (the ratchet benchmark below)",
+      "method": "worst steady: the largest lower median of a phase's samples after the first, as a share of the 2902 us half-block; compared with the 1.20 integration survey (docs/measurements/2026-11-18-headroom-120.md) and the voices survey (docs/measurements/2026-11-18-rig-voices-120.md)",
+      "factory_bank": "no part shed, no overload mute and no late half in any phase of any patch. Every patch within 1.1 points of the integration survey, stopped and running, except three. Oracle V (now 5 voices) 70.4 / 73.6 % against 62.6 / 65.3 % at 4; the voices survey at 5 read 70.9 / 73.6 %. Hera 6 (now 6 voices) 72.2 / 74.3 % against 59.3 / 63.6 % at 4; the voices survey at 6 read 71.9 / 74.5 %. Expander S stopped 53.1 % against 50.7 %: one phase (1 key) read 1541 us on two samples, its 4 and 8 key phases match the integration survey (about 1470 us); running it is 53.8 % against 52.3 %. Highest peaks: Scrounge 2531 us stopped and 2857 us running (98.4 %, the first sample with 8 keys, which includes the load; steady 67.3 / 77.6 %; the integration survey peaked at 2583 / 2802 us).",
+      "acceptance_set": "worst steady % stopped / running, nothing dropped in any phase: Hera 6 gauze 2 (4+1 voices) 65.3 / 71.4 (integration 65.0 / 71.8); Oracle V fx (5 voices) 79.0 / 80.0 (voices survey 78.9 / 79.9); Oracle V fx4 (5) 79.9 / 81.1 (integration at 4 voices 71.6 / 72.7); Hera 6 fx (6+1) 75.6 / 78.2 (voices survey 76.2 / 77.7); Hera 6 fx4 (6+1) 80.9 / 81.4 (integration at 4 voices 68.4 / 70.1); Cassia 1 fx 70.3 / 72.5; Cassia 1 fx4 73.6 / 76.9; Io 4 fx 60.0 / 63.0; Io 4 fx4 63.7 / 65.6; Algo Four fx 66.8 / 68.4; Expander S fx 59.0 / 61.0",
+      "ratchets": "a Steps track at 1/32 and 180 bpm (16 notes) into a saw, filter, envelope and VCA, every note with a ratchet of 4 or 5 and micro timing, against the same patch without timing (#1080). Transport running, worst steady: mono 16.0 -> 16.7 % (+0.7 points), three voices 19.9 -> 21.2 % (+1.3 points); the overload guard's mean ISR time mono about 271 -> 283 us, three voices about 306 -> 382 us (the extra hits keep more voices sounding). Stopped, the track plays nothing and the patches read the same (10.9 / 10.5 %, 12.7 / 13.0 %). Nothing shed, no overload, no late half."
+    }
+  },
+  "owner_checks": {"status": "pending", "steps": "D-139: the steps in the pull request's body (the Flash tab install with factory sounds, Hera 6 at six voices with its Bass preset, Oracle V at five, Gauze 2 with Delay and Reverb, an arp at a bar rate with swing in 6/8, a Euclid patch, a Steps track with ratchets and micro timing, a 1.19 slot and file still loading, the factory sounds, a power cycle)."}
+}

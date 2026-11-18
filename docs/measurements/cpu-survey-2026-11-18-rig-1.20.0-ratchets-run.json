@@ -1,0 +1,286 @@
+[
+ {
+  "slot": 0,
+  "name": "steps mono plain",
+  "transport": true,
+  "hold_seconds": 2.0,
+  "n0_us": 556,
+  "n0_samples": [
+   556,
+   423,
+   423,
+   415
+  ],
+  "n0_mean_us": [
+   292,
+   275,
+   274,
+   269
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 548,
+  "n1_samples": [
+   548,
+   378,
+   378,
+   384
+  ],
+  "n1_mean_us": [
+   284,
+   273,
+   272,
+   265
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 545,
+  "n4_samples": [
+   545,
+   448,
+   448,
+   443
+  ],
+  "n4_mean_us": [
+   285,
+   272,
+   269,
+   266
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 471,
+  "n8_samples": [
+   471,
+   464,
+   464,
+   460
+  ],
+  "n8_mean_us": [
+   276,
+   269,
+   267,
+   273
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 1,
+  "name": "steps mono ratchets",
+  "transport": true,
+  "hold_seconds": 2.0,
+  "n0_us": 546,
+  "n0_samples": [
+   546,
+   482,
+   428,
+   405
+  ],
+  "n0_mean_us": [
+   298,
+   311,
+   286,
+   287
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 502,
+  "n1_samples": [
+   502,
+   484,
+   484,
+   427
+  ],
+  "n1_mean_us": [
+   321,
+   301,
+   284,
+   281
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 563,
+  "n4_samples": [
+   563,
+   405,
+   411,
+   427
+  ],
+  "n4_mean_us": [
+   304,
+   287,
+   284,
+   276
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 555,
+  "n8_samples": [
+   555,
+   416,
+   416,
+   412
+  ],
+  "n8_mean_us": [
+   301,
+   295,
+   277,
+   277
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 2,
+  "name": "steps poly3 plain",
+  "transport": true,
+  "hold_seconds": 2.0,
+  "n0_us": 639,
+  "n0_samples": [
+   639,
+   529,
+   518,
+   524
+  ],
+  "n0_mean_us": [
+   245,
+   303,
+   299,
+   328
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 617,
+  "n1_samples": [
+   617,
+   528,
+   528,
+   528
+  ],
+  "n1_mean_us": [
+   278,
+   299,
+   307,
+   320
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 615,
+  "n4_samples": [
+   615,
+   577,
+   577,
+   472
+  ],
+  "n4_mean_us": [
+   258,
+   292,
+   311,
+   332
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 610,
+  "n8_samples": [
+   610,
+   485,
+   547,
+   453
+  ],
+  "n8_mean_us": [
+   235,
+   302,
+   283,
+   303
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 3,
+  "name": "steps poly3 ratchets",
+  "transport": true,
+  "hold_seconds": 2.0,
+  "n0_us": 633,
+  "n0_samples": [
+   612,
+   633,
+   594,
+   594
+  ],
+  "n0_mean_us": [
+   465,
+   445,
+   311,
+   393
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 633,
+  "n1_samples": [
+   612,
+   614,
+   614,
+   633
+  ],
+  "n1_mean_us": [
+   458,
+   423,
+   316,
+   387
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 621,
+  "n4_samples": [
+   621,
+   616,
+   612,
+   609
+  ],
+  "n4_mean_us": [
+   467,
+   440,
+   348,
+   368
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 614,
+  "n8_samples": [
+   614,
+   581,
+   600,
+   599
+  ],
+  "n8_mean_us": [
+   460,
+   430,
+   334,
+   379
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ }
+]
