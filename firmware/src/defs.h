@@ -1999,7 +1999,7 @@ static const def_t DEFS[N_TYPES] = {
 };
 /* one copy of each type, a block: what the two-core plan balances (engine.c sched_build, #802), in 64 cycles: its median
  * time measured on the test rig (web/src/plan-costs.json; cpu.ts planCosts rig) */
-static const uint16_t DEF_COST[N_TYPES] = {133, 144, 161, 56, 10, 28, 63, 36, 323, 45, 165, 1962, 36, 83, 92, 37, 410, 148, 258, 169, 111, 39, 49, 28, 46, 46, 457, 165, 45, 420, 131, 65, 52, 586, 447, 439, 836, 52, 10, 1, 14, 144, 13, 49, 242, 35, 22, 221, 10, 247, 16, 83, 118, 39, 5, 289, 223, 30};
+static const uint16_t DEF_COST[N_TYPES] = {84, 147, 110, 56, 10, 20, 63, 30, 241, 51, 145, 939, 31, 59, 80, 38, 413, 141, 273, 177, 110, 36, 40, 29, 49, 43, 242, 163, 43, 234, 130, 54, 46, 585, 393, 441, 834, 32, 9, 1, 14, 125, 10, 47, 211, 36, 20, 220, 10, 236, 16, 83, 116, 39, 4, 224, 223, 38};
 /* a module bypassed when the patch loads, in the same units: passing an input through (D-1104) */
 #define DEF_COST_BYPASS 23u
 /* the same from web/src/cpu-costs.json: its run and parameter inputs, and its bypass (cpu.ts planCosts table) */
