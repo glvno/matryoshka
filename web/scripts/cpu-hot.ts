@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Where the fixed-point engine spends its cycles, on the rv32im model of tools/cpu (the same one npm run cpu-costs counts).
+// Where the engine spends its cycles, on the rv32imf model of tools/cpu (the same one npm run cpu-costs counts).
 //   npm run cpu-hot                           every check of cpu-checks.ts (factory patches and assemblies): peak cycles of a
 //                                             block and the load that is on the FM-1 (cpu-costs.json scale)
 //   npm run cpu-hot -- --save F.json          also write those numbers to F.json
@@ -43,7 +43,7 @@ if (hot) {
   if (!c) throw new Error(`no check ${hot}: ${checks.map((x) => x.name).join(', ')}`);
   const elf = `${ROOT}build/cpu/hot.elf`;
   execSync(
-    `clang --target=riscv32-unknown-elf -march=rv32im -mabi=ilp32 -Os -g -ffunction-sections -fno-builtin -ffreestanding -nostdlib -Wall -Wno-unused-function -fuse-ld=lld -Wl,-T,tools/cpu/link.ld -Ifirmware/src -DNO_PROF -DENG_AOT=${process.argv.includes('--aot') ? 1 : 0} -o ${elf} tools/cpu/prof.c`,
+    `clang --target=riscv32-unknown-elf -march=rv32imf -mabi=ilp32 -Os -g -ffunction-sections -fno-builtin -ffreestanding -nostdlib -Wall -Wno-unused-function -fuse-ld=lld -Wl,-T,tools/cpu/link.ld -Ifirmware/src -DNO_PROF -DENG_AOT=${process.argv.includes('--aot') ? 1 : 0} -o ${elf} tools/cpu/prof.c`,
     { cwd: ROOT, stdio: 'inherit' },
   );
   const hist = new Float64Array(4 << 20);

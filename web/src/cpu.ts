@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The FM-1's CPU load of a patch (core 0's: the second core takes a split poly group's odd parts, #271), estimated from a
 // table of costs (cpu-costs.json). The table comes from counting the
-// fixed-point engine's instructions on an rv32im model (tools/cpu, `npm run cpu-costs`), calibrated on the factory patches
+// FM-1 engine's instructions on an rv32imf model (tools/cpu, `npm run cpu-costs`), calibrated on the factory patches
 // measured on the test rig (a scale plus a fixed time per block, and a factor for each factory engine: `rig`); a table
 // measured on the FM-1 itself can replace it (`source`). Every figure here is an estimate.
 import TABLE from './cpu-costs.json';

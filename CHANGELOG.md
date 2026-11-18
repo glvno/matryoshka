@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Resonator patches leave the FM-1 more room, and their rings fade as in the editor.** The FM-1 now plays the Resonator with its floating-point unit, which does its sums about twice as fast, so patches with one (the 808 Kit, Meridian 8, and the gamelan, kalimba, marimba, tabla, tom, rim and other resonator assemblies) use less of the FM-1's CPU. A long ring now fades as it does in the editor down to the FM-1's quietest step, instead of falling away early and stopping about 85 dB down; with nothing playing into it, it still ends in silence (#979).
+
 ## 1.19.0 — 2026-11-17
 
 - **Splitting a signal: find it, and merge any two jacks of an assembly.** Matryoshka has no Splitter or Mult module because it does not need one: cable an output again and it feeds every input it reaches. Inside an assembly, a merged jack does the splitting: while you choose the card (the frame's **card · N**), **merge…** on an input joins it to another, and the collapsed card shows one jack that feeds both. Searching **splitter** or **mult** in Commands or + Module now says so and opens the help at it. Two jacks now merge whenever one cable could reach both (keys only with keys), so a gate jack can also feed an audio input. A cable already plugged into either jack now reaches every input of the merged jack; before, the newly joined input stayed silent until you patched it again (#1004).

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // What P-locks (#524) cost the FM-1's engine: a Steps track at 1/32 into an instrument (mono, and three voices), every
-// step locking rows, against the same patch without locks, counted on the rv32im model (tools/cpu, after build.sh).
+// step locking rows, against the same patch without locks, counted on the rv32imf model (tools/cpu, after build.sh).
 // Run from web/: npx vite-node scripts/lock-bench.ts
 // @ts-ignore: plain JavaScript modules
 import { pool } from '../../tools/cpu/pool.mjs';

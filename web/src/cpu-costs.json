@@ -1,5 +1,5 @@
 {
- "source": "estimate: the fixed-point engine counted on an rv32im model (tools/cpu), calibrated on the factory patches measured on the test rig (2026-11-09)",
+ "source": "estimate: the FM-1 engine counted on an rv32imf model (tools/cpu), calibrated on the factory patches measured on the test rig (2026-11-09)",
  "cyclesPerUs": 195.8,
  "fixedUs": 270,
  "cores": {
@@ -30427,7 +30427,7 @@
    ]
   },
   "modal": {
-   "run": 33920,
+   "run": 28444,
    "cv": 245
   },
   "shift": {
@@ -37636,11 +37636,11 @@
   },
   {
    "name": "Meridian 8",
-   "cycles": 612898
+   "cycles": 607425
   },
   {
    "name": "808 Kit",
-   "cycles": 688217
+   "cycles": 666325
   },
   {
    "name": "909 Kit",
@@ -37696,7 +37696,7 @@
   },
   {
    "name": "assembly bowed glass",
-   "cycles": 99450
+   "cycles": 93940
   },
   {
    "name": "assembly bowed string",
@@ -37736,7 +37736,7 @@
   },
   {
    "name": "assembly drum kit",
-   "cycles": 380632
+   "cycles": 369686
   },
   {
    "name": "assembly ducking delay",
@@ -37768,7 +37768,7 @@
   },
   {
    "name": "assembly gamelan",
-   "cycles": 94139
+   "cycles": 83123
   },
   {
    "name": "assembly gated reverb",
@@ -37776,7 +37776,7 @@
   },
   {
    "name": "assembly glass bell",
-   "cycles": 92704
+   "cycles": 87197
   },
   {
    "name": "assembly hats",
@@ -37796,7 +37796,7 @@
   },
   {
    "name": "assembly kalimba",
-   "cycles": 70417
+   "cycles": 64907
   },
   {
    "name": "assembly kick",
@@ -37804,7 +37804,7 @@
   },
   {
    "name": "assembly marimba",
-   "cycles": 94848
+   "cycles": 83835
   },
   {
    "name": "assembly master FX",
@@ -37812,7 +37812,7 @@
   },
   {
    "name": "assembly Meridian 8",
-   "cycles": 571416
+   "cycles": 565943
   },
   {
    "name": "assembly mono lead",
@@ -37852,7 +37852,7 @@
   },
   {
    "name": "assembly rain",
-   "cycles": 66023
+   "cycles": 60513
   },
   {
    "name": "assembly random melody",
@@ -37860,7 +37860,7 @@
   },
   {
    "name": "assembly resonator bank",
-   "cycles": 117664
+   "cycles": 101236
   },
   {
    "name": "assembly reverse pad",
@@ -37868,7 +37868,7 @@
   },
   {
    "name": "assembly rim",
-   "cycles": 70127
+   "cycles": 64580
   },
   {
    "name": "assembly Sallen 20",
@@ -37924,7 +37924,7 @@
   },
   {
    "name": "assembly tabla",
-   "cycles": 66949
+   "cycles": 61439
   },
   {
    "name": "assembly talking filter",
@@ -37936,7 +37936,7 @@
   },
   {
    "name": "assembly tom",
-   "cycles": 54401
+   "cycles": 48897
   },
   {
    "name": "assembly Vernon 100",
