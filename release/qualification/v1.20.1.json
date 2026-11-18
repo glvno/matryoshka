@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "version": "1.20.1",
+  "kind": "web-only release (D-1160) and content-only release (D-1154)",
+  "firmware_product": "FM-1_7012000",
+  "source_commit": "905fd89ce04778961b9a0910adf57dc3f57a1f46",
+  "source_tree": "7fd995f5467d80a832ff869eabfe91931ab12fec",
+  "status": "approved for publication; automated, rig content and owner checks passed and the owner said go",
+  "release_approval": {"status": "approved", "by": "repository owner", "date": "2026-11-18", "instruction": "go", "scope": "Publication of v1.20.1 tagged on the frozen commit 905fd89c, with v1.20.0's firmware package and the factory region image of 905fd89c."},
+  "bundled_firmware": {
+    "release": "v1.20.0",
+    "package": {"name": "web/public/firmware/matryoshka.fwsc", "size": 610641, "sha256": "bde941c55bf115471dcb988e1bf03dae4f3b7b83f0979e45c627379c4d01268b"},
+    "check": "web/public/firmware/matryoshka.fwsc and matryoshka.json are byte-identical to the v1.20.0 tag's (git diff v1.20.0 905fd89c is empty for both); the package's sha256 equals release/qualification/v1.20.0.json artifacts.package"
+  },
+  "factory_content": {
+    "image": {"name": "web/public/firmware/matryoshka-factory.bin", "size": 51381, "sha256": "a7a9fa0cfcf31e49e1e1cd344b3cbc933ee1ffc85b63e92501bd10ef3bf51d6f"},
+    "set": {"version": 14, "set": "55ce34", "layout": 1, "format": 55},
+    "previous": "v1.20.0 shipped version 13, set 39ee30, 50350 B",
+    "changed": "against v1.20.0 (the factory patch binaries and the factory preset values of both trees compared): region patches 8 Lire, Elvira 2 and Oracle V; the factory presets of 8 Lire (6), Elvira 2 (new demonstration patterns for its presets), Oracle V (6, plain and with its FX rack), Algo Four (5 plain, 7 with its FX rack), Cassia 1 (6 plain, 7 with its FX rack) and Canvas's Sequencer Run, Easel Bongos and FM Chimes (plain and with its FX rack); the patterns section gains the 8 Lire and Elvira 2 preset patterns. The firmware-tier patches Algo Four and Cassia 1 changed in the source too, but the tier is compiled into the firmware and FIRMWARE_TIER_OVERRIDES is empty, so the FM-1 on 1.20.0 keeps v1.20.0's copies. Hera 6 and its Bass preset are unchanged; Bass was surveyed as asked."
+  },
+  "contents": [
+    "canvas navigation: right-drag pans, the wheel zooms, endless canvas (#1075, PR #1087)",
+    "Quick patch: type modules and ports, pick from a ring, follow cables (#1091, PR #1094)",
+    "no factory patch or preset sounds when switched to; drones play on PLAY (#1086, PR #1088)",
+    "8 Lire's pressure plates on the FM-1, full Lyra-8 parity (#851, PR #1089)",
+    "CPU estimate's master FX bus factor; Algo Four 8 voices, Cassia 1 5, presets at the full count (PR #1093)",
+    "Oracle V's LFO reaches 500 Hz; Wheel-Mod freq A/B at audio rate (#862, PR #1090)"
+  ],
+  "ci_runs": {"web_rc": 44388881391},
+  "full_web": {
+    "rc_run": 44388881391,
+    "run_success": true,
+    "result": "test job (255 test files), the six parallel slow-render jobs (14 files: levels-1..6, headroom-1..4, shared-levels, kit909, audition-render, quiet-load) and the coverage seal passed (D-1157 rc layout)",
+    "coverage_record": "release/coverage/v1.20.1/ (measured on 905fd89c, D-147): core 97.3 % of 6460 lines, interface 40.1 % of 11082"
+  },
+  "full_scenarios": {
+    "passed": 347,
+    "failed": 0,
+    "shards": 4,
+    "seconds": 327,
+    "on_bridge_sha256": "166913fcc8371ff9bcf4f0f5e984df1996740c5445c4ea7c5ba35d85c9c99f64",
+    "note": "the scenarios of 905fd89c on v1.20.0's bridge (D-1160); focusTurns passed first time (no #1044 flake, no reruns needed)"
+  },
+  "editor_side_scenarios": {
+    "passed": 68,
+    "failed": 0,
+    "scenarios": "signalBuffers, liveCompile, rollPen, mirrorKeys, longPreset, abFlip, editorIgnore (D-1158) on the same bridge, run because the canvas and Quick patch changed the editor"
+  },
+  "rig_install": {
+    "gate": "v1.20.0's release package, qualified with its boot check (release/qualification/v1.20.0.json full_boot), D-123",
+    "result": "tools/fm1_install.py --rig installed matryoshka-1.20.0.fwsc (sha256 bde941c5...) on the registered test rig at USB location 0x01140000 (it ran FM-1_7000000, a CI build); it restarted as FM-1_7012000 (Matryoshka 1.20.0). The installer then installed the factory region image of 905fd89c over the editor link as the editor does (13 sectors written, committed). FACT_INFO: region valid, layout 1 (the firmware reads 1), format 55, version 14, set 55ce34, 10 patches; the firmware plays format 63; firmware tier version 13, 11 patches; 21 factory patches in all. Left running 1.20.0 with that region, not in update mode."
+  },
+  "content_checks": {
+    "cpu": {
+      "result": "passed: every surveyed sound at most 79.8 % worst steady (bar 90 %), nothing shed, no overload mute, no late half in any phase",
+      "files": "docs/measurements/cpu-survey-2026-11-18-rig-1.20.1-content.json (transport stopped) and -run.json (running)",
+      "method": "tools/rig_cpu_survey.py on 63 patch binaries: each sound as the FM-1 on 1.20.0 with this region plays it. Region patches are 905fd89c's; Algo Four, Cassia 1 and Canvas are v1.20.0's tier copies (re-encoded byte-identical to v1.20.0's); each factory preset applied with applyPreset, whose VOICES clamp to the card row's top as pages_ui.c dp_load does. 0, 1, 4 and 8 keys, 2 s a phase, reloaded each phase. Worst steady: the largest lower median of a phase's samples after the first, as a share of the 2902 us half-block.",
+      "voices_played": "8 Lire, Elvira 2 and Canvas have no VOICES row. Oracle V: 5 (the patch, Init, its five presets and lfo500). Hera 6 Bass: 6. Algo Four on 1.20.0: the patch 6 (its tier copy); its factory presets at 8 load 7, the tier copy's VOICES top; the DX100 presets that choose fewer keep 2 to 6. Cassia 1 on 1.20.0: the patch 4; its presets at 5 load 4, the tier copy's top. Both reach 8 and 5 only with the next firmware release (D-126).",
+      "worst_steady_stopped_running": "8 Lire (patch, Init and 5 presets) 51.4 / 56.5 (Feedback Howl); Elvira 2 (patch, Init and 5 presets) 26.8 / 32.8 (Pulse Lantern); Oracle V (patch, Init, 5 presets, lfo500: LFO 4 = 500 Hz, amount 1) 77.4 / 79.8 (Vintage Strings stopped, Sync Lead running), lfo500 70.8 / 75.4; Algo Four (patch and 28 presets) 69.7 / 72.0 (Amber EP); Cassia 1 (patch, Init and 6 presets) 64.0 / 67.7 (Reso Pad); Canvas Sequencer Run, Easel Bongos, FM Chimes 49.2 / 51.8; Hera 6 Bass 71.2 / 73.5",
+      "peaks": "highest single sample 2650 us (91.3 %, Algo Four Amber EP's first sample of a phase, which includes the load); its steady load 69.7 / 72.0 %",
+      "repeat": "a first survey ran while another agent may still have used the rig; both surveys were taken again with the rig to this record alone, and the files are the second run. The two agree within 72 us stopped and 135 us running on every sound."
+    },
+    "loudness_and_peaks": {
+      "result": "passed",
+      "evidence": "rc run 44388881391: the factory loudness rule (web/src/levels.ts: levels-1..6, shared-levels), the headroom limit (headroom-1..4) and the audition peak check (audition-render) in the slow-render jobs, and quiet-load, all passed; locally on 905fd89c: levels, levels-1..6, headroom-1..4, audition, factory-presets, factory-content, factory-protocol and quiet-load, 16 files, 93 tests passed"
+    },
+    "plays_on_released_firmware": {
+      "result": "passed",
+      "evidence": "the image's header format is 55; 1.20.0 plays 63 (FACT_INFO plays 63 on the rig; ENG_PATCH_VERSION 63 at v1.20.0). web/src/modules.ts and web/src/patchbin.ts are unchanged since v1.20.0 (VERSION 63), so every module type in the image is one 1.20.0 knows; engine.c, engine.h, proto.c and factory.c are unchanged too. On the rig all 63 binaries loaded and played on 1.20.0 with the region installed (21 factory patches merged)."
+    }
+  },
+  "not_run": "firmware build, emu:smoke, boot check and the full device check: the firmware is 1.20.0's, already qualified (release/qualification/v1.20.0.json). The rig ran only the content survey of D-1154.",
+  "owner_checks": {"status": "passed", "by": "repository owner", "date": "2026-11-18", "report": "go", "steps": "D-1160 fourth check and D-1154 listening approval: the changed patches and presets in build/listen-quiet, build/listen-8lire-plates, build/listen-fxbus-voices and build/listen-oracle-lfo"}
+}
