@@ -43,6 +43,13 @@ for (const parts of [1, 2, 3, 4]) for (const feedback of [false, true]) for (con
   connect(patch, DEFS, { module: lfo.id, port: 'out' }, { module: target.id, port: 'in' });
   fixtures.push(['compiled-fallback', patch]);
 }
+// A compiled assembly on both cores: Oracle V's assembly alone at four voices (the factory patch's five voices and FX bus
+// leave no room for the compiled scratch).
+{
+  const { patch } = aotPatch('Oracle V');
+  for (const m of patch.modules) if (m.type === 'alloc') m.params.voices = 4;
+  fixtures.push(['compiled-concurrent', patch]);
+}
 // Inputs read before or after the ordinary render order must retain their values.
 for (const input of ['assign', 'unison', 'priority']) {
   const p = chain(false, false, 3), alloc = p.modules.find((m) => m.type === 'alloc')!;
