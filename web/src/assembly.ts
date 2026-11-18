@@ -11,6 +11,7 @@
 // promoted parameters.
 import {
   addModule,
+  connect,
   defaultParams,
   fixMatrix,
   fixCards,
@@ -953,16 +954,28 @@ export function hidePort(p: Patch, a: AssemblyInst, dir: 'in' | 'out', module: n
   else a.outputs = a.outputs.filter((r) => r !== ref);
 }
 
-/** merge the container input that carries `from` into the one that carries `into`: one jack feeding both (and whatever each already fed) */
+/**
+ * Merge the container input that carries `from` into the one that carries `into`: one jack feeding both (and whatever
+ * each already fed), the way a mult splits one signal (#1004). Any two jacks merge that a cable could join, so a keys
+ * jack merges only with keys jacks (`kindsFit`). A cable from outside into either jack then reaches every inner input
+ * of the merged one, so the jack plays what it shows.
+ */
 export function mergePorts(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>, into: Target, from: Target): void {
   const r1 = findRef(a, 'in', into.module, into.port);
   const r2 = findRef(a, 'in', from.module, from.port);
   if (!r1 || !r2) throw new Error('both ports must be exposed');
   if (r1 === r2) return;
   const kind = (t: Target): string => defs[p.modules.find((m) => m.id === t.module)!.type].inputs.find((q) => q.name === t.port)!.kind;
-  if (kind(into) !== kind(from)) throw new Error(`cannot merge a ${kind(from)} port into a ${kind(into)} port`);
+  if ((kind(into) === 'keys') !== (kind(from) === 'keys')) throw new Error(`cannot merge a ${kind(from)} port into a ${kind(into)} port`);
+  const targets = [...targetsOf(r1), ...targetsOf(r2)];
+  const inside = new Set(allModules(p, a));
+  const sources: Endpoint[] = [];
+  for (const c of p.cables) {
+    if (!inside.has(c.from.module) && targets.some((t) => sameEnd(c.to, t)) && !sources.some((s) => sameEnd(s, c.from))) sources.push({ ...c.from });
+  }
   r1.also = [...(r1.also ?? []), ...targetsOf(r2)];
   a.inputs = a.inputs.filter((r) => r !== r2);
+  for (const s of sources) for (const t of targets) connect(p, defs, s, t);
 }
 
 /** split a merged port: every inner input it fed gets its own jack again */
