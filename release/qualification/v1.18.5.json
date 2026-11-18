@@ -5,7 +5,8 @@
   "firmware_product": "FM-1_7011800",
   "source_commit": "95bdb83fb9d2dc3770414e81439a283508bcdb43",
   "source_tree": "d8903eb28bb4229f4525b89c576723d5d2dac786",
-  "status": "automated checks passed; awaiting the owner's go",
+  "status": "approved for publication; automated checks passed and the owner said go",
+  "release_approval": {"status": "approved", "by": "repository owner", "date": "2026-11-17", "instruction": "go", "scope": "Publication of v1.18.5 tagged on the frozen commit 95bdb83f."},
   "bundled_firmware": {
     "release": "v1.18.0",
     "package": {"name": "web/public/firmware/matryoshka.fwsc", "size": 610641, "sha256": "d986a1bc1b9f6f7c288177d4822f8d5cef26793dd6042bceb37614ba865e392e"},
@@ -36,5 +37,5 @@
     "scenarios": "signalBuffers, liveCompile, rollPen, mirrorKeys, longPreset, abFlip, editorIgnore (D-1158), run because the linked FM-1's key handling and the bypass path changed"
   },
   "not_run": "firmware build, emu:smoke, boot check, the test rig and the full device check: the firmware is 1.18.0's, already qualified (release/qualification/v1.18.0.json)",
-  "owner_checks": {"status": "pending"}
+  "owner_checks": {"status": "passed", "by": "repository owner", "date": "2026-11-17", "report": "go"}
 }
