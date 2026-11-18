@@ -30,6 +30,7 @@ import { panelPlay, EmuKeys } from './emu-keys';
 import { keysHarm, SandboxKeys } from './sandbox-keys';
 import { LinkedHarmKeys } from './linked-harm-keys';
 import { Editor, NOTHING_TO_MOVE, ZOOM_MAX, ZOOM_MIN } from './editor';
+import { navKey, WHEEL_SETTINGS, type NavKey, type WheelSetting } from './canvas-nav';
 import { snapshotKey, snapshotRecord, storedSnapshots, type Snapshot, type SnapshotKey } from './snapshots';
 import { ScopeScreens } from './scope-view';
 import { OUTPUT_SCOPE_KEY, OutputScope } from './output-scope';
@@ -1984,9 +1985,13 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Cable slack: full', keywords: 'slack sag droop hang heavy', run: inPatch(() => setSlack(1)) },
     ...(editor.patch.slackFrom ? [{ kind: 'command' as const, label: 'Cable slack: unplug its input', keywords: 'slack sway modulate', run: inPatch(() => editor.setSideSource('slackFrom', null)) }] : []),
     ...(editor.patch.zoomFrom ? [{ kind: 'command' as const, label: 'Zoom: unplug its input', keywords: 'zoom modulate', run: inPatch(() => editor.setSideSource('zoomFrom', null)) }] : []),
-    { kind: 'command', label: 'Fit patch to screen', detail: 'Alt+Z', keywords: 'zoom view', run: inPatch(() => editor.zoomToFit()) },
+    { kind: 'command', label: 'Fit patch to screen', detail: 'Shift+1 · Alt+Z', keywords: 'zoom view', run: inPatch(() => editor.zoomToFit()) },
+    { kind: 'command', label: 'Zoom to the selection', detail: 'Shift+2', keywords: 'zoom view fit selected focus', run: inPatch(() => runNav('fit-selection')) },
+    { kind: 'command', label: 'Zoom in', detail: 'Ctrl/Cmd+=', keywords: 'zoom bigger magnify', run: inPatch(() => editor.zoomStep(1)) },
+    { kind: 'command', label: 'Zoom out', detail: 'Ctrl/Cmd+−', keywords: 'zoom smaller', run: inPatch(() => editor.zoomStep(-1)) },
+    ...WHEEL_SETTINGS.filter((m) => m !== editor.wheelMode).map((m) => ({ kind: 'command' as const, label: `Scroll wheel: ${m}`, keywords: 'mouse trackpad wheel zoom pan scroll setting', run: () => setWheelMode(m) })),
     { kind: 'command', label: 'Store to an FM-1 slot\u2026', keywords: 'bank flash save device', run: () => void storeToSlot() },
-    { kind: 'command', label: 'Reset canvas scale', keywords: 'zoom 100%', run: inPatch(() => editor.setZoom(1)) },
+    { kind: 'command', label: 'Reset canvas scale', detail: 'Ctrl/Cmd+0', keywords: 'zoom 100%', run: inPatch(() => editor.zoomAround(1)) },
     // the patch's modules with their own names (#518): picking one selects it
     ...editor.patch.modules.filter((m) => m.name && m.type !== 'steps' && DEFS[m.type]).map((m) => ({ kind: 'module in patch', tags: ['module'], label: m.name!, detail: moduleName(m.type, DEFS[m.type].label), keywords: 'select find named', run: inPatch(() => editor.reveal(m.id)) })),
     // the same lists as + Add module, the assembly browser and the Open picker (catalog.ts)
@@ -2193,6 +2198,15 @@ window.addEventListener('keydown', (e) => {
     e.stopImmediatePropagation();
     return;
   }
+  // the canvas's zoom keys (#1075), by the key's place: Ctrl/Cmd + = − 0 only while the canvas shows (elsewhere they stay
+  // the browser's own zoom). Shift+1 / Shift+2 are below: they hold K1 / K2 too
+  const nav = navKey(e);
+  if (nav?.startsWith('zoom') && currentView === 'patch') {
+    runNav(nav);
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return;
+  }
   if (k === '/' || (mod && k.toLowerCase() === 'k')) (openPalette(), (done = true));
   else if (k === '?') (help.showModal(), (done = true));
   else if ((k === '[' || k === ']') && !mod && !e.altKey) (editor.selectPattern(editor.pattern + (k === ']' ? 1 : -1)), (done = true));   // the patch's pattern (#375)
@@ -2230,6 +2244,8 @@ window.addEventListener('keydown', (e) => {
     else if (!done && !mod && (k === 'ArrowUp' || k === 'ArrowDown')) done = editor.stepPage(k === 'ArrowDown' ? 1 : -1);
   } else if (!mod && !e.altKey && knobOf(e) >= 0) {
     heldKnob = knobOf(e);
+    // Shift+1 / Shift+2 fit every card / the selection when let go, unless the wheel turned the knob meanwhile
+    if (!e.repeat) knobNav = nav && currentView === 'patch' ? nav : null;
     done = true;
   }
   if (done) {
@@ -2250,14 +2266,27 @@ const knobOf = (e: KeyboardEvent): number => ['1', '2', '3', '4'].indexOf(e.code
 const WHEEL_NOTCH = 40;
 let heldKnob = -1;
 let knobWheel = 0;
+/** Shift+1 or Shift+2 is held: FIT or the selection when it is let go, unless the wheel turned K1 / K2 (#1075) */
+let knobNav: NavKey | null = null;
 document.addEventListener('keyup', (e) => {
-  if (knobOf(e) === heldKnob) (heldKnob = -1), (knobWheel = 0);
+  if (knobOf(e) !== heldKnob) return;
+  if (knobNav) runNav(knobNav);
+  (heldKnob = -1), (knobWheel = 0), (knobNav = null);
 }, true);
-window.addEventListener('blur', () => (heldKnob = -1));
+window.addEventListener('blur', () => ((heldKnob = -1), (knobNav = null)));
+/** the canvas's navigation keys and commands (#1075) */
+function runNav(n: NavKey): void {
+  if (n === 'fit') editor.zoomToFit();
+  else if (n === 'fit-selection') {
+    if (!editor.zoomToSelection()) status.textContent = 'Shift+2 zooms to the selection: select cards first';
+  } else if (n === 'zoom-reset') editor.zoomAround(1);
+  else editor.zoomStep(n === 'zoom-in' ? 1 : -1);
+}
 window.addEventListener('wheel', (e) => {
   if (heldKnob < 0 || currentTab !== 'patch' || e.ctrlKey || e.metaKey) return;
   e.preventDefault();
   e.stopImmediatePropagation();
+  knobNav = null;
   const delta = e.deltaY || (e.shiftKey ? e.deltaX : 0);   // (Shift turns a mouse wheel sideways on a Mac)
   knobWheel -= e.deltaMode === WheelEvent.DOM_DELTA_LINE ? delta * WHEEL_NOTCH / 3 : delta;
   const notches = Math.trunc(knobWheel / WHEEL_NOTCH);
@@ -2467,6 +2496,43 @@ try {
 } catch {
   /* storage blocked: no slack */
 }
+// VIEW's Scroll wheel (#1075): what a plain wheel does over the canvas, kept per browser. The first time auto guesses the
+// device (a mouse wheel zooms, a trackpad pans), a toast says so once and leads to the setting.
+const WHEEL_MODE = 'matryoshka.wheel-mode';
+const WHEEL_HINT = 'matryoshka.wheel-hint';
+const wheelSel = $<HTMLSelectElement>('wheel-mode');
+function setWheelMode(m: WheelSetting): void {
+  editor.wheelMode = m;
+  wheelSel.value = m;
+  try {
+    localStorage.setItem(WHEEL_MODE, m);
+  } catch {
+    /* storage blocked: the choice lasts until the page is reloaded */
+  }
+}
+wheelSel.onchange = () => setWheelMode(wheelSel.value as WheelSetting);
+try {
+  const m = localStorage.getItem(WHEEL_MODE) as WheelSetting | null;
+  if (m && WHEEL_SETTINGS.includes(m)) (editor.wheelMode = m), (wheelSel.value = m);
+} catch {
+  /* storage blocked: auto */
+}
+/** the sidebar's Canvas panel shown and its Scroll wheel focused */
+const showWheelSetting = (): void => {
+  if (sidebar.parentElement!.classList.contains('side-collapsed')) setSidebarCollapsed(false);
+  if (compactWorkspace.matches) setSidebarOpen(true);
+  wheelSel.scrollIntoView({ block: 'nearest' });
+  wheelSel.focus();
+};
+editor.onWheelGuess = (action) => {
+  try {
+    if (localStorage.getItem(WHEEL_HINT)) return;
+    localStorage.setItem(WHEEL_HINT, '1');
+  } catch {
+    return; // (storage blocked: no hint, rather than one at every gesture)
+  }
+  showAction(action === 'zoom' ? 'The wheel zooms. Prefer panning? Change it in View' : 'The wheel pans (pinch or Ctrl/Cmd + wheel zooms). Prefer zooming? Change it in View', 'Scroll wheel…', showWheelSetting);
+};
 // Mutate's amount (#944): kept per browser, like the slack
 const MUTATE_AMOUNT = 'matryoshka.mutate-amount';
 function setMutateAmount(v: number): void {

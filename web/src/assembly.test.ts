@@ -669,6 +669,11 @@ describe('assemblies', () => {
     expect(c).toEqual({ x: 2580, y: 1700 });
     // a view shorter than the card: the cell whose top left lines up best with it
     expect(freeSpotNear([], 300, 540, { x: 0, y: 0, w: 1000, h: 300 }, { x: 500, y: 150 })).toEqual({ x: 340, y: 20 });
+    // the canvas is endless (#1075): a view left of and above the origin gets its card in view, on the grid
+    const neg = { x: -1500, y: -1200, w: 1300, h: 850 };
+    const d = freeSpotNear([], 300, 540, neg, { x: neg.x + 650, y: neg.y + 425 });
+    expect(d.x >= neg.x && d.x + 300 <= neg.x + neg.w && d.y >= neg.y && d.y + 540 <= neg.y + neg.h).toBe(true);
+    expect([(d.x - 20) % 320, (d.y - 20) % 140].map(Math.abs)).toEqual([0, 0]);
   });
 
   it('nests: a selection inside an expanded assembly becomes a child, with members, boundary and hiding through the levels', () => {

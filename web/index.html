@@ -52,10 +52,11 @@
         <section class="spanel" aria-label="View">
           <div class="shead"><span class="mtag shp">VIEW</span><span class="stitle">Canvas</span></div>
           <div class="sbody">
-            <div class="view-row"><button id="tidy-btn" title="Line the cards up in columns, keeping their order (Alt+T; undo with Ctrl/Cmd+Z)">TIDY</button><button id="fit-btn" title="Zoom so every card is in view (Alt+Z)">FIT</button></div>
+            <div class="view-row"><button id="tidy-btn" title="Line the cards up in columns, keeping their order (Alt+T; undo with Ctrl/Cmd+Z)">TIDY</button><button id="fit-btn" title="Zoom so every card is in view (Shift+1 or Alt+Z)">FIT</button></div>
             <div class="view-row"><button id="expand-all-btn" title="Open every assembly, nested ones too (undo with Ctrl/Cmd+Z)">EXPAND ALL</button><button id="collapse-all-btn" title="Close every assembly (undo with Ctrl/Cmd+Z)">COLLAPSE ALL</button></div>
             <div id="slack-bar" class="param bar side-bar"><span>Cable slack</span><output id="slack-out">0 %</output><input id="slack-input" type="range" min="0" max="1" step="any" value="0" aria-label="Cable slack" /></div>
             <div id="zoom-bar" class="param bar side-bar"><span>Zoom</span><output id="zoom-out">100 %</output><input id="zoom-input" type="range" min="0" max="1" step="any" value="0.63" aria-label="Zoom" /></div>
+            <div class="wheel-row" title="What a plain scroll wheel does over the canvas. Auto: a mouse wheel zooms at the pointer, a trackpad's two-finger scroll pans. Ctrl/Cmd + wheel always zooms, Shift + wheel pans sideways, right- or middle-drag pans"><label for="wheel-mode">Scroll wheel</label><select id="wheel-mode"><option value="auto">auto</option><option value="zoom">zoom</option><option value="pan">pan</option></select></div>
           </div>
         </section>
         <section class="spanel" aria-label="Learn">
@@ -250,7 +251,11 @@
             <div class="hrow"><span class="hkeys"><kbd>Shift+Alt+M</kbd></span><span>the next Mutate category: Any, Lead, Stab, Pluck, Pad, Bass, Keys, Drone, then Any again; the status line names it. The Aim chip over the candidates shows it, and a click on it picks one</span></div>
             <div class="hrow"><span class="hkeys"><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd></span><span>nudge the selection (with <kbd>Shift</kbd>: ten times further); with nothing selected, <kbd>←</kbd><kbd>→</kbd> put the previous / next device on Main’s knobs, <kbd>↑</kbd><kbd>↓</kbd> its previous / next page. While the open Sound design sidebar has the focus (click in it), <kbd>↑</kbd><kbd>↓</kbd> go to the candidate before / after instead, as <kbd>Alt+K</kbd> / <kbd>Alt+J</kbd> do</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+Z</kbd> <kbd>Shift+Ctrl/Cmd+Z</kbd></span><span>undo, redo</span></div>
-            <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd</kbd> + wheel</span><span>zoom the canvas (pinch on a touch screen)</span></div>
+            <div class="hrow"><span class="hkeys">right- or middle-drag</span><span>move the canvas in any direction, from anywhere on it, over cards and cables too. A right-click without moving still opens the menu</span></div>
+            <div class="hrow"><span class="hkeys">wheel</span><span>a mouse wheel zooms at the pointer; a trackpad’s two-finger scroll moves the canvas and a pinch zooms. <kbd>Ctrl/Cmd</kbd> + wheel always zooms, <kbd>Shift</kbd> + wheel moves sideways. <b>Scroll wheel</b> in the sidebar’s Canvas panel sets what a plain wheel does: auto, zoom or pan</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Shift+1</kbd> <kbd>Shift+2</kbd></span><span>zoom so every card is in view (FIT) / the selection is</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd</kbd> + <kbd>=</kbd> <kbd>−</kbd> <kbd>0</kbd></span><span>zoom in, zoom out, 100 %, around the middle of the canvas</span></div>
+            <div class="hrow"><span class="hkeys">drag to the edge</span><span>dragging a card, a cable or an area near the canvas’s edge moves the canvas, faster the closer to the edge</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Alt+T</kbd> <kbd>Alt+Z</kbd></span><span>TIDY: line the cards up in columns, keeping their order; FIT: zoom so every card is in view (the sidebar’s Canvas buttons)</span></div>
             <div class="hrow"><span class="hkeys">right-click a title</span><span>the card’s ⋯ menu</span></div>
             <div class="hrow"><span class="hkeys">right-click the empty canvas</span><span><b>Add comment</b>: a box of free text (also in the palette). Double-click a comment to edit it (<kbd>Ctrl/Cmd+Enter</kbd> or a click elsewhere keeps it, <kbd>Esc</kbd> puts it back, left empty it goes); drag it, its corner resizes it. It is selected, copied, deleted and undone like a card, and saved in the patch, but never sent to the FM-1</span></div>

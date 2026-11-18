@@ -14,7 +14,7 @@ export const nextCommentId = (p: Patch): number => (p.comments ?? []).reduce((m,
 export function addComment(p: Patch, x: number, y: number, text = '', w = COMMENT_W, h = COMMENT_H): CommentBox {
   const list = p.comments ?? [];
   if (list.length >= COMMENTS_MAX) throw new Error(`a patch keeps at most ${COMMENTS_MAX} comments`);
-  const c: CommentBox = { id: nextCommentId(p), x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)), w, h, text: text.slice(0, COMMENT_MAX) };
+  const c: CommentBox = { id: nextCommentId(p), x: Math.round(x), y: Math.round(y), w, h, text: text.slice(0, COMMENT_MAX) };
   p.comments = [...list, c];
   return c;
 }
@@ -42,11 +42,11 @@ export function sizeComment(c: CommentBox, w: number, h: number): void {
   c.h = Math.round(Math.min(COMMENT_MAX_SIZE, Math.max(COMMENT_MIN_H, h)));
 }
 
-/** move comments by (dx, dy), none past the canvas's top or left edge */
+/** move comments by (dx, dy) (the canvas is endless: any position, #1075) */
 export function moveComments(list: CommentBox[], dx: number, dy: number): void {
   for (const c of list) {
-    c.x = Math.max(0, c.x + dx);
-    c.y = Math.max(0, c.y + dy);
+    c.x += dx;
+    c.y += dy;
   }
 }
 

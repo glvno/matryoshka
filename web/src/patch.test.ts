@@ -43,9 +43,9 @@ describe('the notes a patch carries (the share sheet\'s "What\'s going on")', ()
 
 describe('the canvas view a patch remembers', () => {
   const load = (view: unknown): Patch['view'] => validatePatch({ ...newPatch(DEFS), view }, DEFS).view;
-  it('keeps a zoom and a scroll position, clamps the scroll at the origin, drops anything malformed', () => {
+  it('keeps a zoom and a camera (any sign: the canvas is endless, #1075), drops anything malformed', () => {
     expect(load({ zoom: 0.6, x: 1200, y: 40 })).toEqual({ zoom: 0.6, x: 1200, y: 40 });
-    expect(load({ zoom: 1, x: -5, y: 3 })).toEqual({ zoom: 1, x: 0, y: 3 });
+    expect(load({ zoom: 1, x: -5, y: 3 })).toEqual({ zoom: 1, x: -5, y: 3 });
     for (const bad of [null, 3, { zoom: 0, x: 0, y: 0 }, { zoom: 1, x: 'a', y: 0 }, { zoom: Infinity, x: 0, y: 0 }, { x: 0, y: 0 }]) expect(load(bad)).toBeUndefined();
   });
 });
