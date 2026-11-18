@@ -17,9 +17,6 @@ interface Events {
   /** Mutate's lock on this parameter (#944): its own, whether its card or an assembly around it locks it anyway, and the
    *  setter (an undo step); absent for a parameter Mutate never moves */
   lock?: { own: boolean; card: boolean; set(on: boolean): void };
-  /** MIDI learn (#1067): the row's name as the card shows it, its learned source and the job that source no longer does
-   *  (null: none), whether the row waits for a source, and the actions; absent for a row that cannot learn */
-  learn?: { row: string; src: string | null; job: string | null; waiting(): boolean; start(): void; cancel(): void; unlearn(): void };
   /** rename the card row (an assembly card's row): a Rename… item, the only way to rename it (#1025) */
   rename?(): void;
   /** false: the parameter takes no modulation, so the menu holds only its other items (rename, lock) */
@@ -95,32 +92,6 @@ export function parameterMenu(m: ModuleInst, def: ModuleDef, pd: ParamDef, ev: E
       ev.rename!();
     };
     content.append(rename);
-  }
-  if (ev.learn) {
-    const l = ev.learn;
-    const line = document.createElement('div');
-    line.className = 'midi-learn-line';
-    const button = (text: string, title: string, run: () => void): HTMLButtonElement => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'sm';
-      b.textContent = text;
-      b.title = title;
-      b.onclick = () => {
-        menu.open = false;
-        run();
-      };
-      return b;
-    };
-    // (the menu is made once with its row: whether the row waits is read again each time it opens)
-    const fill = (): void => line.replaceChildren(
-      l.waiting() ? button('Cancel MIDI learn', 'Stop waiting for a control (Esc)', l.cancel)
-        : button(l.src ? 'Learn again…' : 'MIDI learn…', `Then move a knob, a fader, a pad's axis or the pitch bend wheel of a MIDI controller: it moves ${l.row} from then on. Esc cancels`, l.start),
-      ...(l.src ? [button('Unlearn', `${l.src} stops moving ${l.row}`, l.unlearn)] : []));
-    fill();
-    refreshers.push(fill);
-    content.append(line);
-    if (l.src) hint(`${l.src} moves ${l.row}.${l.job ? ` While it is learned, it no longer moves ${l.job}.` : ''}`);
   }
   if (ev.routing !== false)
     hint(`Drop a cable on the ${target} to modulate ${label}, with its own depth. ${def.label} takes up to two different sources.`

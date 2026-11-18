@@ -840,13 +840,6 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   where its pages start (`.page-start`). Dotted lines from the dials to the rows (`positionBindings`, `svg.bind-cables`,
   over everything; a row out of view gets none). MIDI CC 16..19 turn the bound rows (`Editor.turnKnob`, from main.ts's
   sink). The knob ticks under sliders (knob-rest.ts) are gone with the knob outputs.
-- **MIDI learn (#1067, `midi-learn.ts`, [D-997](ledger/editor.md#D-997), [D-998](ledger/editor.md#D-998)):** `Patch.midiLearn`
-  lists `{ src, module, param }` (src a CC 0..119 outside 80..86, or `'bend'`), editor only: `validatePatch`
-  (`fixMidiLearn`) keeps one row per source and one source per row, and patchbin.ts never reads it. `attachMidi` passes a
-  CC's and a bend's input; main.ts hands those not from an FM-1 (`isFm1In`) to `Editor.learn` (`MidiLearn.take`) before
-  the sink, so a learned source never reaches `editorCc` or the engines. A waiting row takes the first source with three
-  different values (two for a switch). A learned source sets its row through `Editor.setRowAt` (turnKnob's mapping), at
-  most every `MOVE_GAP_MS` = 25 ms, so the edit goes out under Live as a slider's does and undo groups it as a gesture.
 - **Main dock: button block (#113, design board D):** the knob column is K1..K4 with their captions, then the DEVICE / PAGE
   pickers under them; each dial's binding wire starts at a fixed `.knob-jack` on the dock's top edge (ring + core in the
   knob colour, a faint stem down to the dial; `pointer-events: none`, not a port). The button block is the FM-1's two rows
