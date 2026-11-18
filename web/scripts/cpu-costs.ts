@@ -61,7 +61,7 @@ const CORES = {
  * and Hera at 6) have a factor for their modules inside the poly group (`voices`) beside the one for the rest (`engines`,
  * at most 1.5): the pair that reads at least the rig at each count with the least over-read, so the estimate follows the
  * rig's slope as voices are added (one factor over-read Hera at 6 voices by 17 points). `fx`: the master FX bus's own
- * factor, least squares of the rig's rise from each poly factory patch as shipped to every stage on (7 pairs) on the
+ * factor, least squares of the rig's rise from each poly factory patch as shipped to every stage on (10 pairs) on the
  * estimate's rise; at 1 the estimate with every stage on read 5 to 12 points over the rig. The patches outside the 1.14
  * bank (basic poly, drift poly, mono lead, supersaw stack) keep the factors of the 2026-11-09 survey. */
 const RIG = {
@@ -76,7 +76,7 @@ const RIG = {
   } as Record<string, number>,
   voices: { 'Algo Four': 0.55, 'Cassia 1': 0.59, 'Expander S': 0.76, 'Hera 4': 0.59, 'Oracle V': 0.63 } as Record<string, number>,
   fx: 0.53,
-  survey: 'docs/measurements/cpu-survey-2026-11-18-rig-headroom120-bank114.json and -run.json (CI run 44262067788, the 22 patches of the 1.14 bank); the voices: -voices114.json and -run.json (the same build); the master FX bus: -voices120.json, -voices120-hera6.json and their -run.json (CI runs 44313018225, 44320755391)',
+  survey: 'docs/measurements/cpu-survey-2026-11-18-rig-headroom120-bank114.json and -run.json (CI run 44262067788, the 22 patches of the 1.14 bank); the voices: -voices114.json and -run.json (the same build); the master FX bus: -voices120.json, -voices120-hera6.json, -fxbus-voices.json, -fxbus-expander7.json and their -run.json (CI runs 44313018225, 44320755391, 44357433714)',
 };
 const BLOCKS = 24;
 const SKIP = 3; // blocks before the maximum is taken for a module kit (the first notes, envelopes starting)

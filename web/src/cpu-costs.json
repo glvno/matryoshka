@@ -44,7 +44,7 @@
    "Oracle V": 0.63
   },
   "fx": 0.53,
-  "survey": "docs/measurements/cpu-survey-2026-11-18-rig-headroom120-bank114.json and -run.json (CI run 44262067788, the 22 patches of the 1.14 bank); the voices: -voices114.json and -run.json (the same build); the master FX bus: -voices120.json, -voices120-hera6.json and their -run.json (CI runs 44313018225, 44320755391)"
+  "survey": "docs/measurements/cpu-survey-2026-11-18-rig-headroom120-bank114.json and -run.json (CI run 44262067788, the 22 patches of the 1.14 bank); the voices: -voices114.json and -run.json (the same build); the master FX bus: -voices120.json, -voices120-hera6.json, -fxbus-voices.json, -fxbus-expander7.json and their -run.json (CI runs 44313018225, 44320755391, 44357433714)"
  },
  "blockUs": 2901,
  "note": 72,

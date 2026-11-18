@@ -44,10 +44,13 @@ const NOW: { file: string; at?: Record<string, number>; only?: string[]; skip?: 
 ];
 /** The poly factory patches of 1.20 at the voices the rig played, as shipped ("NAME vN") and with every stage of their
  * master FX bus on ("NAME vN fx"), on the voices builds of 2026-11-18 (docs/measurements/2026-11-18-rig-voices-120.md;
- * Hera 6 at six on its own build): the pairs the FX bus's factor is fitted to */
+ * Hera 6 at six on its own build) and on the build that raised Cassia 1 and Algo Four
+ * (docs/measurements/2026-11-18-rig-fxbus-voices.md): the pairs the FX bus's factor is fitted to */
 const POLYFX: { file: string; pairs: [string, number, string][] }[] = [
   ...['', '-run'].map((s) => ({ file: `docs/measurements/cpu-survey-2026-11-18-rig-voices120${s}.json`, pairs: [['Oracle V', 5, 'Oracle V v5'], ['Expander S', 6, 'Expander S v6'], ['Algo Four', 7, 'Algo Four v7'], ['Cassia 1', 4, 'Cassia 1 v4'], ['Cassia 1', 5, 'Cassia 1 v5'], ['Io 4', 4, 'Io 4 v4']] as [string, number, string][] })),
   ...['', '-run'].map((s) => ({ file: `docs/measurements/cpu-survey-2026-11-18-rig-voices120-hera6${s}.json`, pairs: [['Hera 6', 6, 'Hera 6 v6+1']] as [string, number, string][] })),
+  ...['', '-run'].map((s) => ({ file: `docs/measurements/cpu-survey-2026-11-18-rig-fxbus-voices${s}.json`, pairs: [['Cassia 1', 5, 'Cassia 1 v5'], ['Algo Four', 8, 'Algo Four v8'], ['Expander S', 4, 'Expander S v4']] as [string, number, string][] })),
+  ...['', '-run'].map((s) => ({ file: `docs/measurements/cpu-survey-2026-11-18-rig-fxbus-expander7${s}.json`, pairs: [['Expander S', 7, 'Expander S v7']] as [string, number, string][] })),
 ];
 /** the survey of the firmware before (release-1.10 with the second core) and the commit its factory patches are from */
 const BEFORE = { file: 'docs/measurements/cpu-survey-2026-11-05-rig-merged-split.json', commit: 'e3235d64' };

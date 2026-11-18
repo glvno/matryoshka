@@ -200,4 +200,4 @@ preset: Unison Bass
   amp / r = 0.2 s
   wheel mod / freq A = 0
   freq B = 0
-  volume = 0.57
+  volume = 0.47
