@@ -2265,10 +2265,11 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .qp-kind.control { stroke: var(--control); } .qp-kind.gate { stroke: var(--gate); } .qp-kind.keys { stroke: var(--ink); }
 .qp-kind.cabled { fill: currentColor; color: var(--audio); }
 .qp-kind.control.cabled { color: var(--control); } .qp-kind.gate.cabled { color: var(--gate); } .qp-kind.keys.cabled { color: var(--ink); }
-.qp-core { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: 6px; border-radius: 50%; pointer-events: auto; text-align: center; }
-.qp-core-name { display: flex; align-items: center; gap: 4px; max-width: 100%; font: 600 13px/1.1 'Barlow', system-ui, sans-serif; color: var(--ink); overflow-wrap: anywhere; }
-.qp-core .qp-field { width: 128px; padding: 5px 8px; font-size: 13px; }
+/* the centre disc: the field exactly in the middle, the card's label above it in capitals, a size smaller (owner on PR #1094) */
+.qp-core { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: auto; text-align: center; }
+.qp-core-name { position: absolute; left: 50%; bottom: calc(50% + 19px); transform: translateX(-50%); display: flex; align-items: center; justify-content: center; gap: 4px;
+  width: 100%; font: 600 11px/1.1 'Barlow', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--ink); overflow-wrap: anywhere; }
+.qp-core .qp-field { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 128px; padding: 5px 8px; font-size: 13px; }
 /* a port's direction is this icon, never the word: a jack with an arrow into it (takes a cable) or out of it (sends) */
 .qp-io { flex: none; width: 18px; height: 10px; color: var(--muted); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .qp-io.audio { color: var(--audio); } .qp-io.control { color: var(--control); } .qp-io.gate { color: var(--gate); } .qp-io.keys { color: var(--ink); }

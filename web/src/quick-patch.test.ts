@@ -10,7 +10,7 @@ import { DEFS } from './modules';
 import { addModule, connect, newPatch, type Patch } from './patch';
 import {
   besideSpot, buildChain, cardPorts, cardTitle, chainText, defaultPort, farEnds, GAP, HALF_GAP, HALF_MAX, halfRings, halfSectors, loadBlueprints, matchPorts, parseChain, portCables,
-  rankPorts, removeBlueprint, RINGS_MAX, saveBlueprint, search, sectorPath, Trail, type Card, type Catalog, type Place, type QPort,
+  radialCentre, rankPorts, removeBlueprint, RINGS_MAX, saveBlueprint, search, sectorPath, Trail, type Card, type Catalog, type Place, type QPort,
 } from './quick-patch';
 
 const catalog = (blueprints: Catalog['blueprints'] = []): Catalog => ({
@@ -284,6 +284,12 @@ describe('the radial menu\'s layout', () => {
     const ports = cardPorts(p, DEFS, { kind: 'assembly', id: insertAssembly(p, DEFS, def, 0, 0).id });
     expect(halfRings(ports.filter((q) => q.dir === 'out')).length).toBe(Math.ceil(17 / HALF_MAX));
     expect(halfRings(ports.filter((q) => q.dir === 'in' && !q.param), ports.filter((q) => q.param)).length).toBeGreaterThan(RINGS_MAX);
+  });
+  it('sits in the middle of the canvas\'s visible area, moved in only as far as the window needs', () => {
+    const view = { left: 208, top: 0, width: 932, height: 670 };
+    expect(radialCentre(view, 400, { w: 1440, h: 900 })).toEqual({ x: 674, y: 335 });
+    // a menu taller than the canvas is moved down to stay inside the window
+    expect(radialCentre(view, 700, { w: 1440, h: 900 })).toEqual({ x: 674, y: 358 });
   });
   it('draws a sector as a closed path between its two radii', () => {
     expect(sectorPath(100, 50, 80, 0, Math.PI / 2)).toBe('M180.00 100.00A80 80 0 0 1 100.00 180.00L100.00 150.00A50 50 0 0 0 150.00 100.00Z');

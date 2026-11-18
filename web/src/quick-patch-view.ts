@@ -11,7 +11,7 @@ import { DEPTH_MAX, fromUnit, toUnit, type ParamDef, type Patch } from './patch'
 import { isPin, parameterInputs } from './parameter-routing';
 import {
   besideSpot, buildChain, cardExists, cardPorts, cardTitle, ChainError, chainText, farEnds, fit, guessSize, halfRings, halfSectors, isChainText,
-  matchPorts, moveCard, parseChain, portCables, rankPorts, removeBlueprint, RINGS_MAX, sameCard, saveBlueprint, search, sectorPath, Trail, wire,
+  matchPorts, moveCard, parseChain, portCables, radialCentre, rankPorts, removeBlueprint, RINGS_MAX, sameCard, saveBlueprint, search, sectorPath, Trail, wire,
   type Built, type Card, type Catalog, type FarEnd, type Hit, type Link, type Place, type QPort, type Statement,
 } from './quick-patch';
 import { parseValue } from './value-input';
@@ -102,8 +102,6 @@ export class QuickPatch {
   private fresh: Card[] = [];
   /** the last finished chain as a line that builds it again (a blueprint's text) */
   lastChain = '';
-  /** where the overlay is centred (client px): where Quick patch opened, for the whole time it is open */
-  private spot = { x: 0, y: 0 };
   /** the cards made while it was open: when it closes, the view brings them in if one is off screen */
   private made: Card[] = [];
 
@@ -131,6 +129,7 @@ export class QuickPatch {
     // the panel, ring and strip keep the field's focus: a press on a chip or a list line acts without taking it
     for (const part of [this.panel, this.ring]) part.addEventListener('mousedown', (e) => { if (e.target !== this.field) e.preventDefault(); });
     this.strip.addEventListener('pointerup', () => requestAnimationFrame(() => this.field.focus()));
+    window.addEventListener('resize', () => { if (this.isOpen) this.position(); });
     window.addEventListener('pointerdown', (e) => {
       if (!this.isOpen || e.button !== 0 || !(e.target instanceof Node)) return;
       if (this.panel.contains(e.target) || this.ring.contains(e.target) || this.strip.contains(e.target)) return;
@@ -150,10 +149,7 @@ export class QuickPatch {
       ?? (ed.selected.size === 1 && !ed.selectedAsm.size ? { kind: 'module', id: [...ed.selected][0] }
         : ed.selectedAsm.size === 1 && !ed.selected.size ? { kind: 'assembly', id: [...ed.selectedAsm][0] } : null);
     if (!this.isOpen) {
-      // the overlay sits at the pointer, else over the selected card, else in the canvas's middle, and stays there
-      const canvas = document.getElementById('canvas')?.getBoundingClientRect();
-      const r = selected && ed.cardScreenRect(selected);
-      this.spot = ed.pointer ?? (r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : canvas ? { x: canvas.left + canvas.width / 2, y: canvas.top + canvas.height / 2 } : { x: 300, y: 300 });
+      // the overlay sits in the middle of the canvas's visible area (position), whatever the pointer or the selection
       document.body.append(this.ring, this.panel);
       this.isOpen = true;
       this.trail.clear();
@@ -801,14 +797,14 @@ export class QuickPatch {
     if (s.pin !== undefined && m.att && outs[s.params.length]) outs[s.params.length].textContent = depthText(DEFS[m.type].params.find((q) => q.name === s.params[0])!, m.att[s.pin]);
   }
 
-  /** the overlay stays where Quick patch opened for the whole chain (moved in only as far as the window needs), the panel
-   *  with the list beside it */
+  /** the overlay sits in the middle of the canvas's visible area for the whole chain, again after a window resize (owner
+   *  on PR #1094), the panel with the list beside it */
   private position(): void {
     const W = innerWidth, H = innerHeight;
     const size = parseFloat(this.ring.style.width) || 2 * RADIAL_CORE;
     const PW = Math.min(340, W - 16);
-    const cx = Math.min(W - size / 2 - 8, Math.max(size / 2 + 8, this.spot.x));
-    const cy = Math.min(H - size / 2 - 8, Math.max(size / 2 + 8, this.spot.y));
+    const view = document.getElementById('canvas')?.getBoundingClientRect() ?? { left: 0, top: 0, width: W, height: H };
+    const { x: cx, y: cy } = radialCentre(view, size, { w: W, h: H });
     this.ring.style.left = `${Math.round(cx - size / 2)}px`;
     this.ring.style.top = `${Math.round(cy - size / 2)}px`;
     const right = cx + size / 2 + 12 + PW <= W - 8;

@@ -450,7 +450,7 @@ The ‹ name › control on an assembly device's card that picks one of its stor
 
 ### Quick patch
 
-The editor's keyboard way to build a patch: one field at the pointer for module names, port names and typed chains, with the current card's ports in a ring round it.
+The editor's keyboard way to build a patch: a radial menu in the middle of the canvas, with one field for module names, port names and typed chains and the current card's ports in rings round its name.
 
 ### Quick start
 

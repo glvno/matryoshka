@@ -336,6 +336,16 @@ export function halfRings<T>(items: T[], next: T[] = []): T[][] {
   return [...chunk(items), ...chunk(next)];
 }
 
+/** where the radial menu's centre goes (client px): the middle of the canvas's visible area, moved in only as far as a
+ *  menu `size` across needs to stay inside the window */
+export function radialCentre(view: { left: number; top: number; width: number; height: number }, size: number, win: { w: number; h: number }): { x: number; y: number } {
+  const clamp = (v: number, lo: number, hi: number): number => Math.min(Math.max(v, lo), Math.max(lo, hi));
+  return {
+    x: clamp(view.left + view.width / 2, size / 2 + 8, win.w - size / 2 - 8),
+    y: clamp(view.top + view.height / 2, size / 2 + 8, win.h - size / 2 - 8),
+  };
+}
+
 /** an SVG path for the ring sector between radii r0 < r1 and angles a0 < a1 round (c, c) */
 export function sectorPath(c: number, r0: number, r1: number, a0: number, a1: number): string {
   const p = (r: number, a: number): string => `${(c + r * Math.cos(a)).toFixed(2)} ${(c + r * Math.sin(a)).toFixed(2)}`;
