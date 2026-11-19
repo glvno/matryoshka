@@ -162,15 +162,15 @@ it('preserves SAVE then physical USER then browser factory selection after owner
   expect(reload.modules.find((m) => m.id === t.id)!.notes).toEqual(original);
   expect(p.modules.find((m) => m.id === t.id)!.notes).toEqual(original);
 });
-// (the kit's Drum maps are inside its card, D-1059: these cut them off, and DRUMS' keys into them, so DRUMS reaches the card
-// only through the cable each test adds)
-function cutMaps(p: Patch, t: { id: number }): void {
+// (the kit's Drum maps are inside its card, D-1059: these cut DRUMS' keys into them, so no track reaches the maps and DRUMS
+// reaches the card only through the cable each test adds; the card's cables, so its structure, stay the factory's)
+function cutKeys(p: Patch, t: { id: number }): void {
   const maps = new Set(p.modules.filter((m) => m.type === 'drummap').map((m) => m.id));
-  p.cables = p.cables.filter((c) => !(maps.has(c.from.module) && /^g[1-8]$/.test(c.from.port)) && !(c.from.module === t.id && maps.has(c.to.module)));
+  p.cables = p.cables.filter((c) => !(c.from.module === t.id && maps.has(c.to.module)));
 }
 it('preserves a disconnected 808 default with only a Steps velocity cable into oscillator pitch', () => {
   const { p, a, t, presets } = fixture('808 Kit');
-  cutMaps(p, t);
+  cutKeys(p, t);
   const osc = p.modules.find((m) => m.type === 'osc')!;
   p.cables.push({ from: { module: t.id, port: 'vel' }, to: { module: osc.id, port: 'pitch' } });
   const notes = structuredClone(t.notes);
@@ -181,12 +181,30 @@ it('preserves a disconnected 808 default with only a Steps velocity cable into o
 });
 
 it('recognizes the Steps trig output by its gate kind for a directly triggered kit envelope', () => {
-  const { p, a, t } = fixture('808 Kit');
+  const { p, a, t, presets } = fixture('808 Kit');
   const map = p.modules.find((m) => m.type === 'drummap')!;
   const trigger = p.cables.find((c) => c.from.module === map.id && /^g[1-8]$/.test(c.from.port))!.to;
-  cutMaps(p, t);
-  expect(patternDriver(p, a, DEFS)).toBeUndefined();
+  cutKeys(p, t);
+  expect(patternDriver(p, a, DEFS)).toBeUndefined();   // (Drum maps that no track reaches drive nothing)
   p.cables.push({ from: { module: t.id, port: 'trig' }, to: trigger });
   expect(devicesOf(p, DEFS).find((d) => d.asm === a.id)!.track).toBe(t.id);
-  expect(patternDriver(p, a, DEFS)).toBe(t.id);
+  applyPreset(p, a, presets[1]);
+  expect(t.notes!.map(noteWord)).toEqual(presetPattern(presets[1].structure, presets[1].name)!.notes);
+});
+
+// the routings of golden.ts's pattern-*.m1p panel fixtures, which firmware/test/preset_pattern_panel_test.c loads: the
+// editor's driver (patternDriver) must name the track the FM-1's (pages_ui.c dp_pattern_module) names there
+it.each([['control-only', false], ['direct-trig', true], ['ambiguous-gate', false]] as const)('%s: the editor picks the driving track as the FM-1 does', (mode, drives) => {
+  const { p, a, t } = fixture('808 Kit');
+  const map = p.modules.find((m) => m.type === 'drummap')!;
+  const gate = p.cables.find((c) => c.from.module === map.id && /^g[1-8]$/.test(c.from.port))!.to;
+  cutKeys(p, t);
+  const osc = p.modules.find((m) => m.type === 'osc')!;
+  p.cables.push({ from: { module: t.id, port: mode === 'control-only' ? 'vel' : 'trig' }, to: mode === 'control-only' ? { module: osc.id, port: 'pitch' } : gate });
+  if (mode === 'ambiguous-gate') {
+    const other = addModule(p, DEFS.steps, 0, 600);
+    const another = p.modules.find((m) => m.type === 'env' && m.id !== gate.module)!;
+    p.cables.push({ from: { module: other.id, port: 'trig' }, to: { module: another.id, port: 'gate' } });
+  }
+  expect(patternDriver(p, a, DEFS)).toBe(drives ? t.id : undefined);
 });

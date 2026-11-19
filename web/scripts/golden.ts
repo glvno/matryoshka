@@ -4355,11 +4355,12 @@ if (process.argv.includes('--panel-fixtures')) {
   }
   for (const mode of ['control-only', 'direct-trig', 'ambiguous-gate']) {
     const p = FM1_PRESETS['808 Kit']();
-    // (the kit reached only through the route under test: every Drum map's gates go, the 808 Kit has two, D-1053)
+    // (the kit reached only through the route under test: DRUMS' keys into its Drum maps go, the 808 Kit has two inside its
+    // card, D-1053, D-1059; the maps stay cabled, so the card's structure and its pattern origin stay those of the factory)
     const maps = new Set(p.modules.filter((m) => m.type === 'drummap').map((m) => m.id));
     const track = p.modules.find((m) => m.type === 'steps')!;
     const gate = p.cables.find((c) => maps.has(c.from.module) && /^g[1-8]$/.test(c.from.port))!.to;
-    p.cables = p.cables.filter((c) => !(maps.has(c.from.module) && /^g[1-8]$/.test(c.from.port)));
+    p.cables = p.cables.filter((c) => !(c.from.module === track.id && maps.has(c.to.module)));
     const osc = p.modules.find((m) => m.type === 'osc')!;
     p.cables.push({ from: { module: track.id, port: mode === 'control-only' ? 'vel' : 'trig' },
       to: mode === 'control-only' ? { module: osc.id, port: 'pitch' } : gate });
