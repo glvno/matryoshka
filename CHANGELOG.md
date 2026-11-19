@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.21.0 — 2026-11-19
 
 - **A Start from an app that sends no clock before it no longer puts the FM-1's steps ahead.** When an app sends Start and only then its MIDI clock, the FM-1 now waits up to 150 ms for that first clock and starts its patterns on it, as it already does when the clock runs before the Start. Before, it started at once on its own tempo, and when its own tempo was faster than the app's, every step came two clocks early (at 90 bpm against the FM-1's 120: about 55 ms). An app that sends Start with no clock at all starts the FM-1 150 ms later than before, on its own tempo. The editor follows MIDI clock the same way (#870).
 - **Every patch leaves the FM-1 a little more room.** The FM-1 now does less bookkeeping for each module of a patch every block: it works out when the patch loads which inputs move a module's settings, adds up those inputs four samples at a time, and no longer divides to find which voice a module copy belongs to. The sound is the same, sample for sample. On the test rig, with up to 8 keys held, the polyphonic synths with all their effects on use 1.0 to 4.6 points less of the FM-1's CPU (Hera 6 fx4 82.2 → 79.0 %, Oracle V fx4 81.6 → 78.1 %, Cassia 1 fx4 85.8 → 81.3 %, running), and the factory patches up to 5.8 points less (Algo Four 73.2 → 67.3 %, Hera 6 74.5 → 71.2 %) (#1072).
