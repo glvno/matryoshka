@@ -7,15 +7,121 @@
  * on where the tracks are (following a Song Position is #596). Stop stops. While the transport runs on MIDI clock, a
  * stall of the clock holds the tracks where they are until it comes back (a host busy writing a file): the FM-1's own
  * tempo comes back only half a second after the last clock while the transport is stopped, or at once with CLOCK IN off.
- * The host test (firmware/test/clock_in_test.c) runs this file with the engine. */
+ * The host test (firmware/test/clock_in_test.c) runs this file with the engine.
+ *
+ * The log (#870: what a looper such as Reel sends, read on the Mac afterwards): the last CIN_LOG_N realtime and Song
+ * Position messages as the FM-1 takes them, logged whether CLOCK IN is on or not. Each with its time in microseconds
+ * (TIMER4, CIN_LOG_NOW), the engine's tick count (low 16 bits; the position for Song Position) as the last block left it,
+ * and the transport's state. CIN_LOG_AFTER messages after a Stop it freezes, so the last loop before a Stop stays when a
+ * host goes on sending clock while stopped; a Start or Continue lets it run again. RAM only: it lasts while the FM-1
+ * stays on (unplugging USB keeps it). DIAG 145 (the header, and the read starts at the oldest entry), 146 (the next 4
+ * entries), 147 (empty it); tools/m1_link.py midilog reads it. */
+#ifndef CIN_LOG_MEM
+#define CIN_LOG_MEM
+#endif
+#ifndef CIN_LOG_NOW
+#define CIN_LOG_NOW() fm1_ticks()
+#endif
+#define CIN_LOG_N 512u
+#define CIN_LOG_AFTER 64u
+typedef struct {
+    uint32_t us;                                /* microseconds (the log's own clock: wraps after 71 minutes) */
+    uint16_t v;                                 /* the engine's ticks (low 16 bits); Song Position: its value */
+    uint8_t st;                                 /* the status byte: F2, F8, FA, FB, FC */
+    uint8_t fl;                                 /* bit 0 the transport runs (eng_run_ticks), 1 MIDI clock drives, 2 CLOCK IN on */
+} cin_ent_t;
+static cin_ent_t cin_log[CIN_LOG_N] CIN_LOG_MEM;
+static uint32_t cin_log_w, cin_log_rd;          /* entries logged since boot or the last DIAG 147; DIAG 146's next entry */
+static uint32_t cin_log_us, cin_log_tk, cin_log_ms;
+static uint8_t cin_log_stop;                    /* 0 logging; n: after a Stop, n - 1 more entries, then frozen (1) */
 static uint32_t midi_clk_ms;                    /* fm1_ms of the last MIDI clock tick (MIDI clock drives the clock while they come) */
 static uint8_t midi_clk_seen;
 static uint8_t midi_spp_top;                    /* the last Song Position was 0: Continue plays from the top */
+
+/* the log's clock now, in microseconds: TIMER4 (24 MHz) wraps every 179 s, so a longer gap is counted in fm1_ms */
+static uint32_t cin_log_clock(void)
+{
+    uint32_t now = CIN_LOG_NOW(), d = now - cin_log_tk;
+    if (fm1_ms - cin_log_ms > 170000u) {
+        cin_log_us += (fm1_ms - cin_log_ms) * 1000u;
+        cin_log_tk = now;
+    } else {
+        cin_log_us += d / FM1_TICKS_PER_US;
+        cin_log_tk = now - d % FM1_TICKS_PER_US;
+    }
+    cin_log_ms = fm1_ms;
+    return cin_log_us;
+}
+static void cin_log_add(uint32_t pkt)
+{
+    uint32_t st = (pkt >> 8) & 0xFFu;
+    cin_ent_t *e;
+    if (st == 0xFAu || st == 0xFBu)
+        cin_log_stop = 0;
+    else if (cin_log_stop == 1u)
+        return;
+    else if (cin_log_stop)
+        cin_log_stop--;
+    e = &cin_log[cin_log_w++ % CIN_LOG_N];
+    e->us = cin_log_clock();
+    e->st = (uint8_t)st;
+    e->v = st == 0xF2u ? (uint16_t)(((pkt >> 16) & 0x7Fu) | ((pkt >> 24) & 0x7Fu) << 7) : (uint16_t)eng_ticks();
+    e->fl = (uint8_t)((eng_run_ticks() >= 0 ? 1u : 0u) | (eng_clock_is_external() ? 2u : 0u) | (cfg.clock_in ? 4u : 0u));
+    if (st == 0xFCu)
+        cin_log_stop = CIN_LOG_AFTER + 1u;
+}
+/* DIAG 145..147 (main.c m1_diag): 145 the header (entries logged, the ring's size, how many it holds, frozen, the log's
+ * clock now, the engine's ticks now, the transport's state now, fm1_ms) and the read from the oldest entry; 146 the next
+ * 4 entries (8 bytes each: us u32, v u16, st, fl; past the newest: zeros); 147 empties the log */
+static uint32_t cin_log_diag(uint32_t page, uint8_t *out)
+{
+    uint32_t i, held = cin_log_w < CIN_LOG_N ? cin_log_w : CIN_LOG_N;
+    if (page == 145u) {
+        uint32_t v[8];
+        v[0] = cin_log_w;
+        v[1] = CIN_LOG_N;
+        v[2] = held;
+        v[3] = cin_log_stop == 1u;
+        v[4] = cin_log_clock();
+        v[5] = eng_ticks();
+        v[6] = (eng_run_ticks() >= 0 ? 1u : 0u) | (eng_clock_is_external() ? 2u : 0u) | (cfg.clock_in ? 4u : 0u);
+        v[7] = fm1_ms;
+        cin_log_rd = cin_log_w - held;
+        for (i = 0; i < 32u; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return 32u;
+    }
+    if (page == 146u) {
+        for (i = 0; i < 4u; i++, out += 8) {
+            uint32_t k;
+            if ((int32_t)(cin_log_w - cin_log_rd) <= 0 || cin_log_w - cin_log_rd > held) {
+                for (k = 0; k < 8u; k++)
+                    out[k] = 0;
+                continue;
+            }
+            {
+                const cin_ent_t *e = &cin_log[cin_log_rd++ % CIN_LOG_N];
+                for (k = 0; k < 4u; k++)
+                    out[k] = (uint8_t)(e->us >> (8u * k));
+                out[4] = (uint8_t)e->v;
+                out[5] = (uint8_t)(e->v >> 8);
+                out[6] = e->st;
+                out[7] = e->fl;
+            }
+        }
+        return 32u;
+    }
+    cin_log_w = cin_log_rd = 0;                 /* 147 */
+    cin_log_stop = 0;
+    out[0] = 0;
+    return 1u;
+}
 
 /* one realtime or system common packet from the MIDI ring (USB-MIDI layout: the status in bits 8..15, data above) */
 static void clk_in_rt(uint32_t pkt)
 {
     uint32_t rt = (pkt >> 8) & 0xFFu;
+    cin_log_add(pkt);
     if (!cfg.clock_in)
         return;
     if (rt == 0xF8u) {

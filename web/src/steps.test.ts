@@ -564,4 +564,37 @@ describe('MIDI clock in (#870; firmware/test/clock_in_test.c the same)', () => {
     expect(off).toEqual([]);
     expect(steps).toBeGreaterThanOrEqual(32);
   });
+
+  it('a clock that comes just before a Start, in the same block, is the old run’s, not the new one’s tick 0', () => {
+    const { p } = rig([ON]);
+    const e = new Engine(SR);
+    e.load(p);
+    const l = new Float32Array(128), r = new Float32Array(128);
+    let m = -1, last = -1, steps = 0;
+    const off: number[] = [];
+    const block = (tick: boolean): void => {
+      if (tick) e.clockTick(), m++;
+      e.render(l, r);
+      const pos = e.stepsView()[0].pos;
+      if (pos !== last && pos >= 0) {
+        steps++;
+        if (pos !== Math.floor(m / 6) % 16) off.push(m);
+      }
+      last = pos;
+    };
+    const ticks = (n: number): void => {
+      for (let k = 0; k < n * 4; k++) block(k % 4 === 0);
+    };
+    e.clockExternal(true);
+    ticks(24);
+    m = -1;
+    e.transportTop();
+    ticks(96 * 2 - 10);
+    e.clockTick(); // the old loop's last clock, then the Start, before the same block
+    e.transportTop();
+    m = -1;
+    ticks(96);
+    expect(off).toEqual([]);
+    expect(steps).toBeGreaterThanOrEqual(46);
+  });
 });

@@ -961,13 +961,15 @@ static void toggles_sync(void);
 static volatile uint32_t clk_ticks;   /* MIDI clock ticks (eng_clock_tick, the main loop) */
 static volatile uint8_t clk_ext;      /* MIDI clock drives the clock */
 static volatile uint8_t transport_on; /* the transport (eng_transport) */
-/* MIDI Start (eng_transport_top, #870): the main loop counts top_gen up, the next block takes it (top_seen). The transport
- * then starts on the next MIDI tick, waiting for it up to top_wait samples more when no MIDI clock drives yet (TOP_WAIT: a
- * tick at 20 bpm and some; without one it starts on the tempo). tick0: this block's start is on a MIDI tick, tick 0 (the
- * host's first clock after its Start), which steps nothing on; tick_skip: this block's first tick is that one (Steps and
- * Euclid count from the next) */
+/* MIDI Start (eng_transport_top, #870): the main loop notes the MIDI ticks so far (top_clk) and counts top_gen up, the next
+ * block takes it (top_seen). The ticks that came before the Start are the old run's; the transport then starts on the next
+ * MIDI tick after it, waiting for one up to top_wait samples more when no MIDI clock drives yet (TOP_WAIT: a tick at 20 bpm
+ * and some; without one it starts on the tempo). tick0: this block's start is on a MIDI tick, tick 0 (the host's first
+ * clock after its Start), which steps nothing on; tick_skip: this block's first tick is that one (Steps and Euclid count
+ * from the next) */
 #define TOP_WAIT (ENG_SR * 3u / 20u)
 static volatile uint8_t top_gen;
+static volatile uint32_t top_clk;
 static uint8_t top_seen, tick0, tick_skip;
 static uint16_t top_wait;
 static volatile uint8_t fill_on;      /* FILL held (#674, eng_fill): notes with a FILL condition play */
@@ -4990,6 +4992,7 @@ void eng_transport(int on)
 void eng_transport_top(void)
 {
     eng_transport(1);
+    top_clk = clk_ticks;                         /* (before top_gen: the block that sees the Start sees this too) */
     top_gen++;
 }
 /* REC's count-in click (D-803; engine.ts countIn, the same): `bars` bars of clicks from the transport's start, or, running
@@ -12798,8 +12801,10 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             if (!run)
                 top_wait = 0;
             if (ENG_RARELY(top_gen != top_seen)) {   /* MIDI Start (eng_transport_top): from the top, on the next MIDI */
-                top_seen = top_gen;                  /* tick. Running, a block stopped first; the ticks that came with */
-                top_wait = TOP_WAIT;                 /* it wait for the start */
+                top_seen = top_gen;                  /* tick after it. The ticks before it are the old run's, counted */
+                top_wait = TOP_WAIT;                 /* now; running, a block stopped first, and the ticks after the */
+                E.ticks += top_clk - E.clk_seen;     /* Start wait for the start */
+                E.clk_seen = top_clk;
                 if (E.running) {
                     run = 0;
                     t = E.clk_seen;

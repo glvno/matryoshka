@@ -64,6 +64,7 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #include "font5x7.c"
 #include "font_bc.c"
 #define ENG_POOL __attribute__((section(".pool")))
+#define CIN_LOG_MEM __attribute__((section(".pool")))   /* clock_in.h: the MIDI clock-in log, 4 KiB (#870) */
 #define ENG_LOWRAM __attribute__((section(".lowram")))   /* app.ld: the SRAM below the RAM region (#273) */
 #define ENG_NOINIT __attribute__((section(".noinit")))   /* app.ld: NOINIT (#802: the two-core schedule; the pool and the
                                                           * RAM region have no room to spare) */
