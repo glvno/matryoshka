@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **An EQ module.** One band of a parametric equalizer: low shelf, bell, high shelf, low pass, high pass or notch, from 10 Hz to 22 kHz, ±18 dB, with q. Chain several for more bands, or drop in the factory assembly EQ (a low shelf, a bell and a high shelf). Its curve keeps its analog shape right up to the top of the range, without the squeeze a plain digital EQ has near 20 kHz, at no extra CPU while it plays. Patches with an EQ need the next firmware (for #1107).
+- **Hera 6 gains Drive on its FX page,** beside its own Juno chorus, Delay and Reverb, at its six voices. Drive starts off, so every factory preset sounds as before; turn it on from the FX page. A slot you saved keeps its own version.
 
 ## 1.21.0 — 2026-11-19
 

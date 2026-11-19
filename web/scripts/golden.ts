@@ -4287,6 +4287,10 @@ if (process.argv.includes('--panel-fixtures')) {
     setSwitches(p, 'lfo', true);
     writeFileSync(new URL('fx-bus.m1p', out), encodePatch(p, true));
   }
+  // The shipped factory patches whose FX stages came after the instrument: the FM-1's FX page must show exactly their
+  // stages, every one off at load (panel_test.c fx_suite)
+  for (const name of ['Hera 6'])
+    writeFileSync(new URL(`factory-rack-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.m1p`, out), encodePatch(FM1_PRESETS[name]()));
   {
     // A real assembly owns the complete rack: panel preset recall must include every promoted FX control.
     const p = newPatch(DEFS);
