@@ -154,7 +154,7 @@ describe('EQ (#1107)', () => {
       const x = Float32Array.from({ length: sr * 2 }, () => rnd() * 2 - 1);
       const y = run(x, () => ({ shape: Math.floor(rnd() * 6), freq: 10 * 2200 ** rnd(), gain: rnd() * 36 - 18, q: 0.1 * 100 ** rnd() }), sr);
       expect(y.every((v) => Number.isFinite(v) && Math.abs(v) < 60)).toBe(true);
-      for (const p of [{ shape: BELL, freq: 10, gain: 18, q: 10 }, { shape: LP, freq: 10, q: 10 }, { shape: HS, freq: 22000, gain: 18, q: 10 }, { shape: LS, freq: 22000, gain: -18, q: 10 }]) {
+      for (const p of [{ shape: BELL, freq: 10, gain: 18, q: 10 }, { shape: LP, freq: 10, gain: 0, q: 10 }, { shape: HS, freq: 22000, gain: 18, q: 10 }, { shape: LS, freq: 22000, gain: -18, q: 10 }]) {
         const imp = new Float32Array(sr * 8);
         imp[0] = 1;
         const h = run(imp, () => p, sr);
