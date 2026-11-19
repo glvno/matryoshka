@@ -21,7 +21,7 @@ export const FACTORY_FX_MASKS: Record<string, number> = {
   'Briefcase 3': 6,
   'Wanderer': 15,
   'Cassia 1': 13,
-  'Hera 4': 12,
+  'Hera 4': 13,
   'Vernon 100': 15,
   'Sallen 20': 15,
   'Io 4': 13,

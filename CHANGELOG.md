@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Hera 6 gains Drive on its FX page,** beside its own Juno chorus, Delay and Reverb, at its six voices. Drive starts off, so every factory preset sounds as before; turn it on from the FX page. A slot you saved keeps its own version.
+
 ## 1.21.0 — 2026-11-19
 
 - **A Start from an app that sends no clock before it no longer puts the FM-1's steps ahead.** When an app sends Start and only then its MIDI clock, the FM-1 now waits up to 150 ms for that first clock and starts its patterns on it, as it already does when the clock runs before the Start. Before, it started at once on its own tempo, and when its own tempo was faster than the app's, every step came two clocks early (at 90 bpm against the FM-1's 120: about 55 ms). An app that sends Start with no clock at all starts the FM-1 150 ms later than before, on its own tempo. The editor follows MIDI clock the same way (#870).
