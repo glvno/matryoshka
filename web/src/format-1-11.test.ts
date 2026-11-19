@@ -121,7 +121,7 @@ describe('counted records (#667, format 51)', () => {
       const l = layout(p);
       // in its old format when that holds it; counted (Wanderer and Vernon 100, with their PATTERN track) when not
       expect(formatOf(p), name).toBe(l.base.bytes <= DEVICE.bytes ? l.base.v : COUNTED);
-      expect(deviceBudget(p).items.find((i) => i.key === 'bytes')!.used, name).toBe(Math.min(l.base.bytes, l.counted));
+      expect(deviceBudget(p).items.find((i) => i.key === 'bytes')!.used, name).toBe(Math.min(l.base.bytes, l.counted, l.slim));   // (and format 64's, D-1026)
     }
   });
 
