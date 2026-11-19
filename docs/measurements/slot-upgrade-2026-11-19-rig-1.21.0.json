@@ -1,0 +1,262 @@
+{
+ "method": "see release/qualification/v1.21.0.json slot_upgrade",
+ "slots": [
+  {
+   "slot": 1,
+   "name": "MONOLITH D",
+   "written": "v1.20.0",
+   "len_before": 2758,
+   "expect": "KEEP",
+   "len_expected": 2758,
+   "len_after": 2758,
+   "name_after": "MONOLITH D",
+   "ok": true
+  },
+  {
+   "slot": 2,
+   "name": "ORACLE V",
+   "written": "v1.20.0",
+   "len_before": 2798,
+   "expect": "UPGRADE",
+   "len_expected": 2845,
+   "len_after": 2845,
+   "name_after": "ORACLE V",
+   "ok": true
+  },
+  {
+   "slot": 3,
+   "name": "SILVER BOX",
+   "written": "v1.20.0",
+   "len_before": 1523,
+   "expect": "KEEP",
+   "len_expected": 1523,
+   "len_after": 1523,
+   "name_after": "SILVER BOX",
+   "ok": true
+  },
+  {
+   "slot": 4,
+   "name": "HERA 6",
+   "written": "edited (Hera 6 with every FX stage on)",
+   "len_before": 2262,
+   "expect": "KEEP",
+   "len_expected": 2262,
+   "len_after": 2262,
+   "name_after": "HERA 6",
+   "ok": true
+  },
+  {
+   "slot": 5,
+   "name": "SALLEN 20",
+   "written": "v1.20.0",
+   "len_before": 2481,
+   "expect": "KEEP",
+   "len_expected": 2481,
+   "len_after": 2481,
+   "name_after": "SALLEN 20",
+   "ok": true
+  },
+  {
+   "slot": 6,
+   "name": "EXPANDER S",
+   "written": "v1.20.0",
+   "len_before": 2157,
+   "expect": "UPGRADE",
+   "len_expected": 2156,
+   "len_after": 2156,
+   "name_after": "EXPANDER S",
+   "ok": true
+  },
+  {
+   "slot": 7,
+   "name": "ALGO FOUR",
+   "written": "v1.20.0",
+   "len_before": 2089,
+   "expect": "UPGRADE",
+   "len_expected": 2088,
+   "len_after": 2088,
+   "name_after": "ALGO FOUR",
+   "ok": true
+  },
+  {
+   "slot": 8,
+   "name": "CANVAS",
+   "written": "v1.20.0",
+   "len_before": 3821,
+   "expect": "KEEP",
+   "len_expected": 3821,
+   "len_after": 3821,
+   "name_after": "CANVAS",
+   "ok": true
+  },
+  {
+   "slot": 9,
+   "name": "WANDERER",
+   "written": "v1.20.0",
+   "len_before": 3165,
+   "expect": "KEEP",
+   "len_expected": 3165,
+   "len_after": 3165,
+   "name_after": "WANDERER",
+   "ok": true
+  },
+  {
+   "slot": 10,
+   "name": "BRIEFCASE 3",
+   "written": "v1.20.0",
+   "len_before": 3818,
+   "expect": "KEEP",
+   "len_expected": 3818,
+   "len_after": 3818,
+   "name_after": "BRIEFCASE 3",
+   "ok": true
+  },
+  {
+   "slot": 11,
+   "name": "IO 4",
+   "written": "v1.20.0",
+   "len_before": 2818,
+   "expect": "KEEP",
+   "len_expected": 2818,
+   "len_after": 2818,
+   "name_after": "IO 4",
+   "ok": true
+  },
+  {
+   "slot": 12,
+   "name": "VERNON 100",
+   "written": "v1.20.0",
+   "len_before": 3026,
+   "expect": "KEEP",
+   "len_expected": 3026,
+   "len_after": 3026,
+   "name_after": "VERNON 100",
+   "ok": true
+  },
+  {
+   "slot": 13,
+   "name": "8 LIRE",
+   "written": "v1.20.0",
+   "len_before": 3146,
+   "expect": "UPGRADE",
+   "len_expected": 3736,
+   "len_after": 3736,
+   "name_after": "8 LIRE",
+   "ok": true
+  },
+  {
+   "slot": 14,
+   "name": "ELVIRA 2",
+   "written": "v1.20.2",
+   "len_before": 3491,
+   "expect": "KEEP",
+   "len_expected": 3491,
+   "len_after": 3491,
+   "name_after": "ELVIRA 2",
+   "ok": true
+  },
+  {
+   "slot": 15,
+   "name": "SCROUNGE",
+   "written": "v1.20.0",
+   "len_before": 3817,
+   "expect": "KEEP",
+   "len_expected": 3817,
+   "len_after": 3817,
+   "name_after": "SCROUNGE",
+   "ok": true
+  },
+  {
+   "slot": 16,
+   "name": "MERIDIAN 8",
+   "written": "v1.20.0",
+   "len_before": 3493,
+   "expect": "KEEP",
+   "len_expected": 3493,
+   "len_after": 3493,
+   "name_after": "MERIDIAN 8",
+   "ok": true
+  },
+  {
+   "slot": 17,
+   "name": "808 KIT",
+   "written": "v1.20.0",
+   "len_before": 3556,
+   "expect": "KEEP",
+   "len_expected": 3556,
+   "len_after": 3556,
+   "name_after": "808 KIT",
+   "ok": true
+  },
+  {
+   "slot": 18,
+   "name": "909 KIT",
+   "written": "v1.20.0",
+   "len_before": 3831,
+   "expect": "KEEP",
+   "len_expected": 3831,
+   "len_after": 3831,
+   "name_after": "909 KIT",
+   "ok": true
+  },
+  {
+   "slot": 19,
+   "name": "CASSIA 1",
+   "written": "v1.20.0",
+   "len_before": 3698,
+   "expect": "UPGRADE",
+   "len_expected": 3698,
+   "len_after": 3698,
+   "name_after": "CASSIA 1",
+   "ok": true
+  },
+  {
+   "slot": 20,
+   "name": "VERONA DRUM 1",
+   "written": "v1.20.0",
+   "len_before": 3811,
+   "expect": "KEEP",
+   "len_expected": 3811,
+   "len_after": 3811,
+   "name_after": "VERONA DRUM 1",
+   "ok": true
+  },
+  {
+   "slot": 21,
+   "name": "SHUSH 101",
+   "written": "v1.20.0",
+   "len_before": 2222,
+   "expect": "KEEP",
+   "len_expected": 2222,
+   "len_after": 2222,
+   "name_after": "SHUSH 101",
+   "ok": true
+  },
+  {
+   "slot": 22,
+   "name": "MY IO 4",
+   "written": "v1.20.0 Io 4 under another name",
+   "len_before": 2818,
+   "expect": "KEEP",
+   "len_expected": 2818,
+   "len_after": 2818,
+   "name_after": "MY IO 4",
+   "ok": true
+  },
+  {
+   "slot": 23,
+   "name": "MY SILVER",
+   "written": "user patch",
+   "len_before": 1523,
+   "expect": "KEEP",
+   "len_expected": 1523,
+   "len_after": 1523,
+   "name_after": "MY SILVER",
+   "ok": true
+  }
+ ],
+ "blocktime_8_keys": {
+  "before": "== program 18\n  the whole audio ISR (C), start to end                                1656.6   1770.1\n  awake parts per job: core 0 96.00, core 1 88.00 (in all, core 0 66336, core 1 60808)\n== program 6\n  the whole audio ISR (C), start to end                                1512.7   1616.1\n  awake parts per job: core 0 75.00, core 1 66.00 (in all, core 0 51825, core 1 45606)\n",
+  "after": "== program 18\n  the whole audio ISR (C), start to end                                1871.1   1972.8\n  awake parts per job: core 0 111.00, core 1 110.00 (in all, core 0 76923, core 1 76230)\n== program 6\n  the whole audio ISR (C), start to end                                1778.9   1862.9\n  awake parts per job: core 0 91.00, core 1 88.00 (in all, core 0 62881, core 1 60808)\n== program 3\n  the whole audio ISR (C), start to end                                2015.8   2079.2\n  awake parts per job: core 0 68.00, core 1 97.00 (in all, core 0 47124, core 1 67221)\n== Hera 6\n  the whole audio ISR (C), start to end                                1846.0   1963.9\n  awake parts per job: core 0 77.00, core 1 88.00 (in all, core 0 53207, core 1 60808)\n== build/rig1210/bankfx/03 Hera 6 fx.bin\n  the whole audio ISR (C), start to end                                2016.5   2077.4\n  awake parts per job: core 0 68.00, core 1 97.00 (in all, core 0 46988, core 1 67027)\n"
+ }
+}

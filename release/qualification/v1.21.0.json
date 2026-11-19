@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "version": "1.21.0",
+  "firmware_product": "FM-1_7012100",
+  "source_commit": "56bb615b6f897c0a4f5d7d442c784aace7dd054e",
+  "source_tree": "8039ba23cacf1fc4d6eb42e4b9c13905fe8b47e9",
+  "status": "automated and rig checks passed; owner's device check and the go for publication pending",
+  "release_approval": {"status": "pending", "scope": "Publication of v1.21.0 from the merge of this record, whose firmware/ and tools/ equal the qualified source 56bb615b (D-105)."},
+  "plan": "D-1161 (owner 2026-11-19: \"agreed with your recs\"); frozen by PR #1111",
+  "build_manifest_sha256": "6e18dffb465ce590b0fe2e7f9797f9bd2e6524f67c452b82e8fb1ab66742b311",
+  "artifacts": {
+    "package": {"name": "matryoshka-1.21.0.fwsc", "size": 610656, "sha256": "c920ecef602624070faa9e2128841067e92891a5318c5d115df71bd1387b183c"},
+    "normal": {"name": "matryoshka-1.21.0-app.bin", "size": 558336, "sha256": "485a5512c5ba67b3159e7c31e91aa53f374d4da01a5dd8ab3f6cf0e6d091c3d0"},
+    "normal_elf": {"name": "matryoshka-1.21.0-app.elf", "size": 625000, "sha256": "2ba22fac6eed0fef5c2f812913b685f622858122b70b8025adff5547c99e120e"},
+    "normal_sidecar": {"name": "matryoshka-1.21.0.json", "size": 411, "sha256": "73520d9168fa77da2ce7e691769e6b306b61f689dde5b3bd18ce25cc4c61db9b"},
+    "bridge": {"name": "matryoshka-emu.bin", "size": 555324, "sha256": "af9bd60fcd4855ec05a671ff732232f35c7d9e815753aa1a291a0769c79670c8"}
+  },
+  "bundled": "web/public/firmware/matryoshka.fwsc and matryoshka.json from npm run firmware on the package above (v1.21.0, FM-1_7012100, 610656 B, sha256 c920ecef...)",
+  "build": "release run 44585908439: image 558336 B; RAM .data+.bss 20116 B of 24576 (4460 B free); pool 409592 B of 417792 (8200 B headroom, the floor 8192: passes); .lowram 28500 B (48 B free after it); RAM code (.fast_text) 12596 B in NOINIT, 164 B free after it; build options ENG_RAMCODE 1, ENG_BUF_REUSE 1, ENG_AOT 0, -O2; no compiler warnings in the firmware build (the host test harnesses print their usual -Wmaybe-uninitialized and unused-declaration warnings)",
+  "ci_runs": {"release": 44585908439, "web_rc": 44585914567},
+  "full_host": "PASS in release run 44585908439 (rc mode on the frozen commit)",
+  "full_web": {
+    "rc_run": 44585914567,
+    "run_success": true,
+    "result": "test job (255 test files), the six parallel slow-render jobs (14 files: levels-1..6, headroom-1..4, shared-levels, kit909, audition-render, quiet-load: the factory loudness rule and the audition peak check) and the coverage seal passed (D-1157 rc layout)",
+    "coverage_record": "release/coverage/v1.21.0/ (measured on 56bb615b, D-147): core 97.3 % of 6484 lines, interface 40.1 % of 11088"
+  },
+  "full_boot": {"checks": 40, "failed": 0, "on": "the release app with the run's bridge (the editor link and the update handshake on the bridge)", "note": "includes the slot-upgrade part of #1108: an earlier release's bank keeps its slots without a region, takes today's patches when the region is installed, and the next boot rewrites nothing"},
+  "full_smoke": {"checks": 303, "failed": 0, "level_warnings": 0, "on": "the release app, sha256 485a5512...", "note": "run beside the scenarios in the one emulator slot (D-1157)"},
+  "full_scenarios": {
+    "passed": 347,
+    "failed": 0,
+    "shards": 4,
+    "seconds": 400,
+    "on_bridge_sha256": "af9bd60fcd4855ec05a671ff732232f35c7d9e815753aa1a291a0769c79670c8",
+    "note": "focusTurns passed first time (no #1044 flake)"
+  },
+  "editor_side_scenarios": {"passed": 68, "failed": 0, "scenarios": "signalBuffers, liveCompile, rollPen, mirrorKeys, longPreset, abFlip, editorIgnore (D-1158), on the same bridge"},
+  "old_format": "tools/old_format.sh v1.20.0 on 56bb615b: all 528 binaries written by v1.20.0's encoder load, upgrade and render bit-identically with today's engine; 2280 records grown to all their parameters render the same (patch format unchanged at 63)",
+  "rig_install": {
+    "gate": "boot (emu:boot on this run's release app and bridge, 40 of 40, D-123)",
+    "result": "tools/fm1_install.py --rig installed matryoshka-1.21.0.fwsc on the registered test rig at USB location 0x01140000, from the 1.20.2 state below; it restarted as FM-1_7012100 (Matryoshka 1.21.0), then the installer installed the factory region of 56bb615b (15 sectors, 9 written, 6 already there). FACT_INFO: region valid, layout 1, format 55, version 16, set 5c07a5, 12 patches; firmware tier version 16, 11 patches; 21 factory patches merged. Left running 1.21.0 in normal mode, not in update mode, EDITOR IGNORE (INFO bit set)."
+  },
+  "slot_upgrade": {
+    "result": "passed: the five untouched factory slots whose patch changed took today's patch, every other slot kept what it held",
+    "setup": "the rig on v1.20.0's release firmware with v1.20.2's factory region (version 15, set 0971a5); slots 1-21 written over the editor link with the factory patches as v1.20.0's presets.h holds them (Elvira 2 as v1.20.2's), under the factory names; slot 4 (HERA 6) holding Hera 6 with every FX stage on (an edit under its own name); slot 22 v1.20.0's Io 4 as MY IO 4 (a released copy under another name); slot 23 a user patch",
+    "after_install": "slot lengths (SLOT_INFO): ORACLE V 2798 -> 2845, EXPANDER S 2157 -> 2156, ALGO FOUR 2089 -> 2088, 8 LIRE 3146 -> 3736 (today's); CASSIA 1 keeps its length (3698), so with 8 keys held its awake parts went 184 -> 221 and Algo Four's 141 -> 179 (the 4 -> 5 and 6 -> 8 voices); slot 4 still plays the edited Hera 6 (2016 us audio interrupt with 8 keys, parts 68 / 97, as the edited binary uploaded live, against today's Hera 6 1846 us, 77 / 88); every other slot's name and length unchanged (Elvira 2's v1.20.2 copy is today's patch and is not written again)",
+    "file": "docs/measurements/slot-upgrade-2026-11-19-rig-1.21.0.json"
+  },
+  "hardware": {
+    "scope": "D-1151: the scenarios whose result needs the hardware, on the registered test rig running the release bytes, plus the CPU survey, the floating-point check and MIDI clock in",
+    "rig_scenarios": {
+      "passed": 55,
+      "failed": 0,
+      "skipped": 3,
+      "by_design_skips": ["MONO, MONO L and MONO loudness: USB audio is taken before OUTPUT's mix (D-140); the emulator's I2S proves them"],
+      "clock_out": "clock: 192 clocks in 4 s at 120 bpm while stopped (mean period 20.83 ms, deviation mean 0.21 ms, max 0.43 ms); CLOCK OUT off: none; on again: 72 in 1.5 s",
+      "flash_write": "checkFlashWrite passed first time: the settings record, SAVE and a preset store each wrote the flash with C4 held and no dropout over 1.5 ms; 2417 write steps, every suspend taken, longest off 480 us",
+      "dual_core": "checkDualCore: Io 4, Hera 4 and Cassia 1 with 8 keys: nothing shed, no overload, no late half, CPU row 42 / 49 / 51 %; m1_link cores after the surveys: 2 cores, split on, not barred, self-test failures 0, refused jobs 0, core 1 stack 2484 B used at most"
+    },
+    "fpucheck": "tools/m1_link.py --rig fpucheck on Canvas and on the owner's Hera 6 gauze 2: core 0, core 1 and the host (firmware/test/fpu_probe.c) give equal hashes in every case; files docs/measurements/fpucheck-2026-11-19-rig-1.21.0-canvas.json and -gauze2.json",
+    "clock_in": {
+      "result": "passed for stalls and a restart; one observation for the owner's check",
+      "method": "build/ script (not committed): the Mac sends Start and clock at 90 bpm to the rig (its own tempo 120) while it plays the 808 Kit slot, and records the rig's USB audio; each hit is compared with the steady phase's offset from the eighth-note grid, since the recording's latency is not known. Run on v1.20.0 first, then twice on 1.21.0.",
+      "v1_20_0": "after an 800 ms stall the pattern sits 3.9 to 4.1 ticks off for good; after a stall with the missed ticks in a burst, 5.1 to 5.3 ticks off",
+      "v1_21_0": "after an 800 ms stall, and after a stall with the missed ticks in a burst, every hit stays within 0.3 tick of the steady phase (both runs); a Start while running, 10 ticks short of a bar line, plays the pattern from the top",
+      "observation": "after that Start while running, the pattern runs 2.2 to 2.6 ticks (61 to 72 ms at 90 bpm) later than before it, constant afterwards, in both 1.21.0 runs. #1110 measured the same kind of shift at about half a tick on both builds and left its cause open (possibly the recording path). The owner's looper check covers it by ear.",
+      "files": "docs/measurements/clock-in-2026-11-19-rig-1.21.0.json, clock-in-2026-11-19-rig-1.20.0.json"
+    },
+    "cpu_survey": {
+      "files": "docs/measurements/cpu-survey-2026-11-19-rig-1.21.0.json and -run.json (the 21 factory patches of firmware/src/presets.h as shipped); -fx.json and -fx-run.json (each with every stage of its master FX bus on; the patches without a bus as shipped)",
+      "method": "tools/rig_cpu_survey.py, transport stopped and running, 0 / 1 / 4 / 8 keys, 2 s a phase, reloaded each phase; worst steady: the largest lower median of a phase's samples after the first, as a share of the 2902 us half-block",
+      "result": "passed: no part shed, no overload mute and no late half in any phase of any patch; worst steady running 82.9 % with every FX stage on (bar 85 %)",
+      "every_fx_stage_on": "worst steady % stopped / running: Monolith D 38.1 / 40.6, Oracle V (5) 73.8 / 76.8, Silver Box 31.0 / 33.4, Hera 6 (6) 71.6 / 74.0, Sallen 20 50.4 / 52.7, Expander S (8) 81.3 / 82.9, Algo Four (8) 75.4 / 77.3, Canvas 47.1 / 48.7, Wanderer 50.8 / 52.2, Briefcase 3 50.9 / 52.8, Io 4 56.4 / 58.3, Vernon 100 44.2 / 46.1, 8 Lire 43.2 / 48.4, Elvira 2 74.2 / 75.7, Scrounge 64.6 / 76.0, Meridian 8 50.5 / 56.7, 808 Kit 56.5 / 65.6, 909 Kit 63.4 / 71.2, Cassia 1 (5) 75.2 / 77.3, Verona Drum 1 52.7 / 61.7, Shush 101 42.9 / 44.6",
+      "as_shipped": "worst steady % stopped / running (1.20.0 release in brackets): Monolith D 29.5 / 31.6 (32.9 / 35.5), Oracle V 66.1 / 69.0 (70.4 / 73.6), Silver Box 23.2 / 25.2 (25.5 / 28.1), Hera 6 67.1 / 69.7 (72.2 / 74.3), Sallen 20 42.4 / 45.3 (46.6 / 49.0), Expander S at 8 72.8 / 75.2 (53.1 / 53.8 at 1.20.0's count), Algo Four at 8 63.7 / 65.9 (57.4 / 59.8 at 6), Canvas 44.9 / 46.7 (47.6 / 50.3), Wanderer 39.4 / 42.5 (42.0 / 45.1), Briefcase 3 45.8 / 48.3 (48.8 / 51.4), Io 4 49.6 / 51.9 (54.3 / 55.7), Vernon 100 35.5 / 37.8 (38.6 / 41.0), 8 Lire 43.0 / 50.0 (36.0 / 38.9 before the plates), Elvira 2 74.0 / 75.7 (26.3 / 28.7 before the lighter set), Scrounge 65.3 / 76.6 (67.3 / 77.6), Meridian 8 50.4 / 56.8 (53.7 / 58.8), 808 Kit 56.9 / 66.0 (62.3 / 68.6), 909 Kit 63.9 / 70.9 (67.1 / 74.6), Cassia 1 at 5 67.7 / 71.6 (63.0 / 64.6 at 4), Verona Drum 1 52.4 / 60.9 (56.6 / 64.7), Shush 101 33.0 / 35.5 (36.3 / 38.5)",
+      "peaks": "highest single sample 2843 us (98.0 %), Scrounge running with 8 keys: the first sample of a phase, which includes the load (1.20.0: 2857 us); its steady load 76.0 %"
+    }
+  },
+  "owner_checks": {
+    "status": "pending",
+    "steps": "D-139 and D-1161: the steps in the pull request's body (the Flash tab install with factory sounds; Expander S at eight voices in headphones; a factory slot never changed takes the new version and an edited one keeps it, on the owner's own bank; MIDI clock from his looper through a pause and a restart; the factory sounds by hand; a power cycle)"
+  }
+}
