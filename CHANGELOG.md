@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Hera 6 gains Drive on its FX page,** beside its own Juno chorus, Delay and Reverb, at its six voices. Drive starts off, so every factory preset sounds as before; turn it on from the FX page. A slot you saved keeps its own version.
+- **The 808 Kit has an effects rack: Drive and Reverb on the FX page,** as the melodic patches have. Both start off, so the patterns, the kit and its presets sound as before. The FM-1 gets it with the next firmware release. A slot you saved keeps its own version.
 
 ## 1.21.0 — 2026-11-19
 

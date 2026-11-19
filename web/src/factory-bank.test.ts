@@ -32,7 +32,11 @@ describe('hardware candidate measurement profiles', () => {
   it('rejects mono conversion, protected drum/drone changes and non-candidate names', () => {
     expect(() => buildFactoryBank({ 'Monolith D': { voices: 3 } })).toThrow(/voices/);
     expect(() => buildFactoryBank({ '808 Kit': { voices: 3 } })).toThrow(/protected/);
+    expect(() => buildFactoryBank({ '808 Kit': { omit: ['reverb'] } })).toThrow(/protected/);
+    expect(() => buildFactoryBank({ '808 Kit': { drumRack: true, voices: 3 } })).toThrow(/protected/);
     expect(() => buildFactoryBank({ '8 Lire': { omit: ['reverb'] } })).toThrow(/protected/);
+    expect(() => buildFactoryBank({ '8 Lire': { drumRack: true } })).toThrow(/drum kit/);
+    expect(() => buildFactoryBank({ 'Hera 4': { drumRack: true } })).toThrow(/drum kit/);
     expect(() => buildFactoryBank({ Init: { voices: 3 } })).toThrow(/Unknown factory candidate/);
     expect(() => buildFactoryBank({ 'Hera 4': { harmonizer: 'removed' } })).toThrow(/monophonic/);
     expect(() => buildFactoryBank({ 'Hera 4': { bankName: 'Oracle V' } })).toThrow(/unique/);
@@ -82,10 +86,24 @@ describe('owner-selected factory defaults', () => {
     expect(bank).toHaveLength(SOURCE.length);
     expect(bank.map(entry => entry.name)).toEqual(SOURCE.map(entry => selectedFactoryProfile[entry.name]?.bankName ?? entry.name));
     for (const source of protectedEntries) {
-      expect(selectedFactoryProfile[source.name]).toBeUndefined();
       // (a drum kit with a pattern set, D-829: its source plus those patterns, links and songs, nothing else; D-1053, D-1055)
       const kit = FACTORY_KITS.some(k => k.patch === source.name);
-      expect(patchOf(source.name, bank)).toEqual(kit ? withKitPatterns(structuredClone(source.patch) as unknown as Patch) : source.patch);
+      const original = kit ? withKitPatterns(structuredClone(source.patch) as unknown as Patch) : source.patch as unknown as Patch;
+      if (!selectedFactoryProfile[source.name]) {
+        expect(patchOf(source.name, bank)).toEqual(original);
+        continue;
+      }
+      // (a drum kit with the master FX bus: every module and cable of the kit as it was, but the Output's, which the bus
+      // now feeds; every stage bypassed; FX opens the bus's pages, the other buttons as they were; owner 2026-11-19, D-1200)
+      expect(selectedFactoryProfile[source.name].drumRack).toBe(true);
+      const p = patchOf(source.name, bank);
+      const output = original.modules.find(m => m.type === 'output')!.id;
+      for (const m of original.modules) expect(p.modules.find(x => x.id === m.id), `${source.name} ${m.id}`).toEqual(m.type === 'fm1' ? { ...m, panel: p.modules.find(x => x.id === m.id)!.panel } : m);
+      for (const c of original.cables.filter(c => c.to.module !== output)) expect(p.cables).toContainEqual(c);
+      expect((p.assemblies ?? []).slice(0, original.assemblies?.length ?? 0)).toEqual(original.assemblies ?? []);
+      const bus = fxBusOf(p)!;
+      for (const stage of bus.stages) for (const id of stage.targets) expect(p.modules.find(m => m.id === id)!.bypass).toBe(true);
+      expect(p.modules.find(m => m.type === 'fm1')!.panel!.kinds).toEqual({ fx: 'page' });
     }
     for (const [name, options] of Object.entries(selectedFactoryProfile)) if (options.outputLevel !== undefined) {
       expect(factoryFxAudit.some(audit => audit.name === name), name).toBe(true);
