@@ -538,4 +538,30 @@ describe('MIDI clock in (#870; firmware/test/clock_in_test.c the same)', () => {
     expect(off).toEqual([]);
     expect(steps).toBeGreaterThanOrEqual(64);
   });
+
+  it('a Start with no clock running starts on the host’s first clock after it, a tick later and slower than the tempo', () => {
+    const { p } = rig([ON]);
+    const e = new Engine(SR);
+    e.load(p);
+    const l = new Float32Array(128), r = new Float32Array(128);
+    let m = -1, last = -1, steps = 0, ext = false;
+    const off: number[] = [];
+    e.transportTop(); // Start; the host's clock (78 bpm against Main's 120) begins a tick later
+    for (let b = 0; b < 12 * 96 * 2; b++) {
+      if (b % 12 === 11) {
+        if (!ext) e.clockExternal((ext = true)); // (worklet.ts: the first clock makes MIDI clock drive)
+        e.clockTick();
+        m++;
+      }
+      e.render(l, r);
+      const pos = e.stepsView()[0].pos;
+      if (pos !== last && pos >= 0) {
+        steps++;
+        if (pos !== Math.floor(m / 6) % 16) off.push(m);
+      }
+      last = pos;
+    }
+    expect(off).toEqual([]);
+    expect(steps).toBeGreaterThanOrEqual(32);
+  });
 });

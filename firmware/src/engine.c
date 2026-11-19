@@ -961,11 +961,15 @@ static void toggles_sync(void);
 static volatile uint32_t clk_ticks;   /* MIDI clock ticks (eng_clock_tick, the main loop) */
 static volatile uint8_t clk_ext;      /* MIDI clock drives the clock */
 static volatile uint8_t transport_on; /* the transport (eng_transport) */
-/* MIDI Start (eng_transport_top, #870): the main loop counts top_gen up, the next block takes it (top_seen). tick0: the next
- * MIDI tick is tick 0 of a start (the host's first clock after its Start), which steps nothing on; tick_skip: this block's
- * first tick is that one (Steps and Euclid count from the next) */
+/* MIDI Start (eng_transport_top, #870): the main loop counts top_gen up, the next block takes it (top_seen). The transport
+ * then starts on the next MIDI tick, waiting for it up to top_wait samples more when no MIDI clock drives yet (TOP_WAIT: a
+ * tick at 20 bpm and some; without one it starts on the tempo). tick0: this block's start is on a MIDI tick, tick 0 (the
+ * host's first clock after its Start), which steps nothing on; tick_skip: this block's first tick is that one (Steps and
+ * Euclid count from the next) */
+#define TOP_WAIT (ENG_SR * 3u / 20u)
 static volatile uint8_t top_gen;
 static uint8_t top_seen, tick0, tick_skip;
+static uint16_t top_wait;
 static volatile uint8_t fill_on;      /* FILL held (#674, eng_fill): notes with a FILL condition play */
 /* play once (#632, eng_play_once; engine.ts playOnce, the same): the main loop's last word (once_cmd: 1 play once, 2 end
  * it) counts once_gen up and the next block takes it (once_seen); the engine's state (once_st: 0 not, 1 counting in, 2
@@ -4981,8 +4985,8 @@ void eng_transport(int on)
     if (!on)                                     /* (a stop ends REC's count-in click, asked for or counting) */
         eng_count_in(0u, 0u);
 }
-/* MIDI Start (#870): the transport from the top. Running, it stops for a block and starts again; on MIDI clock it starts on
- * the next tick, its tick 0 */
+/* MIDI Start (#870): the transport from the top, on the next MIDI tick (waiting up to 150 ms for one when no MIDI clock
+ * drives yet). Running, it stops for a block first */
 void eng_transport_top(void)
 {
     eng_transport(1);
@@ -12790,22 +12794,26 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             uint32_t was = E.ticks;              /* (the ticks before this block's: REC's count-in) */
             int start;
             t = clk_ticks;
-            if (!run)
-                tick0 = 0;
             tick_skip = 0;
-            if (ENG_RARELY(top_gen != top_seen)) {   /* MIDI Start (eng_transport_top): from the top. Running, a block */
-                top_seen = top_gen;                  /* stopped first; the ticks that came with it wait for the start */
-                tick0 = 1;
+            if (!run)
+                top_wait = 0;
+            if (ENG_RARELY(top_gen != top_seen)) {   /* MIDI Start (eng_transport_top): from the top, on the next MIDI */
+                top_seen = top_gen;                  /* tick. Running, a block stopped first; the ticks that came with */
+                top_wait = TOP_WAIT;                 /* it wait for the start */
                 if (E.running) {
                     run = 0;
                     t = E.clk_seen;
                 }
             }
-            if (ENG_RARELY(run && !E.running && clk_ext)) {   /* on MIDI clock the transport starts on a tick: tick 0 */
-                if (t == E.clk_seen)
-                    run = 0;
-                else
+            if (ENG_RARELY(run && !E.running && (clk_ext || top_wait))) {   /* the transport starts on a MIDI tick: tick 0 */
+                if (clk_ext && t != E.clk_seen) {
                     tick0 = 1;
+                    top_wait = 0;
+                } else {                             /* none yet: on MIDI clock wait for it; after a MIDI Start with no */
+                    top_wait = top_wait > n ? (uint16_t)(top_wait - n) : 0u;   /* clock, TOP_WAIT, then the tempo */
+                    if (top_wait || clk_ext)
+                        run = 0;
+                }
             }
             start = run && !E.running;
             if (ENG_RARELY(start)) {
@@ -12857,7 +12865,6 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                         cko.off[cko.n++] = (uint16_t)(off + (uint32_t)E.tick_off + (uint32_t)E.tick_n * (uint32_t)E.tick_len);
                     E.tick_n++;
                     seen = 1;
-                    tick0 = 0;                   /* (the FM-1's own tick came first: no MIDI tick 0 to wait for) */
                 }
             }
             if (ENG_RARELY(once_st == 1u)) {     /* play once's count-in (#632): beat 1's click on this block's first sample,
