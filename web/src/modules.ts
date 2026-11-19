@@ -1471,6 +1471,149 @@ const euclid: ModuleImpl<EuclidState> = {
   },
 };
 
+// EQ (#1107): one band of a parametric equalizer, its curve matched to the analog one up to the top of the band.
+/** the EQ's shapes, in the order of its `shape` choices */
+export const EQ_SHAPES = ['low shelf', 'bell', 'high shelf', 'low pass', 'high pass', 'notch'];
+/** the highest frequency the EQ works at, a fraction of the sample rate: its `freq` reaches 22 kHz, under that at the
+ *  FM-1's 44,118 Hz; a slower rate holds it here */
+export const EQ_TOP = 0.499;
+/** the EQ's states and output are held to ±this, as the Multimode filter's (engine.c EQ_LIM) */
+export const EQ_LIM = 1024;
+/** a shelf's q is held to this: above it a shelf rings more than it shapes, and no second-order filter follows the
+ *  analog curve's bump and dip near the top of the band */
+export const EQ_SHELF_Q = 2;
+/** a shelf's third matched level is where its zeros are, at most this (radians a sample: 0.7 pi, 15.4 kHz at the FM-1's
+ *  rate); higher, the level there says little about the zeros */
+export const EQ_SHELF_TOP = 0.7 * Math.PI;
+/** the poles of a two-pole filter at wp (radians a sample) with damping z, mapped exactly (z = e^(s T), impulse
+ *  invariance), as the trapezoidal state variable filter's cutoff g and damping k that have them (engine.c eq_poles) */
+function eqPoles(wp: number, z: number): [number, number] {
+  if (z < 1) {
+    const e = Math.expm1(-z * wp), r = 1 + e, omr2 = -e * (1 + r);                // r = e^(-z wp), omr2 = 1 - r^2
+    const th = wp * Math.sqrt(1 - z * z), s = Math.sin(th), h = Math.sin(th / 2);
+    const nn = Math.sqrt(omr2 * omr2 + 4 * r * r * s * s);
+    return [nn / ((1 + r) * (1 + r) - 4 * r * h * h), (2 * omr2) / nn];
+  }
+  const sq = Math.sqrt(z * z - 1), e1 = Math.expm1(-wp / (z + sq)), e2 = Math.expm1(-wp * (z + sq));   // (z - sq = 1 / (z + sq))
+  const w1 = -e1 / (2 + e1), w2 = -e2 / (2 + e2), g = Math.sqrt(w1 * w2);
+  return [g, (w1 + w2) / g];
+}
+/**
+ * The EQ's filter for a shape (EQ_SHAPES index), freq (Hz), gain (dB), q at the sample rate sr: [g, k, mh, mb, ml], a
+ * trapezoidal state variable filter (cutoff g, damping k) whose output is mh × its high pass + mb × its band pass + ml ×
+ * its low pass. The analog curves are the Audio EQ Cookbook's (Robert Bristow-Johnson): a shelf's freq is the middle of
+ * its slope (half the gain), a bell's its peak. A plain bilinear filter squeezes such a curve toward the top of the band
+ * (cramping: a bell at 15 kHz comes out narrow, a high shelf falls short). Here the poles are the analog filter's,
+ * mapped exactly (eqPoles), and the zeros are chosen so the curve's level equals the analog curve's at three places
+ * (after Martin Vicanek, Matched Second Order Digital Filters, 2016): a bell at 0 Hz, at its peak and the peak's slope
+ * (flat there); a shelf at 0 Hz, at the top of the band (Nyquist) and at its zeros' frequency (at most EQ_SHELF_TOP); a
+ * low pass at 0 Hz and at freq with no zero at the top; a high pass at freq with both zeros at 0 Hz; a notch has both
+ * zeros exactly at freq. A low shelf cut and a high shelf boost are the inverse of a boost and of a cut (their poles
+ * would lie past the top of the band): worked out that way and turned over. Only the coefficients differ from a plain
+ * filter, so the matching costs nothing a sample. engine.c eq_design the same in single-precision float.
+ */
+export function eqDesign(shape: number, freq: number, gain: number, q: number, sr: number): number[] {
+  const w0 = (2 * Math.PI * Math.min(freq, EQ_TOP * sr)) / sr, shelf = shape === 0 || shape === 2;
+  const inv = (shape === 0 && gain < 0) || (shape === 2 && gain > 0), qs = shelf ? Math.min(q, EQ_SHELF_Q) : q;
+  const a = Math.pow(10, (inv ? -gain : gain) / 40), sa = Math.sqrt(a), a2 = a * a;
+  let [g, k] = eqPoles(shape === 0 ? w0 / sa : shape === 2 ? w0 * sa : w0, shape === 1 ? 1 / (2 * a * q) : 1 / (2 * qs));
+  const x = Math.tan(w0 / 2) / g, X = x * x, d0 = (1 - X) * (1 - X) + k * k * X;   // (|the poles' part|^2 at freq: d0)
+  let mh: number, mb: number, ml: number;
+  if (shape === 1) {                       // bell: 1 at 0 Hz, the gain (a2) and flat at freq
+    const G2 = a2 * a2;                    // (the gain squared)
+    ml = 1;
+    mh = Math.sqrt(G2 + (1 - G2) / (X * X));
+    mb = Math.sqrt(Math.max(0, G2 * (k * k - 2 * (1 - X)) + 2 * mh * (1 - mh * X)));
+  } else if (shape === 3) {                // low pass: 1 at 0 Hz, q at freq, no zero at Nyquist
+    ml = 1;
+    mh = Math.sqrt(Math.max(0, (q * q * d0 - 1 - g * g * X) / (X * X + X / (g * g))));
+    mb = g + mh / g;
+  } else if (shape === 4) {                // high pass: both zeros at 0 Hz, q at freq
+    ml = mb = 0;
+    mh = (q * Math.sqrt(d0)) / X;
+  } else if (shape === 5) {                // notch: both zeros at freq, 1 at 0 Hz
+    ml = 1;
+    mb = 0;
+    mh = 1 / X;
+  } else {                                 // shelves: the analog levels at 0 Hz, at Nyquist and where the zeros are
+    const level = (W: number): number => {   // (|the analog curve|^2 at W x freq)
+      const W2 = W * W, bw = (a * W2) / (qs * qs);
+      return shape === 0 ? ((a2 - a * W2) ** 2 + a2 * bw) / ((1 - a * W2) ** 2 + bw) : ((a - a2 * W2) ** 2 + a2 * bw) / ((a - W2) ** 2 + bw);
+    };
+    const wm = Math.min(shape === 0 ? w0 * sa : w0 / sa, EQ_SHELF_TOP), xm = Math.tan(wm / 2) / g, Xm = xm * xm;
+    ml = shape === 0 ? a2 : 1;
+    mh = Math.sqrt(level(Math.PI / w0));
+    mb = Math.sqrt(Math.max(0, (level(wm / w0) * ((1 - Xm) ** 2 + k * k * Xm) - (ml - mh * Xm) ** 2) / Xm));
+  }
+  if (inv) {                               // turned over: the zeros become the poles
+    const s = Math.sqrt(ml / mh);
+    [g, k, mh, mb, ml] = [g * s, mb / Math.sqrt(ml * mh), 1 / mh, (k * s) / ml, 1 / ml];
+  }
+  return [g, k, mh, mb, ml];
+}
+/** the EQ's six numbers a sample uses, from eqDesign: the state variable filter's a1, a2, a3 and the output's weights of
+ *  the input, the band pass and the low pass */
+export function eqCoefs([g, k, mh, mb, ml]: number[]): number[] {
+  const a1 = 1 / (1 + g * (g + k));
+  return [a1, g * a1, g * g * a1, mh, mb - k * mh, ml - mh];
+}
+interface EqState { s1: number; s2: number; c: Float64Array; d: Float64Array; t: number[]; key: number[] }
+/**
+ * EQ (#1107): one band of a parametric equalizer, in -> out. `freq` 10 Hz .. 22 kHz; `gain` ±18 dB for a shelf or a
+ * bell; `q` 0.1 .. 10 (a bell's width, a filter's resonance, 0.707 flat, a shelf's knee up to EQ_SHELF_Q); `shape` low
+ * shelf, bell, high shelf, low pass, high pass or notch. freq and gain come first, so the parameter inputs move them
+ * (defaultMap) and the FM-1's first knobs turn them. Several in a row make a multiband EQ (the factory assembly `EQ`).
+ * Its curve is matched to the analog one up to the top of the band (eqDesign), worked out only when a setting changes;
+ * then the six numbers go from the old to the new ones in straight lines over the block, so turning a knob or
+ * modulating a setting neither clicks nor zippers. engine.c m_eq the same in single-precision float.
+ */
+const eq: ModuleImpl<EqState> = {
+  def: {
+    type: 'eq',
+    label: 'EQ',
+    since: 64,
+    inputs: [audio('in')],
+    outputs: [audio('out')],
+    params: [
+      param('freq', 10, 22000, 1000, { unit: 'Hz', step: 0.1, log: true }),
+      param('gain', -18, 18, 0, { unit: 'dB', step: 0.1 }),
+      param('q', 0.1, 10, 0.707, { step: 0.001, log: true }),
+      param('shape', 0, EQ_SHAPES.length - 1, 1, { step: 1, choices: EQ_SHAPES }),
+    ],
+  },
+  init: () => ({ s1: 0, s2: 0, c: new Float64Array(6), d: new Float64Array(6), t: [], key: [] }),
+  process(c, s) {
+    const shape = Math.min(EQ_SHAPES.length - 1, Math.max(0, Math.round(c.p.shape ?? 1)));
+    const freq = c.p.freq ?? 1000, gain = c.p.gain ?? 0, q = c.p.q ?? 0.707, n = c.n, k = s.key;
+    const cf = s.c, d = s.d;
+    let ramp = false;
+    if (k[0] !== shape || k[1] !== freq || k[2] !== gain || k[3] !== q || k[4] !== c.sr) {
+      const first = !k.length;
+      s.key = [shape, freq, gain, q, c.sr];
+      s.t = eqCoefs(eqDesign(shape, freq, gain, q, c.sr));
+      if (first) cf.set(s.t);
+      else {
+        for (let j = 0; j < 6; j++) d[j] = (s.t[j] - cf[j]) / n;
+        ramp = true;
+      }
+    }
+    const x = c.inp.in, o = c.out.out;
+    let s1 = s.s1, s2 = s.s2, [a1, a2, a3, c0, c1, c2] = cf;
+    for (let i = 0; i < n; i++) {
+      if (ramp) {
+        a1 += d[0]; a2 += d[1]; a3 += d[2]; c0 += d[3]; c1 += d[4]; c2 += d[5];
+      }
+      const v0 = x[i], v3 = v0 - s2, v1 = a1 * s1 + a2 * v3, v2 = s2 + a2 * s1 + a3 * v3;
+      s1 = Math.max(-EQ_LIM, Math.min(EQ_LIM, 2 * v1 - s1));
+      s2 = Math.max(-EQ_LIM, Math.min(EQ_LIM, 2 * v2 - s2));
+      o[i] = Math.max(-EQ_LIM, Math.min(EQ_LIM, c0 * v0 + c1 * v1 + c2 * v2));
+    }
+    if (ramp) cf.set(s.t);
+    s.s1 = s1;
+    s.s2 = s2;
+  },
+};
+
 /** Quantize one audio sample to a signed 16-bit word for bitwise operations. */
 const xorWord = (x: number): number => Math.max(-32768, Math.min(32767, Math.floor(x * 32768)));
 
@@ -4846,7 +4989,7 @@ const lpg: ModuleImpl<LpgState> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm, lpg, limit, euclid];
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm, lpg, limit, euclid, eq];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

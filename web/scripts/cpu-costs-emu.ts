@@ -23,7 +23,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { cpuEstimate, FIRST_ALSO, planCosts, type CostDim, type CpuTable, type PlanTable, type TypeCost } from '../src/cpu';
 import type { PlanCosts } from '../src/schedule';
-import { DEFS } from '../src/modules';
+import { DEFS, EQ_SHAPES } from '../src/modules';
 import { addModule, connect, EDITOR_ONLY, fromUnit, newPatch, type ModuleInst, type ParamDef, type Patch } from '../src/patch';
 import { cpuChecks, startEvents } from '../src/cpu-checks';
 import { buildEmu, emuRun, FW, stats, type EmuRun } from './cpu-emu';
@@ -318,6 +318,16 @@ async function typeCost(type: string): Promise<TypeCost> {
       return moved.run - held.run;
     }));
     out.glide = Math.max(0, Math.round(Math.max(...glide)));
+  }
+  // an EQ whose settings move: it works its coefficients out again and ramps to them each block (engine.c eq_design); the
+  // worst of its shapes, less the pin's own cost (cv)
+  if (type === 'eq') {
+    const add = await Promise.all(EQ_SHAPES.map(async (_, shape) => {
+      const params = { shape, gain: 6 };
+      const [moved, held] = await Promise.all([measure(type, { params, pinTo: 'freq' }), measure(type, { params })]);
+      return moved.run - held.run;
+    }));
+    out.recompute = Math.max(0, Math.round(Math.max(...add)));
   }
   // a pitch that moves every sample (an LFO, a glide, an envelope into it), per copy of a unison oscillator
   if (def.inputs.some((i) => i.name === 'pitch')) {
