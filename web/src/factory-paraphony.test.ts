@@ -17,6 +17,8 @@ function rig(name: string) {
   const p = sharedFilterFactory(validatePatch(structuredClone(SOURCE.find(s => s.name === name)!.patch), DEFS));
   // (ads off: these trials time their own releases, D-745's ADS aside)
   for (const m of p.modules) if (m.type === 'adsr') Object.assign(m.params, { a: 0.001, d: 0.001, s: 0.8, r: 0.1, long: 0, ads: 0 });
+  // (the trial steals with the fifth key: four voices, as Expander S played when it was made)
+  for (const m of p.modules) if (m.type === 'alloc' && m.params.voices > 4) m.params.voices = 4;
   const envelope = p.modules.find(m => m.name === 'shared filter envelope')!;
   Object.assign(envelope.params, { a: 0.1, d: 0.01, s: 0.25, r: 0.2 });
   const key = p.modules.find(m => m.name === 'shared key control')!;
