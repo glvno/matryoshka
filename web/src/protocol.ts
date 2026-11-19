@@ -682,8 +682,9 @@ export const parseKeysNow = (payload: number[]): KeysNow | null =>
     ? { key: payload[0] & 0x1f, down: !!(payload[0] & 0x80), keys: (payload[1] | (payload[2] << 8) | (payload[3] << 16) | (payload[4] << 24)) >>> 0,
         held: payload[5] | (payload[6] << 8) }
     : null;
-/** the bytes of a GUIDE_NOW (firmware/src/help_ui.c GUIDE_BYTES) */
-export const GUIDE_BYTES = 14;
+/** the bytes of a GUIDE_NOW (firmware/src/help_ui.c GUIDE_BYTES): 15 since MIDI learn's condition (#1067), 14 before */
+export const GUIDE_BYTES = 15;
+const GUIDE_BYTES_OLD = 14;
 /** the FM-1's panel state (GUIDE_NOW), or the FM-1 tab's copy's (fm1-ui.ts Fm1Ui.guide): the same bytes. `state` indexes
  *  controls.ts HELP_STATES; `conditions` bit c is controls.ts CONDITIONS[c - 1]; `raw` the bytes as sent */
 export interface PanelState {
@@ -693,13 +694,13 @@ export interface PanelState {
   sheetRow: number; octave: number; cursor: number; raw: number[];
 }
 export function parseGuideNow(payload: ArrayLike<number>): PanelState | null {
-  if (payload.length < GUIDE_BYTES) return null;
+  if (payload.length < GUIDE_BYTES_OLD) return null;
   const p = Array.from(payload).slice(0, GUIDE_BYTES);
   const f = p[2];
   return {
     state: p[0], page: p[1], stepRecord: !!(f & 1), liveTake: !!(f & 2), recording: !!(f & 4), sandbox: !!(f & 8),
     sheet: !!(f & 16), quickStart: !!(f & 32), everywhere: !!(f & 64), stepHeld: !!(f & 128),
-    device: p[3], devicePage: p[4], track: p[5], menuTab: p[6], held: p[7] | (p[8] << 8), conditions: p[9] | (p[10] << 8),
+    device: p[3], devicePage: p[4], track: p[5], menuTab: p[6], held: p[7] | (p[8] << 8), conditions: p[9] | (p[10] << 8) | ((p[14] ?? 0) << 16),
     sheetRow: p[11], octave: (p[12] << 24) >> 24, cursor: p[13], raw: p,
   };
 }

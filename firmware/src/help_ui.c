@@ -475,8 +475,9 @@ static void help_knobs_turn(int32_t select, int32_t algo)
  *   6 the menu's tab               7..8 the buttons held (matrix ids, LE)
  *   9..10 the rows' conditions that hold (LE; bit c: controls.h HC_FN[c], c = 1.. as controls.ts CONDITIONS from 1)
  *   11 the sheet's first row shown 12 the keys' octave (i8)       13 step record's cursor (a step of the pattern)
+ *   14 the conditions' bits 16..23 (#1067: CONDITIONS from 16, `learning`; an editor before it reads the first 14 bytes)
  * The conditions are asked only with `conds` (they read the preset store): GUIDE_NOW asks them when anything else changed */
-#define GUIDE_BYTES 14u
+#define GUIDE_BYTES 15u
 static void guide_state(uint8_t *p, int conds)
 {
     uint32_t c, hc = 0;
@@ -498,4 +499,5 @@ static void guide_state(uint8_t *p, int conds)
     p[11] = help_top;
     p[12] = (uint8_t)(int8_t)octave;
     p[13] = sr_k;
+    p[14] = (uint8_t)(hc >> 16);
 }
