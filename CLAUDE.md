@@ -44,6 +44,16 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 - Issue #375 indexes every FM-1 factory instrument's parity gaps; each instrument has its own sub-issue, closed at full parity ([D-071](docs/ledger/project.md#D-071)). Read that sub-issue before planning scope instead of re-auditing; a pull request that closes or finds a gap ticks or adds its box there, and after merge reruns `npm run parity-status -- --apply`, which writes each instrument's band ([D-149](docs/ledger/releases.md#D-149)).
 - Issue #868 holds the CPU headroom plan and what has been measured or tried. Read its "The plan" section before any headroom work. A pull request that finishes or changes a step ticks its box there, names itself and moves "Next" in the same change.
 
+## Worktrees
+
+These rules are in [D-074](docs/ledger/project.md#D-074) (Proposed).
+
+- Work in a git worktree under `/Users/mg/projects/music/fm1/wt/<name>`, the `wt/` folder beside the main checkout `modular-1`, on a branch off `origin/main`.
+- Link `web/node_modules` to the main checkout's: `ln -s /Users/mg/projects/music/fm1/modular-1/web/node_modules web/node_modules`. Never run `npm install` in a worktree. When you need the emulator, link `tools/emu/target` the same way instead of building a second one, unless your change is to the emulator itself.
+- When your pull request is merged or closed, remove your worktree and its local branch: `git worktree remove <path>`, then `git branch -D <branch>`.
+- After merges, run `python3 tools/worktree_gc.py --apply`. It removes every worktree whose work is kept elsewhere, and lists the rest with the reason each one stays. Without `--apply` it only prints the table. It never removes the main checkout or a path listed in the main checkout's `build/worktree-keep.txt`, such as a checkout a dev server serves. It removes uncommitted work only with `--archive`, which saves it first.
+- A worktree's `build/` is deleted with the worktree. Listening files and anything else meant for the owner go to the main checkout's `build/`. `tools/engine_exact.sh` and `tools/lanes_exact.sh` delete their output when every check passes (`KEEP_EXACT=1` keeps it).
+
 ## Gotchas and lessons
 
 - **Never flash firmware that lacks Felucca's OTA handling** (USB MIDI + `ota.c` / `ota_hw.c`): it removes the way back. Recovery = re-run the install in the loader; return to stock = bundled `web/public/firmware/FM-1_015.fwsc`. Identity: ours `FM-1_7MMmmpp` (1.8.0 = `FM-1_7010800`, dev / CI `FM-1_7000000`; 1.0..1.7 in the field `FM-1_7XY`, every parser takes both, [D-178](docs/ledger/firmware-install.md#D-178)) (loader `ota-FM-1_700`), Felucca / Sloop `FM-1_9XY`, stock `FM-1_0XX`; the `FM-1` prefix must stay.
