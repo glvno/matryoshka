@@ -476,6 +476,30 @@ uint32_t eng_fx_page(uint32_t stage);       /* UINT32_MAX: no such stage */
 uint32_t eng_fx_targets(uint32_t stage, const uint8_t **targets);
 int eng_fx_on(uint32_t stage);             /* desired UI state, independent of a processing tail */
 void eng_fx_set(uint32_t stage, int on);    /* coherent stereo stage; does not change parameter values */
+/* The MIDI mappings (#1067, MIDI learn): the last section of a binary, after the macro ranges (or where they would be).
+ * u8 count (1..ENG_MAPS_MAX), then per mapping u8 source (a CC 0..119, or ENG_MAP_BEND), u8 the row's module and u8 its
+ * parameter byte as a device page row has them, u8 low end, u8 high end (0..255 of the row's range: the control's lowest
+ * value lands on the low end; low above high turns it round). No section: no mappings. The editor writes it from format
+ * ENG_MAPS on; the FM-1 reads it in a binary of any format and its MIDI learn writes it into a copy of any format (an
+ * older firmware's eng_load ignores the bytes; only an upload is checked to end where the sections do). One source per
+ * mapping, one mapping per row. The engine never reads it: midi_learn.c does, from the running patch's binary. */
+#define ENG_MAPS 64
+#define ENG_MAPS_MAX 16u
+#define ENG_MAP_BEND 127u                   /* the source byte of pitch bend (CC 127 is never learned) */
+#define ENG_MAP_BYTES 5u
+/* where the mapping section of binary p starts (its count byte), len when it has none; 0 when a section before it is
+ * malformed */
+uint32_t eng_maps_at(const uint8_t *p, uint32_t len);
+/* the mappings of binary p: their count, and *e at the first one's bytes; 0 when there are none or the section does not
+ * end the binary */
+uint32_t eng_maps(const uint8_t *p, uint32_t len, const uint8_t **e);
+/* binary p's mappings become the n mappings at e (ENG_MAP_BYTES each; n = 0: none), *len changes. 0: malformed, more than
+ * ENG_MAPS_MAX or past cap (left as it was) */
+int eng_maps_set(uint8_t *p, uint32_t *len, uint32_t cap, const uint8_t *e, uint32_t n);
+/* binary p maps source src to module mod's row byte par, low end lo, high end hi (on), or drops src's mapping (!on): the
+ * source's mapping before and the row's are replaced. 0: malformed, no room (ENG_MAPS_MAX or cap: left as it was) or,
+ * dropping, no such mapping */
+int eng_map_edit(uint8_t *p, uint32_t *len, uint32_t cap, uint32_t src, uint32_t mod, uint32_t par, uint32_t lo, uint32_t hi, int on);
 /* row r's name of the Drum map `module` in a patch binary (the #139 follow-up; at most ENG_DRUM_NAME characters and a 0 into out), 0 when
  * the binary has none for it (before format 33) */
 int eng_drum_name(const uint8_t *p, uint32_t len, uint32_t module, uint32_t r, char *out);
@@ -579,9 +603,12 @@ int eng_b_keep(uint8_t *p, uint32_t *len, uint32_t cap, uint32_t mod, uint32_t p
  * at the returned offset, att1, att2, p1, p2. 0: malformed, no parameter inputs, or too big for cap (left as it was). */
 uint32_t eng_rec_matrix(uint8_t *p, uint32_t *len, uint32_t cap, uint32_t mod);
 void eng_set_param(uint32_t module, uint32_t param, int32_t q16);
-/* a knob's click (K1..K4 = knob 0..3, or MIDI CC 16..19; #405): the parameter takes the value at once, what the module uses
- * reaches it over ENG_RAMP_BLOCKS blocks; a choice parameter (defs.h pchoice) is set at once */
+/* a knob's click (K1..K4 = knob 0..3, or MIDI CC 16..19; #405), or a move of a learned MIDI control (knob ENG_KNOBS + its
+ * ramp slot, #1067): the parameter takes the value at once, what the module uses reaches it over ENG_RAMP_BLOCKS blocks;
+ * a choice parameter (defs.h pchoice) is set at once */
 #define ENG_KNOBS 4u
+#define ENG_MAP_RAMPS 4u             /* ramp slots of the learned MIDI controls (#1067): mapping i ramps in slot i % 4 */
+#define ENG_RAMPS (ENG_KNOBS + ENG_MAP_RAMPS)
 #define ENG_RAMP_BLOCKS 8            /* 8 x 128 frames = 23 ms at ENG_SR (a power of two: the step is a shift) */
 void eng_knob_param(uint32_t knob, uint32_t module, uint32_t param, int32_t q16);
 uint32_t delay_div(int32_t time_q16);                               /* the note length (DELAY_DIV_*) a synced delay's time value selects */

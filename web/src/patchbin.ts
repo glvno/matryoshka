@@ -4,7 +4,7 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 // Compact binary patch format, read by firmware/src/engine.c (eng_load).
 //
 //   u8  magic 0xA1, u8 version (VERSION), u8 module count, u8 poly group count G (0..MAX_POLY), u16 LE cable count, u16 LE flags
-//       (bit 0: a morph B set follows the cables; bit 2: disabled-input masks follow it; bit 3: additional input routes follow masks; bit 4: the tracks' notes follow them; bit 1: macro ranges are last;
+//       (bit 0: a morph B set follows the cables; bit 2: disabled-input masks follow it; bit 3: additional input routes follow masks; bit 4: the tracks' notes follow them; bit 1: macro ranges are last, but for format 64's MIDI mappings;
 //       bit 13, format 54: u16 count, then (module u8, pattern u8, identity u32 LE) origins before the final macro ranges;
 //       bit 14, format 55: graph-proven master FX stages after origins and before macro ranges (fxRecord);
 //       bit 15, format 59: stored pattern links right after the P-locks (linkRecord);
@@ -110,9 +110,14 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //                FM-1's SEQ page; format 64 (SLIM, D-1025) writes only the names that are not the row's default
 //                (DRUM_MAP_DEFAULT, drumNamed): per Drum map u8 module index, u8 the rows it names (bit r: row r), then each of
 //                those names as u8 length (0..TRACK_NAME_MAX) and its characters; the FM-1 shows the default for the others
-//   with flag bit 1 (always last: the FM-1 edits it in place): u8 count, then per macro range: u8 module index, u8 pin (0 p1,
-//                1 p2; bit 7, format 49: bipolar, RANGE_BIPOLAR), u8 parameter index, u8 low end, u8 high end (0..255 of the
-//                parameter's range, octaves for a log one): the pin's value (0..1, or −1..1 when bipolar) lands between the ends
+//   with flag bit 1 (last but for the MIDI mappings: the FM-1 edits it in place): u8 count, then per macro range: u8 module
+//                index, u8 pin (0 p1, 1 p2; bit 7, format 49: bipolar, RANGE_BIPOLAR), u8 parameter index, u8 low end, u8 high
+//                end (0..255 of the parameter's range, octaves for a log one): the pin's value (0..1, or −1..1 when bipolar)
+//                lands between the ends
+//   format 64 (#1067, mapRecord), when the patch has MIDI learn mappings the FM-1 plays, no flag: the bytes after the macro
+//                ranges (or where they would be) are u8 count (1..MAPS_MAX), then per mapping u8 source (CC 0..119, or
+//                MAP_BEND), u8 the row's module index, u8 its parameter byte, u8 low end, u8 high end (0..255 of the row's
+//                range); the FM-1 edits it in place (MIDI learn on the FM-1, MAP)
 //
 // Type indices are the position in TYPE_ORDER (append only: the firmware has the same list in defs.h).
 // Port indices are positions in ModuleDef.outputs / inputs (explicit ports first, then the `<param>_cv` inputs).
@@ -312,15 +317,15 @@ function uses120(dev: Patch): boolean {
     (m.type === 'steps' && [m.notes, ...(m.patterns ?? []).map((x) => x?.notes)].some((ns) => ns?.some(hasTiming))));
 }
 /**
- * The format of the release after 1.21 (#1107): that release's one format change, shared by everything in it that needs
- * one (D-1025). It takes the module types added with it (ModuleDef.since: the EQ), and it writes the same patch in fewer
- * bytes (SLIM). A patch is written in it only when it uses one of those types or fits the FM-1's bytes in no older format
- * (layout).
+ * The format of the release after 1.21 (D-1025): the EQ module appended after the Euclid, written only by a patch that
+ * has one; the MIDI mappings (mapRecord, #1067), written only by a patch with one; and the panel labels, cables and Drum
+ * map row names in fewer bytes (SLIM). A patch is written in it only when it uses one of those or fits the FM-1's bytes
+ * in no older format (layout).
  */
 export const FORMAT_1_22 = 64;
-/** what a patch uses of FORMAT_1_22 (`dev`: its device form): a module of a type added with it (the EQ) */
-function uses122(dev: Patch): boolean {
-  return dev.modules.some((m) => (DEFS[m.type]?.since ?? 0) >= FORMAT_1_22);
+/** what a patch uses of FORMAT_1_22 (`dev`: its device form): a module of a type added with it (the EQ), a MIDI mapping */
+function uses122(source: Patch, dev: Patch): boolean {
+  return dev.modules.some((m) => (DEFS[m.type]?.since ?? 0) >= FORMAT_1_22) || (!!source.midiLearn?.length && mapRecord(source, dev, deviceSection(source, dev)).length > 0);
 }
 /**
  * The first format that writes the panel labels by their length (panelBytes), the cables grouped by the module they go
@@ -403,7 +408,7 @@ export const formatOf = (source: Patch, view: ReturnType<typeof deviceView> = de
 /** the lowest format that holds what this patch uses: VERSION, or WRITE_FLOOR when it uses nothing appended since (`dev`: its device form) */
 export function baseFormat(source: Patch, dev: Patch = deviceView(source, true).patch): number {
   const late = (type: string): ParamDef[] => DEFS[type].params.filter((q) => (q.since ?? 0) > WRITE_FLOOR || (q.grew?.since ?? 0) > WRITE_FLOOR);
-  const floor = uses122(dev) ? FORMAT_1_22 : uses120(dev) ? FORMAT_1_20 : uses119(dev) ? FORMAT_1_19 : usesPriorityCable(dev) ? FORMAT_PRIORITY_CABLE : usesConds(dev) ? FORMAT_CONDS : fxRecord(source, dev).length || harmonyLfo(source, dev) ? 55 : originRecord(dev).length ? 54 : chainedHarmonizer(source) ? 53 : uses112(dev) ? FORMAT_1_12 : uses111(source, dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
+  const floor = uses122(source, dev) ? FORMAT_1_22 : uses120(dev) ? FORMAT_1_20 : uses119(dev) ? FORMAT_1_19 : usesPriorityCable(dev) ? FORMAT_PRIORITY_CABLE : usesConds(dev) ? FORMAT_CONDS : fxRecord(source, dev).length || harmonyLfo(source, dev) ? 55 : originRecord(dev).length ? 54 : chainedHarmonizer(source) ? 53 : uses112(dev) ? FORMAT_1_12 : uses111(source, dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
   if (!dev.modules.some((m) => late(m.type).length)) return floor;
   let v = floor;
   const rows = new Set<string>();
@@ -759,6 +764,30 @@ export function rangeList(p: Patch): { mod: number; pin: number; par: number; lo
   return out;
 }
 
+/** the source byte of pitch bend in the MIDI mapping section (engine.h ENG_MAP_BEND: CC 127 is never learned) */
+export const MAP_BEND = 127;
+/** the most mappings a patch holds (engine.h ENG_MAPS_MAX; midi-learn.ts MIDI_LEARN_MAX) */
+export const MAPS_MAX = 16;
+/** the MIDI mapping section (format 64, #1067; engine.h eng_maps), the last of the binary: u8 count, then per learned
+ * source that moves a row the FM-1 shows (a device page row; not a poly group's setting, not a row set only at load) u8
+ * the source (CC number, or MAP_BEND), u8 the row's module index, u8 its parameter byte, u8 its low end, u8 its high end
+ * (0..255 of the row's range). [] without one. `dev`: the device form, `devs` its device pages (deviceSection) */
+export function mapRecord(source: Patch, dev: Patch, devs: Device[]): number[] {
+  const list = source.midiLearn ?? [];
+  if (!list.length) return [];
+  const index = new Map(dev.modules.map((m, i) => [m.id, i]));
+  const shown = new Set(devs.flatMap((d) => d.pages.flatMap((pg) => pg.rows.map((r) => `${r.module}/${r.param}`))));
+  const out: number[] = [];
+  for (const b of list) {
+    const i = index.get(b.module);
+    if (i === undefined || !shown.has(`${b.module}/${b.param}`) || out.length >= 5 * MAPS_MAX) continue;
+    const type = dev.modules[i].type, par = rowParam(type, b.param);
+    if (par < 0 || par & POLY_ROW || DEFS[type].params[par].fixed) continue;
+    out.push(b.src === 'bend' ? MAP_BEND : b.src, i, par, Math.round((b.lo ?? 0) * 255), Math.round((b.hi ?? 1) * 255));
+  }
+  return out.length ? [out.length / 5, ...out] : [];
+}
+
 export const toQ16 = (v: number): number => Math.max(-0x80000000, Math.min(0x7fffffff, Math.round(v * Q)));
 
 /** the additional input routes the binary lists (flag bit 3): module index, input index, parameter mask */
@@ -1008,7 +1037,7 @@ function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], v: number, keep: Ma
   size += patternRecord(source ?? p, p).length;
   size += lockRecord(source ?? p, p).length;
   size += originRecord(p).length;
-  if (source) size += fxRecord(source, p, devs).length;
+  if (source) size += fxRecord(source, p, devs).length + mapRecord(source, p, devs).length;
   if (ranges) size += 1 + 5 * ranges;
   size += drumNamesBytes(p, v);
   return size + devicesSize(devs, p, v, source, names);
@@ -1230,6 +1259,7 @@ export function encodePatch(source: Patch, anyway = false, force = 0, allocation
     out[at++] = ranges.length;
     for (const r of ranges) out.set([r.mod, r.pin | (r.bi ? RANGE_BIPOLAR : 0), r.par, r.lo, r.hi], (at += 5) - 5);
   }
+  out.set(mapRecord(source, p, devs), at);   // (the MIDI mappings, last: format 64, #1067)
   return out;
 }
 

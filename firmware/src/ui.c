@@ -36,14 +36,15 @@ static void sandbox_bar(void);
 /* the settings' rows (menu.c; the menu's MIDI, PANEL and SYSTEM tabs show them as pages: pages_ui.c menu_tab_page) */
 #include "device_identity.h"
 enum { MR_LEDS, MR_ACCEL, MR_CIN, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_TEMPO,
-       MR_CLKOUT, MR_OUTPUT, MR_CORES, MR_EDITOR, MR_OUT35, MR_USB_RETURN, MR_DEVICE_NAME, MR_METER, MR_COUNT };
+       MR_CLKOUT, MR_OUTPUT, MR_CORES, MR_EDITOR, MR_OUT35, MR_USB_RETURN, MR_DEVICE_NAME, MR_METER, MR_LEARN, MR_MAPS, MR_MAP_CLEAR,
+       MR_COUNT };
 /* the menu's tabs (menu.c, #395): MIDI, PANEL and SYSTEM are pages of settings on K1..K4, INFO a list of readings, GUIDE a text
  * (the ideas behind the controls, D-248) */
 enum { MT_MIDI, MT_PANEL, MT_SYSTEM, MT_INFO, MT_GUIDE, MT_COUNT };
 static uint8_t menu_tab;
-static uint8_t menu_page2;                      /* the tab on its second page (ALGO steps PANEL 1/2, 2/2: TIME SIG, #1011; SYSTEM
-                                                 * 1/2, 2/2: EDITOR, #702, 3.5MM OUT, #631); 0 on a tab with one page */
-static int menu_two(uint32_t t) { return t == MT_PANEL || t == MT_SYSTEM; }   /* the tabs with two pages */
+static uint8_t menu_page2;                      /* the tab on its second page (ALGO steps MIDI 1/2, 2/2: MIDI learn, #1067; PANEL
+                                                 * 1/2, 2/2: TIME SIG, #1011; SYSTEM 1/2, 2/2: EDITOR, #702, 3.5MM OUT, #631) */
+static int menu_two(uint32_t t) { return t <= MT_SYSTEM; }   /* the tabs with two pages: MIDI, PANEL, SYSTEM */
 static int menu_page(void) { return page == PAGE_MENU && menu_tab <= MT_SYSTEM; }   /* the menu on a tab drawn as a device page */
 /* the settings of the menu (menu.c); saved with the state (SAVE) */
 static struct {

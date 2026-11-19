@@ -15,6 +15,9 @@
 //                                                    flash bank, without loading them; ACK (3 = not a valid patch)
 //   14 SLOT_ERASE  slot u8                           empty a slot; ACK
 //   15 SLOT_INFO   slot u8                           device answers SLOT_INFO (42)
+//   1B MAP      count u8, then per MIDI mapping source u8, module u8, param u8, low u8, high u8 (patchbin.ts mapRecord)
+//                                                    the running patch's MIDI learn mappings (#1067, feature bit 27), all
+//                                                    of them, in place of its own; no reply
 //   20 PARAM    module u8, param u8, value i32       live parameter change (Q16.16), no reply
 //   21 ATT      module u8, input u8 (0 p1, 1 p2), value i32   live attenuverter change (Q16.16, -2..2), no reply
 //   22 BYPASS   module u8, on u8 (0/1)               bypass a module (its outputs carry its through input or silence), no reply
@@ -138,6 +141,8 @@
 //   5D PAT_STORED  id u16 (0xFFFF: a chunk taken), status u8 (PAT_STATUS), count u8 (with S_USED: the slots that link it)
 //   5E PAT_LINK_NOW  pattern u8, id u16 (0 none), hash u32   unasked: the running patch's link of that pattern changed on
 //                                                    the FM-1 (its SEQ page loaded, saved or saved as new; SAVE wrote it)
+//   62 MAP_NOW  count u8, then the mappings as MAP has them   unasked: the running patch's MIDI learn mappings after a
+//                                                    learn or a clear on the FM-1 (GLO > MIDI 2/2, #1067, feature bit 27)
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
 //               feature bit 8, bit3 GLO > SYSTEM > EDITOR at IGNORE: with feature bit 19, #702), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
@@ -404,6 +409,21 @@ export const FEATURE_FX_PRESETS = 1 << 24;
 export const FEATURE_PATTERN_STORE = 1 << 25;
 /** INFO feature bit 26 (byte 14 bit 2, #915, D-490): the factory region's commands (firmware/src/factory.c) */
 export const FEATURE_FACTORY = 1 << 26;
+/** INFO feature bit 27 (byte 14 bit 3, #1067): MIDI learn on the FM-1, MAP and MAP_NOW (firmware/src/midi_learn.c) */
+export const FEATURE_MAP = 1 << 27;
+/** MIDI learn's command and report (#1067) */
+export const MAP_CMD = { map: 0x1b, mapNow: 0x62 } as const;
+/** MAP: the running patch's mappings, the section patchbin.ts mapRecord writes ([] none) */
+export const mapFrame = (record: number[]): Uint8Array => frame(MAP_CMD.map, record.length ? record : [0]);
+/** a MAP_NOW payload: the mappings, device-form indices (source: a CC number or 127 for pitch bend; ends 0..255) */
+export function parseMapNow(payload: number[]): { src: number; module: number; param: number; lo: number; hi: number }[] | null {
+  const n = payload[0];
+  if (n === undefined || payload.length < 1 + 5 * n) return null;
+  return Array.from({ length: n }, (_, i) => {
+    const [src, module, param, lo, hi] = payload.slice(1 + 5 * i, 6 + 5 * i);
+    return { src, module, param, lo, hi };
+  });
+}
 /** the factory region's commands and answers (#915, D-490) */
 export const FACT = { begin: 0x16, write: 0x17, sum: 0x18, read: 0x19, commit: 0x1a, info: 0x3f, infoReply: 0x5f, sumReply: 0x60, dataReply: 0x61 } as const;
 export const FACT_SIZE = 18 * 0x1000;

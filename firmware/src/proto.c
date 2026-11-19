@@ -69,10 +69,11 @@
 enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_TEST_KEY = 0x32, C_TEST_TURN = 0x33, C_TEST_SCREEN = 0x34, C_TEST_PEAK = 0x35, C_PATTERN = 0x36, C_SONG = 0x37, C_TEMPO = 0x38, C_ARMS = 0x39, C_DEVICE_SETTINGS = 0x3A, C_PATS = 0x3B, C_PAT_GET = 0x3C, C_PAT_PUT = 0x3D, C_PAT_DEL = 0x3E, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E, R_SCREEN = 0x50, R_PEAK = 0x51, R_PATTERN_NOW = 0x52, R_SONG_NOW = 0x53, R_ARMS_NOW = 0x54, R_TEMPO_NOW = 0x55, R_LOCKS_NOW = 0x56, R_KEYS_NOW = 0x57, R_GUIDE_NOW = 0x58, R_DEVICE_SETTINGS = 0x59, R_PATTERN_ORIGIN = 0x5A, R_PAT = 0x5B, R_PAT_DATA = 0x5C, R_PAT_STORED = 0x5D, R_PAT_LINK_NOW = 0x5E };
 enum { C_FACT_BEGIN = 0x16, C_FACT_WRITE = 0x17, C_FACT_SUM = 0x18, C_FACT_READ = 0x19, C_FACT_COMMIT = 0x1A, C_FACT_INFO = 0x3F,
        R_FACT_INFO = 0x5F, R_FACT_SUM = 0x60, R_FACT_DATA = 0x61 };   /* the factory region (#915, D-490, factory.c) */
+enum { C_MAP = 0x1B, R_MAP_NOW = 0x62 };                    /* the running patch's MIDI mappings (#1067, midi_learn.c) */
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
 #define M1_FEATURES3 255u                                      /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549), bit 19 = INFO's flags bit 3 says GLO > SYSTEM > EDITOR (#702), bit 20 = ARMS, the editor's armed set (#191), bit 21 = ARMS and ARMS_NOW carry ENG_MSET_WORDS words, modules 0..127 (#721; INFO byte 1 says 128), bit 22 = device settings, bit 23 = explicit factory pattern origins / snapshots */
-#define M1_FEATURES4 5u                                       /* INFO byte 14, feature bits 24..31: bit 24 = complete FX-scoped preset recall; bit 25 = the pattern store is on (#901: PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW, format 59's links; m1_pat_info sets it); bit 26 = the factory region (#915, D-490: FACT_INFO, FACT_BEGIN, FACT_WRITE, FACT_SUM, FACT_READ, FACT_COMMIT) */
+#define M1_FEATURES4 13u                                      /* INFO byte 14, feature bits 24..31: bit 24 = complete FX-scoped preset recall; bit 25 = the pattern store is on (#901: PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW, format 59's links; m1_pat_info sets it); bit 26 = the factory region (#915, D-490: FACT_INFO, FACT_BEGIN, FACT_WRITE, FACT_SUM, FACT_READ, FACT_COMMIT); bit 27 = MIDI learn (#1067: MAP, MAP_NOW, the mapping section after the macro ranges) */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_INFO_EDITOR_IGNORE 8u                             /* INFO byte 3 (flags) bit 3: GLO > SYSTEM > EDITOR is at IGNORE, the
                                                               * editor leaves this FM-1 alone (with feature bit 19, #702) */
@@ -480,14 +481,11 @@ static int m1_valid(const uint8_t *p, uint32_t len)
         return 0;
     for (uint32_t g = 0; g < p[3]; g++)
         if (!eng_group_valid(p + 8u + ENG_GROUP_REC * g, p[1])) return 0;
-    if (!(at = m1_ranges_at(p, len)))                         /* the sections up to the master FX bus, then past it */
+    if (!(at = eng_maps_at(p, len)))                           /* the sections up to the master FX bus, past it the macro ranges */
         return 0;
-    if (p[6] & 2u) {                                            /* flag bit 1: the macro ranges after that */
-        if (at >= len)
-            return 0;
-        at += 1u + 5u * p[at];
-    }
-    return at == len;
+    if (at < len && (!p[at] || p[at] > ENG_MAPS_MAX))          /* then the MIDI mappings (#1067), last */
+        return 0;
+    return at == len || at + 1u + ENG_MAP_BYTES * p[at] == len;
 }
 
 /* where section sec (ENG_SEC_*) of the current patch starts (or would start), 0 if the binary is malformed */
@@ -840,17 +838,17 @@ static void m1_song_now(uint32_t s)
     m1_send(f, w);
 }
 
-/* the stored copy follows a macro range edit: update, append or remove the entry (the section is last in the binary) */
+/* the stored copy follows a macro range edit: update, append or remove the entry (the section comes last but for the
+ * MIDI mappings, which follow it: what comes after it moves) */
 static void m1_patch_range(uint32_t mod, uint32_t pin, uint32_t par, int on, uint32_t lo, uint32_t hi)
 {
     uint32_t sec = m1_range_section(), i, n, at;
     if (!sec) {
-        if (!on || m1_cur_len + 6u > M1_PATCH_MAX || m1_cur_len < 8u)
+        if (!on || m1_cur_len + 6u > M1_PATCH_MAX || m1_cur_len < 8u || !(sec = m1_ranges_at(m1_cur, m1_cur_len)))
             return;
-        sec = m1_cur_len;
+        m1_splice(sec, 0, 1u);
         m1_cur[6] |= 2u;
         m1_cur[sec] = 0;
-        m1_cur_len = sec + 1u;
     }
     n = m1_cur[sec];
     for (i = 0, at = sec + 1u; i < n; i++, at += 5)
@@ -861,10 +859,10 @@ static void m1_patch_range(uint32_t mod, uint32_t pin, uint32_t par, int on, uin
         for (k = 0; k < 5u; k++)
             m1_cur[at + k] = m1_cur[last + k];
         m1_cur[sec] = (uint8_t)(n - 1u);
-        m1_cur_len = last;
+        m1_splice(last, 5u, 0);
         if (n == 1u) {                                          /* the section is empty: drop it */
             m1_cur[6] &= (uint8_t)~2u;
-            m1_cur_len = sec;
+            m1_splice(sec, 1u, 0);
         }
         return;
     }
@@ -874,13 +872,36 @@ static void m1_patch_range(uint32_t mod, uint32_t pin, uint32_t par, int on, uin
         if (m1_cur_len + 5u > M1_PATCH_MAX || n >= 255u)
             return;
         m1_cur[sec] = (uint8_t)(n + 1u);
-        m1_cur_len += 5u;
+        m1_splice(at, 0, 5u);
     }
     m1_cur[at] = (uint8_t)mod;
     m1_cur[at + 1] = (uint8_t)(pin | (on & 2 ? 0x80u : 0u));   /* (bit 7: bipolar, patchbin.ts RANGE_BIPOLAR) */
     m1_cur[at + 2] = (uint8_t)par;
     m1_cur[at + 3] = (uint8_t)lo;
     m1_cur[at + 4] = (uint8_t)hi;
+}
+
+/* the running patch's MIDI mappings (#1067) to a linked editor: MAP_NOW, u8 count, then the mappings as the binary has
+ * them (engine.h eng_maps) */
+static void m1_map_now(void)
+{
+    uint8_t p[1u + ENG_MAPS_MAX * ENG_MAP_BYTES];
+    const uint8_t *e = 0;
+    uint32_t n = eng_maps(m1_cur, m1_cur_len, &e), k;
+    p[0] = (uint8_t)n;
+    for (k = 0; k < n * ENG_MAP_BYTES; k++)
+        p[1u + k] = e[k];
+    m1_reply_long(R_MAP_NOW, p, 1u + n * ENG_MAP_BYTES);     /* (81 bytes at most: past m1_reply's frame) */
+}
+
+/* the stored copy follows a MIDI learn on the FM-1 (midi_learn.c): source src maps to module mod's row byte par (on), or
+ * its mapping goes (!on). 0: no room, or no such mapping */
+static int m1_patch_map(uint32_t src, uint32_t mod, uint32_t par, uint32_t lo, uint32_t hi, int on)
+{
+    if (!eng_map_edit(m1_cur, &m1_cur_len, M1_PATCH_MAX, src, mod, par, lo, hi, on))
+        return 0;
+    m1_edited = 1;
+    return 1;
 }
 
 /* f: the bytes between F0 and F7. Returns 1 if the frame was ours (and is consumed). */
@@ -1072,6 +1093,10 @@ static int m1_handle(const uint8_t *f, uint32_t n)
                 m1_patch_range(d[0], d[1], d[2], d[3] & 3, d[4], d[5]);
             m1_ui_changed();
         }
+        break;
+    case C_MAP:                                              /* count u8, then the mappings as the binary has them (#1067) */
+        if (len >= 1u && len >= 1u + ENG_MAP_BYTES * d[0] && eng_maps_set(m1_cur, &m1_cur_len, M1_PATCH_MAX, d + 1, d[0]))
+            m1_edited = 1;
         break;
     case C_TRACK:                                            /* module u8, n u8, n u32 LE notes (track.ts noteWord), [pattern u8
                                                               * (format 48; without it: the one the track plays)] */

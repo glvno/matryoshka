@@ -27,7 +27,8 @@ static void defaults_now(void);
 
 static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "COUNT-IN", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
                                               "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "BATTERY", "UPDATE MODE", "FACTORY RESET",
-                                              "QUICK START", "TEMPO", "CLOCK OUT", "OUTPUT", "PROCESSOR", "EDITOR", "3.5MM OUT", "USB RETURN", "NAME"};
+                                              "QUICK START", "TEMPO", "CLOCK OUT", "OUTPUT", "PROCESSOR", "EDITOR", "3.5MM OUT", "USB RETURN", "NAME",
+                                              "TIME SIG", "LEARN", "MAPPING", "CLEAR"};
 #define INFO_N 7u
 static const uint8_t INFO_ROWS[INFO_N] = {MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_CORES, MR_DEVICE_NAME};   /* the INFO tab's list, top down */
 #define MENU_ARM_MS 5000u                               /* an armed SYSTEM row waits this long for GLO's hold */
@@ -125,6 +126,7 @@ static void menu_value(uint32_t row, char *out)
         p += str_len(p);
         *p++ = '%';
         break;
+    case MR_LEARN: case MR_MAPS: case MR_MAP_CLEAR: map_value(row, out); return;   /* (MIDI learn, midi_learn.c) */
     default: p = put(p, menu_armed == row ? "HOLD GLO" : "TURN >"); break;   /* (UPDATE MODE, FACTORY RESET) */
     }
     *p = 0;
@@ -325,6 +327,12 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
         menu_armed = (uint8_t)row;
         update_arm = fm1_ms | 1u;
         ui_msg(row == MR_UPDATE ? MSG_HOLD_UPDATE : MSG_HOLD_RESET, MENU_ARM_MS);   /* (26 characters) */
+        break;
+    case MR_LEARN:
+    case MR_MAPS:
+    case MR_MAP_CLEAR:                              /* MIDI learn (midi_learn.c, #1067): LEARN closes the menu as it starts */
+        if (map_step(row, s))
+            return;
         break;
     default: break;
     }

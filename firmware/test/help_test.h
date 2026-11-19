@@ -354,7 +354,8 @@ static void help_suite(void)
     tap(BTN_GLO);                                       /* MENU > SYSTEM > QUICK START (D-240) */
     enc(1, 1);
     enc(1, 1);
-    enc(1, 1);                                          /* (PANEL's two pages, #1011) */
+    enc(1, 1);
+    enc(1, 1);                                          /* (MIDI's two pages, #1067, and PANEL's, #1011) */
     check("the menu's SYSTEM tab: QUICK START on K3, OFF", menu_tab == MT_SYSTEM && pages_now()->par[2] == MR_QUICK && on_screen("QUICK START")
           && on_screen("OFF"));
     enc(4, 1);

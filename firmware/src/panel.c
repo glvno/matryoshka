@@ -655,6 +655,8 @@ static void panel_encoders(int32_t *st)
             continue;
         if (fine)
             home_turned = 1;
+        if (!menu_page() && learn_pick(k))          /* MIDI learn waits for a row (#1067): this knob's, which stays as it is */
+            continue;
         if ((r = pages_turn(k, c, knob_fast(2u + k, c), fine, &mod, &par, &v)) < 0)
             continue;
         if (r == 2) {                               /* the menu: an FM-1 setting (pages_turn set it): not the patch's, not the editor's */

@@ -1,18 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// MIDI learn (#1067): a MIDI controller's CC or pitch bend moves one card row. Editor only: the bindings live in the patch
-// (Patch.midiLearn), so they are saved, shared and undone with it, and the FM-1's binary never carries them (patchbin.ts
-// reads no such field). Messages from an FM-1 are never learned and never redirected (main.ts): its knobs keep their meaning.
+// MIDI learn (#1067): a MIDI controller's CC or pitch bend moves one card row. The bindings live in the patch
+// (Patch.midiLearn), so they are saved, shared and undone with it, and the FM-1's binary carries the ones on its pages
+// (patchbin.ts mapRecord), so the FM-1 plays them without the editor (firmware/src/midi_learn.c, which learns too).
+// Messages from an FM-1 are never learned and never redirected (main.ts): its knobs keep their meaning.
 import type { ModuleDef, Patch } from './patch';
 import type { HostMsg } from './worklet';
 
 /** what moves a row: a control change number (0..119) or pitch bend */
 export type LearnSource = number | 'bend';
-/** one learned source and the row it moves (a module's parameter: a card row names one) */
+/** one learned source and the row it moves (a module's parameter: a card row names one). `lo`, `hi`: where the source's
+ *  lowest and highest value land in the row's range, 0..1 (0 and 1 when left out; lo above hi turns it round) */
 export interface MidiBinding {
   src: LearnSource;
   module: number;
   param: string;
+  lo?: number;
+  hi?: number;
 }
+/** the most bindings a patch holds (patchbin.ts MAPS_MAX, the FM-1's ENG_MAPS_MAX) */
+export const MIDI_LEARN_MAX = 16;
 /** a row of the patch: a module's parameter */
 export interface LearnRow {
   module: number;
@@ -53,14 +59,16 @@ export function sourceJob(src: LearnSource): string | null {
 export function fixMidiLearn(raw: unknown, modules: { id: number; type: string }[], defs: Record<string, ModuleDef>): MidiBinding[] {
   if (!Array.isArray(raw)) return [];
   let out: MidiBinding[] = [];
+  const end = (x: unknown): number | undefined => (typeof x === 'number' && Number.isFinite(x) ? rangeEnd(x) : undefined);
   for (const b of raw as Partial<MidiBinding>[]) {
     if (!b || typeof b !== 'object' || !isSource(b.src) || typeof b.param !== 'string') continue;
     const m = modules.find((x) => x.id === b.module);
     if (!m || !defs[m.type]?.params.some((q) => q.name === b.param && !q.screen)) continue;
     out = out.filter((x) => x.src !== b.src && !(x.module === m.id && x.param === b.param));
-    out.push({ src: b.src, module: m.id, param: b.param });
+    const lo = end(b.lo), hi = end(b.hi);
+    out.push({ src: b.src, module: m.id, param: b.param, ...(lo !== undefined && lo !== 0 ? { lo } : {}), ...(hi !== undefined && hi !== 1 ? { hi } : {}) });
   }
-  return out;
+  return out.slice(0, MIDI_LEARN_MAX);
 }
 
 const sameRow = (b: LearnRow, r: LearnRow): boolean => b.module === r.module && b.param === r.param;
@@ -70,9 +78,29 @@ const keep = (p: Patch, list: MidiBinding[]): void => {
   else delete p.midiLearn;
 };
 
-/** bind a source to a row: the source leaves any other row, and the row any other source */
-export function bindRow(p: Patch, b: MidiBinding): void {
-  keep(p, [...(p.midiLearn ?? []).filter((x) => x.src !== b.src && !sameRow(x, b)), { src: b.src, module: b.module, param: b.param }]);
+/** bind a source to a row over its whole range: the source leaves any other row, and the row any other source. False
+ *  when the patch already holds MIDI_LEARN_MAX others */
+export function bindRow(p: Patch, b: MidiBinding): boolean {
+  const rest = (p.midiLearn ?? []).filter((x) => x.src !== b.src && !sameRow(x, b));
+  if (rest.length >= MIDI_LEARN_MAX) return false;
+  keep(p, [...rest, { src: b.src, module: b.module, param: b.param }]);
+  return true;
+}
+
+/** a range end as the FM-1's binary holds it: 0..1 in steps of 1/255 */
+export const rangeEnd = (x: number): number => Math.round(Math.min(1, Math.max(0, x)) * 255) / 255;
+
+/** where a row's source lands in its range: lo for its lowest value, hi for its highest (0..1); false without a binding */
+export function setLearnRange(p: Patch, r: LearnRow, lo: number, hi: number): boolean {
+  const b = p.midiLearn?.find((x) => sameRow(x, r));
+  if (!b) return false;
+  lo = rangeEnd(lo);
+  hi = rangeEnd(hi);
+  if (lo) b.lo = lo;
+  else delete b.lo;
+  if (hi !== 1) b.hi = hi;
+  else delete b.hi;
+  return true;
 }
 
 /** forget a row's source; false when it had none */
@@ -183,7 +211,7 @@ export class MidiLearn {
       m.timer = 0;
       m.at = this.host.now?.() ?? performance.now();
       const b = liveBinding(this.host.patch(), src);
-      if (b) this.host.setRow(b.module, b.param, m.u);
+      if (b) this.host.setRow(b.module, b.param, (b.lo ?? 0) + ((b.hi ?? 1) - (b.lo ?? 0)) * m.u);   // (the FM-1 the same: midi_learn.c map_midi)
     };
     const wait = m.at + MOVE_GAP_MS - now;
     if (wait <= 0) run();

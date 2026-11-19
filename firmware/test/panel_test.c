@@ -1076,6 +1076,11 @@ int main(void)
         check("HOME held + PRESET in the menu: the next patch, HOME's release stays in the menu", presets_stepped == stepped + 2 && page == PAGE_MENU);
         presets_stepped = stepped;
         enc(1, 1);
+        check("ALGO: MIDI's second page, MIDI learn: LEARN, MAPPINGS (none), CLEAR (#1067)", menu_tab == MT_MIDI && menu_page2
+              && pages_now()->nrows == 3u && pages_now()->par[0] == MR_LEARN && pages_now()->par[1] == MR_MAPS
+              && pages_now()->par[2] == MR_MAP_CLEAR && on_screen("LEARN") && on_screen("MAPPINGS") && on_screen("NONE")
+              && on_screen("MIDI 2/2"));
+        enc(1, 1);
         check("ALGO: the PANEL tab (LEDs, knob accel, count-in, tempo)", menu_tab == MT_PANEL && pages_now()->nrows == 4u && pages_now()->par[0] == MR_LEDS && pages_now()->par[2] == MR_CIN && pages_now()->par[3] == MR_TEMPO);
         enc(4, 1);                                          /* K3: COUNT-IN (#414), OFF > 1 BAR > 2 BARS */
         check("K3 on PANEL: COUNT-IN OFF > 1 BAR (#414)", cfg.count_in == 1u && on_screen("1 BAR"));
@@ -1255,7 +1260,8 @@ int main(void)
         tap(BTN_GLO);
         enc(1, 1);
         enc(1, 1);
-        enc(1, 1);                                          /* (PANEL's two pages, #1011) */
+        enc(1, 1);
+        enc(1, 1);                                          /* (MIDI's two pages, #1067, and PANEL's, #1011) */
         enc(3, 1);
         check("again: the menu, SYSTEM, FACTORY RESET armed", page == PAGE_MENU && menu_tab == MT_SYSTEM && menu_armed == MR_DEFAULTS);
         later(MENU_ARM_MS + 100u);

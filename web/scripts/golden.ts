@@ -2931,6 +2931,15 @@ kit('macro', (add, wire) => {
   m[4].range = { p1: { d: [unit('adsr', 'd', 0.6), unit('adsr', 'd', 0.03)] } };
   m[3].range = { p2: { pw: [unit('osc', 'pw', 0.2), unit('osc', 'pw', 0.5)] } };
 }
+// MIDI learn (#1067): the macro kit with three mappings after its macro ranges: CC 1 on the filter's cutoff, pitch bend on
+// the ADSR's sustain over 0.2..0.8, CC 74 on the oscillator's level turned round. It plays as the macro kit (the mappings
+// are the FM-1's MIDI path's, midi_learn.c); proto_test --maps reads and edits its mapping section
+{
+  const p = structuredClone(tests.macro), id = (type: string): number => p.modules.find((m) => m.type === type)!.id;
+  p.name = 'midi-learn';
+  p.midiLearn = [{ src: 1, module: id('filter'), param: 'cutoff' }, { src: 'bend', module: id('adsr'), param: 's', lo: 0.2, hi: 0.8 }, { src: 74, module: id('osc'), param: 'level', lo: 1, hi: 0 }];
+  tests['midi-learn'] = p;
+}
 setMorphTarget(tests.morph, make('morph-b', morphVoice(true)), DEFS);
 // #355: only the VCA has a B side. The other modules must not take a trip through morph's unit conversion.
 kit('morph-unassigned', (add, wire) => {
