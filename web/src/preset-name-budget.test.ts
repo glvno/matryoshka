@@ -64,7 +64,7 @@ describe('preset names and the FM-1 budget (#452)', () => {
     drum.preset = 'SNAPPY';
     // Reserve a synthetic tail to isolate the exact boundary from evolving factory structures and formats.
     const namesWithRoom = (room: number) => presetNames(p, view.p, view.groups, view.devs,
-      view.kinds.length + DEVICE.bytes - view.need - room, view.v, view.keep).names;
+      view.kinds.length + DEVICE.bytes - view.bytes - room, view.v, view.keep).names;   // (the form written: view.v's bytes)
     expect(namesWithRoom(5)[index]).toBe('');
     expect(namesWithRoom(6)[index]).toBe('SNAPPY');
     // with room: written
