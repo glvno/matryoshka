@@ -40,6 +40,37 @@ static int eng_click_mix(int32_t *l, int32_t *r, uint32_t n)
     }
     return 1;
 }
+/* what master_eq.h takes from engine.c: the EQ module's design (eq_design.h, the same file) and the helpers it uses */
+#define ENG_SR 44118u
+#define EQ_SHELF_Q 2.0f
+#define EQ_SHELF_TOP 2.19911486f
+#define RING_END (1.0f / 256.0f)
+static float clampf(float x, float l) { return x > l ? l : x < -l ? -l : x; }
+static int ring_endf(const float *s, uint32_t ns)
+{
+    uint32_t i, any = 0;
+    for (i = 0; i < ns; i++) {
+        if (s[i] >= RING_END || s[i] <= -RING_END)
+            return 0;
+        any |= s[i] != 0.0f;
+    }
+    return (int)any;
+}
+static inline float exp2_f(float x)                     /* (engine.c's, the same series) */
+{
+    union { float f; int32_t i; } s;
+    int32_t w;
+    float f;
+    x = x < -126.0f ? -126.0f : x > 127.0f ? 127.0f : x;
+    w = (int32_t)x;
+    if ((float)w > x)
+        w--;
+    f = (x - (float)w) * 0.69314718f;
+    s.i = (w + 127) << 23;
+    return s.f * (1.0f + f * (1.0f + f * (1.0f / 2.0f) * (1.0f + f * (1.0f / 3.0f) * (1.0f + f * (1.0f / 4.0f) * (1.0f + f * (1.0f / 5.0f)
+           * (1.0f + f * (1.0f / 6.0f) * (1.0f + f * (1.0f / 7.0f) * (1.0f + f * (1.0f / 8.0f) * (1.0f + f * (1.0f / 9.0f))))))))));
+}
+#include "../src/eq_design.h"
 #include "../src/audio.c"
 static int32_t usb[256];
 static int return_on;
