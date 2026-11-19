@@ -68,19 +68,16 @@ static void co_push(uint32_t due, uint32_t pkt)
 }
 static uint32_t co_rt(uint32_t b) { return 0x0Fu | b << 8; }
 
-/* the audio ISR, after eng_render (`rendered`: the engine ran this half; t0: fm1_ticks at the ISR's start). CLOCK OUT and
- * TRANSPORT OUT are read here, as the messages are made. */
-static void clk_out_block(uint32_t t0, int rendered)
+/* clk_out_block's transport: PLAY's Start / Continue (after its Song Position) / Stop at the edge it asked for, before the
+ * edge's tick 0 (`first`: its sample, 0 without one), and play once's own Start / Stop (#632). Out of line: a render with a
+ * request or an edge is rare, and the audio ISR's code in SRAM has no room for it */
+static __attribute__((noinline)) void co_transport(uint32_t t0, uint32_t first, int32_t edge)
 {
-    uint32_t off[CKO_MAX], n = 0, k;
-    int32_t edge = 0;
-    int transport = cfg.transport_out != 0, clock = cfg.clock_out != 0;
-    if (rendered)
-        n = eng_clock_out(off, CKO_MAX, &edge);
-    if (co_play) {                      /* PLAY's Start / Continue / Stop: at the edge it asked for, before the edge's tick 0 */
+    int transport = cfg.transport_out != 0;
+    if (co_play) {
         uint32_t b = co_play;
         if ((edge > 0 && b != 0xFCu) || (edge < 0 && b == 0xFCu) || ++co_play_age > CO_PLAY_WAIT) {
-            uint32_t due = t0 + (CO_LAT_SAMPLES + (n ? off[0] : 0u)) * 1000000u / ENG_SR * FM1_TICKS_PER_US;
+            uint32_t due = t0 + (CO_LAT_SAMPLES + first) * 1000000u / ENG_SR * FM1_TICKS_PER_US;
             co_play = 0;
             if (transport && b == 0xFBu)    /* (Song Position: code index 3, three bytes) */
                 co_push(due, 0x03u | 0xF2u << 8 | (co_spp & 0x7Fu) << 16 | (co_spp >> 7 & 0x7Fu) << 24);
@@ -88,9 +85,21 @@ static void clk_out_block(uint32_t t0, int rendered)
                 co_push(due, co_rt(b));
         }
     }
-    if ((edge == 2 || edge == -2) && transport)   /* play once started or stopped the transport itself (#632): its Start / Stop */
-        co_push(t0 + (CO_LAT_SAMPLES + (edge > 0 && n ? off[0] : 0u)) * 1000000u / ENG_SR * FM1_TICKS_PER_US, co_rt(edge > 0 ? 0xFAu : 0xFCu));
-    if (clock)
+    if ((edge == 2 || edge == -2) && transport)
+        co_push(t0 + (CO_LAT_SAMPLES + (edge > 0 ? first : 0u)) * 1000000u / ENG_SR * FM1_TICKS_PER_US, co_rt(edge > 0 ? 0xFAu : 0xFCu));
+}
+
+/* the audio ISR, after eng_render (`rendered`: the engine ran this half; t0: fm1_ticks at the ISR's start). CLOCK OUT and
+ * TRANSPORT OUT are read here, as the messages are made. */
+static void clk_out_block(uint32_t t0, int rendered)
+{
+    uint32_t off[CKO_MAX], n = 0, k;
+    int32_t edge = 0;
+    if (rendered)
+        n = eng_clock_out(off, CKO_MAX, &edge);
+    if (co_play || edge == 2 || edge == -2)
+        co_transport(t0, n ? off[0] : 0u, edge);
+    if (cfg.clock_out)
         for (k = 0; k < n; k++)
             co_push(t0 + (CO_LAT_SAMPLES + off[k]) * 1000000u / ENG_SR * FM1_TICKS_PER_US, CO_TICK);
 }
