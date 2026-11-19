@@ -23,6 +23,9 @@ static struct {
 static volatile uint32_t fm1_ms;
 static uint8_t ui_dirty;
 static void leds_play(void) {}
+#define FM1_TICKS_PER_US 24u
+static uint32_t test_ticks(void);                   /* (TIMER4 from the samples rendered, below) */
+#define CIN_LOG_NOW() test_ticks()
 #include "../src/clock_in.h"
 
 static int fails;
@@ -33,23 +36,27 @@ static void check(const char *what, int ok)
         fails++;
 }
 
-/* the host's messages, each at its sample */
+/* the host's messages, each at its sample; pos: where the host's playhead is once it is delivered (-9: as the messages say,
+ * for a host whose playhead does not follow its own messages: a looper's relocation sent early, clocks that do not move it) */
 #define EVN 20000
 static struct {
     double at;
     uint32_t pkt;
+    int pos;
 } ev[EVN];
 static int ev_w, ev_r;
 static double host_t;                               /* the host's time (samples) */
 static double host_per;                             /* samples a tick */
-static void host_send(uint32_t b, uint32_t d1, uint32_t d2)
+static void host_send_pos(uint32_t b, uint32_t d1, uint32_t d2, int pos)
 {
     if (ev_w < EVN) {
         ev[ev_w].at = host_t;
         ev[ev_w].pkt = (b == 0xF2u ? 3u : 0xFu) | b << 8 | d1 << 16 | d2 << 24;
+        ev[ev_w].pos = pos;
         ev_w++;
     }
 }
+static void host_send(uint32_t b, uint32_t d1, uint32_t d2) { host_send_pos(b, d1, d2, -9); }
 static void host_tempo(double bpm) { host_per = 60.0 * ENG_SR / (bpm * 24.0); }
 static void host_ticks(int n)                       /* n ticks, one a period, the first now */
 {
@@ -63,12 +70,13 @@ static void host_wait_ms(double ms) { host_t += ms * ENG_SR / 1000.0; }
 
 /* the FM-1: the host's tick count since its Start (-1 before the first: the next tick is tick 0), as delivered */
 static uint64_t samples;
+static uint32_t test_ticks(void) { return (uint32_t)(samples * 24000000u / ENG_SR); }
 static int host_m = -1, host_run;
 static int trk_mod, trk_len = 16;
 static int last_pos = -1;
 #define LOGN 4096
 static int log_m[LOGN], log_pos[LOGN], log_n;       /* each step the track took, and the host's tick then */
-static void deliver(uint32_t pkt)
+static void deliver(uint32_t pkt, int pos)
 {
     uint32_t b = (pkt >> 8) & 0xFFu;
     if (b == 0xFAu) {
@@ -83,6 +91,8 @@ static void deliver(uint32_t pkt)
     } else if (b == 0xF8u && host_run) {
         host_m++;
     }
+    if (pos != -9)
+        host_m = pos;
     clk_in_rt(pkt);
 }
 static void sim_to(double t)
@@ -91,7 +101,7 @@ static void sim_to(double t)
     while ((double)samples < t) {
         fm1_ms = (uint32_t)(samples * 1000u / ENG_SR);
         while (ev_r < ev_w && ev[ev_r].at <= (double)samples)
-            deliver(ev[ev_r++].pkt);
+            deliver(ev[ev_r].pkt, ev[ev_r].pos), ev_r++;
         clk_in_idle();
         eng_render(l, r, HALF);
         samples += HALF;
@@ -128,6 +138,19 @@ static void expect_in_step(const char *name, int from, int min_steps)
     int err, bad = off_steps(from, &err);
     snprintf(what, sizeof what, "%s: %d steps, %d off the host's ticks (the first by %d ticks)", name, log_n - from, bad, err);
     check(what, bad == 0 && log_n - from >= min_steps);
+}
+/* a case known to fail (Reel's loop point, #870: which sequence Reel sends is not known yet): "xfail" while it fails with
+ * the error given, which does not count; "XPASS" when it passes, which does count, so the case is moved to expect_in_step */
+static void expect_in_step_xfail(const char *name, int from, int min_steps, int known_err)
+{
+    int err, bad = off_steps(from, &err);
+    int ok = bad == 0 && log_n - from >= min_steps;
+    printf("%s %s: %d steps, %d off the host's ticks (the first by %d ticks; known: %d)\n", ok ? "XPASS" : "xfail", name,
+           log_n - from, bad, err, known_err);
+    if (ok)
+        fails++;
+    else if (err != known_err)
+        check("  (an xfail case fails by another error than it is known for)", 0);
 }
 
 /* a fresh start: stopped, the clock let go, the 808 Kit at 120 bpm */
@@ -351,6 +374,51 @@ int main(void)
             }
     }
 
+    {   /* Reel's loop point (#870, the owner's 1.21.0 check: the FM-1 a sixteenth ahead of Reel after each loop, whatever the
+         * tempo or the loop's length). The sequences that give the FM-1 a sixteenth ahead, until a capture (DIAG 145..147,
+         * tools/m1_link.py midilog) says which one Reel sends: (a) the relocation one sixteenth (6 clocks) before the loop
+         * point, the playhead going on to the loop's end; (b) 6 clocks at the loop point that do not move the playhead. And
+         * one that is fixed: (c) a clock in the same block just before a Start is the old run's, not the new one's tick 0 */
+        static const char *how[] = {"Start a sixteenth before the loop point", "Song Position 0 + Continue a sixteenth before the loop point",
+                                    "Start and the loop's first clock, then 6 clocks at once that do not move the playhead",
+                                    "a loop a sixteenth longer in clocks, nothing else sent",
+                                    "the old loop's last clock and Start in one block, then the first clock"};
+        static const int known[] = {-6, -6, -6, -6};
+        for (k = 0; k < 5; k++) {
+            int j;
+            reset();
+            host_start(24, 96 * 2 - (k < 2 ? 6 : k == 4 ? 1 : 0));
+            if (k == 0)
+                host_send(0xFAu, 0, 0);
+            if (k == 1)
+                host_send(0xF2u, 0, 0), host_send(0xFBu, 0, 0);
+            for (j = 0; j < (k < 2 ? 6 : k == 3 ? 6 : 0); j++) {   /* the old loop's last clocks, the playhead on to its end */
+                host_send_pos(0xF8u, 0, 0, 96 * 2 - (k < 2 ? 6 : 0) + j);
+                host_t += host_per;
+            }
+            if (k == 4) {
+                host_send_pos(0xF8u, 0, 0, 96 * 2 - 1);
+                host_send(0xFAu, 0, 0);
+                host_t += host_per;
+            }
+            if (k == 2)
+                host_send(0xFAu, 0, 0);
+            host_send_pos(0xF8u, 0, 0, 0);       /* the loop's first clock: the playhead at its start */
+            host_t += host_per;
+            if (k == 2)
+                for (j = 0; j < 6; j++)
+                    host_send_pos(0xF8u, 0, 0, 0);
+            sim_to(host_t + (k == 2 ? HALF + 1 : 0));   /* (the burst's own half: several steps at once, judged after it) */
+            mid = log_n;
+            host_ticks(96 * 2);
+            sim_host();
+            if (k == 4)
+                expect_in_step(how[k], mid, 30);
+            else
+                expect_in_step_xfail(how[k], mid, 30, known[k]);
+        }
+    }
+
     {   /* (d) Song Position + Continue (#596): the tracks play from the position, its step on the next clock; after a Stop,
          * and while running (a looper relocating at its loop point, as Reel may), with a 700 ms stall before it or not */
         static const int spp[] = {4, 5, 37, 300, 16383};
@@ -515,6 +583,75 @@ int main(void)
     check("CLOCK IN and TRANSPORT IN off: neither clock nor Start is followed", !eng_transport_running() && !eng_clock_is_external());
     cfg.clock_in = 1;
     cfg.transport_in = 1;
+
+    {   /* the log (DIAG 145..147, tools/m1_link.py midilog): what came in, in order, with its time and the engine's state;
+         * steady clocks folded into one entry, an irregular one its own; frozen CIN_LOG_AFTER messages after a Stop,
+         * running again with a Start; the newest CIN_LOG_N entries kept */
+        uint8_t o[32];
+        uint32_t h[8], n, i, k2, ok, clocks, stall_seen = 0;
+        cin_ent_t got[CIN_LOG_N];
+        reset();
+        cin_log_diag(147u, o);
+        host_send(0xF2u, 3, 0);
+        host_send(0xFAu, 0, 0);
+        host_ticks(20);
+        host_wait_ms(100);                          /* (a stall: the next clock comes late, in an entry of its own) */
+        host_ticks(10);
+        host_send(0xFCu, 0, 0);
+        host_ticks(100);                            /* (clock while stopped: 64 of it logged, then the log waits) */
+        sim_host();
+#define READ_LOG()                                                                                                     \
+        do {                                                                                                           \
+            cin_log_diag(145u, o);                                                                                     \
+            for (i = 0; i < 8u; i++)                                                                                   \
+                h[i] = (uint32_t)o[4 * i] | (uint32_t)o[4 * i + 1] << 8 | (uint32_t)o[4 * i + 2] << 16 | (uint32_t)o[4 * i + 3] << 24; \
+            for (n = 0; n < h[2]; n += 4u) {                                                                           \
+                cin_log_diag(146u, o);                                                                                 \
+                for (i = 0; i < 4u && n + i < CIN_LOG_N; i++) {                                                        \
+                    const uint8_t *p = o + 8u * i;                                                                     \
+                    got[n + i].us = (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; \
+                    got[n + i].v = (uint16_t)(p[4] | p[5] << 8);                                                       \
+                    got[n + i].st = p[6];                                                                              \
+                    got[n + i].fl = p[7];                                                                              \
+                }                                                                                                      \
+            }                                                                                                          \
+        } while (0)
+        READ_LOG();
+        snprintf(what, sizeof what, "the MIDI log: %u messages (want 97: Song Position, Start, 30 clocks, Stop, 64 clocks) in %u entries, frozen %u",
+                 h[0], h[2], h[3]);
+        check(what, h[0] == 97u && h[3] == 1u && h[1] == CIN_LOG_N && h[2] < 16u);
+        ok = got[0].st == 0xF2u && got[0].v == 3u && got[1].st == 0xFAu;
+        for (i = 2, clocks = 0; i < h[2] && got[i].st == 0xF8u; i++) {
+            clocks += 1u + (got[i].fl >> 3);
+            if (i > 2u && got[i].us - got[i - 1u].us > 120000u)   /* (100 ms + a tick after the run's last clock) */
+                stall_seen = 1;
+        }
+        ok &= clocks == 30u && i < h[2] && got[i].st == 0xFCu;
+        for (k2 = i + 1u, clocks = 0; k2 < h[2]; k2++)
+            clocks += got[k2].st == 0xF8u ? 1u + (got[k2].fl >> 3) : 0u;
+        check("  in order: Song Position 3, Start, 30 clocks, Stop, 64 clocks; steady ones folded", ok && clocks == 64u);
+        check("  the clock after the stall in an entry of its own; the transport seen running on MIDI clock",
+              stall_seen && (got[3].fl & 7u) == 7u);
+        host_send(0xFAu, 0, 0);                     /* a Start: logging again */
+        host_ticks(5);
+        sim_host();
+        READ_LOG();
+        check("  a Start after it: the log runs again (103 messages)", h[0] == 103u && h[3] == 0u);
+        for (k2 = 0; k2 < 300u; k2++) {             /* irregular clocks: none folds, the ring goes round */
+            host_ticks(1);
+            if (k2 & 1u)
+                host_wait_ms(15);
+        }
+        sim_host();
+        READ_LOG();
+        for (i = 1, ok = 1; i < h[2]; i++)
+            ok &= got[i].us > got[i - 1u].us;
+        snprintf(what, sizeof what, "  300 irregular clocks: the newest %u entries kept, oldest to newest (%u messages)", h[2], h[0]);
+        check(what, h[0] == 403u && h[2] == CIN_LOG_N && ok && got[CIN_LOG_N - 1].st == 0xF8u);
+        cin_log_diag(147u, o);
+        READ_LOG();
+        check("  DIAG 147 empties it", h[0] == 0u && h[2] == 0u);
+    }
 
     printf(fails ? "%d FAILED\n" : "all passed\n", fails);
     return fails != 0;

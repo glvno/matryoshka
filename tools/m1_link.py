@@ -26,6 +26,10 @@
                                            the mean period, the deviation of each period and of each tick from a straight
                                            grid, and the link's refused sends over that time, DIAG page 117; BPM: at that
                                            global tempo (TEMPO, set back after); run: with the transport running)
+  tools/m1_link.py midilog [clear]        (#870: the MIDI clock-in log, DIAG pages 145..147: the realtime and Song Position
+                                           messages the FM-1 took (USB and TRS), oldest first, in 256 entries (steady clocks
+                                           folded into one): each with its time, the gap before it, the clocks since the last
+                                           Start / Continue, the engine's ticks and the transport's state; `clear` empties it)
   tools/m1_link.py usblog [arm|wrap]      (#535: the USB setup log, DIAG pages 40..71 and 104..107: every control transfer a host started
                                            since boot (or since `arm`) and the firmware's answer, bus resets, suspends, the
                                            address taking effect; kept while the FM-1 stays powered, so a failed host's log
@@ -597,6 +601,48 @@ def main():
                   f"{f' ({fr / pk * 1000:.1f} Hz per packet ms)' if pk else ''}; underruns +{d[8]}, overruns +{d[9]}, "
                   f"missed +{d[10]}, stalls +{d[11]}, adj_up {d[12] / dt:.2f}/s, adj_down {d[13] / dt:.2f}/s "
                   f"(net {(d[12] - d[13]) / dt:+.2f} frames/s: the I2S clock against the host's)")
+    elif a[0] == "midilog":
+        def page(n):
+            p = link.ask(frame(0x2B, [n]), (0x4B, n))
+            if len(p) < 33:
+                sys.exit(f"no DIAG page {n}: firmware from before the MIDI log (#870)")
+            return bytes(p[1:33])
+        h = [int.from_bytes(b, "little") for b in (lambda x: [x[4 * i:4 * i + 4] for i in range(8)])(page(145))]
+        logged, size, held, frozen, now_us, eng_now, st_now, made = h
+        ents = []
+        for _ in range((held + 3) // 4):            # (4 entries a page, oldest first; zeros past the newest)
+            d = page(146)
+            for i in range(4):
+                e = d[8 * i:8 * i + 8]
+                if e[6] and len(ents) < held:
+                    ents.append((int.from_bytes(e[0:4], "little"), e[4] | e[5] << 8, e[6], e[7]))
+        names = {0xF8: "Clock", 0xFA: "Start", 0xFB: "Continue", 0xFC: "Stop", 0xF2: "Song Position"}
+        fl = lambda f: f"{'running' if f & 1 else 'stopped'}{', MIDI clock drives' if f & 2 else ''}{'' if f & 4 else ', CLOCK IN off'}"
+        print(f"MIDI clock-in log: {logged} messages in {held} entries (ring {size}, {made} made)"
+              f"{', frozen 64 messages after a Stop' if frozen else ''}; now: engine ticks {eng_now}, {fl(st_now)}, "
+              f"the newest entry {(now_us - ents[-1][0]) / 1e6 if ents else 0:.1f} s ago")
+        if made > held:
+            print(f"  ({made - held} older entries overwritten: the clock count since the first Start below is not complete)")
+        clocks, prev_end, t0 = 0, None, ents[0][0] if ents else 0
+        for us, v, st, f in ents:
+            gap = (us - prev_end) / 1000 if prev_end is not None else 0.0   # (from the previous message: a run's last clock)
+            prev_end = us + (v * 100 if st == 0xF8 else 0)
+            if st in (0xFA, 0xFB):
+                clocks = 0
+            if st == 0xF8:
+                more = f >> 3
+                first = clocks + 1
+                clocks += 1 + more
+                run = f", then {more} more {v / 10 / more:.2f} ms apart" if more else ""
+                print(f"  {(us - t0) / 1e6:9.4f} s  +{gap:8.2f} ms  Clock #{first}{'..#' + str(clocks) if more else ''} since Start"
+                      f"{run}   {fl(f & 7)}")
+                continue
+            what = f"Song Position {v} (clock {v * 6})" if st == 0xF2 else names.get(st, f"0x{st:02X}")
+            print(f"  {(us - t0) / 1e6:9.4f} s  +{gap:8.2f} ms  {what:<16} after clock #{clocks}   "
+                  + (f"{fl(f & 7)}" if st == 0xF2 else f"engine ticks {v}, {fl(f & 7)}"))
+        if "clear" in a:
+            link.ask(frame(0x2B, [147]), (0x4B, 147))
+            print("(the log emptied)")
     elif a[0] == "clock":
         def page(n):
             p = link.ask(frame(0x2B, [n]), (0x4B, n))
