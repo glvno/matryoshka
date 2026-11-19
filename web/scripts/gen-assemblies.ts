@@ -1856,8 +1856,8 @@ namePositions('Sallen 20', {
   'signal in': ['OFF', 'VCO 1', 'NOISE', 'MG'], 'esp route': ['OFF', 'F-V>VCO 2', 'ENV>GAIN', 'TRIG>EGS'],
 });
 
-// Expander S, a four-voice polysynth of state-variable expander modules (after Oberheim's SEM and its Four Voice):
-// the keys go into the Voice allocator, which plays four voice cards. A card: two oscillators (saw or pulse) into the
+// Expander S, an eight-voice polysynth of state-variable expander modules (after Oberheim's SEM and its Four and Eight
+// Voice): the keys go into the Voice allocator, which plays eight voice cards. A card: two oscillators (saw or pulse) into the
 // 12 dB state-variable filter whose `mode` sweeps low pass, notch (halfway: low pass plus high pass) and high pass,
 // envelope 1 into the cutoff (through a parameter input, so per block: the filter stays cheap), envelope 2 on the level, and the card's own place in the stereo field (`width`: each
 // voice panned by its index, as the Four Voice's pan pots). Once: an LFO into the oscillators' fine tune (`vibrato`).
@@ -1872,7 +1872,7 @@ namePositions('Sallen 20', {
 asm('Expander S', 'Voices', (b) => {
   const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5, depth: 1 });
   const vib = b.add('scale', 0, 1, { gain: 0, offset: 0 });
-  const part = b.add('alloc', 0, 2, { voices: 4 });
+  const part = b.add('alloc', 0, 2, { voices: 8 });
   const o1 = b.add('osc', 1, 0, { wave: 2, level: 0.5, analog: 1 }, { p1: 'fine' });
   const o2 = b.add('osc', 1, 1, { wave: 3, level: 0.4, pw: 0.4, fine: 5, analog: 1 }, { p1: 'fine' });
   const flt = b.add('filter', 2, 0, { cutoff: 1100, res: 0.35, drive: 1 }, { p1: 'cutoff' }); // drive: the SEM's state-variable filter saturates gently (#670)

@@ -48,20 +48,20 @@ static void fx_preset_poly_match(void)
         if ((k = fc_preset_name((uint32_t)f, name)) >= 0 && !ps_name_cmp(name, "INIT")) { factory = (uint32_t)f; fn = (uint32_t)k; break; }
     check("FX poly preset: source factory Init is available", factory < fc_npresets() && fc_preset_values(factory, init, PS_MAXV));
     if (factory == fc_npresets()) return;
-    check("FX poly preset: source factory Init carries four voices", fn == pg_dev[d].nrows && init[voice] == 4 * 65536);
+    check("FX poly preset: source factory Init carries eight voices", fn == pg_dev[d].nrows && init[voice] == 8 * 65536);
     for (i = 0; i < pg_dev[d].nrows && i < fn; i++) values[i] = init[i];
     check("FX poly preset: factory sound plus rack saves unchanged", !ps_put(scope, "WIDE", values, n));
     k = fx_preset_index(d, scope, "WIDE");
     check("FX poly preset: recall clamps factory voices to the exposed top", k >= 0 && !dp_load(d, (uint32_t)k) && poly_value(mod, ENG_POLY_PARTS) == 3);
     k = fx_preset_index(d, scope, "WIDE");
-    check("FX poly preset: scoped source values match the loaded capped sound", k >= 0 && dp_same(d, (int)n) && pr_at[voice] == 4 * 65536);
+    check("FX poly preset: scoped source values match the loaded capped sound", k >= 0 && dp_same(d, (int)n) && pr_at[voice] == 8 * 65536);
     dp_name_set(d, ""); pages_ensure();
     count = dp_list(d);
     current = dp_current(d, count);
     check("FX poly preset: current-sound discovery finds the capped scoped sound", current >= 0 &&
           dp_entry(pr_list[current], name) == (int)n && pr_structure == scope && dp_same(d, (int)n));
     check("FX poly preset: stored and ROM voice values remain portable", !ps_read((uint32_t)ps_find(scope, "WIDE"), &i, name, &count) &&
-          ps_vbuf[voice] == 4 * 65536 && init[voice] == 4 * 65536);
+          ps_vbuf[voice] == 8 * 65536 && init[voice] == 8 * 65536);
     pr_structure = pg_dev[d].structure;
     pr_at = fc_preset_values(factory, pr_vals, sizeof pr_vals / sizeof *pr_vals);
     check("FX poly preset: legacy factory matching uses the same voice clamp", dp_same(d, (int)fn));

@@ -62,7 +62,7 @@ describe('structure (#192)', () => {
 
 describe('presets (#192)', () => {
   it('loads wider presets within this card cap without changing their stored values or match identity', () => {
-    const p = buildSelectedFactoryBank().find(entry => entry.name === 'Expander S')!.patch;
+    const p = buildSelectedFactoryBank().find(entry => entry.name === 'Cassia 1')!.patch;
     const a = p.assemblies!.find(a => a.params.some(r => r.param === 'voices'))!;
     const rows = rowOrder(p, a), at = rows.findIndex(r => r.param === 'voices');
     const allocator = p.modules.find(m => m.id === rows[at].module)!;
@@ -70,8 +70,8 @@ describe('presets (#192)', () => {
     stored.values[at] = 7;
     setFactoryPresets([stored]);
     expect(applyPreset(p, a, stored)).toBe(true);
-    expect(allocator.params.voices).toBe(6);
-    expect(presetsOf(p, a)[0].values[at]).toBe(6);
+    expect(allocator.params.voices).toBe(5);
+    expect(presetsOf(p, a)[0].values[at]).toBe(5);
     expect(matchesPreset(p, a)).toBe(true);
     expect(stored.values[at]).toBe(7);
     a.params.find(r => r.module === allocator.id && r.param === 'voices')!.top = 7;

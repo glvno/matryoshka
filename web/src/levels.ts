@@ -209,10 +209,8 @@ export const SHORT: Record<string, number> = {
   'Canvas / FM Chimes': 5.6,
   'Canvas / Sequencer Run': 6.7,
   'Drift Poly / Drift Bass': 5.6,
-  // short zero-sustain chord swells: output / level at its top (2); the peak cap would bind before the target
-  'Expander S / Dusk Chord': 6.4,
-  // its audition phrase (scripts/audition-render.test.ts) peaks 1.11 at output / level 2: the level stops at 1.58
-  'Expander S / Highpass Pluck': 2.5,
+  // short zero-sustain chord swells at eight voices: output / level at its top (2)
+  'Expander S / Dusk Chord': 2.9,
   // pink noise through a slow resonant sweep (wind): output / volume at its top (2) with the Output at 1
   'Monolith D / Pink Wind': 2.4,
   // a slow filter sweep: tone / volume at its top (1) with the Output at 1; the peak cap binds next

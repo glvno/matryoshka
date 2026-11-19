@@ -6,6 +6,8 @@ import { allModules, assembliesOf } from './assembly';
 import { cpuChecks, looseModel } from './cpu-checks';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, EDITOR_ONLY, validatePatch } from './patch';
+import { fxBusOf } from './fx-bus';
+import { setFxStageEnabled } from './fx-preset';
 import { FM1_PRESETS } from './presets';
 import { relocatedPatches } from './community-factory';
 import { withParts } from './test-poly';
@@ -110,36 +112,57 @@ describe('CPU estimate', () => {
     expect(reverb).toBeLessThan(0.3);
   });
 });
-// The factory patches on the test rig (docs/measurements/cpu-survey-2026-11-18-rig-headroom120-bank114*.json: the longest
-// audio interrupt at rest and with 1 / 4 / 8 keys held, the transport stopped and running, on the 1.20 headroom build: float
-// kernels, hot code in RAM, the two-core plan from the rig's module costs), which the engines' factors were fitted to
+// The factory patches on the test rig (docs/measurements/cpu-survey-2026-11-19-rig-main121-*.json: the longest audio
+// interrupt at rest and with 1 / 4 / 8 keys held, the transport stopped and running, on the 1.21 build: main with the
+// cheaper module copies of #1102 and the block's fixed cost of #1105), which the engines' factors were fitted to
 // (scripts/cpu-rig-fit.ts, frozen in cpu-costs.ts RIG). The estimate is
 // each patch's worst case, every voice playing; the rig's figure is its steady peak (the median of a phase's samples after the first, the most
 // over the phases). A patch whose overload guard dropped parts counts at the voices it kept; one the guard muted is left
-// out. A new survey after large engine or firmware changes replaces the files and the fit.
-describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-11-18-rig-headroom120-bank114*.json)', () => {
-  type Reading = { name: string } & Record<string, number[] | number>;
-  const read = (f: string) => JSON.parse(readFileSync(new URL(`../../docs/measurements/${f}`, import.meta.url), 'utf8')) as Reading[];
-  const files = [read('cpu-survey-2026-11-18-rig-headroom120-bank114.json'), read('cpu-survey-2026-11-18-rig-headroom120-bank114-run.json')];
-  const median = (v: number[]): number => [...v].sort((a, b) => a - b)[(v.length - 1) >> 1];
-  /** the rig's steady peak (us) of each factory patch, the phases it played without shedding */
+// out. The estimate never reads under the rig (D-365). A new survey after large engine or firmware changes replaces the
+// files and the fit.
+type Reading = { name: string } & Record<string, number[] | number>;
+const readSurvey = (f: string) => JSON.parse(readFileSync(new URL(`../../docs/measurements/${f}`, import.meta.url), 'utf8')) as Reading[];
+const median = (v: number[]): number => [...v].sort((a, b) => a - b)[(v.length - 1) >> 1];
+/** the rig's steady peak (us) of each record name over both files, the phases it played without shedding */
+function steadyPeaks(files: Reading[][]): Map<string, number> {
   const rig = new Map<string, number>();
   for (const f of files)
-    for (const r of f) {
-      if (!measuredPatches[r.name]) continue;
+    for (const r of f)
       for (const ph of ['n0', 'n1', 'n4', 'n8']) {
         const samples = r[`${ph}_samples`] as number[];
         if (r[`${ph}_ovl`] || samples.length < 2 || Number(r[`${ph}_shed`])) continue;
         rig.set(r.name, Math.max(rig.get(r.name) ?? 0, median(samples.slice(1))));
       }
-    }
+  return rig;
+}
+describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-11-19-rig-main121-bank114*.json)', () => {
+  const files = [readSurvey('cpu-survey-2026-11-19-rig-main121-bank114.json'), readSurvey('cpu-survey-2026-11-19-rig-main121-bank114-run.json')];
+  const rig = new Map([...steadyPeaks(files)].filter(([name]) => measuredPatches[name]));
   it('has a figure for every patch the rig measured', () => expect(rig.size).toBe(Object.keys(measuredPatches).length));
   for (const name of Object.keys(measuredPatches))
-    it.skipIf(!rig.has(name))(`reads within -3 / +5 points of the rig: ${name}`, () => {
+    it.skipIf(!rig.has(name))(`reads the rig to 6 points over it: ${name}`, () => {
       const device = (100 * rig.get(name)!) / CPU.blockUs;
       const est = 100 * cpuEstimate(measuredPatches[name]()).use;
-      expect(est).toBeGreaterThanOrEqual(device - 3);
-      expect(est).toBeLessThanOrEqual(device + 5);
+      expect(est).toBeGreaterThanOrEqual(device);
+      expect(est).toBeLessThanOrEqual(device + 6);
+    });
+});
+
+// Today's poly factory patches at several voice counts, as shipped ("NAME vN") and with every stage of their master FX
+// bus on ("NAME vN fx"), on the same build: the estimate follows the rig as voices are added (it read Expander S at
+// seven voices with every stage on 9.7 points over the rig before its voice factor came from the rig's rises, #870)
+describe('CPU estimate of the poly factory patches by voices (docs/measurements/cpu-survey-2026-11-19-rig-main121-poly*.json)', () => {
+  const rig = steadyPeaks([readSurvey('cpu-survey-2026-11-19-rig-main121-poly.json'), readSurvey('cpu-survey-2026-11-19-rig-main121-poly-run.json')]);
+  for (const [name, us] of rig)
+    it(`reads the rig to 4 points over it: ${name}`, () => {
+      const [, base, v, fx] = /^(.*) v(\d+)( fx)?$/.exec(name)!;
+      const p = FM1_PRESETS[base]();
+      const top = Math.max(...p.modules.filter((m) => m.type === 'alloc').map((m) => m.params.voices ?? 1));
+      for (const m of p.modules) if (m.type === 'alloc' && (m.params.voices ?? 1) === top) m.params.voices = Number(v);
+      if (fx) for (const s of fxBusOf(p)!.stages) setFxStageEnabled(p, s, true);
+      const device = (100 * us) / CPU.blockUs, est = 100 * cpuEstimate(p).use;
+      expect(est).toBeGreaterThanOrEqual(device);
+      expect(est).toBeLessThanOrEqual(device + 4);
     });
 });
 
