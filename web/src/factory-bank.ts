@@ -58,7 +58,8 @@ export const selectedFactoryProfile: Readonly<Record<string, SelectedFactoryOpti
   'Cassia 1': { configurationId: 'cassia-1-v5-drive-chorus-delay-reverb' },
   'Vernon 100': { configurationId: 'vernon-100-v2-drive-chorus-delay-reverb' },
   'Sallen 20': { harmonizer: 'removed', configurationId: 'sallen-20-v2-drive-chorus-delay-reverb-no-harm' },
-  'Hera 4': { bankName: 'Hera 6', omit: ['drive'], configurationId: 'hera-4-v4-chorus-delay-reverb', outputLevel: 0.39 },
+  // (drive joins beside its own Juno chorus, Delay and Reverb, bypassed, at six voices: owner 2026-11-19, D-1200)
+  'Hera 4': { bankName: 'Hera 6', configurationId: 'hera-6-v6-drive-chorus-delay-reverb', outputLevel: 0.39 },
   'Io 4': { configurationId: 'selected-io-4' },
 };
 

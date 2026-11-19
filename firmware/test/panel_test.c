@@ -648,6 +648,34 @@ static void fx_suite(void)
     trail_n = 0;
     tap(2);
     check("legacy FX never reserves the new page", page != PAGE_FX && panel_lights() == eng_buttons_lit());
+    {   /* the shipped factory patches whose stages came after the instrument (golden.ts --panel-fixtures writes them from
+         * the selected bank): every stage off at load, FX opens a page with exactly their stages */
+        static const struct { const char *path; uint32_t n; uint8_t kind[4]; const char *show[4]; } RACK[] = {
+            {"build/panel-fixtures/factory-rack-hera-6.m1p", 3u, {ENG_FX_DRIVE, ENG_FX_DELAY, ENG_FX_REVERB}, {"DRIVE", "DELAY", "REVERB"}},
+        };
+        for (i = 0; i < sizeof RACK / sizeof RACK[0]; i++) {
+            uint32_t k, ok;
+            ct_reset();
+            check("factory rack patch loads", !load_fixture(RACK[i].path));
+            ok = eng_fx_count() == RACK[i].n;
+            for (k = 0; ok && k < RACK[i].n; k++)
+                ok = eng_fx_kind(k) == RACK[i].kind[k] && !eng_fx_on(k);
+            check("factory rack: its stages in order, every one off at load", ok);
+            pv_gen++;
+            page_show(0);
+            screen_patch();
+            pages_ensure();
+            pages_focus(pages_home(), 0);
+            fx_row = 0;
+            later(2000);
+            tap(2);
+            ok = page == PAGE_FX && on_screen("MASTER FX") && !on_screen("CHORUS");
+            for (k = 0; k < RACK[i].n; k++)
+                ok = ok && on_screen(RACK[i].show[k]);
+            check("factory rack: FX opens the page with exactly its stages", ok);
+            tap(2);
+        }
+    }
     ct_reset();
 }
 
