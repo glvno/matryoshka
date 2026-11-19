@@ -189,6 +189,9 @@ const newGroup = (key: string, cfg: PolyCfg, g: number): Group => ({
 });
 /** the tempo without a Main module */
 const TEMPO_DEFAULT = 120;
+/** seconds a MIDI Start with no clock running waits for the host's first clock before it starts on the tempo (engine.c
+ * TOP_WAIT: a tick at 20 bpm and some) */
+const TOP_WAIT = 0.15;
 /** how often a part's drift picks a new target (Hz) */
 export const DRIFT_RATE = 0.5;
 const FLAW_KEYS3 = Object.keys(FLAW_TARGETS) as ('bright' | 'env' | 'level')[];
@@ -243,9 +246,11 @@ export class Engine {
   /** the transport as the last block had it, and the ticks when it last started (engine.c E.run_ticks) */
   private ran = false;
   private runTicks = 0;
-  /** MIDI Start (transportTop, #870; engine.c top_gen, tick0): the next block starts the transport from the top; the next
-   * MIDI tick is tick 0 of a start, which steps nothing on */
+  /** MIDI Start (transportTop, #870; engine.c top_gen, top_wait, tick0): the next block starts the transport from the top,
+   * on the next MIDI tick, waiting for one up to `topWait` samples more when no MIDI clock drives yet (TOP_WAIT, then on the
+   * tempo); tick0: this block's start is on a MIDI tick, tick 0, which steps nothing on */
   private top = false;
+  private topWait = 0;
   private tick0 = false;
   /** the FM-1's patch buttons (bit i = PANEL_BUTTONS[i]): held, or switched on */
   private buttons = 0;
@@ -1740,17 +1745,20 @@ export class Engine {
       const { bar, beat } = METERS[meterOf(this.meter)]; // (the global time signature's, #1011)
       if (this.once === 1 && this.cin >= bar) this.onceStart();
       // the transport this block (engine.c the same, #870): MIDI Start (transportTop) running stops it for a block, its MIDI
-      // ticks held for the start; on MIDI clock it starts on a tick, tick 0
+      // ticks held for the start; it starts on a MIDI tick, tick 0 (after a MIDI Start with no clock yet, up to TOP_WAIT)
       let run = this.running, held = false;
-      if (!run) this.tick0 = false;
+      if (!run) this.topWait = 0;
       if (this.top) {
         this.top = false;
-        this.tick0 = true;
+        this.topWait = Math.floor(this.sampleRate * TOP_WAIT);
         if (this.ran) (run = false), (held = true);
       }
-      if (run && !this.ran && this.ext) {
-        if (this.extTicks === 0) run = false;
-        else this.tick0 = true;
+      if (run && !this.ran && (this.ext || this.topWait > 0)) {
+        if (this.ext && this.extTicks > 0) (this.tick0 = true), (this.topWait = 0);
+        else {
+          this.topWait = Math.max(0, this.topWait - n);
+          if (this.topWait > 0 || this.ext) run = false;
+        }
       }
       const start = run && !this.ran, was = this.ticks; // (REC's count-in: the ticks before this block's)
       if (start) (this.runTicks = this.ticks), (this.tickAcc = 0);
@@ -1791,7 +1799,6 @@ export class Engine {
           this.ticks = (this.ticks + 1) >>> 0;
           seen = true;
           nt++;
-          this.tick0 = false; // (the editor's own tick came first: no MIDI tick 0 to wait for)
         }
       }
       const clock = seen && run; // the Main module's clock output: one pulse per block that saw a tick while running

@@ -192,6 +192,23 @@ int main(void)
     sim_host();
     expect_in_step("Start, then the first tick half a tick later", from, 30);
 
+    {   /* no clock before Start, its first clock a whole tick after it (the 1.21.0 qualification's host): the tracks start
+         * on that clock, at a host tempo below and above the FM-1's own 120 */
+        static const int bpm[] = {90, 150};
+        for (k = 0; k < 2; k++) {
+            reset();
+            host_tempo(bpm[k]);
+            from = log_n;
+            host_send(0xFAu, 0, 0);
+            host_t += host_per;
+            host_ticks(96 * 2);
+            sim_host();
+            snprintf(what, sizeof what, "%d bpm, no clock before Start, the first a tick after it", bpm[k]);
+            expect_in_step(what, from, 30);
+        }
+        host_tempo(90);
+    }
+
     {   /* (a) the clock stalls and goes on where it was (the host's tape paused too), (b) the missed ticks in a burst */
         static const int ms[] = {120, 300, 480, 800, 2000};
         for (k = 0; k < 5; k++) {
@@ -278,14 +295,18 @@ int main(void)
     sim_host();
     check("  0.6 s after: the FM-1's own tempo again", !eng_clock_is_external());
 
-    reset();                                        /* Start with no clock (a host sending its transport only): at once, on
-                                                     * the FM-1's own tempo (120 bpm: a sixteenth 125 ms) */
+    reset();                                        /* Start with no clock (a host sending its transport only): after 150 ms
+                                                     * waiting for a first clock, the FM-1's own tempo (120 bpm: a sixteenth
+                                                     * 125 ms) */
     from = log_n;
     host_send(0xFAu, 0, 0);
-    host_wait_ms(1000);
+    host_wait_ms(140);
     sim_host();
-    snprintf(what, sizeof what, "Start with no clock: the FM-1's own tempo at once (%d steps in 1 s)", log_n - from);
-    check(what, eng_run_ticks() >= 0 && !eng_clock_is_external() && log_n - from >= 8 && log_n - from <= 9);
+    check("Start with no clock: 140 ms on, still waiting for a first clock", eng_run_ticks() < 0 && log_n == from);
+    host_wait_ms(860);
+    sim_host();
+    snprintf(what, sizeof what, "  then the FM-1's own tempo (%d steps in the second's last 850 ms)", log_n - from);
+    check(what, eng_run_ticks() >= 0 && !eng_clock_is_external() && log_n - from >= 7 && log_n - from <= 8);
 
     reset();
     cfg.clock_in = 0;                               /* CLOCK IN off: none of it */
