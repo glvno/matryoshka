@@ -35,11 +35,11 @@ typedef struct {
     uint8_t on;                            /* the band runs: its gain is not 0, or it fades to 0 dB this block */
 } meq_band_t;
 static meq_band_t meq_b[3];
-static float meq_x[2][HALF_FRAMES];
+#define MEQ_LIM 524287.0f                  /* a band's output, Q16, held to +-8.0: MASTER's multiply stays in 32 bits */
 
-/* one band over the block, both sides: the EQ module's state variable filter (engine.c m_eq), its six numbers going
- * from c to t in straight lines when they changed (d != 0) */
-static void meq_svf(meq_band_t *b, const float *t, int ramp, uint32_t n)
+/* one band over the block, both sides (io: the engine's half, Q16, in place): the EQ module's state variable filter
+ * (engine.c m_eq), its six numbers going from c to t in straight lines when they changed (ramp) */
+static void meq_svf(meq_band_t *b, const float *t, int ramp, int32_t *const *io, uint32_t n)
 {
     uint32_t i, ch;
     float d[6], rn = 1.0f / (float)n;
@@ -47,25 +47,26 @@ static void meq_svf(meq_band_t *b, const float *t, int ramp, uint32_t n)
         d[i] = ramp ? (t[i] - b->c[i]) * rn : 0.0f;
     for (ch = 0; ch < 2u; ch++) {
         float a1 = b->c[0], a2 = b->c[1], a3 = b->c[2], c0 = b->c[3], c1 = b->c[4], c2 = b->c[5];
-        float s1 = b->s[ch][0], s2 = b->s[ch][1], *x = meq_x[ch];
+        float s1 = b->s[ch][0], s2 = b->s[ch][1];
+        int32_t *x = io[ch];
         if (ramp)
             for (i = 0; i < n; i++) {
-                float v0 = x[i], v3, v1, v2;
+                float v0 = (float)x[i], v3, v1, v2;
                 a1 += d[0]; a2 += d[1]; a3 += d[2]; c0 += d[3]; c1 += d[4]; c2 += d[5];
                 v3 = v0 - s2;
                 v1 = a1 * s1 + a2 * v3;
                 v2 = s2 + a2 * s1 + a3 * v3;
                 s1 = 2.0f * v1 - s1;
                 s2 = 2.0f * v2 - s2;
-                x[i] = c0 * v0 + c1 * v1 + c2 * v2;
+                x[i] = (int32_t)clampf(c0 * v0 + c1 * v1 + c2 * v2, MEQ_LIM);
             }
         else
             for (i = 0; i < n; i++) {
-                float v0 = x[i], v3 = v0 - s2;
+                float v0 = (float)x[i], v3 = v0 - s2;
                 float v1 = a1 * s1 + a2 * v3, v2 = s2 + a2 * s1 + a3 * v3;
                 s1 = 2.0f * v1 - s1;
                 s2 = 2.0f * v2 - s2;
-                x[i] = c0 * v0 + c1 * v1 + c2 * v2;
+                x[i] = (int32_t)clampf(c0 * v0 + c1 * v1 + c2 * v2, MEQ_LIM);
             }
         b->s[ch][0] = s1;
         b->s[ch][1] = s2;
@@ -75,19 +76,20 @@ static void meq_svf(meq_band_t *b, const float *t, int ramp, uint32_t n)
 }
 
 /* (measurement only) the same filter in the transposed direct form II: five multiplies a sample instead of seven */
-static void meq_df2(meq_band_t *b, const float *t, uint32_t n)
+static void meq_df2(meq_band_t *b, const float *t, int32_t *const *io, uint32_t n)
 {
     uint32_t i, ch;
     float g = t[1] / t[0], k = (1.0f / t[0] - 1.0f) / g - g, mh = t[3], mb = t[4] + k * mh, ml = t[5] + mh, gg = g * g;
     float b0 = (mh + mb * g + ml * gg) * t[0], b1 = 2.0f * (ml * gg - mh) * t[0], b2 = (mh - mb * g + ml * gg) * t[0];
     float a1 = 2.0f * (gg - 1.0f) * t[0], a2 = (1.0f - k * g + gg) * t[0];
     for (ch = 0; ch < 2u; ch++) {
-        float z1 = b->s[ch][0], z2 = b->s[ch][1], *x = meq_x[ch];
+        float z1 = b->s[ch][0], z2 = b->s[ch][1];
+        int32_t *x = io[ch];
         for (i = 0; i < n; i++) {
-            float v = x[i], y = b0 * v + z1;
+            float v = (float)x[i], y = b0 * v + z1;
             z1 = b1 * v - a1 * y + z2;
             z2 = b2 * v - a2 * y;
-            x[i] = y;
+            x[i] = (int32_t)clampf(y, MEQ_LIM);
         }
         b->s[ch][0] = z1;
         b->s[ch][1] = z2;
@@ -102,6 +104,7 @@ static __attribute__((noinline)) int meq_run(int32_t *l, int32_t *r, uint32_t n)
     static const float HZ_SHAPE[3][2] = {{MEQ_LOW_HZ, 0.0f}, {0.0f, 1.0f}, {MEQ_HIGH_HZ, 2.0f}};
     int16_t gain[3] = {(int8_t)meq_low, (int8_t)meq_mid, (int8_t)meq_high}, f = meq_freq;
     uint32_t i, k, any = 0, ql = 0, qr = 0;
+    int32_t *const io[2] = {l, r};
     for (k = 0; k < 3u; k++) {
         if (gain[k] > MEQ_GAIN_MAX) gain[k] = MEQ_GAIN_MAX;
         if (gain[k] < -MEQ_GAIN_MAX) gain[k] = -MEQ_GAIN_MAX;
@@ -110,8 +113,6 @@ static __attribute__((noinline)) int meq_run(int32_t *l, int32_t *r, uint32_t n)
     if (!any)
         return 0;
     for (i = 0; i < n; i++) {
-        meq_x[0][i] = (float)l[i];
-        meq_x[1][i] = (float)r[i];
         ql |= (uint32_t)l[i];
         qr |= (uint32_t)r[i];
     }
@@ -137,18 +138,14 @@ static __attribute__((noinline)) int meq_run(int32_t *l, int32_t *r, uint32_t n)
                 t[i] = b->c[i];
         }
         if (meq_kern)
-            meq_df2(b, t, n);
+            meq_df2(b, t, io, n);
         else
-            meq_svf(b, t, ramp, n);
+            meq_svf(b, t, ramp, io, n);
         b->on = gain[k] != 0;             /* (a band at 0 dB is the dry signal: its last block faded to it) */
         if (!ql && ring_endf(b->s[0], 2))  /* (D-1109: a ring past -144 dBFS on a silent side ends at exactly zero) */
             b->s[0][0] = b->s[0][1] = 0.0f;
         if (!qr && ring_endf(b->s[1], 2))
             b->s[1][0] = b->s[1][1] = 0.0f;
-    }
-    for (i = 0; i < n; i++) {
-        l[i] = (int32_t)clampf(meq_x[0][i], 524287.0f);   /* (+-8.0: MASTER's multiply stays in 32 bits) */
-        r[i] = (int32_t)clampf(meq_x[1][i], 524287.0f);
     }
     meq_fade = (uint8_t)(meq_b[0].on | meq_b[1].on | meq_b[2].on);
     return 1;
