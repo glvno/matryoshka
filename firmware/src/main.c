@@ -906,13 +906,48 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     return 0;
 }
 
+/* The settings record's extension (slotstore.c sl_write_ext, #1107): settings the 16-byte record has no room for, in
+ * the same sector, written with every settings record. Byte 0 its version (SET_EXT_VERSION), byte 1 how many bytes
+ * follow before the CRC (later settings append, and an older reader takes the bytes it knows), then the master EQ
+ * (master_eq.h meq_pack: LOW, MID, HIGH, MID FREQ), then the CRC-16 of everything before it. A settings record without
+ * one (an older firmware's: the erased flash reads 0xFF) or with a bad CRC leaves the master EQ flat. A firmware
+ * before it never reads there, and a settings record it writes has none. */
+#define SET_EXT_VERSION 1u
+#define SET_EXT_N MEQ_BYTES
+#define SET_EXT_LEN (2u + SET_EXT_N + 2u)
+static void settings_ext_pack(uint8_t *d)
+{
+    uint32_t crc;
+    d[0] = SET_EXT_VERSION;
+    d[1] = SET_EXT_N;
+    meq_pack(d + 2);
+    crc = m1_crc16(d, 2u + SET_EXT_N);
+    d[2u + SET_EXT_N] = (uint8_t)crc;
+    d[3u + SET_EXT_N] = (uint8_t)(crc >> 8);
+}
+/* the settings record's extension into the settings (patch_boot, after the record) */
+static void settings_ext_load(void)
+{
+    uint8_t d[SL_EXT_MAX];
+    uint32_t n;
+    meq_defaults();
+    if (sl_ext(SL_SETTINGS, d, SL_EXT_MAX) || d[0] != SET_EXT_VERSION || d[1] < SET_EXT_N || (n = 2u + d[1]) + 2u > SL_EXT_MAX
+        || m1_crc16(d, n) != (uint32_t)(d[n] | d[n + 1u] << 8))
+        return;
+    meq_unpack(d + 2);
+}
+
 /* a store write: the sound goes on (storage_hw.c st_op runs the flash's erases and programs in steps the audio
- * interrupt renders between, #656) */
+ * interrupt renders between, #656). The settings record takes its extension along */
 static int store_write(uint32_t id, const char *name, const uint8_t *p, uint32_t len)
 {
+    uint8_t ext[SET_EXT_LEN];
     if (!flash_ok)
         return -1;
-    return sl_write(id, name, p, len);
+    if (id != SL_SETTINGS)
+        return sl_write(id, name, p, len);
+    settings_ext_pack(ext);
+    return sl_write_ext(id, name, p, len, ext, SET_EXT_LEN);
 }
 
 /* the settings record alone, now (panel.c: HOME + SAVE on the quick start turns it off for good, D-247; the global
@@ -1305,6 +1340,7 @@ static void patch_boot(void)                    /* the slot the settings record 
         uint64_t up;
         cur_preset = slot;
         sel = module;
+        settings_ext_load();                     /* (the master EQ, before factory_sync may write the record again) */
         if ((msg = factory_sync(&boot_msg_then, &up)) != 0) {   /* (the slots it rewrote load from the bank next) */
             boot_msg = msg;
             boot_msg_ms = 4000;

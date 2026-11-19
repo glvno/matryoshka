@@ -28,6 +28,34 @@ static float meq_hz(uint32_t f)
     return 100.0f * exp2_f((float)(f < MEQ_FREQS ? f : MEQ_FREQS - 1u) * (1.0f / 6.0f));
 }
 
+/* the settings as bytes (main.c's settings extension): LOW, MID, HIGH (half decibels, two's complement), MID FREQ */
+#define MEQ_BYTES 4u
+static void meq_pack(uint8_t *d)
+{
+    d[0] = meq_low;
+    d[1] = meq_mid;
+    d[2] = meq_high;
+    d[3] = meq_freq;
+}
+/* a gain byte held to +-MEQ_GAIN_MAX */
+static uint8_t meq_gain_of(int32_t g)
+{
+    return (uint8_t)(int8_t)(g > MEQ_GAIN_MAX ? MEQ_GAIN_MAX : g < -MEQ_GAIN_MAX ? -MEQ_GAIN_MAX : g);
+}
+static void meq_unpack(const uint8_t *d)
+{
+    meq_low = meq_gain_of((int8_t)d[0]);
+    meq_mid = meq_gain_of((int8_t)d[1]);
+    meq_high = meq_gain_of((int8_t)d[2]);
+    meq_freq = (uint8_t)(d[3] < MEQ_FREQS ? d[3] : MEQ_FREQ_DEFAULT);
+}
+/* flat, MID FREQ at 1 kHz: as made, FACTORY RESET, a settings record without the EQ */
+static void meq_defaults(void)
+{
+    meq_low = meq_mid = meq_high = 0;
+    meq_freq = MEQ_FREQ_DEFAULT;
+}
+
 typedef struct {
     float c[6];                            /* eq_design's six numbers (the filter as it runs) */
     float s[2][2];                         /* per side its two states */
@@ -98,6 +126,36 @@ static void meq_df2(meq_band_t *b, const float *t, int32_t *const *io, uint32_t 
         b->c[i] = t[i];
 }
 
+/* (measurement only) the biquad of t (eq_design's six numbers) in the transposed direct form II: b0, b1, b2, a1, a2 */
+static void meq_bq_of(const float *t, float *q)
+{
+    float g = t[1] / t[0], k = (1.0f / t[0] - 1.0f) / g - g, mh = t[3], mb = t[4] + k * mh, ml = t[5] + mh, gg = g * g;
+    q[0] = (mh + mb * g + ml * gg) * t[0];
+    q[1] = 2.0f * (ml * gg - mh) * t[0];
+    q[2] = (mh - mb * g + ml * gg) * t[0];
+    q[3] = 2.0f * (gg - 1.0f) * t[0];
+    q[4] = (1.0f - k * g + gg) * t[0];
+}
+/* (measurement only) all three bands in one pass a side, a band at 0 dB as the identity (q = 1, 0, 0, 0, 0) */
+static void meq_fused(float q[3][5], int32_t *const *io, uint32_t n)
+{
+    uint32_t i, ch;
+    for (ch = 0; ch < 2u; ch++) {
+        float z10 = meq_b[0].s[ch][0], z20 = meq_b[0].s[ch][1], z11 = meq_b[1].s[ch][0], z21 = meq_b[1].s[ch][1];
+        float z12 = meq_b[2].s[ch][0], z22 = meq_b[2].s[ch][1];
+        int32_t *x = io[ch];
+        for (i = 0; i < n; i++) {
+            float v = (float)x[i], y;
+            y = q[0][0] * v + z10; z10 = q[0][1] * v - q[0][3] * y + z20; z20 = q[0][2] * v - q[0][4] * y; v = y;
+            y = q[1][0] * v + z11; z11 = q[1][1] * v - q[1][3] * y + z21; z21 = q[1][2] * v - q[1][4] * y; v = y;
+            y = q[2][0] * v + z12; z12 = q[2][1] * v - q[2][3] * y + z22; z22 = q[2][2] * v - q[2][4] * y;
+            x[i] = (int32_t)clampf(y, MEQ_LIM);
+        }
+        meq_b[0].s[ch][0] = z10; meq_b[0].s[ch][1] = z20; meq_b[1].s[ch][0] = z11; meq_b[1].s[ch][1] = z21;
+        meq_b[2].s[ch][0] = z12; meq_b[2].s[ch][1] = z22;
+    }
+}
+
 /* the EQ over the engine's half (Q16, in place); 0 when every band is at 0 dB and none fades: the half is untouched */
 static __attribute__((noinline)) int meq_run(int32_t *l, int32_t *r, uint32_t n)
 {
@@ -116,6 +174,7 @@ static __attribute__((noinline)) int meq_run(int32_t *l, int32_t *r, uint32_t n)
         ql |= (uint32_t)l[i];
         qr |= (uint32_t)r[i];
     }
+    float q[3][5] = {{1.0f, 0.0f, 0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 0.0f, 0.0f}};
     for (k = 0; k < 3u; k++) {
         meq_band_t *b = &meq_b[k];
         int16_t fk = k == 1u ? f : 0;
@@ -137,7 +196,11 @@ static __attribute__((noinline)) int meq_run(int32_t *l, int32_t *r, uint32_t n)
             for (i = 0; i < 6u; i++)
                 t[i] = b->c[i];
         }
-        if (meq_kern)
+        if (meq_kern == 2u) {
+            meq_bq_of(t, q[k]);
+            for (i = 0; i < 6u; i++)
+                b->c[i] = t[i];
+        } else if (meq_kern)
             meq_df2(b, t, io, n);
         else
             meq_svf(b, t, ramp, io, n);
@@ -147,21 +210,8 @@ static __attribute__((noinline)) int meq_run(int32_t *l, int32_t *r, uint32_t n)
         if (!qr && ring_endf(b->s[1], 2))
             b->s[1][0] = b->s[1][1] = 0.0f;
     }
+    if (meq_kern == 2u)
+        meq_fused(q, io, n);
     meq_fade = (uint8_t)(meq_b[0].on | meq_b[1].on | meq_b[2].on);
     return 1;
-}
-
-/* the analog half (o, after USB audio took it) again from the equalized engine half, at MASTER's level; left as it is
- * while every band is at 0 dB. Out of line: the audio interrupt runs from RAM (build.py FAST_TEXT), this from the flash */
-static __attribute__((noinline)) void meq_analog(int32_t *o)
-{
-    uint32_t i;
-    int32_t m;
-    if (!meq_run(eng_l, eng_r, HALF_FRAMES))
-        return;
-    m = snd_muted ? 0 : (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
-    for (i = 0; i < HALF_FRAMES; i++) {
-        o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
-        o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;
-    }
 }

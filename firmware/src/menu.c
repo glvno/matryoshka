@@ -27,7 +27,8 @@ static void defaults_now(void);
 
 static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "COUNT-IN", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
                                               "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "BATTERY", "UPDATE MODE", "FACTORY RESET",
-                                              "QUICK START", "TEMPO", "CLOCK OUT", "OUTPUT", "PROCESSOR", "EDITOR", "3.5MM OUT", "USB RETURN", "NAME"};
+                                              "QUICK START", "TEMPO", "CLOCK OUT", "OUTPUT", "PROCESSOR", "EDITOR", "3.5MM OUT", "USB RETURN", "NAME",
+                                              "TIME SIG", "LOW", "MID", "HIGH", "MID FREQ"};
 #define INFO_N 7u
 static const uint8_t INFO_ROWS[INFO_N] = {MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_CORES, MR_DEVICE_NAME};   /* the INFO tab's list, top down */
 #define MENU_ARM_MS 5000u                               /* an armed SYSTEM row waits this long for GLO's hold */
@@ -100,6 +101,37 @@ static void menu_value(uint32_t row, char *out)
     case MR_EDITOR: p = put(p, cfg.editor_ignore ? "IGNORE" : "ALLOW"); break;
     case MR_OUT35: p = put(p, ONOFF[!out_off]); break;
     case MR_USB_RETURN: fmt_int(p, di_level); p += str_len(p); *p++='%'; break;
+    case MR_EQ_LOW:                              /* the master EQ's gains (#1107): 0 DB, +1.5 DB, -12.0 DB */
+    case MR_EQ_MID:
+    case MR_EQ_HIGH: {
+        int32_t g = (int8_t)(row == MR_EQ_LOW ? meq_low : row == MR_EQ_MID ? meq_mid : meq_high), a = g < 0 ? -g : g;
+        if (g)
+            *p++ = g < 0 ? '-' : '+';
+        fmt_int(p, a / 2);
+        p += str_len(p);
+        if (g) {
+            *p++ = '.';
+            *p++ = a & 1 ? '5' : '0';
+        }
+        p = put(p, " DB");
+        break;
+    }
+    case MR_EQ_FREQ: {                           /* 100 HZ .. 890 HZ, 1.0 KHZ .. 8.0 KHZ */
+        int32_t hz = (int32_t)(meq_hz(meq_freq) + 0.5f);
+        if (hz < 1000) {
+            fmt_int(p, hz);
+            p += str_len(p);
+            p = put(p, " HZ");
+        } else {
+            hz = (hz + 50) / 100;
+            fmt_int(p, hz / 10);
+            p += str_len(p);
+            *p++ = '.';
+            *p++ = (char)('0' + hz % 10);
+            p = put(p, " KHZ");
+        }
+        break;
+    }
     case MR_DEVICE_NAME: p=put(p, di_name[0] ? di_name : "Matryoshka"); break;
     case MR_VERSION: p = put(p, FELUCCA_VERSION); break;
     case MR_CORES: p = put(p, cores_up == 2 ? "2 CORES" : "1 CORE"); break;   /* (#271: main.c c1_poll) */
@@ -213,10 +245,10 @@ static void menu_draw(int full)
         text_bc(&FONT_S, 8, 222, menu_tab == MT_GUIDE ? HINT_MENU_GUIDE : HINT_MENU_INFO, C_HINT, C_BG, 226, TA_LEFT);   /* (controls.h) */
         shown = menu_tab;
     }
-    for (t = 0; t < MT_COUNT; t++) {     /* the tabs: chips, the open one in seafoam (as a device's pages) */
-        uint32_t w = text_w(&FONT_S, MENU_TAB_NAME[t], -1) + 12u;
+    for (t = 0; t < MT_COUNT; t++) {     /* the tabs: chips, the open one in seafoam (as a device's pages; six fit in 240) */
+        uint32_t w = text_w(&FONT_S, MENU_TAB_NAME[t], -1) + 10u;
         text_bc(&FONT_S, x, 24, MENU_TAB_NAME[t], t == menu_tab ? C_BG : C_DIM, t == menu_tab ? 0x7E38u : C_TRACK, w, TA_CENTER);
-        x += w + 3u;
+        x += w + 2u;
     }
     text_bc(&FONT_L, 8, 42, menu_tab == MT_GUIDE ? "Guide" : "Info", C_ACC, C_BG, 200, TA_LEFT);
     if (menu_tab == MT_GUIDE) {
@@ -309,6 +341,26 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
         if ((uint32_t)v != gt_meter) {
             gt_set_meter((uint32_t)v, fm1_ms);
             m1_tempo_now();
+        }
+        break;
+    }
+    case MR_EQ_LOW:                                     /* the master EQ (#1107): half a decibel a click; kept 5 s later, */
+    case MR_EQ_MID:                                     /* without SAVE, as TEMPO (tempo_glo.h gt_changed) */
+    case MR_EQ_HIGH: {
+        volatile uint8_t *g = row == MR_EQ_LOW ? &meq_low : row == MR_EQ_MID ? &meq_mid : &meq_high;
+        uint8_t v = meq_gain_of((int8_t)*g + s);
+        if (v != *g) {
+            *g = v;
+            gt_changed(fm1_ms);
+        }
+        break;
+    }
+    case MR_EQ_FREQ: {                                  /* MID FREQ: a sixth of an octave a click */
+        int32_t v = (int32_t)meq_freq + s;
+        v = v < 0 ? 0 : v > (int32_t)MEQ_FREQS - 1 ? (int32_t)MEQ_FREQS - 1 : v;
+        if ((uint32_t)v != meq_freq) {
+            meq_freq = (uint8_t)v;
+            gt_changed(fm1_ms);
         }
         break;
     }

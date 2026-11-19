@@ -37,6 +37,21 @@ static volatile uint8_t st_busy;                   /* a store write runs (storag
                                                     * back, which the overload guard must not take for the patch's load */
 static int32_t eng_l[HALF_FRAMES], eng_r[HALF_FRAMES];
 #include "master_eq.h"                             /* GLO > EQ (#1107): on the analog output, after USB audio took the half */
+
+/* the analog half (o, after USB audio took it) again from the equalized engine half, at MASTER's level; left as it is
+ * while every band is at 0 dB. Out of line: the audio interrupt runs from RAM (build.py FAST_TEXT), this from the flash */
+static __attribute__((noinline)) void meq_analog(int32_t *o)
+{
+    uint32_t i;
+    int32_t m;
+    if (!meq_run(eng_l, eng_r, HALF_FRAMES))
+        return;
+    m = snd_muted ? 0 : (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
+    for (i = 0; i < HALF_FRAMES; i++) {
+        o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
+        o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;
+    }
+}
 #if FELUCCA_UAC
 /* USB audio out (usb.c, included after this file): the ring's fill is sampled as a half starts, then the half's I2S words
  * (24 bit in the low bits; silence while the engine is stopped) go to the ring, >> 8 to 16 bit */
