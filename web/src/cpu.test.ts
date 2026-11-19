@@ -150,7 +150,7 @@ describe('CPU estimate against the test rig (docs/measurements/cpu-survey-2026-1
 
 // Today's poly factory patches at several voice counts, as shipped ("NAME vN") and with every stage of their master FX
 // bus on ("NAME vN fx"), on the same build: the estimate follows the rig as voices are added (it read Expander S at
-// seven voices with every stage on 9.7 points over the rig before its voice factor came from the rig's rises, #870)
+// seven voices with every stage on 9.7 points over the rig before its voice factor came from the rig's rises, #782)
 describe('CPU estimate of the poly factory patches by voices (docs/measurements/cpu-survey-2026-11-19-rig-main121-poly*.json)', () => {
   const rig = steadyPeaks([readSurvey('cpu-survey-2026-11-19-rig-main121-poly.json'), readSurvey('cpu-survey-2026-11-19-rig-main121-poly-run.json')]);
   for (const [name, us] of rig)

@@ -139,7 +139,7 @@ preset: Highpass Pluck
   envelopes / a (2) = 0.001 s
   envelopes / d (2) = 0.4 s
   envelopes / s (2) = 0.2
-  # eight keys at once peaked 1.18 at 1.58, and their chord is the loudness rule's bound (#870): gain only
+  # eight keys at once peaked 1.18 at 1.58, and their chord is the loudness rule's bound (#782): gain only
   level = 0.92
 
 preset: Unison Lead
