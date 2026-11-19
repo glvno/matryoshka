@@ -725,8 +725,11 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 /* The deck: the performance controls and the keyboard, across the whole window under the sidebar and the patch, like
    the FM-1's keys under its panel. Folded, only the buttons stay. */
 .deck { grid-column: 1 / -1; grid-row: 3; display: grid; grid-template-columns: subgrid; background: var(--panel); border-top: 1px solid var(--line); user-select: none; }
-/* the deck's columns line up with the workspace's: the buttons under the sidebar, the wheels' column (drawn over it), the keys */
-.deck-row { grid-column: 1 / -1; height: 92px; display: grid; grid-template-columns: subgrid; column-gap: 0; padding: 6px 0 8px; }
+/* the deck's columns line up with the workspace's: the buttons under the sidebar, the wheels' column (drawn over it), the keys.
+   Its one grid row takes the whole height at once (100%) instead of being sized from its content and then stretched: the
+   keys' strip has no height of its own (container-type: size), and Chrome sometimes kept that height (just the strip's
+   scrollbar) after a load or a resize that made the strip scroll, so the keys vanished (#1116) */
+.deck-row { grid-column: 1 / -1; height: 92px; display: grid; grid-template-columns: subgrid; grid-template-rows: 100%; column-gap: 0; padding: 6px 0 8px; }
 .deck-row > .deck-controls { grid-column: 1; margin: 0 8px; }
 .deck-row > .deck-keys { grid-column: 3; margin: 0 8px; display: flex; gap: 8px; min-width: 0; }
 /* the wheels' column: its jacks sit half over its top edge like the dock's (a see-through band takes no pointer) */

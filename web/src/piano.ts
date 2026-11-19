@@ -78,6 +78,15 @@ export class Piano {
     for (const t of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) this.strip.addEventListener(t, (e) => this.up(e));
     window.addEventListener('blur', () => { for (const id of [...this.pointers.keys()]) this.release(id); });
     this.setOctave(0, false);
+    // the strip's width sets the keys' width (style.css .piano-bed), so after a resize the old scroll position shows other
+    // keys: bring the lettered ones back to the middle (#1116)
+    if (typeof ResizeObserver === 'undefined') return;
+    let width = 0;
+    new ResizeObserver(() => {
+      const w = this.strip.clientWidth;
+      if (w && w !== width) this.reveal(false);
+      width = w;
+    }).observe(this.strip);
   }
 
   /** the computer keyboard's octave changed: move the letters and bring them into view */
