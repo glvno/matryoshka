@@ -244,11 +244,11 @@ export function search(p: Patch, defs: Record<string, ModuleDef>, cat: Catalog, 
   }
   for (const m of cat.modules) {
     const r = rank(m.name, m.keywords, [m.type, m.name], MODULE_BONUS + common(m.type));
-    if (r >= 0) out.push({ hit: { kind: 'module', type: m.type, label: m.name, detail: '+ new module' }, r });
+    if (r >= 0) out.push({ hit: { kind: 'module', type: m.type, label: m.name, detail: 'module' }, r });
   }
   for (const a of cat.assemblies) {
     const r = rank(a.def.name, a.keywords, [a.def.name], 0);
-    if (r >= 0) out.push({ hit: { kind: 'assembly', def: a.def, label: a.def.name, detail: `+ new assembly · ${a.shelf}` }, r });
+    if (r >= 0) out.push({ hit: { kind: 'assembly', def: a.def, label: a.def.name, detail: `assembly · ${a.shelf}` }, r });
   }
   for (const b of cat.blueprints) {
     const r = rank(b.name, b.chain, [b.name], -1);
@@ -279,6 +279,17 @@ export function wire(p: Patch, defs: Record<string, ModuleDef>, a: QPort, b: QPo
     // the thumb of a merged assembly jack feeds the same group of inputs
     for (const asm of assembliesOf(p)) for (const t of findRef(asm, 'in', to.module, to.port)?.also ?? []) one(from, t);
   }
+}
+
+/** whether the cable `wire` would make between `a` and `b` is there already (every end of it): then it would change nothing */
+export function alreadyWired(p: Patch, defs: Record<string, ModuleDef>, a: QPort, b: QPort): boolean {
+  const q = structuredClone(p);
+  try {
+    wire(q, defs, a, b);
+  } catch {
+    return false;
+  }
+  return JSON.stringify(q) === JSON.stringify(p);
 }
 
 // ---- where a new card goes

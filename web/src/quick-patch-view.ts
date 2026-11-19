@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Quick patch (#1091) on screen: one field at the pointer for module names, port names and typed chains, the current card's
 // ports in a ring round it (outputs on the right arc, inputs on the left), a strip of sliders for the parameter a cable
-// just reached, and the trail of cards followed along cables. quick-patch.ts holds the rules; the editor makes the changes,
-// each chain one undo step (Editor.beginStep), and moves the view to keep the chain in sight (Editor.showRects).
+// just reached, and the trail of cards followed along cables. A cable picked up folds the ring into a plug beside the
+// field: no ring shows until the card it goes to is picked (owner 2026-11-19). quick-patch.ts holds the rules; the editor
+// makes the changes, each chain one undo step (Editor.beginStep), and moves the view to keep the chain in sight
+// (Editor.showRects).
 import type { Editor } from './editor';
 import { DEFS } from './modules';
 import { depthText, parseDepth, storedDepth } from './depth';
@@ -10,8 +12,9 @@ import { formatValue, longName, moduleTag } from './labels';
 import { DEPTH_MAX, fromUnit, toUnit, type ParamDef, type Patch } from './patch';
 import { isPin, parameterInputs } from './parameter-routing';
 import {
-  besideSpot, buildChain, cardExists, cardPorts, cardTitle, ChainError, chainText, farEnds, fit, guessSize, halfRings, halfSectors, isChainText,
-  matchPorts, moveCard, parseChain, portCables, radialPlace, rankPorts, removeBlueprint, RINGS_MAX, sameCard, saveBlueprint, search, sectorPath, Trail, wire,
+  alreadyWired, besideSpot, buildChain, cardExists, cardKey, cardPorts, cardTitle, ChainError, chainText, defaultPort, farEnds, fit, guessSize, halfRings,
+  halfSectors, isChainText, matchPorts, moveCard, parseChain, patchCards, portCables, radialPlace, rankPorts, removeBlueprint, RINGS_MAX, sameCard,
+  saveBlueprint, search, sectorPath, Trail, wire,
   type Built, type Card, type Catalog, type FarEnd, type Hit, type Link, type Place, type QPort, type Statement,
 } from './quick-patch';
 import { parseValue } from './value-input';
@@ -27,8 +30,9 @@ export interface QuickHost {
   onBlueprints?: () => void;
 }
 
-/** one line of the list under the field: what Enter (or a click) does; `io`: the direction icon of the port it names */
-interface Choice { label: string; detail?: string; port?: QPort; io?: { dir: 'in' | 'out'; kind: string }; follow?: boolean; run: (shift: boolean) => void }
+/** one line of the list under the field: what Enter (or a click) does; `io`: the direction icon of the port it names;
+ *  `card`: the card in the patch it goes to (outlined on the canvas while the line is selected) */
+interface Choice { label: string; detail?: string; port?: QPort; card?: Card; io?: { dir: 'in' | 'out'; kind: string }; follow?: boolean; run: (shift: boolean) => void }
 
 /** the parameter a cable just reached: the strip's sliders (its value, and the depth of the pin that carries it) */
 interface Sliders { card: Card; module: number; params: string[]; pin?: 0 | 1 }
@@ -38,6 +42,13 @@ const RADIAL_CORE = 78;
 /** the room beside the rings for each half's direction icon */
 const RADIAL_ICON = 24;
 const RADIAL_BAND = 58;
+/** the socket's room round the field while a cable is held and no card is picked, and how far under the centre line the
+ *  plug sits (radians): clear of the label of the sector it points at */
+const SOCKET_RIM = 16;
+const PLUG_TILT = 0.22;
+
+/** a port as one sector of a ring: its direction, a jack or a row thumb, its name */
+const portKey = (q: QPort): string => `${q.dir}:${q.param ? 'row' : 'jack'}:${q.name}`;
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag);
@@ -124,7 +135,7 @@ export class QuickPatch {
     this.svgBox.setAttribute('aria-hidden', 'true');   // (the list says the same to a screen reader)
     this.core.append(this.coreName, this.field);
     this.ring.append(this.svgBox, this.core);
-    this.field.addEventListener('input', () => { this.page = 0; this.sel = 0; this.error = ''; this.render(); });
+    this.field.addEventListener('input', () => { this.page = 0; this.error = ''; this.resetSel(); this.render(); });
     this.field.addEventListener('keydown', (e) => this.key(e));
     // the panel, ring and strip keep the field's focus: a press on a chip or a list line acts without taking it
     for (const part of [this.panel, this.ring]) part.addEventListener('mousedown', (e) => { if (e.target !== this.field) e.preventDefault(); });
@@ -173,6 +184,7 @@ export class QuickPatch {
     this.panel.remove();
     this.ring.remove();
     this.field.blur();
+    this.markCanvas();
     this.settle();
   }
 
@@ -234,9 +246,9 @@ export class QuickPatch {
     if (push) this.trail.push(card);
     else if (!sameCard(this.trail.current, card)) this.trail.push(card);
     this.page = 0;
-    this.sel = 0;
     this.far = null;
     this.field.value = '';
+    this.resetSel();
   }
 
   /** a new module or assembly: beside the held cable's card (after it for an output, before it for an input), else
@@ -256,24 +268,25 @@ export class QuickPatch {
     this.goTo(card);
   }
 
-  /** pick a port: without a cable, pick one up there; with one, drop it here and stay on this card */
+  /** pick a port: without a cable, pick one up there (the ring folds into the plug); with one, drop it here and stay on
+   *  this card */
   private pick(port: QPort): void {
     const at = this.at;
     if (!at) return;
     if (!this.held) {
       this.held = { card: at, port };
       this.field.value = '';
-      this.sel = 0;
       this.sliders = null;
+      this.resetSel();
       this.render();
       return;
     }
     const held = this.held;
-    if (sameCard(held.card, at)) return this.fail('a cable goes to another card: type its name');
     if (fit(held.port, port) < 0) return this.fail(`${port.name} does not take this cable`);
-    this.startChange();
     const ed = this.ed;
     const [from, to] = held.port.dir === 'out' ? [{ card: held.card, port: held.port }, { card: at, port }] : [{ card: at, port }, { card: held.card, port: held.port }];
+    if (alreadyWired(ed.patch, DEFS, from.port, to.port)) return this.fail('that cable is already there: pick another jack, or Backspace lets it go');
+    this.startChange();
     if (!ed.transact(() => wire(ed.patch, DEFS, from.port, to.port))) return;
     this.links.push({ from: from.card, fromPort: from.port.name, to: to.card, toPort: to.port.name });
     this.held = null;
@@ -282,7 +295,10 @@ export class QuickPatch {
     this.field.value = '';
     this.sel = 0;
     this.page = 0;
+    // (the jack the cable went into flashes once in the ring this render draws)
+    this.landed = `${cardKey(at)}:${portKey(port)}`;
     this.render();
+    this.landed = '';
   }
 
   /** a chain that ends on a card left of the new cards that feed it: those cards move to before it, by signal flow */
@@ -368,7 +384,7 @@ export class QuickPatch {
     this.far = null;
     this.sliders = null;
     this.field.value = '';
-    this.sel = 0;
+    this.resetSel();
     this.render();
   }
 
@@ -414,8 +430,9 @@ export class QuickPatch {
   private key(e: KeyboardEvent): void {
     const text = this.field.value;
     const move = (d: number): void => {
-      if (!this.choices.length) return;
-      this.sel = (this.sel + d + this.choices.length) % this.choices.length;
+      const n = this.choices.length;
+      if (!n) return;
+      this.sel = this.sel < 0 ? (d > 0 ? 0 : n - 1) : (this.sel + d + n) % n;
       this.render();
     };
     if (e.key === 'Escape') {
@@ -424,7 +441,9 @@ export class QuickPatch {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (e.shiftKey && !this.held && this.at && !this.far) this.followOn();
-      else this.choices[this.sel]?.run(false);
+      else if (this.choices[this.sel]) this.choices[this.sel].run(false);
+      // (nothing typed or chosen while a cable is held: a quick ⏎⏎ does not jump to a card nobody named)
+      else if (this.inSocket()) this.fail('type the card it goes to, or ↓ to choose one');
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (e.altKey) return;
@@ -445,6 +464,7 @@ export class QuickPatch {
     } else if (e.key === 'Backspace' && !text && this.held) {
       e.preventDefault();
       this.held = null;
+      this.resetSel();
       this.render();
     }
   }
@@ -477,11 +497,46 @@ export class QuickPatch {
     }
     const set = this.sliders && this.valueChoice(t);
     if (set) return [set];
+    if (!t && this.inSocket()) return this.destinations();
     const ports = this.rankedPorts();
     const shown = t ? matchPorts(ports, t) : ports;
     const out: Choice[] = shown.map((q) => this.portChoice(q));
     if (t) for (const hit of search(this.patch, DEFS, this.host.catalog(), t)) out.push(this.hitChoice(hit));
     return out;
+  }
+
+  /** a cable held on its own card: the centre is the empty socket, no ring shows until the card it goes to is picked */
+  private inSocket(): boolean {
+    return !!this.held && !this.far && sameCard(this.held.card, this.at);
+  }
+
+  /** the list's selection after the text or the card changed: the first line, or none in the socket with nothing typed
+   *  (Enter there names no card until one is typed or chosen with ↓) */
+  private resetSel(): void {
+    this.sel = this.inSocket() && !this.field.value.trim() ? -1 : 0;
+  }
+
+  /** the cards a held cable could go to, for the list in the socket while nothing is typed: first the cards its card
+   *  already sends to that way (an output held: the cards its outputs feed), then the cards made in this Quick patch, then
+   *  the rest, a jack that takes the cable as it is before one that only accepts it; the cards that feed the other way (a
+   *  loop back) last. Each with the jack Enter would take there; at most eight */
+  private destinations(): Choice[] {
+    const held = this.held!;
+    const ends = (dir: 'in' | 'out'): Set<string> => new Set(cardPorts(this.patch, DEFS, held.card).filter((q) => q.dir === dir)
+      .flatMap((q) => farEnds(this.patch, DEFS, held.card, q).map((e) => cardKey(e.card))));
+    const ahead = ends(held.port.dir), behind = ends(held.port.dir === 'out' ? 'in' : 'out');
+    return patchCards(this.patch).filter((c) => !sameCard(c, held.card)).flatMap((card) => {
+      const best = defaultPort(cardPorts(this.patch, DEFS, card), held.port, this.cabled(card));
+      if (!best) return [];
+      const key = cardKey(card);
+      const rank = (ahead.has(key) ? 0 : behind.has(key) ? 6 : this.fresh.some((f) => sameCard(f, card)) ? 2 : 4) + (fit(held.port, best) === 0 ? 0 : 1);
+      const note = ahead.has(key) ? (held.port.dir === 'out' ? ' · already fed from it' : ' · already feeds it') : behind.has(key) ? ' · a loop back' : '';
+      const choice: Choice = {
+        label: cardTitle(this.patch, DEFS, card), detail: `${best.name}${note}`, card, io: { dir: best.dir, kind: best.param ? 'control' : best.kind },
+        run: () => { this.goTo(card); this.render(); },
+      };
+      return [{ rank, choice }];
+    }).sort((a, b) => a.rank - b.rank).slice(0, 8).map((x) => x.choice);
   }
 
   private typeOf(card: Card): string {
@@ -503,7 +558,10 @@ export class QuickPatch {
   }
 
   private hitChoice(hit: Hit): Choice {
+    // (the held cable's own card is not somewhere it can go; a new card says so in its name, beside the one in the patch)
+    const own = hit.kind === 'card' && !!this.held && sameCard(hit.card, this.held.card);
     const run = (): void => {
+      if (own) return this.fail('that is the card this cable starts from: pick another card');
       if (hit.kind === 'card') {
         this.goTo(hit.card);
         this.render();
@@ -512,7 +570,8 @@ export class QuickPatch {
       else this.build([{ kind: 'blueprint', name: hit.blueprint.name }], `bp ${hit.blueprint.name}`);
       this.render();
     };
-    return { label: hit.label, detail: hit.detail, run };
+    const label = hit.kind === 'module' || hit.kind === 'assembly' ? `New ${hit.label}` : hit.label;
+    return { label, detail: own ? 'where this cable starts' : hit.detail, ...(hit.kind === 'card' && !own ? { card: hit.card } : {}), run };
   }
 
   private blueprintChoices(rest: string): Choice[] {
@@ -584,12 +643,43 @@ export class QuickPatch {
     if (this.held && !cardExists(this.patch, this.held.card)) this.held = null;
     this.trail.keep((c) => cardExists(this.patch, c));
     this.choices = this.compute();
-    if (this.sel >= this.choices.length) this.sel = 0;
+    if (this.sel < 0 || this.sel >= this.choices.length) this.resetSel();
     this.renderTrail();
     this.renderList();
     this.renderRadial();
     this.renderStrip();
     this.position();
+    this.markCanvas();
+    // (a change to the patch redraws its cards after this: mark the new ones)
+    requestAnimationFrame(() => this.markCanvas());
+  }
+
+  /** the canvas's marks, each on its element: the class it has */
+  private marks = new Map<HTMLElement, string>();
+
+  /** a port's jack on its card on the canvas, a slider thumb for a parameter */
+  private jackOf(q: QPort): HTMLElement | null {
+    const end = q.param ? { module: q.param.module, port: '' } : q.ends[0];
+    return end ? this.ed.jackElement(end, q.dir, q.param?.param) : null;
+  }
+
+  /** on the canvas (owner 2026-11-19): the tutorial's glow, one ping and then still, on the card whose ring is shown and on
+   *  the jack the held cable is plugged into (for as long as it is held); a quiet still outline on the card or jack the
+   *  list's selection names, never a ring for that card. A mark stays on its element while it holds, so it pings once */
+  private markCanvas(): void {
+    const want = new Map<HTMLElement, string>();
+    const mark = (e: HTMLElement | null, cls: string): void => { if (e && !want.has(e)) want.set(e, cls); };
+    if (this.isOpen) {
+      const held = this.held;
+      if (held) mark(this.jackOf(held.port), 'qp-glow-jack');
+      if (this.at && !this.inSocket()) mark(this.ed.cardElement(this.at), 'qp-glow');
+      const named = this.choices[this.sel];
+      if (named?.card && !sameCard(named.card, this.at) && cardExists(this.patch, named.card)) mark(this.ed.cardElement(named.card), 'qp-candidate');
+      if (named?.port) mark(this.jackOf(named.port), 'qp-candidate-jack');
+    }
+    for (const [e, cls] of this.marks) if (want.get(e) !== cls) e.classList.remove(cls);
+    for (const [e, cls] of want) e.classList.add(cls);
+    this.marks = want;
   }
 
   private renderTrail(): void {
@@ -616,12 +706,13 @@ export class QuickPatch {
     const p = this.patch;
     const t = this.field.value.trim();
     const held = this.held ? `${cardTitle(p, DEFS, this.held.card)} ${this.held.port.name}` : '';
+    const socket = this.inSocket();
     this.field.placeholder = this.far ? 'choose the cable to follow'
+      : socket ? 'where to?'
       : this.held ? `holding ${held}: type where it goes`
       : this.at ? `a port of ${cardTitle(p, DEFS, this.at)}, or another module`
       : 'a module, or a chain: lfo.out > vca.cv';
-    const there = this.held && sameCard(this.held.card, this.at);
-    this.hint.textContent = this.error || (this.held && !t ? `Holding ${held}. ${there ? 'Type the module it goes to' : '⏎ drops it on the lit port'}; Backspace lets it go.` : '');
+    this.hint.textContent = this.error || (this.held && !t ? `Holding ${held}. ${socket ? 'Type the card it goes to, or ↓ to choose one' : '⏎ drops it on the lit port'}; Backspace lets it go.` : '');
     this.hint.classList.toggle('bad', !!this.error);
     this.list.replaceChildren(...this.choices.slice(0, 40).map((c, i) => {
       const li = el('li', i === this.sel ? 'sel' : '');
@@ -631,11 +722,11 @@ export class QuickPatch {
       if (c.io) li.append(ioIcon(c.io.dir, c.io.kind));
       li.append(el('span', c.port ? 'qp-label qp-name' : 'qp-label', c.label));
       if (c.detail) li.append(el('span', 'qp-detail', c.detail));
-      if (i === 0 && !t) li.append(el('kbd', '', '⏎'));
+      if (i === 0 && i === this.sel && !t) li.append(el('kbd', '', '⏎'));
       li.onclick = (e) => c.run(e.shiftKey);
       return li;
     }));
-    if (this.choices.length) this.field.setAttribute('aria-activedescendant', `qp-opt-${this.sel}`);
+    if (this.choices[this.sel]) this.field.setAttribute('aria-activedescendant', `qp-opt-${this.sel}`);
     else this.field.removeAttribute('aria-activedescendant');
     this.list.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
     this.last.hidden = !this.lastChain;
@@ -666,18 +757,20 @@ export class QuickPatch {
 
   /** the overlay: a translucent disc at the place Quick patch opened, the current card's name and the field in its centre,
    *  and rings of labelled sectors round it, the left half for the jacks that take a cable, the right for those that send.
-   *  Plain segments, not jacks: a port's signal is a small dot, its direction the icon beside its half */
+   *  Plain segments, not jacks: a port's signal is a small dot, its direction the icon beside its half. A cable held on its
+   *  own card shows no ring (it read as about to be wired to itself, owner 2026-11-19): the ring folds into one plug
+   *  beside the field and the centre is an empty socket, until the card it goes to is picked and its ring grows out */
   private renderRadial(): void {
     const at = this.at;
-    const rings = this.rings();
-    const held = this.held && at && !sameCard(this.held.card, at) ? this.held.port : null;
-    const fromHere = this.held && at && sameCard(this.held.card, at) ? this.held.port : null;
+    const socket = this.inSocket();
+    const rings = socket ? [] : this.rings();
+    const held = this.held && at && !socket ? this.held.port : null;
     // (the list's ports and the ring's are made apart: the same port by direction, name and thumb)
     const same = (a: QPort | null | undefined, b: QPort): boolean => !!a && a.dir === b.dir && a.name === b.name && !a.param === !b.param;
-    const chosen = fromHere ?? this.choices[this.sel]?.port;
+    const chosen = this.choices[this.sel]?.port;
     const first = !this.field.value.trim() ? this.choices[0]?.port : undefined;
-    // (room on each side for the halves' direction icons)
-    const size = 2 * (RADIAL_CORE + RADIAL_BAND * Math.max(1, rings.length)) + 8 + 2 * RADIAL_ICON;
+    // (room on each side for the halves' direction icons; the socket is the disc alone)
+    const size = 2 * (RADIAL_CORE + (socket ? SOCKET_RIM : RADIAL_BAND * Math.max(1, rings.length))) + 8 + 2 * RADIAL_ICON;
     const c = size / 2;
     const svg = document.createElementNS(SVGNS, 'svg');
     svg.setAttribute('class', 'qp-rings');
@@ -691,15 +784,15 @@ export class QuickPatch {
     };
     svg.append(node('circle', { class: 'qp-disc', cx: String(c), cy: String(c), r: String(c - RADIAL_ICON - 2) }));
     const sector = (q: QPort, s: { a0: number; a1: number; mid: number }, r0: number, r1: number): void => {
-      const g = node('g', { class: 'qp-sec' });
+      const g = node('g', { class: 'qp-sec', 'data-port': portKey(q) });
       const label = (r0 + r1) / 2;
       const tx = c + label * Math.cos(s.mid), ty = c + label * Math.sin(s.mid);
       g.append(node('path', { d: sectorPath(c, r0, r1, s.a0, s.a1) }));
       const f = held ? fit(held, q) : 0;
       const ends = !this.held ? farEnds(this.patch, DEFS, at!, q) : [];
       if (held) g.classList.add(f === 0 ? 'lit' : f > 0 ? 'dim' : 'off');
-      if (fromHere && !same(fromHere, q)) g.classList.add('off');
       if (same(chosen, q)) g.classList.add('sel');
+      if (this.landed === `${cardKey(at!)}:${portKey(q)}`) g.classList.add('flash');
       // the label fits its sector: as many letters as the arc has room for, the whole name in the tooltip
       const room = Math.max(3, Math.floor(Math.min((s.a1 - s.a0) * label, r1 - r0 + 40) / 6.6));
       const text = q.name.length > room ? `${q.name.slice(0, room - 1)}…` : q.name;
@@ -718,6 +811,7 @@ export class QuickPatch {
       halfSectors(ring.left.length, 'left').forEach((s, i) => sector(ring.left[i], s, r0, r1));
       halfSectors(ring.right.length, 'right').forEach((s, i) => sector(ring.right[i], s, r0, r1));
     });
+    if (this.held) this.drawPlug(svg, c, socket);
     // the halves' direction icons, level with the centre outside the rings
     if (rings.length) {
       const place = (icon: SVGSVGElement, x: number): void => {
@@ -733,15 +827,64 @@ export class QuickPatch {
       more.addEventListener('click', () => { this.page++; this.render(); });
       svg.append(more);
     }
-    // the centre: the card's tag and name over the field
+    // the centre: the card's tag and name over the field; in the socket, the end the cable is plugged into, in its colour
     this.core.style.width = this.core.style.height = `${RADIAL_CORE * 2 - 8}px`;
-    this.coreName.replaceChildren(at ? cardTitle(this.patch, DEFS, at) : 'Quick patch');
-    if (at?.kind === 'module') {
-      const m = this.patch.modules.find((x) => x.id === at.id);
+    if (socket) {
+      const hp = this.held!.port;
+      this.coreName.replaceChildren(el('span', `qp-socket-label ${hp.param ? 'control' : hp.kind}`, `${cardTitle(this.patch, DEFS, this.held!.card)} ${hp.name}`));
+    } else {
+      this.coreName.replaceChildren(at ? cardTitle(this.patch, DEFS, at) : 'Quick patch');
+      const m = at?.kind === 'module' ? this.patch.modules.find((x) => x.id === at.id) : undefined;
       if (m) this.coreName.prepend(el('span', `mtag ${moduleTag(m.type).family}`, moduleTag(m.type).tag));
     }
-    this.svgBox.replaceChildren(svg);
+    // the ring folding into the plug (a cable picked up: the jack it is plugged into flashes once as it folds), growing out
+    // of the socket (a card picked, or the cable let go)
+    const was = this.svgBox.firstElementChild;
+    if (was && this.wasSocket !== socket) {
+      let old: SVGSVGElement | null = null;
+      if (socket) {
+        old = was.cloneNode(true) as SVGSVGElement;
+        old.classList.remove('qp-grow', 'qp-appear');
+        old.classList.add('qp-collapse');
+        const key = portKey(this.held!.port);
+        for (const g of old.querySelectorAll('.qp-sec')) g.classList.toggle('flash', g.getAttribute('data-port') === key);
+        const gone = old;
+        window.setTimeout(() => gone.remove(), 340);
+      }
+      this.morph = { cls: socket ? 'qp-appear' : 'qp-grow', old };
+      queueMicrotask(() => { this.morph = null; });
+    }
+    if (this.morph) svg.classList.add(this.morph.cls);
+    this.svgBox.replaceChildren(svg, ...(this.morph?.old ? [this.morph.old] : []));
+    this.wasSocket = socket;
     this.ring.style.width = this.ring.style.height = `${size}px`;
+  }
+
+  /** the jack the cable went into this render (it flashes once), and whether the last render drew the socket */
+  private landed = '';
+  private wasSocket = false;
+  /** the fold or growth begun in this task: a second render in it (an action renders, then its caller) keeps it */
+  private morph: { cls: 'qp-grow' | 'qp-appear'; old: SVGSVGElement | null } | null = null;
+
+  /** the held cable as one plug in its signal's colour at the field's edge, tip outwards, a little under the centre line
+   *  (clear of the label of the sector it points at): on the left for a cable from an output (it goes into a card's left,
+   *  input half), on the right for one from an input. In the socket, the dashed rim round the field too */
+  private drawPlug(svg: SVGSVGElement, c: number, socket: boolean): void {
+    const q = this.held!.port;
+    const kind = q.param ? 'control' : q.kind;
+    const make = <K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>): SVGElementTagNameMap[K] => {
+      const e = document.createElementNS(SVGNS, tag);
+      for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
+      return e;
+    };
+    if (socket) svg.append(make('circle', { class: `qp-socket-rim ${kind}`, cx: c, cy: c, r: RADIAL_CORE + SOCKET_RIM / 2 }));
+    // (its inner end just clear of the field's corner, its tip into the first ring's band)
+    const a = q.dir === 'out' ? Math.PI - PLUG_TILT : PLUG_TILT, r = RADIAL_CORE + 6;
+    const x = c + r * Math.cos(a), y = c + r * Math.sin(a);
+    const plug = make('g', { class: `qp-plug ${kind}`, transform: `translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${(a * 180 / Math.PI).toFixed(1)})` });
+    // a jack plug seen from the side: the sleeve inside, the tip out towards the jack it goes into
+    plug.append(make('rect', { x: -15, y: -4.5, width: 11, height: 9, rx: 2 }), make('path', { class: 'tip', d: 'M-4 -2.5 H3 L5 0 L3 2.5 H-4 Z' }));
+    svg.append(plug);
   }
 
   private renderStrip(): void {
