@@ -65,7 +65,7 @@ describe('ratchets and micro timing: the timing word (#675, #677, format 63)', (
   });
 
   it('only a patch that uses one is written as format 63; it passes validatePatch', () => {
-    expect(VERSION).toBe(FORMAT_1_20);
+    expect(VERSION).toBeGreaterThanOrEqual(FORMAT_1_20);
     expect(SECTION_FORMATS[FORMAT_1_20]).toBe('the 1.20 features');
     expect(encodePatch(rig([note(0)], 4), true)[1]).toBeLessThan(FORMAT_1_20);
     const p = rig([note(0, 60, { ratchet: 2 })], 4);

@@ -703,6 +703,40 @@ kit('euclid-tempo', (add, wire) => {
   events['euclid-tempo'] = ev;
   ends['euclid-tempo'] = 128 * 500 + 900 * 150 + 128 * 100;
 }
+// EQ (#1107): three bands in a row on noise (low shelf boost, bell cut, high shelf boost); the extremes in a row (a low
+// shelf cut at 10 Hz, a high shelf boost and a narrow bell boost at the top of the band); a saw through a resonant low
+// pass, and through a high pass at 10 Hz, a notch and a high pass high up; then freq and gain swept through the pins
+// over the whole range, and the shape and q switched and moved through them (the coefficients' ramps)
+kit('eq-shelves', (add, wire) => {
+  const nz = add('noise', 0, 0, { level: 0.3 });
+  const a = add('eq', 0, 0, { shape: 0, freq: 120, gain: 12, q: 0.707 }), b = add('eq', 0, 0, { shape: 1, freq: 2500, gain: -9, q: 3 });
+  const c = add('eq', 0, 0, { shape: 2, freq: 8000, gain: 6, q: 0.707 });
+  const d = add('eq', 0, 0, { shape: 0, freq: 10, gain: -15, q: 0.3 }), e = add('eq', 0, 0, { shape: 2, freq: 22000, gain: 18, q: 1 });
+  const f = add('eq', 0, 0, { shape: 1, freq: 21000, gain: 18, q: 10 });
+  const out = add('output', 0, 0, { level: 0.5 });
+  wire(nz, 'out', a, 'in'); wire(a, 'out', b, 'in'); wire(b, 'out', c, 'in'); wire(c, 'out', out, 'l');
+  wire(nz, 'out', d, 'in'); wire(d, 'out', e, 'in'); wire(e, 'out', f, 'in'); wire(f, 'out', out, 'r');
+});
+kit('eq-filters', (add, wire) => {
+  const osc = add('osc', 0, 0, { wave: 2, coarse: -12, level: 0.8 });
+  const a = add('eq', 0, 0, { shape: 3, freq: 3000, q: 6 }), b = add('eq', 0, 0, { shape: 3, freq: 10, q: 10 });
+  const c = add('eq', 0, 0, { shape: 4, freq: 10, q: 10 }), d = add('eq', 0, 0, { shape: 5, freq: 1000, q: 0.5 });
+  const e = add('eq', 0, 0, { shape: 4, freq: 20000, q: 0.707 });
+  const mix = add('mixer', 0, 0, { l1: 0.6, l2: 0.6, l3: 0, l4: 0 }), out = add('output', 0, 0, { level: 0.5 });
+  wire(osc, 'out', a, 'in'); wire(osc, 'out', b, 'in'); wire(a, 'out', mix, 'in1'); wire(b, 'out', mix, 'in2'); wire(mix, 'out', out, 'l');
+  wire(osc, 'out', c, 'in'); wire(c, 'out', d, 'in'); wire(d, 'out', e, 'in'); wire(e, 'out', out, 'r');
+});
+kit('eq-sweep', (add, wire) => {
+  const nz = add('noise', 0, 0, { level: 0.3 });
+  const slow = add('lfo', 0, 0, { wave: 0, rate: 0.4, depth: 1 }), tri = add('lfo', 0, 0, { wave: 1, rate: 1.1, depth: 1 });
+  const sq = add('lfo', 0, 0, { wave: 3, rate: 2, depth: 1 });
+  const a = add('eq', 0, 0, { shape: 1, freq: 500, gain: 6, q: 4 }, { map: { p1: ['freq'], p2: ['gain'] } });
+  const b = add('eq', 0, 0, { shape: 2, freq: 3000, gain: 12, q: 0.707 }, { map: { p1: ['shape'], p2: ['q', 'freq'] } });
+  const out = add('output', 0, 0, { level: 0.5 });
+  wire(nz, 'out', a, 'in'); wire(slow, 'out', a, 'p1'); wire(tri, 'out', a, 'p2'); wire(a, 'out', out, 'l');
+  wire(nz, 'out', b, 'in'); wire(sq, 'out', b, 'p1'); wire(tri, 'out', b, 'p2'); wire(b, 'out', out, 'r');
+});
+for (const k of ['eq-shelves', 'eq-filters', 'eq-sweep']) ends[k] = 128 * 600;
 // modulation scaling (#526): the Range module (a curve, unclamped past its input range; clamped and inverted), its curve
 // moved through p1; a depth past 1 (up to 2) on both pins; a bipolar macro range next to a plain one
 kit('range-curve', (add, wire) => {
