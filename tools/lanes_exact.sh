@@ -5,6 +5,7 @@
 # BASE and by the working tree's under every mode of the second core's host double (firmware/test/lanes_host.h): none
 # (core 0 alone), 1 (lane 1 deferred to the wait, or rendered by core 0 when it waits for it), 2 (a thread), 2 with random
 # delays, 2 with every 7th job lost (core 0 renders that lane); then mode 2 under ThreadSanitizer.
+#   Its output (build/lanes, up to about 0.9 GB) is deleted when every check passes; KEEP_EXACT=1 keeps it.
 #   tools/lanes_exact.sh [BASE]     (default origin/main; BASE must load the working tree's factory patches)
 set -e
 cd "$(dirname "$0")/.."
@@ -61,4 +62,7 @@ if [ "${LANES_TSAN:-1}" = 1 ]; then
     echo "(ThreadSanitizer not available here: skipped)"
   fi
 fi
+if [ $fail != 0 ]; then echo "kept $T to look into"
+elif [ "${KEEP_EXACT:-0}" = 1 ]; then echo "kept $T (KEEP_EXACT=1)"
+else rm -rf "$T"; echo "deleted $T (KEEP_EXACT=1 keeps it)"; fi
 exit $fail
