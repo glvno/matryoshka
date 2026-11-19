@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The parity bands' rules (D-149): how a sub-issue's boxes and inputs read, and which band a full-parity cost falls in.
 import { describe, expect, it } from 'vitest';
-import { openBoxes, parseInputs, rowOf, type Base, type Ticket } from './parity-bands';
+import { openBoxes, parseInputs, renderInstruments, rowOf, type Base, type Ticket } from './parity-bands';
 
 const base = (cpu: number, over: string[] = []): Base => ({ cpu, modules: 60, maxModules: 128, bytes: 3000, maxBytes: 3840, over });
 const tickets = new Map<number, Ticket>([
@@ -45,5 +45,18 @@ describe('rowOf', () => {
     expect(band(`${inputs}- [ ] Card work — \`card\``, base(40), false).band).toBe('unmeasured');
     const extra = `${inputs}**Extra:** Card work: +5 % CPU, +3 modules, +100 B (measured)\n- [ ] Card work — \`card\``;
     expect(band(extra, base(40), false)).toMatchObject({ band: 'reachable', cpu: 45, modules: 63, bytes: 3100, est: false });
+  });
+});
+
+describe('renderInstruments', () => {
+  const cell = (fm1: number | undefined, top?: number): string => {
+    const r = rowOf(9, 'X', 'Orig', [], parseInputs(inputs)!, base(40), true, tickets, fm1, top);
+    return renderInstruments([r]).split('\n').find((l) => l.startsWith('| #9'))!.split(' | ')[2];
+  };
+  it('shows the FM-1 voices with the VOICES top in brackets when the top is above them', () => {
+    expect(cell(4, 6)).toBe('4 (top 6) / 5');
+    expect(cell(5, 5)).toBe('5 / 5');
+    expect(cell(8)).toBe('8 / 5');
+    expect(cell(undefined, 6)).toBe('? / 5');
   });
 });

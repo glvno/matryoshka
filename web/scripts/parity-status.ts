@@ -56,7 +56,9 @@ for (const i of instruments) {
     over: b.over.filter((x) => x.key !== 'cpu').map(overText) };
   const factory = FM1_PRESETS[name]?.();
   const fm1Voices = factory && (Math.max(0, ...factory.modules.filter((x) => x.type === 'alloc').map((x) => x.params.voices ?? 0)) || undefined);
-  rows.push(rowOf(i.number, name, inputs.comparand || original, boxes, inputs, base, / XL$/.test(inputs.measure), tickets, fm1Voices));
+  // the VOICES row's top (D-870): the most voices the FM-1 lets the patch play, shown beside its default
+  const fm1Top = factory && (Math.max(0, ...(factory.assemblies ?? []).flatMap((a) => a.params.flatMap((r) => (r.param === 'voices' && r.top !== undefined ? [r.top] : [])))) || undefined);
+  rows.push(rowOf(i.number, name, inputs.comparand || original, boxes, inputs, base, / XL$/.test(inputs.measure), tickets, fm1Voices, fm1Top));
 }
 
 const sha = execFileSync('git', ['rev-parse', '--short=8', 'HEAD'], { encoding: 'utf8' }).trim();
