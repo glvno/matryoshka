@@ -458,10 +458,13 @@ static void bt_spin(uint32_t *v)                /* DIAG 139: TIMER4 back to back
     v[7] = bt_ns(dmax, 1u);
 }
 
+static uint32_t cin_log_diag(uint32_t page, uint8_t *out);   /* clock_in.h: the MIDI clock-in log (#870) */
 static uint32_t m1_diag(uint32_t page, uint8_t *out)
 {
     const uint8_t *b = (const uint8_t *)&diag_prev;
     uint32_t i, off = page * 32u, n = sizeof diag_prev > off ? sizeof diag_prev - off : 0u;
+    if (page >= 145u && page <= 147u)           /* #870: the MIDI clock-in log (clock_in.h, tools/m1_link.py midilog) */
+        return cin_log_diag(page, out);
 #if M1_BENCH
     if (page >= BENCH_PAGE && page <= BENCH_PAGE + BENCH_K)   /* #950: the CPU benchmark (bench.c bench_diag) */
         return bench_diag(page, out);

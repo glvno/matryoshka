@@ -321,11 +321,19 @@ static int ota_key_of(const uint8_t *blob, uint32_t *key)
     return 0;
 }
 
+/* ota_stage's buffers, 2 KiB in the pool: idle outside an update session, so the app's MIDI clock-in log (clock_in.h,
+ * modular.c CIN_LOG_RING, #870) shares them; an update session empties that log */
+static union {
+    struct {
+        uint8_t hdr[0x400], b[512], mine[512];
+    } st;
+    uint32_t words[512];
+} ota_buf __attribute__((section(".pool")));
 /* ota_stage's failures from step 4's first erase on (-8 .. -13; the steps before: -1 .. -7 and -15, nothing written) */
 #define OTA_STAGED_RC(rc) ((rc) <= -8 && (rc) >= -13)
 static int ota_stage(void)                       /* steps 1..6; 0 = host said success */
 {
-    static uint8_t hdr[0x400] __attribute__((section(".pool"))), b[512] __attribute__((section(".pool"))), mine[512] __attribute__((section(".pool")));
+    uint8_t *hdr = ota_buf.st.hdr, *b = ota_buf.st.b, *mine = ota_buf.st.mine;
     uint32_t i, n, ota_off, ota_len, fl_off, fl_len, c, len, own, official;
     int rc;
     /* 1. UFW header + entry list */
