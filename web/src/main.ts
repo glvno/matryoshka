@@ -2281,7 +2281,9 @@ window.addEventListener('keydown', (e) => {
 }, true);
 // A click on the canvas takes the focus off a control outside it (the patch picker after a patch is chosen, a sidebar
 // field), so the keys reach the canvas: the shortcuts, and the note keys a text field would keep (#1023)
-$('canvas').addEventListener('pointerdown', () => {
+$('canvas').addEventListener('pointerdown', (e) => {
+  // (a right- or middle-drag pans: Quick patch stays open through it, so its field keeps the keys)
+  if (e.button !== 0 && quick.open) return;
   const a = document.activeElement;
   if (a instanceof HTMLElement && a !== document.body && !$('canvas').contains(a)) a.blur();
 }, true);

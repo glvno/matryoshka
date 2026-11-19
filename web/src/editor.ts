@@ -2924,6 +2924,19 @@ export class Editor {
     return el?.isConnected ? el.getBoundingClientRect() : null;
   }
 
+  /** a card's element when it is drawn (Quick patch marks it: the card its ring shows, the card its list names) */
+  cardElement(c: Card): HTMLElement | null {
+    const el = this.cardEl(c);
+    return el?.isConnected ? el : null;
+  }
+
+  /** a port's jack when it is drawn, a row's thumb for a parameter (Quick patch marks it: the held cable's jack, the jack
+   *  its list names) */
+  jackElement(end: Endpoint, dir: 'in' | 'out', param?: string): HTMLElement | null {
+    const el = param ? this.sliderPorts.find((s) => s.m.id === end.module && s.pd.name === param)?.jack : this.ports.get(this.key(end.module, end.port, dir));
+    return el?.isConnected ? el : null;
+  }
+
   /** a card's place on the canvas (layout px); null for Main in the dock or a card not drawn */
   cardRect(c: Card): Rect | null {
     const el = c.kind === 'module' ? this.cards.get(c.id) : this.containers.get(c.id);

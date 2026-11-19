@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Quick patch: a cable you pick up no longer looks as if it goes back into its own card.** When you pick up a cable, the card's ring folds away into one plug beside the field, the jack flashing once, and the middle of the menu becomes an empty socket that asks where to?. The list shows the cards the cable could go to; type one, or choose it with ↓ and Enter, and only then does its ring grow out of the socket, with the plug beside the half it goes into. On the canvas, the card the menu is on and the jack the cable comes from glow once and then stay lit, and the card or jack chosen in the list gets a thin outline. Enter with nothing typed no longer jumps to a card nobody named, a new module in the list now reads New Multimode filter beside the Multimode filter already in the patch, Enter on a jack that already has that cable says so instead of doing nothing, and dragging the canvas with the right mouse button no longer sends your typing to the note keys (#1091).
+- **Typing envelope finds the envelopes, the ADSR first.** In Quick patch, `envelope` (or `eg`) lists the ADSR first, then the Level/rate envelope, the Eight-step envelope and Rate Env, and a word typed whole that is a word of a module's name or search words ranks above a part of one. The command palette's add module finds all four by envelope too (#1114).
+
 ## 1.21.0 — 2026-11-19
 
 - **Every patch leaves the FM-1 a little more room.** The FM-1 now does less bookkeeping for each module of a patch every block: it works out when the patch loads which inputs move a module's settings, adds up those inputs four samples at a time, and no longer divides to find which voice a module copy belongs to. The sound is the same, sample for sample. On the test rig, with up to 8 keys held, the polyphonic synths with all their effects on use 1.0 to 4.6 points less of the FM-1's CPU (Hera 6 fx4 82.2 → 79.0 %, Oracle V fx4 81.6 → 78.1 %, Cassia 1 fx4 85.8 → 81.3 %, running), and the factory patches up to 5.8 points less (Algo Four 73.2 → 67.3 %, Hera 6 74.5 → 71.2 %) (#1072).
