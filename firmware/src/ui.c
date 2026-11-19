@@ -482,20 +482,6 @@ static void fx_draw(int full);
 
 #define LEFT_W 216u
 
-/* label i of the panel section (the buttons, PANEL_BTN_ID order) into out (11 bytes); 0 if the patch has none */
-static int panel_label(uint32_t i, char *out)
-{
-    const uint8_t *pn = m1_panel();
-    uint32_t k;
-    out[0] = 0;
-    if (!pn || i >= ENG_PANEL_LABELS)
-        return 0;
-    for (k = 0; k < ENG_PANEL_LABEL && pn[4u + i * ENG_PANEL_LABEL + k]; k++)
-        out[k] = (char)pn[4u + i * ENG_PANEL_LABEL + k];
-    out[k] = 0;
-    return k > 0;
-}
-
 static const char *const PANEL_BTN_NAME[ENG_PANEL_BUTTONS] = {"FX", "SEL", "ENV", "LFO", "EDIT", "GLO", "ARP"};
 
 static uint8_t pg_plain;                        /* pages_ui.c: the device page's bars are on screen as it draws them */

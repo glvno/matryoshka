@@ -7,7 +7,7 @@ import { devicesOf, NAME_MAX } from './pages';
 import { assemblyById, makeAssembly } from './assembly';
 import { instIsEngine } from './engines';
 import { engineBytes } from './test-bin';
-import { deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR, COUNTED, layout } from './patchbin';
+import { deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR, COUNTED, SLIM, layout } from './patchbin';
 import { PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
@@ -322,7 +322,7 @@ describe('binary patch format', () => {
     const p = subtractiveSaw();
     const b = deviceBudget(p);
     expect(b.items.map((i) => i.key)).toEqual(Object.keys(DEVICE));
-    expect(b.items.find((i) => i.key === 'bytes')!.used).toBe(Math.min(encodePatch(p).length, encodePatch(p, false, true).length));   // (the smaller form, #667)
+    expect(b.items.find((i) => i.key === 'bytes')!.used).toBe(Math.min(encodePatch(p).length, encodePatch(p, false, COUNTED).length, encodePatch(p, false, SLIM).length));   // (the smallest form, #667, D-1025)
     expect(b.use).toBeGreaterThan(0);
     expect(b.use).toBeLessThanOrEqual(1);
     const out = p.modules.find((m) => m.type === 'output')!;
@@ -359,8 +359,8 @@ describe('the budget counts what the FM-1 receives', () => {
       const used = deviceBudget(p).items.find((i) => i.key === 'bytes')!.used;
       const engines = devicesOf(p, DEFS).filter((d) => d.asm !== undefined && instIsEngine(p, assemblyById(p, d.asm)!));
       const kept = engines.reduce((n, d) => n + NAME_MAX - deviceText(assemblyById(p, d.asm!)!.preset ?? '').length, 0);
-      // (the smaller of the two forms: the lowest older format's, or counted records, #667)
-      expect(used, name).toBe(Math.min(encodePatch(p).length, encodePatch(p, false, true).length) + kept);
+      // (the smallest of the forms: the lowest older format's, counted records, #667, or format 64's, D-1025)
+      expect(used, name).toBe(Math.min(encodePatch(p).length, encodePatch(p, false, COUNTED).length, encodePatch(p, false, SLIM).length) + kept);
     }
   });
 });

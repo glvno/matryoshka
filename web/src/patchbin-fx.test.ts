@@ -66,7 +66,8 @@ describe('optional format55 master FX codec', () => {
     expect((bin[6] | bin[7] << 8) & FLAG_FX_BUS).toBe(FLAG_FX_BUS);
     expect([...bin.subarray(bin.length - record.length)]).toEqual(record);
     expect(encodedSize(p)).toBe(bin.length);
-    expect(layout(p).need).toBeGreaterThanOrEqual(bin.length);
+    expect(layout(p).bytes).toBeGreaterThanOrEqual(bin.length);   // (the form written; `need` counts the smallest, D-1026)
+    expect(layout(p).need).toBeLessThanOrEqual(layout(p).bytes);
     expect(deviceBudget(p).items.find((x) => x.key === 'bytes')!.used).toBe(layout(p).need);
   });
 

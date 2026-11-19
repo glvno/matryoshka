@@ -102,7 +102,7 @@ static uint32_t help_patch_rows(const char **out)
             continue;                              /* controls.ts's FX row describes the graph contract, never the old patch mapping */
         if (!panel_btn_job(b))                      /* (ui.c: a Gate's job is its jack's cable) */
             continue;
-        if (!panel_label(b, lab))
+        if (!m1_panel_label(b, lab))
             put(lab, PANEL_BTN_NAME[b])[0] = 0;
         for (k = 0; lab[k]; k++)
             lab[k] = lab[k] >= 'A' && lab[k] <= 'Z' ? (char)(lab[k] + 32) : lab[k];
@@ -128,7 +128,7 @@ static const char *help_fill(const char *spec, uint32_t k)
         m++;
     if (!*m || pg_list_btn < 0 || k >= 2u)
         return spec;
-    if (!panel_label((uint32_t)pg_list_btn, lab))
+    if (!m1_panel_label((uint32_t)pg_list_btn, lab))
         put(lab, PANEL_BTN_NAME[pg_list_btn])[0] = 0;
     for (;;) {
         p = help_list_row[k];

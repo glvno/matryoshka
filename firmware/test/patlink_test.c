@@ -211,7 +211,7 @@ static void links(void)
     OK(pl_set_link(p, id) && pl_link(p) == id);
     pl_hash[p] = pt_fnv(PT_FNV0, want, wn);
     pl_rewrite();
-    OK(m1_cur[1] == ENG_PATCH_VERSION && (m1_cur[7] & ENG_FLAG_LINKS) && m1_valid(m1_cur, m1_cur_len));
+    OK(m1_cur[1] >= ENG_UPGRADED && (m1_cur[7] & ENG_FLAG_LINKS) && m1_valid(m1_cur, m1_cur_len));
     OK(m1_cur_len < len && inline_has(p) == 0);
     ln = m1_cur_len;
     memcpy(linked, m1_cur, ln);

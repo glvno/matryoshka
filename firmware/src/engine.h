@@ -33,8 +33,11 @@ void eng_fpu_probe(uint32_t lane, uint32_t *h);
 
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 64   /* 64 (the release after 1.21, patchbin.ts FORMAT_1_22): the EQ type (T_EQ, #1107) appended after the Euclid; 63 (release 1.20, patchbin.ts FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid type (T_EUCLID, #1018) appended after the Limiter, and Steps notes' timing words, ratchets and micro timing (ENG_TIME_BIT, #675, #677); 62 (release 1.19, patchbin.ts FORMAT_1_19): the Low pass gate (T_LPG, #1018) and the Limiter (T_LIMIT, #1019) types appended after the Harmonizer; 61: a cable into a Part's priority input (PART_I_PRIORITY, #976); 60: trig conditions, a note's condition word after it (ENG_NOTE_COND, #674); 59: the stored pattern links (ENG_FLAG_LINKS, #901) after the P-locks; 58: the Oscillator's `phase` (where sync restarts the cycle, #691) appended; 57: the ADSR's `ads` (release at the decay's time, D-745) appended; 56: Env L/R's `curve` (a linear fall, #689) appended; 55: optional validated master FX bus after format54 origins and before macro ranges */
+#define ENG_PATCH_VERSION 64   /* 64 (the release after 1.21, patchbin.ts FORMAT_1_22): the EQ type (T_EQ, #1107) appended after the Euclid, and the shorter panel labels, cables and Drum map row names (ENG_SLIM, D-1025); 63 (release 1.20, patchbin.ts FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid type (T_EUCLID, #1018) appended after the Limiter, and Steps notes' timing words, ratchets and micro timing (ENG_TIME_BIT, #675, #677); 62 (release 1.19, patchbin.ts FORMAT_1_19): the Low pass gate (T_LPG, #1018) and the Limiter (T_LIMIT, #1019) types appended after the Harmonizer; 61: a cable into a Part's priority input (PART_I_PRIORITY, #976); 60: trig conditions, a note's condition word after it (ENG_NOTE_COND, #674); 59: the stored pattern links (ENG_FLAG_LINKS, #901) after the P-locks; 58: the Oscillator's `phase` (where sync restarts the cycle, #691) appended; 57: the ADSR's `ads` (release at the decay's time, D-745) appended; 56: Env L/R's `curve` (a linear fall, #689) appended; 55: optional validated master FX bus after format54 origins and before macro ranges */
 #define ENG_COUNTED 51                /* the first format whose module records carry their parameter count (patchbin.ts COUNTED, #667) */
+#define ENG_SLIM 64                   /* the first format with the panel labels by their length (eng_panel_bytes), the cables
+                                       * grouped by the module they go into (eng_cables_grouped) and only the Drum map row
+                                       * names off their default (eng_names_end): patchbin.ts SLIM, D-1025 */
 /* Format 51's record (patchbin.ts, D-1000): u8 type, u8 count (bits 0..5: the parameters it holds; bit 7, ENG_REC_TEMPLATE,
  * on a type with parameter inputs: its attenuverters and p1 / p2 masks are at their template, eng_mask_template, and left
  * out), the values, then on such a type without bit 7 a presence byte (ENG_PRES_*) and only the items it marks, in the
@@ -47,7 +50,8 @@ void eng_fpu_probe(uint32_t lane, uint32_t *h);
 #define ENG_PRES_P2 8u
 #define ENG_PRES_ALL 15u
 #define ENG_FLAG_CABLES3 16u          /* p[7] bit 4 (flag bit 12, format 51, D-1002): every cable is 3 bytes, u8 from module, u8 to
-                                       * module, u8 from output << 4 | to input */
+                                       * module, u8 from output << 4 | to input; since ENG_SLIM (D-1025) the cables are grouped
+                                       * by the module they go into instead (eng_cables_grouped), without it 4 bytes each */
 #define ENG_MEMBER_RUN 0x80u          /* bit 7 of a device's member count in the device extras (format 51, D-1003): the members
                                        * are one run, u8 first follows, the count is the low 7 bits */
 #define ENG_PATCH_COMPAT_VERSION 31   /* (a format 31 patch reads the same; 31..34 with the parameter counts of their format) */
@@ -150,13 +154,18 @@ static inline int eng_flags_ok(const uint8_t *p)
 
 #define ENG_PANEL_BUTTONS 7            /* the patch buttons: FX SCL ENV LFO EDIT GLO ARP (modules.ts PANEL_BUTTONS); SEQ and REC are the step page's */
 #define ENG_PANEL_LABELS 7             /* the buttons (patch.ts PANEL_LABEL_KEYS); the knobs show their rows' names */
-#define ENG_PANEL_LABEL 10             /* bytes per label (PANEL_LABEL_MAX), zero padded */
-#define ENG_PANEL_BYTES (4u + ENG_PANEL_LABELS * ENG_PANEL_LABEL)   /* the panel section (patchbin.ts PANEL_BYTES) */
+#define ENG_PANEL_LABEL 10             /* bytes per label (PANEL_LABEL_MAX), zero padded before ENG_SLIM */
+#define ENG_PANEL_BYTES (4u + ENG_PANEL_LABELS * ENG_PANEL_LABEL)   /* the panel section before ENG_SLIM (patchbin.ts PANEL_BYTES) */
 #define ENG_BTN_TARGETS 128            /* the modules the Toggle buttons bypass, all together (patchbin.ts BUTTON_TARGETS_MAX) */
 #define ENG_BTN_GATE 0u                /* a button's kind (buttons.ts KIND_CODE): on while held / switched, its jack only */
 #define ENG_BTN_NOTHING 1u             /* unassigned: its jack still goes high while held */
 #define ENG_BTN_TOGGLE 2u              /* bypasses its modules while on */
 #define ENG_BTN_PAGE 3u                /* a list of device pages for K1..K4 (#117: the panel's, panel.c; the engine skips it) */
+
+/* bytes of the panel section that starts at p[at] (patchbin.ts panelBytes): ENG_PANEL_BYTES before ENG_SLIM; since, the two
+ * masks, u8 the labels it holds (bit i: label i) and each of them as u8 length (1..ENG_PANEL_LABEL) and its characters.
+ * 0 if it is cut short or malformed */
+uint32_t eng_panel_bytes(const uint8_t *p, uint32_t len, uint32_t at);
 
 /* where the panel section of a patch binary starts: after the 8 header bytes, the poly groups' records (ENG_GROUP_REC each,
  * header byte 3 = their count) and, with any group, one membership byte per module. 0 if the binary is too short. */
@@ -166,15 +175,19 @@ static inline uint32_t eng_panel_at(const uint8_t *p, uint32_t len)
     if (len < 8u)
         return 0;
     at = 8u + ENG_GROUP_REC * p[3] + (p[3] ? p[2] : 0u);
-    return at + ENG_PANEL_BYTES <= len ? at : 0;
+    return eng_panel_bytes(p, len, at) ? at : 0;
 }
 
 /* where the module records start: after the panel section. 0 if the binary is too short. */
 static inline uint32_t eng_records_at(const uint8_t *p, uint32_t len)
 {
     uint32_t at = eng_panel_at(p, len);
-    return at ? at + ENG_PANEL_BYTES : 0;
+    return at ? at + eng_panel_bytes(p, len, at) : 0;
 }
+
+/* label i of a patch binary's panel section (patchbin.ts PANEL_LABEL_KEYS order) into out (ENG_PANEL_LABEL + 1 bytes,
+ * 0-terminated); its length, 0 when it has none */
+uint32_t eng_panel_label(const uint8_t *p, uint32_t len, uint32_t i, char *out);
 
 /* the end of the button kinds section (patchbin.ts, header flag bit 6) that starts at `at`, 0 when it is cut short:
  * ENG_PANEL_BUTTONS u8 kinds, then per Toggle (kind 2) button u8 n and n u8 module indices, per Page (kind 3) button u8 n
@@ -436,16 +449,12 @@ static inline uint32_t eng_extras_end(const uint8_t *p, uint32_t len, uint32_t a
 }
 
 /* the end of the Drum maps' row names section (patchbin.ts, header flag bit 7, format 33) that starts at `at`, 0 when it is
- * cut short: u8 count, then per map u8 module index and ENG_DRUM_ROWS names of ENG_DRUM_NAME bytes */
+ * cut short: u8 count, then per map u8 module index and ENG_DRUM_ROWS names of ENG_DRUM_NAME bytes; since ENG_SLIM per map
+ * u8 module index, u8 the rows it names (bit r: row r) and each of those names as u8 length (0..ENG_DRUM_NAME) and its
+ * characters (the others are their default, defs.h DRUM_ROW_NAME) */
 #define ENG_DRUM_ROWS 8u
 #define ENG_DRUM_NAME 8u
-static inline uint32_t eng_names_end(const uint8_t *p, uint32_t len, uint32_t at)
-{
-    if (at >= len)
-        return 0;
-    at += 1u + p[at] * (1u + ENG_DRUM_ROWS * ENG_DRUM_NAME);
-    return at <= len ? at : 0;
-}
+uint32_t eng_names_end(const uint8_t *p, uint32_t len, uint32_t at);
 /* Format 54, flag bit 13: u16 count followed by sorted unique (u8 Steps module,
  * u8 pattern 0..63, u32 immutable default identity) records, before macro ranges.
  * Identity zero is a cleared origin; an unknown nonzero identity is retained, never inferred. */
@@ -545,13 +554,15 @@ int eng_steps_time_set(uint32_t module, uint32_t k, uint32_t note, uint32_t ratc
 /* Install a patch from its binary form (web/src/patchbin.ts) into the selected voice. 0 on success, negative on error
  * (the voice is then silent). Resets all module state. Never call while eng_render runs (stop the audio ISR's call first). */
 int eng_load(const uint8_t *p, uint32_t len);
-/* Rewrite a binary of a format before ENG_COUNTED (ENG_PATCH_COMPAT_VERSION..) in place into today's, as the editor
+/* Rewrite a binary of a format before ENG_COUNTED (ENG_PATCH_COMPAT_VERSION..) in place into counted records, as the editor
  * writes format 51 (patchbin.ts): every record gets its parameter count, and the parameters at the end of a record that
  * are at their defaults (on both morph sides) leave it (storedParams); the knob masks go, and the attenuverters and p1 /
  * p2 masks at their template; the morph B set keeps only the values off A, after the module mask. The cables stay 4
- * bytes. It plays the same; eng_load reads the older binary the same way without it. Only a binary that fits cap with
- * every byte it gains (counts, presence bytes, bitmaps, the module mask) and none it loses is rewritten. *len changes;
- * 0 = done or already counted, -1 malformed or too big for cap (left as it was). */
+ * bytes, and the panel labels and row names stay as they are: the result is format ENG_UPGRADED, the last before
+ * ENG_SLIM (D-299). It plays the same; eng_load reads the older binary the same way without it. Only a binary that fits
+ * cap with every byte it gains (counts, presence bytes, bitmaps, the module mask) and none it loses is rewritten. *len
+ * changes; 0 = done or already counted, -1 malformed or too big for cap (left as it was). */
+#define ENG_UPGRADED (ENG_SLIM - 1)
 int eng_upgrade(uint8_t *p, uint32_t *len, uint32_t cap);
 /* A counted binary's (ENG_COUNTED) record of module `mod` holds at least `npar` parameters (at most its type's): the
  * missing ones go in at their defaults (and its morph B bitmap grows: their B is their A), so an edit of one can be

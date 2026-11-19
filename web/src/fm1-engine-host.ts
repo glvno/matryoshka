@@ -23,7 +23,7 @@ export class Fm1Bridge {
   /** the binary the FM-1 would get for `patch` (as the Emulator view's: over the budget still goes in), with no pattern store
    *  (every linked pattern written out); throws what encodePatch throws (a key routing the FM-1 cannot play) */
   load(patch: Patch): Fm1Op {
-    const bin = encodePatch(patch, true, false, 0, 'none');
+    const bin = encodePatch(patch, true, 0, 0, 'none');
     this.index = new Map(deviceView(patch, true).patch.modules.map((m, i) => [m.id, i]));
     return { op: 'load', bin };
   }

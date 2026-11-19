@@ -1119,7 +1119,7 @@ static void head_layout(head_t *h)
         const ppage_t *pg = &pg_page[pg_dev[pg_cur_dev].pg0 + pg_cur_page];
         char t[12];
         h->mode = HM_LIST;
-        if (!panel_label((uint32_t)pg_list_btn, t))
+        if (!m1_panel_label((uint32_t)pg_list_btn, t))
             put(t, PANEL_BTN_NAME[pg_list_btn])[0] = 0;
         q = put(h->a, t);
         *q++ = ' ';
