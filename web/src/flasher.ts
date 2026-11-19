@@ -16,7 +16,7 @@ import { fm1Label, installPlan, OTHER_CHANGED, readFm1Id, type Fm1Choice, type F
 export const FACTORY_LABEL = ' Install factory instruments and presets (recommended)';
 export const FACTORY_WARNING =
   'Without them the FM-1 plays only the patches built into the firmware, has no factory presets, and says FACTORY SOUNDS MISSING when it starts. ' +
-  'The editor offers them again whenever the FM-1 connects; saved patches are never touched.';
+  'The editor offers them again whenever the FM-1 connects; patches you edited and saved are never touched.';
 
 /** the Install panel's one bar for an install with the factory sounds ticked: the firmware write fills it to
  *  `write` (~600 KB served over the update loader, about 2,000 requests: the `write` step's count), the FM-1's restart

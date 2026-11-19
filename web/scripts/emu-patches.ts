@@ -10,21 +10,17 @@
 //   build/emu/low-delay.m1p, low-delay-pp.m1p     a 290 ms Delay (its line in .lowram's line area), plain and ping-pong
 //                              (#273, #651: the smoke checks every block of each echo against the note's own sound)
 //   build/emu/knobs.m1p        an LFO whose first page holds a 0..1 row and a switch: the knob acceleration and a switch's step
-//   build/emu/old-oracle-v.m1p   the newest earlier factory Oracle V committed in git, unlike today's (an update finds it
-//                              in the bank: the boot keeps the slot holding it as it is, D-887)
 //   build/emu/7ph.m1p          the <7PH groove-box example (editor-only since D-890, its bytes kept), encoded as the
 //                              factory patches are, for the piano roll's melodic PATTERN
 // encodePatch(p, true) skips the budget check (these are meant to be too heavy). Run from web/:
 //   npx vite-node scripts/emu-patches.ts   (tools/emu_smoke.sh does this)
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { cpuEstimate } from '../src/cpu';
 import { DEFS } from '../src/modules';
 import { addModule, connect, emptyPatch, type Patch } from '../src/patch';
 import { delayBytes, encodePatch, linePlace } from '../src/patchbin';
 import { EXAMPLE_PRESETS } from '../src/presets';
 import { withParts } from '../src/test-poly';
-import { presetsHPatches } from './factory-lz';
 
 const out = new URL('../../build/emu/', import.meta.url);
 mkdirSync(out, { recursive: true });
@@ -118,27 +114,6 @@ for (const [file, p] of [
 ] as const) {
   writeFileSync(new URL(file, out), encodePatch(p, true));
   console.log(`${file}: CPU estimate ${Math.round(cpuEstimate(p).use * 100)} %`);
-}
-
-{ // an earlier factory patch as an update finds it in the bank (#441, D-887): the newest committed version unlike today's
-  const root = new URL('../../', import.meta.url).pathname;
-  const today = new Map(presetsHPatches(readFileSync(new URL('../../firmware/src/presets.h', import.meta.url), 'utf8')).map((p) => [p.name, p.bytes]));
-  const commits = execFileSync('git', ['log', '--format=%H', '--', 'firmware/src/presets.h'], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean);
-  for (const [file, name] of [['old-oracle-v.m1p', 'ORACLE V']] as const) {
-    const now = today.get(name)?.join(',');
-    if (now === undefined) throw new Error(`${name}: not a factory patch in today's presets.h`);
-    let hit: Uint8Array | undefined;
-    for (const c of commits) {
-      const b = presetsHPatches(execFileSync('git', ['show', `${c}:firmware/src/presets.h`], { cwd: root, encoding: 'utf8', maxBuffer: 64 << 20 })).find((p) => p.name === name)?.bytes;
-      if (b && b.join(',') !== now) {
-        hit = b;
-        break;
-      }
-    }
-    if (!hit) throw new Error(`${name}: no earlier factory version in git`);
-    writeFileSync(new URL(file, out), hit);
-    console.log(`${file}: ${name} of an earlier presets.h, format ${hit[1]}, ${hit.length} bytes`);
-  }
 }
 
 writeFileSync(new URL('7ph.m1p', out), encodePatch(EXAMPLE_PRESETS['<7PH'](), true, false, 1));

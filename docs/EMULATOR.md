@@ -115,7 +115,11 @@ command; deployment neither downloads arbitrary reports nor reruns tests.
   `M1_EMU_MIDI=1` build (the plain build has no link the emulator can reach): HELLO is answered with INFO from the
   loading screen and on the home page, and the update protocol's handshake (`ota.c`) is answered with a Matryoshka
   identity (`FM-1_7..`) after boot and in update mode. That handshake is how the Install panel and `fm1_install.py`
-  find the FM-1, so a build that answers it keeps the way back. Without `--link` it takes `matryoshka-emu.bin` or
+  find the FM-1, so a build that answers it keeps the way back. EMU_BIN also installs the factory region over the link
+  on a blank flash, and on a bank an earlier release left (`slot-upgrade`: the released copies of
+  `firmware/test/released_cases.h` in their slots, an edited and a renamed copy beside them, no region), where the
+  untouched copies must get today's patches and the others stay ([D-887](ledger/patches-and-presets.md#D-887)).
+  Without `--link` it takes `matryoshka-emu.bin` or
   `emu-midi/matryoshka-emu.bin` next to FIRMWARE, else the CI run's `matryoshka-emu-midi` artifact, else it checks no
   link and says so. The last line is the summary (`boot check: PASS ..` / `FAIL ..`); snapshots go to `build/emu/boot/`.
   It is the test rig's gate while the owner iterates ([D-123](ledger/releases.md#D-123)), not a merge or release gate.

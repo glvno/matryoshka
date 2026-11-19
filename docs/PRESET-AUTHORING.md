@@ -41,7 +41,7 @@ npm run export-defs
 npx vite-node scripts/preset-auditions.ts /absolute/path/to/auditions --only 'Monolith D'
 ```
 
-`PRESET_SCOPE` limits the expensive preset measurements and patch writes to the named bank. The generator may rebuild assembly files when levels change; inspect the diff and coordinate with anyone editing shared factory structures. Do not discard someone else's changes. Regenerate factory update data after card or level changes so untouched saved factory patches can receive them; [D-283](ledger/patch-format.md#D-283) explains that migration.
+`PRESET_SCOPE` limits the expensive preset measurements and patch writes to the named bank. The generator may rebuild assembly files when levels change; inspect the diff and coordinate with anyone editing shared factory structures. Do not discard someone else's changes. Regenerate factory update data after card or level changes so untouched saved factory patches can receive them; [D-887](ledger/patches-and-presets.md#D-887) explains that update.
 
 The audition script writes a saved patch, raw stereo float WAV and separately matched WAV for every selected preset. The matched version uses constant gain toward −23 loudness units relative to full scale (LUFS), capped at a 0.88 peak. It may therefore remain quieter than the target. The raw version attenuates Output before the engine's final clamp and restores that gain in the float file, exposing final-output overshoot. Internal drive remains part of the instrument.
 
