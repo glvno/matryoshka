@@ -246,10 +246,12 @@ export class Engine {
   /** the transport as the last block had it, and the ticks when it last started (engine.c E.run_ticks) */
   private ran = false;
   private runTicks = 0;
-  /** MIDI Start (transportTop, #870; engine.c top_gen, top_wait, tick0): the next block starts the transport from the top,
-   * on the next MIDI tick, waiting for one up to `topWait` samples more when no MIDI clock drives yet (TOP_WAIT, then on the
-   * tempo); tick0: this block's start is on a MIDI tick, tick 0, which steps nothing on */
+  /** MIDI Start (transportTop, #870; engine.c top_gen, top_clk, top_wait, tick0): the next block starts the transport from
+   * the top, on the next MIDI tick after the Start (`topClk`: the ticks that came before it, the old run's), waiting for one
+   * up to `topWait` samples more when no MIDI clock drives yet (TOP_WAIT, then on the tempo); tick0: this block's start is
+   * on a MIDI tick, tick 0, which steps nothing on */
   private top = false;
+  private topClk = 0;
   private topWait = 0;
   private tick0 = false;
   /** the FM-1's patch buttons (bit i = PANEL_BUTTONS[i]): held, or switched on */
@@ -1329,10 +1331,11 @@ export class Engine {
     if (!on) this.countIn(0); // (a stop ends REC's count-in click, asked for or counting)
   }
 
-  /** MIDI Start (#870; engine.c eng_transport_top): the transport from the top. Running, it stops for a block and starts
-   * again; the first MIDI tick after it is tick 0 even when MIDI clock does not drive the clock yet */
+  /** MIDI Start (#870; engine.c eng_transport_top): the transport from the top, on the next MIDI tick after it (waiting up
+   * to TOP_WAIT for one when no MIDI clock drives yet). Running, it stops for a block first */
   transportTop(): void {
     this.transport(true);
+    this.topClk = this.extTicks;
     this.top = true;
   }
 
@@ -1748,9 +1751,11 @@ export class Engine {
       // ticks held for the start; it starts on a MIDI tick, tick 0 (after a MIDI Start with no clock yet, up to TOP_WAIT)
       let run = this.running, held = false;
       if (!run) this.topWait = 0;
-      if (this.top) {
+      if (this.top) { // (the ticks before the Start are the old run's, counted now; those after it wait for the start)
         this.top = false;
         this.topWait = Math.floor(this.sampleRate * TOP_WAIT);
+        this.ticks = (this.ticks + this.topClk) >>> 0;
+        this.extTicks -= this.topClk;
         if (this.ran) (run = false), (held = true);
       }
       if (run && !this.ran && (this.ext || this.topWait > 0)) {
