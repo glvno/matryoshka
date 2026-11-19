@@ -20,6 +20,7 @@
  * (two's complement), MID FREQ as an index into the sixths of an octave from 100 Hz */
 static volatile uint8_t meq_low, meq_mid, meq_high, meq_freq = MEQ_FREQ_DEFAULT;
 static volatile uint8_t meq_kern;          /* (measurement only: 0 the state variable filter, 1 the transposed direct form) */
+static volatile uint8_t meq_fade;          /* a band still runs (it fades to 0 dB this block): the audio interrupt calls in */
 
 /* MID FREQ in Hz: 100 x 2^(index / 6) */
 static float meq_hz(uint32_t f)
@@ -96,7 +97,7 @@ static void meq_df2(meq_band_t *b, const float *t, uint32_t n)
 }
 
 /* the EQ over the engine's half (Q16, in place); 0 when every band is at 0 dB and none fades: the half is untouched */
-static int meq_run(int32_t *l, int32_t *r, uint32_t n)
+static __attribute__((noinline)) int meq_run(int32_t *l, int32_t *r, uint32_t n)
 {
     static const float HZ_SHAPE[3][2] = {{MEQ_LOW_HZ, 0.0f}, {0.0f, 1.0f}, {MEQ_HIGH_HZ, 2.0f}};
     int16_t gain[3] = {(int8_t)meq_low, (int8_t)meq_mid, (int8_t)meq_high}, f = meq_freq;
@@ -149,5 +150,21 @@ static int meq_run(int32_t *l, int32_t *r, uint32_t n)
         l[i] = (int32_t)clampf(meq_x[0][i], 524287.0f);   /* (+-8.0: MASTER's multiply stays in 32 bits) */
         r[i] = (int32_t)clampf(meq_x[1][i], 524287.0f);
     }
+    meq_fade = (uint8_t)(meq_b[0].on | meq_b[1].on | meq_b[2].on);
     return 1;
+}
+
+/* the analog half (o, after USB audio took it) again from the equalized engine half, at MASTER's level; left as it is
+ * while every band is at 0 dB. Out of line: the audio interrupt runs from RAM (build.py FAST_TEXT), this from the flash */
+static __attribute__((noinline)) void meq_analog(int32_t *o)
+{
+    uint32_t i;
+    int32_t m;
+    if (!meq_run(eng_l, eng_r, HALF_FRAMES))
+        return;
+    m = snd_muted ? 0 : (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
+    for (i = 0; i < HALF_FRAMES; i++) {
+        o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
+        o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;
+    }
 }

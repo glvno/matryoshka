@@ -130,15 +130,8 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
 #if FELUCCA_UAC
         uac_tap(o, HALF_FRAMES);
 #endif
-        if (eng_run && meq_run(eng_l, eng_r, HALF_FRAMES)) {   /* the master EQ (master_eq.h): the analog half again from the
-                                                     * equalized engine half; with every band at 0 dB it stays as it was */
-            int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
-            UNROLL4
-            for (i = 0; i < HALF_FRAMES; i++) {
-                o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
-                o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;
-            }
-        }
+        if (eng_run && (meq_low | meq_mid | meq_high | meq_fade))
+            meq_analog(o);                          /* the master EQ (master_eq.h): the analog half only; flat, no call */
         bt_m[BT_M_TAP1] = fm1_ticks();
         {
             int clk = eng_run && eng_click_mix(eng_l, eng_r, HALF_FRAMES);   /* a count-in's click (play once's, REC's):
