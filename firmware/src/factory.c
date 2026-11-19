@@ -23,8 +23,8 @@
  *   revision defaults to it), u32 the factory set (24 bits, as the settings record keeps it), u32 the body's length, u32
  *   its CRC-32, u16 counts of patches, presets, patterns, released sets, dictionary values and migrations, u32 the offsets
  *   (from the image's start) of the patch directory, the presets, the dictionary, the patterns, the released sets and the
- *   migrations, u8 the bits of a dictionary index, u8 kind (FC_KIND_REGION, FC_KIND_TIER), 4 spare bytes,
- *   u16 CRC-16 (m1_crc16) of bytes 4..61;
+ *   migrations, u8 the bits of a dictionary index, u8 kind (FC_KIND_REGION, FC_KIND_TIER), u16 the count of released
+ *   copies, 2 spare bytes, u16 CRC-16 (m1_crc16) of bytes 4..61;
  *   patches: 36 bytes each: name[20], u32 offset of the packed bytes (lz_unpack.h), u16 packed length, u16 length,
  *     u16 CRC-16 of the packed bytes, u16 the slot FACTORY RESET puts it in, u16 revision, u16 spare;
  *   presets: u32 structure each (one column, for the scans), then 16 bytes each: u16 offset of its values (dictionary
@@ -36,6 +36,10 @@
  *     u8 rate, u8 swing, u8 dir, u8 spare, i32 gate, u16 offset of its name, u16 CRC-16 of the note words; offsets from
  *     the patterns' start;
  *   released sets: 12 bytes each: u32 set, u64 which of this image's patches it had (bit n: patch n);
+ *   released copies, right after the released sets (a firmware before them reads the count as spare bytes, and neither):
+ *     12 bytes each: u32 FNV-1a and u32 CRC-32 of the bytes, u16 their length, u8 this image's patch, u8 spare. Each is
+ *     a copy of that patch's name a release wrote whose bytes differ from today's (web/scripts/released-factory.json):
+ *     a slot that still holds one gets today's patch (bank_upgrade.h, D-887);
  *   migrations: u16 counts of the list, tables, lines, ops, table values and line values, then the list (16 bytes each:
  *     u32 from, u32 to, u16 ops, u16 table, u16 line, u8 earlier rows, u8 today's), the tables (8 each: u8 a, b, na, nb,
  *     i8 la, lb, u16 v), the lines (6 each: u8 x, key, n, i8 lo, u16 v), the line values (i32), the table values (i8)
@@ -81,6 +85,7 @@ typedef struct {
     uint32_t patch, preset, dict, pattern, released, mig;
     uint8_t bits;                       /* a dictionary index's bits (1..16) */
     uint8_t kind;                       /* FC_KIND_REGION, FC_KIND_TIER */
+    uint16_t ncopy;                     /* released copies (in the struct's padding: no larger than before) */
 } fc_hdr_t;
 
 typedef struct {                        /* a factory pattern (fc_pattern) */
@@ -170,6 +175,7 @@ static int fc_parse(const uint8_t *b, fc_hdr_t *h)
     h->mig = fc_u32(b + 52);
     h->bits = b[56];
     h->kind = b[57];
+    h->ncopy = (uint16_t)fc_u16(b + 58);
     if (h->magic != FC_MAGIC || fc_u16(b + 62) != m1_crc16(b + 4, 58u) || h->len > FC_SIZE - FC_HDR)
         return -1;
     if (h->npatch > FC_PATCHES || !h->bits || h->bits > 16u)
@@ -235,7 +241,7 @@ static void fc_scan(void)
     fc_hdr_t h;
     fc_scanned = 1;
     if (fc_parse(FC_TIER, &ft))                         /* (export-defs writes a whole one: never) */
-        ft.npatch = ft.npreset = ft.npattern = ft.nreleased = ft.nmig = 0;
+        ft.npatch = ft.npreset = ft.npattern = ft.nreleased = ft.nmig = ft.ncopy = 0;
     fc_state = flash_ok ? (uint8_t)fc_check(&h) : (uint8_t)FC_NONE;
     fc_region = fc_state == FC_OK;
     if (fc_region)
@@ -343,6 +349,39 @@ static int fc_released(uint32_t set, uint64_t *has, uint64_t *any)
         found |= got;
     }
     return found;
+}
+
+/* ---- released copies (D-887 amended 2026-11-19, bank_upgrade.h): the tier's, then the region's */
+
+static uint32_t fc_fnv32(uint32_t h, const uint8_t *p, uint32_t n)   /* FNV-1a from h (0x811C9DC5 to start) */
+{
+    while (n--)
+        h = (h ^ *p++) * 0x01000193u;
+    return h;
+}
+
+static uint32_t fc_ncopies(void) { fc_ready(); return ft.ncopy + (fc_region ? fr.ncopy : 0u); }
+
+/* released copy k: its length, FNV-1a and CRC-32 into *len, *fnv, *crc; the merged patch it is a copy of, -1 none (an
+ * image's patch the merged list has no room for, a section past the body) */
+static int fc_copy(uint32_t k, uint32_t *len, uint32_t *fnv, uint32_t *crc)
+{
+    uint8_t e[12];
+    uint32_t region, at;
+    const fc_hdr_t *h;
+    if (k >= fc_ncopies())                              /* (scans first) */
+        return -1;
+    region = k >= ft.ncopy;
+    h = region ? &fr : &ft;
+    k -= region ? ft.ncopy : 0u;
+    at = h->released + 12u * (h->nreleased + k);
+    if (at + 12u > FC_HDR + h->len || fc_rd((int)region, at, e, sizeof e) || e[10] >= h->npatch)
+        return -1;
+    *fnv = fc_u32(e);
+    *crc = fc_u32(e + 4);
+    *len = fc_u16(e + 8);
+    at = region ? fc_ridx[e[10]] : e[10];
+    return at == FC_NOIDX ? -1 : (int)at;
 }
 
 /* ---- the factory engines' presets (the region's alone) */

@@ -18,14 +18,19 @@
 //!    panel and tools/fm1_install.py find the FM-1 by that handshake. Then the factory content's round trip (D-490): on
 //!    a blank flash FACT_INFO says none, the editor's install (FACT_BEGIN, every page by FACT_WRITE, FACT_COMMIT) is taken,
 //!    FACT_INFO says valid with every factory patch, the bar says the new patches were added and each region patch is in
-//!    its slot. Without --link these checks are not made, and the summary says so.
+//!    its slot. Then factory updates reaching untouched slots (D-887): a bank an earlier release left (released_cases.h:
+//!    a firmware-tier patch's and a factory-region patch's released copies in their own slots, an edited and a renamed
+//!    copy beside them, the release's factory set in the settings record) boots without a factory region and keeps every
+//!    slot; the editor installs today's region: the two untouched copies get today's patches in place, the others stay,
+//!    the bar says FACTORY PATCHES UPDATED, and the next boot rewrites nothing. Without --link these checks are not made,
+//!    and the summary says so.
 //!
 //! Snapshots go to OUT. The last line is the summary: `boot check: PASS ..` or `boot check: FAIL ..`.
 
 use crate::font;
 use crate::machine::{Machine, FACTORY_REGION, FLASH_SIZE};
 use crate::serve::{Mailbox, ToBytes, ToPackets};
-use crate::smoke::{bank_record, factory, note_peak, quick_start, run_parts, wait_text, Part, Run, C4, DEVICE_PAGE, LOUD, OCT_DOWN, OCT_UP, QUIET};
+use crate::smoke::{bank_name, bank_record, factory, note_peak, quick_start, record, released_cases, run_parts, wait_text, Part, Run, C4, DEVICE_PAGE, LOUD, OCT_DOWN, OCT_UP, QUIET};
 use std::collections::VecDeque;
 use std::process::ExitCode;
 
@@ -86,6 +91,7 @@ pub fn run(app: &[u8], link: Option<&[u8]>, out: &str) -> ExitCode {
     if let Some(l) = link {
         parts.push(("link", Box::new(move |t: &mut Run, e: &mut u64| linked(l, t, e))));
         parts.push(("factory-install", Box::new(move |t: &mut Run, e: &mut u64| factory_install(l, t, e))));
+        parts.push(("slot-upgrade", Box::new(move |t: &mut Run, e: &mut u64| slot_upgrade(l, t, e))));
     }
     run_parts(&mut t, &mut emulated, parts);
     let wall = t0.elapsed().as_secs_f64();
@@ -380,9 +386,39 @@ fn linked(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     Ok(())
 }
 
+/// The editor's install of `img` over the link (FACT_BEGIN, every page by FACT_WRITE, FACT_COMMIT), as protocol.ts and
+/// tools/fm1_install.py write it: pages inside one 256-byte page each, sector 0 after the header's 64 bytes, a record page
+/// at 0xF00 written whole. FACT_BEGIN's status, the pages written (or the first refusal), FACT_COMMIT's status
+fn install(m: &mut Machine, l: &mut Link, img: &[u8]) -> Result<(Option<u8>, Result<usize, String>, Option<u8>), String> {
+    l.send(&frame(C_FACT_BEGIN, &[]));
+    let begin = l.wait(m, 3000, |x| ack(x, C_FACT_BEGIN))?;
+    let mut pages = 0;
+    for s in 0..img.len().div_ceil(0x1000) {
+        let mut off = if s == 0 { 64 } else { 0 };
+        while off < 0x1000 && s * 0x1000 + off < img.len() {
+            let at = s * 0x1000 + off;
+            let mut page = img[at..at + (256 - (off & 0xFF)).min(img.len() - at)].to_vec();
+            if off & 0xF00 == 0xF00 && page.len() < 80 {
+                page.resize(256, 0xFF);                 // (the page an update record would be in: whole)
+            }
+            let mut p = vec![s as u8, off as u8, (off >> 8) as u8];
+            p.extend_from_slice(&page);
+            l.send(&frame(C_FACT_WRITE, &p));
+            let st = l.wait(m, 3000, |x| ack(x, C_FACT_WRITE))?;
+            if st != Some(0) {
+                return Ok((begin, Err(format!("sector {s} offset {off:#x}: {st:?}")), None));
+            }
+            pages += 1;
+            off = (off | 0xFF) + 1;
+        }
+    }
+    l.send(&frame(C_FACT_COMMIT, &img[..64]));
+    let commit = l.wait(m, 5000, |x| ack(x, C_FACT_COMMIT))?;
+    Ok((begin, Ok(pages), commit))
+}
+
 /// The factory content over the link on the M1_EMU_MIDI build (#915, D-490): a blank flash, the image installed as the
-/// editor and tools/fm1_install.py write it (pages inside one 256-byte page each, sector 0 after the header's 64 bytes,
-/// a record page at 0xF00 written whole), then FACT_INFO and the bank
+/// editor and tools/fm1_install.py write it, then FACT_INFO and the bank
 fn factory_install(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     let mut m = Machine::boot(app, Some(&vec![0xffu8; FLASH_SIZE]));
     let mut l = Link::new();
@@ -395,36 +431,11 @@ fn factory_install(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), St
     let before = l.wait(&mut m, 1500, |x| reply(x, R_FACT_INFO))?;
     t.check("factory link: FACT_INFO on a blank flash: no region, the firmware tier alone plays",
         before.as_ref().is_some_and(|p| p.len() >= 26 && p[0] == 0 && p[16] & 2 != 0), format!("{before:?}"));
-    l.send(&frame(C_FACT_BEGIN, &[]));
-    let st = l.wait(&mut m, 3000, |x| ack(x, C_FACT_BEGIN))?;
-    t.check("factory link: FACT_BEGIN is acknowledged S_OK", st == Some(0), format!("{st:?}"));
     let img = FACTORY_REGION;
-    let mut failed = None;
-    let mut pages = 0;
-    'sectors: for s in 0..img.len().div_ceil(0x1000) {
-        let mut off = if s == 0 { 64 } else { 0 };
-        while off < 0x1000 && s * 0x1000 + off < img.len() {
-            let at = s * 0x1000 + off;
-            let mut page = img[at..at + (256 - (off & 0xFF)).min(img.len() - at)].to_vec();
-            if off & 0xF00 == 0xF00 && page.len() < 80 {
-                page.resize(256, 0xFF);                 // (the page an update record would be in: whole)
-            }
-            let mut p = vec![s as u8, off as u8, (off >> 8) as u8];
-            p.extend_from_slice(&page);
-            l.send(&frame(C_FACT_WRITE, &p));
-            let st = l.wait(&mut m, 3000, |x| ack(x, C_FACT_WRITE))?;
-            if st != Some(0) {
-                failed = Some(format!("sector {s} offset {off:#x}: {st:?}"));
-                break 'sectors;
-            }
-            pages += 1;
-            off = (off | 0xFF) + 1;
-        }
-    }
-    t.check("factory link: FACT_WRITE takes every page of the image", failed.is_none(), failed.unwrap_or_else(|| format!("{pages} pages")));
-    l.send(&frame(C_FACT_COMMIT, &img[..64]));
-    let st = l.wait(&mut m, 5000, |x| ack(x, C_FACT_COMMIT))?;
-    t.check("factory link: FACT_COMMIT is acknowledged S_OK", st == Some(0), format!("{st:?}"));
+    let (begin, pages, commit) = install(&mut m, &mut l, img)?;
+    t.check("factory link: FACT_BEGIN is acknowledged S_OK", begin == Some(0), format!("{begin:?}"));
+    t.check("factory link: FACT_WRITE takes every page of the image", pages.is_ok(), pages.map_or_else(|e| e, |n| format!("{n} pages")));
+    t.check("factory link: FACT_COMMIT is acknowledged S_OK", commit == Some(0), format!("{commit:?}"));
     let added = wait_text(&mut m, "NEW PATCHES ADDED", 8000)?;
     t.snap(&m, "factory-installed");
     t.check("factory link: the bar says the region's patches were added", added, format!("at {} ms", m.ms()));
@@ -438,6 +449,75 @@ fn factory_install(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), St
     t.check("factory link: each region patch is in its own slot", missing.is_empty(), format!("missing {missing:?}"));
     let flash_img = &f[crate::machine::FACTORY_BASE..crate::machine::FACTORY_BASE + img.len()];
     t.check("factory link: the region holds the image byte for byte", flash_img == img, String::new());
+    *emulated += m.ms();
+    Ok(())
+}
+
+/// Factory updates reach untouched slots (firmware/src/bank_upgrade.h, D-887 amended 2026-11-19) on the M1_EMU_MIDI build:
+/// a bank an earlier release left and no factory region, then today's region installed over the link while it runs
+fn slot_upgrade(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
+    const OLD_SET: u32 = 0x55ce34;              // (1.20.1's factory set: an earlier one than today's)
+    const EDITED: u32 = 30;
+    const RENAMED: u32 = 31;
+    let version: u8 = include_str!("../../../firmware/src/engine.h").split("#define ENG_PATCH_VERSION ").nth(1).and_then(|s| s.split_whitespace().next()?.parse().ok()).ok_or("ENG_PATCH_VERSION")?;
+    let cases = released_cases();
+    let presets = factory();
+    let tier = image_patches(&tier_image());
+    let region = image_patches(FACTORY_REGION);
+    // each case: its name, its own slot (the image's record), the released copy, today's bytes
+    let mut own = Vec::new();
+    for (k, (name, old)) in cases.iter().enumerate() {
+        let slot = (if k == 0 { &tier } else { &region }).iter().find(|p| &p.0 == name).map(|p| p.1).ok_or(format!("{name}: not in its image"))?;
+        let today = presets.iter().find(|p| &p.0 == name).map(|p| p.1.clone()).ok_or(format!("{name}: not a factory patch"))?;
+        own.push((name.clone(), slot, old.clone(), today));
+    }
+    let mut edited = own[0].2.clone();
+    let last = edited.len() - 1;
+    edited[last] ^= 1;
+    let mut flash = vec![0xffu8; FLASH_SIZE];
+    let put = |f: &mut Vec<u8>, sec: usize, s: Vec<u8>| f[0xA0000 + sec * 0x1000..0xA1000 + sec * 0x1000].copy_from_slice(&s);
+    for (k, (name, slot, old, _)) in own.iter().enumerate() {
+        put(&mut flash, k, record(*slot, 1 + k as u32, name, old, false));
+    }
+    put(&mut flash, 2, record(EDITED, 3, &own[0].0, &edited, false));
+    put(&mut flash, 3, record(RENAMED, 4, "MY COPY", &own[1].2, false));
+    // the release's settings record: slot (the tier case's), octave 0, accel, today's format, module 0, count-in off, its set
+    let set = [1, own[0].1 as u8, 8, 0, 1, 0, 0, 0, 0, 1, version, 0, 0, OLD_SET as u8, (OLD_SET >> 8) as u8, (OLD_SET >> 16) as u8];
+    put(&mut flash, 4, record(64, 5, "", &set, false));
+    let slots = [(own[0].1, 1u32), (own[1].1, 2), (EDITED, 3), (RENAMED, 4)];
+    let unchanged = |f: &[u8]| slots.iter().all(|&(s, seq)| bank_record(f, s).is_some_and(|r| r.0 == seq));
+
+    let mut m = Machine::boot(app, Some(&flash));
+    let mut l = Link::new();
+    l.run(&mut m, 1500)?;
+    quick_start(&mut m, 8000)?;
+    let missing = wait_text(&mut m, "FACTORY SOUNDS MISSING", 4000)?;
+    l.run(&mut m, 500)?;
+    t.check("slot upgrade: a bank an earlier release left, no factory region: every slot as it was, the bar says FACTORY SOUNDS MISSING:",
+        missing && unchanged(&m.flash()), String::new());
+    let (begin, pages, commit) = install(&mut m, &mut l, FACTORY_REGION)?;
+    t.check("slot upgrade: the editor installs today's region while it runs", begin == Some(0) && pages.is_ok() && commit == Some(0),
+        format!("{begin:?} {pages:?} {commit:?}"));
+    let said = wait_text(&mut m, "FACTORY PATCHES UPDATED", 8000)?;
+    t.snap(&m, "slot-upgrade");
+    t.check("slot upgrade: the bar says FACTORY PATCHES UPDATED", said, format!("at {} ms", m.ms()));
+    l.run(&mut m, 500)?;
+    let f = m.flash();
+    for (k, (name, slot, _, today)) in own.iter().enumerate() {
+        let r = bank_record(&f, *slot);
+        t.check(&format!("slot upgrade: the untouched {} copy of {name} has today's patch, in slot {}, under its name", if k == 0 { "firmware-tier" } else { "factory-region" }, slot + 1),
+            r.as_ref().is_some_and(|r| r.0 > 5 && &r.1 == today) && bank_name(&f, *slot).as_deref() == Some(name.as_str()),
+            r.map_or("gone".into(), |r| format!("sequence {}, {} bytes", r.0, r.1.len())));
+    }
+    t.check("slot upgrade: the edited copy stays as it is", bank_record(&f, EDITED) == Some((3, edited.clone())), String::new());
+    t.check("slot upgrade: the renamed copy stays as it is", bank_record(&f, RENAMED) == Some((4, own[1].2.clone())), String::new());
+    *emulated += m.ms();
+
+    let mut m = Machine::boot(app, Some(&f));
+    quick_start(&mut m, 9000)?;
+    let again = wait_text(&mut m, "FACTORY PATCHES UPDATED", 2500)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    t.check("slot upgrade: the next boot rewrites nothing", !again && m.flash() == f, String::new());
     *emulated += m.ms();
     Ok(())
 }

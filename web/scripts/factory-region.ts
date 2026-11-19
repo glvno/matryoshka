@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The factory content's images (#915, D-1020), in the layout firmware/src/factory.c reads: the factory patches, the
-// factory engines' presets, the factory drum patterns, the released factory sets and the preset migrations. export-defs.ts
-// writes two: the firmware tier (firmware/src/factory_tier.h FC_TIER, compiled in: the patches of FIRMWARE_TIER in
+// factory engines' presets, the factory drum patterns, the released factory sets, the released copies and the preset
+// migrations. export-defs.ts writes two: the firmware tier (firmware/src/factory_tier.h FC_TIER, compiled in: the patches
+// of FIRMWARE_TIER in
 // web/src/factory-bank.ts and the preset migrations) and the factory region's image (web/public/firmware/matryoshka-factory.bin,
 // which the editor's Flash tab and tools/fm1_install.py install into the FM-1's 18 sectors at 0xEA000: the other factory
 // patches, every factory engine preset, the drum patterns, and any firmware-tier patch fixed since, which replaces the
@@ -24,6 +25,11 @@ const NAME = 20, PNAME = 16;
 /** `revision`: the content version of the copy (default the image's): a region record named as a firmware-tier patch
  *  replaces the built-in copy when its revision is higher */
 export interface RegionPatch { name: string; binary: Uint8Array; slot: number; revision?: number }
+/** a factory patch as a release wrote it (web/scripts/released-factory.json, legacy-factory.ts): its name, length, FNV-1a
+ *  and CRC-32 (8 hex digits each) */
+export interface ReleasedCopy { name: string; len: number; fnv: string; crc: string }
+/** an image's released copy: one of its patches (`patch`, the image's index) as a release wrote it, unlike today's */
+export interface ImageCopy { patch: number; len: number; fnv: number; crc: number }
 export interface RegionPreset { structure: string; name: string; values: number[] }   // values in Q16
 export interface RegionPattern { identity: number; structure: string; name: string; notes: number[]; len: number; rate: number; swing: number; dir: number; gate: number }
 export interface RegionInput {
@@ -34,6 +40,7 @@ export interface RegionInput {
   presets: RegionPreset[];
   patterns: RegionPattern[];
   released: { set: number; has: bigint }[];
+  copies: ImageCopy[];
   migrations: Uint8Array;
 }
 
@@ -54,6 +61,34 @@ export function crc32(data: ArrayLike<number>): number {
     for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xedb88320 : c >>> 1;
   }
   return ~c >>> 0;
+}
+
+/** FNV-1a, 32 bits (factory.c fc_fnv32) */
+export function fnv32(data: ArrayLike<number>): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < data.length; i++) h = Math.imul(h ^ data[i], 0x01000193) >>> 0;
+  return h;
+}
+
+/** a patch's fingerprint as released-factory.json keeps it: its length, FNV-1a and CRC-32 */
+export function copyFingerprint(b: Uint8Array): { len: number; fnv: string; crc: string } {
+  return { len: b.length, fnv: fnv32(b).toString(16).padStart(8, '0'), crc: crc32(b).toString(16).padStart(8, '0') };
+}
+
+/** an image's released copies (firmware/src/bank_upgrade.h, D-887): for each of its patches, every copy of that name a
+ *  release wrote whose bytes differ from today's, in patch order. An FM-1 gives a slot that still holds one, under that
+ *  name, today's patch */
+export function imageCopies(patches: readonly RegionPatch[], released: readonly ReleasedCopy[]): ImageCopy[] {
+  const out: ImageCopy[] = [];
+  patches.forEach((p, patch) => {
+    const now = copyFingerprint(p.binary), name = ascii(p.name, NAME);
+    for (const c of released) {
+      if (c.name !== name || (c.len === now.len && c.fnv === now.fnv && c.crc === now.crc)) continue;
+      const e = { patch, len: c.len, fnv: parseInt(c.fnv, 16), crc: parseInt(c.crc, 16) };
+      if (!out.some((x) => x.patch === e.patch && x.len === e.len && x.fnv === e.fnv && x.crc === e.crc)) out.push(e);
+    }
+  });
+  return out;
 }
 
 /** the content's version, which the editor compares with the FM-1's (an update is offered when the FM-1's is lower): a
@@ -226,6 +261,12 @@ function layout(input: RegionInput, pad: number): Uint8Array {
   w.raw(patternSection(input.patterns));
   const released = w.at;
   for (const r of input.released) { w.u32(r.set); w.u32(Number(r.has & 0xffffffffn)); w.u32(Number(r.has >> 32n)); }
+  // the released copies right after the released sets (header bytes 58..59 count them; a firmware before them reads
+  // neither): 12 bytes each
+  for (const c of input.copies) {
+    if (c.patch >= input.patches.length || c.len > UNPACK_CAP) throw new Error(`released copy of patch ${c.patch}: out of range`);
+    w.u32(c.fnv >>> 0); w.u32(c.crc >>> 0); w.u16(c.len); w.u8(c.patch); w.u8(0);
+  }
   const mig = w.at;
   w.raw(input.migrations);
   w.raw(new Array(PNAME).fill(0));          // (so a name read whole, 16 bytes, never runs past the image)
@@ -246,6 +287,7 @@ function layout(input: RegionInput, pad: number): Uint8Array {
   out[56] = ps.bits;
   out[57] = input.kind;
   out.fill(0, 58, 62);
+  h.setUint16(58, input.copies.length, true);
   h.setUint16(62, crc16(out.subarray(4, 62)), true);
   return out;
 }
@@ -263,14 +305,24 @@ export function buildRegion(input: RegionInput): Uint8Array {
 }
 
 /** the header's fields, for the tools and tests (undefined: not an image) */
-export function readHeader(img: Uint8Array): { layout: number; format: number; version: number; set: number; len: number; crc: number; patches: number; presets: number; patterns: number; kind: number } | undefined {
+export function readHeader(img: Uint8Array): { layout: number; format: number; version: number; set: number; len: number; crc: number; patches: number; presets: number; patterns: number; kind: number; copies: number } | undefined {
   if (img.length < HEADER) return undefined;
   const h = new DataView(img.buffer, img.byteOffset, HEADER);
   if (h.getUint32(0, true) !== MAGIC || h.getUint16(62, true) !== crc16(img.subarray(4, 62))) return undefined;
   return {
     layout: img[4], format: img[5], version: h.getUint16(6, true), set: h.getUint32(8, true), len: h.getUint32(12, true), crc: h.getUint32(16, true),
-    patches: h.getUint16(20, true), presets: h.getUint16(22, true), patterns: h.getUint16(24, true), kind: img[57],
+    patches: h.getUint16(20, true), presets: h.getUint16(22, true), patterns: h.getUint16(24, true), kind: img[57], copies: h.getUint16(58, true),
   };
+}
+
+/** the released copies (the image's patch, length, FNV-1a, CRC-32), for the tools and tests */
+export function readCopies(img: Uint8Array): ImageCopy[] {
+  const h = new DataView(img.buffer, img.byteOffset, img.length);
+  const at = h.getUint32(48, true) + 12 * h.getUint16(26, true);
+  return Array.from({ length: h.getUint16(58, true) }, (_, k) => {
+    const e = at + 12 * k;
+    return { patch: img[e + 10], len: h.getUint16(e + 8, true), fnv: h.getUint32(e, true), crc: h.getUint32(e + 4, true) };
+  });
 }
 
 /** the patch records' names and revisions, for the tools and tests */
