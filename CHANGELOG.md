@@ -4,6 +4,7 @@
 
 - **Hera 6 gains Drive on its FX page,** beside its own Juno chorus, Delay and Reverb, at its six voices. Drive starts off, so every factory preset sounds as before; turn it on from the FX page. A slot you saved keeps its own version.
 - **A clock that arrives together with a Start no longer puts the FM-1 a clock ahead.** When an app sends the last clock of its loop and a Start for the next one at the same moment, the FM-1 counted that clock as the first of the new loop, so its patterns ran one clock ahead of the app. The clock now belongs to the old loop, in the FM-1 and in the editor. The FM-1 also keeps a log of the MIDI clock, Start, Stop, Continue and Song Position messages it received, with their timing, for finding out what an app such as Reel sends at its loop point: `tools/m1_link.py midilog` reads it once the FM-1 is plugged into a computer (#870).
+- **The 808 Kit has an effects rack: Drive and Reverb on the FX page,** as the melodic patches have. Both start off, so the patterns, the kit and its presets sound as before. The FM-1 gets it with the next firmware release. A slot you saved keeps its own version.
 
 ## 1.21.0 — 2026-11-19
 

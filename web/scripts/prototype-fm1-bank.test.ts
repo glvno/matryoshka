@@ -9,6 +9,8 @@ import { backupKeys } from '../src/migrate';
 import { factoryQualificationPhaseIds, factoryQualificationTargetSeconds } from '../src/factory-bank-qualification';
 import { exportSelectedFactoryAudition, parseAuditionExportOptions } from './factory-bank-audition';
 import { FACTORY_KITS, withKitPatterns } from '../src/factory-kit-patterns';
+import { selectedFactoryProfile } from '../src/factory-bank';
+import { FM1_PRESETS } from '../src/presets';
 import type { Patch } from '../src/patch';
 
 const directories: string[] = [];
@@ -44,9 +46,11 @@ describe('explicit final-profile audition export', () => {
       expect(entry.defaultNativeSha256).toBe(createHash('sha256').update(readFileSync(resolve(output, entry.native.path))).digest('hex'));
       expect(entry.cpu.qualified).toBe(false);
       if (entry.protected) {
-        // (a drum kit with a pattern set, D-829: its source plus those patterns, links and songs; D-1053, D-1055)
+        // (a drum kit with a pattern set, D-829: its source plus those patterns, links and songs; D-1053, D-1055; a kit
+        // with a drum rack is the shipped patch, which factory-bank.test.ts holds to its source)
         const source = structuredClone(SOURCE.find(s => s.name === entry.sourceName)!) as unknown as { name: string; patch: Patch };
-        expect(exported).toEqual(FACTORY_KITS.some(k => k.patch === source.name) ? { ...source, patch: withKitPatterns(source.patch) } : source);
+        if (selectedFactoryProfile[source.name]?.drumRack) expect(exported).toEqual({ name: source.name, patch: FM1_PRESETS[source.name]() });
+        else expect(exported).toEqual(FACTORY_KITS.some(k => k.patch === source.name) ? { ...source, patch: withKitPatterns(source.patch) } : source);
       }
     }
   });
