@@ -4,6 +4,7 @@
 # patch (firmware/test/exact_factory.c) with the engine of git revision BASE and with the working tree's, and compares the
 # two outputs sample for sample (for optimizations that must not change a single bit).
 #   EXACT_CFLAGS=-DENG_AOT=1 also checks the compiled assemblies against BASE.
+#   Its output (build/exact, about 1.3 GB) is deleted when every check passes; KEEP_EXACT=1 keeps it.
 #   tools/engine_exact.sh [BASE]        (default HEAD)
 set -e
 cd "$(dirname "$0")/.."
@@ -68,4 +69,7 @@ for o in new poison; do
   fi
 done
 [ $fail = 0 ] && echo "all $n kits, the transition checks and the $(wc -l < "$T/out/factory.new" | tr -d ' ') factory patches bit-identical to $BASE (also with the buffers poisoned outside their life)"
+if [ $fail != 0 ]; then echo "kept $T to look into"
+elif [ "${KEEP_EXACT:-0}" = 1 ]; then echo "kept $T (KEEP_EXACT=1)"
+else rm -rf "$T"; echo "deleted $T (KEEP_EXACT=1 keeps it)"; fi
 exit $fail
