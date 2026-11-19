@@ -24,6 +24,7 @@ typedef struct {
     uint32_t stored, store_sum, pat_sum;                /* the pattern store (#901): its entries, their ids and hashes, and
                                                          * the selected pattern's notes on every track */
     int mlen;
+    uint32_t learn;                                     /* MIDI learn (#1067, midi_learn.c learn_live): 0 none, 1 a row, 2 a control */
 } ct_snap_t;
 static int ct_mod;                                      /* the track shown when the gesture began, -1 none */
 static uint32_t ct_pre_dev, ct_pre_pg;                  /* the device page before the Page button's press (ct_page_button) */
@@ -57,6 +58,7 @@ static void ct_take(ct_snap_t *s)
     s->list_btn = pg_list_btn;
     s->list_step = pg_list_step;
     s->menu_tab = menu_tab;
+    s->learn = (uint32_t)learn_live();
     s->man_top = man_top;
     s->updates = (uint32_t)(host_updates + host_defaults);
     s->cfg_sum = ct_fnv(ct_fnv(ct_fnv(ct_fnv(ct_fnv(ct_fnv(0, cfg.ch), cfg.midi_out), cfg.count_in), cfg.quick), (uint32_t)gt_patch), cfg.clock_in);
@@ -207,6 +209,7 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_CONDITION: return a->cond_n != b->cond_n;
     case CE_RATCHET: return a->ratchet_sum != b->ratchet_sum && a->micro_sum == b->micro_sum;
     case CE_MICRO: return a->micro_sum != b->micro_sum && a->ratchet_sum == b->ratchet_sum && a->seq_pg == b->seq_pg && a->octave == b->octave;
+    case CE_LEARN_ROW: return b->learn == 1u && a->learn == 2u;   /* (a row picked: the learn waits for its control) */
     case CE_FILL: return a->msg_sum != b->msg_sum && a->page == b->page && a->notes_sum == b->notes_sum && a->mutes == b->mutes
                          && a->params == b->params && !eng_fill_on();   /* (FILL said, and let go with FX; FX's own job not done) */
     case CE_CHORD_BUTTON: {                             /* (#598) a chord button: its key under the split out, no note played */
@@ -427,6 +430,19 @@ static int ct_enter(uint32_t s, uint32_t v)
         }
         if (v == 4)
             return ct_fx_load();
+        if (v == 5) {                                   /* MIDI learn waits for a row (GLO > MIDI 2/2, LEARN, #1067) */
+            if (ct_load("ORACLE V"))
+                return 0;
+            ct_focus_assembly();
+            {                                           /* (a page whose K1 MIDI can move: Oracle V's first two start with poly rows) */
+                uint32_t q;
+                for (q = 0; q < 8u && pages_now() && pages_now()->nrows && (pages_now()->par[0] & POLY_ROW); q++)
+                    pages_page(1);
+            }
+            later(500);
+            learn_start();
+            return learn_live() == 1;
+        }
         return 0;
     case HS_ENV:
         if (v == 2) {
