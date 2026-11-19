@@ -195,4 +195,110 @@ describe('Quick patch in the editor', () => {
     expect(quick.open).toBe(true);
     expect(field().placeholder).toBe('a port of Multimode filter, or another module');
   });
+
+  describe('a cable held (owner 2026-11-19: the ring folds into the plug)', () => {
+    const press = (key: string): void => { field().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })); };
+    const sectors = (): number => document.querySelectorAll('.qp-radial svg.qp-rings:not(.qp-collapse) .qp-sec').length;
+    const hint = (): string => document.querySelector('.qp-hint')!.textContent!;
+    const centre = (): string => document.querySelector('.qp-core-name')!.textContent!;
+    const lfoAndFilter = (): { p: Patch; l: number; f: number } => {
+      const p = newPatch(DEFS);
+      return { p, l: addModule(p, DEFS.lfo, 0, 600).id, f: addModule(p, DEFS.filter, 400, 600).id };
+    };
+
+    it('hides the source card\'s ring: the centre is a socket with the plug, and the jack it came from flashes as it folds', () => {
+      const { p, l } = lfoAndFilter();
+      const { quick } = setup(p);
+      quick.show({ kind: 'module', id: l });
+      expect(sectors()).toBeGreaterThan(0);
+      play('⏎');
+      expect(sectors()).toBe(0);
+      expect(document.querySelector('.qp-socket-rim')).not.toBeNull();
+      expect(document.querySelector('.qp-plug')).not.toBeNull();
+      expect(centre()).toBe('LFO out');
+      expect(field().placeholder).toBe('where to?');
+      // the ring folding away, its held jack flashing (an output: the flash is not only for inputs)
+      expect([...document.querySelectorAll('.qp-collapse .qp-sec.flash')].map((g) => g.getAttribute('data-port'))).toEqual(['out:jack:out']);
+      // the held jack glows on its card on the canvas
+      expect(document.querySelector(`#modules .module[data-id="${l}"] .qp-glow-jack`)).not.toBeNull();
+    });
+
+    it('shows no ring for a card typed or chosen until it is picked, then its ring with the plug', () => {
+      const { p, l, f } = lfoAndFilter();
+      const { editor, quick } = setup(p);
+      quick.show({ kind: 'module', id: l });
+      play('⏎ multi');
+      const labels = [...document.querySelectorAll('.qp-list li .qp-label')].map((e) => e.textContent);
+      expect(labels.slice(0, 2)).toEqual(['Multimode filter', 'New Multimode filter']);
+      expect(sectors()).toBe(0);
+      // the card the list names is outlined on the canvas instead
+      expect(document.querySelector(`#modules .module[data-id="${f}"]`)!.classList.contains('qp-candidate')).toBe(true);
+      play('⏎');
+      expect(sectors()).toBeGreaterThan(8);
+      expect(document.querySelector('.qp-radial svg.qp-rings')!.classList.contains('qp-grow')).toBe(true);
+      expect(document.querySelector('.qp-plug')).not.toBeNull();
+      expect(document.querySelector('.qp-socket-rim')).toBeNull();
+      expect(document.querySelector(`#modules .module[data-id="${f}"]`)!.classList.contains('qp-glow')).toBe(true);
+      // landing: the cable is made, the plug goes, the jack it went into flashes in the ring
+      play('⏎');
+      expect(cables(editor.patch)).toEqual(['lfo.out>filter.cv']);
+      expect(document.querySelector('.qp-plug')).toBeNull();
+      expect([...document.querySelectorAll('.qp-sec.flash')].map((g) => g.getAttribute('data-port'))).toEqual(['in:jack:cv']);
+    });
+
+    it('refuses the source card\'s own name', () => {
+      const { p, l } = lfoAndFilter();
+      const { editor, quick } = setup(p);
+      quick.show({ kind: 'module', id: l });
+      play('⏎ lfo');
+      expect(document.querySelector('.qp-list li .qp-detail')!.textContent).toBe('where this cable starts');
+      play('⏎');
+      expect(hint()).toBe('that is the card this cable starts from: pick another card');
+      expect(sectors()).toBe(0);
+      expect(editor.patch.cables).toEqual([]);
+    });
+
+    it('lists the cards it could go to, but a quick ⏎ with nothing typed or chosen names none; ↓ chooses one', () => {
+      const { p, l } = lfoAndFilter();
+      const { quick } = setup(p);
+      quick.show({ kind: 'module', id: l });
+      play('⏎');
+      expect([...document.querySelectorAll('.qp-list li .qp-label')].map((e) => e.textContent)).toContain('Multimode filter');
+      expect(document.querySelector('.qp-list li.sel')).toBeNull();
+      play('⏎');
+      expect(hint()).toBe('type the card it goes to, or ↓ to choose one');
+      expect(centre()).toBe('LFO out');
+      while (document.querySelector('.qp-list li.sel .qp-label')?.textContent !== 'Multimode filter') press('ArrowDown');
+      play('⏎');
+      expect(centre()).toMatch(/Multimode filter$/);
+      expect(sectors()).toBeGreaterThan(8);
+    });
+
+    it('Backspace lets it go: the source ring comes back', () => {
+      const { p, l } = lfoAndFilter();
+      const { quick } = setup(p);
+      quick.show({ kind: 'module', id: l });
+      play('⏎');
+      expect(sectors()).toBe(0);
+      press('Backspace');
+      expect(sectors()).toBeGreaterThan(0);
+      expect(document.querySelector('.qp-plug')).toBeNull();
+      expect(document.querySelector('.qp-glow-jack')).toBeNull();
+      expect(field().placeholder).toBe('a port of LFO, or another module');
+    });
+
+    it('says a cable that is already there, changes nothing and keeps it held', () => {
+      const { p, l, f } = lfoAndFilter();
+      connect(p, DEFS, { module: l, port: 'out' }, { module: f, port: 'cv' });
+      const { editor, quick } = setup(p);
+      const steps = history(editor);
+      quick.show({ kind: 'module', id: f });
+      play('cv ⏎ lfo ⏎ out ⏎');
+      expect(hint()).toBe('that cable is already there: pick another jack, or Backspace lets it go');
+      expect(cables(editor.patch)).toEqual(['lfo.out>filter.cv']);
+      expect(document.querySelector('.qp-plug')).not.toBeNull();
+      play('Esc');
+      expect(history(editor)).toBe(steps);
+    });
+  });
 });
