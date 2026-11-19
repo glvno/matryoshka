@@ -927,10 +927,9 @@ static int maps_test(int n, char **argv)
     CHECK(m1_valid(o, (uint32_t)nb) && eng_load(o, (uint32_t)nb) == 0);
     CHECK(eng_maps(o, (uint32_t)nb, &e) == 3u && (at = eng_maps_at(o, (uint32_t)nb)) == (uint32_t)nb - 16u);
     CHECK(e[0] == 1u && e[5] == ENG_MAP_BEND && e[8] == 51u && e[9] == 204u && e[10] == 74u && e[13] == 255u && e[14] == 0u);
-    CHECK((o[6] & 2u) && o[at - 16u] == 3u);                     /* (the kit's three macro ranges just before) */
     m1_set_current(o, (uint32_t)nb);
-    m1_patch_range(1, 0, 0, 1, 10, 20);                          /* a range more: the mappings move along, still last */
-    CHECK(m1_cur_len == (uint32_t)nb + 5u && m1_valid(m1_cur, m1_cur_len) && eng_maps(m1_cur, m1_cur_len, &e) == 3u && e[10] == 74u);
+    m1_patch_range(1, 0, 0, 1, 10, 20);                          /* a range more (a section of its own without one): the mappings move along, still last */
+    CHECK(m1_cur_len == (uint32_t)nb + ((o[6] & 2u) ? 5u : 6u) && m1_valid(m1_cur, m1_cur_len) && eng_maps(m1_cur, m1_cur_len, &e) == 3u && e[10] == 74u);
     m1_patch_range(1, 0, 0, 0, 0, 0);
     CHECK(m1_cur_len == (uint32_t)nb && !memcmp(m1_cur, o, (size_t)nb));
     CHECK(m1_patch_map(2, 1, 1, 0, 255, 1) && eng_maps(m1_cur, m1_cur_len, &e) == 4u && m1_valid(m1_cur, m1_cur_len));

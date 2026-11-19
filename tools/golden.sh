@@ -18,6 +18,7 @@ fail=0
 build/idle_test build/golden/idle-stagger.m1p build/golden/idle-stagger.ev || fail=1
 build/proto_test build/golden/acid.m1p build/golden/proto.syx $(cat build/golden/proto.args) build/golden/proto-slot.syx build/golden/steps-kit.m1p build/golden/proto-sandbox.syx build/golden/steps-patterns.m1p build/golden/steps-song.m1p build/golden/steps-locks.m1p || fail=1
 build/proto_test --grow build/golden/*-counted.m1p build/golden/*-slim.m1p || fail=1   # (the FM-1's edits of a counted copy, format 51 and 64: grown in place, D-1005)
+build/proto_test --maps build/golden/midi-learn.m1p build/golden/acid.m1p || fail=1   # (#1067: the MIDI mapping section, the FM-1's edits of it)
 # (D-1025) each format 64 twin in its shorter layout against its counted twin: the same cables per module in the same order,
 # panel labels and row names, and the same samples, by proto_test's render and by host_test's with the kit's events
 pairs=""
