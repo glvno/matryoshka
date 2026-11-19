@@ -171,10 +171,10 @@
         <span id="dev-status" class="muted" role="status"></span>
         <span class="menu-heading">MIDI keyboard</span>
         <button id="dev-release" title="Release MIDI ports by reloading the page. Use before unplugging or flashing the FM-1.">Release MIDI</button>
-        <!-- MIDI learn (#1067, midi-learn.ts): this patch's learned sources, each with Remove (main.ts showLearned) -->
+        <!-- MIDI learn (#1067, midi-learn.ts): this patch's learned sources, each with its range and Remove (main.ts showLearned) -->
         <span class="menu-heading">MIDI learn (this patch)</span>
         <div id="midi-learn-list" class="midi-learn-list" role="group" aria-label="MIDI controls learned by this patch"></div>
-        <p class="muted">A row’s ⋮ menu or the palette’s <b>MIDI learn…</b> waits for a knob, a fader, a pad’s axis or the pitch bend wheel of a MIDI controller; the first that moves drives the row. A learned control no longer does its usual job (CC 1 no longer moves Main’s mod wheel). CC 80..86 and 120..127 cannot be learned, nor anything from an FM-1. The patch keeps what it learned; the FM-1 never gets it.</p>
+        <p class="muted">A row’s ⋮ menu or the palette’s <b>MIDI learn…</b> waits for a knob, a fader, a pad’s axis or the pitch bend wheel of a MIDI controller; the first that moves drives the row. Low and High set where the control’s ends land in the row’s range (%). A learned control no longer does its usual job (CC 1 no longer moves Main’s mod wheel). CC 80..86 and 120..127 cannot be learned, nor anything from an FM-1. The patch keeps what it learned, and the FM-1 plays it on its own for every row its pages show (GLO › MIDI 2/2 learns there too).</p>
         <!-- the global tempo (main.ts, tempo.ts, D-907): Global or Patch, shared with a connected FM-1 (its GLO > PANEL > TEMPO) -->
         <span class="menu-heading">Tempo</span>
         <button id="tempo-btn" type="button" aria-pressed="true">Tempo: global</button>

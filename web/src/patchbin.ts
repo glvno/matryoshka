@@ -318,14 +318,15 @@ function uses120(dev: Patch): boolean {
 }
 /**
  * The format of the release after 1.21 (D-1025): the EQ module appended after the Euclid, written only by a patch that
- * has one; the MIDI mappings (mapRecord, #1067), written only by a patch with one; and the panel labels, cables and Drum
- * map row names in fewer bytes (SLIM). A patch is written in it only when it uses one of those or fits the FM-1's bytes
- * in no older format (layout).
+ * has one; the MIDI mappings (mapRecord, #1067), written by a patch with MIDI learn; and the panel labels, cables and
+ * Drum map row names in fewer bytes (SLIM). A patch is written in it only when it uses one of those or fits the FM-1's
+ * bytes in no older format (layout).
  */
 export const FORMAT_1_22 = 64;
-/** what a patch uses of FORMAT_1_22 (`dev`: its device form): a module of a type added with it (the EQ), a MIDI mapping */
+/** what a patch uses of FORMAT_1_22 (`dev`: its device form): a module of a type added with it (the EQ), MIDI learn (any
+ *  binding: one only the editor plays costs no byte, and the format is decided without the device pages) */
 function uses122(source: Patch, dev: Patch): boolean {
-  return dev.modules.some((m) => (DEFS[m.type]?.since ?? 0) >= FORMAT_1_22) || (!!source.midiLearn?.length && mapRecord(source, dev, deviceSection(source, dev)).length > 0);
+  return !!source.midiLearn?.length || dev.modules.some((m) => (DEFS[m.type]?.since ?? 0) >= FORMAT_1_22);
 }
 /**
  * The first format that writes the panel labels by their length (panelBytes), the cables grouped by the module they go

@@ -24,7 +24,7 @@ import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, NAME_MAX, pageLa
 import { cableRole } from './cable-role';
 import { addBreak, fm1Name, layoutOf, moveRows, moveSection, pagesOf, removeBreak, removeHeading, removeRows, renameHeading, rowKey, setLayout, type KnobOf, type Layout, type RowSpot, type Sec } from './arrange';
 import type { ParameterValues } from './engine';
-import { delayRoom, deviceBudget, DEVICE, LINE_TYPES, lineBudget, linesAdvice } from './patchbin';
+import { delayRoom, deviceBudget, deviceSection, DEVICE, LINE_TYPES, lineBudget, linesAdvice, MAP_BEND, mapRecord } from './patchbin';
 import { cardCostText, cardCostTitle, type CardCost, type CardCosts } from './cpu';
 import { choiceName, formatValue, longName, moduleName, moduleTag, moduleTitle, paramHint } from './labels';
 import { outputRange } from './ranges';
@@ -73,7 +73,7 @@ import {
   type CommentBox,
 } from './patch';
 import { addComment, COMMENT_H, COMMENT_W, moveComments, pasteComments, removeComments, setCommentText, sizeComment } from './comments';
-import { bindingOfRow, bindRow, MidiLearn, sourceJob, sourceName, unbindRow, unbindSource, type LearnRow, type LearnSource, type MidiBinding } from './midi-learn';
+import { bindingOfRow, bindRow, fixMidiLearn, MIDI_LEARN_MAX, MidiLearn, setLearnRange, sourceJob, sourceName, unbindRow, unbindSource, type LearnRow, type LearnSource, type MidiBinding } from './midi-learn';
 import { patternStrip, type PatternStrip } from './pattern-strip';
 import { SongView } from './song';
 import type { PatternView } from './engine';
@@ -241,6 +241,8 @@ export interface EditorEvents {
   onListen?(srcs: ListenSource[] | null, label: string): void;
   /** MIDI learn (#1067): a row waits for its source (its name) or stopped waiting (null) */
   onLearn?(row: string | null): void;
+  /** MIDI learn (#1067): the patch's mappings changed (learned, removed, a range, an undo): a linked FM-1 hears of it (MAP) */
+  onMaps?(): void;
   /** the Output card's loudness readout (#940, loudness-view.ts), made again at every rebuild */
   outputReadout?(): HTMLElement;
   /** a Limiter card's gain reduction readout (#1019, limit-view.ts), made again at every rebuild */
@@ -6862,9 +6864,11 @@ export class Editor {
     if (pd) this.learn.start(r, !!pd.toggle || pd.choices?.length === 2);
   }
 
-  /** learn found the row's source: an undo step that reloads nothing */
+  /** learn found the row's source: an undo step that reloads nothing; refused when the patch holds MIDI_LEARN_MAX others */
   private bindLearned(b: MidiBinding): void {
-    this.editBindings((p) => bindRow(p, b));
+    let fits = true;
+    this.editBindings((p) => void (fits = bindRow(p, b)));
+    if (!fits) return this.ev.onError(`A patch holds ${MIDI_LEARN_MAX} MIDI controls at most: remove one in FM-1 & MIDI first.`);
     const job = sourceJob(b.src);
     this.ev.onError(`${sourceName(b.src)} now moves ${this.rowName(b)}.${job ? ` While it is learned, it no longer moves ${job}.` : ''} Unlearn it from the row’s ⋮ menu or in FM-1 & MIDI.`);
   }
@@ -6879,17 +6883,45 @@ export class Editor {
     this.editBindings((p) => unbindSource(p, src));
   }
 
-  /** the patch's learned sources for the list in FM-1 & MIDI: each with its row's name and the job it gets back once removed */
-  bindings(): { src: LearnSource; source: string; row: string; job: string | null }[] {
-    return (this.patch.midiLearn ?? []).filter((b) => this.patch.modules.some((m) => m.id === b.module))
-      .map((b) => ({ src: b.src, source: sourceName(b.src), row: this.rowName(b), job: sourceJob(b.src) }));
+  /** where a row's source lands in its range (the list in FM-1 & MIDI): lo for its lowest value, hi for its highest; an undo step */
+  setLearnRange(r: LearnRow, lo: number, hi: number): void {
+    this.editBindings((p) => setLearnRange(p, r, lo, hi));
   }
 
-  /** a change to the bindings: one undo step, no engine reload (editor-only data, as Mutate's locks) */
+  /** does the FM-1 play this binding (patchbin.ts mapRecord: a row on one of its pages, not a poly setting, not set at load) */
+  private onFm1(b: MidiBinding): boolean {
+    const dev = deviceView(this.patch, true).patch;
+    return mapRecord({ ...this.patch, midiLearn: [b] }, dev, deviceSection(this.patch, dev)).length > 0;
+  }
+
+  /** the patch's learned sources for the list in FM-1 & MIDI: each with its row's name, the job it gets back once removed,
+   *  its range and whether the FM-1 plays it */
+  bindings(): { src: LearnSource; source: string; row: string; job: string | null; at: LearnRow; lo: number; hi: number; fm1: boolean }[] {
+    return (this.patch.midiLearn ?? []).filter((b) => this.patch.modules.some((m) => m.id === b.module))
+      .map((b) => ({ src: b.src, source: sourceName(b.src), row: this.rowName(b), job: sourceJob(b.src), at: { module: b.module, param: b.param }, lo: b.lo ?? 0, hi: b.hi ?? 1, fm1: this.onFm1(b) }));
+  }
+
+  /** the FM-1's mappings after a learn or a clear there (MAP_NOW, device-form indices; protocol.ts parseMapNow): the rows
+   *  it plays take its sources, the bindings it does not play stay; one undo step */
+  takeDeviceMaps(list: { src: number; module: number; param: number; lo: number; hi: number }[]): void {
+    const dev = deviceView(this.patch, true).patch;
+    const ours = (this.patch.midiLearn ?? []).filter((b) => !this.onFm1(b));
+    const theirs = list.flatMap((e) => {
+      const m = dev.modules[e.module], pd = m && !(e.param & 0x80) ? DEFS[m.type].params[e.param] : undefined;
+      return m && pd ? [{ src: e.src === MAP_BEND ? 'bend' as const : e.src, module: m.id, param: pd.name, lo: e.lo / 255, hi: e.hi / 255 }] : [];
+    });
+    this.editBindings((p) => {
+      const all = fixMidiLearn([...ours, ...theirs], p.modules, DEFS);
+      if (all.length) p.midiLearn = all;
+      else delete p.midiLearn;
+    });
+  }
+
+  /** a change to the bindings: one undo step, no engine reload (the FM-1 hears of it through onMaps: MAP) */
   private editBindings(fn: (p: Patch) => void): void {
     const before = this.mark();
     fn(this.patch);
-    if (this.commit(before)) (this.rebuild(), this.ev.onLayout(this.patch));
+    if (this.commit(before)) (this.rebuild(), this.ev.onLayout(this.patch), this.ev.onMaps?.());
   }
 
   /** the rows of the page in focus (the FM-1's device page, the knobs' targets) */

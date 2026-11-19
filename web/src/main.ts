@@ -443,6 +443,12 @@ device.onEvent = (e) => {
     try { fm1Event(e, 'device'); } finally { fromDevice = false; }
     return;
   }
+  if (e.kind === 'maps') {   // MIDI learn on the FM-1 (#1067, MAP_NOW): its mappings come into the patch, as its knobs' values do
+    if (!live() || linkBusy()) return;
+    fromDevice = true;
+    try { editor.takeDeviceMaps(e.maps); } finally { fromDevice = false; }
+    return;
+  }
   if (e.kind === 'presetStored') {   // a preset stored on the FM-1 (#195): under Live it comes into the editor's library
     if (!live()) return;
     void device.getPreset(e.structure, e.name).then((v) => {
@@ -1148,6 +1154,11 @@ const editor = new Editor($('canvas'), firstPatch, {
   },
   onLearn(row) {   // (MIDI learn, #1067: a row waits for its source, or stopped waiting)
     pinStatus(row ? { tag: 'MIDI learn', text: `Move a knob, a fader, a pad’s axis or the pitch bend wheel of a MIDI controller: it will move ${row}. Esc cancels.`, more: { label: 'Cancel', run: () => void editor.learn.cancel() } } : null, 'learn');
+  },
+  onMaps() {   // (MIDI learn, #1067: the mappings changed in the editor: the FM-1's copy follows, MAP; one from the FM-1 is not sent back)
+    if (!live() || fromDevice) return;
+    if (indexedLiveReady() && device.hasMaps) { device.maps(editor.patch); liveEdited(); }
+    else dirty = true;
   },
   onError(msg) {
     status.textContent = msg;
@@ -3331,15 +3342,31 @@ function showLearned(): void {
     const line = document.createElement('div');
     line.className = 'midi-learn-item';
     const text = document.createElement('span');
-    text.textContent = `${b.source} → ${b.row}`;
+    text.textContent = `${b.source} → ${b.row}${b.fm1 ? '' : ' (editor only: no FM-1 page shows this row)'}`;
     if (b.job) text.title = `While it is learned, ${b.source} no longer moves ${b.job}`;
+    // (where the source's lowest and highest values land in the row's range, in %; the FM-1 plays the same ends)
+    const end = (v: number, label: string, set: (x: number) => void): HTMLInputElement => {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.min = '0';
+      input.max = '100';
+      input.step = '1';
+      input.className = 'midi-learn-end';
+      input.value = String(Math.round(v * 100));
+      input.title = `${label}: where ${b.source}’s ${label === 'Low' ? 'lowest' : 'highest'} value puts ${b.row}, in % of its range`;
+      input.setAttribute('aria-label', `${label} end of ${b.source}`);
+      input.onchange = () => set(Math.min(100, Math.max(0, Number(input.value) || 0)) / 100);
+      return input;
+    };
+    const lo = end(b.lo, 'Low', (x) => editor.setLearnRange(b.at, x, b.hi));
+    const hi = end(b.hi, 'High', (x) => editor.setLearnRange(b.at, b.lo, x));
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'sm';
     remove.textContent = 'Remove';
     remove.title = `${b.source} stops moving ${b.row}${b.job ? ` and moves ${b.job} again` : ''}`;
     remove.onclick = () => editor.removeBinding(b.src);
-    line.append(text, remove);
+    line.append(text, lo, hi, remove);
     return line;
   }) : [none]));
 }

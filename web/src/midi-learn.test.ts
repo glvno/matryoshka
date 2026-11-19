@@ -7,10 +7,11 @@ import BANK from '../factory/bank.json';
 import { Editor, type EditorEvents } from './editor';
 import { Engine } from './engine';
 import { editorCc } from './input';
-import { BUTTON_CC, BUTTON_CCS, fixMidiLearn, learnableCc, MidiLearn, MOVE_GAP_MS, sourceJob, sourceOf, type MidiBinding } from './midi-learn';
+import { BUTTON_CC, BUTTON_CCS, bindRow, fixMidiLearn, learnableCc, MIDI_LEARN_MAX, MidiLearn, MOVE_GAP_MS, setLearnRange, sourceJob, sourceOf, type MidiBinding } from './midi-learn';
 import { DEFS, PANEL_BUTTONS } from './modules';
 import { validatePatch, type Patch } from './patch';
-import { encodePatch } from './patchbin';
+import { deviceSection, encodePatch, MAP_BEND, mapRecord, SLIM } from './patchbin';
+import { deviceView } from './poly';
 import './factory-presets';
 
 vi.hoisted(() => {
@@ -144,10 +145,28 @@ describe('MIDI learn in the patch (#1067)', () => {
     expect('midiLearn' in validatePatch(JSON.parse(JSON.stringify({ ...p, midiLearn: [] })), DEFS)).toBe(false);
   });
 
-  it('the FM-1’s binary is the same with and without bindings (editor-only data)', () => {
+  it('the FM-1’s binary carries the bindings last, in format 64: the same bytes as without them, then the mapping section', () => {
     const p = briefcase();
-    const with_ = { ...p, midiLearn: [{ src: 1, ...rowOf(p, 'x') }, { src: 'bend' as const, ...rowOf(p, 'y') }] };
-    expect([...encodePatch(with_)]).toEqual([...encodePatch(p)]);
+    const with_: Patch = { ...p, midiLearn: [{ src: 1, ...rowOf(p, 'x') }, { src: 'bend', ...rowOf(p, 'y'), lo: 51 / 255, hi: 204 / 255 }] };
+    const bin = encodePatch(with_), dev = deviceView(with_, true).patch;
+    const rec = mapRecord(with_, dev, deviceSection(with_, dev));
+    expect(bin[1]).toBe(64);
+    expect(rec).toHaveLength(11);
+    expect([rec[0], rec[1], rec[6], rec[9], rec[10]]).toEqual([2, 1, MAP_BEND, 51, 204]);
+    expect([...bin.slice(-11)]).toEqual(rec);
+    expect([...bin.slice(0, -11)]).toEqual([...encodePatch(p, false, SLIM)]);
+  });
+
+  it('a patch holds 16 bindings at most; a range end is kept in the binary’s steps of 1/255', () => {
+    const p = briefcase();
+    const row = rowOf(p, 'x');
+    for (let cc = 0; cc < MIDI_LEARN_MAX; cc++) expect(bindRow(p, { src: cc, module: row.module, param: `p${cc}` })).toBe(true);
+    expect(bindRow(p, { src: 40, module: row.module, param: 'p99' })).toBe(false);
+    expect(bindRow(p, { src: 3, module: row.module, param: 'p99' })).toBe(true);   // (a source learned again: its row moves)
+    expect(p.midiLearn).toHaveLength(MIDI_LEARN_MAX);
+    expect(setLearnRange(p, { module: row.module, param: 'p99' }, 0.3, 0.9)).toBe(true);
+    const b = p.midiLearn!.find((x) => x.param === 'p99')!;
+    expect([b.lo! * 255, b.hi! * 255]).toEqual([Math.round(0.3 * 255), Math.round(0.9 * 255)]);
   });
 });
 

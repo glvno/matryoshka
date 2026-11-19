@@ -927,6 +927,7 @@ static int maps_test(int n, char **argv)
     CHECK(m1_valid(o, (uint32_t)nb) && eng_load(o, (uint32_t)nb) == 0);
     CHECK(eng_maps(o, (uint32_t)nb, &e) == 3u && (at = eng_maps_at(o, (uint32_t)nb)) == (uint32_t)nb - 16u);
     CHECK(e[0] == 1u && e[5] == ENG_MAP_BEND && e[8] == 51u && e[9] == 204u && e[10] == 74u && e[13] == 255u && e[14] == 0u);
+    CHECK((o[6] & 2u) && o[at - 16u] == 3u);                     /* (the kit's three macro ranges just before) */
     m1_set_current(o, (uint32_t)nb);
     m1_patch_range(1, 0, 0, 1, 10, 20);                          /* a range more (a section of its own without one): the mappings move along, still last */
     CHECK(m1_cur_len == (uint32_t)nb + ((o[6] & 2u) ? 5u : 6u) && m1_valid(m1_cur, m1_cur_len) && eng_maps(m1_cur, m1_cur_len, &e) == 3u && e[10] == 74u);
@@ -991,6 +992,21 @@ int main(int argc, char **argv)
     if (argc >= 3 && !strcmp(argv[1], "--maps"))
         return maps_test(argc - 2, argv + 2);
     long np, ns, i, at = 0;
+    if (argc == 4 && !strcmp(argv[1], "--add-map")) {        /* IN OUT (tools/old_format.sh): IN with a MIDI mapping section
+                                                              * (CC 1 on module 0's parameter 0), as MIDI learn on the FM-1
+                                                              * writes it into a copy of any format (#1067) */
+        long nb;
+        uint8_t *in = slurp(argv[2], &nb), out[M1_PATCH_MAX];
+        uint32_t len = (uint32_t)nb;
+        FILE *f;
+        CHECK(len <= M1_PATCH_MAX);
+        memcpy(out, in, len);
+        if (!eng_map_edit(out, &len, M1_PATCH_MAX, 1, 0, 0, 0, 255, 1))
+            return 3;                                           /* (malformed, or no room) */
+        CHECK((f = fopen(argv[3], "wb")) && fwrite(out, 1, len, f) == len && !fclose(f));
+        free(in);
+        return 0;
+    }
     uint8_t *patch, *syx;
     static int32_t a_l[128 * 40], a_r[128 * 40], b_l[128 * 40], b_r[128 * 40];
     uint32_t mod, par, acks_ok = 0, amod, ain;
