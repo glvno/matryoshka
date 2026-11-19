@@ -65,8 +65,11 @@ describe('the factory region image and the firmware tier', () => {
     for (const p of [...inTier, ...inRegion]) expect(bank[p.slot]).toBe(p.name);
   });
   it('each firmware-tier override outranks the built-in copy of the newest released firmware (its revision is higher)', () => {
+    // (today's set is left out: it is the overrides' own content, recorded once a content-only release shipped it; a firmware
+    // released with it compiles the overrides into the tier and empties the list, D-1020)
     const sets = (JSON.parse(readFileSync(new URL('../scripts/released-factory.json', import.meta.url), 'utf8')) as { sets: { set: string; tags: string[] }[] }).sets;
-    const released = Math.max(...sets.map((s) => contentVersion(parseInt(s.set, 16), sets)));   // (the newest firmware's tier version)
+    const today = readHeader(image)!.set;
+    const released = Math.max(...sets.filter((s) => parseInt(s.set, 16) !== today).map((s) => contentVersion(parseInt(s.set, 16), sets)));
     const inRegion = readPatches(image);
     for (const name of FIRMWARE_TIER_OVERRIDES) expect(inRegion.find((p) => p.name === up(name))?.revision).toBeGreaterThan(released);
   });

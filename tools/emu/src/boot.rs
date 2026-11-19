@@ -6,7 +6,8 @@
 //!    the quick start and then the home page (the device page of factory patch 0); silent without keys, a panel key
 //!    sounds (the audio path runs); no register fm1-emu does not model besides P33
 //! 2. the plain build on a blank flash (no factory region, #915): the firmware tier alone is written into the bank, each
-//!    patch into its own slot, no other factory slot is written, and the bar says FACTORY SOUNDS MISSING:, then CONNECT TO
+//!    patch into its own slot, no region-only factory slot is written (a region override of a tier patch, #1099, has the
+//!    tier patch's slot: the tier's copy is there), and the bar says FACTORY SOUNDS MISSING:, then CONNECT TO
 //!    MATRYOSHKA.LOL
 //! 3. the plain build's update mode: OCT- + OCT+ held at power-on shows UPDATE MODE, and the flash chip is known
 //!    (no NO FLASH ID line: update mode could not stage an update without it)
@@ -60,6 +61,16 @@ fn image_patches(img: &[u8]) -> Vec<(String, u32)> {
             (String::from_utf8_lossy(&e[..20]).trim_end_matches('\0').to_string(), u16_at(dir + 36 * i + 30) as u32)
         })
         .collect()
+}
+
+/// The region's patches no firmware-tier patch has the name of: what a blank region must not write
+fn region_only(tier: &[(String, u32)], region: &[(String, u32)]) -> Vec<(String, u32)> {
+    region.iter().filter(|(n, _)| !tier.iter().any(|(tn, _)| tn == n)).cloned().collect()
+}
+
+/// Every factory patch with a valid region: the tier's names and the region's, an override counted once
+fn merged_count(tier: &[(String, u32)], region: &[(String, u32)]) -> usize {
+    tier.len() + region_only(tier, region).len()
 }
 
 pub fn run(app: &[u8], link: Option<&[u8]>, out: &str) -> ExitCode {
@@ -150,9 +161,9 @@ fn blank_region(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     let tier = image_patches(&tier_image());
     let region = image_patches(FACTORY_REGION);
     let missing_tier: Vec<_> = tier.iter().filter(|(_, s)| bank_record(&f, *s).is_none()).map(|(n, _)| n.clone()).collect();
-    let written_region: Vec<_> = region.iter().filter(|(_, s)| bank_record(&f, *s).is_some()).map(|(n, _)| n.clone()).collect();
+    let written_region: Vec<_> = region_only(&tier, &region).into_iter().filter(|(_, s)| bank_record(&f, *s).is_some()).map(|(n, _)| n).collect();
     t.check("blank region: each firmware-tier patch is written into its own slot", !tier.is_empty() && missing_tier.is_empty(), format!("missing {missing_tier:?}"));
-    t.check("blank region: no region patch is written", written_region.is_empty(), format!("{written_region:?}"));
+    t.check("blank region: no region-only patch is written (an override's slot holds the tier's own patch)", written_region.is_empty(), format!("{written_region:?}"));
     let p = note_peak(&mut m, C4, 600)?;
     t.check("blank region: the firmware tier plays (a panel key sounds)", p > LOUD, format!("peak {p}"));
     *emulated += m.ms();
@@ -378,6 +389,8 @@ fn factory_install(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), St
     l.run(&mut m, 1500)?;
     quick_start(&mut m, 8000)?;
     l.run(&mut m, 500)?;
+    let tier = image_patches(&tier_image());
+    let region = image_patches(FACTORY_REGION);
     l.send(&frame(C_FACT_INFO, &[]));
     let before = l.wait(&mut m, 1500, |x| reply(x, R_FACT_INFO))?;
     t.check("factory link: FACT_INFO on a blank flash: no region, the firmware tier alone plays",
@@ -415,12 +428,10 @@ fn factory_install(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), St
     let added = wait_text(&mut m, "NEW PATCHES ADDED", 8000)?;
     t.snap(&m, "factory-installed");
     t.check("factory link: the bar says the region's patches were added", added, format!("at {} ms", m.ms()));
-    let tier = image_patches(&tier_image());
-    let region = image_patches(img);
     l.send(&frame(C_FACT_INFO, &[]));
     let after = l.wait(&mut m, 1500, |x| reply(x, R_FACT_INFO))?;
-    t.check("factory link: FACT_INFO says valid, the region's patches, every factory patch in all",
-        after.as_ref().is_some_and(|p| p.len() >= 26 && p[0] == 1 && p[16] & 2 == 0 && p[14] as usize == region.len() && p[25] as usize == tier.len() + region.len()),
+    t.check("factory link: FACT_INFO says valid, the region's patches, every factory patch in all (tier and region names, an override counted once)",
+        after.as_ref().is_some_and(|p| p.len() >= 26 && p[0] == 1 && p[16] & 2 == 0 && p[14] as usize == region.len() && p[25] as usize == merged_count(&tier, &region)),
         format!("{after:?}"));
     let f = m.flash();
     let missing: Vec<_> = region.iter().filter(|(_, s)| bank_record(&f, *s).is_none()).map(|(n, _)| n.clone()).collect();
@@ -429,4 +440,47 @@ fn factory_install(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), St
     t.check("factory link: the region holds the image byte for byte", flash_img == img, String::new());
     *emulated += m.ms();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn p(names: &[(&str, u32)]) -> Vec<(String, u32)> {
+        names.iter().map(|(n, s)| (n.to_string(), *s)).collect()
+    }
+
+    /// The region's patches that override a firmware-tier patch of the same name (#1099)
+    fn overrides(tier: &[(String, u32)], region: &[(String, u32)]) -> Vec<(String, u32)> {
+        region.iter().filter(|(n, _)| tier.iter().any(|(tn, _)| tn == n)).cloned().collect()
+    }
+
+    #[test]
+    fn overrides_of_tier_patches_are_counted_once() {
+        let tier = p(&[("ALGO FOUR", 3), ("CASSIA 1", 7), ("BASS", 1)]);
+        let region = p(&[("ALGO FOUR", 3), ("CASSIA 1", 7), ("PAD", 20)]);
+        assert_eq!(overrides(&tier, &region), p(&[("ALGO FOUR", 3), ("CASSIA 1", 7)]));
+        assert_eq!(region_only(&tier, &region), p(&[("PAD", 20)]));
+        assert_eq!(merged_count(&tier, &region), 4);
+    }
+
+    #[test]
+    fn a_region_without_overrides_adds_every_patch() {
+        let tier = p(&[("BASS", 1)]);
+        let region = p(&[("PAD", 20), ("LEAD", 21)]);
+        assert!(overrides(&tier, &region).is_empty());
+        assert_eq!(region_only(&tier, &region), region);
+        assert_eq!(merged_count(&tier, &region), 3);
+    }
+
+    #[test]
+    fn the_shipped_region_and_tier_merge() {
+        let tier = image_patches(&tier_image());
+        let region = image_patches(FACTORY_REGION);
+        let union: std::collections::HashSet<_> = tier.iter().chain(&region).map(|(n, _)| n.clone()).collect();
+        assert_eq!(merged_count(&tier, &region), union.len());
+        for (n, s) in overrides(&tier, &region) {
+            assert_eq!(tier.iter().find(|(tn, _)| *tn == n).map(|x| x.1), Some(s), "{n}: an override takes the tier patch's slot");
+        }
+    }
 }

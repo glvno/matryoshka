@@ -83,6 +83,15 @@ describe('the factory set offered (#915)', () => {
     expect(factoryOffer(info({ version: 12, set: 0x111111 }), set({ version: 11 }))).toBeNull();
     expect(factoryOffer(info({ state: 0 }), null)).toBeNull();
   });
+  it('1.20.3 (release/1.20, D-1162): an FM-1 on 1.20.0 holding 1.20.2\'s region is offered nothing; one holding 1.20.1\'s is offered this set', () => {
+    // FACT_INFO as the test rig read it on 1.20.0 firmware (release/qualification/v1.20.1.json, v1.20.2.json): the region
+    // image differs from 1.20.2's file only in its released-sets section, so its set and version are 1.20.2's
+    const fm1 = (version: number, s: number): FactoryInfo => info({ version, set: s, plays: 63, tierVersion: 13, tierPatches: 11, merged: 21 });
+    const with1202 = fm1(15, 0x0971a5), with1201 = fm1(14, 0x55ce34);
+    expect(pickSet(manifest.sets, with1202)).toMatchObject({ set: '0971a5', version: 15 });
+    expect(factoryOffer(with1202, pickSet(manifest.sets, with1202))).toBeNull();
+    expect(factoryOffer(with1201, pickSet(manifest.sets, with1201))).toMatchObject({ action: 'Update', set: { set: '0971a5', version: 15 } });
+  });
 });
 
 describe('the install over the link (#915)', () => {
