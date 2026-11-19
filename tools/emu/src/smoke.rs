@@ -1472,7 +1472,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     m.tap(HOME, 120, 600)?;
     t.screen(&m, "  HOME: back to the menu's GUIDE tab", "Guide");
     turn_until(&mut m, ALGO, -1, "SYSTEM 2/2", 3)?;
-    t.screen(&m, "menu: back from GUIDE: INFO, then SYSTEM's second page", "SYSTEM 2/2");
+    t.screen(&m, "menu: back from GUIDE: INFO, EQ, then SYSTEM's second page", "SYSTEM 2/2");
     turn_until(&mut m, ALGO, -1, "SYSTEM 1/2", 3)?;
     t.screen(&m, "menu: the SYSTEM tab's first page", "SYSTEM 1/2");
     m.turn(K1, 1, 400)?;
