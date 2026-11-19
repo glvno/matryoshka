@@ -130,7 +130,30 @@ describe('attachMidi', () => {
     } finally {
       nav.requestMIDIAccess = saved;
     }
-    expect(sent).toEqual([{ t: 'clockrun', on: true }, { t: 'clock' }]);
+    expect(sent).toEqual([{ t: 'clockrun', on: true, top: true }, { t: 'clock' }]);
+  });
+
+  it('Start and Continue after Song Position 0 play from the top; Continue from another position plays on (#870)', async () => {
+    const daw = { id: 'b', name: 'IAC Driver Bus 1', state: 'connected', onmidimessage: null as ((ev: unknown) => void) | null };
+    const nav = navigator as unknown as { requestMIDIAccess?: unknown };
+    const saved = nav.requestMIDIAccess;
+    nav.requestMIDIAccess = async () => ({ inputs: new Map([['b', daw]]), outputs: new Map() });
+    const sent: unknown[] = [];
+    try {
+      await attachMidi({ send: (m: unknown) => void sent.push(m) } as never, () => {});
+      for (const d of [[0xfa], [0xfc], [0xf2, 0, 0], [0xfb], [0xf2, 4, 0], [0xfb], [0xfb], [0xfc]])
+        daw.onmidimessage!({ target: daw, data: new Uint8Array(d) });
+    } finally {
+      nav.requestMIDIAccess = saved;
+    }
+    expect(sent).toEqual([
+      { t: 'clockrun', on: true, top: true },
+      { t: 'clockrun', on: false },
+      { t: 'clockrun', on: true, top: true },
+      { t: 'clockrun', on: true },
+      { t: 'clockrun', on: true },
+      { t: 'clockrun', on: false },
+    ]);
   });
 });
 

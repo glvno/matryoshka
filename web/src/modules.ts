@@ -32,6 +32,8 @@ export interface Voice {
   tick: number;
   tickAt: number;
   ticks: number;
+  /** 1 when this block's first tick is a start's tick 0 on MIDI clock, which steps Steps and Euclid nothing on (#870) */
+  tickSkip?: number;
   tickLen: number;
   /** the FM-1's patch buttons held / switched on (bit i = PANEL_BUTTONS[i]): the Main module's button outputs */
   buttons: number;
@@ -1444,7 +1446,7 @@ const euclid: ModuleImpl<EuclidState> = {
           adv = 1;
         }
         if (i === v.tick) // (-1 while stopped; MIDI clock's ticks can come several to a sample)
-          for (let t = 0; t < v.ticks; t++)
+          for (let t = v.tickSkip ?? 0; t < v.ticks; t++)
             if (++s.count >= rt) {
               s.count = 0;
               adv++;
@@ -3578,9 +3580,9 @@ const stepCycle = (len: number, dir: number): number => dir === 2 && len > 1 ? 2
 
 /** play once (D-820; engine.c steps_turn_at, the same): the sample of this block on which a Steps track's pass ends
  * (stepsTurn), -1 none; from where it stands before the block (s, its parameters p), its clock's steps counted as process
- * will count them (the start, a step half a tick on, the block's ticks: run, tick, ticks as Voice has them); a reset edge
- * is not foreseen */
-export function stepsTurnAt(s: StepsState, p: Readonly<Record<string, number>>, run: boolean, tick: number, ticks: number, n: number): number {
+ * will count them (the start, a step half a tick on, the block's ticks: run, tick, ticks and skip, tickSkip, as Voice has
+ * them); a reset edge is not foreseen */
+export function stepsTurnAt(s: StepsState, p: Readonly<Record<string, number>>, run: boolean, tick: number, ticks: number, n: number, skip = 0): number {
   if (!run) return -1;
   if (!s.run) return 0; // (the start: its first step, a pass's start, on sample 0)
   const x = s.pat > 0 ? s.pats[s.pat] : null;
@@ -3594,7 +3596,7 @@ export function stepsTurnAt(s: StepsState, p: Readonly<Record<string, number>>, 
   }
   if (tick >= 0) {
     if (half > 0 && --need === 0) return tick;
-    for (let t = 0; t < ticks; t++)
+    for (let t = skip; t < ticks; t++)
       if ((count += 2) >= ht) {
         count = 0;
         if (--need === 0) return tick;
@@ -3877,7 +3879,7 @@ const steps: ModuleImpl<StepsState> = {
             s.half = 0;
             adv++;
           }
-          for (let t = 0; t < v.ticks; t++)
+          for (let t = v.tickSkip ?? 0; t < v.ticks; t++)
             if ((s.count += 2) >= ht) {
               s.count = 0;
               adv++;

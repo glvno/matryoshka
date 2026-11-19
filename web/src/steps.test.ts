@@ -501,3 +501,41 @@ describe('the Steps module (#83, #133)', () => {
     expect(deviceBudget(q).over.map((o) => o.key)).toContain('notes');
   });
 });
+
+describe('MIDI clock in (#870; firmware/test/clock_in_test.c the same)', () => {
+  // a host's clock, a tick every 4 blocks: step k on its tick 6k after its Start, tick 0 being its first clock after it
+  it('steps on the host’s ticks, waits through a stall, and plays from the top at a Start while running', () => {
+    const { p } = rig([ON]);
+    const e = new Engine(SR);
+    e.load(p);
+    const l = new Float32Array(128), r = new Float32Array(128);
+    let m = -1, last = -1, steps = 0;
+    const off: number[] = [];
+    const block = (tick: boolean): void => {
+      if (tick) e.clockTick(), m++;
+      e.render(l, r);
+      const pos = e.stepsView()[0].pos;
+      if (pos !== last && pos >= 0) {
+        steps++;
+        if (pos !== Math.floor(m / 6) % 16) off.push(m);
+      }
+      last = pos;
+    };
+    const ticks = (n: number): void => {
+      for (let k = 0; k < n * 4; k++) block(k % 4 === 0);
+    };
+    e.clockExternal(true);
+    ticks(24);
+    m = -1;
+    e.transportTop(); // Start, its first tick with it
+    ticks(96 * 2);
+    for (let b = 0; b < 300; b++) block(false); // the host stalls (worklet.ts: MIDI clock keeps driving while it runs)
+    ticks(96);
+    expect(steps).toBeGreaterThanOrEqual(48);
+    m = -1;
+    e.transportTop(); // a Start while running, 10 ticks short of a bar line: from the top
+    ticks(96);
+    expect(off).toEqual([]);
+    expect(steps).toBeGreaterThanOrEqual(64);
+  });
+});

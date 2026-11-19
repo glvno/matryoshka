@@ -618,10 +618,14 @@ void eng_midi_channel(uint32_t ch);   /* the device's channel, 0 = every channel
 void eng_all_notes_off(void);
 /* The clock: 24 ticks per quarter note, from the Main module's tempo, or from MIDI clock while it comes in (eng_clock_external
  * on, then each eng_clock_tick is one). The transport (PLAY, MIDI Start / Stop): the Main module's run output; its clock
- * output pulses once per block that saw a tick while the transport runs. Arpeggiators step on the clock either way. */
+ * output pulses once per block that saw a tick while the transport runs. Arpeggiators step on the clock either way. On MIDI
+ * clock the transport starts on a tick, tick 0, which steps nothing on: the host's first clock after its Start (#870).
+ * eng_transport_top (MIDI Start): the transport from the top, running or not; a start while it runs is a block stopped and
+ * a start, and the first MIDI tick after it is tick 0 even when MIDI clock does not drive the clock yet */
 void eng_clock_tick(void);
 void eng_clock_external(int on);
 void eng_transport(int on);
+void eng_transport_top(void);
 int eng_transport_running(void);
 /* Play once (#632; engine.ts playOnce): the transport stops, one bar of the meter (eng_meter) is counted in on the clock with a click
  * on each beat (not in eng_render's output: eng_click_mix adds it, D-820), then the transport starts and each Steps track

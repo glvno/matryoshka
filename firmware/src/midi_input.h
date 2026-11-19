@@ -2,8 +2,7 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
  * Modified for Modular-1 (morgulbrut) and Matryoshka (glvno). */
 /* USB and TRS events from midi_queue.h, dispatched on the main thread. */
-static uint32_t midi_clk_ms;                    /* fm1_ms of the last MIDI clock tick (MIDI clock drives the clock while they come) */
-static uint8_t midi_clk_seen;
+#include "clock_in.h"                          /* MIDI clock in: clock, Start / Continue / Stop, Song Position */
 
 /* Keep the input order: page controls and program changes may draw or rebuild the engine, so they and the events
  * behind them wait for the main loop. Notes, clock, bend, aftertouch, modulation and all-notes-off never draw.
@@ -24,21 +23,8 @@ static void midi_drain_mode(int quick)
             break;
         RING_PUBLISH();
         mi_r++;
-        if (st == 0xF0u) {                      /* realtime (MENU > CLOCK IN): MIDI clock drives the clock, Start / Continue / Stop the transport */
-            uint32_t rt = (pkt >> 8) & 0xFFu;
-            if (!cfg.clock_in) {
-            } else if (rt == 0xF8u) {
-                if (!midi_clk_seen)
-                    eng_clock_external(1);
-                midi_clk_seen = 1;
-                midi_clk_ms = fm1_ms;
-                eng_clock_tick();
-            } else if (rt == 0xFAu || rt == 0xFBu || rt == 0xFCu) {
-                eng_transport(rt != 0xFCu);
-                leds_play();
-                if (!ui_dirty)
-                    ui_dirty = 1;
-            }
+        if (st == 0xF0u) {                      /* realtime and Song Position (MENU > CLOCK IN): clock_in.h */
+            clk_in_rt(pkt);
         } else if (st == 0x90u || st == 0x80u) {  /* notes on every channel: the engine judges them (a Voice allocator may take its own channel) */
             eng_midi_channel(cfg.ch);
             if (st == 0x90u && v)
@@ -88,10 +74,7 @@ static void midi_drain_mode(int quick)
         }
     }
     midi_in_overflow = 0;
-    if (midi_clk_seen && fm1_ms - midi_clk_ms > 500u) {   /* half a second without MIDI clock: the Main module's tempo again */
-        midi_clk_seen = 0;
-        eng_clock_external(0);
-    }
+    clk_in_idle();
     midi_draining = 0;
 }
 

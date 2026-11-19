@@ -119,7 +119,8 @@ export function editorCc(cc: { n: number; v: number }, editor: Pick<Editor, 'tur
  * `inputs` hears the number of inputs as it changes; `skip` names an input to ignore for now (an FM-1 whose panel the
  * mirror follows: its keys, knobs and buttons come in through the mirror, and here they would arrive twice).
  * `noClock` names an input whose MIDI clock (0xF8) is ignored: an FM-1, which sends its clock all the time (#473), so the
- * editor's tempo does not follow it unasked.
+ * editor's tempo does not follow it unasked. Start plays from the top (`top`, also while running), and so does Continue
+ * after Song Position 0; Continue from another position plays on (#870, the FM-1's clock_in.h the same).
  */
 export async function attachMidi(
   host: Pick<AudioHost, 'send'>,
@@ -139,13 +140,18 @@ export async function attachMidi(
     status(`MIDI access denied: ${e}`);
     return null;
   }
-  let on = true;
+  let on = true, sppTop = false;
   const held = new Set<number>();
   const message = (ev: MIDIMessageEvent): void => {
     if (!on || skip(ev.target as MIDIInput)) return;
     const [s, a, b] = ev.data ?? [];
     if (s === 0xf8) return noClock(ev.target as MIDIInput) ? undefined : void host.send({ t: 'clock' });
-    if (s === 0xfa || s === 0xfb || s === 0xfc) return void host.send({ t: 'clockrun', on: s !== 0xfc });
+    if (s === 0xf2) return void (sppTop = a === 0 && b === 0);
+    if (s === 0xfa || s === 0xfb || s === 0xfc) {
+      const top = s === 0xfa || (s === 0xfb && sppTop);
+      sppTop = false;
+      return void host.send(top ? { t: 'clockrun', on: true, top } : { t: 'clockrun', on: s !== 0xfc });
+    }
     const cmd = s & 0xf0, ch = (s & 0x0f) + 1; // the channel: a Voice allocator can take one only
     if (cmd === 0x90 && b > 0) {
       held.add(a | (ch << 7));

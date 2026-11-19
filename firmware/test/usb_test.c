@@ -827,6 +827,22 @@ static void test_midi_in_quiet(void)
     usb.up = 0;
     usb.config = 0;
 }
+
+/* Song Position (#870, clock_in.h) reaches the MIDI ring from USB (CIN 3, cable 0 or another; data bytes below 0x80) and
+ * from the TRS jack, where it keeps no running status */
+static void test_song_position(void)
+{
+    static const uint8_t pk[] = {0x03, 0xF2, 0, 0, 0x0F, 0xFB, 0, 0, 0x13, 0xF2, 5, 1, 0x03, 0xF2, 0x80, 0};
+    mi_r = mi_w = 0;
+    midi_in_resume();
+    CHECK(ep1_packet(pk, sizeof pk) && mi_w == 3u, "Song Position: two of USB's three queued (a data byte of 0x80 is not)");
+    CHECK(midi_in_q[0] == (0x03u | 0xF2u << 8) && midi_in_q[1] == (0x0Fu | 0xFBu << 8)
+          && midi_in_q[2] == (0x03u | 0xF2u << 8 | 5u << 16 | 1u << 24), "Song Position: USB's as sent, on cable 0, Continue after");
+    mi_r = mi_w = 0;
+    um_byte(0xF2); um_byte(3); um_byte(2); um_byte(9);
+    CHECK(mi_w == 1u && midi_in_q[0] == (0x03u | 0xF2u << 8 | 3u << 16 | 2u << 24), "Song Position: TRS's queued, no running status after");
+    mi_r = mi_w = 0;
+}
 #endif
 #if FELUCCA_OTA
 /* #375: the FM-1 on a computer where no app reads its MIDI. Every unasked message for the editor (TRACK_NOW after a step
@@ -1200,6 +1216,7 @@ int main(int argc, char **argv)
 #if FELUCCA_OTA
     test_midi_in_quiet();
     test_sysex_burst();
+    test_song_position();
     test_deaf_host();
     test_cut_sysex();
 #endif
