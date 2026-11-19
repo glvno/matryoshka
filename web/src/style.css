@@ -725,8 +725,11 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 /* The deck: the performance controls and the keyboard, across the whole window under the sidebar and the patch, like
    the FM-1's keys under its panel. Folded, only the buttons stay. */
 .deck { grid-column: 1 / -1; grid-row: 3; display: grid; grid-template-columns: subgrid; background: var(--panel); border-top: 1px solid var(--line); user-select: none; }
-/* the deck's columns line up with the workspace's: the buttons under the sidebar, the wheels' column (drawn over it), the keys */
-.deck-row { grid-column: 1 / -1; height: 92px; display: grid; grid-template-columns: subgrid; column-gap: 0; padding: 6px 0 8px; }
+/* the deck's columns line up with the workspace's: the buttons under the sidebar, the wheels' column (drawn over it), the keys.
+   Its one grid row takes the whole height at once (100%) instead of being sized from its content and then stretched: the
+   keys' strip has no height of its own (container-type: size), and Chrome sometimes kept that height (just the strip's
+   scrollbar) after a load or a resize that made the strip scroll, so the keys vanished (#1116) */
+.deck-row { grid-column: 1 / -1; height: 92px; display: grid; grid-template-columns: subgrid; grid-template-rows: 100%; column-gap: 0; padding: 6px 0 8px; }
 .deck-row > .deck-controls { grid-column: 1; margin: 0 8px; }
 .deck-row > .deck-keys { grid-column: 3; margin: 0 8px; display: flex; gap: 8px; min-width: 0; }
 /* the wheels' column: its jacks sit half over its top edge like the dock's (a see-through band takes no pointer) */
@@ -2271,6 +2274,39 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .qp-core-name { position: absolute; left: 50%; bottom: calc(50% + 19px); transform: translateX(-50%); display: flex; align-items: center; justify-content: center; gap: 4px;
   width: 100%; font: 600 11px/1.1 'Barlow', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--ink); overflow-wrap: anywhere; }
 .qp-core .qp-field { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 128px; padding: 5px 8px; font-size: 13px; }
+/* a cable held on its own card (owner 2026-11-19): no ring, one plug in the cable's signal colour at the field's edge,
+   the centre an empty socket (a dashed rim) labelled with the end the cable is plugged into */
+.qp-plug { --k: var(--audio); pointer-events: none; }
+.qp-plug.control, .qp-socket-rim.control { --k: var(--control); } .qp-plug.gate, .qp-socket-rim.gate { --k: var(--gate); } .qp-plug.keys, .qp-socket-rim.keys { --k: var(--ink); }
+.qp-plug rect { fill: var(--panel); stroke: var(--k); stroke-width: 2; }
+.qp-plug .tip { fill: var(--k); }
+.qp-socket-rim { --k: var(--audio); fill: none; stroke: var(--k); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
+.qp-socket-label { text-transform: none; letter-spacing: 0; color: var(--audio); }
+.qp-socket-label.control { color: var(--control); } .qp-socket-label.gate { color: var(--gate); } .qp-socket-label.keys { color: var(--ink); }
+/* the ring folding into the plug as the cable is picked up (after its jack's flash), growing out of the socket when the
+   card it goes to is picked or the cable let go; a jack flashes once in the brand's teal as it is held or a cable lands in
+   it. The flash runs between two tints made the same way: from a plain colour to a mix with transparent Chromium went out
+   of gamut, a yellow (owner 2026-11-19) */
+.qp-radial .qp-rings.qp-collapse { position: absolute; left: 50%; top: 50%; translate: -50% -50%; pointer-events: none; animation: qp-collapse 190ms ease-in 120ms forwards; }
+.qp-radial .qp-rings.qp-grow { animation: qp-grow 190ms ease-out; }
+.qp-radial .qp-rings.qp-appear { animation: qp-appear 190ms ease-out; }
+@keyframes qp-collapse { to { transform: scale(.35); opacity: 0; } }
+@keyframes qp-grow { from { transform: scale(.45); opacity: 0; } }
+@keyframes qp-appear { from { opacity: 0; } }
+.qp-sec.flash path { animation: qp-flash 200ms ease-out; }
+@keyframes qp-flash { from { fill: color-mix(in srgb, var(--secondary) 55%, transparent); } to { fill: color-mix(in srgb, var(--panel) 78%, transparent); } }
+/* on the canvas: the tutorial's glow (tour-ping, one ping, then still) on the card whose ring is shown and the held cable's
+   jack; a quiet still outline in the secondary colour on the card or jack the list's selection names */
+.qp-glow, .qp-glow-jack { outline: 3px solid var(--secondary); outline-offset: 3px; animation: tour-ping 1.2s cubic-bezier(.15, .6, .35, 1) 1;
+  box-shadow: var(--tour-base, 0 0 0 0 transparent), 0 0 0 5px color-mix(in srgb, var(--secondary) 40%, transparent), 0 0 14px 4px color-mix(in srgb, var(--secondary) 35%, transparent); }
+.qp-glow-jack, .qp-candidate-jack { outline-offset: 2px; border-radius: 50%; }
+.dot.connected.qp-glow-jack { --tour-base: inset 0 0 0 3px var(--panel); }
+.qp-candidate { outline: 2px dashed var(--secondary); outline-offset: 4px; }
+.qp-candidate-jack { outline: 2px solid var(--secondary); }
+@media (prefers-reduced-motion: reduce) {
+  .qp-radial .qp-rings.qp-collapse { display: none; }
+  .qp-radial .qp-rings.qp-grow, .qp-radial .qp-rings.qp-appear, .qp-sec.flash path, .qp-glow, .qp-glow-jack { animation: none; }
+}
 /* a port's direction is this icon, never the word: a jack with an arrow into it (takes a cable) or out of it (sends) */
 .qp-io { flex: none; width: 18px; height: 10px; color: var(--muted); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .qp-io.audio { color: var(--audio); } .qp-io.control { color: var(--control); } .qp-io.gate { color: var(--gate); } .qp-io.keys { color: var(--ink); }

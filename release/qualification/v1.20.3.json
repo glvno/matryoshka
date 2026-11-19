@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "version": "1.20.3",
+  "kind": "web-only release (D-1160), cut from release/1.20 off v1.20.2 (D-1162)",
+  "firmware_product": "FM-1_7012000",
+  "source_commit": "5a3c63dbce1a70c59e86ae492d01d31a71a1fa36",
+  "source_branch": "release/1.20",
+  "source_tree": "f7853a034b5ab6e4301b9862f4548475542f24ae",
+  "status": "automated checks passed; awaiting the owner's go for publication",
+  "release_approval": {"status": "pending", "scope": "Publication of v1.20.3 tagged on 5a3c63db (release/1.20), with v1.20.0's firmware package and the factory region of 5a3c63db."},
+  "plan": "D-1162 (owner 2026-11-19: \"i want to release it first, the web changes should not be blocked by firmware qualification\")",
+  "contents": [
+    "Quick patch: a held cable folds the ring into a plug; no ring until the card it goes to is picked (PR #1114, commit 1059738e picked as 3d8f3855)",
+    "Quick patch search: envelope finds the four envelopes, the ADSR first (PR #1114, commit 31c1d44a picked as 0797609c)",
+    "the on-screen keys stay in view after a window resize (#1116, PR #1117, commit 5e107649 picked as 6399f1f4)"
+  ],
+  "branch_commits": "on v1.20.2 (b6f5ee7d): the three picks above; 810d4a92 version 1.20.3, CHANGELOG section, D-1162; ebbc5756 v1.20.2's factory set recorded (below), #1108's override test, #1104's boot check (tools/emu/src/boot.rs), the offer test; 5a3c63db the #1116 CHANGELOG line",
+  "changelog": "the 1.20.3 section reads the same on release/1.20 and on main (the record PR moves main's three lines from Unreleased into it, and main's 1.21.0 heading back to Unreleased until the re-freeze, D-1162)",
+  "bundled_firmware": {
+    "release": "v1.20.0",
+    "package": {"name": "web/public/firmware/matryoshka.fwsc", "size": 610641, "sha256": "bde941c55bf115471dcb988e1bf03dae4f3b7b83f0979e45c627379c4d01268b"},
+    "check": "web/public/firmware/matryoshka.fwsc and matryoshka.json are byte-identical to the v1.20.0 tag's (git diff v1.20.0 5a3c63db is empty for both)"
+  },
+  "factory_content": {
+    "image": {"name": "web/public/firmware/matryoshka-factory.bin", "size": 56750, "sha256": "e6e9f797c548d478522cbc49b7ea3216716efed498b19a3cb7d471af624f7c62"},
+    "set": {"version": 15, "set": "0971a5", "layout": 1, "format": 55, "patches": 12},
+    "against_v1_20_2": "v1.20.2's file is 56738 B (sha256 3582c34c...). Set 0971a5, version 15, layout 1, format 55 and the counts of patches, presets, patterns and migrations are unchanged. Bytes 64..56553 (the patch directory, every patch record, the preset section, its dictionary and the pattern section) are byte-identical, and so are the migrations and the closing 16 zero bytes. Only the released-sets section changed: 168 -> 180 B, with v1.20.2's own set inserted as entry 1 at bytes 56566..56577 (0971a5, the mask of the 12 region patches); the entries after it moved 12 B. In the header: the length (byte 12), the body CRC-32 (16..19), the released-set count 14 -> 15 (26), the migrations offset (52) and the header CRC-16 (62..63).",
+    "why_it_differs": "the v1.20.2 tag was pushed after the 1.20.2 freeze, so its own factory set was not yet in web/scripts/released-factory.json. Since then the web suite's legacy-factory test fails on any tree without it (on v1.20.2's tree too), and the rc suite must pass (D-1160). Recording it (web/scripts/legacy-factory.ts) and regenerating (npm run export-defs) adds that set to the image's released-sets section, which a firmware reads to place a factory patch new to a bank (main.c bank_add). The override test needed #1108's fix to leave today's set out, which main has. Main recorded v1.20.2 the same way in #1108. The patches, presets, patterns, set and version do not change.",
+    "offer": "an FM-1 that holds 1.20.2's region (set 0971a5, version 15) is offered nothing: the editor offers an update only for another set at a version at least its own (factory-content.ts factoryOffer). One that holds 1.20.1's (55ce34, version 14) is offered this set. Checked by the new test in web/src/factory-content.test.ts on release/1.20, with FACT_INFO as the test rig read it on 1.20.0 firmware (passes, in rc run 44602780978)."
+  },
+  "ci_runs": {"web_rc": 44602780978, "web_rc_failed": [44599601315], "web_rc_cancelled": [44602098375]},
+  "full_web": {
+    "rc_run": 44602780978,
+    "run_success": true,
+    "result": "test job (255 test files), the six parallel slow-render jobs (14 files: levels-1..6, headroom-1..4, shared-levels, kit909, audition-render, quiet-load) and the coverage seal passed on 5a3c63db (D-1157 rc layout)",
+    "coverage_record": "release/coverage/v1.20.3/ (measured on 5a3c63db, D-147): core 97.3 % of 6460 lines, interface 40.1 % of 11093",
+    "earlier": "rc run 44599601315 on 810d4a92 failed the legacy-factory test above; 44602098375 on ebbc5756 was cancelled for the #1116 pick"
+  },
+  "full_scenarios": {
+    "passed": 347,
+    "failed": 0,
+    "shards": 4,
+    "seconds": 326,
+    "on_commit": "5a3c63db",
+    "on_bridge_sha256": "166913fcc8371ff9bcf4f0f5e984df1996740c5445c4ea7c5ba35d85c9c99f64",
+    "note": "v1.20.0's bridge (D-1160), with this branch's factory image; focusTurns passed first time"
+  },
+  "editor_side_scenarios": {"passed": 68, "failed": 0, "scenarios": "signalBuffers, liveCompile, rollPen, mirrorKeys, longPreset, abFlip, editorIgnore (D-1158), same bridge and commit"},
+  "boot_with_new_image": {
+    "result": "emu:boot on v1.20.0's release app and bridge with this branch's image: PASS, 32 checks, 0 failed",
+    "detail": "a blank-region boot writes the 11 firmware-tier patches, no region-only patch, and shows FACTORY SOUNDS MISSING; the region installed over the link (222 pages, committed) adds the region's patches; FACT_INFO then reads valid, version 15, set 0971a5, 12 patches, tier version 13, 21 factory patches merged; the region holds the image byte for byte. tools/emu/src/boot.rs carries #1104 (an override counted once), which v1.20.2's tree lacked."
+  },
+  "overrides_on_1_20_0": {
+    "result": "Algo Four plays 8 voices and Cassia 1 5 from the region's overrides on v1.20.0's bridge",
+    "detail": "m1emu serve on v1.20.0's release bridge with this branch's image installed (FACT_INFO version 15, set 0971a5, merged 21): slot 7 ALGO FOUR is 2088 B (the override; v1.20.0's tier copy is 2089 B), and the device pages read VOICES 8 for Algo Four and VOICES 5 for Cassia 1; after a panel FACTORY RESET (MENU > SYSTEM, armed, GLO held) the bank still holds ALGO FOUR 2088 B and CASSIA 1 3698 B"
+  },
+  "not_run": "firmware build, emu:smoke, the test rig and the full device check: the firmware is 1.20.0's, already qualified (release/qualification/v1.20.0.json); no CPU survey, since no patch, preset or pattern record changed against 1.20.2 (release/qualification/v1.20.2.json)",
+  "owner_checks": {"status": "pending", "steps": "D-1160 fourth check: Quick patch with a held cable (Tab on the canvas, pick up a cable, pick where it goes), typing envelope, and the keys after snapping the window to half the screen"}
+}

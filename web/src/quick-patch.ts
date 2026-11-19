@@ -207,9 +207,11 @@ export function patchCards(p: Patch): Card[] {
 
 /**
  * Search by name, card tag, former name and the editor's search words (labels.ts moduleKeywords), with the command
- * palette's fuzzy match (fuzzy.ts). A name match beats a search-word match. At a like match a card already in the patch
- * comes first, so `out` finds the Output there is, then a new module, then a new assembly (`mm` is the Multimode filter,
- * not Shimmer); the type's own name typed in full (`filter`, `vca`) wins outright. A leading `+` offers only new ones.
+ * palette's fuzzy match (fuzzy.ts). A word typed whole that is a word of the name or the search words beats a part of one
+ * (`envelope` finds every envelope, the commonest, the ADSR, first), and a name match beats a search-word match. At a like
+ * match a card already in the patch comes first, so `out` finds the Output there is, then a new module, then a new
+ * assembly (`mm` is the Multimode filter, not Shimmer); the type's own name typed in full (`filter`, `vca`) wins outright.
+ * A leading `+` offers only new ones.
  */
 export function search(p: Patch, defs: Record<string, ModuleDef>, cat: Catalog, query: string): Hit[] {
   let q = query.trim().toLowerCase();
@@ -218,6 +220,7 @@ export function search(p: Patch, defs: Record<string, ModuleDef>, cat: Catalog, 
   if (!q) return [];
   const rank = (label: string, words: string, exact: string[], bonus: number): number => {
     if (exact.some((e) => e.toLowerCase() === q)) return 10000 + bonus;
+    if (`${label} ${words}`.toLowerCase().split(/[^a-z0-9]+/).includes(q)) return 3000 + bonus;
     const name = score(q, label);
     if (name >= 0) return 2000 + name * 10 + bonus;
     const kw = score(q, words);
@@ -244,11 +247,11 @@ export function search(p: Patch, defs: Record<string, ModuleDef>, cat: Catalog, 
   }
   for (const m of cat.modules) {
     const r = rank(m.name, m.keywords, [m.type, m.name], MODULE_BONUS + common(m.type));
-    if (r >= 0) out.push({ hit: { kind: 'module', type: m.type, label: m.name, detail: '+ new module' }, r });
+    if (r >= 0) out.push({ hit: { kind: 'module', type: m.type, label: m.name, detail: 'module' }, r });
   }
   for (const a of cat.assemblies) {
     const r = rank(a.def.name, a.keywords, [a.def.name], 0);
-    if (r >= 0) out.push({ hit: { kind: 'assembly', def: a.def, label: a.def.name, detail: `+ new assembly · ${a.shelf}` }, r });
+    if (r >= 0) out.push({ hit: { kind: 'assembly', def: a.def, label: a.def.name, detail: `assembly · ${a.shelf}` }, r });
   }
   for (const b of cat.blueprints) {
     const r = rank(b.name, b.chain, [b.name], -1);
@@ -279,6 +282,17 @@ export function wire(p: Patch, defs: Record<string, ModuleDef>, a: QPort, b: QPo
     // the thumb of a merged assembly jack feeds the same group of inputs
     for (const asm of assembliesOf(p)) for (const t of findRef(asm, 'in', to.module, to.port)?.also ?? []) one(from, t);
   }
+}
+
+/** whether the cable `wire` would make between `a` and `b` is there already (every end of it): then it would change nothing */
+export function alreadyWired(p: Patch, defs: Record<string, ModuleDef>, a: QPort, b: QPort): boolean {
+  const q = structuredClone(p);
+  try {
+    wire(q, defs, a, b);
+  } catch {
+    return false;
+  }
+  return JSON.stringify(q) === JSON.stringify(p);
 }
 
 // ---- where a new card goes

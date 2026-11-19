@@ -63,6 +63,17 @@ describe('search', () => {
     const hits = search(p, DEFS, catalog(), '+out');
     expect(hits.every((h) => h.kind !== 'card')).toBe(true);
   });
+  it('envelope finds every envelope, the ADSR first; env finds them too, the ADSR next to the module typed env (owner 2026-11-19)', () => {
+    const p = newPatch(DEFS);
+    const modules = (q: string): string[] => search(p, DEFS, catalog(), q).flatMap((h) => (h.kind === 'module' ? [h.type] : []));
+    for (const q of ['envelope', 'Envelope']) {
+      expect(modules(q)[0]).toBe('adsr');
+      expect(modules(q).slice(0, 4).sort()).toEqual(['adsr', 'env', 'env8', 'rateenv']);
+    }
+    // (`env` is the Level/rate envelope's own type name, which wins outright)
+    expect(modules('env').slice(0, 2)).toEqual(['env', 'adsr']);
+    expect(modules('env').slice(0, 4).sort()).toEqual(['adsr', 'env', 'env8', 'rateenv']);
+  });
   it('finds assemblies by name and blueprints by name', () => {
     const p = newPatch(DEFS);
     const cat = catalog([{ name: 'lfo-filter-vca', chain: '+lfo.out > +filter.cv' }]);
