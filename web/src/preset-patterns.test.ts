@@ -162,10 +162,15 @@ it('preserves SAVE then physical USER then browser factory selection after owner
   expect(reload.modules.find((m) => m.id === t.id)!.notes).toEqual(original);
   expect(p.modules.find((m) => m.id === t.id)!.notes).toEqual(original);
 });
+// (the kit's Drum maps are inside its card, D-1059: these cut them off, and DRUMS' keys into them, so DRUMS reaches the card
+// only through the cable each test adds)
+function cutMaps(p: Patch, t: { id: number }): void {
+  const maps = new Set(p.modules.filter((m) => m.type === 'drummap').map((m) => m.id));
+  p.cables = p.cables.filter((c) => !(maps.has(c.from.module) && /^g[1-8]$/.test(c.from.port)) && !(c.from.module === t.id && maps.has(c.to.module)));
+}
 it('preserves a disconnected 808 default with only a Steps velocity cable into oscillator pitch', () => {
   const { p, a, t, presets } = fixture('808 Kit');
-  const maps = new Set(p.modules.filter((m) => m.type === 'drummap').map((m) => m.id));
-  p.cables = p.cables.filter((c) => !(maps.has(c.from.module) && /^g[1-8]$/.test(c.from.port)));
+  cutMaps(p, t);
   const osc = p.modules.find((m) => m.type === 'osc')!;
   p.cables.push({ from: { module: t.id, port: 'vel' }, to: { module: osc.id, port: 'pitch' } });
   const notes = structuredClone(t.notes);
@@ -176,12 +181,12 @@ it('preserves a disconnected 808 default with only a Steps velocity cable into o
 });
 
 it('recognizes the Steps trig output by its gate kind for a directly triggered kit envelope', () => {
-  const { p, a, t, presets } = fixture('808 Kit');
+  const { p, a, t } = fixture('808 Kit');
   const map = p.modules.find((m) => m.type === 'drummap')!;
   const trigger = p.cables.find((c) => c.from.module === map.id && /^g[1-8]$/.test(c.from.port))!.to;
-  p.cables = p.cables.filter((c) => !(c.from.module === map.id && /^g[1-8]$/.test(c.from.port)));
+  cutMaps(p, t);
+  expect(patternDriver(p, a, DEFS)).toBeUndefined();
   p.cables.push({ from: { module: t.id, port: 'trig' }, to: trigger });
   expect(devicesOf(p, DEFS).find((d) => d.asm === a.id)!.track).toBe(t.id);
-  applyPreset(p, a, presets[1]);
-  expect(t.notes!.map(noteWord)).toEqual(presetPattern(presets[1].structure, presets[1].name)!.notes);
+  expect(patternDriver(p, a, DEFS)).toBe(t.id);
 });

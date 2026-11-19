@@ -203,10 +203,10 @@ describe('binary patch format', () => {
     const devs = devicesOf(p, DEFS);
     const rec = extrasRecord(devs, p);
     const track = devs.findIndex((d) => d.kind === 'steps');
-    const map = devs.findIndex((d) => d.module !== undefined && p.modules.find((m) => m.id === d.module)?.type === 'drummap');
+    const kit = devs.findIndex((d) => d.asm !== undefined && d.name === '808 kit');   // (its Drum maps inside, D-1059)
     expect(track).toBeGreaterThanOrEqual(0);
     const entry = (i: number): number => { let at = 1; for (let k = 0; k < i; k++) { at += 6 + rec[at + 5]; at += 1 + 2 * rec[at]; at += 1 + rec[at]; } return at; };
-    expect(rec[entry(map)]).toBe(track);
+    expect(rec[entry(kit)]).toBe(track);
     expect(rec[entry(track)]).toBe(0xff);
   });
 

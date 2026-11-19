@@ -873,7 +873,7 @@
    "factoryPatterns": {
     "version": 1,
     "ids": [
-     "48041aee"
+     "b1165f72"
     ]
    },
    "patterns": [
@@ -8264,228 +8264,26 @@
    "y": 26,
    "open": false,
    "modules": [
-    28
+    28,
+    34,
+    40,
+    42
    ],
    "inputs": [
     {
-     "module": 43,
-     "port": "a",
-     "label": "accent"
-    },
-    {
-     "module": 50,
-     "port": "a",
-     "label": "bd"
-    },
-    {
-     "module": 47,
-     "port": "clock",
-     "label": "bd 2"
-    },
-    {
-     "module": 52,
-     "port": "a",
-     "label": "bd vel"
-    },
-    {
-     "module": 49,
-     "port": "gate",
-     "label": "bd flam"
-    },
-    {
-     "module": 51,
-     "port": "trig",
-     "label": "bd flam 2"
-    },
-    {
-     "module": 56,
-     "port": "a",
-     "label": "sd"
-    },
-    {
-     "module": 53,
-     "port": "clock",
-     "label": "sd 2"
-    },
-    {
-     "module": 58,
-     "port": "a",
-     "label": "sd vel"
-    },
-    {
-     "module": 55,
-     "port": "gate",
-     "label": "sd flam"
-    },
-    {
-     "module": 57,
-     "port": "trig",
-     "label": "sd flam 2"
-    },
-    {
-     "module": 60,
-     "port": "clock",
-     "label": "ch"
-    },
-    {
-     "module": 61,
-     "port": "a",
-     "label": "ch vel"
-    },
-    {
-     "module": 59,
-     "port": "clock",
-     "label": "hc"
-    },
-    {
-     "module": 62,
-     "port": "clock",
-     "label": "oh"
-    },
-    {
-     "module": 66,
-     "port": "a",
-     "label": "lt"
-    },
-    {
-     "module": 63,
-     "port": "clock",
-     "label": "lt 2"
-    },
-    {
-     "module": 68,
-     "port": "a",
-     "label": "lt vel"
-    },
-    {
-     "module": 65,
-     "port": "gate",
-     "label": "lt flam"
-    },
-    {
-     "module": 67,
-     "port": "trig",
-     "label": "lt flam 2"
-    },
-    {
-     "module": 72,
-     "port": "a",
-     "label": "mt"
-    },
-    {
-     "module": 69,
-     "port": "clock",
-     "label": "mt 2"
-    },
-    {
-     "module": 74,
-     "port": "a",
-     "label": "mt vel"
-    },
-    {
-     "module": 71,
-     "port": "gate",
-     "label": "mt flam"
-    },
-    {
-     "module": 73,
-     "port": "trig",
-     "label": "mt flam 2"
-    },
-    {
-     "module": 78,
-     "port": "a",
-     "label": "ht"
-    },
-    {
-     "module": 75,
-     "port": "clock",
-     "label": "ht 2"
-    },
-    {
-     "module": 80,
-     "port": "a",
-     "label": "ht vel"
-    },
-    {
-     "module": 77,
-     "port": "gate",
-     "label": "ht flam"
-    },
-    {
-     "module": 79,
-     "port": "trig",
-     "label": "ht flam 2"
-    },
-    {
-     "module": 81,
-     "port": "clock",
-     "label": "rs"
-    },
-    {
-     "module": 82,
-     "port": "clock",
-     "label": "cr"
-    },
-    {
-     "module": 83,
-     "port": "clock",
-     "label": "rd"
-    },
-    {
-     "module": 132,
-     "port": "gate",
-     "label": "gate"
-    },
-    {
-     "module": 133,
-     "port": "gate",
-     "label": "gate 2"
-    },
-    {
-     "module": 85,
-     "port": "trig",
-     "label": "gate 3"
-    },
-    {
-     "module": 155,
-     "port": "sync",
-     "label": "sync"
-    },
-    {
-     "module": 92,
-     "port": "gate",
-     "label": "gate 4"
-    },
-    {
-     "module": 27,
-     "port": "gate",
-     "label": "gate 5"
-    },
-    {
-     "module": 99,
-     "port": "gate",
-     "label": "gate 6"
-    },
-    {
-     "module": 101,
-     "port": "in",
-     "label": "gate 7"
-    },
-    {
-     "module": 101,
-     "port": "clock",
-     "label": "either hat"
-    },
-    {
-     "module": 143,
-     "port": "gate",
-     "label": "gate 8"
-    },
-    {
-     "module": 151,
-     "port": "gate",
-     "label": "gate 9"
+     "module": 34,
+     "port": "keys",
+     "label": "keys",
+     "also": [
+      {
+       "module": 40,
+       "port": "keys"
+      },
+      {
+       "module": 42,
+       "port": "keys"
+      }
+     ]
     }
    ],
    "outputs": [
