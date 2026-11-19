@@ -145,8 +145,12 @@ HOT int32_t block_mean(int64_t sum, uint32_t n)
  * they slowed unrelated loops on the rig: docs/ARCHITECTURE.md "Modulation every 16 samples") */
 #define CTL_FN static __attribute__((noinline))
 /* a path the block's own work seldom takes (#803, render_voice): out of line and laid out away from the code every block
- * runs, which the FM-1 fetches through an instruction cache the voices empty every block */
+ * runs, which the FM-1 fetches through an instruction cache the voices empty every block. ENG_RARE_BODY: a seldom path's
+ * body defined earlier in this file, inlined into the out-of-line function near render_voice that calls it, so the code
+ * before render_voice keeps its place in the flash (moving render_item and its neighbours made the voices slower on the
+ * test rig: their instruction-cache sets change with their addresses) */
 #define ENG_RARE static __attribute__((noinline, cold))
+#define ENG_RARE_BODY static inline __attribute__((always_inline))
 /* 1 - (1 - k)^ENG_CTL for a rate k (Q30): ENG_CTL steps of v += k (t - v) as one */
 CTL_FN int32_t ctl_rate(int32_t k)
 {
@@ -3149,7 +3153,7 @@ static void ramp_start(uint32_t k, int32_t m, int32_t j, int32_t from, int32_t t
     r->left = ENG_RAMP_BLOCKS;
 }
 /* once a block: every pending ramp one step nearer to zero */
-ENG_RARE void ramp_tick(void)
+ENG_RARE_BODY void ramp_tick(void)
 {
     uint32_t k;
     for (k = 0; k < ENG_KNOBS; k++) {
@@ -3299,7 +3303,7 @@ int eng_set_range(uint32_t module, uint32_t input, uint32_t param, int on, uint3
 
 /* the morph position of the coming block (engine.ts morphPosition): the Main module's MORPH parameter plus the block mean
  * of its morph input, which holds what the input summed in the previous block (one block late), clamped to 0..1 */
-static __attribute__((noinline)) int32_t morph_position(uint32_t n)
+ENG_RARE_BODY int32_t morph_position(uint32_t n)
 {
     const node_t *nd;
     int32_t t;
@@ -4337,7 +4341,7 @@ static void dm_keys(uint32_t src, uint32_t kv, uint32_t vel)
  * trackKeys); a group's key range judges them. A part that a track's note let go and one of its notes took again in the
  * same delivery restarts its envelopes (its gate had no low sample); a note over one still sounding is legato as the
  * allocator says */
-static __attribute__((noinline)) void steps_keys(void)
+ENG_RARE_BODY void steps_keys(void)
 {
     uint16_t freed[1 + ENG_MAX_GROUPS];
     uint32_t e, g, v;
@@ -4406,7 +4410,7 @@ static uint32_t arp_cyc(const inst_t *it, arp_key_t *k)
  * a clock rate's ticks, or a bar rate's share of a pass (#1010) on the clock's phase, its passes on the transport's bar
  * lines while it runs. Swing (#1012) starts every second step late. Inputs are read as the last block left them. Gate
  * length follows the continuous period, the last clock interval or the pass's share. */
-static __attribute__((noinline)) void arp_block(arp_t *a, uint32_t n, uint32_t bpm)
+ENG_RARE_BODY void arp_block(arp_t *a, uint32_t n, uint32_t bpm)
 {
     static const uint8_t RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3}, FIT_HALVES[4] = {1, 2, 4, 8};
     const node_t *nd = &E.node[a->node];
@@ -10630,7 +10634,7 @@ static int32_t steps_turn_at(const node_t *nd, uint32_t n)
 }
 /* play once (D-820): the sample of this block on which the last track still playing its passes ends them (every such
  * track on its last pass and ending it in this block, the latest of them), -1 none (engine.ts the same) */
-ENG_RARE int32_t steps_once_at(uint32_t n)
+ENG_RARE_BODY int32_t steps_once_at(uint32_t n)
 {
     uint32_t k;
     int32_t end = -1;
@@ -12635,6 +12639,20 @@ static void render_sched(uint32_t n)
  * (tools/emu/timing.txt). The paths a block seldom takes are functions of their own (ENG_RARE), each behind a cheap test,
  * so that the work every block does sits on fewer lines, and the Output modules' sum writes the block and clamps it in one
  * pass (out_block). The same operations in the same order as before, so the same output (tools/engine_exact.sh). */
+ENG_RARE void ramps_step(void) { ramp_tick(); }                       /* (ENG_RARE_BODY's callers: see ENG_RARE) */
+static __attribute__((noinline)) int32_t morph_at(uint32_t n) { return morph_position(n); }
+static __attribute__((noinline)) void keys_take(void) { steps_keys(); }
+ENG_RARE int32_t once_end_find(uint32_t n) { return steps_once_at(n); }
+static __attribute__((noinline)) void arps_run(uint32_t n, uint32_t bpm)   /* the arpeggiators' blocks */
+{
+    uint32_t k;
+    for (k = 0; k < E.narp; k++)
+        if (!E.node[E.arp[k].node].bypass) {     /* bypassed: its keys already went straight through */
+            ENG_PROF(0, E.arp[k].node, 0);
+            arp_block(&E.arp[k], n, bpm);
+            ENG_PROF(3, E.arp[k].node, 0);       /* include note scheduling in this module's CPU cost */
+        }
+}
 ENG_RARE void once_take(void)                    /* play once asked for or ended (#632): from this render */
 {
     uint8_t c = once_cmd;
@@ -12840,8 +12858,8 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         if (once_st == 1u && once_cin >= bar)
             once_go();
         if (ramp[0].left | ramp[1].left | ramp[2].left | ramp[3].left)
-            ramp_tick();
-        E.morph = E.has_b ? morph_position(n) : 0;
+            ramps_step();
+        E.morph = E.has_b ? morph_at(n) : 0;
         {   /* the clock: MIDI ticks while external, else the global tempo (D-907) or the Main module's (whole bpm x 24 ticks a
              * minute) */
             uint32_t bpm = tempo_glo > ENG_TEMPO_ADOPT ? tempo_glo
@@ -12892,7 +12910,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             E.clk_seen = t;
             E.clk_pulse = seen && run ? (n + 1u) / 2u : 0u;   /* the Main clock: half a block per block that saw a tick while running */
             if (E.nkev)
-                steps_keys();
+                keys_take();
             {                                    /* the keys played into tracks since the last block (eng_note_on) */
                 uint16_t q = thru_tail;
                 E.blk_q0 = q;
@@ -12900,14 +12918,10 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 if (q != thru_head)
                     thru_take(q);
             }
-            for (k = 0; k < E.narp; k++)
-                if (!E.node[E.arp[k].node].bypass) { /* bypassed: its keys already went straight through */
-                    ENG_PROF(0, E.arp[k].node, 0);
-                    arp_block(&E.arp[k], n, bpm);
-                    ENG_PROF(3, E.arp[k].node, 0);     /* include note scheduling in this module's CPU cost */
-                }
+            if (E.narp)
+                arps_run(n, bpm);
         }
-        once_end_at = once_st == 2u ? steps_once_at(n) : -1;   /* (play once: where a shorter track's looping ends, D-820) */
+        once_end_at = once_st == 2u ? once_end_find(n) : -1;   /* (play once: where a shorter track's looping ends, D-820) */
         for (k = 1; k <= E.ngrp; k++) {                 /* each part: its pitch flaws, detune + drift (engine.ts render), */
             const grp_t *g = &E.grp[k];                 /* every block, so the wander does not depend on the amount; idle */
             for (v = 0; v < g->parts; v++) {            /* parts woken by a note, else run every IDLE_CHECK-th block, each */

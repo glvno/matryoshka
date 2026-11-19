@@ -103,8 +103,7 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         }
         bt_m[BT_M_REND0] = bt_eng[0] = bt_eng[1] = bt_eng[2] = fm1_ticks();   /* (no patch: the engine marks none) */
         if (eng_run) {
-            uint32_t loud = 0;                          /* bit 31: a sample past SND_FLOOR (eng_render clamps to +-1.0, so */
-                                                        /* SND_FLOOR - x and x + SND_FLOOR cannot overflow; no branch a sample) */
+            uint32_t loud = 0;
             eng_render(eng_l, eng_r, HALF_FRAMES);
             bt_m[BT_M_REND1] = fm1_ticks();
             int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
@@ -112,9 +111,9 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
             for (i = 0; i < HALF_FRAMES; i++) {         /* Q16 (+-1.0) * MASTER -> 24 bit in the low bits, -6 dBFS ceiling */
                 o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
                 o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;
-                loud |= (uint32_t)((SND_FLOOR - eng_l[i]) | (eng_l[i] + SND_FLOOR) | (SND_FLOOR - eng_r[i]) | (eng_r[i] + SND_FLOOR));
+                loud |= (uint32_t)(eng_l[i] + SND_FLOOR) > 2u * SND_FLOOR || (uint32_t)(eng_r[i] + SND_FLOOR) > 2u * SND_FLOOR;
             }
-            if (loud >> 31)
+            if (loud)
                 snd_heard_ms = fm1_ms;
             if (tp_on) {                                /* (only once a script asked: no cost otherwise) */
                 int32_t mr = snd_muted ? 0 : (int32_t)(((int64_t)2048 * patch_gain) >> 16);   /* MASTER at its default */
