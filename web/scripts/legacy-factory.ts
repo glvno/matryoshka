@@ -1,21 +1,29 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Refresh released-set name membership for bank_add (not saved-patch replacement).
-// Run when recording a new release: npx vite-node scripts/legacy-factory.ts
+// The factory sets the released firmwares wrote (presets.h at each release tag): web/scripts/released-factory.json, which
+// export-defs turns into presets.h's RELEASED_SETS and the images' released sets and released copies (factory-region.ts).
+// After an update, the FM-1 adds a factory patch the bank's set did not have by name into a free slot (main.c bank_add,
+// #630), and gives a slot that still holds a released copy of a factory patch, byte for byte and under its name, today's
+// patch of that name (firmware/src/bank_upgrade.h, D-887). A release from before the set id (1.6.0 and older) keeps set 0,
+// its names and copies those of every such release. The list as it stands is kept: a tag missing here (a shallow clone)
+// drops nothing. Run when recording a new release and after any change to a factory patch, before export-defs:
+//   npx vite-node scripts/legacy-factory.ts
+// It also writes firmware/test/released_cases.h: the newest released copy unlike today's of the first firmware-tier patch
+// and of the first factory-region patch that have one, for the host tests and the emulator (bank_upgrade_test.c, boot.rs).
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { FIRMWARE_TIER } from '../src/factory-tiers';
+import { lzPack, presetsHPatches } from './factory-lz';
+import { copyFingerprint, type ReleasedCopy } from './factory-region';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
 const git = (...a: string[]): string => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 256 << 20 });
 
-// The factory sets the released firmwares wrote (presets.h at each release tag): web/scripts/released-factory.json, which
-// export-defs turns into presets.h's RELEASED_SETS. After an update, the FM-1 adds a factory patch the bank's set did not
-// have by name into a free slot (main.c bank_add, #630). A release from before the set id (1.6.0 and older) keeps set 0, its
-// names those of every such release. The list as it stands is kept: a tag missing here (a shallow clone) drops nothing.
-type Released = { set: string; tags: string[]; names: string[] };
+type Released = { set: string; tags: string[]; names: string[]; copies?: ReleasedCopy[] };
 const REL = new URL('./released-factory.json', import.meta.url);
 const sets = new Map<string, Released>();
 if (existsSync(REL)) for (const e of (JSON.parse(readFileSync(REL, 'utf8')) as { sets: Released[] }).sets) sets.set(e.set, e);
 const tags = git('tag', '-l', 'v*', '--sort=v:refname').split('\n').filter(Boolean);
+const lastTag = new Map<string, Map<string, { tag: string; bytes: Uint8Array }>>();   // each name's released copies: the last tag that wrote each
 for (const t of tags) {
   let src: string;
   try {
@@ -25,10 +33,48 @@ for (const t of tags) {
   }
   const set = src.match(/#define FACTORY_SET_ID 0x([0-9a-f]+)u/)?.[1]?.padStart(6, '0') ?? '000000';
   const e = sets.get(set) ?? { set, tags: [], names: [] };
+  const copies = e.copies ?? [];
   if (!e.tags.includes(t)) e.tags.push(t);
-  for (const m of src.matchAll(/\{"([^"]*)", PRESET_\d+,/g)) if (!e.names.includes(m[1])) e.names.push(m[1]);
+  for (const p of presetsHPatches(src)) {
+    if (!e.names.includes(p.name)) e.names.push(p.name);
+    const c = { name: p.name, ...copyFingerprint(p.bytes) };
+    if (!copies.some((x) => x.name === c.name && x.len === c.len && x.fnv === c.fnv && x.crc === c.crc)) copies.push(c);
+    const byBytes = lastTag.get(p.name) ?? new Map<string, { tag: string; bytes: Uint8Array }>();
+    byBytes.set(p.bytes.join(','), { tag: t, bytes: p.bytes });   // (tags run oldest first: the last one stays)
+    lastTag.set(p.name, byBytes);
+  }
+  e.copies = copies;
   sets.set(set, e);
 }
 const released = [...sets.values()].sort((a, b) => a.set.localeCompare(b.set));
-writeFileSync(REL, JSON.stringify({ note: 'web/scripts/legacy-factory.ts: the factory sets released firmwares wrote (set id, 000000 = before the id; the release tags; the names)', sets: released }, null, 1) + '\n');
+const json = JSON.stringify({ note: 'web/scripts/legacy-factory.ts: the factory sets released firmwares wrote (set id, 000000 = before the id; the release tags; the names; each patch they wrote as its name, length, FNV-1a and CRC-32)', sets: released }, null, 1);
+writeFileSync(REL, json.replace(/\{\n\s+("name": [^\n]+,)\n\s+("len": \d+,)\n\s+("fnv": "[0-9a-f]+",)\n\s+("crc": "[0-9a-f]+")\n\s+\}/g, '{$1 $2 $3 $4}') + '\n');   // (a copy a line)
 console.log(`${released.length} released factory sets from ${tags.length} release tags`);
+
+// the host tests' and the emulator's cases: one firmware-tier patch and one factory-region patch, each the newest copy a
+// release wrote that is unlike today's
+const today = presetsHPatches(readFileSync(new URL('../../firmware/src/presets.h', import.meta.url), 'utf8'));
+const tier = new Set(FIRMWARE_TIER.map((n) => n.toUpperCase()));
+const pick = (inTier: boolean): { name: string; tag: string; bytes: Uint8Array } => {
+  for (const p of today) {
+    if (tier.has(p.name) !== inTier) continue;
+    const old = [...(lastTag.get(p.name)?.values() ?? [])].filter((x) => x.bytes.join(',') !== p.bytes.join(','))
+      .sort((a, b) => tags.indexOf(b.tag) - tags.indexOf(a.tag))[0];
+    if (old) return { name: p.name, ...old };
+  }
+  throw new Error(`no ${inTier ? 'firmware-tier' : 'factory-region'} patch has a released copy unlike today's`);
+};
+const cases = [pick(true), pick(false)];
+writeFileSync(new URL('../../firmware/test/released_cases.h', import.meta.url), [
+  '/* SPDX-License-Identifier: GPL-3.0-only */',
+  '/* Generated by web/scripts/legacy-factory.ts. Do not edit. Released copies of factory patches unlike today\'s: the newest',
+  '   a release tag wrote of the first firmware-tier patch and of the first factory-region patch that have one, packed',
+  '   (lz_unpack.h). A slot that still holds one byte for byte, under its name, gets today\'s patch (bank_upgrade.h, D-887):',
+  '   firmware/test/bank_upgrade_test.c, tools/emu/src/boot.rs. */',
+  '#pragma once', '#include <stdint.h>',
+  ...cases.map((c, i) => `static const uint8_t RCASE_${i}[] = {${Array.from(lzPack(c.bytes)).join(',')}};`),
+  `#define N_RELEASED_CASES ${cases.length}`,
+  'static const struct { const char *name; const uint8_t *lz; uint16_t lz_len, len; } RELEASED_CASES[N_RELEASED_CASES] = {',
+  ...cases.map((c, i) => `    {${JSON.stringify(c.name)}, RCASE_${i}, sizeof RCASE_${i}, ${c.bytes.length}},   /* ${c.tag}${i ? ', factory region' : ', firmware tier'} */`),
+  '};', ''].join('\n'));
+console.log(`released cases: ${cases.map((c) => `${c.name} of ${c.tag}`).join(', ')}`);

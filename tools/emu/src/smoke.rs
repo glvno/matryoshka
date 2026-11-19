@@ -48,6 +48,9 @@ const PRESETS_H: &str = include_str!("../../../firmware/src/presets.h");
 const FACTORY_TIER_H: &str = include_str!("../../../firmware/src/factory_tier.h");
 /// Earlier presets of factory engines and what the editor makes of them (web/scripts/export-defs.ts, D-865)
 const PMIG_CASES_H: &str = include_str!("../../../firmware/test/pmig_cases.h");
+/// Released copies of factory patches unlike today's: a firmware-tier patch's, then a factory-region patch's
+/// (web/scripts/legacy-factory.ts, D-887)
+const RELEASED_CASES_H: &str = include_str!("../../../firmware/test/released_cases.h");
 
 /// Panel ids (fm1-emu / Felucca's table, confirmed by M-VAVE's fm1_open)
 pub(crate) const OCT_DOWN: u8 = 0;
@@ -117,17 +120,18 @@ fn lz_unpack(src: &[u8]) -> Vec<u8> {
     out
 }
 
-/// (name, binary) of every factory patch in presets.h, unpacked
-pub(crate) fn factory() -> Vec<(String, Vec<u8>)> {
-    let list = &PRESETS_H[PRESETS_H.find("PRESET_LIST[").expect("PRESET_LIST")..];
+/// (name, binary) of each entry of a packed list in a generated header (presets.h's PRESET_LIST, released_cases.h's
+/// RELEASED_CASES: name, the packed array, its size, the unpacked length), unpacked
+fn packed_list(h: &str, list: &str) -> Vec<(String, Vec<u8>)> {
+    let list = &h[h.find(&format!("{list}[")).unwrap_or_else(|| panic!("{list}"))..];
     let mut out = Vec::new();
     for line in list.lines().skip(1) {
         let Some(rest) = line.trim().strip_prefix("{\"") else { break };
         let name = &rest[..rest.find('"').unwrap()];
-        let fields: Vec<&str> = rest[rest.find(", PRESET_").unwrap() + 2..].split(',').map(str::trim).collect();
+        let fields: Vec<&str> = rest[rest.find("\", ").unwrap() + 3..].split(',').map(str::trim).collect();
         let (arr, len) = (fields[0], fields[2].trim_end_matches('}').parse::<usize>().expect("unpacked length"));
         let def = format!("static const uint8_t {arr}[");
-        let d = &PRESETS_H[PRESETS_H.find(&def).unwrap_or_else(|| panic!("{arr}"))..];
+        let d = &h[h.find(&def).unwrap_or_else(|| panic!("{arr}"))..];
         let body = &d[d.find('{').unwrap() + 1..d.find('}').unwrap()];
         let packed: Vec<u8> = body.split(',').filter_map(|t| t.trim().parse::<u8>().ok()).collect();
         let bytes = lz_unpack(&packed);
@@ -135,6 +139,16 @@ pub(crate) fn factory() -> Vec<(String, Vec<u8>)> {
         out.push((name.to_string(), bytes));
     }
     out
+}
+
+/// (name, binary) of every factory patch in presets.h, unpacked
+pub(crate) fn factory() -> Vec<(String, Vec<u8>)> {
+    packed_list(PRESETS_H, "PRESET_LIST")
+}
+
+/// (name, binary) of released_cases.h's released copies: a firmware-tier patch's, then a factory-region patch's
+pub(crate) fn released_cases() -> Vec<(String, Vec<u8>)> {
+    packed_list(RELEASED_CASES_H, "RELEASED_CASES")
 }
 
 /// A patch's Drum map row names (patchbin.ts, flag bit 7: DRUM_ROWS names of TRACK_NAME_MAX bytes, ASCII, zero padded):
@@ -510,7 +524,7 @@ fn heavy_bank(presets: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
 
 /// A record of the bank (firmware/src/slotstore.c): header ("M1S2", id, sequence number, length, CRC, name) at the start
 /// of a sector, the data from +256. `torn`: the data without the header (a write cut before its commit).
-fn record(id: u32, seq: u32, name: &str, data: &[u8], torn: bool) -> Vec<u8> {
+pub(crate) fn record(id: u32, seq: u32, name: &str, data: &[u8], torn: bool) -> Vec<u8> {
     let mut crc = 0xffffu32;
     for &b in data {
         crc ^= (b as u32) << 8;
@@ -597,6 +611,16 @@ pub(crate) fn bank_record(f: &[u8], id: u32) -> Option<(u32, Vec<u8>)> {
         .filter(|&a| word(a) == 0x3253_314D && word(a + 4) == id)
         .map(|a| (word(a + 8), f[a + 256..a + 256 + word(a + 12) as usize].to_vec()))
         .max_by_key(|r| r.0)
+}
+
+/// The name of the newest record of `id` in the bank (its header's 20 bytes, NUL padded)
+pub(crate) fn bank_name(f: &[u8], id: u32) -> Option<String> {
+    let word = |a: usize| u32::from_le_bytes(f[a..a + 4].try_into().unwrap());
+    (0..66usize)
+        .map(|i| if i < 2 { 0x97000 + i * 0x1000 } else { 0xA0000 + (i - 2) * 0x1000 })
+        .filter(|&a| word(a) == 0x3253_314D && word(a + 4) == id)
+        .max_by_key(|&a| word(a + 8))
+        .map(|a| String::from_utf8_lossy(&f[a + 20..a + 40]).trim_end_matches('\0').to_string())
 }
 
 /// One of PMIG_CASES_H's cases: name, the earlier structure, today's, the earlier values, the values the editor makes (Q16)
@@ -760,17 +784,20 @@ fn bank_msg(placed: &[(usize, u32)], skipped: u32, presets: &[(String, Vec<u8>)]
 }
 
 /// After an update that changed the factory set but not the format (#441, D-887): a bank from 1.6.0 (a 12-byte settings
-/// record at today's format, no factory set) with slot 0 an earlier factory Oracle V (untouched), slot 1 an edited copy
-/// of it and slot 2 today's third factory patch. The boot keeps all three as they are, raw factory match or not, and
-/// stores the factory set (settings bytes 13..15); the factory patches 1.6.0 did not have by name (presets.h
-/// RELEASED_SETS, #630) go where bank_new.h puts them, and the bar says so; the next boot rewrites and adds nothing. The
-/// same boot moves the user presets of earlier engine structures to today's, with the values the editor gives them (D-865).
+/// record at today's format, no factory set) with slot 0 a released copy of a factory-region patch under its name
+/// (released_cases.h: untouched since a release wrote it), slot 1 an edited copy of it under another name and slot 2
+/// today's third factory patch. The boot gives slot 0 today's patch of that name, in place, keeps the other two as they
+/// are, and stores the factory set (settings bytes 13..15); the factory patches 1.6.0 did not have by name (presets.h
+/// RELEASED_SETS, #630) go where bank_new.h puts them, and the bar says so, then FACTORY PATCHES UPDATED; the next boot
+/// rewrites and adds nothing. The same boot moves the user presets of earlier engine structures to today's, with the
+/// values the editor gives them (D-865).
 fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
-    let old = std::fs::read("build/emu/old-oracle-v.m1p").map_err(|e| format!("build/emu/old-oracle-v.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
+    let (name, old) = released_cases().pop().ok_or("no released case")?;
+    let today = presets.iter().find(|p| p.0 == name).map(|p| p.1.clone()).ok_or("the released case is not a factory patch")?;
     let (third, kept) = presets.get(2).cloned().ok_or("no third factory patch")?;
     let version: u8 = include_str!("../../../firmware/src/engine.h").split("#define ENG_PATCH_VERSION ").nth(1).and_then(|s| s.split_whitespace().next()?.parse().ok()).ok_or("ENG_PATCH_VERSION")?;
     let set_id = factory_set_id();
-    let (plan, skipped) = bank_plan(0, 0b111, factory_named(&["ORACLE V", "MY ORACLE", &third], presets), presets);
+    let (plan, skipped) = bank_plan(0, 0b111, factory_named(&[&name, "MY COPY", &third], presets), presets);
     let Some(bar) = bank_msg(&plan, skipped, presets) else {
         t.check("upgrade: a factory patch new since 1.6.0 (RELEASED_SETS)", false, String::new());
         return Ok(());
@@ -780,8 +807,8 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     edited[last] ^= 1;
     let mut flash = crate::machine::installed_flash();
     let put = |f: &mut Vec<u8>, at: usize, s: Vec<u8>| f[at..at + 0x1000].copy_from_slice(&s);
-    put(&mut flash, 0xA0000, record(0, 1, "ORACLE V", &old, false));
-    put(&mut flash, 0xA1000, record(1, 2, "MY ORACLE", &edited, false));
+    put(&mut flash, 0xA0000, record(0, 1, &name, &old, false));
+    put(&mut flash, 0xA1000, record(1, 2, "MY COPY", &edited, false));
     put(&mut flash, 0xA2000, record(2, 3, &third, &kept, false));
     // 1.6.0's settings record: version 1, slot 2, octave 0, LEDs, accel, CPU bar, clock in, program change, channel,
     // MIDI out, the bank's format (today's), module 0
@@ -797,13 +824,16 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     quick_start(&mut m, 9000)?;
     let said = wait_text(&mut m, &bar, 1000)?;
     t.check(&format!("upgrade: the patches new since 1.6.0 are added, said once ({bar}, #630)"), said, String::new());
+    let updated = wait_text(&mut m, "FACTORY PATCHES UPDATED", 6000)?;
+    t.check("upgrade: then the bar says FACTORY PATCHES UPDATED", updated, String::new());
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     t.screen(&m, "upgrade: boot opens the settings record's slot", &third);
     let f = m.flash();
     *emulated += m.ms();
     let s0 = bank_record(&f, 0).ok_or("slot 0 gone")?;
-    t.check("upgrade: the untouched earlier Oracle V stays as it is (D-887)", s0 == (1, old.clone()), format!("sequence {}, {} bytes, format {}", s0.0, s0.1.len(), s0.1[1]));
+    t.check(&format!("upgrade: the untouched released {name} has today's patch, in its slot (D-887)"), s0.0 > 1 && s0.1 == today, format!("sequence {}, {} bytes, format {}", s0.0, s0.1.len(), s0.1[1]));
+    t.check("upgrade: the slot keeps its name", bank_name(&f, 0).as_deref() == Some(name.as_str()), format!("{:?}", bank_name(&f, 0)));
     let s1 = bank_record(&f, 1).ok_or("slot 1 gone")?;
     t.check("upgrade: the edited copy stays as it is", s1 == (2, edited.clone()), format!("sequence {}", s1.0));
     let s2 = bank_record(&f, 2).ok_or("slot 2 gone")?;
@@ -827,7 +857,7 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     t.check("upgrade: the settings record keeps the factory set (16 bytes, 13..15)", set.len() == 16 && got == set_id && set[1] == 2, format!("{} bytes, set {got:06x}, FACTORY_SET_ID {set_id:06x}", set.len()));
     let mut m = Machine::boot(app, Some(&f));
     quick_start(&mut m, 9000)?;
-    let again = wait_text(&mut m, &bar, 2500)? || wait_text(&mut m, "PRESETS UPDATED", 10)?;
+    let again = wait_text(&mut m, &bar, 2500)? || wait_text(&mut m, "PRESETS UPDATED", 10)? || wait_text(&mut m, "FACTORY PATCHES UPDATED", 10)?;
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     t.check("upgrade: the next boot rewrites nothing", !again && m.flash() == f, String::new());
     *emulated += m.ms();

@@ -5,7 +5,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { FACT, FACT_SIZE, factCommitFrame, factReadFrame, factWriteFrame, parse, parseFactoryInfo, frame } from './protocol';
-import { buildRegion, contentVersion, crc32, KIND_REGION, KIND_TIER, looksLikeRecord, readHeader, readPatches, REGION_SIZE, STRUCT_PRESETS } from '../scripts/factory-region';
+import { buildRegion, contentVersion, copyFingerprint, crc32, KIND_REGION, KIND_TIER, looksLikeRecord, readCopies, readHeader, readPatches, REGION_SIZE, STRUCT_PRESETS, type ReleasedCopy } from '../scripts/factory-region';
+import { presetsHPatches } from '../scripts/factory-lz';
 import { FIRMWARE_TIER, FIRMWARE_TIER_OVERRIDES } from './factory-tiers';
 import { FM1_PRESETS } from './presets';
 import { factoryPresets, factoryRackPresets } from './factory-presets';
@@ -65,10 +66,31 @@ describe('the factory region image and the firmware tier', () => {
     for (const p of [...inTier, ...inRegion]) expect(bank[p.slot]).toBe(p.name);
   });
   it('each firmware-tier override outranks the built-in copy of the newest released firmware (its revision is higher)', () => {
+    // (today's set is left out: it is the overrides' own content, recorded once a content-only release shipped it; a firmware
+    // released with it compiles the overrides into the tier and empties the list, D-1020)
     const sets = (JSON.parse(readFileSync(new URL('../scripts/released-factory.json', import.meta.url), 'utf8')) as { sets: { set: string; tags: string[] }[] }).sets;
-    const released = Math.max(...sets.map((s) => contentVersion(parseInt(s.set, 16), sets)));   // (the newest firmware's tier version)
+    const today = readHeader(image)!.set;
+    const released = Math.max(...sets.filter((s) => parseInt(s.set, 16) !== today).map((s) => contentVersion(parseInt(s.set, 16), sets)));
     const inRegion = readPatches(image);
     for (const name of FIRMWARE_TIER_OVERRIDES) expect(inRegion.find((p) => p.name === up(name))?.revision).toBeGreaterThan(released);
+  });
+  it('each image lists the released copies of its own patches, every one unlike today\'s bytes of that patch', () => {
+    const rel = (JSON.parse(readFileSync(new URL('../scripts/released-factory.json', import.meta.url), 'utf8')) as { sets: { copies?: ReleasedCopy[] }[] }).sets.flatMap((s) => s.copies ?? []);
+    const bank = Object.fromEntries(presetsHPatches(readFileSync(new URL('../../firmware/src/presets.h', import.meta.url), 'utf8')).map((p) => [p.name, p.bytes]));
+    for (const img of [tier, image]) {
+      const names = readPatches(img).map((p) => p.name), copies = readCopies(img);
+      expect(readHeader(img)!.copies).toBe(copies.length);
+      for (const c of copies) {
+        const now = copyFingerprint(bank[names[c.patch]]);
+        expect(rel.some((r) => r.name === names[c.patch] && r.len === c.len && parseInt(r.fnv, 16) === c.fnv && parseInt(r.crc, 16) === c.crc)).toBe(true);
+        expect([c.len, c.fnv, c.crc]).not.toEqual([now.len, parseInt(now.fnv, 16), parseInt(now.crc, 16)]);
+      }
+      for (const name of names) {
+        const now = copyFingerprint(bank[name]);
+        const want = new Set(rel.filter((r) => r.name === name && !(r.len === now.len && r.fnv === now.fnv && r.crc === now.crc)).map((r) => `${r.len}/${r.fnv}/${r.crc}`));
+        expect(copies.filter((c) => names[c.patch] === name).length, name).toBe(want.size);
+      }
+    }
   });
   it('every factory preset and drum pattern is in the region, none in the tier; the migrations in the tier alone', () => {
     const t = readHeader(tier)!, r = readHeader(image)!;
@@ -82,7 +104,7 @@ describe('the factory region image and the firmware tier', () => {
     let x = 0x2545f491;
     const noise = (): number => { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; return x & 0xff; };
     const big = Array.from({ length: 30 }, (_, i) => ({ name: `P${i}`, binary: Uint8Array.from({ length: 3800 }, noise), slot: i }));
-    expect(() => buildRegion({ kind: KIND_REGION, set: 1, version: 1, patches: big, presets: [], patterns: [], released: [], migrations: new Uint8Array(0) })).toThrow();
+    expect(() => buildRegion({ kind: KIND_REGION, set: 1, version: 1, patches: big, presets: [], patterns: [], released: [], copies: [], migrations: new Uint8Array(0) })).toThrow();
   });
   it('one structure has at most the factory presets the firmware lists (factory.c FC_STRUCT_PRESETS, pages_ui.c pr_list)', () => {
     const c = readFileSync(new URL('../../firmware/src/factory.c', import.meta.url), 'utf8');
@@ -91,6 +113,6 @@ describe('the factory region image and the firmware tier', () => {
     for (const p of [...factoryPresets(), ...factoryRackPresets()]) per.set(p.structure, (per.get(p.structure) ?? 0) + 1);
     expect(Math.max(...per.values())).toBeLessThanOrEqual(STRUCT_PRESETS);
     const over = Array.from({ length: STRUCT_PRESETS + 1 }, (_, i) => ({ structure: '0000abcd', name: `P${i}`, values: [i] }));
-    expect(() => buildRegion({ kind: KIND_REGION, set: 1, version: 1, patches: [], presets: over, patterns: [], released: [], migrations: new Uint8Array(0) })).toThrow();
+    expect(() => buildRegion({ kind: KIND_REGION, set: 1, version: 1, patches: [], presets: over, patterns: [], released: [], copies: [], migrations: new Uint8Array(0) })).toThrow();
   });
 });

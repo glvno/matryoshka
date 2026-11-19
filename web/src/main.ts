@@ -2941,7 +2941,8 @@ async function offerFirmwareUpdate(): Promise<void> {
   showAction(text, 'Update', openInstall, 12000);
 }
 /** the FM-1's factory sounds (#915): none, damaged, for a newer firmware, a cut-off install, or older than this site's set
- *  for the firmware it runs: one click installs them (factory-content.ts). Saved slots are never touched (D-887) */
+ *  for the firmware it runs: one click installs them (factory-content.ts). A saved slot changes only when it still holds a
+ *  factory patch as a release wrote it: it gets today's patch of that name (D-887) */
 async function offerFactoryContent(): Promise<void> {
   if (!device.hasFactoryRegion) return;
   const info = await device.factoryInfo().catch(() => null);

@@ -857,7 +857,8 @@ static int slot_used(uint32_t s) { return s < bank_slots && (bank_mask >> s & 1u
 #define SET_MIN 12u
 #define SET_LEN 16u
 /* Last processed patch format (settings byte 10) and factory set (bytes 13..15).
- * A change checks for new factory names and migrates user assembly presets, never saved patch bytes. */
+ * A change adds the factory names new to the bank, gives an untouched released factory copy today's patch (bank_upgrade.h)
+ * and migrates user assembly presets; it never rewrites a slot a user changed. */
 static uint8_t bank_fmt;
 static uint32_t bank_set;
 static void settings_pack(uint8_t *d)
@@ -1196,6 +1197,15 @@ static int bank_add(uint32_t set, char *msg)
     return bn_msg(&plan, msg);
 }
 
+#include "bank_upgrade.h"
+/* new factory content: each slot that still holds a released copy of a factory patch under its name gets today's patch of
+ * that name, in place (bank_upgrade.h, D-887 amended 2026-11-19); the slots rewritten (bit s) */
+static uint64_t bank_upgrade(void)
+{
+    boot_step("FACTORY PATCHES");
+    return bu_run(bank_buf, sizeof bank_buf);
+}
+
 /* new factory content: the user presets of an earlier structure of a factory engine move to today's structure (presetmig.c,
  * D-865); how many moved */
 static uint32_t presets_upgrade(void)
@@ -1207,35 +1217,49 @@ static uint32_t presets_upgrade(void)
 }
 
 /* the bank brought to the factory region's content (the first boot after an update that changed the factory content or
- * the format, or a new factory region, #915): the presets that move, the patches new to it, then the settings record
- * (cur_preset and sel as they are). What the bar says, 0 nothing. Without the factory region nothing changes: a later boot
- * with it does this */
-static const char *factory_sync(void)
+ * the format, or a new factory region, #915): the presets that move, the untouched factory slots, the patches new to it,
+ * then the settings record (cur_preset and sel as they are). What the bar says, 0 nothing; *then what it says next, when
+ * there is more (it is left as it is otherwise); *up the slots given today's patch. Without the factory region nothing
+ * changes: a later boot with it does this */
+static const char *factory_sync(const char **then, uint64_t *up)
 {
     static char new_msg[BN_BAR + 1u];
+    static const char UPDATED[] = "FACTORY PATCHES UPDATED";
     uint32_t was = bank_set, moved;
     int added;
+    *up = 0;
     if (!fc_region || (bank_fmt >= ENG_PATCH_VERSION && bank_set == fc_set()))
         return 0;
     moved = presets_upgrade();                  /* (all before the settings record: a cut runs them again) */
+    *up = bank_upgrade();                       /* (an untouched released factory copy: today's patch) */
     added = bank_add(was, new_msg);             /* (a factory patch new to this bank, #630) */
     bank_fmt = ENG_PATCH_VERSION;
     bank_set = fc_set();
     settings_store();
-    return added ? new_msg : moved ? "PRESETS UPDATED" : 0;
+    if (added && *up)
+        *then = UPDATED;
+    return added ? new_msg : *up ? UPDATED : moved ? "PRESETS UPDATED" : 0;
 }
 
-/* the main loop, after a FACT_COMMIT (factory.c fc_sync_due): the bank brought to the new content */
+/* the main loop, after a FACT_COMMIT (factory.c fc_sync_due): the bank brought to the new content. The running patch's
+ * slot given today's patch loads it, unless the running patch has edits not saved or the editor's Live holds it */
 static void factory_installed(void)
 {
-    const char *msg;
+    const char *msg, *then = 0;
+    uint64_t up;
     fc_sync_due = 0;
     if (!flash_ok || boot_safe)
         return;
-    msg = factory_sync();
+    msg = factory_sync(&then, &up);
+    if ((up >> cur_preset & 1u) && !m1_edited && !editor_live())
+        (void)preset_load(cur_preset);
     leds_avail();
     ui_full = 1;                                /* (a device's preset list reads the new content) */
     ui_msg(msg ? msg : "FACTORY SOUNDS INSTALLED", 3000);
+    if (then) {
+        msg_then = then;
+        msg_then_ms = 3000;
+    }
 }
 
 /* safe mode: SAVE held while the loading screen is up, or the previous boot did not get through (bootguard): nothing is
@@ -1278,9 +1302,10 @@ static void patch_boot(void)                    /* the slot the settings record 
         boot_msg_ms = 2000;
     } else if (sl_read(SL_SETTINGS, set, &len, 0) == 0 && settings_unpack(set, len, &slot, &module) == 0) {
         const char *msg;
+        uint64_t up;
         cur_preset = slot;
         sel = module;
-        if ((msg = factory_sync()) != 0) {
+        if ((msg = factory_sync(&boot_msg_then, &up)) != 0) {   /* (the slots it rewrote load from the bank next) */
             boot_msg = msg;
             boot_msg_ms = 4000;
         }

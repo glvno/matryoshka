@@ -6,8 +6,8 @@
 
 
 /* the factory set (PRESET_LIST: names and unpacked bytes, then web/src/preset-migrations.json as JSON when it has any),
-   24 bits of FNV-1a, never 0: kept in the settings record for new factory names and user assembly preset migrations.
-   Existing saved patch bytes are preserved (main.c bank_add, presets_upgrade). */
+   24 bits of FNV-1a, never 0: kept in the settings record. A change adds the factory names new to the bank (main.c bank_add),
+   gives an untouched released copy today's patch (bank_upgrade.h) and migrates user assembly presets (presets_upgrade). */
 #define FACTORY_SET_ID 0x0971a5u
 
 #define N_PRESETS 21
@@ -60,9 +60,10 @@ static const struct { const char *name; const uint8_t *lz; uint16_t lz_len, len;
 
 /* the factory sets released firmwares wrote (web/scripts/released-factory.json): the set id (0: a firmware from before
    the id, 1.6.0 and older) and which of today's patches it had by name (bit n: PRESET_LIST[n]) */
-#define N_RELEASED_SETS 14
+#define N_RELEASED_SETS 15
 static const struct { uint32_t set; uint64_t has; } RELEASED_SETS[N_RELEASED_SETS] = {
     {0x000000u, 0x7ffffull},   /* v1.0.0 .. v1.6.0 */
+    {0x0971a5u, 0x1fffffull},   /* v1.20.2 */
     {0x09c6ebu, 0x7ffffull},   /* v1.7.0 .. v1.8.1 */
     {0x39ee30u, 0x1fffffull},   /* v1.20.0 */
     {0x55ce34u, 0x1fffffull},   /* v1.20.1 */
