@@ -205,6 +205,13 @@ export const OUTPUT_RANGES: Record<string, Record<string, Range>> = {
   },
   lpg: { out: (p) => `${FOLLOWS} × level (${num(get(p, 'level', 1))}), closed at 0; resonance can lift it` },
   euclid: { trig: `${GATE} (on a hit)`, off: `${GATE} (on a rest)`, accent: `${GATE} (on an accented hit)` },
+  eq: {
+    out: (p) => {
+      const shape = Math.round(get(p, 'shape', 1)), gain = get(p, 'gain', 0);
+      if (shape <= 2) return gain > 0 ? `${FOLLOWS}, up to ${num(gain)} dB louder in its band` : `${FOLLOWS}, no louder`;
+      return shape === 5 ? `${FOLLOWS}, no louder` : `${FOLLOWS}; a q above 0.707 peaks it at freq (up to q × the input)`;
+    },
+  },
 };
 
 /** the range an output carries, worked out from the module's parameters now ('' for an output without one) */

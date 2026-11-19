@@ -1,0 +1,158 @@
+{
+  "format": "matryoshka-assembly",
+  "version": 1,
+  "name": "EQ",
+  "category": "Effects",
+  "modules": [
+    {
+      "id": 1,
+      "type": "eq",
+      "x": 0,
+      "y": 0,
+      "params": {
+        "freq": 120,
+        "gain": 0,
+        "q": 0.707,
+        "shape": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "freq"
+        ],
+        "p2": [
+          "gain"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "eq",
+      "x": 320,
+      "y": 0,
+      "params": {
+        "freq": 1000,
+        "gain": 0,
+        "q": 1,
+        "shape": 1
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "freq"
+        ],
+        "p2": [
+          "gain"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "type": "eq",
+      "x": 640,
+      "y": 0,
+      "params": {
+        "freq": 8000,
+        "gain": 0,
+        "q": 0.707,
+        "shape": 2
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "freq"
+        ],
+        "p2": [
+          "gain"
+        ]
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": {
+        "module": 1,
+        "port": "out"
+      },
+      "to": {
+        "module": 2,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 2,
+        "port": "out"
+      },
+      "to": {
+        "module": 3,
+        "port": "in"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "module": 1,
+      "port": "in",
+      "label": "in"
+    }
+  ],
+  "outputs": [
+    {
+      "module": 3,
+      "port": "out",
+      "label": "out"
+    }
+  ],
+  "params": [
+    {
+      "module": 1,
+      "param": "gain",
+      "label": "gain",
+      "head": "low"
+    },
+    {
+      "module": 1,
+      "param": "freq",
+      "label": "freq"
+    },
+    {
+      "module": 2,
+      "param": "gain",
+      "label": "gain",
+      "col": true,
+      "head": "mid"
+    },
+    {
+      "module": 2,
+      "param": "freq",
+      "label": "freq"
+    },
+    {
+      "module": 2,
+      "param": "q",
+      "label": "q"
+    },
+    {
+      "module": 3,
+      "param": "gain",
+      "label": "gain",
+      "col": true,
+      "head": "high"
+    },
+    {
+      "module": 3,
+      "param": "freq",
+      "label": "freq"
+    }
+  ]
+}
