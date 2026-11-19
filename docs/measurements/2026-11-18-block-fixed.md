@@ -20,38 +20,39 @@ TIMER5 runs the LED and key scan every 100 µs and the USB and MIDI polls every 
 
 ## On the rig
 
-The 1.20.0 release (CI run 44324522229) against this pull request's code (CI run 44437737545), in one session, both installed through `npm run device:scenarios -- --install`, so the test meter is on in both. The pull request's merged build (CI run 44443757526) has the same code at the same addresses (0 functions moved). Its boot check fails on main's factory image since #1099 (the boot check's expectations, not the firmware; being fixed on main); CI run 44437737545 passed the boot check with its own commit's image. Block times at 8 held keys, means over about 1,040 halves, µs:
+Main with #1102's per-copy changes (CI run 44445997810, `f7892129`) against this pull request merged onto it (CI run 44446207186), in one session. Both were installed through `npm run device:scenarios -- --install` after the boot check passed, so the test meter is on in both. Every function before `eng_render` is at the same address in both builds; the 222 after it move 40 bytes. Block times at 8 held keys, means over about 1,040 halves, µs:
 
 | Patch | Audio interrupt | Fixed part | Before the voices | Output sum and clamp | The voices |
 |---|---|---|---|---|---|
-| Algo Four fx | 1871 → 1848 (−23) | 91.5 → 75.8 | 35.8 → 32.5 | 26.7 → 12.7 | 1780 → 1772 |
-| Cassia 1 fx | 1921 → 1884 (−37) | 99.7 → 74.5 | 43.1 → 30.8 | 32.9 → 18.6 | 1821 → 1810 |
-| Hera 6 fx4 | 1912 → 1869 (−43) | 111.8 → 87.0 | 42.7 → 33.4 | 34.0 → 19.6 | 1800 → 1782 |
-| Hera 6 gauze 2 | 1825 → 1780 (−45) | 112.0 → 87.1 | 45.0 → 33.6 | 32.6 → 19.5 | 1713 → 1693 |
-| Hera 6 gauze 2, running | 1840 → 1794 (−46) | 118.7 → 91.1 | 48.4 → 35.3 | 33.0 → 19.5 | 1721 → 1703 |
-| Oracle V fx | 1931 → 1889 (−42) | 99.6 → 75.3 | 43.2 → 31.8 | 30.0 → 19.8 | 1831 → 1814 |
-| Oracle V fx4 | 1962 → 1917 (−45) | 102.4 → 74.5 | 45.2 → 31.0 | 31.1 → 19.8 | 1859 → 1843 |
-| Oracle V fx4, running | 1978 → 1930 (−48) | 103.7 → 76.2 | 47.5 → 31.6 | 30.2 → 20.5 | 1875 → 1854 |
+| Algo Four fx | 1831 → 1794 (−37) | 98.2 → 70.0 | 35.1 → 21.5 | 30.0 → 16.9 | 1733 → 1724 |
+| Cassia 1 fx | 1855 → 1807 (−47) | 106.6 → 73.9 | 44.6 → 31.1 | 35.1 → 16.7 | 1748 → 1733 |
+| Hera 6 fx4 | 1862 → 1827 (−35) | 115.4 → 83.2 | 44.6 → 27.1 | 34.5 → 20.5 | 1747 → 1744 |
+| Hera 6 gauze 2 | 1767 → 1737 (−30) | 112.8 → 86.0 | 43.1 → 31.1 | 34.5 → 20.1 | 1654 → 1651 |
+| Hera 6 gauze 2, running | 1780 → 1747 (−33) | 120.3 → 91.3 | 47.5 → 33.0 | 34.8 → 20.3 | 1659 → 1656 |
+| Oracle V fx | 1863 → 1821 (−41) | 106.2 → 75.1 | 43.7 → 28.3 | 36.0 → 20.1 | 1756 → 1746 |
+| Oracle V fx4 | 1897 → 1851 (−46) | 106.3 → 74.9 | 43.9 → 27.4 | 35.9 → 21.0 | 1790 → 1776 |
+| Oracle V fx4, running | 1912 → 1866 (−46) | 109.0 → 75.6 | 46.6 → 28.2 | 35.9 → 20.7 | 1803 → 1791 |
 
-- The fixed part (the interrupt less the voices, TIMER5 included) falls by 16 to 28 µs. The voices also take 7 to 20 µs less on both cores (core 1 busy 10 to 16 µs less); the likely reason, not confirmed, is that the block's own code now pushes less of theirs out of the shared instruction cache. Two runs of the same 1.20.0 build in this session differ by at most 6 µs in the interrupt and 2.5 µs in the fixed part.
-- TIMER5 inside the interrupt and the MASTER mix are unchanged (55 to 75 µs and about 17.5 µs).
+- The fixed part (the interrupt less the voices, TIMER5 included) falls by 27 to 33 µs. The voices take 3 to 15 µs less (core 1 busy 5 to 19 µs less); the likely reason, not confirmed, is that the block's own code now pushes less of theirs out of the shared instruction cache. In an earlier session two runs of one build differed by at most 6 µs in the interrupt and 2.5 µs in the fixed part.
+- TIMER5 inside the interrupt and the MASTER mix are unchanged (55 to 73 µs and about 17.5 µs).
+- The same change measured against the 1.20.0 release, before #1102 (CI run 44437737545, the same code layout): the interrupt −23 to −48 µs, the fixed part −16 to −28 µs (raw data below).
 - The worst steady load, the poly benchmark with the transport stopped (`tools/rig_cpu_survey.py`, the lower median after the first sample, the largest over 0, 1, 4 and 8 keys), % of the half:
 
-| Patch | 1.20.0 → this pull request | Change, points |
+| Patch | Main → this pull request | Change, points |
 |---|---|---|
-| Algo Four fx | 67.0 → 65.9 | −1.1 |
-| Cassia 1 fx | 70.0 → 69.6 | −0.4 |
-| Cassia 1 fx4 | 73.6 → 72.5 | −1.1 |
-| Expander S fx | 58.5 → 57.1 | −1.5 |
-| Hera 6 fx | 63.6 → 62.0 | −1.6 |
-| Hera 6 fx4 | 68.6 → 66.6 | −1.9 |
-| Hera 6 gauze 2 | 64.9 → 63.6 | −1.3 |
-| Io 4 fx | 60.6 → 59.0 | −1.6 |
-| Io 4 fx4 | 63.6 → 62.6 | −1.0 |
-| Oracle V fx | 69.5 → 68.6 | −0.9 |
-| Oracle V fx4 | 70.7 → 69.2 | −1.6 |
+| Algo Four fx | 65.0 → 63.8 | −1.2 |
+| Cassia 1 fx | 67.7 → 66.0 | −1.7 |
+| Cassia 1 fx4 | 71.6 → 71.0 | −0.6 |
+| Expander S fx | 56.4 → 55.2 | −1.2 |
+| Hera 6 fx | 62.2 → 60.2 | −2.0 |
+| Hera 6 fx4 | 67.2 → 65.6 | −1.5 |
+| Hera 6 gauze 2 | 63.1 → 61.5 | −1.6 |
+| Io 4 fx | 58.5 → 58.0 | −0.6 |
+| Io 4 fx4 | 61.9 → 60.9 | −1.1 |
+| Oracle V fx | 67.4 → 65.7 | −1.7 |
+| Oracle V fx4 | 68.0 → 67.0 | −1.0 |
 
-- `tools/m1_link.py --rig cores` before and after: 2 cores, no bar, no failed self-test, no refused job.
+- `tools/m1_link.py --rig cores` before and after each run: 2 cores, no bar, no failed self-test, no refused job.
 
 ## In the emulator
 
@@ -76,8 +77,8 @@ Poly benchmark, emulator timing model, main (CI run 44416627447) → this pull r
 ## Keys, LEDs and memory
 
 - **Key to sound** (emulator, timing model, `m1emu run` with 14 presses of a note key at 613 ms spacing, the home page's patch): the first sample after each press is the same in both builds, and every sample from the first press on is identical. Only the sound before the first press differs (5.7 to 6.3 s after power-on): the boot runs at slightly different times when the interrupt is shorter.
-- **Key to LED:** the scan, its timers and the interrupt priorities are unchanged. On the rig the scan's time a tick is 3.54 → 3.41 µs, the glow pulses 0.73 a tick at 8.01 → 8.00 µs (`t5`, 5 s each). The rig cannot see its LEDs.
-- **Checks:** `npm run emu:smoke` on this build, 301 checks, 0 failed; `tools/panel_test.sh` passes; `npm run device:scenarios -- --install` on the rig, 55 of 58 passed, 3 skipped as on every rig run (the OUTPUT checks the rig's USB audio cannot hear).
+- **Key to LED:** the scan, its timers and the interrupt priorities are unchanged. On the rig, main → this pull request, the scan takes 3.41 → 3.41 µs a tick, with 0.73 glow pulses a tick at 8.00 µs in both (`t5`, 5 s each). The rig cannot see its LEDs.
+- **Checks:** `npm run emu:smoke` 301 checks, 0 failed (CI run 44437737545, the same code layout); `tools/panel_test.sh` passes; `npm run device:scenarios -- --install 44446207186` on the rig: the boot check passed (32 of 32) and 55 of 58 scenarios passed, 3 skipped as on every rig run (the OUTPUT checks the rig's USB audio cannot hear).
 - **Memory:** `.lowram`, `.data`, `.bss`, the pool, `.noinit` and the RAM code are the same size; `.text` is 32 bytes longer.
 
 ## Raw data

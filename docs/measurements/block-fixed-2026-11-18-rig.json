@@ -1,10 +1,12 @@
 {
- "note": "#803 block fixed cost: rig runs (tools/m1_link.py --rig blocktime 3 --notes 8, t5 5, tools/rig_cpu_survey.py stopped) on the poly bench (web/scripts/poly-bench.ts). Session 1: before = v1.20.0 release (rig as left, factory region v14) vs first attempt (CI 44433597875, installed by device:scenarios: its TEST_PEAK meter stays on, adding ~7 us to the mix span). Session 2: before2 = v1.20.0 release (CI 44324522229, factory region v15, meter on) vs final layout (CI 44437737545, pre-merge build; code identical to the merged CI 44443757526: 0 functions moved), meter on in both.",
+ "note": "#803 block fixed cost: rig runs (tools/m1_link.py --rig blocktime 3 --notes 8, t5 5, tools/rig_cpu_survey.py stopped) on the poly bench (web/scripts/poly-bench.ts). Session 1: before = v1.20.0 release (rig as left, factory region v14) vs first attempt (CI 44433597875, installed by device:scenarios: its TEST_PEAK meter stays on, adding ~7 us to the mix span). Session 2: before2 = v1.20.0 release (CI 44324522229, factory region v15, meter on) vs final layout (CI 44437737545, pre-merge build; code identical to the merged CI 44443757526: 0 functions moved), meter on in both. Session 3: main with #1102 (CI 44445997810, f7892129) vs this PR merged onto it (CI 44446207186), both via device:scenarios --install (meter on).",
  "builds": {
   "before": "v1.20.0 release",
   "first_attempt": "CI 44433597875 (7fd4fd1f)",
   "before2": "v1.20.0 release, CI 44324522229",
-  "final": "CI 44437737545 (4c04abdb); merged CI 44443757526 same code layout"
+  "final": "CI 44437737545 (4c04abdb); merged CI 44443757526 same code layout",
+  "main_1102": "CI 44445997810 (f7892129)",
+  "final_on_main": "CI 44446207186"
  },
  "runs": {
   "before": {
@@ -7243,6 +7245,3628 @@
       1922,
       1920,
       1931
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    }
+   ]
+  },
+  "main_1102": {
+   "blocktime": {
+    "Algo_Four_fx-8": {
+     "patch": "/Users/mg/projects/music/fm1/modular-1/build/poly-headroom/bench/Algo Four fx.bin",
+     "notes": [
+      60,
+      64,
+      67,
+      71,
+      72,
+      76,
+      79,
+      83
+     ],
+     "run": false,
+     "seconds": 3.0,
+     "page132": [
+      1037,
+      0,
+      3009,
+      1037,
+      68442,
+      77775,
+      0,
+      257
+     ],
+     "page138": [
+      552,
+      2500,
+      3067,
+      23416,
+      18943,
+      11097,
+      1610341,
+      1636500
+     ],
+     "page139": [
+      19645,
+      83,
+      36,
+      107916,
+      64875,
+      20,
+      2,
+      12291
+     ],
+     "spans_ns": {
+      "entry": {
+       "mean": 184,
+       "max": 2250
+      },
+      "pre": {
+       "mean": 299,
+       "max": 2416
+      },
+      "eng_pre": {
+       "mean": 35058,
+       "max": 46833
+      },
+      "voices": {
+       "mean": 1732734,
+       "max": 1770458
+      },
+      "eng_post": {
+       "mean": 13309,
+       "max": 23500
+      },
+      "eng_out": {
+       "mean": 30020,
+       "max": 40250
+      },
+      "mix": {
+       "mean": 17295,
+       "max": 27416
+      },
+      "clk": {
+       "mean": 409,
+       "max": 3333
+      },
+      "uac": {
+       "mean": 276,
+       "max": 5833
+      },
+      "tail": {
+       "mean": 751,
+       "max": 7708
+      },
+      "guard": {
+       "mean": 582,
+       "max": 6375
+      },
+      "isr": {
+       "mean": 1830922,
+       "max": 1877041
+      },
+      "t5_in": {
+       "mean": 55768,
+       "max": 66916
+      },
+      "t5_out": {
+       "mean": 33077,
+       "max": 44125
+      },
+      "self": {
+       "mean": 1060,
+       "max": 9833
+      },
+      "hand": {
+       "mean": 235,
+       "max": 2083
+      },
+      "wait": {
+       "mean": 79327,
+       "max": 87666
+      },
+      "c0_busy": {
+       "mean": 1653407,
+       "max": 1690958
+      },
+      "c1_busy": {
+       "mean": 1610341,
+       "max": 1636500
+      },
+      "c1_idle": {
+       "mean": 122393,
+       "max": 142875
+      }
+     }
+    },
+    "Cassia_1_fx-8": {
+     "patch": "/Users/mg/projects/music/fm1/modular-1/build/poly-headroom/bench/Cassia 1 fx.bin",
+     "notes": [
+      60,
+      64,
+      67,
+      71,
+      72,
+      76,
+      79,
+      83
+     ],
+     "run": false,
+     "seconds": 3.0,
+     "page132": [
+      1038,
+      0,
+      3012,
+      1038,
+      87192,
+      103800,
+      0,
+      257
+     ],
+     "page138": [
+      560,
+      2583,
+      3247,
+      26166,
+      19209,
+      10860,
+      1679533,
+      1734791
+     ],
+     "page139": [
+      12870,
+      83,
+      23,
+      72416,
+      47375,
+      14,
+      2,
+      6666
+     ],
+     "spans_ns": {
+      "entry": {
+       "mean": 179,
+       "max": 2333
+      },
+      "pre": {
+       "mean": 311,
+       "max": 4833
+      },
+      "eng_pre": {
+       "mean": 44580,
+       "max": 55458
+      },
+      "voices": {
+       "mean": 1748074,
+       "max": 1815250
+      },
+      "eng_post": {
+       "mean": 6958,
+       "max": 20458
+      },
+      "eng_out": {
+       "mean": 35078,
+       "max": 49416
+      },
+      "mix": {
+       "mean": 17502,
+       "max": 31458
+      },
+      "clk": {
+       "mean": 397,
+       "max": 2458
+      },
+      "uac": {
+       "mean": 279,
+       "max": 6750
+      },
+      "tail": {
+       "mean": 748,
+       "max": 7458
+      },
+      "guard": {
+       "mean": 576,
+       "max": 6041
+      },
+      "isr": {
+       "mean": 1854687,
+       "max": 1920333
+      },
+      "t5_in": {
+       "mean": 60893,
+       "max": 82166
+      },
+      "t5_out": {
+       "mean": 33181,
+       "max": 45625
+      },
+      "self": {
+       "mean": 1050,
+       "max": 10833
+      },
+      "hand": {
+       "mean": 241,
+       "max": 2333
+      },
+      "wait": {
+       "mean": 169437,
+       "max": 185250
+      },
+      "c0_busy": {
+       "mean": 1578637,
+       "max": 1641208
+      },
+      "c1_busy": {
+       "mean": 1679533,
+       "max": 1734791
+      },
+      "c1_idle": {
+       "mean": 68541,
+       "max": 85833
+      }
+     }
+    },
+    "Hera_6_fx4-8": {
+     "patch": "/Users/mg/projects/music/fm1/modular-1/build/poly-headroom/bench/Hera 6 fx4.bin",
+     "notes": [
+      60,
+      64,
+      67,
+      71,
+      72,
+      76,
+      79,
+      83
+     ],
+     "run": false,
+     "seconds": 3.0,
+     "page132": [
+      1038,
+      0,
+      3012,
+      1038,
+      61242,
+      75774,
+      0,
+      257
+     ],
+     "page138": [
+      568,
+      5000,
+      3263,
+      34291,
+      19245,
+      10820,
+      1683198,
+      1732083
+     ],
+     "page139": [
+      16593,
+      83,
+      29,
+      80625,
+      45750,
+      16,
+      2,
+      7041
+     ],
+     "spans_ns": {
+      "entry": {
+       "mean": 196,
+       "max": 4708
+      },
+      "pre": {
+       "mean": 304,
+       "max": 4791
+      },
+      "eng_pre": {
+       "mean": 44586,
+       "max": 60083
+      },
+      "voices": {
+       "mean": 1746718,
+       "max": 1809041
+      },
+      "eng_post": {
+       "mean": 16560,
+       "max": 25791
+      },
+      "eng_out": {
+       "mean": 34473,
+       "max": 44416
+      },
+      "mix": {
+       "mean": 17219,
+       "max": 26458
+      },
+      "clk": {
+       "mean": 410,
+       "max": 5875
+      },
+      "uac": {
+       "mean": 281,
+       "max": 7458
+      },
+      "tail": {
+       "mean": 771,
+       "max": 7125
+      },
+      "guard": {
+       "mean": 583,
+       "max": 6916
+      },
+      "isr": {
+       "mean": 1862108,
+       "max": 1933583
+      },
+      "t5_in": {
+       "mean": 61467,
+       "max": 87375
+      },
+      "t5_out": {
+       "mean": 33068,
+       "max": 44541
+      },
+      "self": {
+       "mean": 1072,
+       "max": 8625
+      },
+      "hand": {
+       "mean": 245,
+       "max": 4750
+      },
+      "wait": {
+       "mean": 121010,
+       "max": 132791
+      },
+      "c0_busy": {
+       "mean": 1625708,
+       "max": 1683541
+      },
+      "c1_busy": {
+       "mean": 1683198,
+       "max": 1732083
+      },
+      "c1_idle": {
+       "mean": 63520,
+       "max": 79875
+      }
+     }
+    },
+    "Hera_6_gauze_2-8-run": {
+     "patch": "/Users/mg/projects/music/fm1/modular-1/build/poly-headroom/bench/Hera 6 gauze 2.bin",
+     "notes": [
+      60,
+      64,
+      67,
+      71,
+      72,
+      76,
+      79,
+      83
+     ],
+     "run": true,
+     "seconds": 3.0,
+     "page132": [
+      1037,
+      0,
+      3008,
+      1037,
+      61183,
+      70516,
+      0,
+      257
+     ],
+     "page138": [
+      566,
+      2750,
+      3789,
+      29875,
+      18365,
+      11674,
+      1522813,
+      1589458
+     ],
+     "page139": [
+      19765,
+      83,
+      37,
+      116291,
+      72416,
+      21,
+      2,
+      11166
+     ],
+     "spans_ns": {
+      "entry": {
+       "mean": 175,
+       "max": 2166
+      },
+      "pre": {
+       "mean": 307,
+       "max": 5500
+      },
+      "eng_pre": {
+       "mean": 47460,
+       "max": 192833
+      },
+      "voices": {
+       "mean": 1659287,
+       "max": 1799125
+      },
+      "eng_post": {
+       "mean": 18090,
+       "max": 36125
+      },
+      "eng_out": {
+       "mean": 34775,
+       "max": 48666
+      },
+      "mix": {
+       "mean": 17443,
+       "max": 34416
+      },
+      "clk": {
+       "mean": 409,
+       "max": 4916
+      },
+      "uac": {
+       "mean": 295,
+       "max": 12291
+      },
+      "tail": {
+       "mean": 740,
+       "max": 5291
+      },
+      "guard": {
+       "mean": 574,
+       "max": 7000
+      },
+      "isr": {
+       "mean": 1779561,
+       "max": 1995416
+      },
+      "t5_in": {
+       "mean": 69309,
+       "max": 95833
+      },
+      "t5_out": {
+       "mean": 40475,
+       "max": 56500
+      },
+      "self": {
+       "mean": 1083,
+       "max": 13083
+      },
+      "hand": {
+       "mean": 259,
+       "max": 18666
+      },
+      "wait": {
+       "mean": 59242,
+       "max": 79583
+      },
+      "c0_busy": {
+       "mean": 1600044,
+       "max": 1740083
+      },
+      "c1_busy": {
+       "mean": 1522813,
+       "max": 1589458
+      },
+      "c1_idle": {
+       "mean": 136474,
+       "max": 270541
+      }
+     }
+    },
+    "Hera_6_gauze_2-8": {
+     "patch": "/Users/mg/projects/music/fm1/modular-1/build/poly-headroom/bench/Hera 6 gauze 2.bin",
+     "notes": [
+      60,
+      64,
+      67,
+      71,
+      72,
+      76,
+      79,
+      83
+     ],
+     "run": false,
+     "seconds": 3.0,
+     "page132": [
+      1037,
+      0,
+      3009,
+      1037,
+      61183,
+      70516,
+      0,
+      257
+     ],
+     "page138": [
+      574,
+      5166,
+      3268,
+      26375,
+      18218,
+      11823,
+      1522031,
+      1577708
+     ],
+     "page139": [
+      20699,
+      83,
+      40,
+      113833,
+      66583,
+      22,
+      2,
+      8875
+     ],
+     "spans_ns": {
+      "entry": {
+       "mean": 179,
+       "max": 2958
+      },
+      "pre": {
+       "mean": 301,
+       "max": 3458
+      },
+      "eng_pre": {
+       "mean": 43105,
+       "max": 56250
+      },
+      "voices": {
+       "mean": 1653846,
+       "max": 1719458
+      },
+      "eng_post": {
+       "mean": 15403,
+       "max": 27250
+      },
+      "eng_out": {
+       "mean": 34533,
+       "max": 45125
+      },
+      "mix": {
+       "mean": 17283,
+       "max": 28000
+      },
+      "clk": {
+       "mean": 411,
+       "max": 4750
+      },
+      "uac": {
+       "mean": 270,
+       "max": 2208
+      },
+      "tail": {
+       "mean": 742,
+       "max": 7416
+      },
+      "guard": {
+       "mean": 565,
+       "max": 4041
+      },
+      "isr": {
+       "mean": 1766642,
+       "max": 1835375
+      },
+      "t5_in": {
+       "mean": 59434,
+       "max": 82833
+      },
+      "t5_out": {
+       "mean": 35252,
+       "max": 49416
+      },
+      "self": {
+       "mean": 1021,
+       "max": 4708
+      },
+      "hand": {
+       "mean": 248,
+       "max": 4750
+      },
+      "wait": {
+       "mean": 59360,
+       "max": 73916
+      },
+      "c0_busy": {
+       "mean": 1594485,
+       "max": 1653125
+      },
+      "c1_busy": {
+       "mean": 1522031,
+       "max": 1577708
+      },
+      "c1_idle": {
+       "mean": 131815,
+       "max": 152916
+      }
+     }
+    },
+    "Oracle_V_fx-8": {
+     "patch": "/Users/mg/projects/music/fm1/modular-1/build/poly-headroom/bench/Oracle V fx.bin",
+     "notes": [
+      60,
+      64,
+      67,
+      71,
+      72,
+      76,
+      79,
+      83
+     ],
+     "run": false,
+     "seconds": 3.0,
+     "page132": [
+      1037,
+      0,
+      3009,
+      1037,
+      75701,
+      101626,
+      0,
+      257
+     ],
+     "page138": [
+      570,
+      2916,
+      3319,
+      24875,
+      19331,
+      10710,
+      1689784,
+      1775583
+     ],
+     "page139": [
+      12688,
+      83,
+      23,
+      67666,
+      41750,
+      13,
+      2,
+      6541
+     ],
+     "spans_ns": {
+      "entry": {
+       "mean": 192,
+       "max": 6583
+      },
+      "pre": {
+       "mean": 305,
+       "max": 6666
+      },
+      "eng_pre": {
+       "mean": 43690,
+       "max": 55166
+      },
+      "voices": {
+       "mean": 1756260,
+       "max": 1861916
+      },
+      "eng_post": {
+       "mean": 6259,
+       "max": 16416
+      },
+      "eng_out": {
+       "mean": 36009,
+       "max": 45666
+      },
+      "mix": {
+       "mean": 17647,
+       "max": 27958
+      },
+      "clk": {
+       "mean": 407,
+       "max": 6750
+      },
+      "uac": {
+       "mean": 305,
+       "max": 7250
+      },
+      "tail": {
+       "mean": 766,
+       "max": 7625
+      },
+      "guard": {
+       "mean": 606,
+       "max": 8666
+      },
+      "isr": {
+       "mean": 1862451,
+       "max": 1971583
+      },
+      "t5_in": {
+       "mean": 63041,
+       "max": 82541
+      },
+      "t5_out": {
+       "mean": 33108,
+       "max": 43708
+      },
+      "self": {
+       "mean": 1084,
+       "max": 9708
+      },
+      "hand": {
+       "mean": 242,
+       "max": 2375
+      },
+      "wait": {
+       "mean": 116005,
+       "max": 163041
+      },
+      "c0_busy": {
+       "mean": 1640255,
+       "max": 1706125
+      },
+      "c1_busy": {
+       "mean": 1689784,
+       "max": 1775583
+      },
+      "c1_idle": {
+       "mean": 66475,
+       "max": 87416
+      }
+     }
+    },
+    "Oracle_V_fx4-8-run": {
+     "patch": "/Users/mg/projects/music/fm1/modular-1/build/poly-headroom/bench/Oracle V fx4.bin",
+     "notes": [
+      60,
+      64,
+      67,
+      71,
+      72,
+      76,
+      79,
+      83
+     ],
+     "run": true,
+     "seconds": 3.0,
+     "page132": [
+      1037,
+      0,
+      3008,
+      1037,
+      76738,
+      102663,
+      0,
+      257
+     ],
+     "page138": [
+      563,
+      4875,
+      3878,
+      30708,
+      19811,
+      10218,
+      1732447,
+      1851833
+     ],
+     "page139": [
+      17640,
+      83,
+      32,
+      100500,
+      62958,
+      18,
+      2,
+      11166
+     ],
+     "spans_ns": {
+      "entry": {
+       "mean": 187,
+       "max": 2333
+      },
+      "pre": {
+       "mean": 318,
+       "max": 13708
+      },
+      "eng_pre": {
+       "mean": 46613,
+       "max": 59416
+      },
+      "voices": {
+       "mean": 1802860,
+       "max": 1936916
+      },
+      "eng_post": {
+       "mean": 6288,
+       "max": 17708
+      },
+      "eng_out": {
+       "mean": 35949,
+       "max": 48541
+      },
+      "mix": {
+       "mean": 17637,
+       "max": 30583
+      },
+      "clk": {
+       "mean": 399,
+       "max": 3958
+      },
+      "uac": {
+       "mean": 291,
+       "max": 9416
+      },
+      "tail": {
+       "mean": 775,
+       "max": 12583
+      },
+      "guard": {
+       "mean": 579,
+       "max": 7458
+      },
+      "isr": {
+       "mean": 1911903,
+       "max": 2050416
+      },
+      "t5_in": {
+       "mean": 75577,
+       "max": 107041
+      },
+      "t5_out": {
+       "mean": 36720,
+       "max": 51166
+      },
+      "self": {
+       "mean": 1076,
+       "max": 15375
+      },
+      "hand": {
+       "mean": 242,
+       "max": 4708
+      },
+      "wait": {
+       "mean": 117393,
+       "max": 178083
+      },
+      "c0_busy": {
+       "mean": 1685467,
+       "max": 1778708
+      },
+      "c1_busy": {
+       "mean": 1732447,
+       "max": 1851833
+      },
+      "c1_idle": {
+       "mean": 70413,
+       "max": 142416
+      }
+     }
+    },
+    "Oracle_V_fx4-8": {
+     "patch": "/Users/mg/projects/music/fm1/modular-1/build/poly-headroom/bench/Oracle V fx4.bin",
+     "notes": [
+      60,
+      64,
+      67,
+      71,
+      72,
+      76,
+      79,
+      83
+     ],
+     "run": false,
+     "seconds": 3.0,
+     "page132": [
+      1039,
+      0,
+      3015,
+      1039,
+      76886,
+      102861,
+      0,
+      257
+     ],
+     "page138": [
+      576,
+      5125,
+      3324,
+      41416,
+      19690,
+      10405,
+      1722662,
+      1805708
+     ],
+     "page139": [
+      18594,
+      83,
+      33,
+      97375,
+      59125,
+      19,
+      2,
+      7083
+     ],
+     "spans_ns": {
+      "entry": {
+       "mean": 200,
+       "max": 7000
+      },
+      "pre": {
+       "mean": 310,
+       "max": 5958
+      },
+      "eng_pre": {
+       "mean": 43881,
+       "max": 58708
+      },
+      "voices": {
+       "mean": 1790310,
+       "max": 1882708
+      },
+      "eng_post": {
+       "mean": 6424,
+       "max": 14708
+      },
+      "eng_out": {
+       "mean": 35930,
+       "max": 46458
+      },
+      "mix": {
+       "mean": 17583,
+       "max": 32083
+      },
+      "clk": {
+       "mean": 409,
+       "max": 6750
+      },
+      "uac": {
+       "mean": 277,
+       "max": 2375
+      },
+      "tail": {
+       "mean": 736,
+       "max": 14250
+      },
+      "guard": {
+       "mean": 585,
+       "max": 6041
+      },
+      "isr": {
+       "mean": 1896649,
+       "max": 1997875
+      },
+      "t5_in": {
+       "mean": 64027,
+       "max": 98958
+      },
+      "t5_out": {
+       "mean": 32265,
+       "max": 41375
+      },
+      "self": {
+       "mean": 1066,
+       "max": 7416
+      },
+      "hand": {
+       "mean": 248,
+       "max": 4791
+      },
+      "wait": {
+       "mean": 116210,
+       "max": 163666
+      },
+      "c0_busy": {
+       "mean": 1674099,
+       "max": 1742125
+      },
+      "c1_busy": {
+       "mean": 1722662,
+       "max": 1805708
+      },
+      "c1_idle": {
+       "mean": 67647,
+       "max": 86125
+      }
+     }
+    }
+   },
+   "t5": [
+    "window 5.0 s: 49975 TIMER5 interrupts (9995 a second)",
+    "  the LED and key scan in TIMER5: mean 2.18 us a tick; 2.18 % of core 0",
+    "  the split pulses' ends (TIMER2): 36345, mean 1.68 us each; 1.22 % of core 0",
+    "  the scan in all: 3.40 % of core 0, 3.41 us a tick",
+    "  the USB / MIDI polls: 10012, mean 2.52 us each; 0.50 % of core 0",
+    "  dim pulses: 36345 (0.73 a tick), mean 8.00 us"
+   ],
+   "survey_stopped": [
+    {
+     "slot": 0,
+     "name": "Algo Four fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2312,
+     "n0_samples": [
+      2312,
+      1292,
+      1343,
+      1292
+     ],
+     "n0_mean_us": [
+      850,
+      1037,
+      850,
+      1067
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2346,
+     "n1_samples": [
+      2346,
+      1609,
+      1609,
+      1615
+     ],
+     "n1_mean_us": [
+      1255,
+      1310,
+      1263,
+      1307
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2285,
+     "n4_samples": [
+      2285,
+      1876,
+      1885,
+      1886
+     ],
+     "n4_mean_us": [
+      1518,
+      1534,
+      1527,
+      1531
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2291,
+     "n8_samples": [
+      2291,
+      1861,
+      1870,
+      1881
+     ],
+     "n8_mean_us": [
+      1821,
+      1812,
+      1833,
+      1838
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 1,
+     "name": "Cassia 1 fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2181,
+     "n0_samples": [
+      2181,
+      1488,
+      1490,
+      1491
+     ],
+     "n0_mean_us": [
+      839,
+      1080,
+      848,
+      888
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2160,
+     "n1_samples": [
+      2160,
+      1967,
+      1960,
+      1964
+     ],
+     "n1_mean_us": [
+      1439,
+      1450,
+      1439,
+      1458
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2132,
+     "n4_samples": [
+      2132,
+      1899,
+      1899,
+      1891
+     ],
+     "n4_mean_us": [
+      1857,
+      1857,
+      1848,
+      1846
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2176,
+     "n8_samples": [
+      2176,
+      1922,
+      1907,
+      1899
+     ],
+     "n8_mean_us": [
+      1857,
+      1853,
+      1852,
+      1847
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 2,
+     "name": "Cassia 1 fx4",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2291,
+     "n0_samples": [
+      2291,
+      1592,
+      1596,
+      1599
+     ],
+     "n0_mean_us": [
+      981,
+      932,
+      987,
+      926
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2283,
+     "n1_samples": [
+      2283,
+      2071,
+      2078,
+      2091
+     ],
+     "n1_mean_us": [
+      1552,
+      1557,
+      1545,
+      1562
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2259,
+     "n4_samples": [
+      2259,
+      2004,
+      2004,
+      2004
+     ],
+     "n4_mean_us": [
+      1963,
+      1957,
+      1950,
+      1955
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2314,
+     "n8_samples": [
+      2314,
+      1996,
+      2001,
+      1991
+     ],
+     "n8_mean_us": [
+      1961,
+      1952,
+      1949,
+      1953
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 3,
+     "name": "Expander S fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 1883,
+     "n0_samples": [
+      1883,
+      1354,
+      1354,
+      1324
+     ],
+     "n0_mean_us": [
+      768,
+      838,
+      759,
+      828
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 1890,
+     "n1_samples": [
+      1890,
+      1637,
+      1641,
+      1630
+     ],
+     "n1_mean_us": [
+      1265,
+      1282,
+      1272,
+      1285
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 1896,
+     "n4_samples": [
+      1896,
+      1611,
+      1644,
+      1633
+     ],
+     "n4_mean_us": [
+      1568,
+      1569,
+      1576,
+      1579
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 1819,
+     "n8_samples": [
+      1819,
+      1622,
+      1638,
+      1661
+     ],
+     "n8_mean_us": [
+      1577,
+      1576,
+      1593,
+      1584
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 4,
+     "name": "Hera 6 fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2025,
+     "n0_samples": [
+      2025,
+      1463,
+      1463,
+      1484
+     ],
+     "n0_mean_us": [
+      949,
+      974,
+      949,
+      970
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2008,
+     "n1_samples": [
+      2008,
+      1806,
+      1774,
+      1810
+     ],
+     "n1_mean_us": [
+      1414,
+      1405,
+      1440,
+      1403
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2023,
+     "n4_samples": [
+      2023,
+      1803,
+      1771,
+      1780
+     ],
+     "n4_mean_us": [
+      1746,
+      1720,
+      1729,
+      1726
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2016,
+     "n8_samples": [
+      2016,
+      1818,
+      1784,
+      1784
+     ],
+     "n8_mean_us": [
+      1751,
+      1729,
+      1738,
+      1728
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 5,
+     "name": "Hera 6 fx4",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2146,
+     "n0_samples": [
+      2146,
+      1582,
+      1590,
+      1590
+     ],
+     "n0_mean_us": [
+      1103,
+      1240,
+      1107,
+      1230
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2165,
+     "n1_samples": [
+      2165,
+      1949,
+      1949,
+      1898
+     ],
+     "n1_mean_us": [
+      1545,
+      1550,
+      1532,
+      1544
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2121,
+     "n4_samples": [
+      2121,
+      1933,
+      1914,
+      1921
+     ],
+     "n4_mean_us": [
+      1881,
+      1862,
+      1857,
+      1852
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2157,
+     "n8_samples": [
+      2157,
+      1924,
+      1904,
+      1907
+     ],
+     "n8_mean_us": [
+      1886,
+      1862,
+      1865,
+      1863
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 6,
+     "name": "Hera 6 gauze 2",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2038,
+     "n0_samples": [
+      2038,
+      1462,
+      1460,
+      1474
+     ],
+     "n0_mean_us": [
+      977,
+      1015,
+      979,
+      1011
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2026,
+     "n1_samples": [
+      2026,
+      1822,
+      1817,
+      1817
+     ],
+     "n1_mean_us": [
+      1464,
+      1438,
+      1460,
+      1431
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 1970,
+     "n4_samples": [
+      1970,
+      1815,
+      1832,
+      1832
+     ],
+     "n4_mean_us": [
+      1755,
+      1768,
+      1768,
+      1758
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2027,
+     "n8_samples": [
+      2027,
+      1819,
+      1819,
+      1822
+     ],
+     "n8_mean_us": [
+      1771,
+      1761,
+      1766,
+      1769
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 7,
+     "name": "Io 4 fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 1954,
+     "n0_samples": [
+      1954,
+      1424,
+      1428,
+      1448
+     ],
+     "n0_mean_us": [
+      1018,
+      935,
+      987,
+      935
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 1942,
+     "n1_samples": [
+      1942,
+      1692,
+      1701,
+      1699
+     ],
+     "n1_mean_us": [
+      1388,
+      1419,
+      1391,
+      1384
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 1906,
+     "n4_samples": [
+      1906,
+      1680,
+      1695,
+      1695
+     ],
+     "n4_mean_us": [
+      1609,
+      1614,
+      1613,
+      1629
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 1928,
+     "n8_samples": [
+      1928,
+      1667,
+      1678,
+      1680
+     ],
+     "n8_mean_us": [
+      1604,
+      1612,
+      1626,
+      1631
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 8,
+     "name": "Io 4 fx4",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2045,
+     "n0_samples": [
+      2045,
+      1520,
+      1517,
+      1562
+     ],
+     "n0_mean_us": [
+      1128,
+      1046,
+      1121,
+      1036
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2042,
+     "n1_samples": [
+      2042,
+      1797,
+      1835,
+      1786
+     ],
+     "n1_mean_us": [
+      1486,
+      1517,
+      1480,
+      1504
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2050,
+     "n4_samples": [
+      2050,
+      1774,
+      1789,
+      1784
+     ],
+     "n4_mean_us": [
+      1718,
+      1703,
+      1716,
+      1715
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2032,
+     "n8_samples": [
+      2032,
+      1767,
+      1779,
+      1783
+     ],
+     "n8_mean_us": [
+      1712,
+      1708,
+      1719,
+      1730
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 9,
+     "name": "Oracle V fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2223,
+     "n0_samples": [
+      2223,
+      1491,
+      1485,
+      1478
+     ],
+     "n0_mean_us": [
+      825,
+      999,
+      818,
+      998
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2212,
+     "n1_samples": [
+      2212,
+      1951,
+      1876,
+      1883
+     ],
+     "n1_mean_us": [
+      1393,
+      1411,
+      1392,
+      1400
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2235,
+     "n4_samples": [
+      2235,
+      1925,
+      1948,
+      1931
+     ],
+     "n4_mean_us": [
+      1848,
+      1859,
+      1863,
+      1873
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2238,
+     "n8_samples": [
+      2238,
+      1957,
+      1951,
+      1977
+     ],
+     "n8_mean_us": [
+      1868,
+      1869,
+      1873,
+      1880
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 10,
+     "name": "Oracle V fx4",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2282,
+     "n0_samples": [
+      2282,
+      1509,
+      1532,
+      1521
+     ],
+     "n0_mean_us": [
+      843,
+      1000,
+      834,
+      945
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2230,
+     "n1_samples": [
+      2230,
+      1932,
+      1931,
+      1977
+     ],
+     "n1_mean_us": [
+      1419,
+      1428,
+      1487,
+      1420
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2246,
+     "n4_samples": [
+      2246,
+      1984,
+      1955,
+      1957
+     ],
+     "n4_mean_us": [
+      1883,
+      1897,
+      1890,
+      1902
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2300,
+     "n8_samples": [
+      2300,
+      1964,
+      1987,
+      1972
+     ],
+     "n8_mean_us": [
+      1893,
+      1899,
+      1897,
+      1911
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    }
+   ]
+  },
+  "final_on_main": {
+   "blocktime": {
+    "Algo_Four_fx-8": {
+     "patch": "/Users/mg/projects/music/fm1/modular-1/build/poly-headroom/bench/Algo Four fx.bin",
+     "notes": [
+      60,
+      64,
+      67,
+      71,
+      72,
+      76,
+      79,
+      83
+     ],
+     "run": false,
+     "seconds": 3.0,
+     "page132": [
+      1038,
+      0,
+      3012,
+      1038,
+      68508,
+      77850,
+      0,
+      257
+     ],
+     "page138": [
+      562,
+      2750,
+      3123,
+      27708,
+      18584,
+      11485,
+      1597105,
+      1628208
+     ],
+     "page139": [
+      16610,
+      83,
+      31,
+      84583,
+      47916,
+      17,
+      2,
+      6541
+     ],
+     "spans_ns": {
+      "entry": {
+       "mean": 191,
+       "max": 2291
+      },
+      "pre": {
+       "mean": 284,
+       "max": 4666
+      },
+      "eng_pre": {
+       "mean": 21469,
+       "max": 41041
+      },
+      "voices": {
+       "mean": 1724185,
+       "max": 1766666
+      },
+      "eng_post": {
+       "mean": 11522,
+       "max": 20833
+      },
+      "eng_out": {
+       "mean": 16879,
+       "max": 25750
+      },
+      "mix": {
+       "mean": 17666,
+       "max": 30708
+      },
+      "clk": {
+       "mean": 396,
+       "max": 2458
+      },
+      "uac": {
+       "mean": 268,
+       "max": 2375
+      },
+      "tail": {
+       "mean": 749,
+       "max": 9500
+      },
+      "guard": {
+       "mean": 588,
+       "max": 7000
+      },
+      "isr": {
+       "mean": 1794203,
+       "max": 1847125
+      },
+      "t5_in": {
+       "mean": 55484,
+       "max": 67541
+      },
+      "t5_out": {
+       "mean": 35007,
+       "max": 51000
+      },
+      "self": {
+       "mean": 1035,
+       "max": 5500
+      },
+      "hand": {
+       "mean": 240,
+       "max": 2375
+      },
+      "wait": {
+       "mean": 75525,
+       "max": 83166
+      },
+      "c0_busy": {
+       "mean": 1648660,
+       "max": 1687708
+      },
+      "c1_busy": {
+       "mean": 1597105,
+       "max": 1628208
+      },
+      "c1_idle": {
+       "mean": 127079,
+       "max": 148666
+      }
+     }
+    },
+    "Cassia_1_fx-8": {
+     "patch": "/Users/mg/projects/music/fm1/modular-1/build/poly-headroom/bench/Cassia 1 fx.bin",
+     "notes": [
+      60,
+      64,
+      67,
+      71,
+      72,
+      76,
+      79,
+      83
+     ],
+     "run": false,
+     "seconds": 3.0,
+     "page132": [
+      1036,
+      0,
+      3006,
+      1036,
+      87024,
+      103600,
+      0,
+      257
+     ],
+     "page138": [
+      574,
+      6916,
+      3221,
+      25291,
+      18704,
+      11308,
+      1664954,
+      1718708
+     ],
+     "page139": [
+      13507,
+      83,
+      25,
+      87625,
+      57541,
+      15,
+      2,
+      14791
+     ],
+     "spans_ns": {
+      "entry": {
+       "mean": 201,
+       "max": 5666
+      },
+      "pre": {
+       "mean": 299,
+       "max": 4791
+      },
+      "eng_pre": {
+       "mean": 31132,
+       "max": 43500
+      },
+      "voices": {
+       "mean": 1733278,
+       "max": 1800875
+      },
+      "eng_post": {
+       "mean": 5952,
+       "max": 14458
+      },
+      "eng_out": {
+       "mean": 16665,
+       "max": 25666
+      },
+      "mix": {
+       "mean": 17599,
+       "max": 25958
+      },
+      "clk": {
+       "mean": 415,
+       "max": 5125
+      },
+      "uac": {
+       "mean": 283,
+       "max": 5375
+      },
+      "tail": {
+       "mean": 773,
+       "max": 10166
+      },
+      "guard": {
+       "mean": 596,
+       "max": 7666
+      },
+      "isr": {
+       "mean": 1807199,
+       "max": 1882458
+      },
+      "t5_in": {
+       "mean": 58216,
+       "max": 80250
+      },
+      "t5_out": {
+       "mean": 35098,
+       "max": 46625
+      },
+      "self": {
+       "mean": 1071,
+       "max": 9833
+      },
+      "hand": {
+       "mean": 246,
+       "max": 6625
+      },
+      "wait": {
+       "mean": 166665,
+       "max": 179458
+      },
+      "c0_busy": {
+       "mean": 1566613,
+       "max": 1624250
+      },
+      "c1_busy": {
+       "mean": 1664954,
+       "max": 1718708
+      },
+      "c1_idle": {
+       "mean": 68324,
+       "max": 88708
+      }
+     }
+    },
+    "Hera_6_fx4-8": {
+     "patch": "/Users/mg/projects/music/fm1/modular-1/build/poly-headroom/bench/Hera 6 fx4.bin",
+     "notes": [
+      60,
+      64,
+      67,
+      71,
+      72,
+      76,
+      79,
+      83
+     ],
+     "run": false,
+     "seconds": 3.0,
+     "page132": [
+      1039,
+      0,
+      3015,
+      1039,
+      61301,
+      75847,
+      0,
+      257
+     ],
+     "page138": [
+      563,
+      4958,
+      3210,
+      39333,
+      18949,
+      11146,
+      1672061,
+      1739750
+     ],
+     "page139": [
+      19780,
+      83,
+      37,
+      110416,
+      71250,
+      22,
+      2,
+      8916
+     ],
+     "spans_ns": {
+      "entry": {
+       "mean": 199,
+       "max": 4666
+      },
+      "pre": {
+       "mean": 285,
+       "max": 4750
+      },
+      "eng_pre": {
+       "mean": 27138,
+       "max": 42000
+      },
+      "voices": {
+       "mean": 1743893,
+       "max": 1811375
+      },
+      "eng_post": {
+       "mean": 15734,
+       "max": 32500
+      },
+      "eng_out": {
+       "mean": 20453,
+       "max": 30291
+      },
+      "mix": {
+       "mean": 17346,
+       "max": 26041
+      },
+      "clk": {
+       "mean": 407,
+       "max": 4791
+      },
+      "uac": {
+       "mean": 268,
+       "max": 2375
+      },
+      "tail": {
+       "mean": 739,
+       "max": 7083
+      },
+      "guard": {
+       "mean": 584,
+       "max": 6083
+      },
+      "isr": {
+       "mean": 1827051,
+       "max": 1898166
+      },
+      "t5_in": {
+       "mean": 58430,
+       "max": 94041
+      },
+      "t5_out": {
+       "mean": 34574,
+       "max": 47041
+      },
+      "self": {
+       "mean": 1036,
+       "max": 7666
+      },
+      "hand": {
+       "mean": 244,
+       "max": 4708
+      },
+      "wait": {
+       "mean": 115811,
+       "max": 132166
+      },
+      "c0_busy": {
+       "mean": 1628082,
+       "max": 1689250
+      },
+      "c1_busy": {
+       "mean": 1672061,
+       "max": 1739750
+      },
+      "c1_idle": {
+       "mean": 71832,
+       "max": 86208
+      }
+     }
+    },
+    "Hera_6_gauze_2-8-run": {
+     "patch": "/Users/mg/projects/music/fm1/modular-1/build/poly-headroom/bench/Hera 6 gauze 2.bin",
+     "notes": [
+      60,
+      64,
+      67,
+      71,
+      72,
+      76,
+      79,
+      83
+     ],
+     "run": true,
+     "seconds": 3.0,
+     "page132": [
+      1037,
+      0,
+      3009,
+      1037,
+      61183,
+      70516,
+      0,
+      257
+     ],
+     "page138": [
+      571,
+      6833,
+      3748,
+      26166,
+      18063,
+      11976,
+      1517093,
+      1596125
+     ],
+     "page139": [
+      21481,
+      83,
+      39,
+      128500,
+      86500,
+      24,
+      2,
+      11125
+     ],
+     "spans_ns": {
+      "entry": {
+       "mean": 201,
+       "max": 3375
+      },
+      "pre": {
+       "mean": 303,
+       "max": 5958
+      },
+      "eng_pre": {
+       "mean": 32951,
+       "max": 179583
+      },
+      "voices": {
+       "mean": 1655617,
+       "max": 1796166
+      },
+      "eng_post": {
+       "mean": 18048,
+       "max": 38083
+      },
+      "eng_out": {
+       "mean": 20322,
+       "max": 35583
+      },
+      "mix": {
+       "mean": 17424,
+       "max": 30083
+      },
+      "clk": {
+       "mean": 419,
+       "max": 11541
+      },
+      "uac": {
+       "mean": 278,
+       "max": 6666
+      },
+      "tail": {
+       "mean": 750,
+       "max": 11708
+      },
+      "guard": {
+       "mean": 581,
+       "max": 5125
+      },
+      "isr": {
+       "mean": 1746900,
+       "max": 1966875
+      },
+      "t5_in": {
+       "mean": 66903,
+       "max": 99791
+      },
+      "t5_out": {
+       "mean": 41680,
+       "max": 64375
+      },
+      "self": {
+       "mean": 1040,
+       "max": 12000
+      },
+      "hand": {
+       "mean": 246,
+       "max": 6625
+      },
+      "wait": {
+       "mean": 57571,
+       "max": 74125
+      },
+      "c0_busy": {
+       "mean": 1598046,
+       "max": 1738458
+      },
+      "c1_busy": {
+       "mean": 1517093,
+       "max": 1596125
+      },
+      "c1_idle": {
+       "mean": 138524,
+       "max": 273000
+      }
+     }
+    },
+    "Hera_6_gauze_2-8": {
+     "patch": "/Users/mg/projects/music/fm1/modular-1/build/poly-headroom/bench/Hera 6 gauze 2.bin",
+     "notes": [
+      60,
+      64,
+      67,
+      71,
+      72,
+      76,
+      79,
+      83
+     ],
+     "run": false,
+     "seconds": 3.0,
+     "page132": [
+      1038,
+      0,
+      3012,
+      1038,
+      61242,
+      70584,
+      0,
+      257
+     ],
+     "page138": [
+      557,
+      2791,
+      3210,
+      25500,
+      17988,
+      12079,
+      1516590,
+      1554041
+     ],
+     "page139": [
+      18565,
+      83,
+      35,
+      102208,
+      61083,
+      20,
+      2,
+      8875
+     ],
+     "spans_ns": {
+      "entry": {
+       "mean": 204,
+       "max": 4708
+      },
+      "pre": {
+       "mean": 303,
+       "max": 4833
+      },
+      "eng_pre": {
+       "mean": 31127,
+       "max": 47166
+      },
+      "voices": {
+       "mean": 1650486,
+       "max": 1697625
+      },
+      "eng_post": {
+       "mean": 14709,
+       "max": 29208
+      },
+      "eng_out": {
+       "mean": 20070,
+       "max": 34083
+      },
+      "mix": {
+       "mean": 17580,
+       "max": 30625
+      },
+      "clk": {
+       "mean": 408,
+       "max": 6958
+      },
+      "uac": {
+       "mean": 274,
+       "max": 5416
+      },
+      "tail": {
+       "mean": 732,
+       "max": 7458
+      },
+      "guard": {
+       "mean": 571,
+       "max": 5041
+      },
+      "isr": {
+       "mean": 1736469,
+       "max": 1792041
+      },
+      "t5_in": {
+       "mean": 57097,
+       "max": 76291
+      },
+      "t5_out": {
+       "mean": 35911,
+       "max": 50333
+      },
+      "self": {
+       "mean": 1025,
+       "max": 5500
+      },
+      "hand": {
+       "mean": 240,
+       "max": 2375
+      },
+      "wait": {
+       "mean": 57162,
+       "max": 67083
+      },
+      "c0_busy": {
+       "mean": 1593324,
+       "max": 1634625
+      },
+      "c1_busy": {
+       "mean": 1516590,
+       "max": 1554041
+      },
+      "c1_idle": {
+       "mean": 133896,
+       "max": 155000
+      }
+     }
+    },
+    "Oracle_V_fx-8": {
+     "patch": "/Users/mg/projects/music/fm1/modular-1/build/poly-headroom/bench/Oracle V fx.bin",
+     "notes": [
+      60,
+      64,
+      67,
+      71,
+      72,
+      76,
+      79,
+      83
+     ],
+     "run": false,
+     "seconds": 3.0,
+     "page132": [
+      1037,
+      0,
+      3009,
+      1037,
+      75701,
+      101626,
+      0,
+      257
+     ],
+     "page138": [
+      564,
+      2875,
+      3341,
+      28250,
+      18915,
+      11122,
+      1674683,
+      1761833
+     ],
+     "page139": [
+      19300,
+      83,
+      36,
+      95875,
+      52875,
+      20,
+      2,
+      6500
+     ],
+     "spans_ns": {
+      "entry": {
+       "mean": 196,
+       "max": 2291
+      },
+      "pre": {
+       "mean": 285,
+       "max": 4791
+      },
+      "eng_pre": {
+       "mean": 28298,
+       "max": 46208
+      },
+      "voices": {
+       "mean": 1746295,
+       "max": 1841916
+      },
+      "eng_post": {
+       "mean": 6006,
+       "max": 14166
+      },
+      "eng_out": {
+       "mean": 20135,
+       "max": 29541
+      },
+      "mix": {
+       "mean": 18132,
+       "max": 27708
+      },
+      "clk": {
+       "mean": 422,
+       "max": 7208
+      },
+      "uac": {
+       "mean": 290,
+       "max": 6541
+      },
+      "tail": {
+       "mean": 754,
+       "max": 6250
+      },
+      "guard": {
+       "mean": 586,
+       "max": 5083
+      },
+      "isr": {
+       "mean": 1821403,
+       "max": 1931416
+      },
+      "t5_in": {
+       "mean": 62099,
+       "max": 82708
+      },
+      "t5_out": {
+       "mean": 34676,
+       "max": 45250
+      },
+      "self": {
+       "mean": 1095,
+       "max": 9125
+      },
+      "hand": {
+       "mean": 238,
+       "max": 2375
+      },
+      "wait": {
+       "mean": 113828,
+       "max": 161625
+      },
+      "c0_busy": {
+       "mean": 1632466,
+       "max": 1699958
+      },
+      "c1_busy": {
+       "mean": 1674683,
+       "max": 1761833
+      },
+      "c1_idle": {
+       "mean": 71611,
+       "max": 87958
+      }
+     }
+    },
+    "Oracle_V_fx4-8-run": {
+     "patch": "/Users/mg/projects/music/fm1/modular-1/build/poly-headroom/bench/Oracle V fx4.bin",
+     "notes": [
+      60,
+      64,
+      67,
+      71,
+      72,
+      76,
+      79,
+      83
+     ],
+     "run": true,
+     "seconds": 3.0,
+     "page132": [
+      1038,
+      0,
+      3011,
+      1038,
+      76812,
+      102762,
+      0,
+      257
+     ],
+     "page138": [
+      561,
+      5166,
+      3881,
+      25416,
+      19394,
+      10664,
+      1714930,
+      1835625
+     ],
+     "page139": [
+      18721,
+      83,
+      35,
+      110958,
+      70875,
+      20,
+      2,
+      11166
+     ],
+     "spans_ns": {
+      "entry": {
+       "mean": 196,
+       "max": 4750
+      },
+      "pre": {
+       "mean": 283,
+       "max": 2458
+      },
+      "eng_pre": {
+       "mean": 28235,
+       "max": 51958
+      },
+      "voices": {
+       "mean": 1790606,
+       "max": 1930458
+      },
+      "eng_post": {
+       "mean": 6171,
+       "max": 23291
+      },
+      "eng_out": {
+       "mean": 20670,
+       "max": 35500
+      },
+      "mix": {
+       "mean": 17941,
+       "max": 30916
+      },
+      "clk": {
+       "mean": 409,
+       "max": 6791
+      },
+      "uac": {
+       "mean": 286,
+       "max": 6750
+      },
+      "tail": {
+       "mean": 802,
+       "max": 11708
+      },
+      "guard": {
+       "mean": 606,
+       "max": 13750
+      },
+      "isr": {
+       "mean": 1866209,
+       "max": 2020375
+      },
+      "t5_in": {
+       "mean": 73207,
+       "max": 101791
+      },
+      "t5_out": {
+       "mean": 39184,
+       "max": 67208
+      },
+      "self": {
+       "mean": 1045,
+       "max": 7416
+      },
+      "hand": {
+       "mean": 238,
+       "max": 4791
+      },
+      "wait": {
+       "mean": 115304,
+       "max": 175958
+      },
+      "c0_busy": {
+       "mean": 1675301,
+       "max": 1791375
+      },
+      "c1_busy": {
+       "mean": 1714930,
+       "max": 1835625
+      },
+      "c1_idle": {
+       "mean": 75675,
+       "max": 145208
+      }
+     }
+    },
+    "Oracle_V_fx4-8": {
+     "patch": "/Users/mg/projects/music/fm1/modular-1/build/poly-headroom/bench/Oracle V fx4.bin",
+     "notes": [
+      60,
+      64,
+      67,
+      71,
+      72,
+      76,
+      79,
+      83
+     ],
+     "run": false,
+     "seconds": 3.0,
+     "page132": [
+      1037,
+      0,
+      3008,
+      1037,
+      76738,
+      102663,
+      0,
+      257
+     ],
+     "page138": [
+      571,
+      5000,
+      3345,
+      51708,
+      19236,
+      10794,
+      1703632,
+      1796583
+     ],
+     "page139": [
+      12608,
+      83,
+      26,
+      66541,
+      42250,
+      15,
+      2,
+      6500
+     ],
+     "spans_ns": {
+      "entry": {
+       "mean": 193,
+       "max": 2250
+      },
+      "pre": {
+       "mean": 286,
+       "max": 4708
+      },
+      "eng_pre": {
+       "mean": 27405,
+       "max": 44000
+      },
+      "voices": {
+       "mean": 1775598,
+       "max": 1874458
+      },
+      "eng_post": {
+       "mean": 6062,
+       "max": 14625
+      },
+      "eng_out": {
+       "mean": 20994,
+       "max": 36041
+      },
+      "mix": {
+       "mean": 17868,
+       "max": 30708
+      },
+      "clk": {
+       "mean": 419,
+       "max": 8416
+      },
+      "uac": {
+       "mean": 302,
+       "max": 6625
+      },
+      "tail": {
+       "mean": 779,
+       "max": 7083
+      },
+      "guard": {
+       "mean": 588,
+       "max": 6958
+      },
+      "isr": {
+       "mean": 1850498,
+       "max": 1961583
+      },
+      "t5_in": {
+       "mean": 62903,
+       "max": 109875
+      },
+      "t5_out": {
+       "mean": 33970,
+       "max": 55250
+      },
+      "self": {
+       "mean": 1062,
+       "max": 7375
+      },
+      "hand": {
+       "mean": 249,
+       "max": 4666
+      },
+      "wait": {
+       "mean": 112689,
+       "max": 152375
+      },
+      "c0_busy": {
+       "mean": 1662909,
+       "max": 1737291
+      },
+      "c1_busy": {
+       "mean": 1703632,
+       "max": 1796583
+      },
+      "c1_idle": {
+       "mean": 71965,
+       "max": 90291
+      }
+     }
+    }
+   },
+   "t5": [
+    "window 5.0 s: 50027 TIMER5 interrupts (10005 a second)",
+    "  the LED and key scan in TIMER5: mean 2.18 us a tick; 2.18 % of core 0",
+    "  the split pulses' ends (TIMER2): 36383, mean 1.68 us each; 1.22 % of core 0",
+    "  the scan in all: 3.40 % of core 0, 3.41 us a tick",
+    "  the USB / MIDI polls: 10022, mean 2.50 us each; 0.50 % of core 0",
+    "  dim pulses: 36383 (0.73 a tick), mean 8.00 us"
+   ],
+   "survey_stopped": [
+    {
+     "slot": 0,
+     "name": "Algo Four fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2315,
+     "n0_samples": [
+      2315,
+      1249,
+      1290,
+      1261
+     ],
+     "n0_mean_us": [
+      838,
+      834,
+      831,
+      884
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2319,
+     "n1_samples": [
+      2319,
+      1583,
+      1610,
+      1590
+     ],
+     "n1_mean_us": [
+      1249,
+      1214,
+      1242,
+      1214
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2290,
+     "n4_samples": [
+      2290,
+      1843,
+      1851,
+      1853
+     ],
+     "n4_mean_us": [
+      1502,
+      1483,
+      1503,
+      1558
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2300,
+     "n8_samples": [
+      2300,
+      1832,
+      1842,
+      1843
+     ],
+     "n8_mean_us": [
+      1791,
+      1785,
+      1801,
+      1799
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 1,
+     "name": "Cassia 1 fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2112,
+     "n0_samples": [
+      2112,
+      1473,
+      1473,
+      1435
+     ],
+     "n0_mean_us": [
+      779,
+      860,
+      782,
+      852
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2145,
+     "n1_samples": [
+      2145,
+      1914,
+      1918,
+      1916
+     ],
+     "n1_mean_us": [
+      1419,
+      1394,
+      1427,
+      1393
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2111,
+     "n4_samples": [
+      2111,
+      1864,
+      1869,
+      1867
+     ],
+     "n4_mean_us": [
+      1807,
+      1822,
+      1808,
+      1807
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2155,
+     "n8_samples": [
+      2155,
+      1858,
+      1861,
+      1869
+     ],
+     "n8_mean_us": [
+      1817,
+      1809,
+      1813,
+      1809
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 2,
+     "name": "Cassia 1 fx4",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2268,
+     "n0_samples": [
+      2268,
+      1543,
+      1550,
+      1550
+     ],
+     "n0_mean_us": [
+      892,
+      996,
+      891,
+      1036
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2274,
+     "n1_samples": [
+      2274,
+      2061,
+      2029,
+      2069
+     ],
+     "n1_mean_us": [
+      1506,
+      1510,
+      1499,
+      1513
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2242,
+     "n4_samples": [
+      2242,
+      1965,
+      1953,
+      1963
+     ],
+     "n4_mean_us": [
+      1908,
+      1907,
+      1912,
+      1912
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2268,
+     "n8_samples": [
+      2268,
+      1979,
+      1957,
+      1958
+     ],
+     "n8_mean_us": [
+      1920,
+      1913,
+      1917,
+      1911
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 3,
+     "name": "Expander S fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 1852,
+     "n0_samples": [
+      1852,
+      1300,
+      1304,
+      1296
+     ],
+     "n0_mean_us": [
+      764,
+      905,
+      740,
+      897
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 1859,
+     "n1_samples": [
+      1859,
+      1602,
+      1607,
+      1595
+     ],
+     "n1_mean_us": [
+      1236,
+      1275,
+      1239,
+      1272
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 1869,
+     "n4_samples": [
+      1869,
+      1576,
+      1599,
+      1590
+     ],
+     "n4_mean_us": [
+      1538,
+      1540,
+      1550,
+      1542
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 1859,
+     "n8_samples": [
+      1859,
+      1592,
+      1600,
+      1604
+     ],
+     "n8_mean_us": [
+      1546,
+      1550,
+      1555,
+      1551
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 4,
+     "name": "Hera 6 fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 1973,
+     "n0_samples": [
+      1973,
+      1418,
+      1418,
+      1401
+     ],
+     "n0_mean_us": [
+      918,
+      979,
+      915,
+      958
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2007,
+     "n1_samples": [
+      2007,
+      1780,
+      1739,
+      1740
+     ],
+     "n1_mean_us": [
+      1389,
+      1391,
+      1373,
+      1376
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2003,
+     "n4_samples": [
+      2003,
+      1761,
+      1733,
+      1742
+     ],
+     "n4_mean_us": [
+      1714,
+      1692,
+      1694,
+      1698
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2008,
+     "n8_samples": [
+      2008,
+      1748,
+      1740,
+      1753
+     ],
+     "n8_mean_us": [
+      1723,
+      1695,
+      1706,
+      1698
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 5,
+     "name": "Hera 6 fx4",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2100,
+     "n0_samples": [
+      2100,
+      1573,
+      1535,
+      1587
+     ],
+     "n0_mean_us": [
+      1115,
+      1050,
+      1136,
+      1056
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2106,
+     "n1_samples": [
+      2106,
+      1888,
+      1905,
+      1905
+     ],
+     "n1_mean_us": [
+      1529,
+      1512,
+      1516,
+      1499
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2129,
+     "n4_samples": [
+      2129,
+      1921,
+      1870,
+      1886
+     ],
+     "n4_mean_us": [
+      1852,
+      1823,
+      1827,
+      1833
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2134,
+     "n8_samples": [
+      2134,
+      1903,
+      1877,
+      1891
+     ],
+     "n8_mean_us": [
+      1854,
+      1835,
+      1839,
+      1827
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 6,
+     "name": "Hera 6 gauze 2",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2015,
+     "n0_samples": [
+      2015,
+      1446,
+      1434,
+      1466
+     ],
+     "n0_mean_us": [
+      1025,
+      951,
+      1008,
+      946
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2014,
+     "n1_samples": [
+      2014,
+      1774,
+      1820,
+      1785
+     ],
+     "n1_mean_us": [
+      1420,
+      1394,
+      1411,
+      1402
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2009,
+     "n4_samples": [
+      2009,
+      1784,
+      1784,
+      1782
+     ],
+     "n4_mean_us": [
+      1738,
+      1741,
+      1734,
+      1740
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2042,
+     "n8_samples": [
+      2042,
+      1778,
+      1772,
+      1773
+     ],
+     "n8_mean_us": [
+      1736,
+      1737,
+      1741,
+      1743
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 7,
+     "name": "Io 4 fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 1894,
+     "n0_samples": [
+      1894,
+      1384,
+      1419,
+      1394
+     ],
+     "n0_mean_us": [
+      906,
+      1026,
+      892,
+      972
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 1884,
+     "n1_samples": [
+      1884,
+      1690,
+      1665,
+      1683
+     ],
+     "n1_mean_us": [
+      1394,
+      1355,
+      1385,
+      1353
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 1873,
+     "n4_samples": [
+      1873,
+      1620,
+      1634,
+      1645
+     ],
+     "n4_mean_us": [
+      1576,
+      1579,
+      1590,
+      1590
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 1878,
+     "n8_samples": [
+      1878,
+      1619,
+      1644,
+      1636
+     ],
+     "n8_mean_us": [
+      1587,
+      1585,
+      1594,
+      1595
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 8,
+     "name": "Io 4 fx4",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2017,
+     "n0_samples": [
+      2017,
+      1501,
+      1493,
+      1499
+     ],
+     "n0_mean_us": [
+      1193,
+      1012,
+      1150,
+      996
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2018,
+     "n1_samples": [
+      2018,
+      1766,
+      1781,
+      1755
+     ],
+     "n1_mean_us": [
+      1461,
+      1459,
+      1454,
+      1480
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2016,
+     "n4_samples": [
+      2016,
+      1740,
+      1748,
+      1748
+     ],
+     "n4_mean_us": [
+      1684,
+      1687,
+      1698,
+      1703
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 1989,
+     "n8_samples": [
+      1989,
+      1740,
+      1754,
+      1734
+     ],
+     "n8_mean_us": [
+      1686,
+      1684,
+      1692,
+      1707
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 9,
+     "name": "Oracle V fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2191,
+     "n0_samples": [
+      2191,
+      1445,
+      1471,
+      1461
+     ],
+     "n0_mean_us": [
+      831,
+      764,
+      819,
+      768
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2231,
+     "n1_samples": [
+      2231,
+      1835,
+      1907,
+      1825
+     ],
+     "n1_mean_us": [
+      1358,
+      1351,
+      1348,
+      1348
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2219,
+     "n4_samples": [
+      2219,
+      1894,
+      1904,
+      1903
+     ],
+     "n4_mean_us": [
+      1811,
+      1813,
+      1812,
+      1822
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2204,
+     "n8_samples": [
+      2204,
+      1897,
+      1908,
+      1935
+     ],
+     "n8_mean_us": [
+      1823,
+      1828,
+      1821,
+      1840
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    },
+    {
+     "slot": 10,
+     "name": "Oracle V fx4",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2254,
+     "n0_samples": [
+      2254,
+      1487,
+      1492,
+      1501
+     ],
+     "n0_mean_us": [
+      944,
+      793,
+      892,
+      795
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2236,
+     "n1_samples": [
+      2236,
+      1871,
+      1899,
+      1862
+     ],
+     "n1_mean_us": [
+      1387,
+      1390,
+      1386,
+      1385
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2202,
+     "n4_samples": [
+      2202,
+      1939,
+      1945,
+      1937
+     ],
+     "n4_mean_us": [
+      1839,
+      1842,
+      1847,
+      1854
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2241,
+     "n8_samples": [
+      2241,
+      1943,
+      1937,
+      1960
+     ],
+     "n8_mean_us": [
+      1851,
+      1855,
+      1845,
+      1852
      ],
      "n8_late": 0,
      "n8_ovl": 0,
