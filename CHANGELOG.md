@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Every patch leaves the FM-1 a little more room.** The work the FM-1 does around the voices in every audio block now runs from fewer lines of code and sums the outputs in one pass, with the same sound to the sample. On the test rig the audio interrupt takes 23 to 48 µs less of each 2.9 ms block with eight keys held (Hera 6 gauze 2 1,825 → 1,780 µs, Oracle V fx4 1,962 → 1,917 µs), and the polyphonic synths with their effects peak 0.4 to 1.9 points lower (#803).
+
 ## 1.20.2 — 2026-11-18
 
 - **Algo Four plays eight voices and Cassia 1 five on an FM-1 with 1.20.0 firmware, without a firmware update.** The factory sounds update the editor offers now carries both patches, and an FM-1 on 1.20.0 plays them in place of its built-in copies: FACTORY RESET installs Algo Four at eight voices and Cassia 1 at five, and their factory presets then load at the full count (Algo Four's DX100 sounds that choose fewer voices keep them). A saved Algo Four or Cassia 1 slot keeps its patch (six and four voices, presets seven and four) until a FACTORY RESET, or until you send the patch from the editor. On the test rig, on 1.20.0 firmware with this update, with up to 8 keys held and every effect of the patch on, nothing dropped a voice and the busiest steady load was 83.0 % (Cassia 1 Reso Pad with the transport running; the Algo Four patch 79.3 % stopped, 81.7 % running).
