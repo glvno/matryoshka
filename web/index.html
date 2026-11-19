@@ -165,6 +165,7 @@
         <p class="muted">Sending a patch keeps its current sound. Saved assembly presets, including nested ones, transfer separately to the FM-1’s preset store. PRESET selects presets for matching device pages. Nested assemblies have no separate device page in this patch.</p>
         <button id="dev-presets" type="button" disabled>Send this patch’s presets</button>
         <button id="dev-settings" type="button">Name &amp; USB playback…</button>
+        <button id="dev-meq" type="button">Master EQ…</button>
         <span class="menu-heading">Follow the FM-1</span>
         <div class="row"><button id="mirror-btn">Follow its panel</button><select id="mirror-fw" aria-label="The FM-1's firmware"><option value="">firmware: detect</option><option value="matryoshka">Matryoshka</option><option value="mvave">M-VAVE</option><option value="felucca">Felucca / Sloop</option><option value="baudgirl">Baud Girl</option></select></div>
         <p class="muted">Its keys, knobs and buttons play this page, whatever firmware it runs (only what that firmware sends over MIDI).</p>
@@ -195,6 +196,19 @@
           <p id="device-serial" class="muted"></p>
           <p id="device-settings-status" class="muted" role="status"></p>
           <div class="sync-ask-actions"><button type="button" id="device-settings-close">Close</button><button type="submit" id="device-settings-save" class="primary">Save to FM-1</button></div>
+        </form>
+      </dialog>
+      <!-- the FM-1's master EQ (GLO › EQ, #1107; master-eq.ts): each change plays on the FM-1 at once -->
+      <dialog id="master-eq" class="help sync-ask" aria-labelledby="meq-title">
+        <form class="sync-ask-body" onsubmit="return false">
+          <h2 id="meq-title">Master EQ</h2>
+          <p class="muted">Shapes what the FM-1’s speaker and headphone jack play, for every patch, so a sound made on headphones still works through speakers in a room. It belongs to the FM-1, not to a patch, and stays out of USB recordings. On the FM-1: GLO, then ALGO to EQ.</p>
+          <label class="meq-row">Low (shelf at 120 Hz) <input id="meq-low" type="range"> <output></output></label>
+          <label class="meq-row">Mid (bell at Mid freq) <input id="meq-mid" type="range"> <output></output></label>
+          <label class="meq-row">High (shelf at 8 kHz) <input id="meq-high" type="range"> <output></output></label>
+          <label class="meq-row">Mid freq <input id="meq-freq" type="range"> <output></output></label>
+          <p id="meq-status" class="muted" role="status"></p>
+          <div class="sync-ask-actions"><button type="button" id="meq-flat">Flat</button><button type="button" id="meq-close" class="primary">Close</button></div>
         </form>
       </dialog>
       <!-- Connect FM-1 found several FM-1s and none is remembered (D-965, fm1-pick.ts): one button each; the close's returnValue is the index -->

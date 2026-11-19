@@ -404,6 +404,38 @@ export const FEATURE_FX_PRESETS = 1 << 24;
 export const FEATURE_PATTERN_STORE = 1 << 25;
 /** INFO feature bit 26 (byte 14 bit 2, #915, D-490): the factory region's commands (firmware/src/factory.c) */
 export const FEATURE_FACTORY = 1 << 26;
+/** INFO feature bit 27 (byte 14 bit 3, #1107): MASTER_EQ, the FM-1's master EQ (GLO › EQ) over the link */
+export const FEATURE_MASTER_EQ = 1 << 27;
+/** MASTER_EQ and its answer (firmware/src/proto.c C_MASTER_EQ, main.c m1_master_eq) */
+export const MASTER_EQ = { cmd: 0x1b, reply: 0x62 } as const;
+/** the master EQ's gains go to ±this many decibels in half-decibel steps; MID FREQ is one of MASTER_EQ_FREQS sixths of an
+ *  octave from 100 Hz (firmware/src/master_eq.h MEQ_GAIN_MAX, MEQ_FREQS) */
+export const MASTER_EQ_DB = 12;
+export const MASTER_EQ_FREQS = 39;
+/** MID FREQ's default: 1 kHz (master_eq.h MEQ_FREQ_DEFAULT) */
+export const MASTER_EQ_FREQ_DEFAULT = 20;
+/** the master EQ: LOW, MID and HIGH in decibels (half-decibel steps), MID FREQ as its index (masterEqHz) */
+export interface MasterEq { low: number; mid: number; high: number; freq: number }
+/** MID FREQ's index in Hz: 100 × 2^(index / 6) */
+export const masterEqHz = (i: number): number => 100 * 2 ** (i / 6);
+/** MASTER_EQ: empty reads; the four bytes (gains in half decibels, two's complement) set */
+export function masterEqFrame(eq?: MasterEq): Uint8Array {
+  if (!eq) return frame(MASTER_EQ.cmd);
+  const half = [eq.low, eq.mid, eq.high].map((db) => {
+    const h = db * 2;
+    if (!Number.isInteger(h) || Math.abs(h) > 2 * MASTER_EQ_DB) throw new Error(`A master EQ gain goes from -${MASTER_EQ_DB} to +${MASTER_EQ_DB} dB in half-decibel steps.`);
+    return h & 0xff;
+  });
+  if (!Number.isInteger(eq.freq) || eq.freq < 0 || eq.freq >= MASTER_EQ_FREQS) throw new Error('MID FREQ goes from 100 Hz to 8 kHz.');
+  return frame(MASTER_EQ.cmd, [...half, eq.freq]);
+}
+/** MASTER_EQ's answer: status (0 ok, 1 refused), then the master EQ as it is */
+export function parseMasterEq(p: Parsed | null): MasterEq {
+  if (p?.cmd !== MASTER_EQ.reply || p.payload.length !== 5) throw new Error('The FM-1 sent an incomplete master EQ reply.');
+  if (p.payload[0]) throw new Error('The FM-1 could not use that master EQ setting.');
+  const db = (b: number): number => ((b << 24) >> 24) / 2;
+  return { low: db(p.payload[1]), mid: db(p.payload[2]), high: db(p.payload[3]), freq: p.payload[4] };
+}
 /** the factory region's commands and answers (#915, D-490) */
 export const FACT = { begin: 0x16, write: 0x17, sum: 0x18, read: 0x19, commit: 0x1a, info: 0x3f, infoReply: 0x5f, sumReply: 0x60, dataReply: 0x61 } as const;
 export const FACT_SIZE = 18 * 0x1000;

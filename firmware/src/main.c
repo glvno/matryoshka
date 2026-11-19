@@ -906,36 +906,7 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     return 0;
 }
 
-/* The settings record's extension (slotstore.c sl_write_ext, #1107): settings the 16-byte record has no room for, in
- * the same sector, written with every settings record. Byte 0 its version (SET_EXT_VERSION), byte 1 how many bytes
- * follow before the CRC (later settings append, and an older reader takes the bytes it knows), then the master EQ
- * (master_eq.h meq_pack: LOW, MID, HIGH, MID FREQ), then the CRC-16 of everything before it. A settings record without
- * one (an older firmware's: the erased flash reads 0xFF) or with a bad CRC leaves the master EQ flat. A firmware
- * before it never reads there, and a settings record it writes has none. */
-#define SET_EXT_VERSION 1u
-#define SET_EXT_N MEQ_BYTES
-#define SET_EXT_LEN (2u + SET_EXT_N + 2u)
-static void settings_ext_pack(uint8_t *d)
-{
-    uint32_t crc;
-    d[0] = SET_EXT_VERSION;
-    d[1] = SET_EXT_N;
-    meq_pack(d + 2);
-    crc = m1_crc16(d, 2u + SET_EXT_N);
-    d[2u + SET_EXT_N] = (uint8_t)crc;
-    d[3u + SET_EXT_N] = (uint8_t)(crc >> 8);
-}
-/* the settings record's extension into the settings (patch_boot, after the record) */
-static void settings_ext_load(void)
-{
-    uint8_t d[SL_EXT_MAX];
-    uint32_t n;
-    meq_defaults();
-    if (sl_ext(SL_SETTINGS, d, SL_EXT_MAX) || d[0] != SET_EXT_VERSION || d[1] < SET_EXT_N || (n = 2u + d[1]) + 2u > SL_EXT_MAX
-        || m1_crc16(d, n) != (uint32_t)(d[n] | d[n + 1u] << 8))
-        return;
-    meq_unpack(d + 2);
-}
+#include "settings_ext.h"                       /* the settings record's extension: the master EQ (#1107) */
 
 /* a store write: the sound goes on (storage_hw.c st_op runs the flash's erases and programs in steps the audio
  * interrupt renders between, #656). The settings record takes its extension along */
@@ -957,6 +928,28 @@ static void settings_store(void)
     uint8_t set[SET_LEN];
     settings_pack(set);
     (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
+}
+
+/* MASTER_EQ (proto.c, #1107): empty reads; LOW, MID, HIGH (half decibels, two's complement, +-MEQ_GAIN_MAX) and MID FREQ
+ * (an index under MEQ_FREQS) set the master EQ at once, kept 5 s later without SAVE as from the menu (tempo_glo.h
+ * gt_changed). Reply: status (0 ok, 1 out of range or a wrong length: nothing set), then the four as they are */
+static int m1_master_eq(const uint8_t *p, uint32_t n, uint8_t *out)
+{
+    out[0] = 0;
+    if (n) {
+        int32_t a = (int8_t)p[0], b = (int8_t)p[1], c = (int8_t)p[2];
+        if (n != MEQ_BYTES || a < -MEQ_GAIN_MAX || a > MEQ_GAIN_MAX || b < -MEQ_GAIN_MAX || b > MEQ_GAIN_MAX || c < -MEQ_GAIN_MAX
+            || c > MEQ_GAIN_MAX || p[3] >= MEQ_FREQS) {
+            out[0] = 1;
+        } else {
+            meq_unpack(p);
+            gt_changed(fm1_ms);
+            if (!ui_dirty)
+                ui_dirty = 1;
+        }
+    }
+    meq_pack(out + 1);
+    return 1 + (int)MEQ_BYTES;
 }
 
 static uint8_t patches_up;                      /* patch_boot has run (host_poll may reload the current patch) */

@@ -143,6 +143,7 @@ static void bt_parts(uint32_t arg)         /* the awake items handed over, per l
 #include "ota.c"
 #include "ota_hw.c"
 static int m1_device_settings(const uint8_t *p, uint32_t n, uint8_t *out);
+static int m1_master_eq(const uint8_t *p, uint32_t n, uint8_t *out);   /* main.c: GLO > EQ over the link (#1107) */
 static int m1_apply(const uint8_t *patch, uint32_t len);       /* main.c: the hooks proto.c needs */
 static int m1_store(const uint8_t *patch, uint32_t len);
 static int m1_flash_ok(void);

@@ -116,7 +116,7 @@ static void menu_value(uint32_t row, char *out)
         p = put(p, " DB");
         break;
     }
-    case MR_EQ_FREQ: {                           /* 100 HZ .. 890 HZ, 1.0 KHZ .. 8.0 KHZ */
+    case MR_EQ_FREQ: {                           /* 100 HZ .. 890 HZ, 1.0 KHZ .. 8.1 KHZ */
         int32_t hz = (int32_t)(meq_hz(meq_freq) + 0.5f);
         if (hz < 1000) {
             fmt_int(p, hz);
