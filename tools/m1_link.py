@@ -26,10 +26,10 @@
                                            the mean period, the deviation of each period and of each tick from a straight
                                            grid, and the link's refused sends over that time, DIAG page 117; BPM: at that
                                            global tempo (TEMPO, set back after); run: with the transport running)
-  tools/m1_link.py midilog [all] [clear]  (#870: the MIDI clock-in log, DIAG pages 145..147: the last 512 realtime and Song
-                                           Position messages the FM-1 took (USB and TRS), oldest first, each with its time,
-                                           the clocks since the last Start / Continue, the engine's ticks and the
-                                           transport's state; plain clocks folded unless `all`; `clear` empties it after)
+  tools/m1_link.py midilog [clear]        (#870: the MIDI clock-in log, DIAG pages 145..147: the realtime and Song Position
+                                           messages the FM-1 took (USB and TRS), oldest first, in 256 entries (steady clocks
+                                           folded into one): each with its time, the gap before it, the clocks since the last
+                                           Start / Continue, the engine's ticks and the transport's state; `clear` empties it)
   tools/m1_link.py usblog [arm|wrap]      (#535: the USB setup log, DIAG pages 40..71 and 104..107: every control transfer a host started
                                            since boot (or since `arm`) and the firmware's answer, bus resets, suspends, the
                                            address taking effect; kept while the FM-1 stays powered, so a failed host's log
@@ -608,7 +608,7 @@ def main():
                 sys.exit(f"no DIAG page {n}: firmware from before the MIDI log (#870)")
             return bytes(p[1:33])
         h = [int.from_bytes(b, "little") for b in (lambda x: [x[4 * i:4 * i + 4] for i in range(8)])(page(145))]
-        logged, size, held, frozen, now_us, eng_now, st_now, ms_now = h
+        logged, size, held, frozen, now_us, eng_now, st_now, made = h
         ents = []
         for _ in range((held + 3) // 4):            # (4 entries a page, oldest first; zeros past the newest)
             d = page(146)
@@ -618,31 +618,31 @@ def main():
                     ents.append((int.from_bytes(e[0:4], "little"), e[4] | e[5] << 8, e[6], e[7]))
         names = {0xF8: "Clock", 0xFA: "Start", 0xFB: "Continue", 0xFC: "Stop", 0xF2: "Song Position"}
         fl = lambda f: f"{'running' if f & 1 else 'stopped'}{', MIDI clock drives' if f & 2 else ''}{'' if f & 4 else ', CLOCK IN off'}"
-        print(f"MIDI clock-in log: {held} of {logged} messages held (ring {size}){', frozen 64 after a Stop' if frozen else ''}; "
-              f"now: engine ticks {eng_now}, {fl(st_now)}, the newest {(now_us - ents[-1][0]) / 1e6 if ents else 0:.1f} s ago")
-        clocks, prev, t0, run = 0, None, ents[0][0] if ents else 0, 0
-        gaps = sorted((b[0] - a_[0]) for a_, b in zip(ents, ents[1:]) if a_[2] == b[2] == 0xF8)
-        tick = gaps[len(gaps) // 2] if gaps else 0
-        if tick:
-            print(f"  (the median clock period {tick / 1000:.2f} ms = {60e6 / 24 / tick:.1f} bpm)")
-        for us, v, st, f in ents:
+        print(f"MIDI clock-in log: {logged} messages in {held} entries (ring {size}, {made} made)"
+              f"{', frozen 64 messages after a Stop' if frozen else ''}; now: engine ticks {eng_now}, {fl(st_now)}, "
+              f"the newest entry {(now_us - ents[-1][0]) / 1e6 if ents else 0:.1f} s ago")
+        if made > held:
+            print(f"  ({made - held} older entries overwritten: the clock count since the first Start below is not complete)")
+        clocks, prev, t0 = 0, None, ents[0][0] if ents else 0
+        for k, (us, v, st, f) in enumerate(ents):
             gap = (us - prev) / 1000 if prev is not None else 0.0
             prev = us
             if st in (0xFA, 0xFB):
                 clocks = 0
             if st == 0xF8:
-                clocks += 1
-                run += 1
-                odd = tick and (gap > 1.5 * tick / 1000 or gap < 0.5 * tick / 1000)
-                if "all" not in a and not odd and run % 24:
-                    continue
-                print(f"  {(us - t0) / 1e6:9.4f} s  +{gap:8.2f} ms  Clock #{clocks} since Start   engine ticks {v}, {fl(f)}"
-                      f"{'   <- not a tick period' if odd else ''}")
+                more = f >> 3
+                first = clocks + 1
+                clocks += 1 + more
+                span = ""
+                if more and k + 1 < len(ents):       # (a folded run: its clocks a steady period apart, up to the next entry)
+                    per = (ents[k + 1][0] - us) / (more + 1) / 1000
+                    span = f", then {more} more about {per:.2f} ms apart"
+                print(f"  {(us - t0) / 1e6:9.4f} s  +{gap:8.2f} ms  Clock #{first}{'..#' + str(clocks) if more else ''} since Start"
+                      f"{span}   engine ticks {v}, {fl(f & 7)}")
                 continue
-            run = 0
             what = f"Song Position {v} (clock {v * 6})" if st == 0xF2 else names.get(st, f"0x{st:02X}")
             print(f"  {(us - t0) / 1e6:9.4f} s  +{gap:8.2f} ms  {what:<16} after clock #{clocks}   "
-                  + (f"{fl(f)}" if st == 0xF2 else f"engine ticks {v}, {fl(f)}"))
+                  + (f"{fl(f & 7)}" if st == 0xF2 else f"engine ticks {v}, {fl(f & 7)}"))
         if "clear" in a:
             link.ask(frame(0x2B, [147]), (0x4B, 147))
             print("(the log emptied)")

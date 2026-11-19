@@ -383,15 +383,18 @@ int main(void)
     cfg.clock_in = 1;
 
     {   /* the log (DIAG 145..147, tools/m1_link.py midilog): what came in, in order, with its time and the engine's state;
-         * frozen CIN_LOG_AFTER messages after a Stop, running again with a Start; the newest CIN_LOG_N kept */
+         * steady clocks folded into one entry, an irregular one its own; frozen CIN_LOG_AFTER messages after a Stop,
+         * running again with a Start; the newest CIN_LOG_N entries kept */
         uint8_t o[32];
-        uint32_t h[8], n, i, ok = 1, gap_ok = 1, prev = 0, run_seen = 0;
+        uint32_t h[8], n, i, k2, ok, clocks, stall_seen = 0;
         cin_ent_t got[CIN_LOG_N];
         reset();
         cin_log_diag(147u, o);
         host_send(0xF2u, 3, 0);
         host_send(0xFAu, 0, 0);
-        host_ticks(30);
+        host_ticks(20);
+        host_wait_ms(100);                          /* (a stall: the next clock comes late, in an entry of its own) */
+        host_ticks(10);
         host_send(0xFCu, 0, 0);
         host_ticks(100);                            /* (clock while stopped: 64 of it logged, then the log waits) */
         sim_host();
@@ -412,31 +415,37 @@ int main(void)
             }                                                                                                          \
         } while (0)
         READ_LOG();
-        snprintf(what, sizeof what, "the MIDI log: %u logged (want 97: Song Position, Start, 30 clocks, Stop, 64 clocks), frozen %u", h[0], h[3]);
-        check(what, h[0] == 97u && h[2] == 97u && h[3] == 1u && h[1] == CIN_LOG_N);
-        ok = got[0].st == 0xF2u && got[0].v == 3u && got[1].st == 0xFAu && got[32].st == 0xFCu;
-        for (i = 2; i < 32u; i++) {
-            ok &= got[i].st == 0xF8u;
-            run_seen |= got[i].fl & 1u;
-            if (i > 2u) {
-                uint32_t d = got[i].us - prev;      /* a tick at 90 bpm: 27.8 ms, within a block (2.9 ms) */
-                gap_ok &= d > 24000u && d < 31000u;
-            }
-            prev = got[i].us;
+        snprintf(what, sizeof what, "the MIDI log: %u messages (want 97: Song Position, Start, 30 clocks, Stop, 64 clocks) in %u entries, frozen %u",
+                 h[0], h[2], h[3]);
+        check(what, h[0] == 97u && h[3] == 1u && h[1] == CIN_LOG_N && h[2] < 16u);
+        ok = got[0].st == 0xF2u && got[0].v == 3u && got[1].st == 0xFAu;
+        for (i = 2, clocks = 0; i < h[2] && got[i].st == 0xF8u; i++) {
+            clocks += 1u + (got[i].fl >> 3);
+            if (i > 2u && got[i].us - got[i - 1u].us > 120000u)   /* (100 ms + a tick after the run's last clock) */
+                stall_seen = 1;
         }
-        check("  in order: Song Position 3, Start, the clocks, Stop", ok);
-        check("  each clock's time a tick apart (27.8 ms at 90 bpm), the transport seen running, MIDI clock driving",
-              gap_ok && run_seen && (got[20].fl & 6u) == 6u);
+        ok &= clocks == 30u && i < h[2] && got[i].st == 0xFCu;
+        for (k2 = i + 1u, clocks = 0; k2 < h[2]; k2++)
+            clocks += got[k2].st == 0xF8u ? 1u + (got[k2].fl >> 3) : 0u;
+        check("  in order: Song Position 3, Start, 30 clocks, Stop, 64 clocks; steady ones folded", ok && clocks == 64u);
+        check("  the clock after the stall in an entry of its own; the transport seen running on MIDI clock",
+              stall_seen && (got[3].fl & 7u) == 7u);
         host_send(0xFAu, 0, 0);                     /* a Start: logging again */
         host_ticks(5);
         sim_host();
         READ_LOG();
-        check("  a Start after it: the log runs again (103)", h[0] == 103u && h[3] == 0u && got[97].st == 0xFAu);
-        host_ticks(600);
+        check("  a Start after it: the log runs again (103 messages)", h[0] == 103u && h[3] == 0u);
+        for (k2 = 0; k2 < 300u; k2++) {             /* irregular clocks: none folds, the ring goes round */
+            host_ticks(1);
+            if (k2 & 1u)
+                host_wait_ms(15);
+        }
         sim_host();
         READ_LOG();
-        snprintf(what, sizeof what, "  600 clocks more: the newest %u kept, oldest to newest (%u logged)", h[2], h[0]);
-        check(what, h[0] == 703u && h[2] == CIN_LOG_N && got[CIN_LOG_N - 1].st == 0xF8u && got[0].us < got[CIN_LOG_N - 1].us);
+        for (i = 1, ok = 1; i < h[2]; i++)
+            ok &= got[i].us > got[i - 1u].us;
+        snprintf(what, sizeof what, "  300 irregular clocks: the newest %u entries kept, oldest to newest (%u messages)", h[2], h[0]);
+        check(what, h[0] == 403u && h[2] == CIN_LOG_N && ok && got[CIN_LOG_N - 1].st == 0xF8u);
         cin_log_diag(147u, o);
         READ_LOG();
         check("  DIAG 147 empties it", h[0] == 0u && h[2] == 0u);
