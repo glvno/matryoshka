@@ -10,7 +10,7 @@ import { editorCc } from './input';
 import { BUTTON_CC, BUTTON_CCS, bindRow, fixMidiLearn, learnableCc, MIDI_LEARN_MAX, MidiLearn, MOVE_GAP_MS, setLearnRange, sourceJob, sourceOf, type MidiBinding } from './midi-learn';
 import { DEFS, PANEL_BUTTONS } from './modules';
 import { validatePatch, type Patch } from './patch';
-import { deviceSection, encodePatch, MAP_BEND, mapRecord, SLIM } from './patchbin';
+import { deviceSection, encodePatch, FORMAT_1_23, MAP_BEND, mapRecord, SLIM } from './patchbin';
 import { deviceView } from './poly';
 import './factory-presets';
 
@@ -145,16 +145,16 @@ describe('MIDI learn in the patch (#1067)', () => {
     expect('midiLearn' in validatePatch(JSON.parse(JSON.stringify({ ...p, midiLearn: [] })), DEFS)).toBe(false);
   });
 
-  it('the FM-1’s binary carries the bindings last, in format 64: the same bytes as without them, then the mapping section', () => {
+  it('the FM-1’s binary carries the bindings last, in format 65: format 64’s bytes but the format byte, then the mapping section', () => {
     const p = briefcase();
     const with_: Patch = { ...p, midiLearn: [{ src: 1, ...rowOf(p, 'x') }, { src: 'bend', ...rowOf(p, 'y'), lo: 51 / 255, hi: 204 / 255 }] };
-    const bin = encodePatch(with_), dev = deviceView(with_, true).patch;
+    const bin = encodePatch(with_), dev = deviceView(with_, true).patch, slim = encodePatch(p, false, SLIM);
     const rec = mapRecord(with_, dev, deviceSection(with_, dev));
-    expect(bin[1]).toBe(64);
+    expect([bin[1], slim[1]]).toEqual([FORMAT_1_23, SLIM]);
     expect(rec).toHaveLength(11);
     expect([rec[0], rec[1], rec[6], rec[9], rec[10]]).toEqual([2, 1, MAP_BEND, 51, 204]);
     expect([...bin.slice(-11)]).toEqual(rec);
-    expect([...bin.slice(0, -11)]).toEqual([...encodePatch(p, false, SLIM)]);
+    expect([bin[0], ...bin.slice(2, -11)]).toEqual([slim[0], ...slim.slice(2)]);
   });
 
   it('a patch holds 16 bindings at most; a range end is kept in the binary’s steps of 1/255', () => {

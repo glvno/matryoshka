@@ -857,7 +857,7 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   waiting row takes the first source with three different values (two for a switch). A learned source sets its row
   through `Editor.setRowAt` (turnKnob's mapping) between its ends, at most every `MOVE_GAP_MS` = 25 ms, so the edit goes
   out under Live as a slider's does and undo groups it as a gesture. patchbin.ts `mapRecord` writes the sources on rows
-  the FM-1's pages show as the binary's last section (any patch with MIDI learn is format 64); the firmware reads it in
+  the FM-1's pages show as the binary's last section (any patch with MIDI learn is format 65, `FORMAT_1_23`); the firmware reads it in
   place (`engine.c` `eng_maps`, `midi_learn.c`): `midi_input.h` asks `map_midi` before the fixed CCs, and a hit moves its
   row through `pages_map_move` (`row_set_unit`, the row's also-list, a ramp slot after the knobs', `ENG_RAMPS`). GLO >
   MIDI 2/2 learns on the FM-1 (`learn_start`, `learn_pick` from panel.c's knobs, `learn_take`). MAP (0x1B) and MAP_NOW

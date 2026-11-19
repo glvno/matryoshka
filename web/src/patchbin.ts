@@ -4,7 +4,7 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 // Compact binary patch format, read by firmware/src/engine.c (eng_load).
 //
 //   u8  magic 0xA1, u8 version (VERSION), u8 module count, u8 poly group count G (0..MAX_POLY), u16 LE cable count, u16 LE flags
-//       (bit 0: a morph B set follows the cables; bit 2: disabled-input masks follow it; bit 3: additional input routes follow masks; bit 4: the tracks' notes follow them; bit 1: macro ranges are last, but for format 64's MIDI mappings;
+//       (bit 0: a morph B set follows the cables; bit 2: disabled-input masks follow it; bit 3: additional input routes follow masks; bit 4: the tracks' notes follow them; bit 1: macro ranges are last, but for format 65's MIDI mappings;
 //       bit 13, format 54: u16 count, then (module u8, pattern u8, identity u32 LE) origins before the final macro ranges;
 //       bit 14, format 55: graph-proven master FX stages after origins and before macro ranges (fxRecord);
 //       bit 15, format 59: stored pattern links right after the P-locks (linkRecord);
@@ -114,7 +114,7 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //                index, u8 pin (0 p1, 1 p2; bit 7, format 49: bipolar, RANGE_BIPOLAR), u8 parameter index, u8 low end, u8 high
 //                end (0..255 of the parameter's range, octaves for a log one): the pin's value (0..1, or −1..1 when bipolar)
 //                lands between the ends
-//   format 64 (#1067, mapRecord), when the patch has MIDI learn mappings the FM-1 plays, no flag: the bytes after the macro
+//   format 65 (#1067, mapRecord), when the patch has MIDI learn mappings the FM-1 plays, no flag: the bytes after the macro
 //                ranges (or where they would be) are u8 count (1..MAPS_MAX), then per mapping u8 source (CC 0..119, or
 //                MAP_BEND), u8 the row's module index, u8 its parameter byte, u8 low end, u8 high end (0..255 of the row's
 //                range); the FM-1 edits it in place (MIDI learn on the FM-1, MAP)
@@ -146,7 +146,7 @@ export const GROUP_REC = 4 + 5 * MAX_PARTS + 4;
 /** bytes of the panel section before format 64 (engine.h ENG_PANEL_BYTES): two masks and the labels (since: panelBytes) */
 export const PANEL_BYTES = 4 + PANEL_LABEL_KEYS.length * PANEL_LABEL_MAX;
 export const MAX_CABLES = 255;
-export const VERSION = 64; // 64 (the release after 1.21, FORMAT_1_22): the EQ module (eq, #1107) appended after the Euclid, written only by patches that use it (ModuleDef.since); and the panel labels by length, the cables grouped by the module they go into, only the Drum map row names off their default (SLIM, D-1025), for a patch that fits no older format; 63 (release 1.20, FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid module (euclid, #1018) appended after the Limiter, Steps notes' timing words, ratchets and micro timing (#675, #677); 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14; ordinary patches retain their lowest format
+export const VERSION = 65; // 65 (the release after 1.22, FORMAT_1_23): the MIDI learn mappings, the binary's last section (mapRecord, #1067), written only by a patch with MIDI learn; 64 (the release after 1.21, FORMAT_1_22): the EQ module (eq, #1107) appended after the Euclid, written only by patches that use it (ModuleDef.since); and the panel labels by length, the cables grouped by the module they go into, only the Drum map row names off their default (SLIM, D-1025), for a patch that fits no older format; 63 (release 1.20, FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid module (euclid, #1018) appended after the Limiter, Steps notes' timing words, ratchets and micro timing (#675, #677); 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14; ordinary patches retain their lowest format
 /**
  * The lowest format the encoder writes: a patch that uses no parameter appended after it (ParamDef.since past it: a value
  * off its default on either morph side, a pin, macro range, input route or card row on it) is written in this format, its
@@ -318,16 +318,20 @@ function uses120(dev: Patch): boolean {
 }
 /**
  * The format of the release after 1.21 (D-1025): the EQ module appended after the Euclid, written only by a patch that
- * has one; the MIDI mappings (mapRecord, #1067), written by a patch with MIDI learn; and the panel labels, cables and
- * Drum map row names in fewer bytes (SLIM). A patch is written in it only when it uses one of those or fits the FM-1's
- * bytes in no older format (layout).
+ * has one; and the panel labels, cables and Drum map row names in fewer bytes (SLIM). A patch is written in it only when
+ * it uses one of those types or fits the FM-1's bytes in no older format (layout).
  */
 export const FORMAT_1_22 = 64;
-/** what a patch uses of FORMAT_1_22 (`dev`: its device form): a module of a type added with it (the EQ), MIDI learn (any
- *  binding: one only the editor plays costs no byte, and the format is decided without the device pages) */
-function uses122(source: Patch, dev: Patch): boolean {
-  return !!source.midiLearn?.length || dev.modules.some((m) => (DEFS[m.type]?.since ?? 0) >= FORMAT_1_22);
+/** what a patch uses of FORMAT_1_22 (`dev`: its device form): a module of a type added with it (the EQ) */
+function uses122(dev: Patch): boolean {
+  return dev.modules.some((m) => (DEFS[m.type]?.since ?? 0) >= FORMAT_1_22);
 }
+/**
+ * The format of the release after 1.22 (D-1027): the MIDI learn mappings, the binary's last section (mapRecord, #1067).
+ * A patch with MIDI learn is written in it, any binding (one only the editor plays costs no byte, and the format is
+ * decided without the device pages); every other patch keeps its lower format. It has SLIM's layout.
+ */
+export const FORMAT_1_23 = 65;
 /**
  * The first format that writes the panel labels by their length (panelBytes), the cables grouped by the module they go
  * into (cablesGrouped) and only the Drum map row names off their default (drumNamed): the same values in fewer bytes
@@ -409,7 +413,7 @@ export const formatOf = (source: Patch, view: ReturnType<typeof deviceView> = de
 /** the lowest format that holds what this patch uses: VERSION, or WRITE_FLOOR when it uses nothing appended since (`dev`: its device form) */
 export function baseFormat(source: Patch, dev: Patch = deviceView(source, true).patch): number {
   const late = (type: string): ParamDef[] => DEFS[type].params.filter((q) => (q.since ?? 0) > WRITE_FLOOR || (q.grew?.since ?? 0) > WRITE_FLOOR);
-  const floor = uses122(source, dev) ? FORMAT_1_22 : uses120(dev) ? FORMAT_1_20 : uses119(dev) ? FORMAT_1_19 : usesPriorityCable(dev) ? FORMAT_PRIORITY_CABLE : usesConds(dev) ? FORMAT_CONDS : fxRecord(source, dev).length || harmonyLfo(source, dev) ? 55 : originRecord(dev).length ? 54 : chainedHarmonizer(source) ? 53 : uses112(dev) ? FORMAT_1_12 : uses111(source, dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
+  const floor = source.midiLearn?.length ? FORMAT_1_23 : uses122(dev) ? FORMAT_1_22 : uses120(dev) ? FORMAT_1_20 : uses119(dev) ? FORMAT_1_19 : usesPriorityCable(dev) ? FORMAT_PRIORITY_CABLE : usesConds(dev) ? FORMAT_CONDS : fxRecord(source, dev).length || harmonyLfo(source, dev) ? 55 : originRecord(dev).length ? 54 : chainedHarmonizer(source) ? 53 : uses112(dev) ? FORMAT_1_12 : uses111(source, dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
   if (!dev.modules.some((m) => late(m.type).length)) return floor;
   let v = floor;
   const rows = new Set<string>();
@@ -769,7 +773,7 @@ export function rangeList(p: Patch): { mod: number; pin: number; par: number; lo
 export const MAP_BEND = 127;
 /** the most mappings a patch holds (engine.h ENG_MAPS_MAX; midi-learn.ts MIDI_LEARN_MAX) */
 export const MAPS_MAX = 16;
-/** the MIDI mapping section (format 64, #1067; engine.h eng_maps), the last of the binary: u8 count, then per learned
+/** the MIDI mapping section (format 65, #1067; engine.h eng_maps), the last of the binary: u8 count, then per learned
  * source that moves a row the FM-1 shows (a device page row; not a poly group's setting, not a row set only at load) u8
  * the source (CC number, or MAP_BEND), u8 the row's module index, u8 its parameter byte, u8 its low end, u8 its high end
  * (0..255 of the row's range). [] without one. `dev`: the device form, `devs` its device pages (deviceSection) */
@@ -1260,7 +1264,7 @@ export function encodePatch(source: Patch, anyway = false, force = 0, allocation
     out[at++] = ranges.length;
     for (const r of ranges) out.set([r.mod, r.pin | (r.bi ? RANGE_BIPOLAR : 0), r.par, r.lo, r.hi], (at += 5) - 5);
   }
-  out.set(mapRecord(source, p, devs), at);   // (the MIDI mappings, last: format 64, #1067)
+  out.set(mapRecord(source, p, devs), at);   // (the MIDI mappings, last: format 65, #1067)
   return out;
 }
 
