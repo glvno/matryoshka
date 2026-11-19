@@ -230,7 +230,7 @@ for (const compile of [false, true]) describe(`shared articulation, device compi
     const drone = render(0.2);
     expect(energy(drone.l)).toBeGreaterThan(0.001);
     expect(energy(drone.r)).toBeGreaterThan(0.001);
-    expect(e.probeVoices(12, 'out')!.filter(v => peak(v) > 0.001)).toHaveLength(4);
+    expect(e.probeVoices(12, 'out')!.filter(v => peak(v) > 0.001)).toHaveLength(8);
     row('vca on', 1);
     render(0.3);
     expect(peak(e.probe(amp.id, 'out')!)).toBe(0);
@@ -249,7 +249,7 @@ for (const compile of [false, true]) describe(`shared articulation, device compi
     expect(peak(e.probe(amp.id, 'out')!)).toBe(0);
     row('vca on', 2);
     render(0.1);
-    expect(e.probeVoices(12, 'out')!.filter(v => peak(v) > 0.001)).toHaveLength(4);
+    expect(e.probeVoices(12, 'out')!.filter(v => peak(v) > 0.001)).toHaveLength(8);
   });
 
   it('Oracle velocity controls the common amp, not an independent note envelope', () => {

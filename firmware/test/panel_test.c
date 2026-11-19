@@ -754,10 +754,10 @@ int main(void)
     check("old-format edits cannot add new allocation settings", poly_row_set(mod, ENG_POLY_STEAL, 0) == -1 && poly_row_set(mod, ENG_POLY_ASSIGN, 3) == -1 && pv_bin[9] == 0 && pv_bin[11] == 0);
     {                                                   /* a VOICES row stops at what the CPU holds (format 51: the
                                                          * row's top, gen-presets voiceTops); one without a top offers 8 */
-        static const char *const NAME[3] = {"CASSIA 1", "EXPANDER S", "BASIC POLY"};
-        static const int32_t WANT[3] = {5, 6, ENG_MAX_PARTS};
+        static const char *const NAME[3] = {"CASSIA 1", "ORACLE V", "BASIC POLY"};
+        static const int32_t WANT[3] = {5, 5, ENG_MAX_PARTS};
         static const char *const SAYS[3] = {"Cassia 1's VOICES row stops at five voices, a turn up there stays",
-                                            "Expander S's VOICES row stops at six voices, a turn up there stays",
+                                            "Oracle V's VOICES row stops at five voices, a turn up there stays",
                                             "Basic Poly's VOICES row (no top) reaches all eight voices"};
         uint32_t t, d, g, k;
         for (t = 0; t < 3u; t++) {

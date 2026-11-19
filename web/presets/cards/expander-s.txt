@@ -5,7 +5,7 @@
 # The level row (output / level) gen-presets sets in every preset, by loudness (#448): leave it to it.
 #
 # voice
-#   voices = 4                         1..16
+#   voices = 8                         1..16
 #   unison = off                       off, on, share
 #   assign = rotate                    rotate, lowest, reuse, reset
 #   width = 0.4                        -4..4
@@ -100,7 +100,6 @@ preset: SEM Bass
   level = 0.92
 
 preset: Notch Strings
-  voices = 6
   width = 1
   vco 1 wave = saw
   vco 2 wave = saw
@@ -140,9 +139,12 @@ preset: Highpass Pluck
   envelopes / a (2) = 0.001 s
   envelopes / d (2) = 0.4 s
   envelopes / s (2) = 0.2
-  level = 1.58
+  # eight keys at once peaked 1.18 at 1.58, and their chord is the loudness rule's bound (#782): gain only
+  level = 0.92
 
 preset: Unison Lead
+  # four voices on one key, as the Four Voice's unison (it plays fewer than the patch's eight on purpose)
+  voices = 4
   unison = on
   width = 0.2
   vco 1 wave = saw

@@ -11,8 +11,8 @@ export const FIRMWARE_TIER: readonly string[] = [
   'Verona Drum 1',
 ];
 
-/** firmware-tier patches fixed since the firmware shipped: the region carries a copy with a newer revision, which replaces
- *  the built-in one on an FM-1 with that region (factory.c fc_merge). Algo Four at eight voices and Cassia 1 at five (1.20.1)
- *  reach FM-1s on 1.20.0 firmware this way (1.20.2, D-1020); the copy's revision is the image's content version, so on a
- *  firmware whose tier already has that content it is not higher and the built-in copy plays */
+/** firmware-tier patches fixed since a released firmware shipped: the region carries a copy with a newer revision, which
+ *  replaces the built-in one on an FM-1 with that region (factory.c fc_merge). The copy's revision is the image's content
+ *  version, so on a firmware whose tier already has that content (1.21's: Algo Four at eight voices, Cassia 1 at five) it
+ *  is not higher and the built-in copy plays; the list keeps them while 1.20.x firmware is still offered the image (D-1020) */
 export const FIRMWARE_TIER_OVERRIDES: readonly string[] = ['Algo Four', 'Cassia 1'];

@@ -51,32 +51,33 @@ const CORES = {
   survey: 'docs/measurements/cpu-survey-2026-11-14-rig-reverb-split-off.json against -reverb.json (CI run 43615466841); the idle cost: -2026-11-05-rig-release-1.10-head.json against -rig-merged-split.json',
 };
 /** Each factory engine's factor on its modules' cycles (src/cpu.ts CpuTable.rig), fitted by scripts/cpu-rig-fit.ts to the
- * test rig's survey of the 1.14 bank on the 1.20 headroom build (float kernels, D-1112; hot code in RAM, D-398; the
- * two-core plan from the rig's module costs, D-1101; at SURVEY's scale) and to the 1.20 poly factory patches at the voices
- * the rig played them, as shipped and with every master FX stage on: the smallest that makes the estimate read at least
- * the rig's steady peak for every voice count its factory patch played on the rig, transport stopped and running.
- * The counted engine misses what the FM-1 spends beyond its instructions (its caches and memory, the hardware's own
- * timing, how the two cores share the block), and that differs from engine to engine: the factors run from 0.54 to 1.48.
- * The poly engines the rig measured at more voices than they play (Oracle V and Cassia 1 at 5, Algo Four at 8, Expander S
- * and Hera at 6) have a factor for their modules inside the poly group (`voices`) beside the one for the rest (`engines`,
- * at most 1.5): the pair that reads at least the rig at each count with the least over-read, so the estimate follows the
- * rig's slope as voices are added (one factor over-read Hera at 6 voices by 17 points). `fx`: the master FX bus's own
- * factor, least squares of the rig's rise from each poly factory patch as shipped to every stage on (10 pairs) on the
- * estimate's rise; at 1 the estimate with every stage on read 5 to 12 points over the rig. The patches outside the 1.14
- * bank (basic poly, drift poly, mono lead, supersaw stack) keep the factors of the 2026-11-09 survey. */
+ * test rig's surveys on the 1.21 build (main with the cheaper module copies of #1102 and the block's fixed cost of #1105;
+ * at SURVEY's scale): the 1.14 bank, today's factory bank with every master FX stage on, and today's poly factory patches
+ * at several voice counts, as shipped and with every stage on, transport stopped and running. A single-count engine's
+ * factor is the smallest that makes the estimate read at least the rig's steady peak. The counted engine misses what the
+ * FM-1 spends beyond its instructions (its caches and memory, the hardware's own timing, how the two cores share the
+ * block), and that differs from engine to engine: the factors run from 0.42 to 1.08. A poly engine the rig measured at
+ * several voice counts (Oracle V, Cassia 1, Algo Four, Expander S, Hera, Io 4) has its factor from the rig's rise from one
+ * count to the next (least squares; `voices`, the same in `engines`), and its own time a block (`blockUs`), the least
+ * that reads at least the rig at every count: the smallest pair that read at least the rig climbed faster than the rig
+ * (Expander S at seven voices with every stage on read 91.3 % against the rig's 81.6 %). `fx`: the master FX bus's own
+ * factor, least squares of the rig's rise from each poly factory patch as shipped to every stage on (21 pairs) on the
+ * estimate's rise. The patches outside the factory bank (basic poly, drift poly, mono lead, supersaw stack) keep the
+ * factors of the 2026-11-09 survey. */
 const RIG = {
   engines: {
-    '8 Lire': 0.54, '808 kit': 0.9, '909 kit': 0.65, 'Algo Four': 1.34, 'Briefcase 3': 0.68,
-    'Canvas': 0.79, 'Cassia 1': 1.44, 'Elvira 2': 0.8, 'Expander S': 1.48,
-    'Hera 4': 0.74, 'Io 4': 0.7, 'Meridian 8': 0.74, 'Monolith D': 0.83,
-    'Oracle V': 1.48, 'Perun 4': 0.73, 'Sallen 20': 1.01, 'Scrounge': 0.8,
-    'Silver Box': 0.94, 'Spokes 6': 0.79, 'Vernon 100': 0.6, 'Verona Drum 1': 0.83,
-    'Wanderer': 1.09, 'basic poly': 0.92, 'drift poly': 0.92, 'mono lead': 1.28,
+    '8 Lire': 0.56, '808 kit': 0.88, '909 kit': 0.71, 'Algo Four': 0.5, 'Briefcase 3': 0.66,
+    'Canvas': 0.75, 'Cassia 1': 0.52, 'Elvira 2': 0.82, 'Expander S': 0.58,
+    'Hera 4': 0.51, 'Io 4': 0.42, 'Meridian 8': 0.74, 'Monolith D': 0.72,
+    'Oracle V': 0.58, 'Perun 4': 0.73, 'Sallen 20': 0.96, 'Scrounge': 0.91, 'Shush 101': 1.08,
+    'Silver Box': 0.88, 'Spokes 6': 0.78, 'Vernon 100': 0.57, 'Verona Drum 1': 0.85,
+    'Wanderer': 1.06, 'basic poly': 0.92, 'drift poly': 0.92, 'mono lead': 1.28,
     'supersaw stack': 0.88,
   } as Record<string, number>,
-  voices: { 'Algo Four': 0.55, 'Cassia 1': 0.59, 'Expander S': 0.76, 'Hera 4': 0.59, 'Oracle V': 0.63 } as Record<string, number>,
+  voices: { 'Algo Four': 0.5, 'Cassia 1': 0.52, 'Expander S': 0.58, 'Hera 4': 0.51, 'Io 4': 0.42, 'Oracle V': 0.58 } as Record<string, number>,
+  blockUs: { 'Algo Four': 85, 'Cassia 1': 256, 'Expander S': 249, 'Hera 4': 221, 'Io 4': 424, 'Oracle V': 260 } as Record<string, number>,
   fx: 0.53,
-  survey: 'docs/measurements/cpu-survey-2026-11-18-rig-headroom120-bank114.json and -run.json (CI run 44262067788, the 22 patches of the 1.14 bank); the voices: -voices114.json and -run.json (the same build); the master FX bus: -voices120.json, -voices120-hera6.json, -fxbus-voices.json, -fxbus-expander7.json and their -run.json (CI runs 44313018225, 44320755391, 44357433714)',
+  survey: 'docs/measurements/cpu-survey-2026-11-19-rig-main121-bank114.json, -voices114.json, -factoryfx.json, -poly.json and their -run.json (firmware CI run 44450005183: the 22 patches of the 1.14 bank and its poly patches at more voices; the 21 factory patches with every master FX stage on; the 6 poly factory patches at 2 to 8 voices, as shipped and with every stage on)',
 };
 const BLOCKS = 24;
 const SKIP = 3; // blocks before the maximum is taken for a module kit (the first notes, envelopes starting)

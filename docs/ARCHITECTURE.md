@@ -885,7 +885,7 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   most voices the FM-1's VOICES row offers (`ParamRef.top` on a Voice allocator's voices card row, `PageRow.top`,
   `patchbin.ts` `polyTop`; written only with a top, which makes the patch format 51, `uses111`). `gen-presets` sets it
   (`factory-build.ts` `voiceTops`) to the most voices with which the factory patch still fits the FM-1's budget, when that
-  is under eight: Oracle V's is 5, Expander S's 6, Cassia 1's 5 (Algo Four plays eight, so it has none). The FM-1 keeps it at `ppage_t.xo` as other extras (`row_more` gives none for a poly
+  is under eight: Oracle V's is 5, Cassia 1's 5 (Algo Four and Expander S play eight, so they have none). The FM-1 keeps it at `ppage_t.xo` as other extras (`row_more` gives none for a poly
   row); `poly_top` is the top of the knobs, MIDI CC 16..19, the bar and MIDI out, and `dp_load` holds a preset's voices to
   it (`dev_poly_top`). The editor and the browser engine do not read it.
 - Protocol: FOCUS 0x29 (host → device: show a page), PARAM_NOW 0x47 (a row turned on the FM-1: module, parameter, Q16)
