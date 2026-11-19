@@ -1,6 +1,6 @@
 # The audio block's fixed cost, 2026-11-18
 
-Issue #803 asks what the fixed cost of every audio block is made of and to cut what can go. In 1.20 the audio interrupt spent 138 to 167 µs of each 2,902 µs half outside the voices: TIMER5 (the LED and key scan) nested in it about 85 µs, the engine's work before the voices about 46 µs, the Output modules' sum about 29 µs and the MASTER mix about 21 µs ([the 1.20 record](2026-11-18-headroom-120.md)). This record measures pull request #PR_NUMBER on the test rig and in the emulator.
+Issue #803 asks what the fixed cost of every audio block is made of and to cut what can go. In 1.20 the audio interrupt spent 138 to 167 µs of each 2,902 µs half outside the voices: TIMER5 (the LED and key scan) nested in it about 85 µs, the engine's work before the voices about 46 µs, the Output modules' sum about 29 µs and the MASTER mix about 21 µs ([the 1.20 record](2026-11-18-headroom-120.md)). This record measures pull request #1105 on the test rig and in the emulator.
 
 ## What the time is
 
