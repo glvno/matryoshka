@@ -4,8 +4,8 @@
 /* MIDI IN on the TRS jack: PH8 -> input channel 1 -> UART1 RX, 31250 baud,
  * RX DMA into a 128-byte ring, polled from the TIMER5 ISR (no UART IRQ).
  * Channel messages go into midi_in_q next to USB, as USB-MIDI packets (cable 0, CIN = status >> 4), on any channel;
- * Clock/Start/Continue/Stop are queued too; other realtime, system common and SysEx are ignored (no SysEx->UBOOT
- * from DIN). */
+ * Clock/Start/Continue/Stop and Song Position are queued too (clock_in.h); other realtime, system common and SysEx are
+ * ignored (no SysEx->UBOOT from DIN). */
 #include "../hal/fm1_uart.h"   /* registers; relative, so the host tests find it too */
 
 #define UM_RING 128u
@@ -39,7 +39,7 @@ static void um_byte(uint32_t b)
     }
     if (b & 0x80u) {
         um.sysex = b == 0xF0u;
-        um.st = b < 0xF0u ? (uint8_t)b : 0;        /* system common/SysEx cancel running status */
+        um.st = b < 0xF0u || b == 0xF2u ? (uint8_t)b : 0;   /* other system common / SysEx: running status ends */
         um.need = (uint8_t)um_len(b);
         um.got = 0;
         return;
@@ -53,8 +53,10 @@ static void um_byte(uint32_t b)
     }
     {
         uint32_t d1 = um.need == 2u ? um.d0 : b, d2 = um.need == 2u ? b : 0u;
-        uint32_t pkt = (um.st >> 4) | (uint32_t)um.st << 8 | d1 << 16 | d2 << 24;
+        uint32_t pkt = (um.st == 0xF2u ? 3u : um.st >> 4) | (uint32_t)um.st << 8 | d1 << 16 | d2 << 24;
         um.got = 0;
+        if (um.st == 0xF2u)                        /* (Song Position, clock_in.h: no running status) */
+            um.st = 0;
         if (midi_enqueue(pkt, 2u)) {
             um.msgs++;
         } else {
