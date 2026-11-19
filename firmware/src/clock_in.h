@@ -11,10 +11,11 @@
  *
  * The log (#870: what a looper such as Reel sends, read on the Mac afterwards): the realtime and Song Position messages
  * as the FM-1 takes them, logged whether CLOCK IN is on or not, in a ring of CIN_LOG_N entries. Each entry has its time in
- * microseconds (TIMER4, CIN_LOG_NOW), the engine's tick count (low 16 bits; the position for Song Position) as the last
- * block left it, and the transport's state. A clock that comes a period like the one before it (within a quarter) and
- * finds a clock entry newest is folded into it (up to 31 more), so steady clock takes little room and every irregular
- * clock keeps its own time. CIN_LOG_AFTER messages after a Stop it freezes, so the last loop before a Stop stays when a
+ * microseconds (TIMER4, CIN_LOG_NOW) and the transport's state; Start, Stop and Continue the engine's tick count (low 16
+ * bits) as the last block left it, Song Position its value. A clock that comes a period like the one before it (within a
+ * quarter) and finds a clock entry newest is folded into it (up to 31 more; the entry keeps the time from its first clock
+ * to its last), so steady clock takes little room and every irregular clock keeps its own time. CIN_LOG_AFTER messages
+ * after a Stop it freezes, so the last loop before a Stop stays when a
  * host goes on sending clock while stopped; a Start or Continue lets it run again. RAM only: it lasts while the FM-1
  * stays on (unplugging USB keeps it). On the device the ring is the update session's staging buffers (modular.c
  * CIN_LOG_RING, ota.c ota_buf: the pool has no room of its own, D-100), so an update empties it. DIAG 145 (the header,
@@ -26,7 +27,8 @@
 #define CIN_LOG_AFTER 64u
 typedef struct {
     uint32_t us;                                /* microseconds (the log's own clock: wraps after 71 minutes) */
-    uint16_t v;                                 /* the engine's ticks (low 16 bits); Song Position: its value */
+    uint16_t v;                                 /* Start / Stop / Continue: the engine's ticks (low 16 bits); Song Position: its
+                                                 * value; a clock: from its first to its last clock, in units of 100 us */
     uint8_t st;                                 /* the status byte: F2, F8, FA, FB, FC */
     uint8_t fl;                                 /* bit 0 the transport runs (eng_run_ticks), 1 MIDI clock drives, 2 CLOCK IN on;
                                                  * a clock: bits 3..7 the clocks folded into it after it */
@@ -85,13 +87,14 @@ static void cin_log_add(uint32_t pkt)
         if (e && e->st == 0xF8u && (e->fl & 7u) == fl && (e->fl >> 3) < 31u && was && gap + was / 4u >= was &&
             gap <= was + was / 4u) {
             e->fl = (uint8_t)(e->fl + 8u);      /* (a steady clock: one more in the newest clock entry) */
+            e->v = (uint16_t)((us - e->us) / 100u < 65535u ? (us - e->us) / 100u : 65535u);
             return;
         }
     }
     e = &cin_log[cin_log_w++ % CIN_LOG_N];
     e->us = us;
     e->st = (uint8_t)st;
-    e->v = st == 0xF2u ? (uint16_t)(((pkt >> 16) & 0x7Fu) | ((pkt >> 24) & 0x7Fu) << 7) : (uint16_t)eng_ticks();
+    e->v = st == 0xF2u ? (uint16_t)(((pkt >> 16) & 0x7Fu) | ((pkt >> 24) & 0x7Fu) << 7) : st == 0xF8u ? 0u : (uint16_t)eng_ticks();
     e->fl = fl;
     if (st == 0xFCu)
         cin_log_stop = CIN_LOG_AFTER + 1u;

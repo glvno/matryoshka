@@ -623,22 +623,19 @@ def main():
               f"the newest entry {(now_us - ents[-1][0]) / 1e6 if ents else 0:.1f} s ago")
         if made > held:
             print(f"  ({made - held} older entries overwritten: the clock count since the first Start below is not complete)")
-        clocks, prev, t0 = 0, None, ents[0][0] if ents else 0
-        for k, (us, v, st, f) in enumerate(ents):
-            gap = (us - prev) / 1000 if prev is not None else 0.0
-            prev = us
+        clocks, prev_end, t0 = 0, None, ents[0][0] if ents else 0
+        for us, v, st, f in ents:
+            gap = (us - prev_end) / 1000 if prev_end is not None else 0.0   # (from the previous message: a run's last clock)
+            prev_end = us + (v * 100 if st == 0xF8 else 0)
             if st in (0xFA, 0xFB):
                 clocks = 0
             if st == 0xF8:
                 more = f >> 3
                 first = clocks + 1
                 clocks += 1 + more
-                span = ""
-                if more and k + 1 < len(ents):       # (a folded run: its clocks a steady period apart, up to the next entry)
-                    per = (ents[k + 1][0] - us) / (more + 1) / 1000
-                    span = f", then {more} more about {per:.2f} ms apart"
+                run = f", then {more} more {v / 10 / more:.2f} ms apart" if more else ""
                 print(f"  {(us - t0) / 1e6:9.4f} s  +{gap:8.2f} ms  Clock #{first}{'..#' + str(clocks) if more else ''} since Start"
-                      f"{span}   engine ticks {v}, {fl(f & 7)}")
+                      f"{run}   {fl(f & 7)}")
                 continue
             what = f"Song Position {v} (clock {v * 6})" if st == 0xF2 else names.get(st, f"0x{st:02X}")
             print(f"  {(us - t0) / 1e6:9.4f} s  +{gap:8.2f} ms  {what:<16} after clock #{clocks}   "
