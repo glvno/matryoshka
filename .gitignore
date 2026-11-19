@@ -5,7 +5,8 @@ build/
 .DS_Store
 __pycache__/
 !web/public/firmware/*.fwsc
-tools/emu/target/
+# No trailing slash: a worktree's link to the main checkout's target is ignored too (D-074)
+tools/emu/target
 tools/emu/live/
 .claude/
 .empathetic-docs/
