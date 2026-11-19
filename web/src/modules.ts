@@ -34,6 +34,9 @@ export interface Voice {
   ticks: number;
   /** 1 when this block's first tick is a start's tick 0 on MIDI clock, which steps Steps and Euclid nothing on (#870) */
   tickSkip?: number;
+  /** the clock ticks into the song this block's start lands on (a MIDI Song Position, #596): Steps tracks take their
+   * steps up to there without a sound (stepsFf); 0 or absent: from the top */
+  ff?: number;
   tickLen: number;
   /** the FM-1's patch buttons held / switched on (bit i = PANEL_BUTTONS[i]): the Main module's button outputs */
   buttons: number;
@@ -3748,13 +3751,81 @@ export function stepsTurnAt(s: StepsState, p: Readonly<Record<string, number>>, 
   return -1;
 }
 
+/** the step a traversal's visit lands on, on its time `loop` round the pattern (engine.c steps_pos_at) */
+const stepPos = (s: StepsState, len: number, dir: number, visit: number, loop: number): number =>
+  dir === 3 ? hash32((s.seed ^ Math.imul(loop, 0x9e3779b9) ^ Math.imul(visit + 1, 0x85ebca6b)) >>> 0) % len
+    : dir === 1 ? len - 1 - visit : dir === 2 && visit >= len ? 2 * (len - 1) - visit : visit;
+
 /** Preview the next visited step without consuming it, also used by live recording. */
 function nextStep(s: StepsState, len: number, dir: number): { visit: number; pos: number; loop: number } {
   const visit = s.pos < 0 || s.visit + 1 >= stepCycle(len, dir) ? 0 : s.visit + 1;
   const loop = (s.loop + (visit === 0 ? 1 : 0)) >>> 0;
-  const pos = dir === 3 ? hash32((s.seed ^ Math.imul(loop, 0x9e3779b9) ^ Math.imul(visit + 1, 0x85ebca6b)) >>> 0) % len
-    : dir === 1 ? len - 1 - visit : dir === 2 && visit >= len ? 2 * (len - 1) - visit : visit;
-  return { visit, pos, loop };
+  return { visit, pos: stepPos(s, len, dir, visit, loop), loop };
+}
+
+/** the length and the half ticks a step of the pattern a track plays: its own, else the track's parameters p */
+function stepsShape(s: StepsState, p: Readonly<Record<string, number>>): { len: number; ht: number } {
+  const x = s.pat > 0 ? s.pats[s.pat] : null;
+  return {
+    len: Math.min(STEPS_MAX, Math.max(1, x?.len ?? Math.round(p.len ?? 16))),
+    ht: STEPS_RATE_HT[Math.min(STEPS_RATE_HT.length - 1, Math.max(0, x?.rate ?? Math.round(p.rate ?? 4)))],
+  };
+}
+
+/**
+ * Song Position (#596; engine.c steps_ff, the same): the transport's start lands `ticks` clock ticks into the song. The
+ * track (just set to start: no step yet) takes every step before that tick without a sound, as process takes them from
+ * the top: the start's first step, each pass's end with a song's next entry or a queued pattern, its times round the
+ * pattern and its passes. The steps within a pass go at once; once its passes repeat (in a song: its whole song, from its
+ * second time through), as many repeats as fit go at once. A step comes a step's half ticks after the one before; after
+ * a step half a tick on (1/64) a rate of whole ticks waits for the tick after, as process counts. Its half ticks then
+ * stand where that tick leaves them (a step half a tick on: `half` samples, tickLen / 2, plus the one the start's sample
+ * counts down). Returns the steps the start takes on its first sample: 1 when a step falls on that tick, else 0.
+ */
+export function stepsFf(s: StepsState, p: Readonly<Record<string, number>>, ticks: number, tickLen: number): number {
+  const dir = Math.max(0, Math.min(3, Math.round(p.dir ?? 0))), end = 2 * ticks; // (in half ticks)
+  const song = s.song.song > 0 && !!s.song.songs[s.song.song - 1]?.length;
+  let { len, ht } = stepsShape(s, p);
+  let h = 0, last = 0, seen = 0, aH = 0, aLoop = 0, aPass = 0;
+  while (h < end) { // a step falls on half tick h, before the landing
+    const r = stepCycle(len, dir) - 1 - s.visit;
+    if (s.pos >= 0 && r > 0) { // the steps left before the pass's end
+      const m = Math.min(r, Math.floor((end - h - 1) / ht) + 1);
+      s.visit += m;
+      s.pos = stepPos(s, len, dir, s.visit, s.loop);
+      last = h + (m - 1) * ht;
+      h = last + ht;
+      continue;
+    }
+    const was = s.pat, fresh = s.pos < 0; // the pass's end, or the start's first step (process's step there)
+    stepsTurn(s);
+    ({ len, ht } = stepsShape(s, p));
+    const next = nextStep(s, len, dir);
+    s.pass = fresh || s.pat !== was ? 0 : s.pass + 1;
+    if (fresh) s.pre = false;
+    s.pos = next.pos;
+    s.visit = next.visit;
+    s.loop = next.loop;
+    last = h;
+    h += ht + (!(ht & 1) && last & 1 ? 1 : 0);
+    if (!song || s.songPos === 0) { // a repeat begins: its second and third beginnings measure it
+      if (++seen === 2) (aH = last), (aLoop = s.loop), (aPass = s.pass);
+      else if (seen === 3) {
+        const per = last - aH, k = Math.floor((end - last - 1) / per);
+        last += k * per;
+        h += k * per;
+        s.loop = (s.loop + k * ((s.loop - aLoop) >>> 0)) >>> 0;
+        s.pass += k * (s.pass - aPass);
+        s.pos = stepPos(s, len, dir, s.visit, s.loop);
+      }
+    }
+  }
+  s.count = 0;
+  s.half = 0;
+  if (h === end) return 1;
+  s.count = end - last;
+  if (ht & 1 && s.count + 1 === ht) (s.half = Math.max(1, tickLen >> 1) + 1), (s.count = -1);
+  return 0;
 }
 
 /** a MIDI note as the pitch output gives it: octaves from C4, Q16 rounded half away from zero (as engine.c) */
@@ -3811,9 +3882,7 @@ const steps: ModuleImpl<StepsState> = {
     // the pattern's own length and rate, else the track's (a pattern switch at the end of a pass changes them)
     let len = 0, ht = 0, step = 0;
     const shape = (): void => {
-      const x = s.pat > 0 ? s.pats[s.pat] : null;
-      len = Math.min(STEPS_MAX, Math.max(1, x?.len ?? Math.round(c.p.len ?? 16)));
-      ht = STEPS_RATE_HT[Math.min(STEPS_RATE_HT.length - 1, Math.max(0, x?.rate ?? Math.round(c.p.rate ?? 4)))];
+      ({ len, ht } = stepsShape(s, c.p));
       step = Math.floor((ht * v.tickLen) / 2); // a step's samples at the clock's rate
     };
     shape();
@@ -4014,7 +4083,10 @@ const steps: ModuleImpl<StepsState> = {
           s.half = 0;
           s.pos = -1;
           s.songPos = -1; // (a song starts again from its first entry)
-          adv++;
+          if (v.ff) { // (a Song Position: the steps up to it without a sound, #596)
+            adv += stepsFf(s, c.p, v.ff, v.tickLen);
+            shape();
+          } else adv++;
         }
         if (s.half > 0 && v.run && --s.half === 0) adv++;
         if (v.run && i === v.tick) {

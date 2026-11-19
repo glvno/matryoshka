@@ -2,7 +2,7 @@
  * Copyright (C) 2026 morgulbrut */
 /* The settings menu, after ui.c, pages_ui.c and sandbox_ui.c, before main.c:
  *
- * MENU (GLO; GLO again or HOME closes it; #395; its controls: web/src/controls.ts, #553): the FM-1's settings in tabs (MIDI: MIDI CHANNEL, CLOCK IN, MIDI OUT, CLOCK OUT). ALGO steps the tabs: MIDI, PANEL and SYSTEM
+ * MENU (GLO; GLO again or HOME closes it; #395; its controls: web/src/controls.ts, #553): the FM-1's settings in tabs (MIDI: MIDI CHANNEL, CLOCK IN, MIDI OUT, CLOCK OUT; its second page: TRANSPORT IN, TRANSPORT OUT, #596). ALGO steps the tabs: MIDI, PANEL and SYSTEM
  * are pages of settings on K1..K4 (SYSTEM: UPDATE MODE, FACTORY RESET, QUICK START, OUTPUT; its second page: EDITOR, 3.5MM OUT, USB RETURN), drawn as a device page (pages_ui.c menu_tab_page; the knobs go through panel.c as on
  * a device page); INFO lists readings (drawn here) and GUIDE is a text SELECT scrolls (the ideas, D-248). The values are applied at once
  * and saved with the state (SAVE: main.c save bits; SAVE in the menu closes it). UPDATE MODE and FACTORY RESET (SYSTEM)
@@ -28,7 +28,7 @@ static void defaults_now(void);
 static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "COUNT-IN", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
                                               "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "BATTERY", "UPDATE MODE", "FACTORY RESET",
                                               "QUICK START", "TEMPO", "CLOCK OUT", "OUTPUT", "PROCESSOR", "EDITOR", "3.5MM OUT", "USB RETURN", "NAME",
-                                              "TIME SIG", "LOW", "MID", "HIGH", "MID FREQ"};
+                                              "TIME SIG", "LOW", "MID", "HIGH", "MID FREQ", "TRANSPORT IN", "TRANSPORT OUT"};
 #define INFO_N 7u
 static const uint8_t INFO_ROWS[INFO_N] = {MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_CORES, MR_DEVICE_NAME};   /* the INFO tab's list, top down */
 #define MENU_ARM_MS 5000u                               /* an armed SYSTEM row waits this long for GLO's hold */
@@ -96,6 +96,8 @@ static void menu_value(uint32_t row, char *out)
     case MR_CLOCK: p = put(p, ONOFF[cfg.clock_in]); break;
     case MR_MOUT: p = put(p, ONOFF[cfg.midi_out]); break;
     case MR_CLKOUT: p = put(p, ONOFF[cfg.clock_out]); break;
+    case MR_TIN: p = put(p, ONOFF[cfg.transport_in]); break;
+    case MR_TOUT: p = put(p, ONOFF[cfg.transport_out]); break;
     case MR_QUICK: p = put(p, ONOFF[cfg.quick]); break;
     case MR_OUTPUT: p = put(p, out_mono == 2u ? "MONO L" : out_mono ? "MONO" : "STEREO"); break;
     case MR_EDITOR: p = put(p, cfg.editor_ignore ? "IGNORE" : "ALLOW"); break;
@@ -313,7 +315,9 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
     }
     case MR_CLOCK: cfg.clock_in = (uint8_t)up; break;
     case MR_MOUT: cfg.midi_out = (uint8_t)up; break;
-    case MR_CLKOUT: cfg.clock_out = (uint8_t)up; break;  /* MIDI clock out with MIDI OUT (#473) */
+    case MR_CLKOUT: cfg.clock_out = (uint8_t)up; break;  /* MIDI clock out (#473; without MIDI OUT too, #596) */
+    case MR_TIN: cfg.transport_in = (uint8_t)up; break;  /* MIDI Start / Continue / Stop / Song Position in (#596) */
+    case MR_TOUT: cfg.transport_out = (uint8_t)up; break;   /* PLAY's Start / Continue / Stop / Song Position out (#596) */
     case MR_QUICK: cfg.quick = (uint8_t)up; break;  /* the quick start after power-on (D-240, D-247) */
     case MR_OUTPUT: {                                   /* STEREO, MONO (the sum on both sides), MONO L (on the left only), #612 */
         int32_t v = (int32_t)out_mono + d;
@@ -383,8 +387,9 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
     ui_dirty = 1;
 }
 
-static void menu_tab_go(int32_t s)                      /* ALGO: the next / previous tab, drawn whole (another layout); PANEL
-                                                         * and SYSTEM take two steps, their pages 1/2 and 2/2 (#702, #1011) */
+static void menu_tab_go(int32_t s)                      /* ALGO: the next / previous tab, drawn whole (another layout); MIDI,
+                                                         * PANEL and SYSTEM take two steps, their pages 1/2 and 2/2 (#596,
+                                                         * #702, #1011) */
 {
     if (menu_two(menu_tab) && (s > 0) != (menu_page2 != 0)) {
         menu_page2 = (uint8_t)(s > 0);

@@ -133,7 +133,7 @@ describe('attachMidi', () => {
     expect(sent).toEqual([{ t: 'clockrun', on: true, top: true }, { t: 'clock' }]);
   });
 
-  it('Start and Continue after Song Position 0 play from the top; Continue from another position plays on (#870)', async () => {
+  it('Start plays from the top; Continue after a Song Position plays from there; Continue alone plays on (#870, #596)', async () => {
     const daw = { id: 'b', name: 'IAC Driver Bus 1', state: 'connected', onmidimessage: null as ((ev: unknown) => void) | null };
     const nav = navigator as unknown as { requestMIDIAccess?: unknown };
     const saved = nav.requestMIDIAccess;
@@ -141,7 +141,7 @@ describe('attachMidi', () => {
     const sent: unknown[] = [];
     try {
       await attachMidi({ send: (m: unknown) => void sent.push(m) } as never, () => {});
-      for (const d of [[0xfa], [0xfc], [0xf2, 0, 0], [0xfb], [0xf2, 4, 0], [0xfb], [0xfb], [0xfc]])
+      for (const d of [[0xfa], [0xfc], [0xf2, 0, 0], [0xfb], [0xf2, 4, 0], [0xfb], [0xfb], [0xf2, 44, 2], [0xfc], [0xfb], [0xfc]])
         daw.onmidimessage!({ target: daw, data: new Uint8Array(d) });
     } finally {
       nav.requestMIDIAccess = saved;
@@ -149,9 +149,11 @@ describe('attachMidi', () => {
     expect(sent).toEqual([
       { t: 'clockrun', on: true, top: true },
       { t: 'clockrun', on: false },
-      { t: 'clockrun', on: true, top: true },
-      { t: 'clockrun', on: true },
-      { t: 'clockrun', on: true },
+      { t: 'clockrun', on: true, top: true }, // (Song Position 0: the top)
+      { t: 'clockrun', on: true, top: true, at: 24 }, // (Song Position 4: four sixteenths, 24 clocks in)
+      { t: 'clockrun', on: true }, // (no Song Position since: plays on)
+      { t: 'clockrun', on: false }, // (Song Position 300 before a Stop holds for the Continue after it)
+      { t: 'clockrun', on: true, top: true, at: 1800 },
       { t: 'clockrun', on: false },
     ]);
   });

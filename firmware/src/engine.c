@@ -962,17 +962,20 @@ static void toggles_sync(void);
 static volatile uint32_t clk_ticks;   /* MIDI clock ticks (eng_clock_tick, the main loop) */
 static volatile uint8_t clk_ext;      /* MIDI clock drives the clock */
 static volatile uint8_t transport_on; /* the transport (eng_transport) */
-/* MIDI Start (eng_transport_top, #870): the main loop notes the MIDI ticks so far (top_clk) and counts top_gen up, the next
- * block takes it (top_seen). The ticks that came before the Start are the old run's; the transport then starts on the next
- * MIDI tick after it, waiting for one up to top_wait samples more when no MIDI clock drives yet (TOP_WAIT: a tick at 20 bpm
- * and some; without one it starts on the tempo). tick0: this block's start is on a MIDI tick, tick 0 (the host's first
- * clock after its Start), which steps nothing on; tick_skip: this block's first tick is that one (Steps and Euclid count
- * from the next) */
+/* MIDI Start (eng_transport_top, #870) and Continue after a Song Position (eng_transport_at, #596): the main loop notes the
+ * MIDI ticks so far (top_clk) and counts top_gen up, the next block takes it (top_seen). The ticks that came before the
+ * request are the old run's; the transport then starts on the next MIDI tick after it, waiting for one up to top_wait
+ * samples more when no MIDI clock drives yet and the request asked for it (top_ask_wait; TOP_WAIT: a tick at 20 bpm and
+ * some; without one it starts on the tempo). tick0: this block's start is on a MIDI tick, tick 0 (the host's first clock
+ * after its Start), which steps nothing on; tick_skip: this block's first tick is that one (Steps and Euclid count from
+ * the next). top_ask_at: the clock ticks into the song the start lands on (a Song Position's sixteenths x 6), top_ff the
+ * same once a block took it, waiting for the start; ff_ticks: this block's start lands there (m_steps: steps_ff) */
 #define TOP_WAIT (ENG_SR * 3u / 20u)
-static volatile uint8_t top_gen;
-static volatile uint32_t top_clk;
+static volatile uint8_t top_gen, top_ask_wait;
+static volatile uint32_t top_clk, top_ask_at;
 static uint8_t top_seen, tick0, tick_skip;
 static uint16_t top_wait;
+static uint32_t top_ff, ff_ticks;
 static volatile uint8_t fill_on;      /* FILL held (#674, eng_fill): notes with a FILL condition play */
 /* play once (#632, eng_play_once; engine.ts playOnce, the same): the main loop's last word (once_cmd: 1 play once, 2 end
  * it) counts once_gen up and the next block takes it (once_seen); the engine's state (once_st: 0 not, 1 counting in, 2
@@ -5016,9 +5019,15 @@ void eng_transport(int on)
 }
 /* MIDI Start (#870): the transport from the top, on the next MIDI tick (waiting up to 150 ms for one when no MIDI clock
  * drives yet). Running, it stops for a block first */
-void eng_transport_top(void)
+void eng_transport_top(void) { eng_transport_at(0u, 1); }
+/* Song Position + Continue (#596), and PLAY from a SONG page entry: the transport from `ticks` clock ticks into the song,
+ * each Steps track there as if it had played from the top without a sound (steps_ff); the start itself is MIDI Start's
+ * (`wait`: up to 150 ms for a first MIDI tick when no MIDI clock drives yet; MIDI clock in off asks for none) */
+void eng_transport_at(uint32_t ticks, int wait)
 {
     eng_transport(1);
+    top_ask_at = ticks;
+    top_ask_wait = (uint8_t)(wait != 0);
     top_clk = clk_ticks;                         /* (before top_gen: the block that sees the Start sees this too) */
     top_gen++;
 }
@@ -5092,14 +5101,19 @@ static int32_t steps_cycle(int32_t len, int32_t dir)
     return dir == 2 && len > 1 ? 2 * (len - 1) : len;
 }
 typedef struct { int32_t visit, pos; uint32_t loop; } step_visit_t;
+/* the step a traversal's visit lands on, on its time `loop` round the pattern */
+static int32_t steps_pos_at(const inst_t *it, int32_t len, int32_t dir, int32_t visit, uint32_t loop)
+{
+    return dir == 3 ? (int32_t)(hash32(it->s.stp.seed ^ (loop * 0x9e3779b9u) ^ ((uint32_t)(visit + 1) * 0x85ebca6bu)) % (uint32_t)len)
+        : dir == 1 ? len - 1 - visit : dir == 2 && visit >= len ? 2 * (len - 1) - visit : visit;
+}
 /* Preview only: recording and playback must choose the same next step, including random mode. */
 static step_visit_t steps_next(const inst_t *it, int32_t len, int32_t dir)
 {
     step_visit_t next;
     next.visit = it->s.stp.pos < 0 || it->s.stp.visit + 1 >= steps_cycle(len, dir) ? 0 : it->s.stp.visit + 1;
     next.loop = it->s.stp.loop + (next.visit == 0 ? 1u : 0u);
-    next.pos = dir == 3 ? (int32_t)(hash32(it->s.stp.seed ^ (next.loop * 0x9e3779b9u) ^ ((uint32_t)(next.visit + 1) * 0x85ebca6bu)) % (uint32_t)len)
-        : dir == 1 ? len - 1 - next.visit : dir == 2 && next.visit >= len ? 2 * (len - 1) - next.visit : next.visit;
+    next.pos = steps_pos_at(it, len, dir, next.visit, next.loop);
     return next;
 }
 
@@ -10507,6 +10521,96 @@ static void steps_turn(uint32_t t)
 }
 
 static const uint8_t RATE_HT[9] = {48, 32, 24, 16, 12, 8, 6, 96, 3};   /* half ticks a step: track.ts STEPS_RATE_HT */
+/* the half ticks a step of the pattern track t plays: its own rate, else the track's (modules.ts steps: shape) */
+static int32_t steps_ht(const inst_t *it, uint32_t t)
+{
+    return RATE_HT[TRK_P(t) && E.pat_rate[t][TRK_P(t)] != 0xFFu ? E.pat_rate[t][TRK_P(t)] : clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8)];
+}
+/* Song Position (#596; modules.ts stepsFf, the same): this block's start lands ff_ticks clock ticks into the song. Track t
+ * takes every step before that tick without a sound, as m_steps takes them from the top: the start's first step, each
+ * pass's end with a song's next entry or a queued pattern, its times round the pattern and its passes. The steps within a
+ * pass go at once; once its passes repeat (in a song: its whole song, from its second time through), as many repeats as
+ * fit go at once, so a long position costs no more than a short one. A step comes a step's half ticks after the one
+ * before; after a step half a tick on (1/64) a rate of whole ticks waits for the tick after, as m_steps counts. Its half
+ * ticks then stand where that tick leaves them. Returns the steps the start takes on its first sample: 1 when a step falls
+ * on that tick, else 0. Out of line (ENG_RARE): only a start at a Song Position takes it */
+ENG_RARE int32_t steps_ff(inst_t *it, uint32_t t, int32_t dir, int32_t *len, int32_t *ht)
+{
+    uint32_t end = 2u * ff_ticks, h = 0, last = 0, seen = 0, a_h = 0, a_loop = 0, a_pass = 0;   /* (in half ticks) */
+    int song = E.song && E.song_n[E.song - 1u];
+    while (h < end) {                            /* a step falls on half tick h, before the landing */
+        int32_t r = steps_cycle(*len, dir) - 1 - (int32_t)it->s.stp.visit;
+        if (it->s.stp.pos >= 0 && r > 0) {       /* the steps left before the pass's end */
+            uint32_t m = (end - h - 1u) / (uint32_t)*ht + 1u;
+            if (m > (uint32_t)r)
+                m = (uint32_t)r;
+            it->s.stp.visit = (uint8_t)(it->s.stp.visit + m);
+            it->s.stp.pos = (int8_t)steps_pos_at(it, *len, dir, it->s.stp.visit, it->s.stp.loop);
+            last = h + (m - 1u) * (uint32_t)*ht;
+            h = last + (uint32_t)*ht;
+            continue;
+        }
+        {                                        /* the pass's end, or the start's first step (m_steps's step there) */
+            uint32_t was = E.trk_pat[t];
+            step_visit_t next;
+            steps_turn(t);
+            it->s.stp.pass = it->s.stp.pos < 0 || E.trk_pat[t] != was ? 0u : it->s.stp.pass + 1u;
+            if (it->s.stp.pos < 0)
+                E.trk_pre[t] = 0;
+            *len = steps_len(it, t);
+            *ht = steps_ht(it, t);
+            next = steps_next(it, *len, dir);
+            it->s.stp.pos = (int8_t)next.pos;
+            it->s.stp.visit = (uint8_t)next.visit;
+            it->s.stp.loop = next.loop;
+        }
+        last = h;
+        h += (uint32_t)*ht + (!(*ht & 1) && (last & 1u));
+        if (!song || E.trk_spos[t] == 0) {       /* a repeat begins: its second and third beginnings measure it */
+            if (++seen == 2u) {
+                a_h = last;
+                a_loop = it->s.stp.loop;
+                a_pass = it->s.stp.pass;
+            } else if (seen == 3u) {
+                uint32_t per = last - a_h, k = (end - last - 1u) / per;
+                last += k * per;
+                h += k * per;
+                it->s.stp.loop += k * (it->s.stp.loop - a_loop);
+                it->s.stp.pass += k * (it->s.stp.pass - a_pass);
+                it->s.stp.pos = (int8_t)steps_pos_at(it, *len, dir, it->s.stp.visit, it->s.stp.loop);
+            }
+        }
+    }
+    it->s.stp.count = 0;
+    it->s.stp.half = 0;
+    if (h == end)
+        return 1;
+    it->s.stp.count = (int16_t)(end - last);     /* (as the tick before would leave them; a step half a tick on, 1/64) */
+    if ((*ht & 1) && it->s.stp.count + 1 == *ht) {
+        it->s.stp.half = (E.tick_len >> 1 > 0 ? E.tick_len >> 1 : 1) + 1;   /* (+1: this sample counts it down once) */
+        it->s.stp.count = -1;
+    }
+    return 0;
+}
+/* PLAY from a SONG page entry (#596): the clock ticks from song s's top to the start of its entry k on the Steps track
+ * `module`, each entry before it one pass of that track (its pattern's own length and rate, else the track's) */
+int eng_song_ticks(uint32_t module, uint32_t s, uint32_t k)
+{
+    const inst_t *it = steps_inst(module);
+    uint32_t t, j, h = 0;
+    int32_t dir;
+    if (!it || s >= ENG_SONGS || k > E.song_n[s])
+        return -1;
+    t = E.node[module].trk;
+    dir = clampi(round_q16(EF(it, STEPS_P_DIR)), 0, 3);
+    for (j = 0; j < k; j++) {
+        uint32_t p = E.song_pat[s][j], q = (E.pat_has[t] >> p & 1u) ? p : 0u;
+        int32_t len = q && E.pat_len[t][q] ? E.pat_len[t][q] : clampi(round_q16(EF(it, STEPS_P_LEN)), 1, TRACK_STEPS);
+        int32_t rate = q && E.pat_rate[t][q] != 0xFFu ? E.pat_rate[t][q] : clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8);
+        h += (uint32_t)(steps_cycle(len, dir) * RATE_HT[rate]);
+    }
+    return (int32_t)(h / 2u);
+}
 /* An internally clocked track with no reset cable, from sample i of an n-sample block: the first sample m_steps's loop must
  * take one at a time, n if none. Those are a gap or a hit to show, the transport's start (sample 0), the block's tick, a
  * half step's or a swung step's countdown reaching 0, and a timed note's end. Every sample before it only counts down and
@@ -10632,7 +10736,12 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
                 it->s.stp.half = 0;
                 it->s.stp.pos = -1;
                 E.trk_spos[t] = -1;              /* (a song starts again from its first entry) */
-                adv++;
+                if (ENG_RARELY(ff_ticks)) {      /* (a Song Position: the steps up to it without a sound, #596) */
+                    adv += steps_ff(it, t, dir, &len, &ht);
+                    step = (ht * E.tick_len) >> 1;
+                } else {
+                    adv++;
+                }
             }
             if (it->s.stp.half > 0 && E.running && --it->s.stp.half == 0)
                 adv++;
@@ -12979,12 +13088,14 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             int start;
             t = clk_ticks;
             tick_skip = 0;
+            ff_ticks = 0;
             if (!run)
-                top_wait = 0;
-            if (ENG_RARELY(top_gen != top_seen)) {   /* MIDI Start (eng_transport_top): from the top, on the next MIDI */
-                top_seen = top_gen;                  /* tick after it. The ticks before it are the old run's, counted */
-                top_wait = TOP_WAIT;                 /* now; running, a block stopped first, and the ticks after the */
-                E.ticks += top_clk - E.clk_seen;     /* Start wait for the start */
+                top_wait = top_ff = 0;
+            if (ENG_RARELY(top_gen != top_seen)) {   /* MIDI Start (eng_transport_top) or Continue after a Song */
+                top_seen = top_gen;                  /* Position (eng_transport_at): on the next MIDI tick after it. */
+                top_wait = top_ask_wait ? TOP_WAIT : 0u;   /* The ticks before it are the old run's, counted now; */
+                top_ff = top_ask_at;                 /* running, a block stopped first, and the ticks after the */
+                E.ticks += top_clk - E.clk_seen;     /* request wait for the start */
                 E.clk_seen = top_clk;
                 if (E.running) {
                     run = 0;
@@ -13003,8 +13114,10 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             }
             start = run && !E.running;
             if (ENG_RARELY(start)) {
-                E.tick_acc = 0;                  /* the transport starts: the tempo's ticks from here */
-                E.run_ticks = E.ticks;
+                E.tick_acc = 0;                  /* the transport starts: the tempo's ticks from here, and its run */
+                E.run_ticks = E.ticks - top_ff;  /* ticks from the song's top (a Song Position: steps_ff) */
+                ff_ticks = top_ff;
+                top_ff = 0;
             }
             if (ENG_RARELY(run != cko.run)) {    /* MIDI clock out: the transport's edge, and tick 0 on a start's first sample */
                 cko.run = run;
