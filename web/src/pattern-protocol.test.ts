@@ -163,7 +163,7 @@ describe('DeviceLink and the pattern store', () => {
     await link.listPatterns();
     await link.upload(p);
     const sentBin = (): Uint8Array => Uint8Array.from(fm1.sent.filter((s) => s.cmd === CMD.chunk).flatMap((s) => s.payload.slice(5)));
-    expect(Array.from(sentBin())).toEqual(Array.from(encodePatch(p, false, false, 0, link.linkStore)));
+    expect(Array.from(sentBin())).toEqual(Array.from(encodePatch(p, false, 0, 0, link.linkStore)));
     expect(Array.from(sentBin())).toEqual(Array.from(encodePatch(p)));   // (the store holds it as the link says: a reference)
     const old = standIn(false);
     const plain = await linked(old);

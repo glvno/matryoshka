@@ -318,7 +318,7 @@ static int old_format(int n, char **argv)
         run(a_l, a_r);
         eng_all_notes_off();
         m1_set_current(old, (uint32_t)no);
-        if (m1_cur[1] != ENG_PATCH_VERSION) {
+        if (old[1] >= ENG_COUNTED || m1_cur[1] != ENG_UPGRADED) {   /* (eng_upgrade writes ENG_UPGRADED, D-299) */
             kept++;                                           /* (too big to upgrade: it stays in its format) */
             CHECK(m1_cur_len == (uint32_t)no && !memcmp(m1_cur, old, (size_t)no));
             continue;
@@ -474,6 +474,68 @@ static int grow_test(int n, char **argv)
     return 0;
 }
 
+/* proto_test --same A.m1p B.m1p ... (tools/golden.sh, the format 64 golden kits): B is A's patch written in format 64's
+ * shorter layout (D-1025: the panel labels by their length, the cables grouped by the module they go into, only the Drum
+ * map row names off their default). Both pass m1_valid and load; B's cables are A's in the order of the module they go
+ * into, each module's in A's order; the panel labels and the row names read the same; the two render bit-identically. */
+static int same_test(int n, char **argv)
+{
+    static int32_t a_l[128 * 40], a_r[128 * 40], b_l[128 * 40], b_r[128 * 40];
+    static uint32_t cf[ENG_MAX_CABLES], cfp[ENG_MAX_CABLES], ct[ENG_MAX_CABLES], ctp[ENG_MAX_CABLES];
+    int k, grouped = 0;
+    for (k = 0; k + 1 < n; k += 2) {
+        long na, nb;
+        uint8_t *a = slurp(argv[k], &na), *b = slurp(argv[k + 1], &nb);
+        uint32_t c, m, r, j = 0, ncab, f, fp, t, tp;
+        char x[32], y[32];
+        if (b[1] < ENG_SLIM || !m1_valid(a, (uint32_t)na) || !m1_valid(b, (uint32_t)nb)) {
+            fprintf(stderr, "FAIL %s / %s: not a valid pair of an older binary and a format %u one\n", argv[k], argv[k + 1], ENG_SLIM);
+            return 1;
+        }
+        grouped += (b[7] & ENG_FLAG_CABLES3) != 0u;
+        CHECK(eng_load(a, (uint32_t)na) == 0);
+        ncab = (uint32_t)eng_ncables();
+        for (c = 0; c < ncab; c++)
+            eng_cable(c, &cf[c], &cfp[c], &ct[c], &ctp[c]);
+        E.tick_acc = E.ticks = 0;
+        E.idle_blk = 0;
+        run(a_l, a_r);
+        eng_all_notes_off();
+        CHECK(eng_load(b, (uint32_t)nb) == 0 && (uint32_t)eng_ncables() == ncab);
+        for (m = 0; m < a[2]; m++)                            /* (grouped: A's list sorted by the module it goes into, stable; */
+            for (c = 0; c < ncab; c++)                        /* else A's list as it is) */
+                if ((b[7] & ENG_FLAG_CABLES3) ? ct[c] == m : c == j && m == 0u) {
+                    eng_cable(j++, &f, &fp, &t, &tp);
+                    if (f != cf[c] || fp != cfp[c] || t != ct[c] || tp != ctp[c]) {
+                        fprintf(stderr, "FAIL %s: cable %u is not %s's in the order of the module it goes into\n", argv[k + 1], (unsigned)(j - 1u), argv[k]);
+                        return 1;
+                    }
+                }
+        CHECK(j == ncab);
+        E.tick_acc = E.ticks = 0;
+        E.idle_blk = 0;
+        run(b_l, b_r);
+        eng_all_notes_off();
+        if (memcmp(a_l, b_l, sizeof a_l) || memcmp(a_r, b_r, sizeof a_r)) {
+            fprintf(stderr, "FAIL %s: renders differently from %s\n", argv[k + 1], argv[k]);
+            return 1;
+        }
+        for (m = 0; m < a[2]; m++)
+            for (r = 0; r < ENG_DRUM_ROWS; r++) {
+                int hx = eng_drum_name(a, (uint32_t)na, m, r, x), hy = eng_drum_name(b, (uint32_t)nb, m, r, y);
+                CHECK(hx == hy && !strcmp(x, y));
+            }
+        for (r = 0; r < ENG_PANEL_LABELS; r++) {
+            uint32_t lx = eng_panel_label(a, (uint32_t)na, r, x), ly = eng_panel_label(b, (uint32_t)nb, r, y);
+            CHECK(lx == ly && !strcmp(x, y));
+        }
+        free(a);
+        free(b);
+    }
+    printf("format %u ok: %d kits read and render the same in the shorter layout (%d with their cables grouped)\n", ENG_SLIM, n / 2, grouped);
+    return 0;
+}
+
 /* a frame to m1_handle: cmd and its payload, 7-bit packed */
 static int send_frame(uint32_t cmd, const uint8_t *pl, uint32_t n)
 {
@@ -615,7 +677,7 @@ static int patterns_test(const char *kit_path, const char *song_path)
         plain[7] &= (uint8_t)~ENG_FLAG_PATTERNS;
         CHECK(m1_valid(plain, (uint32_t)nk - pn));
         m1_set_current(plain, (uint32_t)nk - pn);
-        CHECK(m1_cur[1] == ENG_PATCH_VERSION && eng_load(m1_cur, m1_cur_len) == 0 && eng_patterns_record(0, 0) == 0);
+        CHECK(m1_cur[1] == ENG_UPGRADED && eng_load(m1_cur, m1_cur_len) == 0 && eng_patterns_record(0, 0) == 0);
         ul = m1_cur_len;                                        /* (upgraded: records of types that grew since 47 are longer) */
         memcpy(up, m1_cur, ul);
         pl[0] = 1;
@@ -868,6 +930,8 @@ int main(int argc, char **argv)
         return old_format(argc - 2, argv + 2);
     if (argc >= 2 && !strcmp(argv[1], "--grow"))
         return grow_test(argc - 2, argv + 2);
+    if (argc >= 2 && !strcmp(argv[1], "--same"))
+        return same_test(argc - 2, argv + 2);
     long np, ns, i, at = 0;
     uint8_t *patch, *syx;
     static int32_t a_l[128 * 40], a_r[128 * 40], b_l[128 * 40], b_r[128 * 40];
@@ -935,7 +999,7 @@ int main(int argc, char **argv)
     }
     CHECK(origin_frames == 2u); }
     CHECK(applied == 1);
-    CHECK(m1_cur_len == (uint32_t)np || (patch[1] < ENG_PATCH_VERSION && m1_cur[1] == ENG_PATCH_VERSION));   /* (an older format's: upgraded) */
+    CHECK(m1_cur_len == (uint32_t)np || (patch[1] < ENG_COUNTED && m1_cur[1] == ENG_UPGRADED));   /* (an older format's: upgraded) */
     run(b_l, b_r);
     CHECK(memcmp(a_l, b_l, sizeof a_l) == 0 && memcmp(a_r, b_r, sizeof a_r) == 0);
     /* the stored copy carries the live parameter */

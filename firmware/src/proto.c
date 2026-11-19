@@ -359,6 +359,8 @@ static void m1_track_name(uint32_t mod, char *out)
 
 /* row r's name of a Drum map in the running patch (the #139 follow-up), 0 when it has none */
 static int m1_drum_name(uint32_t map, uint32_t r, char *out) { return eng_drum_name(m1_cur, m1_cur_len, map, r, out); }
+/* label i of the running patch's panel section (engine.h eng_panel_label) into out (ENG_PANEL_LABEL + 1 bytes), 0 none */
+static int m1_panel_label(uint32_t i, char *out) { return eng_panel_label(m1_cur, m1_cur_len, i, out) > 0; }
 
 static void m1_patch_track(uint32_t mod);
 
@@ -747,9 +749,9 @@ static int m1_patch_locks(void)
 
 /* the running patch's stored pattern links (#901; the binary is their only copy, patlink.c reads them there) become s: n
  * bytes (u8 count, count x (u8 pattern, u16 LE id), ascending; n 0: none). The section after the P-locks replaced, made
- * or dropped, what follows moves. A patch that gets a link is written as format 59 (the formats since ENG_COUNTED read
- * the same otherwise; eng_upgrade relies on it too). 1 done; 0 when the binary is older than ENG_COUNTED (too big to
- * upgrade) or would outgrow M1_PATCH_MAX: it keeps its old section */
+ * or dropped, what follows moves. A patch that gets a link is written as format ENG_UPGRADED at least (the formats since
+ * ENG_COUNTED read the same as it otherwise; eng_upgrade relies on it too; a format ENG_SLIM binary stays one). 1 done; 0
+ * when the binary is older than ENG_COUNTED (too big to upgrade) or would outgrow M1_PATCH_MAX: it keeps its old section */
 static int m1_patch_links(const uint8_t *s, uint32_t n)
 {
     uint32_t sec = eng_links_at(m1_cur, m1_cur_len), old = 0, i;
@@ -765,8 +767,8 @@ static int m1_patch_links(const uint8_t *s, uint32_t n)
     for (i = 0; i < n; i++)
         m1_cur[sec + i] = s[i];
     m1_cur[7] = (uint8_t)(n ? m1_cur[7] | ENG_FLAG_LINKS : m1_cur[7] & ~ENG_FLAG_LINKS);
-    if (n)
-        m1_cur[1] = ENG_PATCH_VERSION;
+    if (n && m1_cur[1] < ENG_UPGRADED)
+        m1_cur[1] = ENG_UPGRADED;
     m1_edited = 1;
     return 1;
 }

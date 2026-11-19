@@ -170,7 +170,7 @@ describe('format 59: stored pattern links', () => {
     const plain = encodePatch(p);
     expect(plain[1]).toBeLessThan(FORMAT_LINKS);
     expect(flags(plain) & FLAG_LINKS).toBe(0);
-    for (const store of ['assume', 'unknown', 'none', new Map([[5, 1]])] as LinkStore[]) expect(Array.from(encodePatch(p, false, false, 0, store))).toEqual(Array.from(plain));
+    for (const store of ['assume', 'unknown', 'none', new Map([[5, 1]])] as LinkStore[]) expect(Array.from(encodePatch(p, false, 0, 0, store))).toEqual(Array.from(plain));
   });
 
   it('validates links: index 1..63, id 1..0xEFFF, a u32 hash', () => {
@@ -190,7 +190,7 @@ describe('format 59: stored pattern links', () => {
     expect(flags(bin) & FLAG_LINKS).toBe(FLAG_LINKS);
     expect(flags(bin) & FLAG_PATTERNS).toBe(0);
     expect(holds(bin, [1, 1, 0x34, 0x12])).toBe(true);
-    expect(Array.from(encodePatch(p, false, false, 0, new Map([[0x1234, payloadHash(p, 1)]])))).toEqual(Array.from(bin));
+    expect(Array.from(encodePatch(p, false, 0, 0, new Map([[0x1234, payloadHash(p, 1)]])))).toEqual(Array.from(bin));
   });
 
   it('an edited link (or a store whose copy differs, or one not read yet) goes inline with the reference, right after the P-locks', () => {
@@ -203,15 +203,15 @@ describe('format 59: stored pattern links', () => {
     expect(flags(dirty) & (FLAG_LINKS | FLAG_PATTERNS)).toBe(FLAG_LINKS | FLAG_PATTERNS);
     expect(holds(dirty, tail)).toBe(true);
     link(p, 1, 7);
-    for (const store of ['unknown', new Map([[7, 999]])] as LinkStore[]) expect(holds(encodePatch(p, false, false, 0, store), tail)).toBe(true);
+    for (const store of ['unknown', new Map([[7, 999]])] as LinkStore[]) expect(holds(encodePatch(p, false, 0, 0, store), tail)).toBe(true);
   });
 
   it('a store without the id (or no store) takes no reference: the pattern goes inline, as without the link', () => {
     const { p } = rig();
     const plain = encodePatch(p);
     link(p, 1, 7);
-    expect(Array.from(encodePatch(p, false, false, 0, new Map()))).toEqual(Array.from(plain));
-    expect(Array.from(encodePatch(p, false, false, 0, 'none'))).toEqual(Array.from(plain));
+    expect(Array.from(encodePatch(p, false, 0, 0, new Map()))).toEqual(Array.from(plain));
+    expect(Array.from(encodePatch(p, false, 0, 0, 'none'))).toEqual(Array.from(plain));
   });
 
   it('lists links ascending, the refs only where the store holds the pattern as it is', () => {

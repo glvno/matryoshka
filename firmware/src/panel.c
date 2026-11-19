@@ -1317,7 +1317,7 @@ static void panel_status(void)
         (void)num;
         if (!knob_touched) {
             uint32_t b = button_touched - 1u;
-            if (!panel_label(b, name))
+            if (!m1_panel_label(b, name))
                 put(name, PANEL_BTN_NAME[b])[0] = 0;
             q = put(q, name);
             q = put(q, panel_lights() >> b & 1u ? MSG_ON : MSG_OFF);

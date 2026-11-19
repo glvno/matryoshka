@@ -1509,8 +1509,25 @@ static inline uint32_t eng_rec_size(const uint8_t *p, uint32_t at)
         n += 1u + eng_pres_bytes(d, p[1], p[eng_rec_block(p, at)]);
     return n;
 }
-/* bytes of a cable (ENG_FLAG_CABLES3) */
-static inline uint32_t eng_cable_bytes(const uint8_t *p) { return (p[7] & ENG_FLAG_CABLES3) ? 3u : 4u; }
+/* the cables are grouped by the module they go into (format ENG_SLIM with ENG_FLAG_CABLES3, patchbin.ts cablesGrouped):
+ * ceil(modules / 2) bytes of counts (module i's in the low nibble of byte i >> 1 when i is even, else the high one), then
+ * per module in module order the cables into it, u8 from module, u8 from output << 4 | to input */
+static inline int eng_cables_grouped(const uint8_t *p) { return p[1] >= ENG_SLIM && (p[7] & ENG_FLAG_CABLES3); }
+/* bytes of a cable that is not grouped: 3 with ENG_FLAG_CABLES3 before ENG_SLIM, else 4 */
+static inline uint32_t eng_cable_bytes(const uint8_t *p) { return (p[7] & ENG_FLAG_CABLES3) && p[1] < ENG_SLIM ? 3u : 4u; }
+/* the end of the cables that start at `at` (header bytes 4 and 5: their count), 0 if they are malformed or run past len */
+static uint32_t eng_cables_to(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    uint32_t ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8, nb = (p[2] + 1u) / 2u, i, n = 0;
+    if (!eng_cables_grouped(p))
+        return at + eng_cable_bytes(p) * ncab <= len ? at + eng_cable_bytes(p) * ncab : 0;
+    if (at + nb > len || ((p[2] & 1u) && p[at + nb - 1u] >> 4))
+        return 0;
+    for (i = 0; i < p[2]; i++)
+        n += p[at + (i >> 1)] >> (4u * (i & 1u)) & 15u;
+    at += nb + 2u * ncab;
+    return n == ncab && at <= len ? at : 0;
+}
 /* the set bits among the first n bits at b (a format 51 B bitmap: how many B values follow it, or come before the n-th) */
 static uint32_t eng_bits(const uint8_t *b, uint32_t n)
 {
@@ -1604,10 +1621,7 @@ static uint32_t eng_bset_walk(const uint8_t *p, uint32_t len, uint32_t at, uint3
 static uint32_t eng_cables_end(const uint8_t *p, uint32_t len)
 {
     uint32_t npar, at = eng_records_end(p, len, &npar);
-    if (!at)
-        return 0;
-    at += eng_cable_bytes(p) * ((uint32_t)p[4] | (uint32_t)p[5] << 8);
-    if (at > len)
+    if (!at || !(at = eng_cables_to(p, len, at)))
         return 0;
     if ((p[6] & 1u) && p[1] >= ENG_COUNTED)
         return eng_bset_walk(p, len, at, 0xFFu);
@@ -1679,7 +1693,7 @@ int eng_upgrade(uint8_t *p, uint32_t *len, uint32_t cap)
     grow = nmod;                                 /* (the count bytes) */
     for (i = 0; i < nmod; i++) {                 /* what each record keeps */
         const def_t *d = &DEFS[p[at] & 0x7Fu];
-        if (eng_mask_bytes(d, ver) != eng_mask_bytes(d, ENG_PATCH_VERSION))
+        if (eng_mask_bytes(d, ver) != eng_mask_bytes(d, ENG_UPGRADED))
             return -1;                           /* (a type whose masks widened: none so far) */
         n0 = eng_npar(d, ver);
         rec[i] = (uint16_t)at;
@@ -1772,7 +1786,7 @@ int eng_upgrade(uint8_t *p, uint32_t *len, uint32_t cap)
         eng_gap(p, len, rec[i] + 1u, 1u);
         p[rec[i] + 1u] = (uint8_t)(keep[i] | (d->cvbase >= 0 && !pres[i] ? ENG_REC_TEMPLATE : 0u));
     }
-    p[1] = ENG_PATCH_VERSION;
+    p[1] = ENG_UPGRADED;                         /* (counted records; the panel, cables and row names as they were, D-299) */
     return 0;
 }
 
@@ -1797,12 +1811,7 @@ static uint32_t eng_b_at(const uint8_t *p, uint32_t len, uint32_t mod, int *bad)
     *bad = 0;
     if (!(p[6] & 1u))
         return 0;
-    if (!(at = eng_records_end(p, len, 0))) {
-        *bad = 1;
-        return 0;
-    }
-    at += eng_cable_bytes(p) * ((uint32_t)p[4] | (uint32_t)p[5] << 8);
-    if (at + (p[2] + 7u) / 8u > len) {
+    if (!(at = eng_records_end(p, len, 0)) || !(at = eng_cables_to(p, len, at)) || at + (p[2] + 7u) / 8u > len) {
         *bad = 1;
         return 0;
     }
@@ -2421,15 +2430,32 @@ int eng_load(const uint8_t *p, uint32_t len)
     for (i = 0; i < E.nmod; i++)                 /* a Drum map's keys: the keys, or a Steps module or an Arpeggiator of the patch */
         if (E.node[i].ksrc >= 2u && (E.node[i].ksrc - 2u >= E.nmod || (E.node[E.node[i].ksrc - 2u].type != T_STEPS && E.node[E.node[i].ksrc - 2u].type != T_ARP)))
             return -3;
-    k = eng_cable_bytes(p);
-    if (at + k * ncab > len)
+    const uint32_t cnt = at, grouped = (uint32_t)eng_cables_grouped(p);   /* (format 64: the counts first, eng_cables_to) */
+    uint32_t g = 0, left = 0;
+    if (!eng_cables_to(p, len, at))
         return -3;
+    k = grouped ? 2u : eng_cable_bytes(p);
+    if (grouped)
+        at += (E.nmod + 1u) / 2u;
     for (c = 0; c < ncab; c++, at += k) {
-        uint8_t fm = p[at], fp = p[at + 1], tm = p[at + 2], tp = p[at + 3];
-        if (k == 3u) {                           /* (ENG_FLAG_CABLES3: from module, to module, the ports in one byte) */
+        uint8_t fm = p[at], fp, tm, tp;
+        if (k == 2u) {                           /* (grouped: the module they go into from the counts, the ports in one byte) */
+            while (!left) {
+                left = p[cnt + (g >> 1)] >> (4u * (g & 1u)) & 15u;
+                g++;
+            }
+            left--;
+            tm = (uint8_t)(g - 1u);
+            fp = p[at + 1] >> 4;
+            tp = p[at + 1] & 15u;
+        } else if (k == 3u) {                    /* (ENG_FLAG_CABLES3: from module, to module, the ports in one byte) */
             tm = p[at + 1];
             fp = p[at + 2] >> 4;
             tp = p[at + 2] & 15u;
+        } else {
+            fp = p[at + 1];
+            tm = p[at + 2];
+            tp = p[at + 3];
         }
         if (fm >= E.nmod || tm >= E.nmod || fm == tm)
             return -5;
@@ -5794,6 +5820,74 @@ int eng_steps_hit(uint32_t module, int accent, int record)
     return k;
 }
 
+uint32_t eng_panel_bytes(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    uint32_t n = 5u, i;
+    if (p[1] < ENG_SLIM)
+        return at + ENG_PANEL_BYTES <= len ? ENG_PANEL_BYTES : 0;
+    if (at + n > len || (p[at + 4u] >> ENG_PANEL_LABELS))
+        return 0;
+    for (i = 0; i < ENG_PANEL_LABELS; i++)
+        if (p[at + 4u] >> i & 1u) {
+            if (at + n >= len || !p[at + n] || p[at + n] > ENG_PANEL_LABEL)
+                return 0;
+            n += 1u + p[at + n];
+        }
+    return at + n <= len ? n : 0;
+}
+uint32_t eng_panel_label(const uint8_t *p, uint32_t len, uint32_t i, char *out)
+{
+    uint32_t at = eng_panel_at(p, len), k, n = 0;
+    const uint8_t *s;
+    out[0] = 0;
+    if (!at || i >= ENG_PANEL_LABELS)
+        return 0;
+    if (p[1] < ENG_SLIM) {
+        s = p + at + 4u + i * ENG_PANEL_LABEL;
+        while (n < ENG_PANEL_LABEL && s[n])
+            n++;
+    } else {
+        if (!(p[at + 4u] >> i & 1u))
+            return 0;
+        for (s = p + at + 5u, k = 0; k < i; k++)    /* (the labels before it, each u8 length and its characters) */
+            if (p[at + 4u] >> k & 1u)
+                s += 1u + s[0];
+        n = *s++;
+    }
+    for (k = 0; k < n; k++)
+        out[k] = (char)s[k];
+    out[n] = 0;
+    return n;
+}
+
+/* bytes of one Drum map's entry in the row names section, from its module index at p[at] (engine.h eng_names_end), 0 if
+ * it runs past len or is malformed */
+static uint32_t names_entry(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    uint32_t n = 2u, r;
+    if (p[1] < ENG_SLIM)
+        return at + 1u + ENG_DRUM_ROWS * ENG_DRUM_NAME <= len ? 1u + ENG_DRUM_ROWS * ENG_DRUM_NAME : 0;
+    if (at + n > len)
+        return 0;
+    for (r = 0; r < ENG_DRUM_ROWS; r++)
+        if (p[at + 1u] >> r & 1u) {
+            if (at + n >= len || p[at + n] > ENG_DRUM_NAME)
+                return 0;
+            n += 1u + p[at + n];
+        }
+    return at + n <= len ? n : 0;
+}
+uint32_t eng_names_end(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    uint32_t n, i, e;
+    if (at >= len)
+        return 0;
+    n = p[at++];
+    for (i = 0; i < n; i++, at += e)
+        if (!(e = names_entry(p, len, at)))
+            return 0;
+    return at;
+}
 /* where the Drum maps' row names section of a patch binary starts (flag bit 7), 0 none or malformed */
 static uint32_t names_at(const uint8_t *p, uint32_t len)
 {
@@ -5804,20 +5898,30 @@ static uint32_t names_at(const uint8_t *p, uint32_t len)
 }
 int eng_drum_name(const uint8_t *p, uint32_t len, uint32_t module, uint32_t r, char *out)
 {
-    uint32_t at = names_at(p, len), n, i, c;
+    uint32_t at = names_at(p, len), n, i, c, k, w = ENG_DRUM_NAME;
+    const uint8_t *s;
     out[0] = 0;
     if (!at || r >= ENG_DRUM_ROWS)
         return 0;
     n = p[at++];
-    for (i = 0; i < n; i++, at += 1u + ENG_DRUM_ROWS * ENG_DRUM_NAME)
-        if (p[at] == module) {
-            const uint8_t *s = p + at + 1u + r * ENG_DRUM_NAME;
-            for (c = 0; c < ENG_DRUM_NAME && s[c]; c++)
-                out[c] = (char)s[c];
-            out[c] = 0;
-            return c > 0;
-        }
-    return 0;
+    for (i = 0; i < n && p[at] != module; i++)
+        at += names_entry(p, len, at);
+    if (i == n)
+        return 0;
+    if (p[1] < ENG_SLIM)
+        s = p + at + 1u + r * ENG_DRUM_NAME;
+    else if (!(p[at + 1u] >> r & 1u))            /* (format 64: a row it does not name has its default name) */
+        s = (const uint8_t *)DRUM_ROW_NAME[r];
+    else {
+        for (s = p + at + 2u, k = 0; k < r; k++)
+            if (p[at + 1u] >> k & 1u)
+                s += 1u + s[0];
+        w = *s++;
+    }
+    for (c = 0; c < w && s[c]; c++)
+        out[c] = (char)s[c];
+    out[c] = 0;
+    return c > 0;
 }
 int eng_steps_drummap(uint32_t module)
 {
