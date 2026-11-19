@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Quick patch: a cable you pick up no longer looks as if it goes back into its own card.** When you pick up a cable, the card's ring folds away into one plug beside the field, the jack flashing once, and the middle of the menu becomes an empty socket that asks where to?. The list shows the cards the cable could go to; type one, or choose it with ↓ and Enter, and only then does its ring grow out of the socket, with the plug beside the half it goes into. On the canvas, the card the menu is on and the jack the cable comes from glow once and then stay lit, and the card or jack chosen in the list gets a thin outline. Enter with nothing typed no longer jumps to a card nobody named, a new module in the list now reads New Multimode filter beside the Multimode filter already in the patch, Enter on a jack that already has that cable says so instead of doing nothing, and dragging the canvas with the right mouse button no longer sends your typing to the note keys (#1091).
+- **Typing envelope finds the envelopes, the ADSR first.** In Quick patch, `envelope` (or `eg`) lists the ADSR first, then the Level/rate envelope, the Eight-step envelope and Rate Env, and a word typed whole that is a word of a module's name or search words ranks above a part of one. The command palette's add module finds all four by envelope too (#1114).
 
 ## 1.21.0 — 2026-11-19
 
