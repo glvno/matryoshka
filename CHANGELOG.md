@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Every patch leaves the FM-1 a little more room.** The FM-1 now does less bookkeeping for each module of a patch every block: it works out when the patch loads which inputs move a module's settings, adds up those inputs four samples at a time, and no longer divides to find which voice a module copy belongs to. The sound is the same, sample for sample. On the test rig, with up to 8 keys held, the polyphonic synths with all their effects on use 1.0 to 4.6 points less of the FM-1's CPU (Hera 6 fx4 82.2 → 79.0 %, Oracle V fx4 81.6 → 78.1 %, Cassia 1 fx4 85.8 → 81.3 %, running), and the factory patches up to 5.8 points less (Algo Four 73.2 → 67.3 %, Hera 6 74.5 → 71.2 %) (#1072).
+
 ## 1.20.2 — 2026-11-18
 
 - **Algo Four plays eight voices and Cassia 1 five on an FM-1 with 1.20.0 firmware, without a firmware update.** The factory sounds update the editor offers now carries both patches, and an FM-1 on 1.20.0 plays them in place of its built-in copies: FACTORY RESET installs Algo Four at eight voices and Cassia 1 at five, and their factory presets then load at the full count (Algo Four's DX100 sounds that choose fewer voices keep them). A saved Algo Four or Cassia 1 slot keeps its patch (six and four voices, presets seven and four) until a FACTORY RESET, or until you send the patch from the editor. On the test rig, on 1.20.0 firmware with this update, with up to 8 keys held and every effect of the patch on, nothing dropped a voice and the busiest steady load was 83.0 % (Cassia 1 Reso Pad with the transport running; the Algo Four patch 79.3 % stopped, 81.7 % running).

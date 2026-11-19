@@ -645,6 +645,9 @@ typedef struct {
     uint8_t bypass;                  /* 1: process() is skipped, the outputs copy the through input (DEFS[].thru) or are silent */
     uint8_t inst0, ninst;            /* its instances in inst_pool[]: one per part of its poly group, else one */
     uint8_t grp;                     /* its poly group (E.grp[]): 0 = it runs once and plays the shared keyboard */
+    uint8_t cvp;                     /* bit s: parameter input s (p1, p2) has a cable and parameters in the matrix (eng_load,
+                                      * for apply_cv; in what was padding, so a node is no larger) */
+    uint16_t side;                   /* bit i: input i has side routes (input_map[i] != 0; eng_load, for apply_cv) */
     uint32_t map[2];                 /* the matrix: bit j of map[s] = source s (p1, p2) controls parameter j */
     uint32_t input_map[MAX_IN];      /* additional side-input destinations, independent of fixed links */
     int32_t att[2];                  /* attenuverters of p1, p2: Q16, -2..2 (patch.ts DEPTH_MAX, #526) */
@@ -2777,9 +2780,17 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.node[mod].ranged[pin] |= 1u << par;
         }
     }
-    /* the instances (their copies were taken with their records): state and effective values */
+    /* the instances (their copies were taken with their records): state and effective values; and which of the node's
+     * inputs apply_cv reads (cvp, side: the cables, the matrix and the side routes are all known by now) */
     for (i = 0; i < E.nmod; i++) {
         node_t *nd = &E.node[i];
+        const def_t *d = &DEFS[nd->type];
+        for (k = 0; k < 2u; k++)
+            if (d->cvbase >= 0 && nd->map[k] && (nd->conn >> (d->cvbase + k) & 1u))
+                nd->cvp |= (uint8_t)(1u << k);
+        for (k = 0; k < d->nin; k++)
+            if (nd->input_map[k])
+                nd->side |= (uint16_t)(1u << k);
         for (k = 0; k < nd->ninst; k++) {
             inst_t *it = &inst_pool[nd->inst0 + k];
             it->eff = par_take(DEFS[nd->type].npar);
@@ -11396,11 +11407,14 @@ static void m_crush(const node_t *nd, inst_t *it, uint32_t n)
  * added (times the range) to the parameters the matrix assigns that input to; clamped when something was added. */
 /* Instances of one module run consecutively. A shared input buffer cannot change between them; a summed input or
  * per-part output has its own buffer. Reuse only the previous rendered instance's means, including after idle skips. */
-static int32_t signal_mean(const esig_t *src, uint32_t n)
+/* (#1072: unrolled and out of line, in the RAM code: a taken branch costs about 7.5 cycles on the FM-1, so the loop at one
+ * sample a pass spent more on its branch than on its sum; inlined, the unrolled loop would copy itself into every caller) */
+static __attribute__((noinline)) int32_t signal_mean(const esig_t *src, uint32_t n)
 {
     int64_t sum = 0;
     uint32_t i;
-    for (i = 0; i < n; i++)          /* (not UNROLL4: unrolled, the compiler stops inlining it, which costs more) */
+    UNROLL4
+    for (i = 0; i < n; i++)
         sum += src[i];
     return block_mean(sum, n);
 }
@@ -11409,38 +11423,34 @@ HOT void apply_cv(const node_t *nd, inst_t *it, uint32_t n, const inst_t *prev, 
 {
     const def_t *d = &DEFS[nd->type];
     int32_t mean[2] = {0, 0}, extra[MAX_IN];   /* extra[s] is read only where input_map[s] set it (no memset per call) */
-    uint32_t j, s, have = 0, side = 0, mapped = 0;   /* side: some input has side routes (input_map) */
+    uint32_t j, s, m, have = nd->cvp, side = nd->side, mapped = 0;   /* (#1072: which inputs to read, from eng_load) */
     const int32_t *par = nd->par, *parb = par + d->npar;   /* (the node's and the instance's slots, kept in registers; PARB) */
     int32_t *eff = it->eff;
     if (ramp[0].left | ramp[1].left | ramp[2].left | ramp[3].left)   /* a knob's click still on its way (#405) */
         par = ramp_base(nd, par, d->npar, IT_LANE(nd, it));
     if (nd->locked)                              /* P-locks (#524) */
         par = lock_base(nd, par, d->npar, IT_LANE(nd, it));
-    if (d->cvbase >= 0)
-        for (s = 0; s < 2u; s++) {
-            const esig_t *cv;
-            uint32_t pin = d->cvbase + s;
-            if (!nd->map[s] || !(nd->conn & (1u << pin)))
-                continue;
-            cv = it->in[pin];
-            if (!prev || cv != prev->in[pin])
-                means[pin] = signal_mean(cv, n);
-            mean[s] = mul16(means[pin], nd->att[s]);
-            have |= 1u << s;
-            mapped |= nd->map[s];
-        }
-    for (s = 0; s < d->nin; s++) if (nd->input_map[s]) {
-        if (!prev || it->in[s] != prev->in[s])
-            means[s] = signal_mean(it->in[s], n);
-        extra[s] = means[s];
-        side = 1;
-        mapped |= nd->input_map[s];
-    }
     /* Most modules have no parameter modulation. Copy their base values without visiting each parameter's routes. */
     if (!have && !side && !(nd->morph && E.morph > 0 && nd->type != T_FM1)) {
+        UNROLL4
         for (j = 0; j < d->npar; j++)
             eff[j] = par[j];
         return;
+    }
+    for (s = 0; s < 2u; s++)
+        if (have >> s & 1u) {                    /* p1 / p2 has a cable and parameters in the matrix */
+            uint32_t pin = d->cvbase + s;
+            const esig_t *cv = it->in[pin];
+            if (!prev || cv != prev->in[pin])
+                means[pin] = signal_mean(cv, n);
+            mean[s] = mul16(means[pin], nd->att[s]);
+            mapped |= nd->map[s];
+        }
+    for (m = side, s = 0; m; m >>= 1, s++) if (m & 1u) {
+        if (!prev || it->in[s] != prev->in[s])
+            means[s] = signal_mean(it->in[s], n);
+        extra[s] = means[s];
+        mapped |= nd->input_map[s];
     }
     for (j = 0; j < d->npar; j++) {
         int32_t v = nd->morph && E.morph > 0 && nd->type != T_FM1 ? morph_of(d, j, par[j], (uint32_t)parb[j], E.morph, nd->over >> j & 1u) : par[j];
@@ -11464,7 +11474,7 @@ HOT void apply_cv(const node_t *nd, inst_t *it, uint32_t n, const inst_t *prev, 
                 mod += mean[s];
                 touched = 1;
             }
-        if (side) for (s = 0; s < d->nin; s++) if (nd->input_map[s] >> j & 1u) {
+        for (m = side, s = 0; m; m >>= 1, s++) if ((m & 1u) && (nd->input_map[s] >> j & 1u)) {
             mod += extra[s];
             touched = 1;
         }
@@ -11489,42 +11499,49 @@ static void flaw_scale(const def_t *d, inst_t *it, uint32_t j, int64_t k_q16)
     if (k_q16 != ENG_ONE)
         it->eff[j] = clampi((int32_t)(((int64_t)it->eff[j] * k_q16) >> 16), d->pmin[j], d->pmax[j]);
 }
-HOT void apply_flaws(const node_t *nd, inst_t *it)
+HOT void apply_flaws(const node_t *nd, inst_t *it, uint32_t v)   /* (v: the part, IT_V(nd, it)) */
 {
     const def_t *d = &DEFS[nd->type];
     const grp_t *g = IT_G(nd);
-    uint32_t v = IT_V(nd, it);
-    int32_t b = g->bright[v], e = g->env[v], l = g->level[v];
-    int64_t ke = ((int64_t)(100 + e) << 16) / 100, kl = ((int64_t)l << 16) / 100;
+    int32_t b = g->bright[v];
+    /* the env and level factors, only for the types that take them. (|100 + env| < 256 and level < 256: in 32 bits these are
+     * the same quotients as in 64, with no 64-bit division; #1072) */
+#define FLAW_ENV ((int64_t)((100 + g->env[v]) * 65536 / 100))
     switch (nd->type) {
     case T_FILTER:
     case T_LADDER:
         if (b)
             flaw_scale(d, it, nd->type == T_FILTER ? FILTER_P_CUTOFF : LADDER_P_CUTOFF, (int64_t)exp2_q16(b * 65536 / 12 + (16 << 16)));
         break;
-    case T_ADSR:
+    case T_ADSR: {
+        int64_t ke = FLAW_ENV;
         flaw_scale(d, it, ADSR_P_A, ke);
         flaw_scale(d, it, ADSR_P_D, ke);
         flaw_scale(d, it, ADSR_P_R, ke);
         break;
-    case T_ENV:
+    }
+    case T_ENV: {
+        int64_t ke = FLAW_ENV;
         flaw_scale(d, it, ENV_P_R1, ke);
         flaw_scale(d, it, ENV_P_R2, ke);
         flaw_scale(d, it, ENV_P_R3, ke);
         flaw_scale(d, it, ENV_P_R4, ke);
         break;
+    }
     case T_ENV8: {
+        int64_t ke = FLAW_ENV;
         uint32_t s;
         for (s = 0; s < 8u; s++)
             flaw_scale(d, it, ENV8_P_R1 + 2u * s, ke);
         break;
     }
     case T_VCA:
-        flaw_scale(d, it, VCA_P_GAIN, kl);
+        flaw_scale(d, it, VCA_P_GAIN, g->level[v] * 65536 / 100);
         break;
     default:
         break;
     }
+#undef FLAW_ENV
 }
 
 /* a bypassed module: every output carries the through input (the definition's `thru`, e.g. the filter's `in`), or silence
@@ -11996,22 +12013,20 @@ static int sum_plain(const sum_t *sm)
     return 1;
 }
 
-/* one copy `it` of module nd for one block of n frames: its input sums, its parameter inputs and its run. prev: the copy of
- * the same module rendered just before it on this core, whose parameter inputs' means are in `means` (apply_cv), else 0.
- * (Not inlined: one copy for both render paths, as the flash has no room for two.) */
-static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, uint32_t n, const inst_t *prev, int32_t *means)
+/* part v of module m (its copy; v 0 for a module that runs once) for one block of n frames: its input sums, its parameter
+ * inputs and its run. prev: the copy of the same module rendered just before it on this core, whose parameter inputs'
+ * means are in `means` (apply_cv), else 0. (The callers know m and v: working them out from the pointers would cost a
+ * division each, #1072.) (Not inlined: one copy for both render paths, as the flash has no room for two.) */
+static __attribute__((noinline)) void render_item(uint32_t m, uint32_t v, uint32_t n, const inst_t *prev, int32_t *means)
 {
-    uint32_t m = (uint32_t)(nd - E.node), s, i, t0 = ENG_ITEM_BEGIN();
-    ENG_PROF(0, m, IT_V(nd, it));
-    for (s = it->sum0; s < (uint32_t)it->sum0 + it->nsum; s++) {
+    const node_t *nd = &E.node[m];
+    inst_t *it = &inst_pool[nd->inst0 + v];
+    uint32_t s, i, t0 = ENG_ITEM_BEGIN();
+    ENG_PROF(0, m, v);
+    for (s = it->sum0; s < (uint32_t)it->sum0 + it->nsum; s++) {   /* (every sum has two sources or more: eng_load) */
         const sum_t *sm = &E.sum[s];
         esig_t *dst = sm->dst;
         uint32_t q;
-        if (!sm->n) {
-            for (i = 0; i < n; i++)
-                dst[i] = 0;
-            continue;
-        }
         if (sm->n >= 3u && sum_plain(sm)) {         /* unweighted (every sum of the factory patches): three or
                                                      * four sources a pass, dst read and written once a pass (#781) */
             const esig_t *const *p = &E.sum_src[sm->first];
@@ -12042,7 +12057,7 @@ static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, 
             }
             continue;
         }
-        if (sm->n >= 2) {                           /* the first two sources in one pass, the rest added */
+        {                                           /* the first two sources in one pass, the rest added */
             const esig_t *a = E.sum_src[sm->first], *b = E.sum_src[sm->first + 1u];
             const int32_t wa = E.sum_w[sm->first], wb = E.sum_w[sm->first + 1u];
             if (!wa && !wb) {
@@ -12057,16 +12072,6 @@ static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, 
                 for (i = 0; i < n; i++)
                     dst[i] = (wa ? mul16(a[i], wa) : a[i]) + (wb ? mul16(b[i], wb) : b[i]);
             q = 2;
-        } else {
-            const esig_t *a = E.sum_src[sm->first];
-            const int32_t w = E.sum_w[sm->first];
-            if (w)
-                for (i = 0; i < n; i++)
-                    dst[i] = mul16(a[i], w);
-            else
-                for (i = 0; i < n; i++)
-                    dst[i] = a[i];
-            q = 1;
         }
         for (; q < sm->n; q++) {
             const esig_t *src = E.sum_src[sm->first + q];
@@ -12082,16 +12087,17 @@ static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, 
             }
         }
     }
-    ENG_PROF(1, m, IT_V(nd, it));
+    ENG_PROF(1, m, v);
     apply_cv(nd, it, n, prev, means);
     if (nd->grp)
-        apply_flaws(nd, it);
-    ENG_PROF(2, m, IT_V(nd, it));
+        apply_flaws(nd, it, v);
+    ENG_PROF(2, m, v);
     if (fx.target[m])
         m_fx(nd, it, n, fx.target[m]);
     else if (nd->bypass)
         m_bypass(nd, it, n);
-    else if (nd->disabled_inputs) {
+    else if (nd->disabled_inputs & nd->side) {   /* a disabled input with side routes: its source, but silence for process
+                                                  * (eng_load gave the other disabled inputs zero_buf already) */
         const esig_t *raw[MAX_IN];
         uint32_t input;
         for (input = 0; input < DEFS[nd->type].nin; input++) {
@@ -12102,7 +12108,7 @@ static __attribute__((noinline)) void render_item(const node_t *nd, inst_t *it, 
         for (input = 0; input < DEFS[nd->type].nin; input++) it->in[input] = raw[input];
     } else
         process(nd, it, n);
-    ENG_PROF(3, m, IT_V(nd, it));
+    ENG_PROF(3, m, v);
     ENG_ITEM_END(nd, it, t0);
 }
 
@@ -12119,11 +12125,10 @@ static void render_mods(uint32_t k0, uint32_t k1, uint32_t n, uint32_t first, ui
         uint32_t ninst = nd->grp && cur_g_parts(nd) < nd->ninst ? cur_g_parts(nd) : nd->ninst;   /* (fewer after an overload: eng_shed) */
         for (v = nd->grp ? first : 0; v < ninst; v += nd->grp ? step : 1) {   /* every part (of a lane) of a module in a
                                                                              * poly group, once for the rest */
-            inst_t *it = &inst_pool[nd->inst0 + v];
             if (nd->grp && E.pv[E.grp[nd->grp].pv0 + v].skip)
                 continue;
-            render_item(nd, it, n, prev, means);
-            prev = it;
+            render_item(E.order[k], v, n, prev, means);
+            prev = &inst_pool[nd->inst0 + v];
         }
         if (nd->type == T_STEPS && E.nlt && first == 0u)   /* its P-locks for the step it is on (#524) */
             locks_step(nd, &inst_pool[nd->inst0]);
@@ -12448,8 +12453,7 @@ static void sched_build(void)
 static struct { volatile uint32_t done; uint32_t pad[15]; } sch_prog[2] ENG_NOINIT __attribute__((aligned(64)));
 static uint8_t sch_gone;                 /* core 0 renders lane 1's items itself: the second core was given up this block */
 typedef struct { const node_t *nd; const inst_t *it; int32_t means[MAX_IN]; } sch_ctx_t;   /* a core's last copy (prev) */
-#define SCH_NODE(x) (&E.node[(x) >> 3 & 0x7Fu])                       /* an item's module and copy (sched_t it[]) */
-#define SCH_INST(x) (&inst_pool[SCH_NODE(x)->inst0 + ((x) & 7u)])
+#define SCH_NODE(x) (&E.node[(x) >> 3 & 0x7Fu])                       /* an item's module (sched_t it[]; its part: x & 7) */
 /* D-1103: does m_reverb run this block, with nothing cleared before it? Not when the Reverb is bypassed or an off master
  * FX stage at rest (m_fx); not when a pending clear comes first (m_fx clears, then m_reverb runs the kernel itself) */
 static int reverb_early(uint32_t m)
@@ -12465,11 +12469,12 @@ static int reverb_early(uint32_t m)
 /* item `slot` (a place in sch.it), unless its part is shed or idle this block; part 1 of a Reverb: its kernel */
 static void sch_item(uint32_t slot, uint32_t n, sch_ctx_t *c)
 {
-    const node_t *nd = SCH_NODE(sch.it[slot]);
-    inst_t *it;
-    if ((sch.it[slot] & 7u) && nd->type == T_REVERB) {
+    uint32_t x = sch.it[slot], m = x >> 3 & 0x7Fu, v = x & 7u;   /* (SCH_NODE, SCH_INST) */
+    const node_t *nd = &E.node[m];
+    inst_t *it = &inst_pool[nd->inst0 + v];
+    if (v && nd->type == T_REVERB) {
         it = &inst_pool[nd->inst0];
-        if (reverb_early((uint32_t)(nd - E.node))) {
+        if (reverb_early(m)) {
             uint32_t t0 = ENG_ITEM_BEGIN();
             reverb_kernel(it, n);
             it->s.rev.kdone = 1;
@@ -12477,10 +12482,9 @@ static void sch_item(uint32_t slot, uint32_t n, sch_ctx_t *c)
         }
         return;
     }
-    it = SCH_INST(sch.it[slot]);
-    if (nd->grp && (IT_V(nd, it) >= cur_g_parts(nd) || IT_PV(nd, it)->skip))
+    if (nd->grp && (v >= cur_g_parts(nd) || E.pv[E.grp[nd->grp].pv0 + v].skip))
         return;
-    render_item(nd, it, n, c->nd == nd ? c->it : 0, c->means);
+    render_item(m, v, n, c->nd == nd ? c->it : 0, c->means);
     c->nd = nd;
     c->it = it;
     if (nd->type == T_STEPS && E.nlt)            /* its P-locks for the step it is on (#524) */
