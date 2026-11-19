@@ -12771,6 +12771,13 @@ ENG_RARE void click_block(int32_t click_at, int32_t accent, uint32_t n, uint32_t
     if (click_k >= len)
         click_k = -1;
 }
+/* clampi(v, -ENG_ONE, ENG_ONE) as a min then a max, which the FM-1's core does with its smin / smax instead of two
+ * conditional moves (the same value: -ENG_ONE < ENG_ONE) */
+HOT int32_t clamp_one(int32_t v)
+{
+    v = v < ENG_ONE ? v : ENG_ONE;
+    return v > -ENG_ONE ? v : -ENG_ONE;
+}
 /* the Output modules' sum into one block of n frames, clamped: the first Output writes the block, the others add to it,
  * the last clamps it (one pass with one Output; the same sums and clamp as adding them all to zeros, then clamping) */
 static __attribute__((noinline)) void out_block(int32_t *left, int32_t *right, uint32_t n)
@@ -12788,13 +12795,13 @@ static __attribute__((noinline)) void out_block(int32_t *left, int32_t *right, u
         const esig_t *l = it->in[OUTPUT_I_L], *r = (o->conn & (1u << OUTPUT_I_R)) ? it->in[OUTPUT_I_R] : it->in[OUTPUT_I_L];
         if (k == last && !k)
             for (i = 0; i < n; i++) {
-                left[i] = clampi(mul16(l[i], lvl), -ENG_ONE, ENG_ONE);
-                right[i] = clampi(mul16(r[i], lvl), -ENG_ONE, ENG_ONE);
+                left[i] = clamp_one(mul16(l[i], lvl));
+                right[i] = clamp_one(mul16(r[i], lvl));
             }
         else if (k == last)
             for (i = 0; i < n; i++) {
-                left[i] = clampi(left[i] + mul16(l[i], lvl), -ENG_ONE, ENG_ONE);
-                right[i] = clampi(right[i] + mul16(r[i], lvl), -ENG_ONE, ENG_ONE);
+                left[i] = clamp_one(left[i] + mul16(l[i], lvl));
+                right[i] = clamp_one(right[i] + mul16(r[i], lvl));
             }
         else if (!k)
             for (i = 0; i < n; i++) {
