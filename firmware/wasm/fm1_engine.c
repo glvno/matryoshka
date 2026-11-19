@@ -117,7 +117,7 @@ WASM_EXPORT("fm1e_chord") void fm1e_chord(uint32_t b, uint32_t down, int32_t tra
 
 /* the transport and the clock */
 WASM_EXPORT("fm1e_transport") void fm1e_transport(uint32_t on) { eng_transport((int)on); }
-WASM_EXPORT("fm1e_transport_top") void fm1e_transport_top(void) { eng_transport_top(); }   /* MIDI Start (#870) */
+WASM_EXPORT("fm1e_transport_at") void fm1e_transport_at(uint32_t ticks, uint32_t wait) { eng_transport_at(ticks, (int)wait); }   /* MIDI Start, Continue after a Song Position (#870, #596) */
 WASM_EXPORT("fm1e_running") uint32_t fm1e_running(void) { return (uint32_t)eng_transport_running(); }
 WASM_EXPORT("fm1e_once") void fm1e_once(void) { eng_play_once(); }
 WASM_EXPORT("fm1e_count_in") void fm1e_count_in(uint32_t bars) { eng_count_in(eng_ticks(), bars); }

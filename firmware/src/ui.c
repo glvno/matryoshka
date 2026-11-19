@@ -36,14 +36,15 @@ static void sandbox_bar(void);
 /* the settings' rows (menu.c; the menu's MIDI, PANEL and SYSTEM tabs show them as pages: pages_ui.c menu_tab_page) */
 #include "device_identity.h"
 enum { MR_LEDS, MR_ACCEL, MR_CIN, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_TEMPO,
-       MR_CLKOUT, MR_OUTPUT, MR_CORES, MR_EDITOR, MR_OUT35, MR_USB_RETURN, MR_DEVICE_NAME, MR_METER, MR_COUNT };
+       MR_CLKOUT, MR_OUTPUT, MR_CORES, MR_EDITOR, MR_OUT35, MR_USB_RETURN, MR_DEVICE_NAME, MR_METER, MR_TIN, MR_TOUT, MR_COUNT };
 /* the menu's tabs (menu.c, #395): MIDI, PANEL and SYSTEM are pages of settings on K1..K4, INFO a list of readings, GUIDE a text
  * (the ideas behind the controls, D-248) */
 enum { MT_MIDI, MT_PANEL, MT_SYSTEM, MT_INFO, MT_GUIDE, MT_COUNT };
 static uint8_t menu_tab;
-static uint8_t menu_page2;                      /* the tab on its second page (ALGO steps PANEL 1/2, 2/2: TIME SIG, #1011; SYSTEM
-                                                 * 1/2, 2/2: EDITOR, #702, 3.5MM OUT, #631); 0 on a tab with one page */
-static int menu_two(uint32_t t) { return t == MT_PANEL || t == MT_SYSTEM; }   /* the tabs with two pages */
+static uint8_t menu_page2;                      /* the tab on its second page (ALGO steps MIDI 1/2, 2/2: TRANSPORT IN and OUT,
+                                                 * #596; PANEL 1/2, 2/2: TIME SIG, #1011; SYSTEM 1/2, 2/2: EDITOR, #702, 3.5MM
+                                                 * OUT, #631); 0 on a tab with one page */
+static int menu_two(uint32_t t) { return t <= MT_SYSTEM; }   /* the tabs with two pages: MIDI, PANEL, SYSTEM */
 static int menu_page(void) { return page == PAGE_MENU && menu_tab <= MT_SYSTEM; }   /* the menu on a tab drawn as a device page */
 /* the settings of the menu (menu.c); saved with the state (SAVE) */
 static struct {
@@ -51,19 +52,22 @@ static struct {
     uint8_t cpu_bar;                    /* the CPU load in the top bar */
     uint8_t accel;                      /* a knob turned fast steps 5 times as far */
     uint8_t ch;                         /* the MIDI channel: 1..16, 0 all (omni); MIDI out goes on it (omni: channel 1) */
-    uint8_t clock_in;                   /* MIDI clock drives the clock output */
+    uint8_t clock_in;                   /* MIDI clock in drives the clock (CLOCK IN) */
     uint8_t prog_chg;                   /* MIDI program change loads a preset */
-    uint8_t midi_out;                   /* the keys, knobs and patch buttons go out over USB MIDI */
+    uint8_t midi_out;                   /* the keys, knobs and patch buttons go out over USB MIDI (MIDI OUT) */
     uint8_t count_in;                   /* REC waits this many bars before it records (#414): 0 off, 1, 2 */
     uint8_t quick;                      /* the quick start shows after power-on (help_ui.c, D-247) */
-    uint8_t clock_out;                  /* MIDI clock goes out with MIDI OUT (clock_out.h, #473) */
+    uint8_t clock_out;                  /* MIDI clock goes out (CLOCK OUT, clock_out.h, #473) */
     uint8_t editor_ignore;              /* GLO > SYSTEM > EDITOR at IGNORE (#702): INFO says so and the editor leaves this FM-1
                                          * alone; the firmware itself refuses nothing (proto.c) */
-} cfg = {2, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0};
+    uint8_t transport_in;               /* MIDI Start, Continue, Stop and Song Position are followed (TRANSPORT IN, #596) */
+    uint8_t transport_out;              /* PLAY's Start, Continue, Stop and Song Position go out (TRANSPORT OUT, #596) */
+} cfg = {2, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1};
 static uint8_t editor_info_due;         /* EDITOR changed (menu.c): INFO goes to an editor that said HELLO (main.c editor_poll, #702) */
 static void cfg_defaults(void)
 {
     cfg.cpu_bar = cfg.accel = cfg.clock_in = cfg.prog_chg = cfg.midi_out = cfg.clock_out = 1;
+    cfg.transport_in = cfg.transport_out = 1;
     cfg.leds = 2;
     cfg.ch = 0;
     cfg.count_in = 0;

@@ -27,7 +27,7 @@ interface Exports {
   fm1e_button(b: number, on: number): void;
   fm1e_chord(b: number, down: number, track: number): void;
   fm1e_transport(on: number): void;
-  fm1e_transport_top(): void;
+  fm1e_transport_at(ticks: number, wait: number): void;
   fm1e_running(): number;
   fm1e_once(): void;
   fm1e_count_in(bars: number): void;
@@ -133,7 +133,7 @@ export class Fm1Engine {
       case 'chord': x.fm1e_chord(m.button, m.down ? 1 : 0, m.track ?? -1); break;
       case 'panic': x.fm1e_panic(); break;
       case 'transport': x.fm1e_transport(m.on ? 1 : 0); break;
-      case 'clockrun': if (m.top) x.fm1e_transport_top(); else x.fm1e_transport(m.on ? 1 : 0); break;
+      case 'clockrun': if (m.top) x.fm1e_transport_at(m.at ?? 0, 1); else x.fm1e_transport(m.on ? 1 : 0); break;
       case 'once': x.fm1e_once(); break;
       case 'cin': x.fm1e_count_in(m.bars); break;
       case 'tempo': x.fm1e_tempo(m.bpm === null ? 0 : Math.round(m.bpm)); break;

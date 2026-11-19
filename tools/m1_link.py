@@ -605,7 +605,8 @@ def main():
             return [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range(8)]
         def show(w):
             print(f"clock out: {w[0]} ticks sent, {w[1]} dropped (host not reading), {w[2]} waiting for their time, "
-                  f"USB MIDI ring {w[3]}; CLOCK OUT {'on' if w[4] else 'off'}, MIDI OUT {'on' if w[5] else 'off'}, "
+                  f"USB MIDI ring {w[3]}; CLOCK OUT {'on' if w[4] else 'off'}, TRANSPORT OUT {'on' if w[5] else 'off'} "
+                  f"(MIDI OUT before #596), "
                   f"clock in {'drives' if w[6] else 'idle'}, transport {'runs' if w[7] else 'stopped'}")
         w0, l0 = page(116), page(117)
         show(w0)

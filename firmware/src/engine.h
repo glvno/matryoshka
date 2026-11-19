@@ -621,11 +621,15 @@ void eng_all_notes_off(void);
  * output pulses once per block that saw a tick while the transport runs. Arpeggiators step on the clock either way. On MIDI
  * clock the transport starts on a tick, tick 0, which steps nothing on: the host's first clock after its Start (#870).
  * eng_transport_top (MIDI Start): the transport from the top, running or not; a start while it runs is a block stopped and
- * a start, and the first MIDI tick after it is tick 0 even when MIDI clock does not drive the clock yet */
+ * a start, and the first MIDI tick after it is tick 0 even when MIDI clock does not drive the clock yet.
+ * eng_transport_at (Song Position + Continue, #596): the same start, `ticks` clock ticks into the song: every Steps track
+ * clocked by the transport takes its steps up to there without a sound, and the step on that tick (if one falls there)
+ * is the start's; `wait`: up to 150 ms for a first MIDI tick when no MIDI clock drives yet (eng_transport_top waits) */
 void eng_clock_tick(void);
 void eng_clock_external(int on);
 void eng_transport(int on);
 void eng_transport_top(void);
+void eng_transport_at(uint32_t ticks, int wait);
 int eng_transport_running(void);
 /* Play once (#632; engine.ts playOnce): the transport stops, one bar of the meter (eng_meter) is counted in on the clock with a click
  * on each beat (not in eng_render's output: eng_click_mix adds it, D-820), then the transport starts and each Steps track
@@ -726,6 +730,7 @@ void eng_song_set(uint32_t n);
 int eng_song(void);                                  /* the song playing (0 none) */
 int eng_song_entry(uint32_t module);                 /* the entry a track plays in the song, -1 none yet */
 int eng_song_len(uint32_t s);                        /* song s's entries (0-based s) */
+int eng_song_ticks(uint32_t module, uint32_t s, uint32_t k);   /* clock ticks from song s's top to its entry k on a track, -1 none */
 int eng_song_get(uint32_t s, uint32_t k);            /* entry k: pattern | (shift & 0xFF) << 8, -1 none */
 int eng_song_put(uint32_t s, uint32_t k, uint32_t pat, int32_t shift);   /* entry k set (k = its length: appended); 0 = done */
 int eng_song_insert(uint32_t s, uint32_t k);         /* a copy of entry k before it; 0 = done */

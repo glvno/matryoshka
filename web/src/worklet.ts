@@ -67,8 +67,9 @@ export type HostMsg =
   | { t: 'entry'; id: number; token: number; note: number; vel: number; down: boolean; ch?: number; root?: boolean }
   | { t: 'chord'; button: number; down: boolean; track?: number }
   | { t: 'clock' }
-  /** MIDI Start / Continue / Stop; top: from the top (Start, or Continue after Song Position 0: input.ts, #870) */
-  | { t: 'clockrun'; on: boolean; top?: boolean }
+  /** MIDI Start / Continue / Stop; top: from the top (Start), or `at` clock ticks into the song (Continue after a Song
+   * Position: input.ts, #870, #596) */
+  | { t: 'clockrun'; on: boolean; top?: boolean; at?: number }
   | { t: 'bend'; v: number }
   | { t: 'cc'; n: number; v: number }
   /** a test phrase (#945, phrases.ts) played into the keys, block-exact; another replaces it, null stops it */
@@ -237,7 +238,7 @@ class ModularProcessor extends AudioWorkletProcessor {
           this.sinceClock = 0;
           this.engine.clockTick();
         } else if (m.t === 'clockrun') {              // MIDI Start / Continue / Stop
-          if (m.top) this.engine.transportTop();
+          if (m.top) this.engine.transportTop(m.at ?? 0);
           else this.engine.transport(m.on);
         }
         else if (m.t === 'bend') this.engine.bend(m.v);

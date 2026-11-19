@@ -2147,6 +2147,17 @@ static int song_playing(void)
     int mod = seq_module();
     return mod >= 0 && eng_song() == song_sel + 1 && eng_transport_running() ? eng_song_entry((uint32_t)mod) : -1;
 }
+/* PLAY on the SONG page (#596, panel.c play_toggle): where the start plays from, as the Song Position it sends (sixteenths
+ * from the song's top, at most 16383): the cursor's entry's start on the selected track, while the song shown is the one
+ * that plays (K4) and the cursor is on an entry after the first; else 0, the top (Start) */
+static uint32_t song_play_spp(void)
+{
+    int mod = seq_module(), t;
+    if (page != PAGE_SONG || mod < 0 || eng_song() != song_sel + 1 || !song_cur || song_cur >= song_len())
+        return 0;
+    t = eng_song_ticks((uint32_t)mod, song_sel, song_cur);
+    return t <= 0 ? 0u : (uint32_t)t / 6u < 16383u ? (uint32_t)t / 6u : 16383u;
+}
 /* the page about to open (panel.c, SEL tapped on the SEQ page): the song playing, else the last one shown */
 static void song_prep(void)
 {

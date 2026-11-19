@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 glvno */
-/* MIDI clock out (#473, firmware/src/clock_out.h) on the host: the engine renders half buffers as the audio ISR does, the
- * 2 kHz timer hands the bytes on, and the test counts and times the ticks against the tempo: several tempos, a tempo
- * change mid-run, the global tempo against the patch's, Start / Stop with PLAY, MIDI clock in (no clock out while it
- * drives, the FM-1's own again after its timeout), CLOCK OUT off, MIDI OUT off, a host that stops reading.
+/* MIDI clock out and transport out (#473, #596, firmware/src/clock_out.h) on the host: the engine renders half buffers as
+ * the audio ISR does, the 2 kHz timer hands the messages on, and the test counts and times the ticks against the tempo:
+ * several tempos, a tempo change mid-run, the global tempo against the patch's, Start / Stop with PLAY, Song Position +
+ * Continue with PLAY from a SONG page entry, MIDI clock in (no clock out while it drives, the FM-1's own again after its
+ * timeout), CLOCK OUT off, TRANSPORT OUT off, MIDI OUT off (none of it changes), a host that stops reading.
  *   tools/clock_out_test.sh */
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,8 +16,8 @@
 #define FM1_TICKS_PER_US 24u
 #define HALF 128u
 static struct {
-    uint8_t midi_out, clock_out;
-} cfg = {1, 1};
+    uint8_t midi_out, clock_out, transport_out;
+} cfg = {1, 1, 1};
 
 /* usb.c's MIDI out ring: a host that reads (`reading`) takes every packet at once; the log keeps each byte and its time */
 #define MQ 64u
@@ -25,7 +26,7 @@ static int reading = 1;
 static uint32_t now_t;                              /* the simulated TIMER4 (24 MHz) */
 #define LOGN 200000
 static uint8_t log_b[LOGN];
-static uint32_t log_t[LOGN];
+static uint32_t log_t[LOGN], log_p[LOGN];          /* (the status byte, its time, the whole USB MIDI packet) */
 static int log_n;
 static void midi_out_event(uint32_t pkt)
 {
@@ -34,6 +35,7 @@ static void midi_out_event(uint32_t pkt)
     if (log_n < LOGN) {
         log_b[log_n] = (uint8_t)(pkt >> 8);
         log_t[log_n] = now_t;
+        log_p[log_n] = pkt;
         log_n++;
     }
 }
@@ -138,7 +140,7 @@ static void set_tempo(uint32_t bpm) { eng_set_param((uint32_t)eng_find(T_FM1), F
 /* PLAY as panel.c play_toggle does it: the request, then the transport */
 static void play(int run)
 {
-    clk_out_play(run ? 0xFAu : 0xFCu);
+    clk_out_play(run ? 0xFAu : 0xFCu, 0u);
     eng_transport(run);
 }
 
@@ -218,9 +220,25 @@ int main(void)
     play_ms(1000);
     check("PLAY again: one Stop, and the clock goes on", count(at, 0xFCu) == 1 && count(at, 0xFAu) == 0
           && abs(count(at, 0xF8u) - 48) <= 1);
+    at = log_n;                                     /* PLAY from a SONG page entry (#596): Song Position, Continue, tick 0 */
+    {
+        int f2, fb;
+        clk_out_play(0xFBu, 300u);                  /* (a position past 127: both data bytes) */
+        eng_transport_at(300u * 6u, 0);
+        play_ms(1000);
+        f2 = first(at, 0xF2u);
+        fb = f2 >= 0 ? first(f2, 0xFBu) : -1;
+        check("PLAY from a song entry: Song Position 300 (44, 2), Continue and its tick 0 leave together; no Start",
+              f2 >= 0 && fb == f2 + 1 && log_b[fb + 1] == 0xF8u && log_t[f2] == log_t[fb] && log_t[fb] == log_t[fb + 1]
+              && log_p[f2] == (0x03u | 0xF2u << 8 | 44u << 16 | 2u << 24) && count(at, 0xFAu) == 0);
+        snprintf(what, sizeof what, "  the run ticks count from the position: tick 1800 is the Continue's tick 0 (%d after 1 s)", eng_run_ticks());
+        check(what, eng_run_ticks() >= 1800 + 47 && eng_run_ticks() <= 1800 + 49);
+        play(0);
+        play_ms(200);
+    }
 
     at = log_n;                                     /* the ISR before the transport: the Start still goes out with the edge */
-    clk_out_play(0xFAu);
+    clk_out_play(0xFAu, 0u);
     play_ms(3);
     eng_transport(1);
     play_ms(500);
@@ -248,14 +266,31 @@ int main(void)
     play_ms(100);
     check("CLOCK OUT off: no ticks; Start and Stop still go out", count(at, 0xF8u) == 0 && count(at, 0xFAu) == 1 && count(at, 0xFCu) == 1);
     cfg.clock_out = 1;
-    cfg.midi_out = 0;                               /* MIDI OUT off: nothing */
+    cfg.transport_out = 0;                          /* TRANSPORT OUT off (#596): the clock, no Start / Continue / Stop */
     at = log_n;
+    play_ms(500);
+    play(1);
+    play_ms(500);
+    play(0);
+    clk_out_play(0xFBu, 4u);
+    eng_transport_at(24u, 0);
+    play_ms(300);
+    play(0);
+    play_ms(100);
+    snprintf(what, sizeof what, "TRANSPORT OUT off: the clock goes on (%d ticks in 1.4 s, each start's tick 0 too), no Start, "
+             "Continue, Song Position or Stop", count(at, 0xF8u));
+    check(what, count(at, 0xF8u) >= 66 && count(at, 0xF8u) <= 70 && count(at, 0xFAu) == 0 && count(at, 0xFCu) == 0
+          && count(at, 0xFBu) == 0 && count(at, 0xF2u) == 0);
+    cfg.transport_out = 1;
+    cfg.midi_out = 0;                               /* MIDI OUT off: the panel's controls only (#596), clock and Start / */
+    at = log_n;                                     /* Stop go on */
     play_ms(1000);
     play(1);
     play_ms(500);
     play(0);
     play_ms(100);
-    check("MIDI OUT off: nothing goes out, the clock included", log_n == at);
+    check("MIDI OUT off: the clock, Start and Stop still go out (#596)", abs(count(at, 0xF8u) - 77) <= 2 && count(at, 0xFAu) == 1
+          && count(at, 0xFCu) == 1);
     cfg.midi_out = 1;
 
     {                                               /* play once (#632): the engine starts and stops the transport itself */
@@ -313,10 +348,14 @@ int main(void)
     play_ms(1000);
     check("it reads again: the clock goes on at once", abs(count(at, 0xF8u) - 48) <= 1);
 
-    check("the settings record: a record from before reads CLOCK OUT as ON", co_set_clock_out(0u) && co_set_clock_out(1u));
-    check("  OFF is bit 1 of byte 6, and CLOCK IN stays bit 0 for older firmware (d[6] & 1)",
-          co_set_byte(1u, 0u) == 3u && !co_set_clock_out(co_set_byte(1u, 0u)) && (co_set_byte(0u, 0u) & 1u) == 0u
-          && (co_set_byte(1u, 1u) & 1u) == 1u && co_set_clock_out(co_set_byte(0u, 1u)));
+    check("the settings record: a record from before reads CLOCK OUT, TRANSPORT IN and TRANSPORT OUT as ON",
+          co_set_clock_out(0u) && co_set_clock_out(1u) && co_set_transport_in(0u) && co_set_transport_out(0u)
+          && co_set_transport_in(5u) && co_set_transport_out(5u));
+    check("  OFF is bit 1 (CLOCK OUT), 3 (TRANSPORT OUT), 4 (TRANSPORT IN) of byte 6; CLOCK IN stays bit 0 for older firmware",
+          co_set_byte(1u, 0u, 1u, 1u) == 3u && !co_set_clock_out(co_set_byte(1u, 0u, 1u, 1u)) && (co_set_byte(0u, 0u, 0u, 0u) & 1u) == 0u
+          && (co_set_byte(1u, 1u, 0u, 0u) & 1u) == 1u && co_set_clock_out(co_set_byte(0u, 1u, 0u, 0u))
+          && co_set_byte(0u, 1u, 1u, 0u) == 8u && co_set_byte(0u, 1u, 0u, 1u) == 16u && !co_set_transport_out(8u)
+          && co_set_transport_in(8u) && !co_set_transport_in(16u) && co_set_transport_out(16u) && (co_set_byte(1u, 1u, 0u, 0u) & 4u) == 0u);
 
     printf(fails ? "%d FAILED\n" : "all passed\n", fails);
     return fails != 0;

@@ -246,11 +246,13 @@ export class Engine {
   /** the transport as the last block had it, and the ticks when it last started (engine.c E.run_ticks) */
   private ran = false;
   private runTicks = 0;
-  /** MIDI Start (transportTop, #870; engine.c top_gen, top_wait, tick0): the next block starts the transport from the top,
-   * on the next MIDI tick, waiting for one up to `topWait` samples more when no MIDI clock drives yet (TOP_WAIT, then on the
-   * tempo); tick0: this block's start is on a MIDI tick, tick 0, which steps nothing on */
-  private top = false;
+  /** MIDI Start (transportTop, #870) and Continue after a Song Position (#596; engine.c top_gen, top_wait, top_ff, tick0):
+   * the next block starts the transport `at` clock ticks into the song (0: the top), on the next MIDI tick, waiting for one
+   * up to `topWait` samples more when no MIDI clock drives yet and the request asked (`wait`: TOP_WAIT, then on the tempo);
+   * topFf: where the start lands, waiting for it; tick0: this block's start is on a MIDI tick, tick 0, which steps nothing on */
+  private top: { at: number; wait: boolean } | null = null;
   private topWait = 0;
+  private topFf = 0;
   private tick0 = false;
   /** the FM-1's patch buttons (bit i = PANEL_BUTTONS[i]): held, or switched on */
   private buttons = 0;
@@ -1329,11 +1331,13 @@ export class Engine {
     if (!on) this.countIn(0); // (a stop ends REC's count-in click, asked for or counting)
   }
 
-  /** MIDI Start (#870; engine.c eng_transport_top): the transport from the top. Running, it stops for a block and starts
-   * again; the first MIDI tick after it is tick 0 even when MIDI clock does not drive the clock yet */
-  transportTop(): void {
+  /** MIDI Start (#870; engine.c eng_transport_top, eng_transport_at): the transport from the top, or `at` clock ticks into
+   * the song (Song Position + Continue, #596: every Steps track takes its steps up to there without a sound, stepsFf).
+   * Running, it stops for a block and starts again; the first MIDI tick after it is tick 0 even when MIDI clock does not
+   * drive the clock yet (`wait`: up to TOP_WAIT for one) */
+  transportTop(at = 0, wait = true): void {
     this.transport(true);
-    this.top = true;
+    this.top = { at, wait };
   }
 
   /** REC's count-in click (D-803; engine.c eng_count_in, the same): a click on each beat of `bars` bars from the transport's
@@ -1746,11 +1750,12 @@ export class Engine {
       if (this.once === 1 && this.cin >= bar) this.onceStart();
       // the transport this block (engine.c the same, #870): MIDI Start (transportTop) running stops it for a block, its MIDI
       // ticks held for the start; it starts on a MIDI tick, tick 0 (after a MIDI Start with no clock yet, up to TOP_WAIT)
-      let run = this.running, held = false;
-      if (!run) this.topWait = 0;
+      let run = this.running, held = false, ff = 0;
+      if (!run) (this.topWait = 0), (this.topFf = 0);
       if (this.top) {
-        this.top = false;
-        this.topWait = Math.floor(this.sampleRate * TOP_WAIT);
+        this.topWait = this.top.wait ? Math.floor(this.sampleRate * TOP_WAIT) : 0;
+        this.topFf = this.top.at;
+        this.top = null;
         if (this.ran) (run = false), (held = true);
       }
       if (run && !this.ran && (this.ext || this.topWait > 0)) {
@@ -1761,7 +1766,12 @@ export class Engine {
         }
       }
       const start = run && !this.ran, was = this.ticks; // (REC's count-in: the ticks before this block's)
-      if (start) (this.runTicks = this.ticks), (this.tickAcc = 0);
+      if (start) { // (the run ticks count from the song's top: a Song Position lands topFf ticks in, stepsFf)
+        this.runTicks = (this.ticks - this.topFf) >>> 0;
+        this.tickAcc = 0;
+        ff = this.topFf;
+        this.topFf = 0;
+      }
       this.ran = run;
       // the clock: MIDI ticks while external, else the global tempo or the Main module's (bpm x 24 ticks a minute, in whole
       // bpm as the firmware does)
@@ -1862,6 +1872,7 @@ export class Engine {
           x.tickAt = tick;
           x.ticks = nt;
           x.tickSkip = tickSkip;
+          x.ff = ff;
           x.tickLen = tickLen;
           x.run = run;
           x.buttons = this.buttons;

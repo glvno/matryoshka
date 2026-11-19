@@ -27,7 +27,7 @@ static void m1_patch_bypass(uint32_t mod, int on) { (void)mod; (void)on; }
 static void leds_play(void) {}
 static void leds_panel(void) {}
 static void midi_send(uint32_t status, uint32_t d1, uint32_t d2) { (void)status; (void)d1; (void)d2; }
-static void midi_send_rt(uint32_t b) { (void)b; }
+static void midi_send_play(uint32_t b, uint32_t spp) { (void)b; (void)spp; }
 static void m1_info(void) {}
 #include "../src/live.c"
 static int load_at(uint32_t p);

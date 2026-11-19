@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
-import { DEFS, DRUM_MAP_DEFAULT, drumRowsOf, notePlays } from './modules';
+import { DEFS, DRUM_MAP_DEFAULT, drumRowsOf, notePlays, type StepsState } from './modules';
 import { addModule, connect, emptyPatch, modulate, morphValue, stepByte, topOf, validatePatch, type ModuleInst, type Patch } from './patch';
 import { deviceBudget, encodePatch, FLAG_NOTES, recordSize } from './patchbin';
 import { deviceView } from './poly';
@@ -563,5 +563,71 @@ describe('MIDI clock in (#870; firmware/test/clock_in_test.c the same)', () => {
     }
     expect(off).toEqual([]);
     expect(steps).toBeGreaterThanOrEqual(32);
+  });
+});
+
+describe('Song Position (#596; firmware/test/clock_in_test.c the same)', () => {
+  // four tracks of other lengths, rates and directions, each with patterns of their own length (12, 5) and rate (1/64, 1/2)
+  const SHAPES = [{ len: 16, rate: 4, dir: 0 }, { len: 7, rate: 1, dir: 1 }, { len: 12, rate: 3, dir: 2 }, { len: 5, rate: 0, dir: 3 }];
+  const AT = [1, 2, 3, 5, 7, 15, 16, 17, 31, 33, 63, 64, 65, 100, 127, 128, 129, 255, 256, 257, 1000, 4095];
+  function rigSpp(): { e: Engine; tracks: () => StepsState[] } {
+    const p = emptyPatch('spp');
+    const main = addModule(p, DEFS.fm1, 0, 0);
+    main.params.tempo = 120;
+    const out = addModule(p, DEFS.output, 0, 0);
+    for (const sh of SHAPES) {
+      const st = addModule(p, DEFS.steps, 0, 0);
+      Object.assign(st.params, sh);
+      st.notes = [note(0, 1, 60)];
+      st.patterns = [{ notes: [note(1, 1, 62)], len: 12, rate: 8 }, { notes: [note(2, 1, 64)], len: 5 }, { notes: [note(3, 1, 65)], rate: 7 }];
+      connect(p, DEFS, { module: st.id, port: 'trig' }, { module: out.id, port: 'l' });
+    }
+    const e = new Engine(SR);
+    e.load(p);
+    e.setSongs([[0, 1, 1, 2, 0, 3, 2].map((pat, k) => ({ pat, shift: k - 3 }))]);
+    // (the tracks' whole states are private to the engine; the test reads them as clock_in_test.c reads inst_pool)
+    const order = (e as unknown as { order: { type: string; inst: { state: unknown }[] }[] }).order;
+    return { e, tracks: () => order.filter((n) => n.type === 'steps').map((n) => n.inst[0].state as StepsState) };
+  }
+
+  for (const song of [0, 1])
+    it(`lands every track where playing from the top puts it (${song ? 'a song of patterns with their own lengths and rates' : 'the pattern'})`, () => {
+      const { e, tracks } = rigSpp();
+      e.setSong(song);
+      const l = new Float32Array(128), r = new Float32Array(128);
+      const tick = (): void => {
+        e.clockTick(); // one MIDI clock a block, both runs alike
+        e.render(l, r);
+      };
+      const state = (): object[] => tracks().map((s) => ({ pos: s.pos, visit: s.visit, count: s.count, half: s.half, songPos: s.songPos, pat: s.pat, loop: s.loop, pass: s.pass }));
+      const loops0 = (): void => tracks().forEach((s) => (s.loop = 0)); // (the times round count from the start in both runs)
+      e.clockExternal(true);
+      for (let k = 0; k < 4; k++) tick();
+      loops0();
+      e.transportTop(); // Start, then tick 0
+      tick();
+      const want = new Map<number, object[]>();
+      for (let t = 1; t <= 6 * AT[AT.length - 1]; t++) {
+        tick();
+        if (t % 6 === 0 && AT.includes(t / 6)) want.set(t / 6, state());
+      }
+      for (const n of AT) {
+        e.transport(false); // Stop, Song Position n, Continue, its first clock
+        tick();
+        tick();
+        loops0();
+        e.transportTop(6 * n);
+        tick();
+        expect({ n, state: state() }).toEqual({ n, state: want.get(n) });
+      }
+    });
+
+  it('with no MIDI clock (CLOCK IN off) the start lands there at once, on the tempo', () => {
+    const { e, tracks } = rigSpp();
+    const l = new Float32Array(128), r = new Float32Array(128);
+    e.transportTop(6 * 37, false);
+    e.render(l, r);
+    expect(e.transportRunning).toBe(true);
+    expect(tracks()[0].pos).toBe(37 % 16); // (16 steps at 1/16)
   });
 });

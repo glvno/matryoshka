@@ -194,10 +194,13 @@ static void midi_send(uint32_t status, uint32_t d1, uint32_t d2)
     if (cfg.midi_out)
         js_midi(status | (cfg.ch ? cfg.ch - 1u : 0u), d1 & 127u, d2 & 127u);
 }
-static void midi_send_rt(uint32_t b)
+static void midi_send_play(uint32_t b, uint32_t spp)   /* PLAY's Start / Continue after Song Position / Stop (#596) */
 {
-    if (cfg.midi_out)
-        js_midi(b & 0xFFu, 0u, 0u);
+    if (!cfg.transport_out)
+        return;
+    if (b == 0xFBu)
+        js_midi(0xF2u, spp & 127u, spp >> 7 & 127u);
+    js_midi(b & 0xFFu, 0u, 0u);
 }
 static void preset_step(int32_t d) { js_preset(d); }
 static void save_state(void) { js_save(); }

@@ -61,7 +61,8 @@ static uint32_t help_state_sig(void)
 {
     int mod = page == PAGE_SEQ ? seq_module() : -1;
     uint32_t s = help_state(), len = mod >= 0 ? (uint32_t)seq_len(mod) > 16u : 0u;
-    return s | (uint32_t)(pg_cur_dev & 63u) << 4 | (uint32_t)(pg_list_btn >= 0) << 10 | (uint32_t)(menu_page2 ? (menu_tab == MT_SYSTEM ? 7u : 6u) : menu_tab) << 11
+    return s | (uint32_t)(pg_cur_dev & 63u) << 4 | (uint32_t)(pg_list_btn >= 0) << 10
+         | (uint32_t)(menu_page2 ? (menu_tab == MT_SYSTEM ? 7u : menu_tab == MT_PANEL ? 6u : 5u) : menu_tab) << 11
          | (uint32_t)(seq_trk & 15u) << 14 | len << 18 | (uint32_t)(eng_steps_count() > 0) << 19 | (pages_gen() & 0x3FFu) << 20
          | (uint32_t)(!sr_preview) << 30 | (uint32_t)(eng_keys_harm() >= 0) << 31;
 }

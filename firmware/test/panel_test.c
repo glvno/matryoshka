@@ -62,7 +62,12 @@ static void mlog_add(uint32_t s, uint32_t a, uint32_t b)
     midi_out++;
 }
 static void midi_send(uint32_t status, uint32_t d1, uint32_t d2) { mlog_add(status, d1, d2); }
-static void midi_send_rt(uint32_t b) { mlog_add(b, 0xFFu, 0xFFu); }
+static void midi_send_play(uint32_t b, uint32_t spp)   /* (Song Position before a Continue: F2, its two bytes) */
+{
+    if (b == 0xFBu)
+        mlog_add(0xF2u, spp & 127u, spp >> 7 & 127u);
+    mlog_add(b, 0xFFu, 0xFFu);
+}
 /* the log since `from` holds this message */
 static int sent(int from, uint32_t s, uint32_t a, uint32_t b)
 {
@@ -1075,6 +1080,20 @@ int main(void)
         patch_enc(1);
         check("HOME held + PRESET in the menu: the next patch, HOME's release stays in the menu", presets_stepped == stepped + 2 && page == PAGE_MENU);
         presets_stepped = stepped;
+        check("  the header says MIDI 1/2 (#596)", on_screen("MIDI 1/2"));
+        enc(1, 1);
+        check("ALGO: MIDI's second page, TRANSPORT IN on K1, TRANSPORT OUT on K2, both ON as made (#596)", menu_tab == MT_MIDI
+              && menu_page2 && menu_page() && pages_now()->nrows == 2u && pages_now()->par[0] == MR_TIN && pages_now()->par[1] == MR_TOUT
+              && on_screen("MIDI 2/2") && on_screen("TRANSPORT IN") && on_screen("TRANSPORT OUT") && cfg.transport_in && cfg.transport_out);
+        enc(2, -1);
+        check("  K1 left: TRANSPORT IN OFF", cfg.transport_in == 0u && on_screen("OFF"));
+        enc(3, -1);
+        check("  K2 left: TRANSPORT OUT OFF", cfg.transport_out == 0u);
+        cfg_defaults();
+        check("  FACTORY RESET's defaults: both ON", cfg.transport_in == 1u && cfg.transport_out == 1u);
+        enc(1, -1);
+        check("ALGO back: MIDI 1/2", menu_tab == MT_MIDI && !menu_page2 && pages_now()->par[3] == MR_CLKOUT);
+        enc(1, 1);
         enc(1, 1);
         check("ALGO: the PANEL tab (LEDs, knob accel, count-in, tempo)", menu_tab == MT_PANEL && pages_now()->nrows == 4u && pages_now()->par[0] == MR_LEDS && pages_now()->par[2] == MR_CIN && pages_now()->par[3] == MR_TEMPO);
         enc(4, 1);                                          /* K3: COUNT-IN (#414), OFF > 1 BAR > 2 BARS */
@@ -1255,7 +1274,8 @@ int main(void)
         tap(BTN_GLO);
         enc(1, 1);
         enc(1, 1);
-        enc(1, 1);                                          /* (PANEL's two pages, #1011) */
+        enc(1, 1);
+        enc(1, 1);                                          /* (MIDI's and PANEL's two pages, #596, #1011) */
         enc(3, 1);
         check("again: the menu, SYSTEM, FACTORY RESET armed", page == PAGE_MENU && menu_tab == MT_SYSTEM && menu_armed == MR_DEFAULTS);
         later(MENU_ARM_MS + 100u);
@@ -4559,6 +4579,34 @@ int main(void)
                 for (x = 8u; x < 15u; x++)
                     tri += px(x, y) == C_ACC;
             check("  stopped again: no marker, SONG 1 STOPPED", !tri && bar_shows(MSG_SONG "1" MSG_SONG_STOPPED, C_ACC));
+            {                                           /* PLAY from the cursor's entry (#596): Song Position + Continue */
+                int at = mlen = 0, t = eng_song_ticks((uint32_t)mod, 0, 1), f2 = 0, k;   /* (the MIDI log holds 256: empty) */
+                uint32_t spp = t > 0 ? (uint32_t)t / 6u : 0u;
+                enc(0, -1);                             /* (END to entry 02) */
+                tap(BTN_PLAY);
+                for (i = 0; i < 4u; i++)
+                    eng_render(l, r, 128);
+                loop();
+                check("PLAY on entry 02: Song Position (its start: entry 01's pass in sixteenths), then Continue, no Start; the "
+                      "track starts on entry 02, the run ticks from the song's top", spp > 0 && sent(at, 0xF2u, spp & 127u, spp >> 7)
+                      && sent(at, 0xFBu, 0xFFu, 0xFFu) && !sent(at, 0xFAu, 0xFFu, 0xFFu) && eng_transport_running() && song_playing() == 1
+                      && eng_run_ticks() >= (int32_t)(6u * spp));
+                tap(BTN_PLAY);
+                eng_render(l, r, 128);
+                at = mlen;
+                enc(0, -1);                             /* (entry 01) */
+                tap(BTN_PLAY);
+                for (i = 0; i < 4u; i++)
+                    eng_render(l, r, 128);
+                loop();
+                for (k = at; k < mlen; k++)
+                    f2 += mlog[k][0] == 0xF2u;
+                check("  PLAY on entry 01: Start, from the top", sent(at, 0xFAu, 0xFFu, 0xFFu) && !f2 && song_playing() == 0
+                      && eng_run_ticks() < 24);
+                tap(BTN_PLAY);
+                eng_render(l, r, 128);
+                loop();
+            }
             enc(0, -5);
         }
         enc(5, -1);
