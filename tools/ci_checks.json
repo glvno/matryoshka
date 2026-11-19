@@ -177,6 +177,7 @@
     {"name": "Host test clock in (#870)", "paths": ["tools/clock_in_test.sh", "firmware/test/clock_in_test.c"], "host": ["clock-in"], "web": []},
     {"name": "Host test peak", "paths": ["tools/peak_test.sh", "firmware/test/peak_test.c"], "host": ["peak"], "web": []},
     {"name": "Host test audio", "paths": ["tools/audio_out_test.sh", "firmware/test/audio_out_test.c"], "host": ["audio"], "web": []},
+    {"name": "Master EQ (GLO > EQ, #1107, D-938)", "paths": ["firmware/src/master_eq.h", "firmware/src/eq_design.h", "firmware/src/settings_ext.h", "firmware/src/audio.c", "web/src/master-eq.ts", "web/src/master-eq.test.ts"], "host": ["audio", "usb_return", "panel", "golden"], "web": ["web/src/master-eq.test.ts", "web/src/eq.test.ts"]},
     {"name": "Host test frame", "paths": ["tools/frame_test.sh", "firmware/test/frame_test.c"], "host": ["frame"], "web": []},
     {"name": "Host test ota", "paths": ["tools/ota_test.sh", "firmware/test/ota_test.c"], "host": ["ota"], "web": []},
     {"name": "Host test guard", "paths": ["tools/guard_test.sh", "firmware/test/guard_test.c"], "host": ["guard"], "web": []},

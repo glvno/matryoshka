@@ -7,5 +7,5 @@
 set -e
 cd "$(dirname "$0")/.."
 mkdir -p build
-${CC:-cc} -O1 -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -Wno-unused-variable -o build/audio_out_test firmware/test/audio_out_test.c
+${CC:-cc} -O1 -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -Wno-unused-variable -o build/audio_out_test firmware/test/audio_out_test.c -lm
 build/audio_out_test

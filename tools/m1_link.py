@@ -13,6 +13,8 @@
   tools/m1_link.py note 60 [seconds]
   tools/m1_link.py program N              (factory patch N, MIDI program change)
   tools/m1_link.py cpu                    (the audio ISR's load: now, and the peak since the last cpu read)
+  tools/m1_link.py meq [LOW MID HIGH [FREQ]]   (#1107, D-938: the master EQ, GLO > EQ: read it, or set the gains in dB
+                                           (half-dB steps, +-12) and MID FREQ's index (0..38: 100 Hz x 2^(i/6), 20 = 1 kHz))
   tools/m1_link.py uac [SECONDS]          (the USB audio stream: state, glitch counters, rate adjustments, the ring's fill
                                            range; SECONDS: read again after that long and print the changes per second)
   tools/m1_link.py mem                    (#273: the boot's proof of .lowram and how deep each stack has gone since boot)
@@ -502,6 +504,17 @@ def main():
         link.out.send(mido.Message("note_on", note=int(a[1]), velocity=100))
         time.sleep(float(a[2]) if len(a) > 2 else 1.0)
         link.out.send(mido.Message("note_off", note=int(a[1])))
+    elif a[0] == "meq":
+        set_ = []
+        if len(a) > 1:
+            if len(a) not in (4, 5):
+                sys.exit("meq LOW MID HIGH [FREQ]")
+            set_ = [int(round(float(x) * 2)) & 0xFF for x in a[1:4]] + [int(a[4]) if len(a) > 4 else 20]
+        p = link.ask(frame(0x1B, set_), (0x62,))
+        if p[0]:
+            sys.exit("the FM-1 refused that master EQ setting (gains +-12 dB in half-dB steps, MID FREQ 0..38)")
+        db = [((b ^ 0x80) - 0x80) / 2 for b in p[1:4]]
+        print(f"master EQ: LOW {db[0]:+.1f} dB, MID {db[1]:+.1f} dB, HIGH {db[2]:+.1f} dB, MID FREQ {100 * 2 ** (p[4] / 6):.0f} Hz")
     elif a[0] == "cpu":
         p = link.ask(frame(0x2B, [127]), (0x4B, 127))
         w = [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range((len(p) - 1) // 4)]

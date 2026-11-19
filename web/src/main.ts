@@ -4,6 +4,7 @@ import { recordTarget, recordInput } from './step-grid';
 // everything else; then migrate.ts notes which storage keys the page found before anything here writes one
 import './site-move';
 import { openDeviceSettings } from './device-settings';
+import { openMasterEq } from './master-eq';
 import { renderFm1Help } from './controls-help';
 import { ControlsStrip, stripPatch, type StripPatch } from './controls-strip';
 import { addUserPreset, capturePreset, exportPresets, importPresets, migrateUserPresets, nextPresetName, presetsOf } from './device-presets';
@@ -3058,6 +3059,7 @@ $<HTMLSelectElement>('mirror-fw').onchange = () => {
   if (mirror.following) void followFm1((v || undefined) as Firmware | undefined);
 };
 $('dev-settings').onclick = () => void openDeviceSettings($<HTMLDialogElement>('device-settings'), device);
+$('dev-meq').onclick = () => void openMasterEq($<HTMLDialogElement>('master-eq'), device);
 $('dev-send').onclick = () => void sendPatch();
 bindPatchPresetTransfer($<HTMLButtonElement>('dev-presets'), () => editor.patch, device, devStatus, libraryDeviceChanged);
 /** the open patch into slot n of the FM-1's bank, under its name (the device does not switch to it) */

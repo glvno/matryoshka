@@ -127,7 +127,7 @@ export const CONTROLS: ControlRow[] = [
   { id: 'home', gesture: { do: [B('HOME')] }, does: 'back', everywhere: at(5, but('sandbox')), effect: 'back',
     help: 'back one step, on release: on a device page to its device’s first page, then to the patch’s home page (its first device); out of the SEQ, SONG, environment and master FX pages, back where you were. Held alone it does nothing' },
   { id: 'glo', gesture: { do: [B('GLO')] }, does: 'settings', everywhere: at(50, but('menu')), effect: 'menu',
-    help: 'the settings menu, in tabs: MIDI (MIDI channel, clock in, MIDI out, clock out), PANEL (LEDs, knob acceleration, count-in with a click on each beat, TEMPO: GLOBAL or PATCH, with the tempo playing, or EXT while MIDI clock sets it; ALGO again for its second page, TIME SIG: 2/4 .. 12/8, 4/4 as made, the bar that play once and REC count in and the arpeggiator’s bar rates fill), SYSTEM (update mode, factory reset, quick start, OUTPUT: STEREO, MONO, the sum of both sides on both, for headphones or a stereo input, or MONO L, the sum on the left only and the right silent, for one mono cable into a recorder; ALGO again for its second page, EDITOR: ALLOW, or IGNORE, so the editor and its Install panel leave this FM-1 alone, and 3.5MM OUT: ON, or OFF, the speaker and the headphone jack silent while USB audio plays on, and USB RETURN: the level of playback from a phone or computer in your headphones, separate from MASTER; SAVE keeps it), INFO (version, CPU, bank slots, battery, device name) and GUIDE (the ideas behind the FM-1)' },
+    help: 'the settings menu, in tabs: MIDI (MIDI channel, clock in, MIDI out, clock out), PANEL (LEDs, knob acceleration, count-in with a click on each beat, TEMPO: GLOBAL or PATCH, with the tempo playing, or EXT while MIDI clock sets it; ALGO again for its second page, TIME SIG: 2/4 .. 12/8, 4/4 as made, the bar that play once and REC count in and the arpeggiator’s bar rates fill), SYSTEM (update mode, factory reset, quick start, OUTPUT: STEREO, MONO, the sum of both sides on both, for headphones or a stereo input, or MONO L, the sum on the left only and the right silent, for one mono cable into a recorder; ALGO again for its second page, EDITOR: ALLOW, or IGNORE, so the editor and its Install panel leave this FM-1 alone, and 3.5MM OUT: ON, or OFF, the speaker and the headphone jack silent while USB audio plays on, and USB RETURN: the level of playback from a phone or computer in your headphones, separate from MASTER; SAVE keeps it), EQ (the master EQ on the speaker and the headphone jack, for every patch: LOW, a shelf at 120 Hz, MID, a bell at MID FREQ, and HIGH, a shelf at 8 kHz, each ±12 dB in half decibels, and MID FREQ, 100 Hz to 8 kHz; flat as made, kept without SAVE, USB audio left as it is; a band off 0 dB costs CPU on every patch, about 3.5 % for the first and 1.3 % for each one after it, so the heaviest patches with every effect on may drop a voice with all three bands in use), INFO (version, CPU, bank slots, battery, device name) and GUIDE (the ideas behind the FM-1)' },
   { id: 'env', gesture: { do: [B('ENV')] }, does: 'environment', everywhere: at(60, but('env', 'sandbox')), effect: 'env',
     help: 'the environment: every device from Main to the Output, each Steps track followed by what it plays (from the menu too)' },
   { id: 'seq', gesture: { do: [B('SEQ')] }, does: 'steps page', everywhere: at(70, but(...SEQ_STATES, 'sandbox')), effect: 'seq',
@@ -296,7 +296,7 @@ export const CONTROLS: ControlRow[] = [
   { id: 'menu-scroll', gesture: { do: [E('SELECT')] }, does: 'scroll', when: 'menu_guide', sheet: { menu: 30 }, effect: 'scroll', hint: 'SELECT scroll',
     help: 'the GUIDE tab: its text' },
   { id: 'menu-set', gesture: { do: [K('1234')] }, does: 'set', when: 'menu_page', sheet: { menu: 40 }, effect: 'set', hint: 'K1-K4 set',
-    help: 'MIDI, PANEL and SYSTEM: the settings, which act at once' },
+    help: 'MIDI, PANEL, SYSTEM and EQ: the settings, which act at once' },
   { id: 'menu-patches', gesture: { do: [E('PRESET')] }, does: 'patches', sheet: { menu: 60 }, effect: 'patch' },
   { id: 'menu-save', gesture: { do: [B('SAVE')] }, does: 'save, close', sheet: { menu: 10 }, effect: 'save_close', hint: 'SAVE close',
     help: 'saves (the settings too) and closes the menu' },
@@ -494,7 +494,7 @@ export const HELP_STATE_TITLE: Record<HelpState, string> = {
 /** a condition in words: where the row applies */
 export const CONDITION_TEXT: Record<Condition, string> = {
   list: 'while a Page button’s list shows', dev_presets: 'a device with presets', dev_store: 'an assembly', dev_keys: 'a device that takes keys',
-  long_track: 'a track of more than 16 steps', tracks: 'a patch with Steps tracks', menu_guide: 'the GUIDE tab', menu_page: 'the MIDI, PANEL and SYSTEM tabs',
+  long_track: 'a track of more than 16 steps', tracks: 'a patch with Steps tracks', menu_guide: 'the GUIDE tab', menu_page: 'the MIDI, PANEL, SYSTEM and EQ tabs',
   menu_system: 'the SYSTEM tab', roll: 'a melodic track', harm: 'the keys on a Harmonizer: the seven lowest keys',
   roll_preview: 'a melodic track with note preview on', roll_silent: 'a melodic track with note preview off',
   fx_bank: 'a patch with a recognized master FX bus', pattern_store: 'while the pattern store is on',

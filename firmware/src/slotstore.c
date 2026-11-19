@@ -142,12 +142,18 @@ static int sl_read(uint32_t id, uint8_t *dst, uint32_t *len, char *name)
     return 0;
 }
 
-static int sl_write(uint32_t id, const char *name, const uint8_t *p, uint32_t len)
+/* the settings record's extension (main.c settings_ext, #1107): its own bytes at this offset of the data, past the
+ * record's 16, in the same sector. sl_write_ext programs them with the data, before the header (the commit), so they
+ * stand or fall with the record. A firmware before it reads only the record's len bytes and writes no extension: its
+ * own settings record has none (the erased flash reads 0xFF) */
+#define SL_EXT_AT 3776u
+#define SL_EXT_MAX 64u
+static int sl_write_ext(uint32_t id, const char *name, const uint8_t *p, uint32_t len, const uint8_t *ext, uint32_t extn)
 {
     sl_hdr_t h, c;
     uint32_t i, s = SL_NONE, old, n = sl_nalloc();
     int rc;
-    if (id > SL_SETTINGS || len < 1u || len > M1_PATCH_MAX)
+    if (id > SL_SETTINGS || len < 1u || len > M1_PATCH_MAX || extn > SL_EXT_MAX || (extn && len > SL_EXT_AT))
         return -1;
     for (i = 0; i < n && s == SL_NONE; i++) {               /* a sector without a live record */
         uint32_t k = (sl_next + i) % n;
@@ -171,6 +177,8 @@ static int sl_write(uint32_t id, const char *name, const uint8_t *p, uint32_t le
     rc = st_erase(sl_sector_addr(s));
     if (!rc)
         rc = st_prog(sl_sector_addr(s) + SL_PAYLOAD, p, len);
+    if (!rc && extn)
+        rc = st_prog(sl_sector_addr(s) + SL_PAYLOAD + SL_EXT_AT, ext, extn);
     if (!rc)                                     /* the commit record, last: its fields, then the magic (a cut in the
                                                   * fields leaves no magic, not a valid record with half a name) */
         rc = st_prog(sl_sector_addr(s) + 4u, (const uint8_t *)&h + 4u, sizeof h - 4u);
@@ -193,6 +201,20 @@ static int sl_write(uint32_t id, const char *name, const uint8_t *p, uint32_t le
     if (id < M1_SLOTS)
         bank_mask |= (uint64_t)1 << id;
     return 0;
+}
+
+static int sl_write(uint32_t id, const char *name, const uint8_t *p, uint32_t len)
+{
+    return sl_write_ext(id, name, p, len, 0, 0u);
+}
+
+/* n bytes of record id's extension (sl_write_ext) into out, as the flash holds them (0xFF where none was written); 0 = ok */
+static int sl_ext(uint32_t id, uint8_t *out, uint32_t n)
+{
+    sl_hdr_t h;
+    if (n > SL_EXT_MAX || sl_head(id, &h, 0))
+        return -1;
+    return st_read(sl_sector_addr(sl_sec[id]) + SL_PAYLOAD + SL_EXT_AT, out, n) ? -1 : 0;
 }
 
 static int sl_erase(uint32_t id)

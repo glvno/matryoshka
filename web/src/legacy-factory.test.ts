@@ -126,6 +126,7 @@ static void gt_apply(void) {}
 static void fallback_boot(void) { fallbacks++; }
 static void sl_scan(void) {}
 static void pt_claim(void) {}            /* (the pattern store's claim, slotstore.c: nothing to move here) */
+static void settings_ext_load(void) {}   /* (the settings record's extension, main.c settings_ext.h: the master EQ, none here) */
 static int sl_read(uint32_t s, uint8_t *data, uint32_t *len, char *name) {
  (void)s; (void)data; (void)name; *len = SET_LEN; return 0;
 }
