@@ -56,6 +56,11 @@
   "fx": 0.53,
   "survey": "docs/measurements/cpu-survey-2026-11-19-rig-main121-bank114.json, -voices114.json, -factoryfx.json, -poly.json and their -run.json (firmware CI run 44450005183: the 22 patches of the 1.14 bank and its poly patches at more voices; the 21 factory patches with every master FX stage on; the 6 poly factory patches at 2 to 8 voices, as shipped and with every stage on)"
  },
+ "masterEq": {
+  "firstUs": 105,
+  "bandUs": 39,
+  "survey": "emulator timing model, CI run 44632186636 (firmware/src/master_eq.h): 909 Kit +108/+147/+188 us, Cassia 1 +110/+149/+188 us, Expander S +102/+140 us for 1/2/3 bands"
+ },
  "blockUs": 2901,
  "note": 72,
  "block": 1509,

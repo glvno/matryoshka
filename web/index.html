@@ -203,10 +203,12 @@
         <form class="sync-ask-body" onsubmit="return false">
           <h2 id="meq-title">Master EQ</h2>
           <p class="muted">Shapes what the FM-1’s speaker and headphone jack play, for every patch, so a sound made on headphones still works through speakers in a room. It belongs to the FM-1, not to a patch, and stays out of USB recordings. On the FM-1: GLO, then ALGO to EQ.</p>
+          <p class="muted">Each band you turn away from 0 dB costs CPU on every patch: about 3.5 % for the first and 1.3 % for each one after it. A patch’s own CPU estimate leaves this out. The heaviest patches, with every effect on and all three bands in use, may drop a voice.</p>
           <label class="meq-row">Low (shelf at 120 Hz) <input id="meq-low" type="range"> <output></output></label>
           <label class="meq-row">Mid (bell at Mid freq) <input id="meq-mid" type="range"> <output></output></label>
           <label class="meq-row">High (shelf at 8 kHz) <input id="meq-high" type="range"> <output></output></label>
           <label class="meq-row">Mid freq <input id="meq-freq" type="range"> <output></output></label>
+          <p id="meq-cost" class="muted"></p>
           <p id="meq-status" class="muted" role="status"></p>
           <div class="sync-ask-actions"><button type="button" id="meq-flat">Flat</button><button type="button" id="meq-close" class="primary">Close</button></div>
         </form>

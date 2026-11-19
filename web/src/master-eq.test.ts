@@ -2,7 +2,9 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { CMD, FEATURE_FACTORY, FEATURE_MASTER_EQ, MASTER_EQ, MASTER_EQ_DB, MASTER_EQ_FREQ_DEFAULT, MASTER_EQ_FREQS, masterEqFrame, masterEqHz, parse, parseMasterEq } from './protocol';
-import { masterEqFreqText, masterEqGainText } from './master-eq';
+import { masterEqCostText, masterEqFreqText, masterEqGainText } from './master-eq';
+import { cpuEstimate, masterEqUse } from './cpu';
+import { FM1_PRESETS } from './presets';
 
 const header = readFileSync(new URL('../../firmware/src/master_eq.h', import.meta.url), 'utf8');
 const proto = readFileSync(new URL('../../firmware/src/proto.c', import.meta.url), 'utf8');
@@ -42,5 +44,14 @@ describe('the master EQ over the link (#1107)', () => {
     expect(masterEqGainText(0)).toBe('0 dB');
     expect(masterEqGainText(1.5)).toBe('+1.5 dB');
     expect(masterEqGainText(-12)).toBe('−12.0 dB');
+  });
+  it('costs what the emulator measured, only with a band on, and stays out of a patch’s own estimate (D-938)', () => {
+    expect(masterEqUse(0)).toBe(0);
+    expect(masterEqUse(1)).toBeCloseTo(0.036, 3);
+    expect(masterEqUse(3) - masterEqUse(2)).toBeCloseTo(0.0134, 3);
+    expect(masterEqCostText([0, 0, 0])).toMatch(/no CPU/);
+    expect(masterEqCostText([-3, 0, 2])).toBe('With 2 bands on, the master EQ uses about 5.0 % of the FM-1’s CPU, on top of every patch’s own load.');
+    const p = FM1_PRESETS['909 Kit']();
+    expect(cpuEstimate(p).use).toBe(cpuEstimate(structuredClone(p)).use);   // (the patch carries nothing of it)
   });
 });

@@ -50,6 +50,15 @@ const CORES = {
   splitEff: 0.75,
   survey: 'docs/measurements/cpu-survey-2026-11-14-rig-reverb-split-off.json against -reverb.json (CI run 43615466841); the idle cost: -2026-11-05-rig-release-1.10-head.json against -rig-merged-split.json',
 };
+/** The master EQ (GLO › EQ, #1107, D-938): a setting of the FM-1 that runs after every patch, from the flash, on core 0.
+ * Measured in the emulator's timing model (`m1emu cpu --modtime`, 8 keys held, every FX stage on) on the 909 Kit, Cassia 1
+ * and Expander S at +3 dB a band, against the same build flat: the first band about 105 us a block (the code fetched into
+ * the cache every block is most of it), each further band about 39 us. */
+const MASTER_EQ = {
+  firstUs: 105,
+  bandUs: 39,
+  survey: 'emulator timing model, CI run 44632186636 (firmware/src/master_eq.h): 909 Kit +108/+147/+188 us, Cassia 1 +110/+149/+188 us, Expander S +102/+140 us for 1/2/3 bands',
+};
 /** Each factory engine's factor on its modules' cycles (src/cpu.ts CpuTable.rig), fitted by scripts/cpu-rig-fit.ts to the
  * test rig's surveys on the 1.21 build (main with the cheaper module copies of #1102 and the block's fixed cost of #1105;
  * at SURVEY's scale): the 1.14 bank, today's factory bank with every master FX stage on, and today's poly factory patches
@@ -560,6 +569,7 @@ const table: CpuTable = {
   fixedUs,
   cores: CORES,
   rig: RIG,
+  masterEq: MASTER_EQ,
   blockUs: BLOCK_US,
   note: NOTE,
   ...loop,
