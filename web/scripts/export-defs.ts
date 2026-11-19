@@ -301,6 +301,9 @@ let setId = 0;
   });
   // then the preset migrations (D-865), when there are any: a new map makes the boot move the presets it covers
   if (Object.keys(PRESET_MIGRATIONS).length) for (const x of new TextEncoder().encode(JSON.stringify(PRESET_MIGRATIONS))) h = Math.imul(h ^ x, 0x01000193) >>> 0;
+  // and the firmware-tier overrides, when there are any: a region that gains a copy of a tier patch is new content, which
+  // the editor offers to an FM-1 that has the region before it (factory-content.ts factoryOffer compares the sets)
+  if (FIRMWARE_TIER_OVERRIDES.length) for (const x of new TextEncoder().encode(JSON.stringify(FIRMWARE_TIER_OVERRIDES))) h = Math.imul(h ^ x, 0x01000193) >>> 0;
   setId = (h & 0xffffff) || 1;
   if (setId === TIER_SET) setId = TIER_SET - 1;
   P.push('', '/* the factory set (PRESET_LIST: names and unpacked bytes, then web/src/preset-migrations.json as JSON when it has any),', '   24 bits of FNV-1a, never 0: kept in the settings record for new factory names and user assembly preset migrations.', '   Existing saved patch bytes are preserved (main.c bank_add, presets_upgrade). */');
