@@ -961,6 +961,11 @@ static void toggles_sync(void);
 static volatile uint32_t clk_ticks;   /* MIDI clock ticks (eng_clock_tick, the main loop) */
 static volatile uint8_t clk_ext;      /* MIDI clock drives the clock */
 static volatile uint8_t transport_on; /* the transport (eng_transport) */
+/* MIDI Start (eng_transport_top, #870): the main loop counts top_gen up, the next block takes it (top_seen). tick0: the next
+ * MIDI tick is tick 0 of a start (the host's first clock after its Start), which steps nothing on; tick_skip: this block's
+ * first tick is that one (Steps and Euclid count from the next) */
+static volatile uint8_t top_gen;
+static uint8_t top_seen, tick0, tick_skip;
 static volatile uint8_t fill_on;      /* FILL held (#674, eng_fill): notes with a FILL condition play */
 /* play once (#632, eng_play_once; engine.ts playOnce, the same): the main loop's last word (once_cmd: 1 play once, 2 end
  * it) counts once_gen up and the next block takes it (once_seen); the engine's state (once_st: 0 not, 1 counting in, 2
@@ -4975,6 +4980,13 @@ void eng_transport(int on)
     }
     if (!on)                                     /* (a stop ends REC's count-in click, asked for or counting) */
         eng_count_in(0u, 0u);
+}
+/* MIDI Start (#870): the transport from the top. Running, it stops for a block and starts again; on MIDI clock it starts on
+ * the next tick, its tick 0 */
+void eng_transport_top(void)
+{
+    eng_transport(1);
+    top_gen++;
 }
 /* REC's count-in click (D-803; engine.ts countIn, the same): `bars` bars of clicks from the transport's start, or, running
  * already at `at` (eng_ticks then), from the next bar line; 0 bars: none (REC off) */
@@ -10518,7 +10530,7 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
                     it->s.stp.half = 0;
                     adv++;
                 }
-                for (q = 0; q < E.tick_n; q++)
+                for (q = tick_skip; q < E.tick_n; q++)
                     if ((it->s.stp.count += 2) >= ht) {
                         it->s.stp.count = 0;
                         adv++;
@@ -10636,7 +10648,7 @@ static int32_t steps_turn_at(const node_t *nd, uint32_t n)
     if (E.tick_off >= 0) {
         if (half > 0 && --need == 0)
             return E.tick_off;
-        for (q = 0; q < E.tick_n; q++)
+        for (q = tick_skip; q < E.tick_n; q++)
             if ((count += 2) >= ht) {
                 count = 0;
                 if (--need == 0)
@@ -10822,7 +10834,7 @@ static void m_euclid(const node_t *nd, inst_t *it, uint32_t n)
             }
             if ((int32_t)i == tick) {    /* (-1 while stopped; MIDI clock's ticks can come several to a sample) */
                 int32_t q;
-                for (q = 0; q < E.tick_n; q++)
+                for (q = tick_skip; q < E.tick_n; q++)
                     if (++count >= rt) {
                         count = 0;
                         adv++;
@@ -12776,7 +12788,26 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                          : E.main >= 0 ? (uint32_t)clampi((E.node[E.main].par[FM1_P_TEMPO] + 32768) >> 16, 20, 300) : TEMPO_DEFAULT, seen = 0, t;
             uint8_t run = transport_on | once_run;
             uint32_t was = E.ticks;              /* (the ticks before this block's: REC's count-in) */
-            int start = run && !E.running;
+            int start;
+            t = clk_ticks;
+            if (!run)
+                tick0 = 0;
+            tick_skip = 0;
+            if (ENG_RARELY(top_gen != top_seen)) {   /* MIDI Start (eng_transport_top): from the top. Running, a block */
+                top_seen = top_gen;                  /* stopped first; the ticks that came with it wait for the start */
+                tick0 = 1;
+                if (E.running) {
+                    run = 0;
+                    t = E.clk_seen;
+                }
+            }
+            if (ENG_RARELY(run && !E.running && clk_ext)) {   /* on MIDI clock the transport starts on a tick: tick 0 */
+                if (t == E.clk_seen)
+                    run = 0;
+                else
+                    tick0 = 1;
+            }
+            start = run && !E.running;
             if (ENG_RARELY(start)) {
                 E.tick_acc = 0;                  /* the transport starts: the tempo's ticks from here */
                 E.run_ticks = E.ticks;
@@ -12789,7 +12820,6 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             }
             E.running = run;
             once_edge = 0;
-            t = clk_ticks;
             /* where this block's ticks fall (Steps modules start their steps there, engine.ts render): MIDI clock ticks on the
              * first sample, the tempo's on the sample that completes the tick; samples per tick (measured from MIDI clock) */
             E.tick_off = -1;
@@ -12803,6 +12833,12 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                     if (E.ext_since > 0u)
                         E.ext_len = E.ext_since / (uint32_t)E.tick_n;
                     E.ext_since = 0;
+                    if (tick0 && run) {          /* the first tick since a start is tick 0, the host's first after its
+                                                  * Start: the steps start there, it steps nothing on (tick_skip) */
+                        tick0 = 0;
+                        tick_skip = 1;
+                        E.run_ticks++;
+                    }
                 }
                 if (E.ext_len > 0u)
                     E.tick_len = (int32_t)E.ext_len;
@@ -12821,6 +12857,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                         cko.off[cko.n++] = (uint16_t)(off + (uint32_t)E.tick_off + (uint32_t)E.tick_n * (uint32_t)E.tick_len);
                     E.tick_n++;
                     seen = 1;
+                    tick0 = 0;                   /* (the FM-1's own tick came first: no MIDI tick 0 to wait for) */
                 }
             }
             if (ENG_RARELY(once_st == 1u)) {     /* play once's count-in (#632): beat 1's click on this block's first sample,

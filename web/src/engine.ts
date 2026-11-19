@@ -243,6 +243,10 @@ export class Engine {
   /** the transport as the last block had it, and the ticks when it last started (engine.c E.run_ticks) */
   private ran = false;
   private runTicks = 0;
+  /** MIDI Start (transportTop, #870; engine.c top_gen, tick0): the next block starts the transport from the top; the next
+   * MIDI tick is tick 0 of a start, which steps nothing on */
+  private top = false;
+  private tick0 = false;
   /** the FM-1's patch buttons (bit i = PANEL_BUTTONS[i]): held, or switched on */
   private buttons = 0;
   /** per patch button: the modules a Toggle bypasses (buttons.ts toggleTargets), null for the other kinds; and whether it switches */
@@ -1311,12 +1315,20 @@ export class Engine {
   }
 
   /** the transport (PLAY, MIDI Start / Stop): the Main module's run output, and its clock output pulses only while it runs.
-   * It ends play once (#632) where it is: on, the transport runs on as if PLAY had started it */
+   * It ends play once (#632) where it is: on, the transport runs on as if PLAY had started it. On MIDI clock the transport
+   * starts on a tick, tick 0, which steps nothing on: the host's first clock after its Start (#870; engine.c the same) */
   transport(on: boolean): void {
     if (this.once) this.onceEnd();
     if (on && !this.running) this.tickAcc = 0;
     this.running = on;
     if (!on) this.countIn(0); // (a stop ends REC's count-in click, asked for or counting)
+  }
+
+  /** MIDI Start (#870; engine.c eng_transport_top): the transport from the top. Running, it stops for a block and starts
+   * again; the first MIDI tick after it is tick 0 even when MIDI clock does not drive the clock yet */
+  transportTop(): void {
+    this.transport(true);
+    this.top = true;
   }
 
   /** REC's count-in click (D-803; engine.c eng_count_in, the same): a click on each beat of `bars` bars from the transport's
@@ -1371,6 +1383,11 @@ export class Engine {
 
   get transportRunning(): boolean {
     return this.running;
+  }
+
+  /** the transport has started: a block ran with it (engine.c eng_run_ticks() >= 0). On MIDI clock a start waits for a tick */
+  get transportStarted(): boolean {
+    return this.ran;
   }
 
   /** pitch bend, -1..1: +-2 semitones on every pitch output, and the Main module's bend output */
@@ -1722,28 +1739,49 @@ export class Engine {
       const n = Math.min(BLOCK, total - off);
       const { bar, beat } = METERS[meterOf(this.meter)]; // (the global time signature's, #1011)
       if (this.once === 1 && this.cin >= bar) this.onceStart();
-      const start = this.running && !this.ran, was = this.ticks; // (REC's count-in: the ticks before this block's)
-      if (start) this.runTicks = this.ticks;
-      this.ran = this.running;
+      // the transport this block (engine.c the same, #870): MIDI Start (transportTop) running stops it for a block, its MIDI
+      // ticks held for the start; on MIDI clock it starts on a tick, tick 0
+      let run = this.running, held = false;
+      if (!run) this.tick0 = false;
+      if (this.top) {
+        this.top = false;
+        this.tick0 = true;
+        if (this.ran) (run = false), (held = true);
+      }
+      if (run && !this.ran && this.ext) {
+        if (this.extTicks === 0) run = false;
+        else this.tick0 = true;
+      }
+      const start = run && !this.ran, was = this.ticks; // (REC's count-in: the ticks before this block's)
+      if (start) (this.runTicks = this.ticks), (this.tickAcc = 0);
+      this.ran = run;
       // the clock: MIDI ticks while external, else the global tempo or the Main module's (bpm x 24 ticks a minute, in whole
       // bpm as the firmware does)
       const bpm = Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(this.tempoGlobal ?? this.main?.params.tempo ?? TEMPO_DEFAULT)));
       let seen = false;
       // where this block's ticks fall (Steps modules start their steps there): MIDI clock ticks on the first sample, the
       // tempo's on the sample that completes the tick; and the samples per tick (measured between MIDI clock ticks)
-      let tick = -1, nt = 0, tickLen = Math.floor((60 * this.sampleRate) / (bpm * PPQN));
+      let tick = -1, nt = 0, tickSkip = 0, tickLen = Math.floor((60 * this.sampleRate) / (bpm * PPQN));
       if (this.ext) {
-        seen = this.extTicks > 0;
+        const got = held ? 0 : this.extTicks;
+        seen = got > 0;
         if (seen) {
           tick = 0;
-          nt = this.extTicks;
+          nt = got;
           if (this.extSince > 0) this.extLen = Math.floor(this.extSince / nt);
           this.extSince = 0;
+          if (this.tick0 && run) {
+            // the first tick since a start is tick 0, the host's first after its Start: the steps start there, it steps
+            // nothing on (tickSkip)
+            this.tick0 = false;
+            tickSkip = 1;
+            this.runTicks = (this.runTicks + 1) >>> 0;
+          }
         }
         if (this.extLen > 0) tickLen = this.extLen;
         this.extSince = Math.min(this.extSince + n, 1 << 23);
-        this.ticks = (this.ticks + this.extTicks) >>> 0;
-        this.extTicks = 0;
+        this.ticks = (this.ticks + got) >>> 0;
+        this.extTicks -= got;
       } else {
         const whole = 60 * this.sampleRate, inc = bpm * PPQN;
         if (this.tickAcc + n * inc >= whole) tick = Math.ceil((whole - this.tickAcc) / inc) - 1;
@@ -1753,9 +1791,10 @@ export class Engine {
           this.ticks = (this.ticks + 1) >>> 0;
           seen = true;
           nt++;
+          this.tick0 = false; // (the editor's own tick came first: no MIDI tick 0 to wait for)
         }
       }
-      const clock = seen && this.running; // the Main module's clock output: one pulse per block that saw a tick while running
+      const clock = seen && run; // the Main module's clock output: one pulse per block that saw a tick while running
       // play once's count-in (#632): beat 1's click on this block's first sample, then one on each beat of the bar
       let clickAt = -1, accent = false;
       if (this.once === 1) {
@@ -1767,7 +1806,7 @@ export class Engine {
         }
       }
       // REC's count-in (D-803, as the FM-1's REC counts the bars): a click on each beat from the bar it starts on, beat 1 higher
-      if (!this.running) this.cinOn = false;
+      if (!run) this.cinOn = false;
       else {
         const r0 = (was - this.runTicks) >>> 0, r1 = (this.ticks - this.runTicks) >>> 0;
         if (this.cinReq) { // (asked for: taken once the transport runs)
@@ -1790,7 +1829,7 @@ export class Engine {
         // next tick gone by, the tempo's accumulator or, with MIDI clock, the samples since its tick over a measured tick
         const whole = 60 * this.sampleRate;
         const frac = this.ext ? (this.extLen > 0 ? Math.min(whole - 1, Math.floor((this.extSince * whole) / this.extLen)) : 0) : this.tickAcc;
-        const clock = { ticks: this.ticks, frac, whole, tickLen, bpm, sr: this.sampleRate, run: this.running, runTicks: this.runTicks, bar };
+        const clock = { ticks: this.ticks, frac, whole, tickLen, bpm, sr: this.sampleRate, run, runTicks: this.runTicks, bar };
         for (const a of this.arps)
           if (!a.node.bypass) // (bypassed it plays nothing of its own: the keys it hears went straight on)
             arpBlock(a.st, this.arpParams(a), n, clock, a.node.connected.clk ? a.node.inst[0].inp.clk : null, a.clk,
@@ -1812,11 +1851,12 @@ export class Engine {
           x.high = x.on && x.note === high;
           x.unison = !!g.cfg.unison;
           x.clock = clock;
-          x.tick = this.running ? tick : -1;
+          x.tick = run ? tick : -1;
           x.tickAt = tick;
           x.ticks = nt;
+          x.tickSkip = tickSkip;
           x.tickLen = tickLen;
-          x.run = this.running;
+          x.run = run;
           x.buttons = this.buttons;
           x.bend = this.ctl.bend;
           x.mod = this.ctl.mod;
@@ -1833,7 +1873,7 @@ export class Engine {
         for (const node of this.tracks) {
           const st = node.inst[0].state as StepsState;
           if (st.once < 2) continue;
-          const a = st.once === 2 ? stepsTurnAt(st, node.inst[0].eff, this.running, this.running ? tick : -1, nt, n) : -1;
+          const a = st.once === 2 ? stepsTurnAt(st, node.inst[0].eff, run, run ? tick : -1, nt, n, tickSkip) : -1;
           if (a < 0) { onceAt = -1; break; }
           onceAt = Math.max(onceAt, a);
         }

@@ -67,7 +67,8 @@ export type HostMsg =
   | { t: 'entry'; id: number; token: number; note: number; vel: number; down: boolean; ch?: number; root?: boolean }
   | { t: 'chord'; button: number; down: boolean; track?: number }
   | { t: 'clock' }
-  | { t: 'clockrun'; on: boolean }
+  /** MIDI Start / Continue / Stop; top: from the top (Start, or Continue after Song Position 0: input.ts, #870) */
+  | { t: 'clockrun'; on: boolean; top?: boolean }
   | { t: 'bend'; v: number }
   | { t: 'cc'; n: number; v: number }
   /** a test phrase (#945, phrases.ts) played into the keys, block-exact; another replaces it, null stops it */
@@ -93,7 +94,8 @@ const SWITCH_FADE = 0.02;
 
 class ModularProcessor extends AudioWorkletProcessor {
   private engine = new Engine(sampleRate);
-  /** blocks since the last MIDI clock tick: after half a second without one the Main module's tempo drives the clock again */
+  /** blocks since the last MIDI clock tick: after half a second without one the Main module's tempo drives the clock again,
+   * unless the transport runs on MIDI clock: then it waits for the clock (a stalled host, #870; clock_in.h the same) */
   private sinceClock = Infinity;
   private failed = false;
   private revision = 0;
@@ -234,7 +236,10 @@ class ModularProcessor extends AudioWorkletProcessor {
           }
           this.sinceClock = 0;
           this.engine.clockTick();
-        } else if (m.t === 'clockrun') this.engine.transport(m.on);   // MIDI Start / Continue / Stop
+        } else if (m.t === 'clockrun') {              // MIDI Start / Continue / Stop
+          if (m.top) this.engine.transportTop();
+          else this.engine.transport(m.on);
+        }
         else if (m.t === 'bend') this.engine.bend(m.v);
         else if (m.t === 'cc') this.engine.cc(m.n, m.v);
         else if (m.t === 'at') this.engine.aftertouch(m.v);
@@ -350,7 +355,7 @@ class ModularProcessor extends AudioWorkletProcessor {
   process(_in: Float32Array[][], outputs: Float32Array[][]): boolean {
     const out = outputs[0];
     try {
-      if (this.sinceClock <= CLOCK_GONE && ++this.sinceClock > CLOCK_GONE) {
+      if (this.sinceClock <= CLOCK_GONE && (this.sinceClock < CLOCK_GONE || !this.engine.transportStarted) && ++this.sinceClock > CLOCK_GONE) {
         this.engine.clockExternal(false);
         this.fm1?.clockExternal(false);
       }
