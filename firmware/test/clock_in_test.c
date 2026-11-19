@@ -30,23 +30,27 @@ static void check(const char *what, int ok)
         fails++;
 }
 
-/* the host's messages, each at its sample */
+/* the host's messages, each at its sample; pos: where the host's playhead is once it is delivered (-9: as the messages say,
+ * for a host whose playhead does not follow its own messages: a looper's relocation sent early, clocks that do not move it) */
 #define EVN 20000
 static struct {
     double at;
     uint32_t pkt;
+    int pos;
 } ev[EVN];
 static int ev_w, ev_r;
 static double host_t;                               /* the host's time (samples) */
 static double host_per;                             /* samples a tick */
-static void host_send(uint32_t b, uint32_t d1, uint32_t d2)
+static void host_send_pos(uint32_t b, uint32_t d1, uint32_t d2, int pos)
 {
     if (ev_w < EVN) {
         ev[ev_w].at = host_t;
         ev[ev_w].pkt = (b == 0xF2u ? 3u : 0xFu) | b << 8 | d1 << 16 | d2 << 24;
+        ev[ev_w].pos = pos;
         ev_w++;
     }
 }
+static void host_send(uint32_t b, uint32_t d1, uint32_t d2) { host_send_pos(b, d1, d2, -9); }
 static void host_tempo(double bpm) { host_per = 60.0 * ENG_SR / (bpm * 24.0); }
 static void host_ticks(int n)                       /* n ticks, one a period, the first now */
 {
@@ -65,7 +69,7 @@ static int trk_mod, trk_len = 16;
 static int last_pos = -1;
 #define LOGN 4096
 static int log_m[LOGN], log_pos[LOGN], log_n;       /* each step the track took, and the host's tick then */
-static void deliver(uint32_t pkt)
+static void deliver(uint32_t pkt, int pos)
 {
     uint32_t b = (pkt >> 8) & 0xFFu;
     if (b == 0xFAu) {
@@ -80,6 +84,8 @@ static void deliver(uint32_t pkt)
     } else if (b == 0xF8u && host_run) {
         host_m++;
     }
+    if (pos != -9)
+        host_m = pos;
     clk_in_rt(pkt);
 }
 static void sim_to(double t)
@@ -88,7 +94,7 @@ static void sim_to(double t)
     while ((double)samples < t) {
         fm1_ms = (uint32_t)(samples * 1000u / ENG_SR);
         while (ev_r < ev_w && ev[ev_r].at <= (double)samples)
-            deliver(ev[ev_r++].pkt);
+            deliver(ev[ev_r].pkt, ev[ev_r].pos), ev_r++;
         clk_in_idle();
         eng_render(l, r, HALF);
         samples += HALF;
@@ -125,6 +131,19 @@ static void expect_in_step(const char *name, int from, int min_steps)
     int err, bad = off_steps(from, &err);
     snprintf(what, sizeof what, "%s: %d steps, %d off the host's ticks (the first by %d ticks)", name, log_n - from, bad, err);
     check(what, bad == 0 && log_n - from >= min_steps);
+}
+/* a case known to fail (Reel's loop point, #870: which sequence Reel sends is not known yet): "xfail" while it fails with
+ * the error given, which does not count; "XPASS" when it passes, which does count, so the case is moved to expect_in_step */
+static void expect_in_step_xfail(const char *name, int from, int min_steps, int known_err)
+{
+    int err, bad = off_steps(from, &err);
+    int ok = bad == 0 && log_n - from >= min_steps;
+    printf("%s %s: %d steps, %d off the host's ticks (the first by %d ticks; known: %d)\n", ok ? "XPASS" : "xfail", name,
+           log_n - from, bad, err, known_err);
+    if (ok)
+        fails++;
+    else if (err != known_err)
+        check("  (an xfail case fails by another error than it is known for)", 0);
 }
 
 /* a fresh start: stopped, the clock let go, the 808 Kit at 120 bpm */
@@ -256,6 +275,48 @@ int main(void)
                 snprintf(what, sizeof what, "%sthe host from its top again with %s", stall ? "a 700 ms stall, then " : "", how[k]);
                 expect_in_step(what, mid, 30);
             }
+    }
+
+    {   /* Reel's loop point (#870, the owner's 1.21.0 check: the FM-1 a sixteenth ahead of Reel after each loop, whatever the
+         * tempo or the loop's length). The sequences that give the FM-1 a sixteenth ahead, until a capture says which one Reel
+         * sends: (a) the relocation one sixteenth (6 clocks) before the loop point, the playhead going on to the loop's end;
+         * (b) 6 clocks at the loop point that do not move the playhead; (c) a clock in the same block just before a Start
+         * counted after it (one clock, so a tick: the FM-1's own hold of the ticks that came with a Start) */
+        static const char *how[] = {"Start a sixteenth before the loop point", "Song Position 0 + Continue a sixteenth before the loop point",
+                                    "Start and the loop's first clock, then 6 clocks at once that do not move the playhead",
+                                    "a loop a sixteenth longer in clocks, nothing else sent",
+                                    "the old loop's last clock and Start in one block, then the first clock"};
+        static const int known[] = {-6, -6, -6, -6, -1};
+        for (k = 0; k < 5; k++) {
+            int j;
+            reset();
+            host_start(24, 96 * 2 - (k < 2 ? 6 : k == 4 ? 1 : 0));
+            if (k == 0)
+                host_send(0xFAu, 0, 0);
+            if (k == 1)
+                host_send(0xF2u, 0, 0), host_send(0xFBu, 0, 0);
+            for (j = 0; j < (k < 2 ? 6 : k == 3 ? 6 : 0); j++) {   /* the old loop's last clocks, the playhead on to its end */
+                host_send_pos(0xF8u, 0, 0, 96 * 2 - (k < 2 ? 6 : 0) + j);
+                host_t += host_per;
+            }
+            if (k == 4) {
+                host_send_pos(0xF8u, 0, 0, 96 * 2 - 1);
+                host_send(0xFAu, 0, 0);
+                host_t += host_per;
+            }
+            if (k == 2)
+                host_send(0xFAu, 0, 0);
+            host_send_pos(0xF8u, 0, 0, 0);       /* the loop's first clock: the playhead at its start */
+            host_t += host_per;
+            if (k == 2)
+                for (j = 0; j < 6; j++)
+                    host_send_pos(0xF8u, 0, 0, 0);
+            sim_to(host_t + (k == 2 ? HALF + 1 : 0));   /* (the burst's own half: several steps at once, judged after it) */
+            mid = log_n;
+            host_ticks(96 * 2);
+            sim_host();
+            expect_in_step_xfail(how[k], mid, 30, known[k]);
+        }
     }
 
     reset();                                        /* Continue from a Song Position the FM-1 does not follow (#596): it plays on */
