@@ -11504,37 +11504,44 @@ HOT void apply_flaws(const node_t *nd, inst_t *it, uint32_t v)   /* (v: the part
     const def_t *d = &DEFS[nd->type];
     const grp_t *g = IT_G(nd);
     int32_t b = g->bright[v];
-    /* (|100 + env| < 256 and level < 256: in 32 bits these are the same quotients, with no 64-bit division for every copy) */
-    int64_t ke = (100 + g->env[v]) * 65536 / 100, kl = g->level[v] * 65536 / 100;
+    /* the env and level factors, only for the types that take them. (|100 + env| < 256 and level < 256: in 32 bits these are
+     * the same quotients as in 64, with no 64-bit division; #1072) */
+#define FLAW_ENV ((int64_t)((100 + g->env[v]) * 65536 / 100))
     switch (nd->type) {
     case T_FILTER:
     case T_LADDER:
         if (b)
             flaw_scale(d, it, nd->type == T_FILTER ? FILTER_P_CUTOFF : LADDER_P_CUTOFF, (int64_t)exp2_q16(b * 65536 / 12 + (16 << 16)));
         break;
-    case T_ADSR:
+    case T_ADSR: {
+        int64_t ke = FLAW_ENV;
         flaw_scale(d, it, ADSR_P_A, ke);
         flaw_scale(d, it, ADSR_P_D, ke);
         flaw_scale(d, it, ADSR_P_R, ke);
         break;
-    case T_ENV:
+    }
+    case T_ENV: {
+        int64_t ke = FLAW_ENV;
         flaw_scale(d, it, ENV_P_R1, ke);
         flaw_scale(d, it, ENV_P_R2, ke);
         flaw_scale(d, it, ENV_P_R3, ke);
         flaw_scale(d, it, ENV_P_R4, ke);
         break;
+    }
     case T_ENV8: {
+        int64_t ke = FLAW_ENV;
         uint32_t s;
         for (s = 0; s < 8u; s++)
             flaw_scale(d, it, ENV8_P_R1 + 2u * s, ke);
         break;
     }
     case T_VCA:
-        flaw_scale(d, it, VCA_P_GAIN, kl);
+        flaw_scale(d, it, VCA_P_GAIN, g->level[v] * 65536 / 100);
         break;
     default:
         break;
     }
+#undef FLAW_ENV
 }
 
 /* a bypassed module: every output carries the through input (the definition's `thru`, e.g. the filter's `in`), or silence
@@ -12006,6 +12013,61 @@ static int sum_plain(const sum_t *sm)
     return 1;
 }
 
+/* #1072: the unweighted sums, four samples a pass with their pointers stepped on (the indexed loops copied every pointer
+ * each pass, and a taken branch costs about 7.5 cycles on the FM-1); the same additions in the same order */
+static inline void sum2(esig_t *o, const esig_t *a, const esig_t *b, uint32_t n)
+{
+    uint32_t k;
+    for (k = n >> 2; k; k--, a += 4, b += 4, o += 4) {
+        esig_t x0 = a[0] + b[0], x1 = a[1] + b[1], x2 = a[2] + b[2], x3 = a[3] + b[3];
+        o[0] = x0, o[1] = x1, o[2] = x2, o[3] = x3;
+    }
+    for (k = n & 3u; k; k--)
+        *o++ = *a++ + *b++;
+}
+static inline void sum3(esig_t *o, const esig_t *a, const esig_t *b, const esig_t *c, uint32_t n)
+{
+    uint32_t k;
+    for (k = n >> 2; k; k--, a += 4, b += 4, c += 4, o += 4) {
+        esig_t x0 = a[0] + b[0] + c[0], x1 = a[1] + b[1] + c[1], x2 = a[2] + b[2] + c[2], x3 = a[3] + b[3] + c[3];
+        o[0] = x0, o[1] = x1, o[2] = x2, o[3] = x3;
+    }
+    for (k = n & 3u; k; k--)
+        *o++ = *a++ + *b++ + *c++;
+}
+static inline void sum4(esig_t *o, const esig_t *a, const esig_t *b, const esig_t *c, const esig_t *d, uint32_t n)
+{
+    uint32_t k;
+    for (k = n >> 2; k; k--, a += 4, b += 4, c += 4, d += 4, o += 4) {
+        esig_t x0 = a[0] + b[0] + c[0] + d[0], x1 = a[1] + b[1] + c[1] + d[1];
+        esig_t x2 = a[2] + b[2] + c[2] + d[2], x3 = a[3] + b[3] + c[3] + d[3];
+        o[0] = x0, o[1] = x1, o[2] = x2, o[3] = x3;
+    }
+    for (k = n & 3u; k; k--)
+        *o++ = *a++ + *b++ + *c++ + *d++;
+}
+static inline void sum_add3(esig_t *o, const esig_t *a, const esig_t *b, const esig_t *c, uint32_t n)
+{
+    uint32_t k;
+    for (k = n >> 2; k; k--, a += 4, b += 4, c += 4, o += 4) {
+        esig_t x0 = o[0] + (a[0] + b[0] + c[0]), x1 = o[1] + (a[1] + b[1] + c[1]);
+        esig_t x2 = o[2] + (a[2] + b[2] + c[2]), x3 = o[3] + (a[3] + b[3] + c[3]);
+        o[0] = x0, o[1] = x1, o[2] = x2, o[3] = x3;
+    }
+    for (k = n & 3u; k; k--, o++)
+        *o += *a++ + *b++ + *c++;
+}
+static inline void sum_add1(esig_t *o, const esig_t *a, uint32_t n)
+{
+    uint32_t k;
+    for (k = n >> 2; k; k--, a += 4, o += 4) {
+        esig_t x0 = o[0] + a[0], x1 = o[1] + a[1], x2 = o[2] + a[2], x3 = o[3] + a[3];
+        o[0] = x0, o[1] = x1, o[2] = x2, o[3] = x3;
+    }
+    for (k = n & 3u; k; k--, o++)
+        *o += *a++;
+}
+
 /* part v of module m (its copy; v 0 for a module that runs once) for one block of n frames: its input sums, its parameter
  * inputs and its run. prev: the copy of the same module rendered just before it on this core, whose parameter inputs'
  * means are in `means` (apply_cv), else 0. (The callers know m and v: working them out from the pointers would cost a
@@ -12023,41 +12085,25 @@ static __attribute__((noinline)) void render_item(uint32_t m, uint32_t v, uint32
         if (sm->n >= 3u && sum_plain(sm)) {         /* unweighted (every sum of the factory patches): three or
                                                      * four sources a pass, dst read and written once a pass (#781) */
             const esig_t *const *p = &E.sum_src[sm->first];
-            const esig_t *a = p[0], *b = p[1], *c = p[2];
             if (sm->n >= 4u) {
-                const esig_t *d = p[3];
-                UNROLL4
-                for (i = 0; i < n; i++)
-                    dst[i] = a[i] + b[i] + c[i] + d[i];
+                sum4(dst, p[0], p[1], p[2], p[3], n);
                 q = 4;
             } else {
-                UNROLL4
-                for (i = 0; i < n; i++)
-                    dst[i] = a[i] + b[i] + c[i];
+                sum3(dst, p[0], p[1], p[2], n);
                 q = 3;
             }
-            for (; q + 3u <= sm->n; q += 3u) {
-                a = p[q], b = p[q + 1u], c = p[q + 2u];
-                UNROLL4
-                for (i = 0; i < n; i++)
-                    dst[i] += a[i] + b[i] + c[i];
-            }
-            for (; q < sm->n; q++) {
-                a = p[q];
-                UNROLL4
-                for (i = 0; i < n; i++)
-                    dst[i] += a[i];
-            }
+            for (; q + 3u <= sm->n; q += 3u)
+                sum_add3(dst, p[q], p[q + 1u], p[q + 2u], n);
+            for (; q < sm->n; q++)
+                sum_add1(dst, p[q], n);
             continue;
         }
         {                                           /* the first two sources in one pass, the rest added */
             const esig_t *a = E.sum_src[sm->first], *b = E.sum_src[sm->first + 1u];
             const int32_t wa = E.sum_w[sm->first], wb = E.sum_w[sm->first + 1u];
-            if (!wa && !wb) {
-                UNROLL4
-                for (i = 0; i < n; i++)
-                    dst[i] = a[i] + b[i];
-            } else if (wa && wb) {
+            if (!wa && !wb)
+                sum2(dst, a, b, n);
+            else if (wa && wb) {
                 UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] = mul16(a[i], wa) + mul16(b[i], wb);
@@ -12073,11 +12119,8 @@ static __attribute__((noinline)) void render_item(uint32_t m, uint32_t v, uint32
                 UNROLL4
                 for (i = 0; i < n; i++)
                     dst[i] += mul16(src[i], w);
-            } else {
-                UNROLL4
-                for (i = 0; i < n; i++)
-                    dst[i] += src[i];
-            }
+            } else
+                sum_add1(dst, src, n);
         }
     }
     ENG_PROF(1, m, v);
