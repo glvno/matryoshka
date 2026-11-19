@@ -39,10 +39,12 @@ export const TILE_COLUMNS = ['AENP', 'BCKO', 'DFGH', 'IJLM'];
  * modulator and the noise into the filter (H1 H2 H3 H13 H7), the filter into the envelope shaper (D10), its signal into
  * the reverb (G12), the reverb into both outputs (B14 C14) and the meter (A14); the ring modulator multiplies oscillator
  * 1's ramp by oscillator 2's square (E2 F3); the keys into oscillators 1 and 2 and the filter (I8 J8 N8), oscillator 3's
- * triangle into oscillator 1 and the filter (I6 N6), the trapezoid into the filter (N11). A pin is a level, -1..1. */
+ * triangle into oscillator 1 and the filter (I6 N6), the trapezoid into the filter (N11); the joystick's x into the filter
+ * (N15) and its y into oscillator 1 (I16), so a MIDI controller's X-Y pad learned onto x and y moves the sound (#1067); at
+ * the stick's centre, 0, they add nothing, so the patch loads sounding as before. A pin is a level, -1..1. */
 export const PINS: Record<string, number> = {
   H1: 1, H2: 1, H3: 1, H7: 1, H13: 1, D10: 1, G12: 1, B14: 1, C14: 1, E2: 1, F3: 1, A14: 1,
-  I8: 1, J8: 1, I6: 0.03, N8: 1, N6: 0.125, N11: 0.3125,
+  I8: 1, J8: 1, I6: 0.03, N8: 1, N6: 0.125, N11: 0.3125, N15: 0.5, I16: 0.25,
 };
 
 export interface Tile { columns: string; rows: number[]; name: string }

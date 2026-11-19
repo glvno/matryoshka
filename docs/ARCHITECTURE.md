@@ -849,13 +849,19 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   where its pages start (`.page-start`). Dotted lines from the dials to the rows (`positionBindings`, `svg.bind-cables`,
   over everything; a row out of view gets none). MIDI CC 16..19 turn the bound rows (`Editor.turnKnob`, from main.ts's
   sink). The knob ticks under sliders (knob-rest.ts) are gone with the knob outputs.
-- **MIDI learn (#1067, `midi-learn.ts`, [D-997](ledger/editor.md#D-997), [D-998](ledger/editor.md#D-998)):** `Patch.midiLearn`
-  lists `{ src, module, param }` (src a CC 0..119 outside 80..86, or `'bend'`), editor only: `validatePatch`
-  (`fixMidiLearn`) keeps one row per source and one source per row, and patchbin.ts never reads it. `attachMidi` passes a
-  CC's and a bend's input; main.ts hands those not from an FM-1 (`isFm1In`) to `Editor.learn` (`MidiLearn.take`) before
-  the sink, so a learned source never reaches `editorCc` or the engines. A waiting row takes the first source with three
-  different values (two for a switch). A learned source sets its row through `Editor.setRowAt` (turnKnob's mapping), at
-  most every `MOVE_GAP_MS` = 25 ms, so the edit goes out under Live as a slider's does and undo groups it as a gesture.
+- **MIDI learn (#1067, `midi-learn.ts`, [D-1317](ledger/editor.md#D-1317), [D-1027](ledger/patch-format.md#D-1027), [D-494](ledger/link-and-midi.md#D-494), [D-938](ledger/device-ui.md#D-938)):**
+  `Patch.midiLearn` lists `{ src, module, param, lo?, hi? }` (src a CC 0..119 outside 80..86, or `'bend'`; ends 0..1 in
+  steps of 1/255): `validatePatch` (`fixMidiLearn`) keeps one row per source and one source per row, 16 at most.
+  `attachMidi` passes a CC's and a bend's input; main.ts hands those not from an FM-1 (`isFm1In`) to `Editor.learn`
+  (`MidiLearn.take`) before the sink, so a learned source never reaches `editorCc`, the engines or the FM-1 as a CC. A
+  waiting row takes the first source with three different values (two for a switch). A learned source sets its row
+  through `Editor.setRowAt` (turnKnob's mapping) between its ends, at most every `MOVE_GAP_MS` = 25 ms, so the edit goes
+  out under Live as a slider's does and undo groups it as a gesture. patchbin.ts `mapRecord` writes the sources on rows
+  the FM-1's pages show as the binary's last section (any patch with MIDI learn is format 64); the firmware reads it in
+  place (`engine.c` `eng_maps`, `midi_learn.c`): `midi_input.h` asks `map_midi` before the fixed CCs, and a hit moves its
+  row through `pages_map_move` (`row_set_unit`, the row's also-list, a ramp slot after the knobs', `ENG_RAMPS`). GLO >
+  MIDI 2/2 learns on the FM-1 (`learn_start`, `learn_pick` from panel.c's knobs, `learn_take`). MAP (0x1B) and MAP_NOW
+  (0x62), feature bit 27, keep the editor's list and the FM-1's copy the same under Live.
 - **Main dock: button block (#113, design board D):** the knob column is K1..K4 with their captions, then the DEVICE / PAGE
   pickers under them; each dial's binding wire starts at a fixed `.knob-jack` on the dock's top edge (ring + core in the
   knob colour, a faint stem down to the dial; `pointer-events: none`, not a port). The button block is the FM-1's two rows
