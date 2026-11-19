@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- **Every patch leaves the FM-1 a little more room.** The work the FM-1 does around the voices in every audio block now runs from fewer lines of code and sums the outputs in one pass, with the same sound to the sample. On the test rig the audio interrupt takes 23 to 48 µs less of each 2.9 ms block with eight keys held (Hera 6 gauze 2 1,825 → 1,780 µs, Oracle V fx4 1,962 → 1,917 µs), and the polyphonic synths with their effects peak 0.4 to 1.9 points lower (#803).
+- **Every patch leaves the FM-1 a little more room.** The FM-1 now does less bookkeeping for each module of a patch every block: it works out when the patch loads which inputs move a module's settings, adds up those inputs four samples at a time, and no longer divides to find which voice a module copy belongs to. The sound is the same, sample for sample. On the test rig, with up to 8 keys held, the polyphonic synths with all their effects on use 1.0 to 4.6 points less of the FM-1's CPU (Hera 6 fx4 82.2 → 79.0 %, Oracle V fx4 81.6 → 78.1 %, Cassia 1 fx4 85.8 → 81.3 %, running), and the factory patches up to 5.8 points less (Algo Four 73.2 → 67.3 %, Hera 6 74.5 → 71.2 %) (#1072).
+- **The FM-1's work around the voices takes less time.** The work the FM-1 does before and after the voices in every audio block now runs from fewer lines of code and sums the outputs in one pass, with the same sound to the sample. On the test rig, against 1.20.0, the audio interrupt takes 23 to 48 µs less of each 2.9 ms block with eight keys held (Hera 6 gauze 2 1,825 → 1,780 µs, Oracle V fx4 1,962 → 1,917 µs), and the polyphonic synths with their effects peak 0.4 to 1.9 points lower (#803).
 
 ## 1.20.2 — 2026-11-18
 

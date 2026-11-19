@@ -2003,7 +2003,7 @@ static const uint16_t DEF_COST[N_TYPES] = {84, 147, 110, 56, 10, 20, 63, 30, 241
 /* a module bypassed when the patch loads, in the same units: passing an input through (D-1104) */
 #define DEF_COST_BYPASS 23u
 /* the same from web/src/cpu-costs.json: its run and parameter inputs, and its bypass (cpu.ts planCosts table) */
-static const uint16_t DEF_TCOST[N_TYPES] = {14, 80, 35, 53, 8, 9, 33, 9, 322, 11, 111, 1217, 2, 40, 96, 38, 330, 178, 326, 155, 88, 36, 35, 40, 49, 61, 275, 221, 53, 163, 104, 46, 28, 468, 277, 448, 667, 11, 15, 1, 11, 55, 8, 15, 134, 35, 16, 176, 9, 11, 13, 66, 93, 14, 3, 179, 178, 30};
+static const uint16_t DEF_TCOST[N_TYPES] = {14, 77, 33, 52, 7, 8, 32, 8, 320, 9, 109, 1216, 2, 39, 94, 36, 328, 176, 325, 153, 87, 34, 34, 39, 47, 59, 273, 220, 52, 161, 103, 44, 27, 466, 276, 446, 666, 10, 13, 1, 11, 53, 7, 15, 131, 33, 13, 174, 8, 10, 11, 65, 92, 11, 3, 177, 176, 29};
 #define DEF_TCOST_BYPASS 18u
 /* Gate-port kinds for pattern authorization, independent of environment grouping (bit n: port n is a gate) */
 static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u,4u,0u,3u};

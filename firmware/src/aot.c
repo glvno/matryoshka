@@ -411,7 +411,7 @@ static __attribute__((noinline)) void aot_cv(const node_t *nd, inst_t *it, uint3
 {
     apply_cv(nd, it, n, prev, means);
     if (flaws)
-        apply_flaws(nd, it);
+        apply_flaws(nd, it, IT_V(nd, it));
 }
 /* the parameters of member L, once a block */
 static inline void aot_prep(aot_cx_t *c, uint32_t L, int flaws)

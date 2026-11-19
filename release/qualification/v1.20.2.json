@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "version": "1.20.2",
+  "kind": "web-only release (D-1160) and content-only release (D-1154)",
+  "firmware_product": "FM-1_7012000",
+  "source_commit": "b6f5ee7dd4858f5d8b2b6ef531e138544e4a25e7",
+  "source_tree": "ff070e42bf0d88533a2d0b2955dd8388996fc2a5",
+  "status": "automated, rig content and listening checks passed; awaiting the owner's go for publication",
+  "release_approval": {"status": "pending", "scope": "Publication of v1.20.2 tagged on b6f5ee7d, with v1.20.0's firmware package and the factory region image of b6f5ee7d."},
+  "freeze": {
+    "freeze_commit": "7e8a2e12c7012a3135b74cc3d9f1b86c2a54b075 (PR #1100: version 1.20.2, CHANGELOG heading)",
+    "fix_after_freeze": "rc run 44439537186 on 7e8a2e12 failed one test: factory-lz.test.ts recomputed FACTORY_SET_ID without the firmware-tier overrides #1099 added to export-defs.ts's hash (expected 0xd162cd, presets.h holds 0x0971a5). PR #1101 fixed the test and tools/ci_checks.json; its merge b6f5ee7d is the frozen commit.",
+    "shipped_bytes_check": "git diff --stat 7e8a2e12 b6f5ee7d touches only tools/ci_checks.json and web/src/factory-lz.test.ts; git diff 7e8a2e12 b6f5ee7d -- web/public firmware is empty, so matryoshka-factory.bin, factory-sets.json, the firmware package and every other shipped file are byte-identical. The emulator scenarios measured on 7e8a2e12 are reused for b6f5ee7d (D-144)."
+  },
+  "bundled_firmware": {
+    "release": "v1.20.0",
+    "package": {"name": "web/public/firmware/matryoshka.fwsc", "size": 610641, "sha256": "bde941c55bf115471dcb988e1bf03dae4f3b7b83f0979e45c627379c4d01268b"},
+    "check": "web/public/firmware/matryoshka.fwsc and matryoshka.json are byte-identical to the v1.20.0 tag's (git diff v1.20.0 b6f5ee7d is empty for both); the sha256 equals release/qualification/v1.20.0.json artifacts.package"
+  },
+  "factory_content": {
+    "image": {"name": "web/public/firmware/matryoshka-factory.bin", "size": 56738, "sha256": "3582c34c630016d1c42bb2c656ba7bbc20e3fc9914fe7617e4344294a78a0b74"},
+    "set": {"version": 15, "set": "0971a5", "layout": 1, "format": 55, "patches": 12},
+    "previous": "v1.20.1 shipped version 14, set 55ce34, 51381 B, 10 patches",
+    "changed": "against v1.20.1 (factory patch binaries, preset values and preset patterns of both trees compared): the region patch Elvira 2 and its six presets (Init, Fifths Pad, Deep Drone, Rusty Bells, Pulse Lantern, Beating Cluster) with their patterns, under a new structure (#1092); Algo Four and Cassia 1 added to the region as firmware-tier overrides, revision 15 over v1.20.0's tier revision 13 (#1099, D-1020 and D-1154 amended 2026-11-18). Their sources and presets are unchanged since v1.20.1; the region now carries the copies at 8 and 5 voices. A saved slot keeps its patch until FACTORY RESET or a send from the editor (D-887)."
+  },
+  "contents": [
+    "Algo Four plays 8 voices and Cassia 1 5 on 1.20.0 firmware through factory region overrides (PR #1099)",
+    "Elvira 2: the lighter Elmyra 2 set: filter types, routing, 1.6 s delay and reverb, audio-rate LFOs, sequences, OUCH's ports (#858, PR #1092)"
+  ],
+  "ci_runs": {"web_rc": 44441536552, "web_rc_failed_before_fix": 44439537186},
+  "full_web": {
+    "rc_run": 44441536552,
+    "run_success": true,
+    "result": "test job (255 test files), the six parallel slow-render jobs (14 files: levels-1..6, headroom-1..4, shared-levels, kit909, audition-render, quiet-load) and the coverage seal passed on b6f5ee7d (D-1157 rc layout)",
+    "coverage_record": "release/coverage/v1.20.2/ (measured on b6f5ee7d, D-147): core 97.3 % of 6460 lines, interface 40.1 % of 11082"
+  },
+  "full_scenarios": {
+    "passed": 347,
+    "failed": 0,
+    "shards": 4,
+    "seconds": 418,
+    "on_commit": "7e8a2e12 (shipped bytes identical to b6f5ee7d, see freeze)",
+    "on_bridge_sha256": "166913fcc8371ff9bcf4f0f5e984df1996740c5445c4ea7c5ba35d85c9c99f64",
+    "note": "v1.20.0's bridge (D-1160); focusTurns passed first time (no #1044 flake)"
+  },
+  "editor_side_scenarios": {
+    "passed": 68,
+    "failed": 0,
+    "scenarios": "signalBuffers, liveCompile, rollPen, mirrorKeys, longPreset, abFlip, editorIgnore (D-1158), same bridge and commit"
+  },
+  "rig_install": {
+    "gate": "the rig ran v1.20.0's release package (release run 44324522229, qualified with its boot check), installed by the rig's holder through device:scenarios --install (D-123)",
+    "result": "tools/m1_link.py --rig factory-install wrote the frozen region image to the registered test rig at USB location 0x01140000 over the editor link (14 sectors, committed). FACT_READ read the 56738 bytes back identical to the image. FACT_INFO: region valid, layout 1 (the firmware reads 1), format 55, version 15, set 0971a5, 12 patches; the firmware plays format 63; firmware tier version 13, 11 patches; 21 factory patches merged. Left running 1.20.0 in normal mode, not in update mode, EDITOR IGNORE (INFO bit set), and handed back."
+  },
+  "content_checks": {
+    "cpu": {
+      "result": "passed: every surveyed sound at most 81.6 % worst steady (bar 90 %), nothing shed, no overload mute, no late half in any phase",
+      "files": "docs/measurements/cpu-survey-2026-11-18-rig-1.20.2-content.json (transport stopped) and -run.json (running)",
+      "method": "tools/rig_cpu_survey.py on 44 patch binaries: Elvira 2's patch and its 6 presets, the Algo Four override and its 28 presets, the Cassia 1 override with Init and its 6 presets, each preset applied with applyPreset (VOICES clamped to the card row's top, as pages_ui.c dp_load), every FX stage on: the master FX bus of Algo Four and Cassia 1; Elvira 2, which has no bus, with its reverb selector on and its delay and reverb mix at least 0.3. 0, 1, 4 and 8 keys, 2 s a phase, reloaded each phase. Worst steady: the largest lower median of a phase's samples after the first, as a share of the 2902 us half-block.",
+      "voices_played": "Algo Four 8 (patch, Init and the presets at full count; the DX100 presets that choose fewer play 2 to 6); Cassia 1 5 (patch and every preset); Elvira 2 has four fixed voices and no VOICES row",
+      "worst_steady_stopped_running": "Elvira 2 (patch, Init, 5 presets) 78.5 / 80.5 (Fifths Pad); Algo Four (patch, 28 presets) 79.8 / 81.2 (the patch stopped; Init and Solid Bass running); Cassia 1 (patch, Init, 6 presets) 81.6 / 81.4 (Reso Pad)",
+      "peaks": "highest single sample 2973 us (102.4 %), Algo Four Porcelain Keys with the transport running, the first sample of a phase, which includes the load; its steady load 78.9 / 80.5 %. No phase had a late half or an overload mute.",
+      "earlier": "#1099 measured the overrides on the rig on its pre-registration image (patch records byte-identical): 79.9 / 83.0 % worst steady, Cassia 1 Reso Pad"
+    },
+    "loudness_and_peaks": {
+      "result": "passed",
+      "evidence": "rc run 44441536552 on b6f5ee7d: the factory loudness rule (web/src/levels.ts: levels-1..6, shared-levels), the headroom limit (headroom-1..4) and the audition peak check (audition-render) in the slow-render jobs, and quiet-load, all passed over every factory patch and preset, Elvira 2's and the two overrides' included; locally on 68169862 (the same content): levels, levels-1..6, shared-levels, headroom-1..4, audition, audition-render, quiet-load, factory-presets, factory-content and factory-protocol, 18 files, 102 tests passed"
+    },
+    "plays_on_released_firmware": {
+      "result": "passed",
+      "evidence": "the image's header format is 55; 1.20.0 plays 63 (FACT_INFO plays 63 on the rig). web/src/modules.ts, web/src/patchbin.ts, engine.c, engine.h, proto.c, factory.c, pages_ui.c and main.c are unchanged since v1.20.0, so every module type in the image is one 1.20.0 knows and fc_merge works as #1099 proved. On the rig all 44 binaries loaded and played on 1.20.0 with the region installed (21 factory patches merged)."
+    }
+  },
+  "not_run": "firmware build, emu:smoke, boot check and the full device check: the firmware is 1.20.0's, already qualified (release/qualification/v1.20.0.json). The rig ran only the content survey of D-1154. FACTORY RESET was not run on the rig (it erases the rig mark); #1099 proved the reset path in the emulator on v1.20.0's bridge.",
+  "owner_checks": {"status": "listening approved; release go pending", "by": "repository owner", "date": "2026-11-18", "report": "Approve all (listening and the rulings of #1099 and #1092: D-1020, D-1154 amended, D-1058)"}
+}
