@@ -8,7 +8,7 @@
 /* the factory set (PRESET_LIST: names and unpacked bytes, then web/src/preset-migrations.json as JSON when it has any),
    24 bits of FNV-1a, never 0: kept in the settings record for new factory names and user assembly preset migrations.
    Existing saved patch bytes are preserved (main.c bank_add, presets_upgrade). */
-#define FACTORY_SET_ID 0xd162cdu
+#define FACTORY_SET_ID 0x0971a5u
 
 #define N_PRESETS 21
 /* the factory patches, packed (lz_unpack.h, web/scripts/factory-lz.ts) */

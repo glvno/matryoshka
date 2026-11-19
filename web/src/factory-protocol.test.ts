@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { FACT, FACT_SIZE, factCommitFrame, factReadFrame, factWriteFrame, parse, parseFactoryInfo, frame } from './protocol';
-import { buildRegion, crc32, KIND_REGION, KIND_TIER, looksLikeRecord, readHeader, readPatches, REGION_SIZE, STRUCT_PRESETS } from '../scripts/factory-region';
+import { buildRegion, contentVersion, crc32, KIND_REGION, KIND_TIER, looksLikeRecord, readHeader, readPatches, REGION_SIZE, STRUCT_PRESETS } from '../scripts/factory-region';
 import { FIRMWARE_TIER, FIRMWARE_TIER_OVERRIDES } from './factory-tiers';
 import { FM1_PRESETS } from './presets';
 import { factoryPresets, factoryRackPresets } from './factory-presets';
@@ -63,6 +63,12 @@ describe('the factory region image and the firmware tier', () => {
     expect(inTier.map((p) => p.name).sort()).toEqual(FIRMWARE_TIER.map(up).sort());
     expect([...inTier, ...inRegion].map((p) => p.name).sort()).toEqual([...bank, ...FIRMWARE_TIER_OVERRIDES.map(up)].sort());
     for (const p of [...inTier, ...inRegion]) expect(bank[p.slot]).toBe(p.name);
+  });
+  it('each firmware-tier override outranks the built-in copy of the newest released firmware (its revision is higher)', () => {
+    const sets = (JSON.parse(readFileSync(new URL('../scripts/released-factory.json', import.meta.url), 'utf8')) as { sets: { set: string; tags: string[] }[] }).sets;
+    const released = Math.max(...sets.map((s) => contentVersion(parseInt(s.set, 16), sets)));   // (the newest firmware's tier version)
+    const inRegion = readPatches(image);
+    for (const name of FIRMWARE_TIER_OVERRIDES) expect(inRegion.find((p) => p.name === up(name))?.revision).toBeGreaterThan(released);
   });
   it('every factory preset and drum pattern is in the region, none in the tier; the migrations in the tier alone', () => {
     const t = readHeader(tier)!, r = readHeader(image)!;
