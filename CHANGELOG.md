@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **An EQ module.** One band of a parametric equalizer: low shelf, bell, high shelf, low pass, high pass or notch, from 10 Hz to 22 kHz, ±18 dB, with q. Chain several for more bands, or drop in the factory assembly EQ (a low shelf, a bell and a high shelf). Its curve keeps its analog shape right up to the top of the range, without the squeeze a plain digital EQ has near 20 kHz, at no extra CPU while it plays. Patches with an EQ need the next firmware (for #1107).
+
 ## 1.21.0 — 2026-11-19
 
 - **A Start from an app that sends no clock before it no longer puts the FM-1's steps ahead.** When an app sends Start and only then its MIDI clock, the FM-1 now waits up to 150 ms for that first clock and starts its patterns on it, as it already does when the clock runs before the Start. Before, it started at once on its own tempo, and when its own tempo was faster than the app's, every step came two clocks early (at 90 bpm against the FM-1's 120: about 55 ms). An app that sends Start with no clock at all starts the FM-1 150 ms later than before, on its own tempo. The editor follows MIDI clock the same way (#870).
