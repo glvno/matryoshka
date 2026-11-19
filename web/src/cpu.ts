@@ -39,6 +39,9 @@ export interface TypeCost {
   moving?: number;
   /** a delay: cycles added while its time moves (a cable or the morph on `time`: the read position glides, #484) */
   glide?: number;
+  /** an EQ: cycles added while any of its parameters moves (a cable or the morph): it works its coefficients out again
+   * and ramps to them each block (#1107) */
+  recompute?: number;
   /** oscillator pitch-conversion work for each unison count (1..5), measured with that many copies */
   movingCopies?: number[];
   /** cycles saved when the first output is not patched (nor the outputs FIRST_ALSO lists): work only it needs, the least any
@@ -379,6 +382,7 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
       one += t.movingCopies?.[copies - 1] ?? t.moving * copies;
     }
     if (t.glide && !m.bypass && moved.has('time')) one += t.glide;
+    if (t.recompute && !m.bypass && moved.size) one += t.recompute;
     if (t.thru && m.type === 'steps' && inputs.has('keys')) one += t.thru * Math.min(TRACK_POLY, Math.max(1, ...groups.map((g) => g.cfg.parts)));
     if (m.type === 'output') (total += table.output), (counted += table.output);
     const k = ninst(m.id);

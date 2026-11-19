@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 58
+#define N_TYPES 59
 enum {
     T_FM1,
     T_OSC,
@@ -63,6 +63,7 @@ enum {
     T_LPG,
     T_LIMIT,
     T_EUCLID,
+    T_EQ,
 };
 
 /* fm1: Main */
@@ -1165,6 +1166,21 @@ enum {
 #define EUCLID_CVBASE 2
 #define EUCLID_NDATA 0
 
+/* eq: EQ */
+#define EQ_I_IN 0
+#define EQ_I_P1 1
+#define EQ_I_P2 2
+#define EQ_O_OUT 0
+#define EQ_P_FREQ 0
+#define EQ_P_GAIN 1
+#define EQ_P_Q 2
+#define EQ_P_SHAPE 3
+#define EQ_NIN 3
+#define EQ_NOUT 1
+#define EQ_NPAR 4
+#define EQ_CVBASE 1
+#define EQ_NDATA 0
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 #define DELAY_SYNC_TOP 520   /* ms: the synced note lengths spread over 1..this (modules.ts) */
@@ -1235,6 +1251,9 @@ static const int32_t ANALOG_SAWC_T[129] = {1073741824, 1071647400, 1069558421, 1
 #define LIMIT_KA 109857605   /* its attack with lookahead, Q30: 99.9 % of a step in LIMIT_AHEAD samples */
 #define EUCLID_STEPS_MAX 32   /* Euclid's longest pattern, steps (#1018) */
 static const uint8_t EUCLID_RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};   /* its rates on the engine's clock: clock ticks a step */
+#define EQ_LIM 67108864.0f   /* the EQ's states and output are held to +-this, in steps of Q16 (#1107) */
+#define EQ_SHELF_Q 2.0f   /* a shelf's q is held to this */
+#define EQ_SHELF_TOP 2.19911486f   /* a shelf's third matched level is where its zeros are, at most this (radians a sample) */
 #define SHREG_STAGES 8   /* the Shift register's stages (#438) */
 #define SHREG_PAT_SEED 0x5bd1e995u   /* mixed with the instance seed: its starting pattern */
 #define SHREG_FLIP_SEED 0x27d4eb2fu   /* mixed with the instance seed: its flip stream */
@@ -1936,6 +1955,17 @@ static const uint8_t EUCLID_LOG[] = {0, 0, 0, 0, 0};
 static const char *const EUCLID_UNIT[] = {"", "", "", "", ""};
 static const char *const EUCLID_CH4[] = {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", 0};
 static const char *const *const EUCLID_CH[] = {0, 0, 0, 0, EUCLID_CH4};
+static const char *const EQ_INNAMES[] = {"IN", "P1", "P2"};
+static const int32_t EQ_MIN[] = {655360, -1179648, 6554, 0};
+static const int32_t EQ_MAX[] = {1441792000, 1179648, 655360, 327680};
+static const int32_t EQ_DEF[] = {65536000, 0, 46334, 65536};
+static const int32_t EQ_INC[] = {14411366, 23593, 6488, 65536};
+static const int32_t EQ_STEP[] = {6554, 6554, 66, 65536};
+static const char *const EQ_PN[] = {"FREQ", "GAIN", "Q", "SHAPE"};
+static const uint8_t EQ_LOG[] = {1, 0, 1, 0};
+static const char *const EQ_UNIT[] = {"HZ", "DB", "", ""};
+static const char *const EQ_CH3[] = {"LOW SHELF", "BELL", "HIGH SHELF", "LOW PASS", "HIGH PASS", "NOTCH", 0};
+static const char *const *const EQ_CH[] = {0, 0, 0, EQ_CH3};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0, FM1_STEP},   /* fm1 */
@@ -1996,15 +2026,16 @@ static const def_t DEFS[N_TYPES] = {
     {LPG_NIN, LPG_NOUT, LPG_NPAR, 0, LPG_CVBASE, 0, LPG_NDATA, 1, LPG_MIN, LPG_MAX, LPG_DEF, LPG_INC, "LOW PASS GATE", LPG_PN, LPG_INNAMES, LPG_LOG, LPG_UNIT, LPG_CH, 0, 0, LPG_STEP},   /* lpg */
     {LIMIT_NIN, LIMIT_NOUT, LIMIT_NPAR, 0, LIMIT_CVBASE, 0, LIMIT_NDATA, 1, LIMIT_MIN, LIMIT_MAX, LIMIT_DEF, LIMIT_INC, "LIMITER", LIMIT_PN, LIMIT_INNAMES, LIMIT_LOG, LIMIT_UNIT, LIMIT_CH, 0, 0, LIMIT_STEP},   /* limit */
     {EUCLID_NIN, EUCLID_NOUT, EUCLID_NPAR, 0, EUCLID_CVBASE, -1, EUCLID_NDATA, 0, EUCLID_MIN, EUCLID_MAX, EUCLID_DEF, EUCLID_INC, "EUCLID", EUCLID_PN, EUCLID_INNAMES, EUCLID_LOG, EUCLID_UNIT, EUCLID_CH, 0, 0, EUCLID_STEP},   /* euclid */
+    {EQ_NIN, EQ_NOUT, EQ_NPAR, 0, EQ_CVBASE, 0, EQ_NDATA, 1, EQ_MIN, EQ_MAX, EQ_DEF, EQ_INC, "EQ", EQ_PN, EQ_INNAMES, EQ_LOG, EQ_UNIT, EQ_CH, 0, 0, EQ_STEP},   /* eq */
 };
 /* one copy of each type, a block: what the two-core plan balances (engine.c sched_build, #802), in 64 cycles: its median
  * time measured on the test rig (web/src/plan-costs.json; cpu.ts planCosts rig) */
-static const uint16_t DEF_COST[N_TYPES] = {84, 147, 110, 56, 10, 20, 63, 30, 241, 51, 145, 939, 31, 59, 80, 38, 413, 141, 273, 177, 110, 36, 40, 29, 49, 43, 242, 163, 43, 234, 130, 54, 46, 585, 393, 441, 834, 32, 9, 1, 14, 125, 10, 47, 211, 36, 20, 220, 10, 236, 16, 83, 116, 39, 4, 224, 223, 38};
+static const uint16_t DEF_COST[N_TYPES] = {84, 147, 110, 56, 10, 20, 63, 30, 241, 51, 145, 939, 31, 59, 80, 38, 413, 141, 273, 177, 110, 36, 40, 29, 49, 43, 242, 163, 43, 234, 130, 54, 46, 585, 393, 441, 834, 32, 9, 1, 14, 125, 10, 47, 211, 36, 20, 220, 10, 236, 16, 83, 116, 39, 4, 224, 223, 38, 135};
 /* a module bypassed when the patch loads, in the same units: passing an input through (D-1104) */
 #define DEF_COST_BYPASS 23u
 /* the same from web/src/cpu-costs.json: its run and parameter inputs, and its bypass (cpu.ts planCosts table) */
-static const uint16_t DEF_TCOST[N_TYPES] = {14, 77, 33, 52, 7, 8, 32, 8, 320, 9, 109, 1216, 2, 39, 94, 36, 328, 176, 325, 153, 87, 34, 34, 39, 47, 59, 273, 220, 52, 161, 103, 44, 27, 466, 276, 446, 666, 10, 13, 1, 11, 53, 7, 15, 131, 33, 13, 174, 8, 10, 11, 65, 92, 11, 3, 177, 176, 29};
+static const uint16_t DEF_TCOST[N_TYPES] = {14, 77, 33, 52, 7, 8, 32, 8, 320, 9, 109, 1216, 2, 39, 94, 36, 328, 176, 325, 153, 87, 34, 34, 39, 47, 59, 273, 220, 52, 161, 103, 44, 27, 466, 276, 446, 666, 10, 13, 1, 11, 53, 7, 15, 131, 33, 13, 174, 8, 10, 11, 65, 92, 11, 3, 177, 176, 29, 135};
 #define DEF_TCOST_BYPASS 18u
 /* Gate-port kinds for pattern authorization, independent of environment grouping (bit n: port n is a gate) */
-static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u,4u,0u,3u};
-static const uint32_t PRESET_GATE_OUT[] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u,0u,0u,7u};
+static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u,4u,0u,3u,0u};
+static const uint32_t PRESET_GATE_OUT[] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u,0u,0u,7u,0u};

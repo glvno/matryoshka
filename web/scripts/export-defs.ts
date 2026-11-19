@@ -9,7 +9,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { ADSR_LONG, ANALOG_CURVE, ANALOG_DIP, ANALOG_DIP_S, ANALOG_PWO, ANALOG_SKEW, ANALOG_TOL, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, FILTER_DRIVE_KNEE, FILTER_DRIVE_TOP, DIODE_W180, DIODE_KCRIT, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_REACH_MAX, DELAY_RATES, DELAY_TAIL, delayAaCoefs, DEVICE_SR, DELAY_TAPE_LP, DELAY_TAPE_HP, delayTapePole, DELAY_WOW_HZ, DELAY_FLUTTER_HZ, DELAY_WOW_MS, DELAY_FLUTTER_MS, turnInc, delayDepth8, DELAY_HEADS, DELAY_HEAD_MASK, DELAY_HEAD_GAIN, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, LFO_TEMPO, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY, METERS, METER_DEFAULT, CLICK_MS, CLICK_LEVEL_Q16, CLICK_HZ, CLICK_ACCENT_HZ } from '../src/modules';
 import { LPG_ATTACK, LPG_CLIP, LPG_RES_K } from '../src/modules';
-import { EUCLID_RATE_TICKS, EUCLID_STEPS_MAX, LIMIT_AHEAD, LIMIT_CHUNK, LIMIT_KA } from '../src/modules';
+import { EQ_LIM, EQ_SHELF_Q, EQ_SHELF_TOP, EUCLID_RATE_TICKS, EUCLID_STEPS_MAX, LIMIT_AHEAD, LIMIT_CHUNK, LIMIT_KA } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16, VERSION, deviceBudget, DEVICE } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
 import { ACCENT_VEL, MICRO_MAX, MICRO_STEPS, RATCHET_MAX, TRACK_NOTES_MAX } from '../src/track';
@@ -133,6 +133,9 @@ w(`#define LIMIT_CHUNK ${LIMIT_CHUNK}   /* its line's chunks, whose peaks it kee
 w(`#define LIMIT_KA ${Math.round(LIMIT_KA * 2 ** 30)}   /* its attack with lookahead, Q30: 99.9 % of a step in LIMIT_AHEAD samples */`);
 w(`#define EUCLID_STEPS_MAX ${EUCLID_STEPS_MAX}   /* Euclid's longest pattern, steps (#1018) */`);
 w(`static const uint8_t EUCLID_RATE_TICKS[${EUCLID_RATE_TICKS.length}] = {${EUCLID_RATE_TICKS.join(', ')}};   /* its rates on the engine's clock: clock ticks a step */`);
+w(`#define EQ_LIM ${EQ_LIM * 65536}.0f   /* the EQ's states and output are held to +-this, in steps of Q16 (#1107) */`);
+w(`#define EQ_SHELF_Q ${EQ_SHELF_Q}.0f   /* a shelf's q is held to this */`);
+w(`#define EQ_SHELF_TOP ${EQ_SHELF_TOP.toPrecision(9)}f   /* a shelf's third matched level is where its zeros are, at most this (radians a sample) */`);
 w(`#define SHREG_STAGES ${SHREG_STAGES}   /* the Shift register's stages (#438) */`);
 w(`#define SHREG_PAT_SEED 0x${SHREG_PAT_SEED.toString(16)}u   /* mixed with the instance seed: its starting pattern */`);
 w(`#define SHREG_FLIP_SEED 0x${SHREG_FLIP_SEED.toString(16)}u   /* mixed with the instance seed: its flip stream */`);

@@ -5414,6 +5414,26 @@ asm('octave fuzz', 'Effects', (b) => {
   b.param('tracking', fol, 'highcut');
 });
 
+// a three-band EQ (#1107): a low shelf, a bell and a high shelf in a row, flat until a gain moves. Each band is an EQ
+// module: on its own card a band's shape can become a high pass, a low pass or a notch, and another EQ added in the row
+// is another band.
+asm('EQ', 'Effects', (b) => {
+  const lo = b.add('eq', 0, 0, { shape: 0, freq: 120, gain: 0, q: 0.707 });
+  const mid = b.add('eq', 1, 0, { shape: 1, freq: 1000, gain: 0, q: 1 });
+  const hi = b.add('eq', 2, 0, { shape: 2, freq: 8000, gain: 0, q: 0.707 });
+  b.wire(lo, 'out', mid, 'in');
+  b.wire(mid, 'out', hi, 'in');
+  b.input('in', lo, 'in');
+  b.output('out', hi, 'out');
+  b.param('gain', lo, 'gain', { head: 'low', inner: 'low gain' });
+  b.param('freq', lo, 'freq', { inner: 'low freq' });
+  b.param('gain', mid, 'gain', { col: true, head: 'mid', inner: 'mid gain' });
+  b.param('freq', mid, 'freq', { inner: 'mid freq' });
+  b.param('q', mid, 'q', { inner: 'mid q' });
+  b.param('gain', hi, 'gain', { col: true, head: 'high', inner: 'high gain' });
+  b.param('freq', hi, 'freq', { inner: 'high freq' });
+});
+
 defs.push(masterFxDef());
 
 // an exposed pin is offered as the sliders it routes to (the editor has no p1 / p2 jacks): the same migration as on load

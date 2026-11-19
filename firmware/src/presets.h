@@ -60,7 +60,7 @@ static const struct { const char *name; const uint8_t *lz; uint16_t lz_len, len;
 
 /* the factory sets released firmwares wrote (web/scripts/released-factory.json): the set id (0: a firmware from before
    the id, 1.6.0 and older) and which of today's patches it had by name (bit n: PRESET_LIST[n]) */
-#define N_RELEASED_SETS 15
+#define N_RELEASED_SETS 16
 static const struct { uint32_t set; uint64_t has; } RELEASED_SETS[N_RELEASED_SETS] = {
     {0x000000u, 0x7ffffull},   /* v1.0.0 .. v1.6.0 */
     {0x0971a5u, 0x1fffffull},   /* v1.20.2 .. v1.20.3 */
@@ -69,6 +69,7 @@ static const struct { uint32_t set; uint64_t has; } RELEASED_SETS[N_RELEASED_SET
     {0x55ce34u, 0x1fffffull},   /* v1.20.1 */
     {0x5a8dc0u, 0xfffffull},   /* v1.11.0 */
     {0x5a93c5u, 0xfffffull},   /* v1.12.0 .. v1.13.0 */
+    {0x5c07a5u, 0x1fffffull},   /* v1.21.0 */
     {0x626f70u, 0xfffffull},   /* v1.11.1 */
     {0x751d1fu, 0x1fffffull},   /* v1.18.0 .. v1.19.0 */
     {0x7ba90fu, 0xfffffull},   /* v1.10.0 .. v1.10.1 */

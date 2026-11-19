@@ -37,7 +37,7 @@ const steps = (o: Float32Array, period: number, n: number): string => Array.from
 
 describe('Euclid (#1018)', () => {
   it('is appended after the Limiter, with clock and reset in, trig, off and accent out', () => {
-    expect(TYPE_ORDER.slice(-2)).toEqual(['limit', 'euclid']);
+    expect(TYPE_ORDER.slice(TYPE_ORDER.indexOf('limit'), TYPE_ORDER.indexOf('limit') + 2)).toEqual(['limit', 'euclid']);
     expect(DEFS.euclid.inputs.map((i) => i.name)).toEqual(['clock', 'reset', 'p1', 'p2']);
     expect(DEFS.euclid.outputs.map((o) => o.name)).toEqual(['trig', 'off', 'accent']);
     expect(DEFS.euclid.params.map((q) => [q.name, q.default])).toEqual([['steps', 8], ['hits', 3], ['rotate', 0], ['accent', 0], ['rate', 4]]);

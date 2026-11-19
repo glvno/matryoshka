@@ -32,6 +32,7 @@ const BY_TYPE: Record<string, Record<string, string>> = {
   range: { inlo: 'in low', inhi: 'in high', outlo: 'out low', outhi: 'out high' },
   limit: { gr: 'gain reduction', ahead: 'lookahead' },
   euclid: { hits: 'hits (fill)', off: 'off (rests)' },
+  eq: { freq: 'frequency' },
   matrix: {
     ...Object.fromEntries([1, 2, 3, 4].flatMap((k) => [[`in${k}`, `in ${k}`], [`out${k}`, `out ${k}`]])),
     ...Object.fromEntries([1, 2, 3, 4].flatMap((i) => [1, 2, 3, 4].map((o) => [`i${i}o${o}`, `in ${i} → out ${o}`]))),
@@ -111,6 +112,10 @@ const HINTS: Record<string, string> = {
   'euclid.rotate': 'Turns the pattern: it starts this many steps later in it, so the hits come that much earlier.',
   'euclid.accent': 'How many of the hits are accented, spread as evenly over the hits as the hits are over the steps; the first hit is always one. Accented hits also play on the accent output. 0: none.',
   'euclid.rate': 'With nothing in clock: one step each this long on the FM-1\'s clock (the tempo, or MIDI clock) while the transport runs, the first when PLAY starts. With a cable in clock, each rising edge is a step and this row does nothing.',
+  'eq.shape': 'The kind of band. low shelf / high shelf: everything below / above freq goes up or down by gain. bell: a peak or a dip at freq, gain high, q wide. low pass / high pass: cuts above / below freq, 12 dB per octave. notch: a deep, narrow cut at freq. Chain several EQs for more bands.',
+  'eq.freq': 'Where the band sits, 10 Hz to 22 kHz: a bell\'s peak, the middle of a shelf\'s slope (half its gain), a filter\'s cutoff, a notch\'s centre. The curve keeps its analog shape right up to the top, without the squeeze (cramping) a plain digital EQ has there.',
+  'eq.gain': 'How far a shelf or a bell boosts or cuts, -18..18 dB. 0: the band passes the sound unchanged. Not used by low pass, high pass or notch.',
+  'eq.q': 'A bell\'s width: 0.7 is about two octaves, 4 a narrow peak, 0.1 very broad. For low pass and high pass the resonance (0.707 flat, higher a peak at freq); for a notch its width. On a shelf the knee: 0.707 a smooth slope, higher a small bump either side; a shelf stops at 2.',
 };
 export const paramHint = (type: string, name: string): string | undefined => HINTS[`${type}.${name}`];
 
@@ -137,7 +142,7 @@ const TAGS: Record<string, [string, TagFamily]> = {
   mixer: ['MIX', 'util'], math: ['MATH', 'util'], logic: ['LOGIC', 'util'], const: ['DC', 'util'], macro: ['MACRO', 'util'], scale: ['SCALE', 'util'],
   output: ['OUT', 'util'], fm1: ['MAIN', 'util'], part: ['PART', 'util'], alloc: ['VOICES', 'util'], scope: ['SCOPE', 'util'],
   drummap: ['MAP', 'mod'], pd: ['PD', 'src'], select: ['SEL', 'util'], shreg: ['SHREG', 'mod'], comp: ['COMP', 'util'], range: ['RANGE', 'util'], matrix: ['MATRIX', 'util'], lpg: ['LPG', 'shp'],
-  limit: ['LIMIT', 'shp'], euclid: ['EUCLID', 'mod'],
+  limit: ['LIMIT', 'shp'], euclid: ['EUCLID', 'mod'], eq: ['EQ', 'shp'],
 };
 
 /** the short tag before a card's title and the family that colours it */
@@ -164,6 +169,7 @@ const ALIASES: Record<string, string> = {
   harm: 'chord chords orchid chord memory one finger triad seventh ninth sus inversion voicing',
   lpg: 'lpg lowpass gate lopass gate low pass gate vactrol buchla 292 pluck ping bongo strike filter vca',
   limit: 'brickwall peak ceiling clip maximizer loudness ear safety protect headphones feedback master dynamics',
+  eq: 'equalizer equaliser parametric band tone bass treble presence shelf shelving bell peak peaking notch low cut high cut lowpass highpass mastering mix',
   euclid: 'euclidean bjorklund rhythm pattern trigger gate clock drum sequencer fill hits pulses rotate accent tresillo polyrhythm',
   // (the envelopes, modules.ts ENVELOPE_TYPES: `envelope` finds all four, the ADSR first as the commonest, owner 2026-11-19)
   adsr: 'envelope eg contour attack decay sustain release',
