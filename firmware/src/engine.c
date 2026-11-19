@@ -10533,8 +10533,8 @@ static int32_t steps_ht(const inst_t *it, uint32_t t)
  * fit go at once, so a long position costs no more than a short one. A step comes a step's half ticks after the one
  * before; after a step half a tick on (1/64) a rate of whole ticks waits for the tick after, as m_steps counts. Its half
  * ticks then stand where that tick leaves them. Returns the steps the start takes on its first sample: 1 when a step falls
- * on that tick, else 0 */
-static int32_t steps_ff(inst_t *it, uint32_t t, int32_t dir, int32_t *len, int32_t *ht)
+ * on that tick, else 0. Out of line (ENG_RARE): only a start at a Song Position takes it */
+ENG_RARE int32_t steps_ff(inst_t *it, uint32_t t, int32_t dir, int32_t *len, int32_t *ht)
 {
     uint32_t end = 2u * ff_ticks, h = 0, last = 0, seen = 0, a_h = 0, a_loop = 0, a_pass = 0;   /* (in half ticks) */
     int song = E.song && E.song_n[E.song - 1u];
