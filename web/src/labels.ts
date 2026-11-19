@@ -165,6 +165,11 @@ const ALIASES: Record<string, string> = {
   lpg: 'lpg lowpass gate lopass gate low pass gate vactrol buchla 292 pluck ping bongo strike filter vca',
   limit: 'brickwall peak ceiling clip maximizer loudness ear safety protect headphones feedback master dynamics',
   euclid: 'euclidean bjorklund rhythm pattern trigger gate clock drum sequencer fill hits pulses rotate accent tresillo polyrhythm',
+  // (the envelopes, modules.ts ENVELOPE_TYPES: `envelope` finds all four, the ADSR first as the commonest, owner 2026-11-19)
+  adsr: 'envelope eg contour attack decay sustain release',
+  env: 'envelope eg level rate dx7',
+  env8: 'envelope eg eight step casio cz',
+  rateenv: 'envelope eg rate',
 };
 
 /** the words a module is found by in the palette and + Add module besides its name: its label, its card tag, its former
