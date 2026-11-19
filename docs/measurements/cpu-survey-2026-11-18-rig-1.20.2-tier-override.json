@@ -1,0 +1,2629 @@
+[
+ {
+  "slot": 0,
+  "name": "Algo Four Algo Four Amber EP",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2919,
+  "n0_samples": [
+   2919,
+   1282,
+   1277,
+   1270
+  ],
+  "n0_mean_us": [
+   822,
+   863,
+   766,
+   856
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2902,
+  "n1_samples": [
+   2902,
+   1627,
+   1665,
+   1665
+  ],
+  "n1_mean_us": [
+   1316,
+   1214,
+   1329,
+   1210
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2896,
+  "n4_samples": [
+   2896,
+   1889,
+   1903,
+   1906
+  ],
+  "n4_mean_us": [
+   1523,
+   1487,
+   1533,
+   1496
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2943,
+  "n8_samples": [
+   2943,
+   2221,
+   2232,
+   2255
+  ],
+  "n8_mean_us": [
+   2151,
+   2160,
+   2179,
+   2179
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 1,
+  "name": "Algo Four Algo Four Backing Brass",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2179,
+  "n0_samples": [
+   2179,
+   1209,
+   1209,
+   1155
+  ],
+  "n0_mean_us": [
+   740,
+   879,
+   745,
+   942
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2174,
+  "n1_samples": [
+   2174,
+   1418,
+   1429,
+   1454
+  ],
+  "n1_mean_us": [
+   1094,
+   1116,
+   1099,
+   1113
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2164,
+  "n4_samples": [
+   2164,
+   1660,
+   1651,
+   1662
+  ],
+  "n4_mean_us": [
+   1374,
+   1342,
+   1384,
+   1324
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2175,
+  "n8_samples": [
+   2175,
+   1680,
+   1660,
+   1658
+  ],
+  "n8_mean_us": [
+   1574,
+   1591,
+   1595,
+   1593
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 2,
+  "name": "Algo Four Algo Four Brass Stab",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2926,
+  "n0_samples": [
+   2926,
+   1264,
+   1288,
+   1288
+  ],
+  "n0_mean_us": [
+   850,
+   818,
+   877,
+   763
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2885,
+  "n1_samples": [
+   2885,
+   1615,
+   1615,
+   1605
+  ],
+  "n1_mean_us": [
+   1195,
+   1322,
+   1200,
+   1281
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2890,
+  "n4_samples": [
+   2890,
+   1891,
+   1899,
+   1947
+  ],
+  "n4_mean_us": [
+   1469,
+   1528,
+   1494,
+   1531
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2904,
+  "n8_samples": [
+   2904,
+   2213,
+   2240,
+   2231
+  ],
+  "n8_mean_us": [
+   2108,
+   2173,
+   2175,
+   2171
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 3,
+  "name": "Algo Four Algo Four Combo Organ",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2186,
+  "n0_samples": [
+   2186,
+   1137,
+   1066,
+   1147
+  ],
+  "n0_mean_us": [
+   789,
+   691,
+   789,
+   689
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2241,
+  "n1_samples": [
+   2241,
+   1500,
+   1483,
+   1483
+  ],
+  "n1_mean_us": [
+   1057,
+   1016,
+   1049,
+   1018
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2215,
+  "n4_samples": [
+   2215,
+   1855,
+   1867,
+   1853
+  ],
+  "n4_mean_us": [
+   1765,
+   1762,
+   1756,
+   1747
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2251,
+  "n8_samples": [
+   2251,
+   1857,
+   1857,
+   1850
+  ],
+  "n8_mean_us": [
+   1749,
+   1745,
+   1745,
+   1749
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 4,
+  "name": "Algo Four Algo Four Dawn Sweep",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2356,
+  "n0_samples": [
+   2356,
+   1267,
+   1230,
+   1271
+  ],
+  "n0_mean_us": [
+   841,
+   785,
+   832,
+   772
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2342,
+  "n1_samples": [
+   2342,
+   1536,
+   1539,
+   1553
+  ],
+  "n1_mean_us": [
+   1214,
+   1167,
+   1198,
+   1180
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2346,
+  "n4_samples": [
+   2346,
+   1852,
+   1851,
+   1833
+  ],
+  "n4_mean_us": [
+   1472,
+   1491,
+   1453,
+   1475
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2349,
+  "n8_samples": [
+   2349,
+   1861,
+   1865,
+   1859
+  ],
+  "n8_mean_us": [
+   1799,
+   1798,
+   1783,
+   1775
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 5,
+  "name": "Algo Four Algo Four Dusty EP",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2117,
+  "n0_samples": [
+   2117,
+   1193,
+   1215,
+   1215
+  ],
+  "n0_mean_us": [
+   797,
+   715,
+   819,
+   717
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2037,
+  "n1_samples": [
+   2037,
+   1407,
+   1339,
+   1332
+  ],
+  "n1_mean_us": [
+   1049,
+   1030,
+   1043,
+   1006
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2133,
+  "n4_samples": [
+   2133,
+   1662,
+   1656,
+   1662
+  ],
+  "n4_mean_us": [
+   1422,
+   1444,
+   1423,
+   1439
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2140,
+  "n8_samples": [
+   2140,
+   1666,
+   1652,
+   1680
+  ],
+  "n8_mean_us": [
+   1594,
+   1584,
+   1594,
+   1601
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 6,
+  "name": "Algo Four Algo Four E Piano",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2908,
+  "n0_samples": [
+   2908,
+   1352,
+   1265,
+   1348
+  ],
+  "n0_mean_us": [
+   919,
+   827,
+   872,
+   847
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2926,
+  "n1_samples": [
+   2926,
+   1617,
+   1613,
+   1620
+  ],
+  "n1_mean_us": [
+   1318,
+   1214,
+   1323,
+   1208
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2930,
+  "n4_samples": [
+   2930,
+   1902,
+   1937,
+   1937
+  ],
+  "n4_mean_us": [
+   1580,
+   1507,
+   1574,
+   1491
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2895,
+  "n8_samples": [
+   2895,
+   2221,
+   2211,
+   2220
+  ],
+  "n8_mean_us": [
+   2160,
+   2152,
+   2159,
+   2159
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 7,
+  "name": "Algo Four Algo Four Elec Lute",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2411,
+  "n0_samples": [
+   2411,
+   1223,
+   1258,
+   1258
+  ],
+  "n0_mean_us": [
+   768,
+   962,
+   776,
+   962
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2408,
+  "n1_samples": [
+   2408,
+   1541,
+   1542,
+   1588
+  ],
+  "n1_mean_us": [
+   1163,
+   1210,
+   1167,
+   1225
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2357,
+  "n4_samples": [
+   2357,
+   1863,
+   1811,
+   1816
+  ],
+  "n4_mean_us": [
+   1441,
+   1453,
+   1439,
+   1455
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2427,
+  "n8_samples": [
+   2427,
+   1833,
+   1826,
+   1830
+  ],
+  "n8_mean_us": [
+   1754,
+   1753,
+   1756,
+   1753
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 8,
+  "name": "Algo Four Algo Four FM Bells",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 1975,
+  "n0_samples": [
+   1975,
+   1204,
+   1211,
+   1271
+  ],
+  "n0_mean_us": [
+   777,
+   689,
+   787,
+   701
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2000,
+  "n1_samples": [
+   2000,
+   1474,
+   1475,
+   1479
+  ],
+  "n1_mean_us": [
+   1027,
+   1018,
+   1035,
+   1003
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 1996,
+  "n4_samples": [
+   1996,
+   1580,
+   1582,
+   1591
+  ],
+  "n4_mean_us": [
+   1492,
+   1489,
+   1485,
+   1511
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2002,
+  "n8_samples": [
+   2002,
+   1598,
+   1581,
+   1580
+  ],
+  "n8_mean_us": [
+   1491,
+   1488,
+   1486,
+   1498
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 9,
+  "name": "Algo Four Algo Four FM Clav",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2135,
+  "n0_samples": [
+   2135,
+   1255,
+   1245,
+   1254
+  ],
+  "n0_mean_us": [
+   767,
+   799,
+   759,
+   795
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2151,
+  "n1_samples": [
+   2151,
+   1407,
+   1379,
+   1375
+  ],
+  "n1_mean_us": [
+   1141,
+   1073,
+   1124,
+   1066
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2136,
+  "n4_samples": [
+   2136,
+   1720,
+   1766,
+   1712
+  ],
+  "n4_mean_us": [
+   1467,
+   1456,
+   1460,
+   1447
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2139,
+  "n8_samples": [
+   2139,
+   1718,
+   1717,
+   1718
+  ],
+  "n8_mean_us": [
+   1670,
+   1658,
+   1653,
+   1658
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 10,
+  "name": "Algo Four Algo Four FM Strings",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2202,
+  "n0_samples": [
+   2202,
+   1149,
+   1181,
+   1181
+  ],
+  "n0_mean_us": [
+   742,
+   920,
+   744,
+   916
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2173,
+  "n1_samples": [
+   2173,
+   1404,
+   1406,
+   1458
+  ],
+  "n1_mean_us": [
+   1091,
+   1111,
+   1094,
+   1117
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2162,
+  "n4_samples": [
+   2162,
+   1652,
+   1613,
+   1637
+  ],
+  "n4_mean_us": [
+   1373,
+   1315,
+   1371,
+   1306
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2175,
+  "n8_samples": [
+   2175,
+   1677,
+   1644,
+   1633
+  ],
+  "n8_mean_us": [
+   1558,
+   1556,
+   1552,
+   1546
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 11,
+  "name": "Algo Four Algo Four Feed Lead",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 1740,
+  "n0_samples": [
+   1740,
+   1237,
+   1145,
+   1239
+  ],
+  "n0_mean_us": [
+   734,
+   653,
+   724,
+   653
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 1747,
+  "n1_samples": [
+   1747,
+   1422,
+   1422,
+   1399
+  ],
+  "n1_mean_us": [
+   1104,
+   1103,
+   1102,
+   1082
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 1768,
+  "n4_samples": [
+   1768,
+   1472,
+   1474,
+   1474
+  ],
+  "n4_mean_us": [
+   1353,
+   1359,
+   1342,
+   1344
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 1765,
+  "n8_samples": [
+   1765,
+   1466,
+   1474,
+   1474
+  ],
+  "n8_mean_us": [
+   1337,
+   1358,
+   1344,
+   1338
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 12,
+  "name": "Algo Four Algo Four Glass Pad",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2234,
+  "n0_samples": [
+   2234,
+   1204,
+   1161,
+   1226
+  ],
+  "n0_mean_us": [
+   736,
+   838,
+   735,
+   855
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2225,
+  "n1_samples": [
+   2225,
+   1437,
+   1456,
+   1431
+  ],
+  "n1_mean_us": [
+   1112,
+   1138,
+   1109,
+   1118
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2210,
+  "n4_samples": [
+   2210,
+   1691,
+   1691,
+   1639
+  ],
+  "n4_mean_us": [
+   1416,
+   1375,
+   1379,
+   1327
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2180,
+  "n8_samples": [
+   2180,
+   1727,
+   1727,
+   1698
+  ],
+  "n8_mean_us": [
+   1661,
+   1657,
+   1619,
+   1576
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 13,
+  "name": "Algo Four Algo Four Harpsi Piano",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 1975,
+  "n0_samples": [
+   1975,
+   1264,
+   1255,
+   1255
+  ],
+  "n0_mean_us": [
+   737,
+   685,
+   736,
+   686
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 1949,
+  "n1_samples": [
+   1949,
+   1479,
+   1493,
+   1482
+  ],
+  "n1_mean_us": [
+   1021,
+   1024,
+   1026,
+   1022
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2017,
+  "n4_samples": [
+   2017,
+   1599,
+   1593,
+   1600
+  ],
+  "n4_mean_us": [
+   1497,
+   1502,
+   1502,
+   1503
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 1978,
+  "n8_samples": [
+   1978,
+   1598,
+   1598,
+   1596
+  ],
+  "n8_mean_us": [
+   1496,
+   1501,
+   1493,
+   1500
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 14,
+  "name": "Algo Four Algo Four Init",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2887,
+  "n0_samples": [
+   2887,
+   1395,
+   1327,
+   1377
+  ],
+  "n0_mean_us": [
+   1112,
+   847,
+   1121,
+   849
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2909,
+  "n1_samples": [
+   2909,
+   1674,
+   1685,
+   1685
+  ],
+  "n1_mean_us": [
+   1339,
+   1270,
+   1356,
+   1266
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2902,
+  "n4_samples": [
+   2902,
+   1959,
+   1955,
+   1957
+  ],
+  "n4_mean_us": [
+   1576,
+   1546,
+   1591,
+   1547
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2927,
+  "n8_samples": [
+   2927,
+   2267,
+   2295,
+   2292
+  ],
+  "n8_mean_us": [
+   2193,
+   2208,
+   2237,
+   2227
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 15,
+  "name": "Algo Four Algo Four Koto",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2170,
+  "n0_samples": [
+   2170,
+   1216,
+   1206,
+   1209
+  ],
+  "n0_mean_us": [
+   747,
+   897,
+   742,
+   918
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2151,
+  "n1_samples": [
+   2151,
+   1349,
+   1348,
+   1351
+  ],
+  "n1_mean_us": [
+   1037,
+   1060,
+   1039,
+   1045
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2142,
+  "n4_samples": [
+   2142,
+   1696,
+   1693,
+   1692
+  ],
+  "n4_mean_us": [
+   1441,
+   1446,
+   1435,
+   1424
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2165,
+  "n8_samples": [
+   2165,
+   1695,
+   1703,
+   1704
+  ],
+  "n8_mean_us": [
+   1620,
+   1631,
+   1625,
+   1621
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 16,
+  "name": "Algo Four Algo Four Lately Bass",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 1752,
+  "n0_samples": [
+   1752,
+   1251,
+   1150,
+   1247
+  ],
+  "n0_mean_us": [
+   750,
+   705,
+   750,
+   711
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 1773,
+  "n1_samples": [
+   1773,
+   1415,
+   1424,
+   1424
+  ],
+  "n1_mean_us": [
+   1114,
+   1119,
+   1098,
+   1088
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 1755,
+  "n4_samples": [
+   1755,
+   1488,
+   1484,
+   1475
+  ],
+  "n4_mean_us": [
+   1357,
+   1369,
+   1354,
+   1353
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 1768,
+  "n8_samples": [
+   1768,
+   1468,
+   1471,
+   1471
+  ],
+  "n8_mean_us": [
+   1337,
+   1370,
+   1344,
+   1344
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 17,
+  "name": "Algo Four Algo Four Pan Flute",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 1763,
+  "n0_samples": [
+   1763,
+   1230,
+   1230,
+   1148
+  ],
+  "n0_mean_us": [
+   659,
+   686,
+   641,
+   698
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 1756,
+  "n1_samples": [
+   1756,
+   1520,
+   1415,
+   1398
+  ],
+  "n1_mean_us": [
+   1112,
+   1115,
+   1085,
+   1104
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 1750,
+  "n4_samples": [
+   1750,
+   1473,
+   1480,
+   1472
+  ],
+  "n4_mean_us": [
+   1357,
+   1352,
+   1346,
+   1341
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 1768,
+  "n8_samples": [
+   1768,
+   1472,
+   1472,
+   1464
+  ],
+  "n8_mean_us": [
+   1359,
+   1352,
+   1338,
+   1339
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 18,
+  "name": "Algo Four Algo Four Ping EP",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2130,
+  "n0_samples": [
+   2130,
+   1189,
+   1230,
+   1204
+  ],
+  "n0_mean_us": [
+   891,
+   723,
+   866,
+   733
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2141,
+  "n1_samples": [
+   2141,
+   1326,
+   1326,
+   1363
+  ],
+  "n1_mean_us": [
+   1078,
+   1023,
+   1072,
+   1024
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2137,
+  "n4_samples": [
+   2137,
+   1727,
+   1663,
+   1736
+  ],
+  "n4_mean_us": [
+   1416,
+   1424,
+   1436,
+   1422
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2144,
+  "n8_samples": [
+   2144,
+   1663,
+   1674,
+   1676
+  ],
+  "n8_mean_us": [
+   1586,
+   1598,
+   1603,
+   1603
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 19,
+  "name": "Algo Four Algo Four Porcelain Keys",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2962,
+  "n0_samples": [
+   2962,
+   1296,
+   1359,
+   1359
+  ],
+  "n0_mean_us": [
+   960,
+   810,
+   1011,
+   808
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2917,
+  "n1_samples": [
+   2917,
+   1699,
+   1699,
+   1634
+  ],
+  "n1_mean_us": [
+   1258,
+   1221,
+   1286,
+   1207
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2915,
+  "n4_samples": [
+   2915,
+   1916,
+   1986,
+   1986
+  ],
+  "n4_mean_us": [
+   1547,
+   1527,
+   1563,
+   1510
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2946,
+  "n8_samples": [
+   2946,
+   2259,
+   2272,
+   2266
+  ],
+  "n8_mean_us": [
+   2173,
+   2199,
+   2205,
+   2197
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 20,
+  "name": "Algo Four Algo Four Slap Bass",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 1720,
+  "n0_samples": [
+   1720,
+   1162,
+   1220,
+   1152
+  ],
+  "n0_mean_us": [
+   719,
+   796,
+   718,
+   793
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 1736,
+  "n1_samples": [
+   1736,
+   1427,
+   1419,
+   1412
+  ],
+  "n1_mean_us": [
+   1107,
+   1153,
+   1109,
+   1096
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 1748,
+  "n4_samples": [
+   1748,
+   1478,
+   1478,
+   1456
+  ],
+  "n4_mean_us": [
+   1365,
+   1361,
+   1349,
+   1343
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 1754,
+  "n8_samples": [
+   1754,
+   1480,
+   1472,
+   1467
+  ],
+  "n8_mean_us": [
+   1360,
+   1353,
+   1337,
+   1337
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 21,
+  "name": "Algo Four Algo Four Solid Bass",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2896,
+  "n0_samples": [
+   2896,
+   1397,
+   1397,
+   1325
+  ],
+  "n0_mean_us": [
+   838,
+   1043,
+   844,
+   1076
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2884,
+  "n1_samples": [
+   2884,
+   1702,
+   1736,
+   1710
+  ],
+  "n1_mean_us": [
+   1307,
+   1288,
+   1241,
+   1277
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2911,
+  "n4_samples": [
+   2911,
+   1977,
+   1962,
+   2008
+  ],
+  "n4_mean_us": [
+   1690,
+   1565,
+   1699,
+   1563
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2920,
+  "n8_samples": [
+   2920,
+   2284,
+   2299,
+   2299
+  ],
+  "n8_mean_us": [
+   2202,
+   2228,
+   2229,
+   2228
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 22,
+  "name": "Algo Four Algo Four Space Chime",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2217,
+  "n0_samples": [
+   2217,
+   1215,
+   1154,
+   1233
+  ],
+  "n0_mean_us": [
+   901,
+   740,
+   923,
+   744
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2239,
+  "n1_samples": [
+   2239,
+   1427,
+   1422,
+   1432
+  ],
+  "n1_mean_us": [
+   1147,
+   1099,
+   1142,
+   1102
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2204,
+  "n4_samples": [
+   2204,
+   1668,
+   1668,
+   1639
+  ],
+  "n4_mean_us": [
+   1334,
+   1312,
+   1334,
+   1316
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2216,
+  "n8_samples": [
+   2216,
+   1698,
+   1666,
+   1665
+  ],
+  "n8_mean_us": [
+   1587,
+   1582,
+   1573,
+   1580
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 23,
+  "name": "Algo Four Algo Four Storm Wind",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2046,
+  "n0_samples": [
+   2046,
+   1141,
+   1109,
+   1129
+  ],
+  "n0_mean_us": [
+   685,
+   766,
+   688,
+   764
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2010,
+  "n1_samples": [
+   2010,
+   1514,
+   1514,
+   1409
+  ],
+  "n1_mean_us": [
+   1037,
+   1087,
+   1036,
+   1088
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 1996,
+  "n4_samples": [
+   1996,
+   1737,
+   1725,
+   1717
+  ],
+  "n4_mean_us": [
+   1626,
+   1628,
+   1610,
+   1615
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2045,
+  "n8_samples": [
+   2045,
+   1732,
+   1726,
+   1714
+  ],
+  "n8_mean_us": [
+   1638,
+   1620,
+   1617,
+   1609
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 24,
+  "name": "Algo Four Algo Four Sub Bass",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 1333,
+  "n0_samples": [
+   1333,
+   1006,
+   1008,
+   1008
+  ],
+  "n0_mean_us": [
+   705,
+   735,
+   707,
+   728
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 1352,
+  "n1_samples": [
+   1352,
+   1042,
+   1042,
+   1038
+  ],
+  "n1_mean_us": [
+   878,
+   872,
+   864,
+   853
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 1364,
+  "n4_samples": [
+   1364,
+   1062,
+   1064,
+   1062
+  ],
+  "n4_mean_us": [
+   983,
+   972,
+   965,
+   969
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 1366,
+  "n8_samples": [
+   1366,
+   1076,
+   1072,
+   1072
+  ],
+  "n8_mean_us": [
+   981,
+   977,
+   970,
+   971
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 25,
+  "name": "Algo Four Algo Four Tubular Bell",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2928,
+  "n0_samples": [
+   2928,
+   1291,
+   1355,
+   1355
+  ],
+  "n0_mean_us": [
+   1059,
+   819,
+   972,
+   836
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2906,
+  "n1_samples": [
+   2906,
+   1708,
+   1632,
+   1692
+  ],
+  "n1_mean_us": [
+   1306,
+   1214,
+   1341,
+   1236
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2935,
+  "n4_samples": [
+   2935,
+   1896,
+   1905,
+   1908
+  ],
+  "n4_mean_us": [
+   1540,
+   1486,
+   1572,
+   1503
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2960,
+  "n8_samples": [
+   2960,
+   2223,
+   2244,
+   2244
+  ],
+  "n8_mean_us": [
+   2143,
+   2139,
+   2163,
+   2170
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 26,
+  "name": "Algo Four Algo Four Upright Pluck",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 1383,
+  "n0_samples": [
+   1383,
+   1048,
+   1039,
+   1008
+  ],
+  "n0_mean_us": [
+   673,
+   647,
+   673,
+   651
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 1416,
+  "n1_samples": [
+   1416,
+   1074,
+   1084,
+   1074
+  ],
+  "n1_mean_us": [
+   937,
+   933,
+   913,
+   903
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 1412,
+  "n4_samples": [
+   1412,
+   1138,
+   1128,
+   1126
+  ],
+  "n4_mean_us": [
+   1022,
+   1018,
+   991,
+   991
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 1403,
+  "n8_samples": [
+   1403,
+   1118,
+   1129,
+   1129
+  ],
+  "n8_mean_us": [
+   1006,
+   1006,
+   992,
+   985
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 27,
+  "name": "Algo Four Algo Four Wood Marimba",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2241,
+  "n0_samples": [
+   2241,
+   1161,
+   1182,
+   1151
+  ],
+  "n0_mean_us": [
+   738,
+   848,
+   729,
+   870
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2228,
+  "n1_samples": [
+   2228,
+   1468,
+   1498,
+   1498
+  ],
+  "n1_mean_us": [
+   1105,
+   1129,
+   1114,
+   1121
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2218,
+  "n4_samples": [
+   2218,
+   1664,
+   1674,
+   1686
+  ],
+  "n4_mean_us": [
+   1395,
+   1343,
+   1396,
+   1331
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2219,
+  "n8_samples": [
+   2219,
+   1692,
+   1682,
+   1683
+  ],
+  "n8_mean_us": [
+   1613,
+   1610,
+   1608,
+   1605
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 28,
+  "name": "Algo Four patch",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2884,
+  "n0_samples": [
+   2884,
+   1354,
+   1385,
+   1385
+  ],
+  "n0_mean_us": [
+   938,
+   825,
+   936,
+   828
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2927,
+  "n1_samples": [
+   2927,
+   1694,
+   1694,
+   1740
+  ],
+  "n1_mean_us": [
+   1271,
+   1374,
+   1270,
+   1395
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2916,
+  "n4_samples": [
+   2916,
+   1953,
+   1955,
+   1993
+  ],
+  "n4_mean_us": [
+   1555,
+   1602,
+   1555,
+   1598
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2940,
+  "n8_samples": [
+   2940,
+   2269,
+   2300,
+   2300
+  ],
+  "n8_mean_us": [
+   2199,
+   2205,
+   2232,
+   2234
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 29,
+  "name": "Cassia 1 Cassia 1 Glass Bell",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2493,
+  "n0_samples": [
+   2493,
+   1454,
+   1419,
+   1441
+  ],
+  "n0_mean_us": [
+   864,
+   1073,
+   867,
+   1017
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2456,
+  "n1_samples": [
+   2456,
+   1651,
+   1658,
+   1679
+  ],
+  "n1_mean_us": [
+   1400,
+   1306,
+   1393,
+   1316
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2433,
+  "n4_samples": [
+   2433,
+   2143,
+   2158,
+   2162
+  ],
+  "n4_mean_us": [
+   1937,
+   1962,
+   1948,
+   1965
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2512,
+  "n8_samples": [
+   2512,
+   2150,
+   2159,
+   2154
+  ],
+  "n8_mean_us": [
+   2083,
+   2086,
+   2081,
+   2087
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 30,
+  "name": "Cassia 1 Cassia 1 Init",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2521,
+  "n0_samples": [
+   2521,
+   1471,
+   1512,
+   1512
+  ],
+  "n0_mean_us": [
+   898,
+   884,
+   822,
+   886
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2565,
+  "n1_samples": [
+   2565,
+   1815,
+   1741,
+   1792
+  ],
+  "n1_mean_us": [
+   1349,
+   1413,
+   1345,
+   1439
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2517,
+  "n4_samples": [
+   2517,
+   2321,
+   2258,
+   2320
+  ],
+  "n4_mean_us": [
+   2032,
+   2029,
+   2034,
+   2024
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2599,
+  "n8_samples": [
+   2599,
+   2267,
+   2275,
+   2280
+  ],
+  "n8_mean_us": [
+   2193,
+   2199,
+   2204,
+   2202
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 31,
+  "name": "Cassia 1 Cassia 1 PD Bass",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2603,
+  "n0_samples": [
+   2603,
+   1522,
+   1470,
+   1525
+  ],
+  "n0_mean_us": [
+   829,
+   955,
+   836,
+   974
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2578,
+  "n1_samples": [
+   2578,
+   1809,
+   1809,
+   1758
+  ],
+  "n1_mean_us": [
+   1373,
+   1348,
+   1383,
+   1355
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2548,
+  "n4_samples": [
+   2548,
+   2302,
+   2294,
+   2292
+  ],
+  "n4_mean_us": [
+   2064,
+   2055,
+   2079,
+   2067
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2613,
+  "n8_samples": [
+   2613,
+   2294,
+   2296,
+   2298
+  ],
+  "n8_mean_us": [
+   2218,
+   2227,
+   2237,
+   2225
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 32,
+  "name": "Cassia 1 Cassia 1 PD Brass",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2588,
+  "n0_samples": [
+   2588,
+   1435,
+   1389,
+   1452
+  ],
+  "n0_mean_us": [
+   845,
+   1050,
+   842,
+   1083
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2580,
+  "n1_samples": [
+   2580,
+   1648,
+   1696,
+   1696
+  ],
+  "n1_mean_us": [
+   1331,
+   1294,
+   1339,
+   1295
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2552,
+  "n4_samples": [
+   2552,
+   2134,
+   2149,
+   2183
+  ],
+  "n4_mean_us": [
+   1936,
+   1951,
+   1960,
+   1968
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2562,
+  "n8_samples": [
+   2562,
+   2147,
+   2161,
+   2178
+  ],
+  "n8_mean_us": [
+   2088,
+   2096,
+   2111,
+   2104
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 33,
+  "name": "Cassia 1 Cassia 1 Reso Pad",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2585,
+  "n0_samples": [
+   2585,
+   1482,
+   1462,
+   1498
+  ],
+  "n0_mean_us": [
+   897,
+   873,
+   890,
+   877
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2567,
+  "n1_samples": [
+   2567,
+   1812,
+   1764,
+   1784
+  ],
+  "n1_mean_us": [
+   1353,
+   1385,
+   1366,
+   1391
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2541,
+  "n4_samples": [
+   2541,
+   2343,
+   2305,
+   2318
+  ],
+  "n4_mean_us": [
+   2105,
+   2057,
+   2042,
+   2049
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2595,
+  "n8_samples": [
+   2595,
+   2335,
+   2312,
+   2303
+  ],
+  "n8_mean_us": [
+   2259,
+   2243,
+   2244,
+   2224
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 34,
+  "name": "Cassia 1 Cassia 1 Tine Piano",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2459,
+  "n0_samples": [
+   2459,
+   1420,
+   1420,
+   1419
+  ],
+  "n0_mean_us": [
+   1043,
+   860,
+   1048,
+   861
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2446,
+  "n1_samples": [
+   2446,
+   1662,
+   1663,
+   1668
+  ],
+  "n1_mean_us": [
+   1301,
+   1375,
+   1312,
+   1383
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2425,
+  "n4_samples": [
+   2425,
+   2144,
+   2205,
+   2205
+  ],
+  "n4_mean_us": [
+   1953,
+   1947,
+   1965,
+   1954
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2508,
+  "n8_samples": [
+   2508,
+   2180,
+   2180,
+   2177
+  ],
+  "n8_mean_us": [
+   2090,
+   2089,
+   2097,
+   2094
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 35,
+  "name": "Cassia 1 Cassia 1 Velvet Chords",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2418,
+  "n0_samples": [
+   2418,
+   1454,
+   1448,
+   1448
+  ],
+  "n0_mean_us": [
+   910,
+   849,
+   904,
+   842
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2458,
+  "n1_samples": [
+   2458,
+   1654,
+   1662,
+   1644
+  ],
+  "n1_mean_us": [
+   1294,
+   1327,
+   1288,
+   1332
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2421,
+  "n4_samples": [
+   2421,
+   2138,
+   2215,
+   2215
+  ],
+  "n4_mean_us": [
+   1951,
+   1937,
+   1939,
+   1947
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2498,
+  "n8_samples": [
+   2498,
+   2165,
+   2151,
+   2179
+  ],
+  "n8_mean_us": [
+   2089,
+   2086,
+   2092,
+   2105
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 36,
+  "name": "Cassia 1 patch",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2519,
+  "n0_samples": [
+   2519,
+   1462,
+   1470,
+   1470
+  ],
+  "n0_mean_us": [
+   842,
+   1019,
+   839,
+   1016
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2578,
+  "n1_samples": [
+   2578,
+   1754,
+   1749,
+   1748
+  ],
+  "n1_mean_us": [
+   1432,
+   1348,
+   1430,
+   1344
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2550,
+  "n4_samples": [
+   2550,
+   2253,
+   2263,
+   2255
+  ],
+  "n4_mean_us": [
+   2031,
+   2040,
+   2033,
+   2034
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2577,
+  "n8_samples": [
+   2577,
+   2290,
+   2287,
+   2278
+  ],
+  "n8_mean_us": [
+   2211,
+   2205,
+   2213,
+   2205
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ }
+]
