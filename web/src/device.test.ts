@@ -279,7 +279,7 @@ describe('DeviceLink.connect', () => {
       setTimeout(() => fm1.i.onmidimessage?.({ data: answer }), 0);
     };
     const link = new DeviceLink(), patch = recoveredLines();
-    const shared = encodePatch(patch, false, false, 1);
+    const shared = encodePatch(patch, false, 0, 1);
     await withMidi([fm1.i], [fm1.o], async () => {
       await link.connect();
       expect(link.bufferAllocation).toBe(1);

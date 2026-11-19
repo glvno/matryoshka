@@ -13,7 +13,7 @@ describe('Canvas factory slot fitting', () => {
 
   it('fits the selected native Drive/Reverb plus added Delay candidate without a byte-blocked patch format', () => {
     const p = buildSelectedFactoryBank().find(entry => entry.name === 'Canvas')!.patch;
-    const binary = encodePatch(p, true, false, 1);
+    const binary = encodePatch(p, true, 0, 1);
     expect(binary.length).toBeLessThanOrEqual(DEVICE.bytes);
     expect(layout(p).need).toBeLessThanOrEqual(DEVICE.bytes);
   });

@@ -5,7 +5,7 @@
 // Run from web/:  npx vite-node scripts/golden.ts   (tools/golden.sh does this and runs the C comparison)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { Engine } from '../src/engine';
-import { deviceBudget, encodePatch, FLAG_INPUTS, FLAG_LINKS, FORMAT_LINKS, PANEL_BYTES, recordSize, toQ16 } from '../src/patchbin';
+import { COUNTED, deviceBudget, encodePatch, FLAG_INPUTS, FLAG_LINKS, FORMAT_LINKS, PANEL_BYTES, recordSize, SLIM, toQ16 } from '../src/patchbin';
 import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
@@ -4269,7 +4269,7 @@ if (process.argv.includes('--panel-fixtures')) {
   // The 808 Kit's own factory pattern provenance gives the section-splice regression a section after the Page-button
   // insertion point.
   const panelPatches = [...PANEL_BANK, ...PANEL_EXAMPLES].map(({ name, patch }) =>
-    ({ name, binary: encodePatch(validatePatch(structuredClone(patch), DEFS), false, false, 1) }));
+    ({ name, binary: encodePatch(validatePatch(structuredClone(patch), DEFS), false, 0, 1) }));
   const panelHeader = ['/* SPDX-License-Identifier: GPL-3.0-only */',
     '/* Generated panel-only source graph fixtures; never replaces firmware/src/presets.h. */',
     '#pragma once', '#undef N_PRESETS', `#define N_PRESETS ${panelPatches.length}`,
@@ -4485,13 +4485,20 @@ for (const [name, patch] of Object.entries(tests))
 // written with counted records whatever their size: the C engine must give the parameters a record leaves out their
 // defaults, on both morph sides
 const counted = new Set<string>();
-for (const name of [...Object.keys(audioPresets), 'morph', 'morph-unassigned', 'fixed-links', 'side-input-fanout', 'oracle-morph', 'matrix-presence', 'cables-wide']) {
+// D-1025: format 64's shorter layout (the panel labels by their length, the cables grouped by the module they go into, only
+// the Drum map row names off their default). The same kits, and every kit with a Drum map or a panel label, again in it
+// whatever their size: tools/golden.sh checks each renders and reads the same as its counted twin (proto_test --same)
+const slim = new Set<string>();
+const labelled = Object.keys(tests).filter((n) => tests[n].modules.some((m) => m.type === 'drummap' || Object.values(m.panel?.labels ?? {}).some(Boolean)));
+for (const name of [...Object.keys(audioPresets), 'morph', 'morph-unassigned', 'fixed-links', 'side-input-fanout', 'oracle-morph', 'matrix-presence', 'cables-wide', ...labelled]) {
   if (!tests[name] || bins[name]) continue;
-  const twin = `${name} counted`;
-  tests[twin] = structuredClone(tests[name]);
-  if (events[name]) events[twin] = events[name];
-  if (ends[name]) ends[twin] = ends[name];
-  counted.add(twin);
+  for (const [twin, set] of [[`${name} counted`, counted], [`${name} slim`, slim]] as const) {
+    if (tests[twin]) continue;
+    tests[twin] = structuredClone(tests[name]);
+    if (events[name]) events[twin] = events[name];
+    if (ends[name]) ends[twin] = ends[name];
+    set.add(twin);
+  }
 }
 
 for (const [name, patch] of Object.entries(tests)) {
@@ -4554,7 +4561,7 @@ for (const [name, patch] of Object.entries(tests)) {
   const f = slug(name);
   const cpu = cpuEstimate(patch).use;
   if (cpu > 1) console.log(`${name}: estimated at ${Math.round(cpu * 100)} % of the FM-1's CPU (a correctness kit, not a real-time one)`);
-  writeFileSync(new URL(`${f}.m1p`, OUT), bins[name] ?? encodePatch(patch, true, counted.has(name)));
+  writeFileSync(new URL(`${f}.m1p`, OUT), bins[name] ?? encodePatch(patch, true, counted.has(name) ? COUNTED : slim.has(name) ? SLIM : 0));
   // the parameter values, signal buffers and module copies the editor's budget counts (patchbin.ts poolUse), which eng_load
   // must take exactly (host_test checks): the FM-1's memory is counted from them (#649)
   if (!bins[name]) { const b = deviceBudget(patch); writeFileSync(new URL(`${f}.par`, OUT), `${b.params} ${b.buffers} ${b.instances} ${b.lines.nodes}\n`); }

@@ -55,15 +55,15 @@ static uint32_t help_state(void)
     return sb_on ? HS_SANDBOX : HS_DEVICE;
 }
 
-/* what the sheet's rows depend on: the state, the device in focus, a Page button's list, the menu's tab, the track and
- * its length, the patch */
+/* what the sheet's rows depend on: the state, the device in focus, a Page button's list, the menu's tab (and its second
+ * page: MT_COUNT + 0..2 for MIDI's, PANEL's, SYSTEM's) or else the track, the track's length, the patch */
 static uint32_t help_state_sig(void)
 {
     int mod = page == PAGE_SEQ ? seq_module() : -1;
     uint32_t s = help_state(), len = mod >= 0 ? (uint32_t)seq_len(mod) > 16u : 0u;
+    uint32_t tab = menu_page2 ? MT_COUNT + menu_tab : menu_tab;
     return s | (uint32_t)(pg_cur_dev & 63u) << 4 | (uint32_t)(pg_list_btn >= 0) << 10
-         | (uint32_t)(menu_page2 ? (menu_tab == MT_SYSTEM ? 7u : menu_tab == MT_PANEL ? 6u : 5u) : menu_tab) << 11
-         | (uint32_t)(seq_trk & 15u) << 14 | len << 18 | (uint32_t)(eng_steps_count() > 0) << 19 | (pages_gen() & 0x3FFu) << 20
+         | (page == PAGE_MENU ? tab : seq_trk & 15u) << 11 | len << 18 | (uint32_t)(eng_steps_count() > 0) << 19 | (pages_gen() & 0x3FFu) << 20
          | (uint32_t)(!sr_preview) << 30 | (uint32_t)(eng_keys_harm() >= 0) << 31;
 }
 
@@ -103,7 +103,7 @@ static uint32_t help_patch_rows(const char **out)
             continue;                              /* controls.ts's FX row describes the graph contract, never the old patch mapping */
         if (!panel_btn_job(b))                      /* (ui.c: a Gate's job is its jack's cable) */
             continue;
-        if (!panel_label(b, lab))
+        if (!m1_panel_label(b, lab))
             put(lab, PANEL_BTN_NAME[b])[0] = 0;
         for (k = 0; lab[k]; k++)
             lab[k] = lab[k] >= 'A' && lab[k] <= 'Z' ? (char)(lab[k] + 32) : lab[k];
@@ -129,7 +129,7 @@ static const char *help_fill(const char *spec, uint32_t k)
         m++;
     if (!*m || pg_list_btn < 0 || k >= 2u)
         return spec;
-    if (!panel_label((uint32_t)pg_list_btn, lab))
+    if (!m1_panel_label((uint32_t)pg_list_btn, lab))
         put(lab, PANEL_BTN_NAME[pg_list_btn])[0] = 0;
     for (;;) {
         p = help_list_row[k];

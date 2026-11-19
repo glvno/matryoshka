@@ -33,19 +33,20 @@ static uint8_t sb_on;                           /* sandbox mode (sandbox_ui.c): 
 static void sandbox_draw(int full);
 static void sandbox_bar(void);
 
-/* the settings' rows (menu.c; the menu's MIDI, PANEL and SYSTEM tabs show them as pages: pages_ui.c menu_tab_page) */
+/* the settings' rows (menu.c; the menu's MIDI, PANEL, SYSTEM and EQ tabs show them as pages: pages_ui.c menu_tab_page) */
 #include "device_identity.h"
 enum { MR_LEDS, MR_ACCEL, MR_CIN, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_TEMPO,
-       MR_CLKOUT, MR_OUTPUT, MR_CORES, MR_EDITOR, MR_OUT35, MR_USB_RETURN, MR_DEVICE_NAME, MR_METER, MR_TIN, MR_TOUT, MR_COUNT };
-/* the menu's tabs (menu.c, #395): MIDI, PANEL and SYSTEM are pages of settings on K1..K4, INFO a list of readings, GUIDE a text
- * (the ideas behind the controls, D-248) */
-enum { MT_MIDI, MT_PANEL, MT_SYSTEM, MT_INFO, MT_GUIDE, MT_COUNT };
+       MR_CLKOUT, MR_OUTPUT, MR_CORES, MR_EDITOR, MR_OUT35, MR_USB_RETURN, MR_DEVICE_NAME, MR_METER, MR_EQ_LOW, MR_EQ_MID, MR_EQ_HIGH,
+       MR_EQ_FREQ, MR_TIN, MR_TOUT, MR_COUNT };
+/* the menu's tabs (menu.c, #395): MIDI, PANEL, SYSTEM and EQ (the master EQ, master_eq.h, #1107) are pages of settings on
+ * K1..K4, INFO a list of readings, GUIDE a text (the ideas behind the controls, D-248) */
+enum { MT_MIDI, MT_PANEL, MT_SYSTEM, MT_EQ, MT_INFO, MT_GUIDE, MT_COUNT };
 static uint8_t menu_tab;
 static uint8_t menu_page2;                      /* the tab on its second page (ALGO steps MIDI 1/2, 2/2: TRANSPORT IN and OUT,
                                                  * #596; PANEL 1/2, 2/2: TIME SIG, #1011; SYSTEM 1/2, 2/2: EDITOR, #702, 3.5MM
                                                  * OUT, #631); 0 on a tab with one page */
 static int menu_two(uint32_t t) { return t <= MT_SYSTEM; }   /* the tabs with two pages: MIDI, PANEL, SYSTEM */
-static int menu_page(void) { return page == PAGE_MENU && menu_tab <= MT_SYSTEM; }   /* the menu on a tab drawn as a device page */
+static int menu_page(void) { return page == PAGE_MENU && menu_tab <= MT_EQ; }   /* the menu on a tab drawn as a device page */
 /* the settings of the menu (menu.c); saved with the state (SAVE) */
 static struct {
     uint8_t leds;                       /* the idle buttons glow: 0 off, 1 dim low, 2 dim higher */
@@ -75,6 +76,7 @@ static void cfg_defaults(void)
     out_mono = 0;                       /* (and the output stereo again, #612) */
     cfg.editor_ignore = 0;              /* (and EDITOR at ALLOW, #702) */
     out_off = 0;                        /* (and 3.5MM OUT ON, #631) */
+    meq_defaults();                     /* (and the master EQ flat, #1107) */
 }
 static uint32_t cpu_pct;                /* the audio ISR's peak time over the last half second, in % of the 2.9 ms half buffer */
 static uint8_t cores_up = 1;            /* the processor cores at work: 2 while the second core runs and passes its self-test (main.c, #271) */
@@ -485,20 +487,6 @@ static void env_draw(int full);
 static void fx_draw(int full);
 
 #define LEFT_W 216u
-
-/* label i of the panel section (the buttons, PANEL_BTN_ID order) into out (11 bytes); 0 if the patch has none */
-static int panel_label(uint32_t i, char *out)
-{
-    const uint8_t *pn = m1_panel();
-    uint32_t k;
-    out[0] = 0;
-    if (!pn || i >= ENG_PANEL_LABELS)
-        return 0;
-    for (k = 0; k < ENG_PANEL_LABEL && pn[4u + i * ENG_PANEL_LABEL + k]; k++)
-        out[k] = (char)pn[4u + i * ENG_PANEL_LABEL + k];
-    out[k] = 0;
-    return k > 0;
-}
 
 static const char *const PANEL_BTN_NAME[ENG_PANEL_BUTTONS] = {"FX", "SEL", "ENV", "LFO", "EDIT", "GLO", "ARP"};
 

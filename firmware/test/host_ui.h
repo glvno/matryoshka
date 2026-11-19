@@ -135,6 +135,7 @@ static void lcd_line_out_raw(uint32_t x, uint32_t y, uint32_t w)   /* lcd.c's */
 #include "../src/lcd_ovl.h"          /* lcd_fill, lcd_line_out: lcd.c's, under a card (help_ui.c) */
 
 #include "../src/engine.c"
+#include "../src/master_eq.h"         /* audio.c's: GLO > EQ's settings (#1107) */
 #include "../src/presets.h"
 #ifdef HOST_PANEL_FIXTURES
 /* Stable graph fixtures for panel regressions; retain the actual ROM preset/pattern tables. */
@@ -234,6 +235,7 @@ static void m1_preset_stored(uint32_t structure, const char *name) { host_preset
 #include "../src/font5x7.c"
 #include "../src/font_bc.c"
 static const uint8_t *m1_panel(void) { uint32_t at = eng_panel_at(pv_bin, pv_len); return at ? pv_bin + at : 0; }
+static int m1_panel_label(uint32_t i, char *out) { return eng_panel_label(pv_bin, pv_len, i, out) > 0; }
 #define BATT_START 900                     /* the battery (ui.c): full, no USB host (fm1_open's simulator has 900 too) */
 #include "../src/sandbox_msg.h"
 #include "../src/ui.c"

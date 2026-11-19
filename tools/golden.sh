@@ -17,7 +17,20 @@ gcc -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result $CF -o build/idle
 fail=0
 build/idle_test build/golden/idle-stagger.m1p build/golden/idle-stagger.ev || fail=1
 build/proto_test build/golden/acid.m1p build/golden/proto.syx $(cat build/golden/proto.args) build/golden/proto-slot.syx build/golden/steps-kit.m1p build/golden/proto-sandbox.syx build/golden/steps-patterns.m1p build/golden/steps-song.m1p build/golden/steps-locks.m1p || fail=1
-build/proto_test --grow build/golden/*-counted.m1p || fail=1   # (the FM-1's edits of a format 51 copy: grown in place, D-1005)
+build/proto_test --grow build/golden/*-counted.m1p build/golden/*-slim.m1p || fail=1   # (the FM-1's edits of a counted copy, format 51 and 64: grown in place, D-1005)
+# (D-1025) each format 64 twin in its shorter layout against its counted twin: the same cables per module in the same order,
+# panel labels and row names, and the same samples, by proto_test's render and by host_test's with the kit's events
+pairs=""
+for s in build/golden/*-slim.m1p; do
+  c="${s%-slim.m1p}-counted.m1p"
+  pairs="$pairs $c $s"
+  HOST_TEST_DUMP=build/golden-slim.a build/host_test "$c" "${c%.m1p}.ev" "${c%.m1p}.f32" > /dev/null 2>&1 || true
+  HOST_TEST_DUMP=build/golden-slim.b build/host_test "$s" "${c%.m1p}.ev" "${c%.m1p}.f32" > /dev/null 2>&1 || true
+  if [ ! -s build/golden-slim.a ] || ! cmp -s build/golden-slim.a build/golden-slim.b; then echo "FAIL $(basename "$s"): renders differently from its counted twin"; fail=1; fi
+  rm -f build/golden-slim.a build/golden-slim.b
+done
+# shellcheck disable=SC2086
+build/proto_test --same $pairs || fail=1
 for p in build/golden/*.m1p; do
   n="${p%.m1p}"
   par=""; [ -f "$n.par" ] && par="$n.par"

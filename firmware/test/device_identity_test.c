@@ -27,6 +27,47 @@ static void fm1_wdt_feed(void) {}
 static uint8_t flash_ok=1, boot_safe, patches_up=1, ui_dirty;
 static void settings_pack(uint8_t *p) { memset(p,0,16); p[0]=1; }
 static int store_write(uint32_t id,const char *name,const uint8_t *p,uint32_t n) { return sl_write(id,name,p,n); }
+/* the master EQ's settings as main.c's settings extension packs them (master_eq.h meq_pack, meq_unpack, meq_defaults) */
+#define MEQ_BYTES 4u
+static uint8_t meq[4] = {0, 0, 0, 20};
+static void meq_pack(uint8_t *d) { memcpy(d, meq, 4); }
+static void meq_unpack(const uint8_t *d) { memcpy(meq, d, 4); }
+static void meq_defaults(void) { static const uint8_t flat[4] = {0, 0, 0, 20}; memcpy(meq, flat, 4); }
+#include "../src/settings_ext.h"
+/* #1107: the settings extension lives beside the settings record, written with it; older firmware sees only the record */
+static void settings_ext_test(void)
+{
+    static const uint8_t mine[4] = {0xFA, 2, 4, 26}, theirs[4] = {6, 0, 0xF0, 3}, flat[4] = {0, 0, 0, 20};
+    uint8_t payload[16] = {1, 2, 3}, ext[SET_EXT_LEN], read[16];
+    uint32_t n;
+    sl_hdr_t h;
+    memset(flash, 255, sizeof flash); cut = -1; sl_scan();
+    assert(sl_write(SL_SETTINGS, 0, payload, 16) == 0);       /* an older firmware's record: no extension, the EQ flat */
+    memcpy(meq, mine, 4); settings_ext_load(); assert(!memcmp(meq, flat, 4));
+    memcpy(meq, mine, 4); settings_ext_pack(ext);
+    assert(sl_write_ext(SL_SETTINGS, 0, payload, 16, ext, SET_EXT_LEN) == 0);
+    meq_defaults(); sl_scan(); settings_ext_load();
+    assert(!memcmp(meq, mine, 4));                              /* kept across a power cycle (a new scan) */
+    assert(!sl_head(SL_SETTINGS, &h, 1) && h.len == 16);        /* what an older firmware reads: the 16 bytes, their CRC */
+    assert(!sl_read(SL_SETTINGS, read, &n, 0) && n == 16 && !memcmp(read, payload, 16));
+    flash[sl_sector_addr(sl_sec[SL_SETTINGS]) + SL_PAYLOAD + SL_EXT_AT + 3] ^= 1;   /* a damaged extension: flat */
+    settings_ext_load(); assert(!memcmp(meq, flat, 4));
+    memcpy(meq, mine, 4); settings_ext_pack(ext);
+    assert(sl_write_ext(SL_SETTINGS, 0, payload, 16, ext, SET_EXT_LEN) == 0);
+    memcpy(saved, flash, sizeof flash);
+    for (int stop = 0; stop <= 80; stop++) {                    /* a cut at any byte: the old EQ or the new one, never a mix */
+        memcpy(flash, saved, sizeof flash); cut = -1; sl_scan();
+        memcpy(meq, theirs, 4); settings_ext_pack(ext); cut = stop;
+        (void)sl_write_ext(SL_SETTINGS, 0, payload, 16, ext, SET_EXT_LEN);
+        cut = -1; sl_scan(); settings_ext_load();
+        assert(!memcmp(meq, mine, 4) || !memcmp(meq, theirs, 4));
+    }
+    memcpy(flash, saved, sizeof flash); sl_scan();
+    assert(sl_write(SL_SETTINGS, 0, payload, 16) == 0);       /* an older firmware writes the settings again: the EQ flat */
+    sl_scan(); memcpy(meq, mine, 4); settings_ext_load(); assert(!memcmp(meq, flat, 4));
+    assert(sl_write_ext(SL_SETTINGS, 0, payload, SL_EXT_AT + 1u, ext, SET_EXT_LEN) == -1);   /* (a record over the extension) */
+    puts("Settings extension: kept beside the record, older records and damage read flat, atomic with the record");
+}
 #include "../src/device_settings.c"
 int main(void) {
     uint8_t p[20]={0}, payload[16]={1,2,3}, read[16]; uint32_t n;
@@ -66,4 +107,5 @@ int main(void) {
     assert(m1_device_settings(request,17,reply)==34 && reply[0]==0 && !strcmp(di_name,"RIG") && di_level==40);
     assert(!sl_head(SL_SETTINGS,&h,1) && di_unpack((uint8_t*)h.name) && !strcmp(di_name,"RIG"));
     puts("Device identity: legacy payload, CRC, atomic header persistence and reset passed");
+    settings_ext_test();
 }

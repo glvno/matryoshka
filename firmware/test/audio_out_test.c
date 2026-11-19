@@ -40,6 +40,37 @@ static int eng_click_mix(int32_t *l, int32_t *r, uint32_t n)
     }
     return 1;
 }
+/* what master_eq.h takes from engine.c: the EQ module's design (eq_design.h, the same file) and the helpers it uses */
+#define ENG_SR 44118u
+#define EQ_SHELF_Q 2.0f
+#define EQ_SHELF_TOP 2.19911486f
+#define RING_END (1.0f / 256.0f)
+static float clampf(float x, float l) { return x > l ? l : x < -l ? -l : x; }
+static int ring_endf(const float *s, uint32_t ns)
+{
+    uint32_t i, any = 0;
+    for (i = 0; i < ns; i++) {
+        if (s[i] >= RING_END || s[i] <= -RING_END)
+            return 0;
+        any |= s[i] != 0.0f;
+    }
+    return (int)any;
+}
+static inline float exp2_f(float x)                     /* (engine.c's, the same series) */
+{
+    union { float f; int32_t i; } s;
+    int32_t w;
+    float f;
+    x = x < -126.0f ? -126.0f : x > 127.0f ? 127.0f : x;
+    w = (int32_t)x;
+    if ((float)w > x)
+        w--;
+    f = (x - (float)w) * 0.69314718f;
+    s.i = (w + 127) << 23;
+    return s.f * (1.0f + f * (1.0f + f * (1.0f / 2.0f) * (1.0f + f * (1.0f / 3.0f) * (1.0f + f * (1.0f / 4.0f) * (1.0f + f * (1.0f / 5.0f)
+           * (1.0f + f * (1.0f / 6.0f) * (1.0f + f * (1.0f / 7.0f) * (1.0f + f * (1.0f / 8.0f) * (1.0f + f * (1.0f / 9.0f))))))))));
+}
+#include "../src/eq_design.h"
 #include "../src/audio.c"
 static int32_t usb[256];
 static int return_on;
@@ -87,6 +118,82 @@ static int silent(const int32_t *o)
         if (o[i])
             return 0;
     return 1;
+}
+
+/* ---- the master EQ (master_eq.h, #1107) */
+#include <math.h>
+/* |the analog curve| in dB at f (the Audio EQ Cookbook's, as eq_design matches): shape 0 low shelf, 1 bell, 2 high shelf */
+static double analog_db(int shape, double f0, double g, double q, double f)
+{
+    double a = pow(10.0, g / 40.0), w = f / f0, w2 = w * w, nr, ni, dr, di;
+    if (shape == 1) {
+        nr = 1.0 - w2; ni = w * a / q; dr = 1.0 - w2; di = w / (a * q);
+    } else {
+        double sa = sqrt(a);
+        if (shape == 0) { nr = a * (a - w2); ni = a * sa * w / q; dr = 1.0 - a * w2; di = sa * w / q; }
+        else { nr = a * (1.0 - a * w2); ni = a * sa * w / q; dr = a - w2; di = sa * w / q; }
+    }
+    return 10.0 * log10((nr * nr + ni * ni) / (dr * dr + di * di));
+}
+static double phase;
+/* the analog output's level (rms of the left side, after 40 halves to settle, over the next 80) of a sine at f Hz */
+static double eq_rms(double f)
+{
+    double s = 0.0;
+    uint32_t h, i;
+    phase = 0.0;
+    for (h = 0; h < 120u; h++) {
+        for (i = 0; i < HALF_FRAMES; i++, phase += 2.0 * M_PI * f / FS)
+            sig_l[i] = sig_r[i] = (int32_t)(16384.0 * sin(phase));
+        fm1_alnk0_irq();
+        for (i = 0; h >= 40u && i < HALF_FRAMES; i++)
+            s += (double)abuf[2u * i] * abuf[2u * i];
+    }
+    return sqrt(s / (80.0 * HALF_FRAMES));
+}
+static void meq_test(void)
+{
+    static const struct { int band; double f; } PTS[] = {
+        {0, 30}, {0, 120}, {0, 1000}, {0, 8000}, {1, 100}, {1, 1008}, {1, 10000}, {2, 1000}, {2, 8000}, {2, 18000}};
+    static const double F0[3] = {120.0, 0.0, 8000.0};
+    int32_t want[HALF_WORDS], wusb[HALF_WORDS];
+    uint32_t k, i, bad = 0;
+    double worst = 0.0;
+    master_q12 = 2048; out_mono = 0; out_off = 0; click_on = 0; return_on = 0; snd_muted = 0; eng_run = 1;
+    for (k = 0; k < sizeof PTS / sizeof PTS[0]; k++) {   /* +6 dB on one band: the analog curve, at the FM-1's rate */
+        double dry, wet, err, f0 = PTS[k].band == 1 ? 100.0 * pow(2.0, MEQ_FREQ_DEFAULT / 6.0) : F0[PTS[k].band];
+        meq_defaults();
+        dry = eq_rms(PTS[k].f);
+        if (PTS[k].band == 0) meq_low = 12; else if (PTS[k].band == 1) meq_mid = 12; else meq_high = 12;
+        wet = eq_rms(PTS[k].f);
+        err = fabs(20.0 * log10(wet / dry) - analog_db(PTS[k].band, f0, 6.0, MEQ_SHELF_Q, PTS[k].f));
+        printf("      (band %d at %5.0f Hz: %+.2f dB, the analog curve %+.2f dB)\n", PTS[k].band, PTS[k].f, 20.0 * log10(wet / dry),
+               analog_db(PTS[k].band, f0, 6.0, MEQ_SHELF_Q, PTS[k].f));
+        worst = err > worst ? err : worst;
+    }
+    CHECK(worst < 0.25, "master EQ: +6 dB on LOW, MID or HIGH follows the analog curve at the output, within 0.25 dB (worst %.3f)", worst);
+    meq_defaults();
+    meq_low = 0xF4u;                                    /* (LOW -6 dB, HIGH +6 dB) */
+    meq_high = 12;
+    for (i = 0; i < 128u; i++) {
+        sig_l[i] = (int32_t)((i * 977u) % 131072u) - 65536;
+        sig_r[i] = (int32_t)((i * 613u + 4000u) % 131072u) - 65536;
+    }
+    for (k = 0; k < 4u; k++) {
+        fm1_alnk0_irq();
+        usb_words(wusb, 2048);
+        before(want, 2048, 0);
+        bad += memcmp(usb, wusb, sizeof wusb) != 0;
+    }
+    CHECK(bad == 0u && memcmp(abuf, want, sizeof want) != 0, "master EQ on: USB audio the same words as without it, the analog half equalized");
+    meq_defaults();
+    fm1_alnk0_irq();                                    /* (the bands fade to 0 dB over this half) */
+    for (k = bad = 0; k < 4u; k++) {
+        fm1_alnk0_irq();
+        before(want, 2048, 0);
+        bad += memcmp(abuf, want, sizeof want) != 0;
+    }
+    CHECK(bad == 0u && !meq_fade, "master EQ back to 0 dB: after one half's fade the analog half bit for bit as without it");
 }
 
 int main(void)
@@ -147,6 +254,7 @@ int main(void)
     CHECK(silent(abuf), "analog OFF silences USB return too");
     eng_run=0; out_off=0; out_mono=2; fm1_alnk0_irq();
     CHECK(abuf[0]==-512 && abuf[1]==0 && silent(usb), "return works with engine stopped, and follows analog MONO L");
+    meq_test();
     printf(fails ? "audio out test FAILED\n" : "audio out test passed\n");
     return fails != 0;
 }

@@ -82,11 +82,11 @@ describe('the factory kits\' linked patterns', () => {
         expect(decodePayload(Uint8Array.from(entry.payload.match(/../g)!, (x) => parseInt(x, 16))).tracks).toHaveLength(1);
       });
       expect(linkPlan(p, dev, 'assume').refs).toEqual(kit.patterns.map((_, k) => k + 1));
-      const bin = encodePatch(p, true, false, 1);
+      const bin = encodePatch(p, true, 0, 1);
       expect(bin.length).toBeLessThanOrEqual(DEVICE.bytes);
       expect(deviceBudget(p, 1).over.filter((i) => i.key !== 'cpu')).toEqual([]);
       // (an FM-1 whose store lists none of them, an older firmware: every pattern goes inline, and the patch outgrows it)
-      expect(encodePatch(p, true, false, 1, new Map()).length).toBeGreaterThan(DEVICE.bytes);
+      expect(encodePatch(p, true, 0, 1, new Map()).length).toBeGreaterThan(DEVICE.bytes);
       // the songs: over the linked patterns, as the FM-1 shows them
       expect(main.seq!.songs!.map((s) => s.map((e) => e.pat + 1))).toEqual(kit.songs);
       for (const s of kit.songs) {

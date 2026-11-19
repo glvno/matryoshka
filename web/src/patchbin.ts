@@ -8,7 +8,7 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //       bit 13, format 54: u16 count, then (module u8, pattern u8, identity u32 LE) origins before the final macro ranges;
 //       bit 14, format 55: graph-proven master FX stages after origins and before macro ranges (fxRecord);
 //       bit 15, format 59: stored pattern links right after the P-locks (linkRecord);
-//       bit 12, format 51: the cables take 3 bytes, FLAG_CABLES3)
+//       bit 12, format 51: the cables take 3 bytes, FLAG_CABLES3; format 64: they are grouped by the module they go into)
 //   (everything below describes the patch's device form, poly.ts deviceView: Voice allocators become Part modules in the
 //   poly groups they drive; module indices of the other modules are the patch's)
 //   per poly group (poly.ts deviceView order, GROUP_REC bytes): u8 parts (low nibble 1..8, high nibble unison count 0..8; 0 means all), u8 assign, u8 legato (bit 7: unison, bit 6: shared unison), u8 priority (bit 7: no stealing), then for
@@ -16,8 +16,10 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //                u8 its notes' source: 0 the keys, else 1 + the module index of the Arpeggiator or Steps module that plays it
 //                u8 its MIDI channel (0: the device's, 1..16), u8 its lowest key, u8 its highest key (patch.ts takesKey)
 //   with G > 0: one u8 per module, its poly group (0: it runs once, 1..G); delay, reverb, chorus, granular and output are always 0
-//   the panel (PANEL_BYTES, always): u16 LE the buttons that switch (bit i = PANEL_BUTTONS[i]), u16 LE the switched ones that are
-//                on, then PANEL_LABEL_KEYS.length labels of PANEL_LABEL_MAX bytes (ASCII, zero padded): the buttons
+//   the panel (PANEL_BYTES, always; since format 64 panelBytes): u16 LE the buttons that switch (bit i = PANEL_BUTTONS[i]), u16 LE
+//                the switched ones that are on, then PANEL_LABEL_KEYS.length labels of PANEL_LABEL_MAX bytes (ASCII, zero
+//                padded): the buttons; format 64 (SLIM, D-1025) writes the labels by their length instead: u8 the labels it
+//                holds (bit i: PANEL_LABEL_KEYS[i]), then each of them as u8 length (1..PANEL_LABEL_MAX) and its characters
 //   per module:  u8 type index (bit 7 set: the module is bypassed), then one i32 LE per parameter (Q16.16), in the order of the definition;
 //                since format 51 (COUNTED, #667) a u8 parameter count n follows the type byte and only the first n parameters
 //                follow it: the ones after them are at their defaults on both morph sides (storedParams), and the reader gives
@@ -34,7 +36,11 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //                padded); a Drum map's u8 keys source (0 none, 1 Main's keys, 2 + the module index of a Steps module)
 //   per cable:   u8 from module index, u8 from output index, u8 to module index, u8 to input index; with flag bit 12 (format 51,
 //                D-1002, when every port index of the patch's cables is under 16): u8 from module index, u8 to module index, u8 from
-//                output index << 4 | to input index
+//                output index << 4 | to input index; format 64 (SLIM, D-1025) with flag bit 12 (cablesGrouped: every port index
+//                under 16, at most 15 cables into one module, and smaller than 4 bytes a cable): ceil(module count / 2) bytes
+//                of counts, module i's cables in the low nibble of byte i >> 1 when i is even, else the high one, then per
+//                module in module order the cables into it, in the patch's order: u8 from module index, u8 from output index
+//                << 4 | to input index; format 64 without flag bit 12: 4 bytes a cable, as before format 51
 //   with flag bit 0, per module: one i32 LE per parameter its record holds (Q16.16), the B side of the morph (the Main module's morph
 //                parameter and input fade every parameter from the record's value to this one)
 //   with flag bit 9, after the B values: ceil(module count / 8) bytes, bit i marks module i as having a B side.
@@ -101,7 +107,9 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //                switching Toggle as on while its targets are bypassed.
 //   with flag bit 7 (format 33, the #139 follow-up): the Drum maps' row names: u8 count, then per Drum map in module order u8 module index,
 //                DRUM_ROWS names of TRACK_NAME_MAX bytes (ASCII, zero padded; drumRowName: its own, else the default) for the
-//                FM-1's SEQ page
+//                FM-1's SEQ page; format 64 (SLIM, D-1025) writes only the names that are not the row's default
+//                (DRUM_MAP_DEFAULT, drumNamed): per Drum map u8 module index, u8 the rows it names (bit r: row r), then each of
+//                those names as u8 length (0..TRACK_NAME_MAX) and its characters; the FM-1 shows the default for the others
 //   with flag bit 1 (always last: the FM-1 edits it in place): u8 count, then per macro range: u8 module index, u8 pin (0 p1,
 //                1 p2; bit 7, format 49: bipolar, RANGE_BIPOLAR), u8 parameter index, u8 low end, u8 high end (0..255 of the
 //                parameter's range, octaves for a log one): the pin's value (0..1, or −1..1 when bipolar) lands between the ends
@@ -109,7 +117,7 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 // Type indices are the position in TYPE_ORDER (append only: the firmware has the same list in defs.h).
 // Port indices are positions in ModuleDef.outputs / inputs (explicit ports first, then the `<param>_cv` inputs).
 
-import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DRUM_ROWS, drumRowName, LIMIT_AHEAD, PANEL_BUTTONS } from './modules';
+import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DRUM_MAP_DEFAULT, DRUM_ROWS, drumRowName, LIMIT_AHEAD, PANEL_BUTTONS } from './modules';
 import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } from './buttons';
 import { defaultMap, EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, MODULES_1_10, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef, type Patch } from './patch';
 import { hasTiming, noteWords, patternWords, wordCount } from './track';
@@ -130,10 +138,10 @@ export const TYPE_ORDER: string[] = Object.keys(DEFS).filter((t) => !EDITOR_ONLY
 /** bytes of a poly group record: parts, assign, legato, priority, five flaw bytes per part, the note source, the MIDI
  * channel (0 = the device's), the lowest and the highest key (engine.h ENG_GROUP_REC) */
 export const GROUP_REC = 4 + 5 * MAX_PARTS + 4;
-/** bytes of the panel section (engine.h ENG_PANEL_BYTES): two masks and the labels */
+/** bytes of the panel section before format 64 (engine.h ENG_PANEL_BYTES): two masks and the labels (since: panelBytes) */
 export const PANEL_BYTES = 4 + PANEL_LABEL_KEYS.length * PANEL_LABEL_MAX;
 export const MAX_CABLES = 255;
-export const VERSION = 64; // 64 (the release after 1.21, FORMAT_1_22): the EQ module (eq, #1107) appended after the Euclid, written only by patches that use it (ModuleDef.since); 63 (release 1.20, FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid module (euclid, #1018) appended after the Limiter, Steps notes' timing words, ratchets and micro timing (#675, #677); 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14; ordinary patches retain their lowest format
+export const VERSION = 64; // 64 (the release after 1.21, FORMAT_1_22): the EQ module (eq, #1107) appended after the Euclid, written only by patches that use it (ModuleDef.since); and the panel labels by length, the cables grouped by the module they go into, only the Drum map row names off their default (SLIM, D-1025), for a patch that fits no older format; 63 (release 1.20, FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid module (euclid, #1018) appended after the Limiter, Steps notes' timing words, ratchets and micro timing (#675, #677); 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14; ordinary patches retain their lowest format
 /**
  * The lowest format the encoder writes: a patch that uses no parameter appended after it (ParamDef.since past it: a value
  * off its default on either morph side, a pin, macro range, input route or card row on it) is written in this format, its
@@ -146,9 +154,10 @@ export const WRITE_FLOOR = 46;
  * and songs, flag bit 10; format 50: a note word's bit 31, NOTE_WRAP; format 51: counted records, when the patch would not
  * fit otherwise, COUNTED; format 59: stored pattern links, flag bit 15; format 60: trig conditions, FORMAT_CONDS; format
  * 61: a cable into a Part's priority input, FORMAT_PRIORITY_CABLE; format 62: the 1.19 module types, FORMAT_1_19; format
- * 63: the 1.20 module types, FORMAT_1_20; format 64: the EQ module, FORMAT_1_22); every other format past WRITE_FLOOR
- * appends parameters (ParamDef.since) */
-export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase', 59: 'stored pattern links', 60: 'trig conditions', 61: 'note priority on a cable', 62: 'the 1.19 modules', 63: 'the 1.20 features', 64: 'the EQ module' };
+ * 63: the 1.20 module types, FORMAT_1_20; format 64: the EQ module, and the shorter panel labels, cables and Drum map row
+ * names when the patch would not fit otherwise, FORMAT_1_22, SLIM); every other format past WRITE_FLOOR appends parameters
+ * (ParamDef.since) */
+export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase', 59: 'stored pattern links', 60: 'trig conditions', 61: 'note priority on a cable', 62: 'the 1.19 modules', 63: 'the 1.20 features', 64: 'the EQ module and the shorter panel labels, cables and row names' };
 /** the flag (u16 at offset 6) of the P-locks section (format 49, #524) */
 export const FLAG_LOCKS = 2048;
 
@@ -304,13 +313,44 @@ function uses120(dev: Patch): boolean {
 }
 /**
  * The format of the release after 1.21 (#1107): that release's one format change, shared by everything in it that needs
- * one (D-1025). It takes the module types added with it (ModuleDef.since: the EQ). A patch is written in it only when it
- * uses one of these.
+ * one (D-1025). It takes the module types added with it (ModuleDef.since: the EQ), and it writes the same patch in fewer
+ * bytes (SLIM). A patch is written in it only when it uses one of those types or fits the FM-1's bytes in no older format
+ * (layout).
  */
 export const FORMAT_1_22 = 64;
 /** what a patch uses of FORMAT_1_22 (`dev`: its device form): a module of a type added with it (the EQ) */
 function uses122(dev: Patch): boolean {
   return dev.modules.some((m) => (DEFS[m.type]?.since ?? 0) >= FORMAT_1_22);
+}
+/**
+ * The first format that writes the panel labels by their length (panelBytes), the cables grouped by the module they go
+ * into (cablesGrouped) and only the Drum map row names off their default (drumNamed): the same values in fewer bytes
+ * (D-1025, engine.h ENG_SLIM). Every binary of this format has that layout.
+ */
+export const SLIM = FORMAT_1_22;
+/** the panel labels a binary carries (`p`: the device form), PANEL_LABEL_KEYS order, '' none */
+const panelLabels = (p: Patch): string[] => {
+  const panel = p.modules.find((m) => m.type === 'fm1')?.panel;
+  return PANEL_LABEL_KEYS.map((k) => panelLabel(panel?.labels?.[k]));
+};
+/** bytes of the panel section in format `v` (`p`: the device form): PANEL_BYTES before SLIM; since, the two masks, the
+ * byte of the labels it holds and each of them as a text (u8 length, its characters) */
+export const panelBytes = (p: Patch, v: number): number =>
+  v < SLIM ? PANEL_BYTES : 5 + panelLabels(p).reduce((n, s) => n + (s ? 1 + s.length : 0), 0);
+/** a Drum map's row r name as the binary carries it: its own, else the default (trackName of drumRowName) */
+const drumRowText = (m: ModuleInst, r: number): string => trackName(drumRowName(m.names, r));
+/** does format SLIM write Drum map `m`'s row r name: it is not the row's default (DRUM_MAP_DEFAULT; engine.h DRUM_ROW_NAME) */
+export const drumNamed = (m: ModuleInst, r: number): boolean => drumRowText(m, r) !== trackName(DRUM_MAP_DEFAULT[r].name);
+/** bytes of the Drum maps' row names section in format `v` (`p`: the device form), 0 without a Drum map: before SLIM every
+ * row's name in TRACK_NAME_MAX bytes; since, per map a byte of the rows it names and those names as texts */
+export function drumNamesBytes(p: Patch, v: number): number {
+  const maps = drumMaps(p);
+  if (!maps.length) return 0;
+  if (v < SLIM) return 1 + maps.length * (1 + DRUM_ROWS * TRACK_NAME_MAX);
+  let n = 1 + 2 * maps.length;   // (the count; per map its index and the byte of the rows it names)
+  for (const i of maps)
+    for (let r = 0; r < DRUM_ROWS; r++) if (drumNamed(p.modules[i], r)) n += 1 + drumRowText(p.modules[i], r).length;
+  return n;
 }
 /** what a patch uses of FORMAT_1_10 (`dev`: its device form): a note tied across the loop point, in any pattern */
 function uses110(dev: Patch): boolean {
@@ -603,14 +643,29 @@ export const FLAG_NOTES = 16;
 export const FLAG_DEVICES = 32;
 /** the device extras section (format 34): with the device pages, always */
 export const FLAG_EXTRAS = 256;
-/** format 51 (D-1002): every cable takes 3 bytes, u8 from module, u8 to module, u8 its ports (from output << 4 | to
- * input); set when every port index of the patch's cables is under 16 (cables3), else they take 4 bytes as before */
+/** format 51 to 63 (D-1002): every cable takes 3 bytes, u8 from module, u8 to module, u8 its ports (from output << 4 | to
+ * input); set when every port index of the patch's cables is under 16 (cables3), else they take 4 bytes as before.
+ * Format 64 (D-1025): the cables are grouped by the module they go into (cablesGrouped), else they take 4 bytes */
 export const FLAG_CABLES3 = 4096;
-/** can the patch's cables (`p`: the device form) take 3 bytes in format `v` */
-export const cables3 = (p: Patch, v: number): boolean => v >= COUNTED && p.cables.every((c) => {
+/** is every port index of the patch's cables (`p`: the device form) under 16 (one nibble each) */
+const narrowPorts = (p: Patch): boolean => p.cables.every((c) => {
   const from = p.modules.find((m) => m.id === c.from.module)!, to = p.modules.find((m) => m.id === c.to.module)!;
   return DEFS[from.type].outputs.findIndex((o) => o.name === c.from.port) < 16 && DEFS[to.type].inputs.findIndex((i) => i.name === c.to.port) < 16;
 });
+/** can the patch's cables (`p`: the device form) take 3 bytes in format `v` */
+export const cables3 = (p: Patch, v: number): boolean => v >= COUNTED && v < SLIM && narrowPorts(p);
+/** does a binary of format `v` group the patch's cables by the module they go into (`p`: the device form; format SLIM, flag
+ * FLAG_CABLES3): when every port index is under 16, no module takes more than 15 cables (its count is 4 bits) and the
+ * grouped cables are smaller than 4 bytes a cable */
+export function cablesGrouped(p: Patch, v: number): boolean {
+  if (v < SLIM || Math.ceil(p.modules.length / 2) + 2 * p.cables.length >= 4 * p.cables.length || !narrowPorts(p)) return false;
+  const into = new Map<number, number>();
+  for (const c of p.cables) into.set(c.to.module, (into.get(c.to.module) ?? 0) + 1);
+  return Math.max(...into.values()) <= 15;
+}
+/** bytes of the patch's cables in a binary of format `v` (`p`: the device form) */
+export const cableBytes = (p: Patch, v: number): number =>
+  cablesGrouped(p, v) ? Math.ceil(p.modules.length / 2) + 2 * p.cables.length : (cables3(p, v) ? 3 : 4) * p.cables.length;
 /** bit 7 of the device extras' member count (format 51, D-1003): the members are one unbroken run, u8 first follows and
  * the count is the low 7 bits (a device has at most 127 members: a patch has at most 128 modules, #721, and Main is never one) */
 export const MEMBER_RUN = 0x80;
@@ -896,15 +951,16 @@ export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceV
 export const encodedSize = (source: Patch): number => layout(source).size;
 
 /**
- * How a patch is written (`view`: its device form): its format `v` (the lowest that holds it, baseFormat; COUNTED when
- * that one is over the FM-1's bytes and the counted records are smaller, #667), the preset names the device extras carry
- * and the room kept for them (presetNames), the binary's `size` and the device pages and button kinds it holds. `need`:
- * the bytes the budget counts, the smaller of the two forms with the room kept, so the room counted records free shows
- * in every patch while a patch that fits an older format is still written in it. `force`: counted records whatever the
- * size (tests and golden kits). `store`: the pattern store it is written for (linkPlan): `p` leaves out the linked
- * patterns the store holds as they are, and `links` is the links section.
+ * How a patch is written (`view`: its device form): its format `v`, the lowest of these that fits the FM-1's bytes with
+ * the room kept (#667, D-1025): the lowest that holds it (baseFormat), then COUNTED (counted records), then SLIM (also the
+ * shorter panel labels, cables and row names); when none fits, the smallest. Also the preset names the device extras
+ * carry and the room kept for them (presetNames), the binary's `size` and the device pages and button kinds it holds.
+ * `need`: the bytes the budget counts, the smallest of the forms with the room kept, so the room the newer forms free
+ * shows in every patch while a patch that fits an older format is still written in it. `force`: the layout of this
+ * format whatever the size (COUNTED or SLIM: tests and golden kits; 0 none). `store`: the pattern store it is written for
+ * (linkPlan): `p` leaves out the linked patterns the store holds as they are, and `links` is the links section.
  */
-export function layout(source: Patch, view: ReturnType<typeof deviceView> = deviceView(source, true), force = false, store: LinkStore = 'assume') {
+export function layout(source: Patch, view: ReturnType<typeof deviceView> = deviceView(source, true), force = 0, store: LinkStore = 'assume') {
   if (rowsMemo) return layoutOf(source, view, force, store);
   rowsMemo = new Map();
   sizesMemo = new Map();
@@ -914,7 +970,7 @@ export function layout(source: Patch, view: ReturnType<typeof deviceView> = devi
     rowsMemo = sizesMemo = null;
   }
 }
-function layoutOf(source: Patch, view: ReturnType<typeof deviceView>, force: boolean, store: LinkStore) {
+function layoutOf(source: Patch, view: ReturnType<typeof deviceView>, force: number, store: LinkStore) {
   const plan = linkPlan(source, view.patch, store);
   const links = linkRecord(plan.entries);
   const { groups } = view, p = plan.refs.length ? withoutPatterns(view.patch, plan.refs) : view.patch;
@@ -925,13 +981,16 @@ function layoutOf(source: Patch, view: ReturnType<typeof deviceView>, force: boo
   const at = (v: number) => {
     const room = morphRoom(p, v, edits, keep);
     const named = presetNames(source, p, groups, devs, kinds.length + room, v, keep);
-    return { v, names: named.names, reserve: named.reserve + room, size: sizeOf(p, groups, devs, v, keep, source, named.names) + kinds.length + links.length };
+    const size = sizeOf(p, groups, devs, v, keep, source, named.names) + kinds.length + links.length;
+    return { v, names: named.names, reserve: named.reserve + room, size, bytes: size + named.reserve + room };
   };
   const base = at(Math.max(links.length ? FORMAT_LINKS : 0, baseFormat(source, p)));
   const counted = base.v < COUNTED ? at(COUNTED) : base;
-  const need = Math.min(base.size + base.reserve, counted.size + counted.reserve);
-  const w = !force && (base.size + base.reserve <= DEVICE.bytes || need === base.size + base.reserve) ? base : counted;
-  return { p, groups, devs, kinds, keep, links, ...w, need, base: { v: base.v, bytes: base.size + base.reserve }, counted: counted.size + counted.reserve };
+  const slim = base.v < SLIM ? at(SLIM) : base;
+  const need = Math.min(base.bytes, counted.bytes, slim.bytes);
+  const w = force >= SLIM ? slim : force ? counted
+    : [base, counted, slim].find((f) => f.bytes <= DEVICE.bytes) ?? [base, counted, slim].find((f) => f.bytes === need)!;
+  return { p, groups, devs, kinds, keep, links, ...w, need, base: { v: base.v, bytes: base.bytes }, counted: counted.bytes, slim: slim.bytes };
 }
 
 function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], v: number, keep: Map<number, number>, source?: Patch, names?: string[]): number {
@@ -939,9 +998,9 @@ function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], v: number, keep: Ma
   const routes = routesOf(p);
   const ranges = rangeList(p).length;
   const morph = hasMorph(p);
-  let size = 8 + GROUP_REC * groups + (groups ? p.modules.length : 0) + PANEL_BYTES;
+  let size = 8 + GROUP_REC * groups + (groups ? p.modules.length : 0) + panelBytes(p, v);
   for (const m of p.modules) size += moduleRecordSize(m, v, morph, keep.get(m.id));
-  size += (cables3(p, v) ? 3 : 4) * p.cables.length;
+  size += cableBytes(p, v);
   if (morph) size += morphBytes(p, v, keep);
   if (routes.length) size += 1 + routes.reduce((n, r) => n + 2 + r.bytes, 0);
   const tracks = noteTracks(p);
@@ -951,8 +1010,7 @@ function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], v: number, keep: Ma
   size += originRecord(p).length;
   if (source) size += fxRecord(source, p, devs).length;
   if (ranges) size += 1 + 5 * ranges;
-  const maps = drumMaps(p).length;
-  if (maps) size += 1 + maps * (1 + DRUM_ROWS * TRACK_NAME_MAX);
+  size += drumNamesBytes(p, v);
   return size + devicesSize(devs, p, v, source, names);
 }
 
@@ -960,15 +1018,15 @@ function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], v: number, keep: Ma
 export const drumMaps = (p: Patch): number[] => p.modules.flatMap((m, i) => (m.type === 'drummap' ? [i] : []));
 
 /** the binary patch; refused when it is over the FM-1 budget, unless `anyway` (tools that count the engine's work on patches the
- * estimate has not seen yet: scripts/cpu-costs.ts). `counted`: in format COUNTED whatever its size (tests, golden kits).
- * `store`: the pattern store of the FM-1 it goes to (LinkStore; the budget assumes it holds every link's pattern, so a
- * store that does not can make the binary bigger than the budget said: refused too) */
-export function encodePatch(source: Patch, anyway = false, counted = false, allocation: BufferAllocation = 0, store: LinkStore = 'assume'): Uint8Array {
+ * estimate has not seen yet: scripts/cpu-costs.ts). `force`: in the layout of this format whatever its size (COUNTED or
+ * SLIM: tests, golden kits; layout). `store`: the pattern store of the FM-1 it goes to (LinkStore; the budget assumes it
+ * holds every link's pattern, so a store that does not can make the binary bigger than the budget said: refused too) */
+export function encodePatch(source: Patch, anyway = false, force = 0, allocation: BufferAllocation = 0, store: LinkStore = 'assume'): Uint8Array {
   const routingError = keyRouteError(source);
   if (routingError) throw new Error(routingError);
   const budget = deviceBudget(source, allocation);
   if (!budget.fits && !anyway) throw new Error(`over the FM-1 budget: ${budget.over.map((i) => (i.key === 'browser' ? i.label : `${i.label} ${i.used} of ${i.max}`)).join(', ')}`);
-  const { p, groups, devs, kinds, keep, names, size, need, links, v: ver } = layout(source, undefined, counted, store);
+  const { p, groups, devs, kinds, keep, names, size, need, links, v: ver } = layout(source, undefined, force, store);
   if (!anyway && need > DEVICE.bytes) throw new Error(`over the FM-1 budget: ${LABELS.bytes} ${need} of ${DEVICE.bytes} (its linked patterns go whole: the FM-1's pattern store has not got them)`);
   const index = new Map(p.modules.map((m, i) => [m.id, i]));
   const morph = hasMorph(p);
@@ -982,7 +1040,7 @@ export function encodePatch(source: Patch, anyway = false, counted = false, allo
   // Saved/portable graphs bypass the ordinary helpers with their stage. Format55's
   // wet-only kernel wrapper owns OFF/tails, so only its compiled helper flags are active.
   const fxHelpers = fxHelperIds(source);
-  const short = cables3(p, ver);
+  const grouped = cablesGrouped(p, ver), short = cables3(p, ver);
   const out = new Uint8Array(size);
   const dv = new DataView(out.buffer);
   out[0] = 0xa1;
@@ -990,7 +1048,7 @@ export function encodePatch(source: Patch, anyway = false, counted = false, allo
   out[2] = p.modules.length;
   out[3] = groups.length;
   dv.setUint16(4, p.cables.length, true);
-  dv.setUint16(6, (short ? FLAG_CABLES3 : 0) | (morph ? FLAG_MORPH | FLAG_MORPH_MODULES : 0) | (ranges.length ? FLAG_RANGE : 0) | (routes.length ? FLAG_INPUT_MAP : 0) | (valued.length ? FLAG_NOTES : 0) | (devs.length ? FLAG_DEVICES | FLAG_EXTRAS : 0) | (kinds.length ? FLAG_BUTTONS : 0) | (drumMaps(p).length ? FLAG_NAMES : 0) | (pats.length ? FLAG_PATTERNS : 0) | (locks.length ? FLAG_LOCKS : 0) | (links.length ? FLAG_LINKS : 0) | (origins.length ? FLAG_PATTERN_ORIGINS : 0) | (fx.length ? FLAG_FX_BUS : 0), true);
+  dv.setUint16(6, (short || grouped ? FLAG_CABLES3 : 0) | (morph ? FLAG_MORPH | FLAG_MORPH_MODULES : 0) | (ranges.length ? FLAG_RANGE : 0) | (routes.length ? FLAG_INPUT_MAP : 0) | (valued.length ? FLAG_NOTES : 0) | (devs.length ? FLAG_DEVICES | FLAG_EXTRAS : 0) | (kinds.length ? FLAG_BUTTONS : 0) | (drumMaps(p).length ? FLAG_NAMES : 0) | (pats.length ? FLAG_PATTERNS : 0) | (locks.length ? FLAG_LOCKS : 0) | (links.length ? FLAG_LINKS : 0) | (origins.length ? FLAG_PATTERN_ORIGINS : 0) | (fx.length ? FLAG_FX_BUS : 0), true);
   let at = 8;
   for (const { cfg, src } of groups) {
     out.set([cfg.parts | (Math.min(MAX_PARTS, cfg.unisonParts ?? 0) << 4), cfg.assign, cfg.legato | (cfg.unison ? 0x80 : 0) | (cfg.unisonShare ? 0x40 : 0), cfg.priority | (cfg.steal === false ? 0x80 : 0)], at);
@@ -1010,11 +1068,16 @@ export function encodePatch(source: Patch, anyway = false, counted = false, allo
     const lit = (b: string): boolean => switches(panel, b) && (kindOf(panel, b) === 'bypass' ? toggleEngaged(source, b) : !!panel?.on?.includes(b));
     dv.setUint16(at, mask((b) => switches(panel, b)), true);
     dv.setUint16(at + 2, mask(lit), true);
-    PANEL_LABEL_KEYS.forEach((k, i) => {
-      const s = panelLabel(panel?.labels?.[k]);
-      for (let j = 0; j < s.length; j++) out[at + 4 + i * PANEL_LABEL_MAX + j] = s.charCodeAt(j);
-    });
-    at += PANEL_BYTES;
+    const labels = panelLabels(p);
+    if (ver >= SLIM) {   // (the byte of the labels it holds, then each as a text)
+      out[at + 4] = labels.reduce((k, s, i) => (s ? k | (1 << i) : k), 0);
+      let q = at + 5;
+      for (const s of labels) if (s) {
+        out[q++] = s.length;
+        for (let j = 0; j < s.length; j++) out[q++] = s.charCodeAt(j);
+      }
+    } else labels.forEach((s, i) => { for (let j = 0; j < s.length; j++) out[at + 4 + i * PANEL_LABEL_MAX + j] = s.charCodeAt(j); });
+    at += panelBytes(p, ver);
   }
   for (const m of p.modules) {
     const def = DEFS[m.type];
@@ -1059,10 +1122,19 @@ export function encodePatch(source: Patch, anyway = false, counted = false, allo
     }
     at += def.data ?? 0;
   }
-  for (const c of p.cables) {
-    const from = p.modules[index.get(c.from.module)!];
-    const to = p.modules[index.get(c.to.module)!];
-    const fp = DEFS[from.type].outputs.findIndex((o) => o.name === c.from.port), tp = DEFS[to.type].inputs.findIndex((i) => i.name === c.to.port);
+  const ports = (c: Patch['cables'][number]): [number, number] => [
+    DEFS[p.modules[index.get(c.from.module)!].type].outputs.findIndex((o) => o.name === c.from.port),
+    DEFS[p.modules[index.get(c.to.module)!].type].inputs.findIndex((i) => i.name === c.to.port)];
+  if (grouped) {   // (format 64: a 4-bit count per module, then per module the cables into it, in the patch's order)
+    for (const c of p.cables) out[at + (index.get(c.to.module)! >> 1)] += index.get(c.to.module)! & 1 ? 16 : 1;
+    at += Math.ceil(p.modules.length / 2);
+    for (const m of p.modules)
+      for (const c of p.cables) if (c.to.module === m.id) {
+        const [fp, tp] = ports(c);
+        out.set([index.get(c.from.module)!, fp << 4 | tp], (at += 2) - 2);
+      }
+  } else for (const c of p.cables) {
+    const [fp, tp] = ports(c);
     if (short) out.set([index.get(c.from.module)!, index.get(c.to.module)!, fp << 4 | tp], (at += 3) - 3);
     else out.set([index.get(c.from.module)!, fp, index.get(c.to.module)!, tp], (at += 4) - 4);
   }
@@ -1132,9 +1204,20 @@ export function encodePatch(source: Patch, anyway = false, counted = false, allo
   if (maps.length) {
     out[at++] = maps.length;
     for (const i of maps) {
+      const m = p.modules[i];
       out[at++] = i;
+      if (ver >= SLIM) {   // (the rows it names, then each of their names as a text; the others' are the default)
+        const named = Array.from({ length: DRUM_ROWS }, (_, r) => drumNamed(m, r));
+        out[at++] = named.reduce((k, x, r) => (x ? k | (1 << r) : k), 0);
+        for (let r = 0; r < DRUM_ROWS; r++) if (named[r]) {
+          const name = drumRowText(m, r);
+          out[at++] = name.length;
+          for (let c = 0; c < name.length; c++) out[at++] = name.charCodeAt(c);
+        }
+        continue;
+      }
       for (let r = 0; r < DRUM_ROWS; r++, at += TRACK_NAME_MAX) {
-        const name = trackName(drumRowName(p.modules[i].names, r));
+        const name = drumRowText(m, r);
         for (let c = 0; c < name.length && c < TRACK_NAME_MAX; c++) out[at + c] = name.charCodeAt(c) & 0x7f;
       }
     }

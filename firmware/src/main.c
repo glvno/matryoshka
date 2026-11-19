@@ -914,13 +914,19 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     return 0;
 }
 
+#include "settings_ext.h"                       /* the settings record's extension: the master EQ (#1107) */
+
 /* a store write: the sound goes on (storage_hw.c st_op runs the flash's erases and programs in steps the audio
- * interrupt renders between, #656) */
+ * interrupt renders between, #656). The settings record takes its extension along */
 static int store_write(uint32_t id, const char *name, const uint8_t *p, uint32_t len)
 {
+    uint8_t ext[SET_EXT_LEN];
     if (!flash_ok)
         return -1;
-    return sl_write(id, name, p, len);
+    if (id != SL_SETTINGS)
+        return sl_write(id, name, p, len);
+    settings_ext_pack(ext);
+    return sl_write_ext(id, name, p, len, ext, SET_EXT_LEN);
 }
 
 /* the settings record alone, now (panel.c: HOME + SAVE on the quick start turns it off for good, D-247; the global
@@ -930,6 +936,28 @@ static void settings_store(void)
     uint8_t set[SET_LEN];
     settings_pack(set);
     (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
+}
+
+/* MASTER_EQ (proto.c, #1107): empty reads; LOW, MID, HIGH (half decibels, two's complement, +-MEQ_GAIN_MAX) and MID FREQ
+ * (an index under MEQ_FREQS) set the master EQ at once, kept 5 s later without SAVE as from the menu (tempo_glo.h
+ * gt_changed). Reply: status (0 ok, 1 out of range or a wrong length: nothing set), then the four as they are */
+static int m1_master_eq(const uint8_t *p, uint32_t n, uint8_t *out)
+{
+    out[0] = 0;
+    if (n) {
+        int32_t a = (int8_t)p[0], b = (int8_t)p[1], c = (int8_t)p[2];
+        if (n != MEQ_BYTES || a < -MEQ_GAIN_MAX || a > MEQ_GAIN_MAX || b < -MEQ_GAIN_MAX || b > MEQ_GAIN_MAX || c < -MEQ_GAIN_MAX
+            || c > MEQ_GAIN_MAX || p[3] >= MEQ_FREQS) {
+            out[0] = 1;
+        } else {
+            meq_unpack(p);
+            gt_changed(fm1_ms);
+            if (!ui_dirty)
+                ui_dirty = 1;
+        }
+    }
+    meq_pack(out + 1);
+    return 1 + (int)MEQ_BYTES;
 }
 
 static uint8_t patches_up;                      /* patch_boot has run (host_poll may reload the current patch) */
@@ -1313,6 +1341,7 @@ static void patch_boot(void)                    /* the slot the settings record 
         uint64_t up;
         cur_preset = slot;
         sel = module;
+        settings_ext_load();                     /* (the master EQ, before factory_sync may write the record again) */
         if ((msg = factory_sync(&boot_msg_then, &up)) != 0) {   /* (the slots it rewrote load from the bank next) */
             boot_msg = msg;
             boot_msg_ms = 4000;

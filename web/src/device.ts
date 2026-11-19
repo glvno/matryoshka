@@ -17,7 +17,7 @@ export function deviceLayoutKey(patch: Patch): string {
   const view = deviceView(patch, true);
   return JSON.stringify([view.patch.modules.map((m) => [m.id, m.type]), view.groups.map((g) => [g.key, [...g.modules], g.src])]);
 }
-import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type DeviceSettings, armsFrame, parseArmsNow, FEATURE_WIDE_ARMS, editorSkips, FEATURE_ARMS, FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, slotCount, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type DeviceSettings, FEATURE_MASTER_EQ, MASTER_EQ, masterEqFrame, parseMasterEq, type MasterEq, armsFrame, parseArmsNow, FEATURE_WIDE_ARMS, editorSkips, FEATURE_ARMS, FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, slotCount, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 import { FEATURE_PATTERN_STORE, parseLinkNow, parsePatData, parsePatEntry, parsePatStored, PAT_OK, PAT_STATUS, PAT_USED, patDelFrame, patGetFrame, patPutFrames, patsFrame, type PatListItem, type StoredPatternEntry } from './protocol';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 import { FEATURE_FACTORY, FEATURE_FX_PRESETS, type FactoryInfo } from './protocol';
@@ -499,7 +499,7 @@ export class DeviceLink {
     const run = async (): Promise<void> => {
       // Recheck inside the serial queue: the device may have changed after a caller encoded it.
       if (!holdsFactoryLinks(submitted, store)) throw new Error(UPDATE_TO_SYNC);
-      const checked = encodePatch(submitted, false, false, this.bufferAllocation, store);
+      const checked = encodePatch(submitted, false, 0, this.bufferAllocation, store);
       if (bytes && !sameBinary(bytes, checked)) throw new Error('Patch changed before upload: send it again');
       const bin = bytes ?? checked;
       await this.sendChunks(bin);
@@ -565,7 +565,7 @@ export class DeviceLink {
     const submitted = structuredClone(patch);
     return this.serial(async () => {
       if (!holdsFactoryLinks(submitted, this.linkStore)) throw new Error(UPDATE_TO_SYNC);
-      const bin = encodePatch(submitted, false, false, this.bufferAllocation, this.linkStore);
+      const bin = encodePatch(submitted, false, 0, this.bufferAllocation, this.linkStore);
       await this.sendChunks(bin);
       await this.ackFor(slotFrame(slot, name, bin), CMD.slot, slot, FLASH_TIMEOUT);
     });
@@ -706,6 +706,17 @@ export class DeviceLink {
     return this.serial(async () => {
       if (!this.connected || !this.takesDeviceSettings) throw new Error('Connect an FM-1 with firmware that supports device names and USB playback.');
       return parseDeviceSettings(await this.request(deviceSettingsFrame(settings), (x) => x?.cmd === CMD.deviceSettingsReply));
+    });
+  }
+
+  /** the FM-1 has the master EQ over the link (GLO › EQ, #1107) */
+  get takesMasterEq(): boolean { return !!(this.info && this.info.features & FEATURE_MASTER_EQ); }
+
+  /** the FM-1's master EQ: read it, or set it (it plays at once and the FM-1 keeps it, as from its menu) */
+  masterEq(eq?: MasterEq): Promise<MasterEq> {
+    return this.serial(async () => {
+      if (!this.connected || !this.takesMasterEq) throw new Error('Connect an FM-1 with firmware that has the master EQ (GLO › EQ).');
+      return parseMasterEq(await this.request(masterEqFrame(eq), (x) => x?.cmd === MASTER_EQ.reply));
     });
   }
 

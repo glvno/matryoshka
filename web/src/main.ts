@@ -4,6 +4,7 @@ import { recordTarget, recordInput } from './step-grid';
 // everything else; then migrate.ts notes which storage keys the page found before anything here writes one
 import './site-move';
 import { openDeviceSettings } from './device-settings';
+import { openMasterEq } from './master-eq';
 import { renderFm1Help } from './controls-help';
 import { ControlsStrip, stripPatch, type StripPatch } from './controls-strip';
 import { addUserPreset, capturePreset, exportPresets, importPresets, migrateUserPresets, nextPresetName, presetsOf } from './device-presets';
@@ -262,13 +263,13 @@ function liveEdited(): void {
   clearTimeout(gateTimer);
   gateTimer = window.setTimeout(() => {
     if (!live()) return uploadGate.forget();
-    try { uploadGate.refresh(encodePatch(editor.patch, false, false, device.bufferAllocation, device.linkStore)); } catch { uploadGate.forget(); }
+    try { uploadGate.refresh(encodePatch(editor.patch, false, 0, device.bufferAllocation, device.linkStore)); } catch { uploadGate.forget(); }
   }, GATE_MS);
 }
 /** a structural change under Live: the patch goes to the FM-1 again only when its encoded bytes changed */
 function structureChanged(): void {
   let bin: Uint8Array | null = null;
-  try { bin = encodePatch(editor.patch, false, false, device.bufferAllocation, device.linkStore); } catch { /* over the budget: sendPatch says so */ }
+  try { bin = encodePatch(editor.patch, false, 0, device.bufferAllocation, device.linkStore); } catch { /* over the budget: sendPatch says so */ }
   if (bin && onEditorPatch && !uploadGate.needs(bin)) return;
   uploadGate.forget();   // (until the upload: the FM-1 holds the old bytes)
   queueUpload();
@@ -593,7 +594,7 @@ async function sendPatch(): Promise<boolean> {
       dirty = false;
       devStatus('sending patch…');
       const load = loadsSeen;
-      const bin = encodePatch(editor.patch, false, false, device.bufferAllocation, device.linkStore);
+      const bin = encodePatch(editor.patch, false, 0, device.bufferAllocation, device.linkStore);
       const layout = deviceLayoutKey(editor.patch);
       uploadGate.forget();
       installedLayout = null;
@@ -704,7 +705,7 @@ function offerSync(asked = false): void {
     if (fitsDevice) void sendPatch();
     return syncChip();
   }
-  const d = syncOnConnect({ fits: fitsDevice, declined: !asked && syncDeclined(), editorBin: fitsDevice ? encodePatch(editor.patch, false, false, device.bufferAllocation, device.linkStore) : new Uint8Array(), deviceBin: null });
+  const d = syncOnConnect({ fits: fitsDevice, declined: !asked && syncDeclined(), editorBin: fitsDevice ? encodePatch(editor.patch, false, 0, device.bufferAllocation, device.linkStore) : new Uint8Array(), deviceBin: null });
   if (d === 'sync') return setLive(true);
   if (d === 'ask' && !syncAsk.open) {
     const name = editor.patch.name.trim() || 'Untitled';
@@ -2686,7 +2687,7 @@ function emuLoad(): void {
   try {
     // (the emulator keeps no pattern store; its firmware has the factory patches' patterns, #923)
     const factoryStore = new Map(factoryEntries().filter((e) => e.kit).map((e) => [e.id, e.hash]));
-    err = ui.load(encodePatch(editor.patch, true, false, 0, factoryStore), editor.patch.name.toUpperCase(), { fresh: emuFresh });
+    err = ui.load(encodePatch(editor.patch, true, 0, 0, factoryStore), editor.patch.name.toUpperCase(), { fresh: emuFresh });
   } catch {
     err = -1;
   }
@@ -3058,6 +3059,7 @@ $<HTMLSelectElement>('mirror-fw').onchange = () => {
   if (mirror.following) void followFm1((v || undefined) as Firmware | undefined);
 };
 $('dev-settings').onclick = () => void openDeviceSettings($<HTMLDialogElement>('device-settings'), device);
+$('dev-meq').onclick = () => void openMasterEq($<HTMLDialogElement>('master-eq'), device);
 $('dev-send').onclick = () => void sendPatch();
 bindPatchPresetTransfer($<HTMLButtonElement>('dev-presets'), () => editor.patch, device, devStatus, libraryDeviceChanged);
 /** the open patch into slot n of the FM-1's bank, under its name (the device does not switch to it) */

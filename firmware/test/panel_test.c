@@ -1186,6 +1186,41 @@ int main(void)
         check("ALGO back: SYSTEM 1/2", menu_tab == MT_SYSTEM && !menu_page2 && pages_now()->par[3] == MR_OUTPUT && on_screen("SYSTEM 1/2"));
         enc(1, 1);
         enc(1, 1);
+        check("ALGO again: EQ, the master EQ (#1107): LOW, MID, HIGH, MID FREQ, flat at 1 kHz as made", menu_tab == MT_EQ && menu_page()
+              && pages_now()->nrows == 4u && pages_now()->par[0] == MR_EQ_LOW && pages_now()->par[1] == MR_EQ_MID && pages_now()->par[2] == MR_EQ_HIGH
+              && pages_now()->par[3] == MR_EQ_FREQ && on_screen("MID FREQ") && on_screen("0 DB") && on_screen("1.0 KHZ") && on_screen("EQ"));
+        gt_due = 0;
+        enc(2, 1);
+        loop();
+        check("  K1 right: LOW +0.5 DB, the settings record due (kept without SAVE, as TEMPO)", (int8_t)meq_low == 1 && on_screen("+0.5 DB") && gt_due != 0u);
+        enc(2, -3);
+        loop();
+        check("  K1 left: -1.0 DB", (int8_t)meq_low == -2 && on_screen("-1.0 DB"));
+        enc(4, 60);
+        loop();
+        check("  K3 far right: HIGH stops at +12.0 DB", (int8_t)meq_high == MEQ_GAIN_MAX && on_screen("+12.0 DB"));
+        enc(5, -30);
+        loop();
+        check("  K4 far left: MID FREQ stops at 100 HZ", meq_freq == 0u && on_screen("100 HZ"));
+        enc(5, 6);
+        loop();
+        check("  K4 six clicks right: an octave up, 200 HZ", meq_freq == 6u && on_screen("200 HZ"));
+        {
+            uint8_t d[MEQ_BYTES];
+            meq_pack(d);
+            meq_defaults();
+            meq_unpack(d);
+            check("  the settings as bytes and back (main.c's settings extension)", (int8_t)meq_low == -2 && meq_mid == 0u && (int8_t)meq_high == MEQ_GAIN_MAX
+                  && meq_freq == 6u);
+            d[0] = 0x80u;                                   /* (out of range: held) */
+            d[3] = 200u;
+            meq_unpack(d);
+            check("  bytes out of range: the gain held to -12 DB, MID FREQ back at 1 kHz", (int8_t)meq_low == -MEQ_GAIN_MAX && meq_freq == MEQ_FREQ_DEFAULT);
+        }
+        cfg_defaults();
+        check("  FACTORY RESET's defaults: flat at 1 kHz", !meq_low && !meq_mid && !meq_high && meq_freq == MEQ_FREQ_DEFAULT);
+        gt_due = 0;
+        enc(1, 1);
         check("ALGO again: INFO, a list, not a page", menu_tab == MT_INFO && !menu_page() && on_screen("BANK SLOTS") && on_screen("VERSION"));
         check("  its top bar is the plain bar with the patch's name, not the coral header's top", on_screen(patch_label));
         enc(1, 1);

@@ -734,7 +734,7 @@ static void controls_suite(void)
         const char *r[HC_ROWS];
         uint32_t n = ct_enter(HS_DEVICE, 1) ? help_rows(0, r) : 0u;
         char name[16];
-        if (n && !panel_label((uint32_t)pg_list_btn, name))
+        if (n && !m1_panel_label((uint32_t)pg_list_btn, name))
             snprintf(name, sizeof name, "%s", PANEL_BTN_NAME[pg_list_btn]);
         check("a Page button's list: the sheet's {list} rows (controls.h) name it", n && ct_list_named(name));
         if (n && m1_panel()) {                          /* the patch's label for it, as the top bar; one too wide: the name */
