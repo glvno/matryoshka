@@ -296,17 +296,25 @@ def archive(t, repo, log):
             out = out.with_name(f'{os.path.basename(t.path)}-{t.head[:8]}.patch')
         out.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp:
-            # A copy of the index so untracked files can be added without touching the worktree's own index.
+            # A copy of the index so untracked files can be added without touching the worktree's own index. copy2 keeps
+            # its modification time: a newer index would make git trust the cached file times of files edited in the
+            # same second as the last index write, and miss their changes.
             index = os.path.join(tmp, 'index')
-            shutil.copyfile(git('rev-parse', '--path-format=absolute', '--git-path', 'index', cwd=t.path).strip(), index)
+            shutil.copy2(git('rev-parse', '--path-format=absolute', '--git-path', 'index', cwd=t.path).strip(), index)
             env = {**os.environ, 'GIT_INDEX_FILE': index}
             try:
                 git('add', '-A', cwd=t.path, env=env)
+                saved = set(git('diff', '--cached', '--name-only', '--no-renames', '-z', 'HEAD', cwd=t.path,
+                                env=env).split('\0'))
                 diff = subprocess.run(['git', 'diff', '--cached', '--binary', 'HEAD'], cwd=t.path, env=env,
                                       capture_output=True, check=True).stdout
             except (RuntimeError, subprocess.CalledProcessError) as e:
                 log(f'  could not save the changes of {t.path}: {e}')
                 return False
+        missed = [f for f in t.dirty if f not in saved]
+        if missed:
+            log(f'  could not save the changes of {t.path}: the patch would leave out {", ".join(missed)}')
+            return False
         header = (f'Uncommitted changes of worktree {t.path} (branch {t.branch or "detached"}) on top of '
                   f'{t.head}, saved by tools/worktree_gc.py on {datetime.date.today().isoformat()}.\n'
                   f'Restore: git checkout {t.head} && git apply {out}\n\n')
