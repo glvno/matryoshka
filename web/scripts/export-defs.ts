@@ -11,9 +11,9 @@ import { ADSR_LONG, ANALOG_CURVE, ANALOG_DIP, ANALOG_DIP_S, ANALOG_PWO, ANALOG_S
 import { LPG_ATTACK, LPG_CLIP, LPG_RES_K } from '../src/modules';
 import { EQ_LIM, EQ_SHELF_Q, EQ_SHELF_TOP, EUCLID_RATE_TICKS, EUCLID_STEPS_MAX, LIMIT_AHEAD, LIMIT_CHUNK, LIMIT_KA } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16, VERSION, deviceBudget, DEVICE } from '../src/patchbin';
-import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
+import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX, trackName } from '../src/patch';
 import { ACCENT_VEL, MICRO_MAX, MICRO_STEPS, RATCHET_MAX, TRACK_NOTES_MAX } from '../src/track';
-import { STEPS_HITS } from '../src/modules';
+import { DRUM_MAP_DEFAULT, DRUM_ROWS, STEPS_HITS } from '../src/modules';
 import { MAX_POLY } from '../src/poly';
 import { FM1_PRESETS } from '../src/presets';
 import { FALLBACK_NAME, fallbackPatch } from '../src/fallback';
@@ -149,6 +149,7 @@ w();
 const names = (a: string[]): string => `{${a.map((c) => `"${c.toUpperCase()}"`).join(', ')}}`;
 w(`#define TRACK_STEPS ${STEPS_MAX}        /* a Steps track's most steps (track.ts); its name follows its pins in the record */`);
 w(`#define TRACK_NAME_MAX ${TRACK_NAME_MAX}`);
+w(`static const char *const DRUM_ROW_NAME[${DRUM_ROWS}] = ${names(Array.from({ length: DRUM_ROWS }, (_, r) => trackName(DRUM_MAP_DEFAULT[r].name)))};   /* a Drum map row's default name (modules.ts DRUM_MAP_DEFAULT): format 64 leaves it out of the binary */`);
 w(`#define TRACK_NOTES_MAX ${TRACK_NOTES_MAX}   /* notes per track (the notes section, flag bit 4; track.ts noteWord) */`);
 w(`#define TRACK_POLY ${TRACK_POLY}          /* notes a track sounds at once (modules.ts) */`);
 w(`#define METER_N ${METERS.length}u           /* the global time signature (#1011, modules.ts METERS): its meters, as listed */`);
@@ -290,7 +291,7 @@ const binaries = presetNames.map(name => {
   const budget = deviceBudget(patch, 1);
   if (!budget.lines.fits || budget.over.some(item => item.key !== 'cpu'))
     throw new Error(`${name}: selected factory patch exceeds native resource limits`);
-  const binary = encodePatch(patch, true, false, 1);
+  const binary = encodePatch(patch, true, 0, 1);
   if (binary.length > DEVICE.bytes) throw new Error(`${name}: selected factory patch exceeds native byte limit`);
   return binary;
 });

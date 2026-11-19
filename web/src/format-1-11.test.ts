@@ -42,8 +42,8 @@ describe('counted records (#667, format 51)', () => {
     const p = lfoPatch();
     const [lfo, out] = p.modules;
     lfo.params.rate = 3.5;
-    const b = encodePatch(p, false, true);
-    const { size, keep } = layout(p, undefined, true);
+    const b = encodePatch(p, false, COUNTED);
+    const { size, keep } = layout(p, undefined, COUNTED);
     expect(b[1]).toBe(COUNTED);
     expect(b.length).toBe(size);
     expect(keep.get(lfo.id)).toBe(DEFS.lfo.params.length);   // (a plain module's device: the FM-1 pages all of them)
@@ -55,10 +55,10 @@ describe('counted records (#667, format 51)', () => {
     expect(rd32(b, at + 2 + 4 * DEFS.lfo.params.findIndex((q) => q.name === 'rate'))).toBe(toQ16(3.5));
     at += 2 + 4 * n + (DEFS.lfo.data ?? 0);
     expect(b[at]).toBe(TYPE_ORDER.indexOf('output'));
-    expect(b[at + 1]).toBe(storedParams(out, COUNTED, false, layout(p, undefined, true).keep.get(out.id)).length);
+    expect(b[at + 1]).toBe(storedParams(out, COUNTED, false, layout(p, undefined, COUNTED).keep.get(out.id)).length);
     // with a B side: the module mask, then the LFO's bitmap and its one B value off A (D-1004)
     lfo.paramsB = { ...lfo.params, rate: 7 };
-    const m = encodePatch(p, false, true);
+    const m = encodePatch(p, false, COUNTED);
     expect(m.length).toBe(b.length + 1 + Math.ceil(n / 8) + 4);
   });
 
@@ -67,7 +67,7 @@ describe('counted records (#667, format 51)', () => {
     const lfo = p.modules[0];
     lfo.att = [0.5, 1];
     lfo.map!.p2 = ['rate', 'depth'];
-    const b = encodePatch(p, false, true);
+    const b = encodePatch(p, false, COUNTED);
     const at = 8 + PANEL_BYTES, n = b[at + 1] & 0x3f;
     expect(b[at + 1] & REC_TEMPLATE).toBe(0);
     const blk = at + 2 + 4 * n;
@@ -76,19 +76,19 @@ describe('counted records (#667, format 51)', () => {
     const bit = (name: string): number => 1 << DEFS.lfo.params.findIndex((q) => q.name === name);
     expect(b[blk + 5] | b[blk + 6] << 8).toBe(bit('rate') | bit('depth'));
     expect(presenceOf(lfo)).toBe(PRES_ATT1 | PRES_P2);
-    expect(b.length).toBe(layout(p, undefined, true).size);
+    expect(b.length).toBe(layout(p, undefined, COUNTED).size);
   });
 
   it('writes a morph B side only where it differs from A, and keeps room for the B values the FM-1 may add (D-1004, D-1005)', () => {
     const p = oracleMorph();
     const plain = relocatedPatches['Oracle V']();
-    const l = layout(p, undefined, true), lp = layout(plain, undefined, true);
+    const l = layout(p, undefined, COUNTED), lp = layout(plain, undefined, COUNTED);
     const { patch: dev } = deviceView(p, true);
     const withB = dev.modules.filter((m) => m.paramsB);
     const bitmaps = withB.reduce((n, m) => n + Math.ceil(storedParams(m, COUNTED, true, l.keep.get(m.id)).length / 8), 0);
     const differ = ORACLE_B.reduce((n, [, , v]) => n + Object.keys(v).length, 0);
     // (the B side: the module mask, a bitmap per module with a B side, the 8 values off A; 187 bytes before D-1004)
-    expect(encodePatch(p, false, true).length - encodePatch(plain, false, true).length).toBe(Math.ceil(dev.modules.length / 8) + bitmaps + 4 * differ);
+    expect(encodePatch(p, false, COUNTED).length - encodePatch(plain, false, COUNTED).length).toBe(Math.ceil(dev.modules.length / 8) + bitmaps + 4 * differ);
     expect(l.size - lp.size).toBeLessThan(128);   // (50 when measured, 52 with the analog oscillators of #745, 98 with Oracle V's 64 modules of #658: the module mask and a bitmap per module; 187 before D-1004)
     const room = morphRoom(dev, COUNTED, fm1Edits(p, dev, deviceSection(p, dev)), l.keep);
     expect(room).toBeGreaterThan(0);
@@ -98,14 +98,14 @@ describe('counted records (#667, format 51)', () => {
 
   it('writes the cables in 3 bytes when every port index is under 16, else in 4 (D-1002)', () => {
     const p = lfoPatch();
-    const b = encodePatch(p, false, true);
+    const b = encodePatch(p, false, COUNTED);
     expect(b[7] & (FLAG_CABLES3 >> 8)).toBeTruthy();
     const main = addModule(p, DEFS.fm1, 0, 0), mix = addModule(p, DEFS.mixer, 0, 0);
     connect(p, DEFS, { module: main.id, port: 'sustain' }, { module: mix.id, port: 'in1' });
     connect(p, DEFS, { module: mix.id, port: 'out' }, { module: p.modules.find((m) => m.type === 'output')!.id, port: 'r' });
-    const w = encodePatch(p, false, true);
+    const w = encodePatch(p, false, COUNTED);
     expect(w[7] & (FLAG_CABLES3 >> 8)).toBe(0);
-    expect(w.length).toBe(layout(p, undefined, true).size);
+    expect(w.length).toBe(layout(p, undefined, COUNTED).size);
   });
 
   it('keeps the k1..k4 knob columns out of the model: validatePatch drops them (D-1001)', () => {

@@ -27,6 +27,6 @@ describe('signal-buffer allocation rule', () => {
     expect(old.lines.used - shared.lines.used).toBe((86 - 3) * BUF_BYTES);
     expect(lineBudget(p, 1)).toEqual(shared.lines);
     expect(() => encodePatch(p)).toThrow('over the FM-1 budget');
-    expect(encodePatch(p, false, false, 1)).toEqual(encodePatch(p, true));
+    expect(encodePatch(p, false, 0, 1)).toEqual(encodePatch(p, true));
   });
 });

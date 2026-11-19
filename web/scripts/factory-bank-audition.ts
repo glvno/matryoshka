@@ -182,7 +182,7 @@ export function exportSelectedFactoryAudition(options: AuditionExportOptions) {
   const firmwarePackageSha256 = options.firmware ? sha256(readFileSync(options.firmware)) : null;
   const encoded = bank.map(({ name, patch }, index) => {
     const budget = deviceBudget(patch, 1);
-    const binary = encodePatch(patch, true, false, 1);
+    const binary = encodePatch(patch, true, 0, 1);
     const hardLimitFailures = budget.over.filter(item => item.key !== 'cpu');
     if (!budget.lines.fits || hardLimitFailures.length || binary.length > DEVICE.bytes)
       throw new Error(`${name}: default native payload exceeds device hard limits`);

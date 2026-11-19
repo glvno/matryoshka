@@ -499,7 +499,7 @@ export class DeviceLink {
     const run = async (): Promise<void> => {
       // Recheck inside the serial queue: the device may have changed after a caller encoded it.
       if (!holdsFactoryLinks(submitted, store)) throw new Error(UPDATE_TO_SYNC);
-      const checked = encodePatch(submitted, false, false, this.bufferAllocation, store);
+      const checked = encodePatch(submitted, false, 0, this.bufferAllocation, store);
       if (bytes && !sameBinary(bytes, checked)) throw new Error('Patch changed before upload: send it again');
       const bin = bytes ?? checked;
       await this.sendChunks(bin);
@@ -565,7 +565,7 @@ export class DeviceLink {
     const submitted = structuredClone(patch);
     return this.serial(async () => {
       if (!holdsFactoryLinks(submitted, this.linkStore)) throw new Error(UPDATE_TO_SYNC);
-      const bin = encodePatch(submitted, false, false, this.bufferAllocation, this.linkStore);
+      const bin = encodePatch(submitted, false, 0, this.bufferAllocation, this.linkStore);
       await this.sendChunks(bin);
       await this.ackFor(slotFrame(slot, name, bin), CMD.slot, slot, FLASH_TIMEOUT);
     });

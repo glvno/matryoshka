@@ -48,6 +48,6 @@ describe("the FM-1's VOICES row top", () => {
     const plain = rowBytes(encodePatch(p, true))!;
     expect(plain[0]).toBe(POLY_ROW);
     // (in the same format the top is its one byte)
-    expect(encodePatch(p, true, true).length).toBe(bin.length - 1);
+    expect(encodePatch(p, true, FORMAT_1_11).length).toBe(bin.length - 1);
   });
 });

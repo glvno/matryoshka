@@ -116,4 +116,4 @@ for (const [file, p] of [
   console.log(`${file}: CPU estimate ${Math.round(cpuEstimate(p).use * 100)} %`);
 }
 
-writeFileSync(new URL('7ph.m1p', out), encodePatch(EXAMPLE_PRESETS['<7PH'](), true, false, 1));
+writeFileSync(new URL('7ph.m1p', out), encodePatch(EXAMPLE_PRESETS['<7PH'](), true, 0, 1));

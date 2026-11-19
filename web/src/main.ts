@@ -263,13 +263,13 @@ function liveEdited(): void {
   clearTimeout(gateTimer);
   gateTimer = window.setTimeout(() => {
     if (!live()) return uploadGate.forget();
-    try { uploadGate.refresh(encodePatch(editor.patch, false, false, device.bufferAllocation, device.linkStore)); } catch { uploadGate.forget(); }
+    try { uploadGate.refresh(encodePatch(editor.patch, false, 0, device.bufferAllocation, device.linkStore)); } catch { uploadGate.forget(); }
   }, GATE_MS);
 }
 /** a structural change under Live: the patch goes to the FM-1 again only when its encoded bytes changed */
 function structureChanged(): void {
   let bin: Uint8Array | null = null;
-  try { bin = encodePatch(editor.patch, false, false, device.bufferAllocation, device.linkStore); } catch { /* over the budget: sendPatch says so */ }
+  try { bin = encodePatch(editor.patch, false, 0, device.bufferAllocation, device.linkStore); } catch { /* over the budget: sendPatch says so */ }
   if (bin && onEditorPatch && !uploadGate.needs(bin)) return;
   uploadGate.forget();   // (until the upload: the FM-1 holds the old bytes)
   queueUpload();
@@ -594,7 +594,7 @@ async function sendPatch(): Promise<boolean> {
       dirty = false;
       devStatus('sending patch…');
       const load = loadsSeen;
-      const bin = encodePatch(editor.patch, false, false, device.bufferAllocation, device.linkStore);
+      const bin = encodePatch(editor.patch, false, 0, device.bufferAllocation, device.linkStore);
       const layout = deviceLayoutKey(editor.patch);
       uploadGate.forget();
       installedLayout = null;
@@ -705,7 +705,7 @@ function offerSync(asked = false): void {
     if (fitsDevice) void sendPatch();
     return syncChip();
   }
-  const d = syncOnConnect({ fits: fitsDevice, declined: !asked && syncDeclined(), editorBin: fitsDevice ? encodePatch(editor.patch, false, false, device.bufferAllocation, device.linkStore) : new Uint8Array(), deviceBin: null });
+  const d = syncOnConnect({ fits: fitsDevice, declined: !asked && syncDeclined(), editorBin: fitsDevice ? encodePatch(editor.patch, false, 0, device.bufferAllocation, device.linkStore) : new Uint8Array(), deviceBin: null });
   if (d === 'sync') return setLive(true);
   if (d === 'ask' && !syncAsk.open) {
     const name = editor.patch.name.trim() || 'Untitled';
@@ -2702,7 +2702,7 @@ function emuLoad(): void {
   try {
     // (the emulator keeps no pattern store; its firmware has the factory patches' patterns, #923)
     const factoryStore = new Map(factoryEntries().filter((e) => e.kit).map((e) => [e.id, e.hash]));
-    err = ui.load(encodePatch(editor.patch, true, false, 0, factoryStore), editor.patch.name.toUpperCase(), { fresh: emuFresh });
+    err = ui.load(encodePatch(editor.patch, true, 0, 0, factoryStore), editor.patch.name.toUpperCase(), { fresh: emuFresh });
   } catch {
     err = -1;
   }
