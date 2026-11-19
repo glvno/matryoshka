@@ -200,9 +200,13 @@ export function exportSelectedFactoryAudition(options: AuditionExportOptions) {
     const sourceName = SOURCE[index].name;
     const audit = factoryFxAudit.find(entry => entry.name === sourceName);
     const selected = selectedFactoryProfile[sourceName];
-    // (a drum kit with a pattern set is its source plus those patterns, links and songs: D-829)
+    // (a drum kit with a pattern set is its source plus those patterns, links and songs: D-829; a kit with a drum rack
+    // keeps every module of that as it was, Main's panel aside, D-1053)
     const source = withKitPatterns(structuredClone(SOURCE[index].patch) as unknown as Patch);
-    if (!audit && (name !== sourceName || JSON.stringify(patch) !== JSON.stringify(source)))
+    const kept = selected?.drumRack
+      ? source.modules.every(m => JSON.stringify({ ...patch.modules.find(x => x.id === m.id), panel: undefined }) === JSON.stringify({ ...m, panel: undefined }))
+      : JSON.stringify(patch) === JSON.stringify(source);
+    if (!audit && (name !== sourceName || !kept))
       throw new Error(`${sourceName}: protected source changed`);
     if (audit && (!selected || name !== (selected.bankName ?? sourceName)))
       throw new Error(`${sourceName}: selected source/bank name mismatch`);

@@ -650,16 +650,20 @@ static void fx_suite(void)
     check("legacy FX never reserves the new page", page != PAGE_FX && panel_lights() == eng_buttons_lit());
     {   /* the shipped factory patches whose stages came after the instrument (golden.ts --panel-fixtures writes them from
          * the selected bank): every stage off at load, FX opens a page with exactly their stages */
-        static const struct { const char *path; uint32_t n; uint8_t kind[4]; const char *show[4]; } RACK[] = {
-            {"build/panel-fixtures/factory-rack-hera-6.m1p", 3u, {ENG_FX_DRIVE, ENG_FX_DELAY, ENG_FX_REVERB}, {"DRIVE", "DELAY", "REVERB"}},
+        static const char *const NAME[4] = {"DRIVE", "CHORUS", "DELAY", "REVERB"};   /* (ENG_FX_DRIVE ... ENG_FX_REVERB) */
+        static const struct { const char *path; uint32_t n; uint8_t kind[4]; } RACK[] = {
+            {"build/panel-fixtures/factory-rack-hera-6.m1p", 3u, {ENG_FX_DRIVE, ENG_FX_DELAY, ENG_FX_REVERB}},
+            {"build/panel-fixtures/factory-rack-808-kit.m1p", 2u, {ENG_FX_DRIVE, ENG_FX_REVERB}},
         };
         for (i = 0; i < sizeof RACK / sizeof RACK[0]; i++) {
-            uint32_t k, ok;
+            uint32_t k, ok, shown = 0;
             ct_reset();
             check("factory rack patch loads", !load_fixture(RACK[i].path));
             ok = eng_fx_count() == RACK[i].n;
-            for (k = 0; ok && k < RACK[i].n; k++)
+            for (k = 0; ok && k < RACK[i].n; k++) {
                 ok = eng_fx_kind(k) == RACK[i].kind[k] && !eng_fx_on(k);
+                shown |= 1u << RACK[i].kind[k];
+            }
             check("factory rack: its stages in order, every one off at load", ok);
             pv_gen++;
             page_show(0);
@@ -669,9 +673,9 @@ static void fx_suite(void)
             fx_row = 0;
             later(2000);
             tap(2);
-            ok = page == PAGE_FX && on_screen("MASTER FX") && !on_screen("CHORUS");
-            for (k = 0; k < RACK[i].n; k++)
-                ok = ok && on_screen(RACK[i].show[k]);
+            ok = page == PAGE_FX && on_screen("MASTER FX");
+            for (k = 0; k < 4u; k++)
+                ok = ok && on_screen(NAME[k]) == !!(shown & 1u << k);
             check("factory rack: FX opens the page with exactly its stages", ok);
             tap(2);
         }

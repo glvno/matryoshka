@@ -9,7 +9,7 @@ import { sharedCassiaContours } from './factory-cassia-sharing';
 import { sharedAlgoContours } from './factory-algo-sharing';
 import { sharedArticulationFactory } from './factory-shared-articulation';
 import { fitCanvasFactory } from './factory-canvas-fit';
-import { withKitPatterns } from './factory-kit-patterns';
+import { FACTORY_KITS, withKitPatterns } from './factory-kit-patterns';
 import { DEFS } from './modules';
 import { devicesOf } from './pages';
 import { addModule, connect, disconnect, removeModule, type Patch } from './patch';
@@ -27,6 +27,9 @@ export interface FactoryMeasurementOptions {
   harmonizer?: 'removed';
   bankName?: string;
   canvasCaptions?: 'short';
+  /** A protected drum kit gains the master FX bus, its stages bypassed, with no other change (owner 2026-11-19, D-1200).
+   * The only measurement option a protected patch takes, with `omit`. */
+  drumRack?: true;
 }
 export type FactoryMeasurementProfile = Readonly<Record<string, FactoryMeasurementOptions>>;
 
@@ -61,6 +64,9 @@ export const selectedFactoryProfile: Readonly<Record<string, SelectedFactoryOpti
   // (drive joins beside its own Juno chorus, Delay and Reverb, bypassed, at six voices: owner 2026-11-19, D-1200)
   'Hera 4': { bankName: 'Hera 6', configurationId: 'hera-6-v6-drive-chorus-delay-reverb', outputLevel: 0.39 },
   'Io 4': { configurationId: 'selected-io-4' },
+  // (a shared rack on the FX page, Drive and Reverb, every stage bypassed: owner 2026-11-19, D-1200. No chorus, and Delay
+  // does not fit the FM-1's 3,840 bytes beside them)
+  '808 Kit': { drumRack: true, omit: ['chorus', 'delay'], configurationId: '808-kit-drive-reverb' },
 };
 
 /** Selected names in source order, without building the patch graphs. */
@@ -137,16 +143,19 @@ export function buildFactoryBank(profile: FactoryMeasurementProfile = {}): Facto
     let p = name === 'Canvas' ? fitCanvasFactory(patch as Patch) : structuredClone(patch) as Patch;
     const audit = AUDIT.find(entry => entry.name === name);
     const options = profile[name];
-    if (!audit && options && Object.keys(options).length) {
+    const keys = Object.keys(options ?? {});
+    if (!audit && keys.length && (!options!.drumRack || keys.some(key => key !== 'drumRack' && key !== 'omit'))) {
       throw new Error(`${name}: protected drums/drones cannot use a measurement profile`);
     }
+    if (options?.drumRack && !FACTORY_KITS.some(kit => kit.patch === name)) throw new Error(`${name}: a drum rack needs a factory drum kit`);
     if (options?.harmonizer && (!audit || audit.voices.length !== 1 || audit.voices[0].voices !== 1)) {
       throw new Error(`${name}: Harmony removal is limited to originally monophonic instruments`);
     }
     if (options?.canvasCaptions && name !== 'Canvas') throw new Error(`${name}: Canvas captions require Canvas`);
     if (options?.voices !== undefined) reduceVoices(p, options.voices, name === 'Expander S' ? 1 : 3);
-    // Protected drums/drones never pass through validation, FX, player or button rewriting; a drum kit gets its pattern set.
-    if (!audit) return { name, patch: withKitPatterns(p) };
+    // Protected drums/drones never pass through validation, FX, player or button rewriting; a drum kit gets its pattern set
+    // and, when selected, the master FX bus on its FX button (nothing else of the kit changes).
+    if (!audit) return { name, patch: options?.drumRack ? withFxPage(withKitPatterns(p), options.omit ?? []) : withKitPatterns(p) };
     if (options?.paraphony === 'shared-filter') p = sharedFilterFactory(p);
     else if (options?.paraphony === 'shared-articulation') p = sharedArticulationFactory(p);
     else if (options?.paraphony === 'shared-contours' && name === 'Cassia 1') p = sharedCassiaContours(p);
@@ -198,13 +207,7 @@ export function buildFactoryBank(profile: FactoryMeasurementProfile = {}): Facto
       delete main.panel!.labels!.fx;
       for (const cable of fxCables) cable.from.port = 'edit';
     }
-    p = withFxBus(p, { omit: [...new Set([...(audit.omit as FxStageKind[]), ...(options?.omit ?? [])])] });
-    const bus = fxBusOf(p);
-    if (bus) {
-      const device = devicesOf(p, DEFS).find(d => d.asm === bus.assembly)!;
-      setKind(p, 'fx', 'page');
-      setPages(p, 'fx', device.pages.map((_, page) => ({ device: device.key, page })));
-    }
+    p = withFxPage(p, [...new Set([...(audit.omit as FxStageKind[]), ...(options?.omit ?? [])])]);
     if (options?.harmonizer === 'removed') removeHarmony(p);
     if (options?.canvasCaptions) p = fitCanvasFactory(p, options.canvasCaptions);
     if (options?.bankName) {
@@ -213,4 +216,18 @@ export function buildFactoryBank(profile: FactoryMeasurementProfile = {}): Facto
     }
     return { name: options?.bankName ?? name, patch: p };
   });
+}
+
+/** The master FX bus without the omitted stages, every stage bypassed, its pages on the FX button (D-888). */
+function withFxPage(source: Patch, omit: readonly FxStageKind[]): Patch {
+  const main = source.modules.find(m => m.type === 'fm1')!;
+  if (source.cables.some(c => c.from.module === main.id && c.from.port === 'fx')) throw new Error(`${source.name}: FX is cabled`);
+  const p = withFxBus(source, { omit });
+  const bus = fxBusOf(p);
+  if (bus) {
+    const device = devicesOf(p, DEFS).find(d => d.asm === bus.assembly)!;
+    setKind(p, 'fx', 'page');
+    setPages(p, 'fx', device.pages.map((_, page) => ({ device: device.key, page })));
+  }
+  return p;
 }

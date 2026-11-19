@@ -6,13 +6,14 @@ import { factoryPresets } from './factory-presets';
 import { applyPreset, presetsOf } from './device-presets';
 import { devicesOf, patternDriver } from './pages';
 import { DEFS } from './modules';
-import { addModule, validatePatch } from './patch';
+import { addModule, validatePatch, type Patch } from './patch';
+import { buildFactoryBank } from './factory-bank';
 import { noteWord } from './track';
 import { invalidatePresetPatterns, presetPattern, seedPresetPattern } from './preset-patterns';
 import { PRESET_PATTERNS, patternRevision, setPresetPatterns } from './preset-pattern-data';
 factoryPresets();
-function fixture(name = 'Spokes 6') {
-  const p = (PRESETS[name] ?? relocatedPatches[name])(); // (Perun 4 and Spokes 6 left the factory bank for Community, D-1201)
+function fixture(name = 'Spokes 6', patch?: Patch) {
+  const p = patch ?? (PRESETS[name] ?? relocatedPatches[name])(); // (Perun 4 and Spokes 6 left the factory bank for Community, D-1201)
   const d = devicesOf(p, DEFS).find((d) => d.asm !== undefined)!;
   const a = p.assemblies!.find((a) => a.id === d.asm)!;
   const t = p.modules.find((m) => m.id === d.track)!;
@@ -135,7 +136,9 @@ it('preserves unknown history when a shipped default receives a new revision', (
   } finally { setPresetPatterns(catalog); }
 });
 it('preserves an ambiguous actual 808 route and ignores unrelated control wiring', () => {
-  const { p, a, t, presets } = fixture('808 Kit');
+  // (the kit without its FX rack: the extra Steps track needs the bytes the rack takes, and the byte guard would refuse
+  // the pattern for that reason alone, D-1053)
+  const { p, a, t, presets } = fixture('808 Kit', buildFactoryBank().find((e) => e.name === '808 Kit')!.patch);
   const other = addModule(p, DEFS.steps, 0, 0), map = p.modules.find((m) => m.type === 'drummap')!;
   const original = structuredClone(t.notes);
   p.cables.push({ from: { module: other.id, port: 'keys' }, to: { module: map.id, port: 'keys' } });
