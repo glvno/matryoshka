@@ -15,6 +15,9 @@
 //                                                    flash bank, without loading them; ACK (3 = not a valid patch)
 //   14 SLOT_ERASE  slot u8                           empty a slot; ACK
 //   15 SLOT_INFO   slot u8                           device answers SLOT_INFO (42)
+//   1C MAP      count u8, then per MIDI mapping source u8, module u8, param u8, low u8, high u8 (patchbin.ts mapRecord)
+//                                                    the running patch's MIDI learn mappings (#1067, feature bit 28), all
+//                                                    of them, in place of its own; no reply
 //   20 PARAM    module u8, param u8, value i32       live parameter change (Q16.16), no reply
 //   21 ATT      module u8, input u8 (0 p1, 1 p2), value i32   live attenuverter change (Q16.16, -2..2), no reply
 //   22 BYPASS   module u8, on u8 (0/1)               bypass a module (its outputs carry its through input or silence), no reply
@@ -138,6 +141,8 @@
 //   5D PAT_STORED  id u16 (0xFFFF: a chunk taken), status u8 (PAT_STATUS), count u8 (with S_USED: the slots that link it)
 //   5E PAT_LINK_NOW  pattern u8, id u16 (0 none), hash u32   unasked: the running patch's link of that pattern changed on
 //                                                    the FM-1 (its SEQ page loaded, saved or saved as new; SAVE wrote it)
+//   63 MAP_NOW  count u8, then the mappings as MAP has them   unasked: the running patch's MIDI learn mappings after a
+//                                                    learn or a clear on the FM-1 (GLO > MIDI 3/3, #1067, feature bit 28)
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
 //               feature bit 8, bit3 GLO > SYSTEM > EDITOR at IGNORE: with feature bit 19, #702), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
@@ -436,6 +441,21 @@ export function parseMasterEq(p: Parsed | null): MasterEq {
   const db = (b: number): number => ((b << 24) >> 24) / 2;
   return { low: db(p.payload[1]), mid: db(p.payload[2]), high: db(p.payload[3]), freq: p.payload[4] };
 }
+/** INFO feature bit 28 (byte 14 bit 4, #1067): MIDI learn on the FM-1, MAP and MAP_NOW (firmware/src/midi_learn.c) */
+export const FEATURE_MAP = 1 << 28;
+/** MIDI learn's command and report (#1067) */
+export const MAP_CMD = { map: 0x1c, mapNow: 0x63 } as const;
+/** MAP: the running patch's mappings, the section patchbin.ts mapRecord writes ([] none) */
+export const mapFrame = (record: number[]): Uint8Array => frame(MAP_CMD.map, record.length ? record : [0]);
+/** a MAP_NOW payload: the mappings, device-form indices (source: a CC number or 127 for pitch bend; ends 0..255) */
+export function parseMapNow(payload: number[]): { src: number; module: number; param: number; lo: number; hi: number }[] | null {
+  const n = payload[0];
+  if (n === undefined || payload.length < 1 + 5 * n) return null;
+  return Array.from({ length: n }, (_, i) => {
+    const [src, module, param, lo, hi] = payload.slice(1 + 5 * i, 6 + 5 * i);
+    return { src, module, param, lo, hi };
+  });
+}
 /** the factory region's commands and answers (#915, D-490) */
 export const FACT = { begin: 0x16, write: 0x17, sum: 0x18, read: 0x19, commit: 0x1a, info: 0x3f, infoReply: 0x5f, sumReply: 0x60, dataReply: 0x61 } as const;
 export const FACT_SIZE = 18 * 0x1000;
@@ -694,8 +714,9 @@ export const parseKeysNow = (payload: number[]): KeysNow | null =>
     ? { key: payload[0] & 0x1f, down: !!(payload[0] & 0x80), keys: (payload[1] | (payload[2] << 8) | (payload[3] << 16) | (payload[4] << 24)) >>> 0,
         held: payload[5] | (payload[6] << 8) }
     : null;
-/** the bytes of a GUIDE_NOW (firmware/src/help_ui.c GUIDE_BYTES) */
-export const GUIDE_BYTES = 14;
+/** the bytes of a GUIDE_NOW (firmware/src/help_ui.c GUIDE_BYTES): 15 since MIDI learn's condition (#1067), 14 before */
+export const GUIDE_BYTES = 15;
+const GUIDE_BYTES_OLD = 14;
 /** the FM-1's panel state (GUIDE_NOW), or the FM-1 tab's copy's (fm1-ui.ts Fm1Ui.guide): the same bytes. `state` indexes
  *  controls.ts HELP_STATES; `conditions` bit c is controls.ts CONDITIONS[c - 1]; `raw` the bytes as sent */
 export interface PanelState {
@@ -705,13 +726,13 @@ export interface PanelState {
   sheetRow: number; octave: number; cursor: number; raw: number[];
 }
 export function parseGuideNow(payload: ArrayLike<number>): PanelState | null {
-  if (payload.length < GUIDE_BYTES) return null;
+  if (payload.length < GUIDE_BYTES_OLD) return null;
   const p = Array.from(payload).slice(0, GUIDE_BYTES);
   const f = p[2];
   return {
     state: p[0], page: p[1], stepRecord: !!(f & 1), liveTake: !!(f & 2), recording: !!(f & 4), sandbox: !!(f & 8),
     sheet: !!(f & 16), quickStart: !!(f & 32), everywhere: !!(f & 64), stepHeld: !!(f & 128),
-    device: p[3], devicePage: p[4], track: p[5], menuTab: p[6], held: p[7] | (p[8] << 8), conditions: p[9] | (p[10] << 8),
+    device: p[3], devicePage: p[4], track: p[5], menuTab: p[6], held: p[7] | (p[8] << 8), conditions: p[9] | (p[10] << 8) | ((p[14] ?? 0) << 16),
     sheetRow: p[11], octave: (p[12] << 24) >> 24, cursor: p[13], raw: p,
   };
 }

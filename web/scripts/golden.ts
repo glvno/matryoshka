@@ -2924,12 +2924,21 @@ kit('macro', (add, wire) => {
   wire(env, 'env', vca, 'cv');
   wire(vca, 'out', out, 'l');
 });
-{
-  const m = tests.macro.modules;
+{   // (by type: indices put them on the wrong modules after the Scale went in, dee51fcc, so the kit carried no range)
+  const m = (type: string) => tests.macro.modules.find((x) => x.type === type)!;
   const unit = (type: string, name: string, v: number): number => paramUnit(DEFS[type].params.find((q) => q.name === name)!, v);
-  m[5].range = { p1: { cutoff: [unit('filter', 'cutoff', 150), unit('filter', 'cutoff', 6000)] } };
-  m[4].range = { p1: { d: [unit('adsr', 'd', 0.6), unit('adsr', 'd', 0.03)] } };
-  m[3].range = { p2: { pw: [unit('osc', 'pw', 0.2), unit('osc', 'pw', 0.5)] } };
+  m('filter').range = { p1: { cutoff: [unit('filter', 'cutoff', 150), unit('filter', 'cutoff', 6000)] } };
+  m('adsr').range = { p1: { d: [unit('adsr', 'd', 0.6), unit('adsr', 'd', 0.03)] } };
+  m('osc').range = { p2: { pw: [unit('osc', 'pw', 0.2), unit('osc', 'pw', 0.5)] } };
+}
+// MIDI learn (#1067): the macro kit with three mappings after its macro ranges: CC 1 on the filter's cutoff, pitch bend on
+// the ADSR's sustain over 0.2..0.8, CC 74 on the oscillator's level turned round. It plays as the macro kit (the mappings
+// are the FM-1's MIDI path's, midi_learn.c); proto_test --maps reads and edits its mapping section
+{
+  const p = structuredClone(tests.macro), id = (type: string): number => p.modules.find((m) => m.type === type)!.id;
+  p.name = 'midi-learn';
+  p.midiLearn = [{ src: 1, module: id('filter'), param: 'cutoff' }, { src: 'bend', module: id('adsr'), param: 's', lo: 0.2, hi: 0.8 }, { src: 74, module: id('osc'), param: 'level', lo: 1, hi: 0 }];
+  tests['midi-learn'] = p;
 }
 setMorphTarget(tests.morph, make('morph-b', morphVoice(true)), DEFS);
 // #355: only the VCA has a B side. The other modules must not take a trip through morph's unit conversion.

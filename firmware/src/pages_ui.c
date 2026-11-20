@@ -564,20 +564,23 @@ static void pages_patch_ask(void)
 static void setting_step(uint32_t row, int32_t s);      /* menu.c */
 static void menu_value(uint32_t row, char *out);
 static uint8_t menu_armed = MR_COUNT;                   /* menu.c: the SYSTEM row a turn armed for GLO's hold (MR_COUNT: none) */
+static const char *map_label(void);                     /* midi_learn.c: MIDI 3/3's MAPPING row's label */
+static uint32_t map_bar(uint32_t row, uint32_t width);
 static const char *const MENU_TAB_NAME[MT_COUNT] = {"MIDI", "PANEL", "SYSTEM", "EQ", "INFO", "GUIDE"};
 static ppage_t pg_menu;
 static const ppage_t *menu_tab_page(void)
 {
-    static const char *const LAB[7][PG_ROWS] = {{"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", "CLOCK OUT"}, {"LEDS", "KNOB ACCEL", "COUNT-IN", "TEMPO"}, {"UPDATE MODE", "FACTORY RESET", "QUICK START", "OUTPUT"},
+    static const char *const LAB[8][PG_ROWS] = {{"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", "CLOCK OUT"}, {"LEDS", "KNOB ACCEL", "COUNT-IN", "TEMPO"}, {"UPDATE MODE", "FACTORY RESET", "QUICK START", "OUTPUT"},
                                                 {"LOW", "MID", "HIGH", "MID FREQ"}, {"TIME SIG", "", "", ""}, {"EDITOR", "3.5MM OUT", "USB RETURN", ""},
-                                                {"TRANSPORT IN", "TRANSPORT OUT", "", ""}};
-    static const uint8_t ROW[7][PG_ROWS] = {{MR_CH, MR_CLOCK, MR_MOUT, MR_CLKOUT}, {MR_LEDS, MR_ACCEL, MR_CIN, MR_TEMPO}, {MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_OUTPUT},
+                                                {"TRANSPORT IN", "TRANSPORT OUT", "", ""}, {"LEARN", "", "CLEAR", ""}};
+    static const uint8_t ROW[8][PG_ROWS] = {{MR_CH, MR_CLOCK, MR_MOUT, MR_CLKOUT}, {MR_LEDS, MR_ACCEL, MR_CIN, MR_TEMPO}, {MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_OUTPUT},
                                             {MR_EQ_LOW, MR_EQ_MID, MR_EQ_HIGH, MR_EQ_FREQ}, {MR_METER, MR_METER, MR_METER, MR_METER}, {MR_EDITOR, MR_OUT35, MR_USB_RETURN, MR_OUT35},
-                                            {MR_TIN, MR_TOUT, MR_TOUT, MR_TOUT}};
-    static const uint8_t N[7] = {4, 4, 4, 4, 1, 3, 2};  /* (the tabs, then the second pages: PANEL's, #1011, SYSTEM's, #702, MIDI's, #596) */
+                                            {MR_TIN, MR_TOUT, MR_TOUT, MR_TOUT}, {MR_LEARN, MR_MAPS, MR_MAP_CLEAR, MR_MAP_CLEAR}};
+    static const uint8_t N[8] = {4, 4, 4, 4, 1, 3, 2, 3};   /* (the tabs, then the later pages: PANEL's, #1011, SYSTEM's, #702,
+                                                         * MIDI's 2/3, #596, and 3/3, MIDI learn, #1067) */
     uint32_t tab = menu_tab > MT_EQ ? MT_MIDI : menu_tab, t = tab, k;
     if (menu_page2 && menu_two(tab))
-        t = tab == MT_PANEL ? 4u : tab == MT_SYSTEM ? 5u : 6u;
+        t = tab == MT_PANEL ? 4u : tab == MT_SYSTEM ? 5u : menu_page2 > 1u ? 7u : 6u;
     pg_menu.name = MENU_TAB_NAME[tab];
     pg_menu.nlen = (uint8_t)str_len(pg_menu.name);
     pg_menu.part = 0;
@@ -587,8 +590,8 @@ static const ppage_t *menu_tab_page(void)
     for (k = 0; k < PG_ROWS; k++) {
         pg_menu.mod[k] = SETTING_ROW;
         pg_menu.par[k] = ROW[t][k];
-        pg_menu.lab[k] = LAB[t][k];
-        pg_menu.llen[k] = (uint8_t)str_len(LAB[t][k]);
+        pg_menu.lab[k] = ROW[t][k] == MR_MAPS ? map_label() : LAB[t][k];   /* (the mapping shown: CC 1  1/2) */
+        pg_menu.llen[k] = (uint8_t)str_len(pg_menu.lab[k]);
     }
     return &pg_menu;
 }
@@ -602,6 +605,7 @@ static uint32_t setting_bar(uint32_t row, uint32_t width)
          ? (uint32_t)((int8_t)(row == MR_EQ_LOW ? meq_low : row == MR_EQ_MID ? meq_mid : meq_high) + MEQ_GAIN_MAX) * width / (2u * MEQ_GAIN_MAX)
          : row == MR_EQ_FREQ ? meq_freq * width / (MEQ_FREQS - 1u)
          : row == MR_UPDATE || row == MR_DEFAULTS ? (menu_armed == row ? width : 0u)
+         : row == MR_LEARN || row == MR_MAPS || row == MR_MAP_CLEAR ? map_bar(row, width)
          : (row == MR_CLOCK ? cfg.clock_in : row == MR_MOUT ? cfg.midi_out : row == MR_CLKOUT ? cfg.clock_out : row == MR_TIN ? cfg.transport_in : row == MR_TOUT ? cfg.transport_out : row == MR_QUICK ? cfg.quick : row == MR_TEMPO ? gt_patch : row == MR_OUT35 ? !out_off : cfg.accel) ? width : 0u;
 }
 
@@ -749,20 +753,14 @@ static int pages_lock_turn(const ppage_t *pg, uint32_t k, int32_t cur, int32_t c
     return 0;
 }
 
-/* knob k set to a position u (Q16 0..1) of its row's range (MIDI CC 16..19): as pages_turn */
-static int pages_set_unit(uint32_t k, int32_t u, uint32_t *mod, uint32_t *par, int32_t *v)
+/* row k of page pg set to a position u (Q16 0..1) of its range, as pages_turn: its module, parameter (POLY_ROW: a poly
+ * group's setting) and value. -1: nothing to set (an FM-1 setting, a parameter only the editor's knob sets), 1: a poly row */
+static int row_set_unit(const ppage_t *pg, uint32_t k, int32_t u, uint32_t *mod, uint32_t *par, int32_t *v)
 {
-    const ppage_t *pg = pages_now();
     const def_t *d;
-    uint32_t m, j;
-    if (!pg || k >= pg->nrows)
-        return -1;
-    m = pg->mod[k];
-    j = pg->par[k];
+    uint32_t m = pg->mod[k], j = pg->par[k];
     if (m == SETTING_ROW)                               /* (an FM-1 setting: not from MIDI) */
         return -1;
-    pg_row_dirty |= (uint8_t)(1u << k);                 /* (the row moves where it is, #298) */
-    toast_end();
     *mod = m;
     *par = j;
     if (j & POLY_ROW) {
@@ -773,7 +771,6 @@ static int pages_set_unit(uint32_t k, int32_t u, uint32_t *mod, uint32_t *par, i
     if (eng_type(m) >= 0 && DEF_FIXED((uint32_t)eng_type(m), j))   /* (MIDI CC: no message, the editor's knob says it) */
         return -1;
     d = &DEFS[eng_type(m)];
-    lag_note(k, m, j);
     if (d->pchoice && d->pchoice[j]) {
         int32_t n = 0;
         while (d->pchoice[j][n])
@@ -786,6 +783,58 @@ static int pages_set_unit(uint32_t k, int32_t u, uint32_t *mod, uint32_t *par, i
         *v = value_of(d, j, u);
     }
     return 0;
+}
+
+/* knob k set to a position u (Q16 0..1) of its row's range (MIDI CC 16..19): as pages_turn */
+static int pages_set_unit(uint32_t k, int32_t u, uint32_t *mod, uint32_t *par, int32_t *v)
+{
+    const ppage_t *pg = pages_now();
+    int r;
+    if (!pg || k >= pg->nrows || pg->mod[k] == SETTING_ROW)
+        return -1;
+    pg_row_dirty |= (uint8_t)(1u << k);                 /* (the row moves where it is, #298) */
+    toast_end();
+    r = row_set_unit(pg, k, u, mod, par, v);
+    if (!r)
+        lag_note(k, *mod, *par);
+    return r;
+}
+
+/* the page of the running patch that shows module m's row byte j (a page row's module and parameter bytes) and the row's
+ * place on it; 0 when no page has it */
+static const ppage_t *row_find(uint32_t m, uint32_t j, uint32_t *k)
+{
+    uint32_t i, r;
+    pages_ensure();
+    for (i = 0; i < pg_npage; i++)
+        for (r = 0; r < pg_page[i].nrows; r++)
+            if (pg_page[i].mod[r] == m && pg_page[i].par[r] == j) {
+                *k = r;
+                return &pg_page[i];
+            }
+    return 0;
+}
+
+/* a learned MIDI control (#1067) moved its row, module m's row byte j, to position u (Q16 0..1) of the row's range,
+ * wherever the row's page is: as K1..K4 turn a row in focus (CC 16..19), over ramp slot `slot` (eng_knob_param), with the
+ * parameters the row also sets. 0: no page has the row, or it takes no value from MIDI (a poly group's setting, which
+ * rebuilds the patch, an FM-1 setting, a parameter only the editor sets); else 1 and the parameter set and its value */
+static int pages_map_move(uint32_t m, uint32_t j, int32_t u, uint32_t slot, uint32_t *mod, uint32_t *par, int32_t *v)
+{
+    uint32_t k;
+    const ppage_t *pg = row_find(m, j, &k);
+    if (!pg || (j & POLY_ROW) || row_set_unit(pg, k, u, mod, par, v) != 0)
+        return 0;
+    if (pg == pages_now()) {                            /* (on screen: the row moves where it is, #298) */
+        pg_row_dirty |= (uint8_t)(1u << k);
+        lag_note(k, *mod, *par);
+        if (!ui_dirty)
+            ui_dirty = 1;
+    }
+    eng_knob_param(ENG_KNOBS + slot % ENG_MAP_RAMPS, *mod, *par, *v);
+    m1_patch_param(*mod, *par, *v);
+    more_set(row_more(pg, k), *v);                      /* (the parameters the row also sets, #357) */
+    return 1;
 }
 
 /* where knob k's row stands in its range, 0..127 (MIDI out) */
@@ -1109,8 +1158,12 @@ static void head_layout(head_t *h)
         h->mode = HM_GLO;
         put(h->a, "MENU")[0] = 0;
         q = put(h->b, MENU_TAB_NAME[menu_tab]);
-        if (menu_two(menu_tab))                         /* (its two pages, #702, #1011) */
-            q = put(q, menu_page2 ? " 2/2" : " 1/2");
+        if (menu_two(menu_tab)) {                       /* (its pages: 1/2, 2/2, #702, #1011; MIDI's 1/3..3/3, #596, #1067) */
+            *q++ = ' ';
+            *q++ = (char)('1' + menu_page2);
+            *q++ = '/';
+            *q++ = (char)('0' + menu_pages(menu_tab));
+        }
         *q = 0;
         return;
     }

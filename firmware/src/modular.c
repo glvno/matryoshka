@@ -206,6 +206,7 @@ _Static_assert(sizeof sx_frame >= 4u + (8u * M1_RX_MAX + 7u) / 7u && sizeof sx_f
 static const uint8_t *pages_src(uint32_t *len) { *len = m1_cur_len; return m1_cur_len ? m1_cur : 0; }
 static uint32_t pages_capacity(void) { return sizeof m1_cur; }
 static uint32_t pages_gen(void) { return m1_gen; }
+#include "midi_learn.c"      /* MIDI learn (#1067): the learned controls move their rows; GLO > MIDI 3/3 */
 #include "menu.c"
 #include "clock_out.h"       /* MIDI clock out (#473): the audio ISR times the ticks, the 2 kHz timer sends them */
 #include "seq_ui.c"

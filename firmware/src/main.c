@@ -1604,7 +1604,7 @@ static void midi_send(uint32_t status, uint32_t d1, uint32_t d2)
     midi_out_event((st >> 4) | st << 8 | (d1 & 127u) << 16 | (d2 & 127u) << 24);
 }
 /* PLAY's Start (0xFA), Continue (0xFB, after Song Position `spp`) or Stop (0xFC): with the engine's edge, ahead of its tick 0
- * (clock_out.h; MIDI 2/2 > TRANSPORT OUT is read as it goes out, #596) */
+ * (clock_out.h; MIDI 2/3 > TRANSPORT OUT is read as it goes out, #596) */
 static void midi_send_play(uint32_t b, uint32_t spp) { clk_out_play(b, spp); }
 
 /* PLAY: red while the transport is stopped, green while it runs. The green LED sits at matrix column 8, row bit 1,
