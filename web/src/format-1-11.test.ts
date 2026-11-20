@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type Patch } from './patch';
-import { FLAG_CABLES3, fm1Edits, morphRoom, COUNTED, presenceOf, PRES_ATT1, PRES_P2, REC_TEMPLATE, DEVICE, deviceBudget, deviceSection, encodePatch, fm1Rows, formatOf, layout, PANEL_BYTES, storedParams, toQ16, TYPE_ORDER } from './patchbin';
+import { FLAG_CABLES3, fm1Edits, morphRoom, COUNTED, presenceOf, PRES_ATT1, PRES_P2, REC_TEMPLATE, DEVICE, deviceBudget, deviceSection, encodePatch, fm1Rows, formatOf, layout, PANEL_BYTES, SLIM, storedParams, toQ16, TYPE_ORDER } from './patchbin';
 import { deviceView } from './poly';
 import { PRESETS } from './presets';
 import { relocatedPatches } from './community-factory';
@@ -115,12 +115,13 @@ describe('counted records (#667, format 51)', () => {
     expect(Object.keys(p.modules[0].map!)).toEqual(['p1', 'p2']);
   });
 
-  it('writes a patch that fits in an older format as before (else counted), and counts the smaller form in the budget', () => {
+  it('writes a patch that fits in an older format as before (else counted, else format 64), and counts the smallest form in the budget', () => {
     for (const [name, make] of Object.entries(PRESETS)) {
       const p = make();
       const l = layout(p);
-      // in its old format when that holds it; counted (Wanderer and Vernon 100, with their PATTERN track) when not
-      expect(formatOf(p), name).toBe(l.base.bytes <= DEVICE.bytes ? l.base.v : COUNTED);
+      // in its old format when that holds it; counted (Wanderer and Vernon 100, with their PATTERN track) when not; format
+      // 64's shorter layout when no older form holds it (Scrounge with its eleven grooves, D-1026, D-1056)
+      expect(formatOf(p), name).toBe(l.base.bytes <= DEVICE.bytes ? l.base.v : l.counted <= DEVICE.bytes ? COUNTED : SLIM);
       expect(deviceBudget(p).items.find((i) => i.key === 'bytes')!.used, name).toBe(Math.min(l.base.bytes, l.counted, l.slim));   // (and format 64's, D-1026)
     }
   });

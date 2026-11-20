@@ -64,13 +64,19 @@ describe("format 64's shorter layout (D-1025)", () => {
     expect(w.length).toBe(layout(p, undefined, SLIM).size);
   });
 
-  it('keeps every factory patch in its older format and counts the smallest form', () => {
+  it('keeps every factory patch in its older format unless none holds it, and counts the smallest form', () => {
+    const slim: string[] = [];
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const l = layout(make());
-      expect(l.v, name).toBeLessThan(SLIM);
+      if (l.v === SLIM) {
+        slim.push(name);
+        expect(Math.min(l.base.bytes, l.counted), name).toBeGreaterThan(DEVICE.bytes);
+      }
       expect(l.need, name).toBe(Math.min(l.base.bytes, l.counted, l.slim));
       expect(l.slim, name).toBeLessThan(l.base.bytes);
     }
+    // (Scrounge's eleven grooves fit only in the shorter layout, so it needs firmware 1.22: D-1056)
+    expect(slim).toEqual(['Scrounge']);
     expect(DEVICE.bytes - layout(FM1_PRESETS['909 Kit']()).need).toBeGreaterThan(300);
   });
 
