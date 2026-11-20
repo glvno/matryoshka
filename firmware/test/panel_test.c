@@ -4410,6 +4410,47 @@ int main(void)
             snap_to(getenv("PANEL_SNAP_ROWS"));
         }
     }
+    {   /* the 909 Kit's one hi-hat LEVEL (#1124): the hihat LEVEL row also sets the open hat's level VCA, which sits in the
+         * sibling open hat card inside the 909 kit card; a K knob turn and a card preset load set both */
+        uint32_t d, g, k, fg = 0, fk = 0, found = 0, ch = 0, oh = 0, gain = 0;
+        int32_t was;
+        while (page != 0u && trail_n)
+            tap(BTN_HOME);
+        check("909 Kit: loads", load("909 KIT") == 0);
+        pv_gen++;
+        page = 0;
+        trail_n = 0;
+        pg_list_btn = -1;
+        pages_ensure();
+        for (d = 0; d < pg_ndev && !(pg_dev[d].nlen == 7u && !memcmp(pg_dev[d].name, "909 kit", 7)); d++)
+            ;
+        check("909 Kit: the 909 kit card is a device", d < pg_ndev);
+        for (g = 0; d < pg_ndev && !found && g < pg_dev[d].npg; g++)
+            for (k = 0; !found && k < pg_page[pg_dev[d].pg0 + g].nrows; k++) {
+                const ppage_t *pg = &pg_page[pg_dev[d].pg0 + g];
+                const uint8_t *x = row_more(pg, k);
+                if (x && x[0] == 1u && eng_type(pg->mod[k]) == T_VCA && eng_type(x[1]) == T_VCA && x[2] == pg->par[k]) {
+                    found = 1;
+                    fg = g;
+                    fk = k;
+                    ch = pg->mod[k];
+                    oh = x[1];
+                    gain = pg->par[k];
+                }
+            }
+        check("909 Kit: one VCA level row also sets a second VCA (the hihat LEVEL: closed and open hat)", found && ch != oh);
+        if (found) {
+            pages_focus(d, fg);
+            later(50);
+            was = eng_get_param(oh, gain);
+            enc(2u + fk, -4);
+            check("909 Kit: turning hihat LEVEL down moves the closed and the open hat's VCA, to the same value",
+                  eng_get_param(ch, gain) < was && eng_get_param(oh, gain) == eng_get_param(ch, gain));
+            (void)dp_list(d);
+            check("909 Kit: its Init preset sets both back", dp_load(d, 0) == 0 && eng_get_param(ch, gain) == was
+                  && eng_get_param(oh, gain) == was);
+        }
+    }
     /* The panel's two recording entry points preview the same reverse step as playback. */
     {
         FILE *f = fopen("build/panel-fixtures/steps-direction-1-64.m1p", "rb");

@@ -248,7 +248,10 @@ The assembly browser and the palette put the engines on an **Engines** shelf, fi
   same range as the row's first (`sameRange`: min, max, top, step, curve, unit, choices), none is a Voice allocator's or
   another row's. `rowTargets` / `rowOf` resolve them, `mergeRows` / `splitRow` edit them (pick mode's "one row with…"
   and split), `demote` takes one parameter off (the row's first hands the row to the next), `cleanRows` (in `reconcile`)
-  drops what no longer fits. The parameters are tied: `ties(p)` / `tiedTo` gives a parameter's tied set across nested
+  drops what no longer fits. A further parameter may sit anywhere in the outermost card around the row's card, a
+  sibling card's module included (the 909 Kit's hihat LEVEL also sets the open hat's VCA, [D-635](ledger/editor.md#D-635)); a parent
+  shows a parameter any child's row sets (`reachableParam`), and `toDef` of a nested card alone leaves the targets
+  outside it. The parameters are tied: `ties(p)` / `tiedTo` gives a parameter's tied set across nested
   cards (a parent's row on a child's row ties what the child's row sets). The editor writes a value to all of them
   (`Editor.mirror`, after `setParam` and a slider; the FM-1's PARAM_NOW comes through `setParam` too), a cable dropped on
   the row reaches each (`connectParameter` per parameter; removing it takes the same output's cables into the others,

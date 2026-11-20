@@ -8,13 +8,23 @@ import { deviceBudget, encodePatch } from './patchbin';
 import { cpuEstimate, CPU_VOICE_TOP } from './cpu';
 import { factoryPresets } from './factory-presets';
 import { PRESET_MIGRATIONS, migrateValues } from './preset-migrate';
-import { structureOf } from './structure';
+import { rowOrder, structureOf } from './structure';
 import { readLineage } from '../scripts/lineage-lib';
 import { presetsHPatches } from '../scripts/factory-lz';
 import { FM1_PRESETS } from './presets';
 import { relocatedPatches } from './community-factory';
-import { assembliesOf } from './assembly';
-import type { Patch } from './patch';
+import { assembliesOf, fixAssemblies, rowTargets, type AssemblyInst } from './assembly';
+import { applyPreset, currentValues } from './device-presets';
+import { DEFS } from './modules';
+import { devicesOf } from './pages';
+import { validatePatch, type Patch } from './patch';
+
+/** the patch as the editor opens it */
+const fixed = (p: Patch): Patch => {
+  const q = validatePatch(structuredClone(p), DEFS);
+  fixAssemblies(q, DEFS);
+  return q;
+};
 
 const SR = 48000;
 /** the Drum maps' keys: KICK .. HI TOM (F3..F4), MID TOM CRASH RIDE ACCENT (G4 A4 B4 C5), the FLAM rows (black keys) */
@@ -144,5 +154,36 @@ describe('909 Kit (the FM-1 version: the whole TR-909, D-1055)', () => {
       ['osc#61.coarse', 'osc#17.coarse'], ['mixer#64.l1', 'mixer#20.l1'], ['env#102.r3', 'env#25.r3']]) expect(at(to), to).toBe(was(from));
     for (const t of ['filter#58.cutoff', 'vca#56.gain', 'env#107.r3']) expect(at(t), t).toBe(atInit(t));
     expect(migration.rows.filter((r) => typeof r === 'number' && r >= 0)).toHaveLength(6);
+  });
+
+  it('one hi-hat LEVEL sets the closed and the open hat, on the card, the FM-1 page and in a preset (#1124)', () => {
+    const p = fixed(kit());
+    const card = assembliesOf(p).find((a) => a.name === '909 kit')!;
+    const hihat = assembliesOf(p).find((a) => a.label === 'hihat')!, open = assembliesOf(p).find((a) => a.label === 'open hat')!;
+    const vcaOut = (a: AssemblyInst): number => a.outputs.find((r) => r.port === 'out' && p.modules.find((m) => m.id === r.module)?.type === 'vca')!.module;
+    const both = [{ module: vcaOut(hihat), param: 'gain' }, { module: vcaOut(open), param: 'gain' }];
+    for (const a of [hihat, card]) expect(rowTargets(a.params.find((r) => r.label === 'level' && (a === hihat || r.head === 'hihat'))!), a.label).toEqual(both);
+    expect(open.params.map((r) => r.label)).toEqual(['oh decay']);
+    const page = devicesOf(p, DEFS).find((d) => d.asm === card.id)!.pages.flatMap((pg) => pg.rows).find((r) => r.module === both[0].module)!;
+    expect(page.also).toEqual([both[1]]);
+    const rows = rowOrder(p, card), values = currentValues(p, card);
+    values[rows.findIndex((r) => r.module === both[0].module && r.param === 'gain')] = 0.5;
+    expect(applyPreset(p, card, { structure: structureOf(p, card), name: 'half', values })).toBe(true);
+    for (const t of both) expect(p.modules.find((m) => m.id === t.module)!.params.gain).toBe(0.5);
+    // the open hat at half its level: half as loud
+    expect(rms(play(p, [[0, OH, 0.79]], 0.4), 0, 0.4) / rms(play(kit(), [[0, OH, 0.79]], 0.4), 0, 0.4)).toBeCloseTo(0.5, 3);
+  });
+
+  it('moves a preset of the card before the shared hi-hat LEVEL with every value, the closed hat\'s level on the shared row (#1124)', () => {
+    const migration = PRESET_MIGRATIONS['c8210529'];
+    const lineage = readLineage().engines['909 kit'];
+    const before = lineage.find((x) => x.structure === 'c8210529')!, now = lineage.at(-1)!;
+    expect(migration.to).toBe(now.structure);
+    const old = before.rows.map((_, i) => (i + 1) / 100);
+    const values = migrateValues(migration, old, now.rows.map(() => 0));
+    for (const [k, [target]] of now.rows.entries()) {
+      const from = target === 'vca#103.gain+vca#111.gain' ? 'vca#103.gain' : target;
+      expect(values[k], target).toBe(old[before.rows.findIndex((r) => r[0] === from)]);
+    }
   });
 });

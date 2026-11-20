@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { DEFS, rowRange, selectCount } from './modules';
 import { validatePatch, type Patch } from './patch';
 import {
-  assembliesOf, demote, fixAssemblies, fixNames, insertAssembly, isPromoted, mergeRows, promote, rowNames, rowOf, sameRange, setRowNames,
-  splitRow, syncTied, tiedTo, toDef, validateAssemblyDef, type AssemblyInst, copyRuns, setCopies,
+  assembliesOf, demote, fixAssemblies, fixNames, insertAssembly, isPromoted, makeAssembly, mergeRows, promote, rowNames, rowOf, sameRange, setRowNames,
+  splitRow, syncTied, tiedTo, toDef, ungroup, validateAssemblyDef, type AssemblyInst, copyRuns, setCopies,
 } from './assembly';
 import { layoutOf, pagesOf } from './arrange';
 import { connectParameter } from './parameter-routing';
@@ -123,6 +123,29 @@ describe('a card row that sets several parameters (#357)', () => {
     const [first, second] = [b.params[0], b.params[0].also![0]];
     expect(tiedTo(q, first.module, first.param)).toContainEqual(second);
     expect(b.params[2].names).toEqual(['low', 'high', 'raw']);
+  });
+
+  it('a nested card\'s row may also set a module of a sibling card in the same outermost card, and no further (#1124)', () => {
+    const p = cardRows();
+    const a = voice(p);
+    // the two filters in sibling cards inside the voice; the first's card row sets the second's cutoff too
+    const one = makeAssembly(p, [4], 'one'), two = makeAssembly(p, [5], 'two');
+    one.params = [{ module: 4, param: 'cutoff', label: 'cutoff', also: [{ module: 5, param: 'cutoff' }] }];
+    two.params = [];
+    a.params = [{ module: 4, param: 'cutoff', label: 'cut', also: [{ module: 5, param: 'cutoff' }] }];
+    const q = load(p);
+    const byName = (n: string): AssemblyInst => assembliesOf(q).find((x) => x.name === n)!;
+    expect(byName('one').params[0].also).toEqual([{ module: 5, param: 'cutoff' }]);
+    expect(byName('voice').params[0]).toMatchObject({ module: 4, param: 'cutoff', also: [{ module: 5, param: 'cutoff' }] });
+    expect(tiedTo(q, 4, 'cutoff')).toContainEqual({ module: 5, param: 'cutoff' });
+    const dev = devicesOf(q, DEFS).find((d) => d.name === 'voice')!;
+    expect(dev.pages[0].rows[0]).toMatchObject({ module: 4, param: 'cutoff', also: [{ module: 5, param: 'cutoff' }] });
+    // saved on its own, the nested card cannot reach its sibling: the saved row leaves that target
+    expect(toDef(q, byName('one')).params[0].also).toBeUndefined();
+    // without the outer card the two are separate cards: the link goes
+    ungroup(q, byName('voice').id);
+    const r = load(q);
+    expect(assembliesOf(r).find((x) => x.name === 'one')!.params[0].also).toBeUndefined();
   });
 });
 
