@@ -1543,7 +1543,12 @@ fn tempo_turn(m: &mut Machine, clicks: i32) -> Result<(), String> {
 /// MID FREQ (no sound of its own while the gains are 0 dB) one click and back, B turns LOW one click and back; their notes
 /// after it are then the same sample for sample (a band back at 0 dB leaves the output as it was). Then B's LOW and HIGH
 /// at +12 dB play the note louder, and the setting survives a boot without SAVE.
+/// The twins press the key at the same emulated time, but each main loop takes it when its own drawing lets it, and the
+/// two drew different values: one note can start a block after the other, and then no sample after it is the same. So a
+/// pair whose notes did not start on the same sample (counted from boot: the audio's index) is set aside, and a fresh pair
+/// starts its presses a few ms later, up to TWIN_PAIRS pairs; the first pair whose notes start together must match.
 fn master_eq(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
+    const TWIN_PAIRS: u64 = 8;
     let boot = |flash: Option<&[u8]>| -> Result<Machine, String> {
         let mut m = Machine::boot(app, flash);
         quick_start(&mut m, 9000)?;
@@ -1555,22 +1560,48 @@ fn master_eq(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> 
         m.tap(GLO, 120, 400)?;
         turn_until(m, ALGO, 1, "MID FREQ", 8)
     };
-    let (mut a, mut b) = (boot(None)?, boot(None)?);
-    to_eq(&mut a)?;
-    let on = to_eq(&mut b)?;
-    t.check("master EQ: GLO, ALGO to the EQ tab: LOW, MID, HIGH, MID FREQ, flat at 1 kHz as made", on && font::on_screen(b.lcd(), "0 DB") && font::on_screen(b.lcd(), "1.0 KHZ"), String::new());
-    a.turn(K4, 1, 300)?;
-    b.turn(K1, 1, 300)?;
-    t.screen(&b, "  K1 one click: LOW +0.5 DB", "+0.5 DB");
-    a.turn(K4, -1, 300)?;
-    b.turn(K1, -1, 300)?;
-    a.tap(HOME, 120, 400)?;
-    b.tap(HOME, 120, 400)?;
-    let (ma, mb) = (a.mark(), b.mark());
-    let flat = note_peak(&mut a, C4, 800)?;
-    note_peak(&mut b, C4, 800)?;
-    let same = a.audio[ma..] == b.audio[mb..];
-    t.check("  LOW back at 0 dB: the note sample for sample as the twin's that never turned a gain", same && flat > QUIET, format!("peak {flat}"));
+    let onset = |m: &Machine, from: usize| from + m.audio[from..].iter().position(|s| *s != 0).unwrap_or(m.audio.len() - from);
+    let (mut flat, mut same, mut detail) = (0, false, String::new());
+    let mut pair = None;
+    for k in 0..TWIN_PAIRS {
+        let (mut a, mut b) = (boot(None)?, boot(None)?);
+        a.run_for(3 * k)?;
+        b.run_for(3 * k)?;
+        to_eq(&mut a)?;
+        let on = to_eq(&mut b)?;
+        if k == 0 {
+            t.check("master EQ: GLO, ALGO to the EQ tab: LOW, MID, HIGH, MID FREQ, flat at 1 kHz as made", on && font::on_screen(b.lcd(), "0 DB") && font::on_screen(b.lcd(), "1.0 KHZ"), String::new());
+        }
+        a.turn(K4, 1, 300)?;
+        b.turn(K1, 1, 300)?;
+        if k == 0 {
+            t.screen(&b, "  K1 one click: LOW +0.5 DB", "+0.5 DB");
+        }
+        a.turn(K4, -1, 300)?;
+        b.turn(K1, -1, 300)?;
+        a.tap(HOME, 120, 400)?;
+        b.tap(HOME, 120, 400)?;
+        let (ma, mb) = (a.mark(), b.mark());
+        flat = note_peak(&mut a, C4, 800)?;
+        note_peak(&mut b, C4, 800)?;
+        let (oa, ob) = (onset(&a, ma), onset(&b, mb));
+        let aligned = oa == ob && oa < a.audio.len();
+        if aligned {
+            let (s, e) = (ma.min(mb), a.audio.len().min(b.audio.len()));
+            same = a.audio[s..e] == b.audio[s..e];
+            detail = format!("peak {flat}; pair {} of at most {TWIN_PAIRS}, {} samples from the note's start compared", k + 1, e - oa);
+        } else {
+            detail = format!("no pair's notes started on the same sample (last: {oa} / {ob})");
+        }
+        if let Some((pa, pb)) = pair.replace((a, b)) {
+            *emulated += pa.ms() + pb.ms();        // (a pair set aside)
+        }
+        if aligned {
+            break;
+        }
+    }
+    let (a, mut b) = pair.ok_or_else(|| "no twin pair".to_string())?;
+    t.check("  LOW back at 0 dB: the note sample for sample as the twin's that never turned a gain", same && flat > QUIET, detail);
     settles(&mut b, 4000)?;
     to_eq(&mut b)?;
     b.turn(K1, 30, 300)?;
