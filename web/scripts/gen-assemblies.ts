@@ -830,8 +830,14 @@ asm('basic poly', 'Voices', (b) => {
 // (the guide gives the ends, not the curve). Velocity (Rev 4) to the filter envelope's amount and to the amplifier, each OFF / ON; aftertouch
 // (plug Main's at into `at`) to the filter and to the LFO amount. The keys: unison with its voice count and detune, key
 // priority, retrigger, transpose (octaves, rounded to semitones), master tune (semitones) and the Release switch (OFF:
-// both envelopes release fast). The flaws are a mild out-of-tune set as on a well-kept vintage unit. Left out: the filter's
-// Rev 1 / 2 character (it needs a filter model of its own, issue #658's follow-up), vintage, chord memory, A-440.
+// both envelopes release fast). The release pedal (the guide's Global Settings, Release/Sustain, and The Release Switch:
+// plug Main's sustain, MIDI CC 64, into `sustain`; down at 64 and over): `pedal` REL makes it a second Release switch,
+// so with the switch OFF the pedal held plays the programmed release, as the original's footswitch does; HOLD holds both
+// envelopes' gates while it is down, as a sustain pedal does. A-440: the reference tone, a square at 440 Hz beside the
+// voices on the way out, which master tune does not move. The flaws are a mild out-of-tune set as on a well-kept vintage
+// unit. Left out: the filter's Rev 1 / 2 character (it needs a filter model of its own, issue #658's follow-up),
+// vintage, chord memory, the filter and volume expression pedals (the FM-1 has no jack for them and Main no MIDI
+// controller output for them).
 /** Oracle V's LFO frequency: `lfo freq` -4..4 spans the Prophet-5's 0.022 to 500 Hz, equal ratios per step. The LFO
  * Oscillator sits 4 octaves down (coarse -48), so the Scale's offset stays inside its -4..4. */
 const ORACLE_LFO = { gain: Math.log2(500 / 0.022) / 8, offset: Math.log2(Math.sqrt(500 * 0.022) / 261.6255653) + 4 };
@@ -862,26 +868,24 @@ asm('Oracle V', 'Voices', (b) => {
   // ---- per voice: oscillator A's pulse, B's pulse and triangle, made from their saws (as Oracle V XL makes its pulses),
   // so each follows its oscillator's pitch, sync and frequency rows and stays in phase, and a pulse width moves per
   // sample. A Math compares the saw with 2 pw - 1 (A: saw > 2 pw - 1; B: 2 saw > 4 pw - 2, with B's triangle from the same
-  // Math: |2 saw| - 1); a pulse is that comparison less a half, summed where it is used. The pulse widths are rows once
-  // (pwASet, pwBSet: 0.05..0.95), set per voice with what moves them.
-  const minusOne = b.add('const', 2, 3, { value: -1 });
-  const minusHalf = b.add('const', 2, 3.25, { value: -0.5 }); // a pulse is its comparison less a half: +-0.5, about a saw's loudness
+  // Math: |2 saw| - 1); a pulse is that comparison less a half (+-0.5, about a saw's loudness). The switch adds the
+  // offset when ON (its v2: -0.5 for a pulse, -1 for a triangle). The pulse widths are rows once (pwASet, pwBSet:
+  // 0.05..0.95), set per voice with what moves them.
   const pwASet = b.add('scale', 3.5, 1.75, { gain: 0, offset: 0.5 });
   const pwBSet = b.add('scale', 2.5, 1.75, { gain: 0, offset: 0.5 });
   const pwA = b.add('scale', 3.5, 2, { gain: 2, offset: -1 });
   const cmpA = b.add('math', 3.5, 2.5, { ka: 1, kb: 1, off: 0 });
   // the wave switches, OFF / ON as on the panel (a Selector passing its in2 when ON)
   const sawA = offOn(4, 2.5, 2);
-  const pulseA = offOn(4, 2.75, 1);
+  const pulseA = offOn(4, 2.75, 1, { v2: -0.5 });
   const pwB = b.add('scale', 2.5, 2, { gain: 4, offset: -2 });
   const cmpB = b.add('math', 2.5, 2.5, { ka: 2, kb: 1, off: 0 });
   const sawB = offOn(3, 3, 2);
-  const triB = offOn(3, 3.25, 1);
-  const pulseB = offOn(3, 3.5, 1);
+  const triB = offOn(3, 3.25, 1, { v2: -1 });
+  const pulseB = offOn(3, 3.5, 1, { v2: -0.5 });
   const mix = b.add('mixer', 4, 0.5, { l1: 0.55, l2: 0.45, l3: 0, l4: 0 }); // the mixer: A, B, noise
-  // Poly Mod
+  // Poly Mod: the filter envelope's and oscillator B's amounts, summed at each switch's input
   const pmB = b.add('scale', 3, 1.5, { gain: 0, offset: 0 });
-  const pbus = b.add('scale', 3.5, 1.5, { gain: 1, offset: 0 });
   const toFreqA = offOn(4, 2, 2);
   const toPwA = offOn(4, 2.5, 1);
   const toFilter = offOn(4, 3, 1);
@@ -894,15 +898,14 @@ asm('Oracle V', 'Voices', (b) => {
   // oscillator B's keyboard switch, unison detune
   const kbd = offOn(2, 3.5, 2);
   const uniDetune = b.add('vca', 1.5, 3, { gain: 0 });
-  const voice = [gl, oscB, oscA, polyEnv, sync, fenv, flt, aenv, vca, pwA, cmpA, sawA, pulseA, pwB, cmpB, sawB, triB, pulseB, mix, pmB, pbus,
+  const voice = [gl, oscB, oscA, polyEnv, sync, fenv, flt, aenv, vca, pwA, cmpA, sawA, pulseA, pwB, cmpB, sawB, triB, pulseB, mix, pmB,
     toFreqA, toPwA, toFilter, velF, velA, fVel, envAmt, aVel, kbd, uniDetune];
 
   // ---- once: the LFO's three waves, Wheel-Mod, aftertouch, the keys' switches
-  const lfoTri = b.add('math', 0.5, 0, { ka: 2, kb: 0, off: 0 });  // |2 saw| (- 1 at the mixer)
-  const lfoSq = b.add('math', 0.5, 0.5, { ka: 1, kb: 0, off: 0 }); // saw > 0: 0 / 1
-  const lfoSqS = b.add('scale', 0.75, 0.5, { gain: 2, offset: -1 });   // to -1 / 1
+  const lfoTri = b.add('math', 0.5, 0, { ka: 2, kb: 0, off: 0 });  // |2 saw| (- 1 at its switch); its cmp: saw > 0, 0 / 1
+  const lfoSqS = b.add('scale', 0.75, 0.5, { gain: 2, offset: -1 });   // the square: that comparison to -1 / 1
   const lfoSaw = offOn(1, 0.5, 1);
-  const lfoTriOn = offOn(1, 0.75, 2);
+  const lfoTriOn = offOn(1, 0.75, 2, { v2: -1 });
   const lfoSqOn = offOn(1, 1, 1);
   const source = b.add('xfade', 1, 1, { mix: 0 });                   // source mix: LFO .. noise
   const initial = b.add('const', 0.5, 1, { value: 0 });               // LFO initial amount
@@ -921,6 +924,13 @@ asm('Oracle V', 'Voices', (b) => {
   const lfoFreq = b.add('const', 0, 6, { value: oracleLfoFreq(5) });   // the LFO's frequency (lfo freq), 5 Hz
   const lfoPitch = b.add('scale', 1, 6, { gain: ORACLE_LFO.gain, offset: ORACLE_LFO.offset });
   const wFreq = b.add('scale', 2, 6, { gain: 1 / 6, offset: 0 }); // the Wheel-Mod into pitch: 1 = 200 cents, as the fine row moved
+  // the pedal and A-440 (#862), after every earlier module so each keeps its id. The Selector's in1 is the pedal: on REL
+  // (position 1) it passes it into the Release switch's position input, which a pedal at 0.5 or over (MIDI 64) moves to
+  // ON; on HOLD (position 2) its g2 lets the pedal through the Logic into both envelopes' hold
+  const pedal = b.add('select', 16, 0, { count: 2, pos: 1 });
+  const hold = b.add('logic', 17, 0, { thresh: 0.5 });
+  const a440 = b.add('osc', 16, 1, { wave: 3, coarse: 9, level: 0.093 }); // A4 from C4: 440 Hz, as loud as Init's one key held (-21 LUFS)
+  const a440On = b.add('select', 17, 1, { count: 2, pos: 1 });              // OFF: the voices alone (in1); ON: with the tone (in2)
 
   // (the modules 1.11 added, laid out on the grid to the right of the first 17: the voice's, then those once)
   {
@@ -951,15 +961,12 @@ asm('Oracle V', 'Voices', (b) => {
   b.wire(pwA, 'out', cmpA, 'b');
   b.wire(oscA, 'out', sawA, 'in2');
   b.wire(cmpA, 'cmp', pulseA, 'in2');
-  b.wire(minusHalf, 'out', pulseA, 'in2');
   b.wire(pwBSet, 'out', pwB, 'in');
   b.wire(oscB, 'out', cmpB, 'a');
   b.wire(pwB, 'out', cmpB, 'b');
   b.wire(oscB, 'out', sawB, 'in2');
   b.wire(cmpB, 'abs', triB, 'in2');
-  b.wire(minusOne, 'out', triB, 'in2');
   b.wire(cmpB, 'cmp', pulseB, 'in2');
-  b.wire(minusHalf, 'out', pulseB, 'in2');
   b.wire(sawA, 'out', mix, 'in1');
   b.wire(pulseA, 'out', mix, 'in1');
   for (const w of [sawB, triB, pulseB]) b.wire(w, 'out', mix, 'in2');
@@ -981,21 +988,15 @@ asm('Oracle V', 'Voices', (b) => {
   // Poly Mod
   b.wire(fenv, 'env', polyEnv, 'in');
   for (const w of [sawB, triB, pulseB]) b.wire(w, 'out', pmB, 'in');
-  b.wire(polyEnv, 'out', pbus, 'in');
-  b.wire(pmB, 'out', pbus, 'in');
-  b.wire(pbus, 'out', toFreqA, 'in2');
-  b.wire(pbus, 'out', toPwA, 'in2');
-  b.wire(pbus, 'out', toFilter, 'in2');
+  for (const s of [toFreqA, toPwA, toFilter]) for (const src of [polyEnv, pmB]) b.wire(src, 'out', s, 'in2');
   b.wire(toFreqA, 'out', oscA, 'pitch');
   b.wire(toPwA, 'out', pwA, 'in');
   b.wire(toFilter, 'out', flt, 'cv');
   // the LFO: saw, triangle (|2 saw| - 1) and square (2 (saw > 0) - 1), in phase
   b.wire(lfo, 'out', lfoTri, 'a');
-  b.wire(lfo, 'out', lfoSq, 'a');
   b.wire(lfo, 'out', lfoSaw, 'in2');
   b.wire(lfoTri, 'abs', lfoTriOn, 'in2');
-  b.wire(minusOne, 'out', lfoTriOn, 'in2');
-  b.wire(lfoSq, 'cmp', lfoSqS, 'in');
+  b.wire(lfoTri, 'cmp', lfoSqS, 'in');
   b.wire(lfoSqS, 'out', lfoSqOn, 'in2');
   // Wheel-Mod: the source mix through the wheel (plus the initial amount and aftertouch), to its five destinations
   for (const w of [lfoSaw, lfoTriOn, lfoSqOn]) b.wire(w, 'out', source, 'a');
@@ -1015,9 +1016,17 @@ asm('Oracle V', 'Voices', (b) => {
   b.wire(wPwA, 'out', pwA, 'in');
   b.wire(wPwB, 'out', pwB, 'in');
   b.wire(wFilter, 'out', fltMod, 'in');
-  // the Release switch on both envelopes' release
+  // the Release switch on both envelopes' release; the pedal on REL turns it ON while down, on HOLD holds the envelopes
   b.wire(release, 'out', fenv, 'p2');
   b.wire(release, 'out', aenv, 'p2');
+  b.wire(pedal, 'out', release, 'pos');
+  b.wire(pedal, 'g2', hold, 'b');
+  b.wire(hold, 'and', fenv, 'hold');
+  b.wire(hold, 'and', aenv, 'hold');
+  // A-440: the voices, and the tone beside them when ON
+  b.wire(vca, 'out', a440On, 'in1');
+  b.wire(vca, 'out', a440On, 'in2');
+  b.wire(a440, 'out', a440On, 'in2');
   b.wire(flt, 'lp24', fScope, 'a');
   b.wire(vca, 'out', aScope, 'a');
   b.wire(source, 'out', mScope, 'a');
@@ -1025,6 +1034,7 @@ asm('Oracle V', 'Voices', (b) => {
   b.input('keys', part, 'keys');
   b.input('wheel', wheel, 'cv');
   b.input('at', atFilter, 'in', [atLfo, 'in']);
+  b.input('sustain', pedal, 'in1', [hold, 'a']);
   b.nestInput('pitch', gl, 'in');
   b.nestInput('gate', fenv, 'gate', [aenv, 'gate']);
   b.nestInput('noise', mix, 'in3');
@@ -1034,9 +1044,9 @@ asm('Oracle V', 'Voices', (b) => {
   b.nestInput('pw B', pwB, 'in');
   b.nestInput('filter', flt, 'cv');
   b.nestInput('release', fenv, 'p2', [aenv, 'p2']);
+  b.nestInput('hold', fenv, 'hold', [aenv, 'hold']);
   b.nestInput('lo freq', oscB, 'pitch');
-  b.nestInput('tri offset', triB, 'in2');
-  b.output('out', vca, 'out');
+  b.output('out', a440On, 'out');
   b.nestOutput('filter', flt, 'lp24');
   b.nestOutput('osc A', oscA, 'out');
   // the card, sectioned like the original's panel
@@ -1050,6 +1060,8 @@ asm('Oracle V', 'Voices', (b) => {
   b.param('transpose', transpose, 'pos');
   b.param('tune', tune, 'value');
   b.param('release', release, 'pos');
+  b.param('pedal', pedal, 'pos');
+  b.param('a-440', a440On, 'pos');
   b.param('saw', sawA, 'pos', { col: true, head: 'osc A', inner: 'A saw' });
   b.param('pulse', pulseA, 'pos', { inner: 'A pulse' });
   b.param('pw', pwASet, 'offset', { inner: 'A pw' });
@@ -1266,7 +1278,7 @@ const namePositions = (asmName: string, names: Record<string, string[]>): void =
 // Oracle V's switches are OFF / ON Selectors; its continuous rows share some of their labels (freq A, pw A, filter)
 {
   const d = defs.find((x) => x.name === 'Oracle V')!;
-  for (const r of d.params) if (d.modules[r.module - 1].type === 'select' && r.param === 'pos') r.names = r.label === 'transpose' ? ['-2 OCT', '-1 OCT', '0', '+1 OCT', '+2 OCT'] : ['OFF', 'ON'];
+  for (const r of d.params) if (d.modules[r.module - 1].type === 'select' && r.param === 'pos') r.names = r.label === 'transpose' ? ['-2 OCT', '-1 OCT', '0', '+1 OCT', '+2 OCT'] : r.label === 'pedal' ? ['REL', 'HOLD'] : ['OFF', 'ON'];
 }
 {
   const OFF_ON = ['OFF', 'ON'];

@@ -113,6 +113,14 @@ function outside(p: Patch, out: Patch, category: (typeof categories)[number], on
 }
 
 describe('a category Mutate (#1033)', () => {
+  it('works a role row\'s range out on the values the patch ends with, a Selector on its position (#862)', () => {
+    // Oracle V, lead: Randomize leaves the Release switch between OFF and ON (1.45) until the rows take their steps. Its
+    // release row's range, worked out then, ended at 4.2682 s; on OFF the range ends at 4.2677 s, so the row's step
+    // (4.268 s) measured 0.50003 s, over lead's 0.5 s.
+    const p = FM1_PRESETS['Oracle V'](), rnd = seeded(8), opts: MutateOptions = { category: 'lead', anchor: p };
+    mutatePatch(p, everything(p), 'mutate', 0.1, DEFS, rnd, opts);
+    expect(outside(p, mutatePatch(p, everything(p), 'randomize', 0, DEFS, rnd, opts).patch, 'lead')).toEqual([]);
+  });
   it('puts every role row in its range on every factory patch: Mutate, Randomize, a candidate, a bred one', () => {
     for (const name of Object.keys(FM1_PRESETS)) {
       const p = FM1_PRESETS[name]();
