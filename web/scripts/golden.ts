@@ -4355,11 +4355,12 @@ if (process.argv.includes('--panel-fixtures')) {
   }
   for (const mode of ['control-only', 'direct-trig', 'ambiguous-gate']) {
     const p = FM1_PRESETS['808 Kit']();
-    // (the kit reached only through the route under test: every Drum map's gates go, the 808 Kit has two, D-1053)
+    // (the kit reached only through the route under test: DRUMS' keys into its Drum maps go, the 808 Kit has two inside its
+    // card, D-1053, D-1059; the maps stay cabled, so the card's structure and its pattern origin stay those of the factory)
     const maps = new Set(p.modules.filter((m) => m.type === 'drummap').map((m) => m.id));
     const track = p.modules.find((m) => m.type === 'steps')!;
     const gate = p.cables.find((c) => maps.has(c.from.module) && /^g[1-8]$/.test(c.from.port))!.to;
-    p.cables = p.cables.filter((c) => !(maps.has(c.from.module) && /^g[1-8]$/.test(c.from.port)));
+    p.cables = p.cables.filter((c) => !(c.from.module === track.id && maps.has(c.to.module)));
     const osc = p.modules.find((m) => m.type === 'osc')!;
     p.cables.push({ from: { module: track.id, port: mode === 'control-only' ? 'vel' : 'trig' },
       to: mode === 'control-only' ? { module: osc.id, port: 'pitch' } : gate });
@@ -4368,6 +4369,11 @@ if (process.argv.includes('--panel-fixtures')) {
       const another = p.modules.find((m) => m.type === 'env' && m.id !== gate.module)!;
       p.cables.push({ from: { module: other.id, port: 'trig' }, to: { module: another.id, port: 'gate' } });
     }
+    // (pattern 1 alone, no linked patterns or songs: only pattern 1 is under test, and the ambiguous one's second track then
+    // fits the FM-1's 3,840 bytes; a binary past them is one the FM-1 never runs, and m1_set_current keeps the patch it had)
+    delete p.modules.find((m) => m.type === 'fm1')!.seq;
+    delete track.patterns;
+    if (!deviceBudget(p).fits) throw new Error(`pattern-${mode}: past the FM-1's limits`);
     writeFileSync(new URL(`pattern-${mode}.m1p`, out), encodePatch(p, true));
   }
   {

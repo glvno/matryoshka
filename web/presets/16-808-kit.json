@@ -385,7 +385,7 @@
    "factoryPatterns": {
     "version": 1,
     "ids": [
-     "81804429"
+     "cc10a3a2"
     ]
    },
    "patterns": [
@@ -10119,39 +10119,15 @@
     121,
     122,
     128,
-    137
+    137,
+    3,
+    64
    ],
    "inputs": [
-    {
-     "module": 10,
-     "port": "gate",
-     "label": "bass drum gate",
-     "also": [
-      {
-       "module": 8,
-       "port": "gate"
-      },
-      {
-       "module": 12,
-       "port": "trig"
-      }
-     ]
-    },
     {
      "module": 11,
      "port": "p1",
      "label": "bass drum vel"
-    },
-    {
-     "module": 18,
-     "port": "gate",
-     "label": "snare drum gate",
-     "also": [
-      {
-       "module": 21,
-       "port": "gate"
-      }
-     ]
     },
     {
      "module": 17,
@@ -10161,17 +10137,6 @@
       {
        "module": 20,
        "port": "p1"
-      }
-     ]
-    },
-    {
-     "module": 27,
-     "port": "trig",
-     "label": "hand clap gate",
-     "also": [
-      {
-       "module": 30,
-       "port": "gate"
       }
      ]
     },
@@ -10187,28 +10152,6 @@
      ]
     },
     {
-     "module": 37,
-     "port": "gate",
-     "label": "hihats gate",
-     "also": [
-      {
-       "module": 45,
-       "port": "clock"
-      }
-     ]
-    },
-    {
-     "module": 39,
-     "port": "gate",
-     "label": "hihats open",
-     "also": [
-      {
-       "module": 45,
-       "port": "in"
-      }
-     ]
-    },
-    {
      "module": 38,
      "port": "p1",
      "label": "hihats closed vel"
@@ -10219,25 +10162,9 @@
      "label": "hihats open vel"
     },
     {
-     "module": 46,
-     "port": "trig",
-     "label": "low tom gate",
-     "also": [
-      {
-       "module": 49,
-       "port": "gate"
-      }
-     ]
-    },
-    {
      "module": 51,
      "port": "cv",
      "label": "low tom vel"
-    },
-    {
-     "module": 52,
-     "port": "trig",
-     "label": "rim shot gate"
     },
     {
      "module": 56,
@@ -10245,114 +10172,20 @@
      "label": "rim shot vel"
     },
     {
-     "module": 61,
-     "port": "gate",
-     "label": "cow bell gate"
-    },
-    {
      "module": 62,
      "port": "p1",
      "label": "cow bell vel"
     },
     {
-     "module": 67,
-     "port": "a",
-     "label": "a"
-    },
-    {
-     "module": 68,
-     "port": "clock",
-     "label": "clock"
-    },
-    {
-     "module": 69,
-     "port": "clock",
-     "label": "clock 2"
-    },
-    {
-     "module": 70,
-     "port": "clock",
-     "label": "clock 3"
-    },
-    {
-     "module": 71,
-     "port": "clock",
-     "label": "clock 4"
-    },
-    {
-     "module": 72,
-     "port": "clock",
-     "label": "clock 5"
-    },
-    {
-     "module": 82,
-     "port": "clock",
-     "label": "clock 6"
-    },
-    {
-     "module": 90,
-     "port": "clock",
-     "label": "clock 7"
-    },
-    {
-     "module": 92,
-     "port": "trig",
-     "label": "gate 3"
-    },
-    {
-     "module": 95,
-     "port": "gate",
-     "label": "gate 4"
-    },
-    {
-     "module": 103,
-     "port": "clock",
-     "label": "clock 8"
-    },
-    {
-     "module": 105,
-     "port": "trig",
-     "label": "gate 7"
-    },
-    {
-     "module": 108,
-     "port": "gate",
-     "label": "gate 8"
-    },
-    {
-     "module": 116,
-     "port": "clock",
-     "label": "clock 9"
-    },
-    {
-     "module": 118,
-     "port": "gate",
-     "label": "gate 11"
-    },
-    {
-     "module": 122,
-     "port": "clock",
-     "label": "clock 10"
-    },
-    {
-     "module": 125,
-     "port": "gate",
-     "label": "gate 12"
-    },
-    {
-     "module": 137,
-     "port": "clock",
-     "label": "clock 11"
-    },
-    {
-     "module": 131,
-     "port": "gate",
-     "label": "gate 13"
-    },
-    {
-     "module": 132,
-     "port": "gate",
-     "label": "gate 14"
+     "module": 3,
+     "port": "keys",
+     "label": "keys",
+     "also": [
+      {
+       "module": 64,
+       "port": "keys"
+      }
+     ]
     }
    ],
    "outputs": [

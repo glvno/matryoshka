@@ -225,7 +225,8 @@ function drumDrivers(p: Patch, members: Set<number>, defs: Record<string, Module
 export function patternDriver(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): number | undefined {
   const members = new Set(allModules(p, a));
   const mapped = drumDrivers(p, members, defs);
-  if (mapped !== undefined) return mapped.length === 1 ? mapped[0] : undefined;
+  // (Drum maps that no track reaches drive nothing: the other rules decide, as pages_ui.c dp_pattern_module does)
+  if (mapped?.length) return mapped.length === 1 ? mapped[0] : undefined;
   const tracks = p.modules.filter((m) => m.type === 'steps' && p.cables.some((c) => {
     if (!members.has(c.to.module) || !keyReach(p, m.id).has(c.from.module)) return false;
     if (c.from.port === 'keys' && c.to.port === 'keys') return true;

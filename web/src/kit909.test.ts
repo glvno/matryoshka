@@ -140,9 +140,9 @@ describe('909 Kit (the FM-1 version: the whole TR-909, D-1055)', () => {
     const was = (target: string): number => old[before.rows.findIndex((r) => r[0] === target)];
     const at = (target: string): number => values[now.rows.findIndex((r) => r[0] === target)];
     const atInit = (target: string): number => init.values[now.rows.findIndex((r) => r[0] === target)];
-    for (const [to, from] of [['osc#43.coarse', 'osc#2.coarse'], ['mixer#52.l2', 'mixer#11.l2'], ['env#46.r3', 'env#5.r3'],
-      ['osc#58.coarse', 'osc#17.coarse'], ['mixer#61.l1', 'mixer#20.l1'], ['env#99.r3', 'env#25.r3']]) expect(at(to), to).toBe(was(from));
-    for (const t of ['filter#55.cutoff', 'vca#53.gain', 'env#104.r3']) expect(at(t), t).toBe(atInit(t));
+    for (const [to, from] of [['osc#46.coarse', 'osc#2.coarse'], ['mixer#55.l2', 'mixer#11.l2'], ['env#49.r3', 'env#5.r3'],
+      ['osc#61.coarse', 'osc#17.coarse'], ['mixer#64.l1', 'mixer#20.l1'], ['env#102.r3', 'env#25.r3']]) expect(at(to), to).toBe(was(from));
+    for (const t of ['filter#58.cutoff', 'vca#56.gain', 'env#107.r3']) expect(at(t), t).toBe(atInit(t));
     expect(migration.rows.filter((r) => typeof r === 'number' && r >= 0)).toHaveLength(6);
   });
 });

@@ -881,15 +881,15 @@ int main(void)
     booting = 0;
     page = 0;
     screen_idle();
-    /* the 808 Kit's devices (#196): Main, DRUMS (the track), the Drum maps it drives (BD .. CB: 3 pages, its rows, then REPEAT,
-     * #184; then MT/MC HT/HC CY AC, D-1053), the 808 kit card, Output */
-    check("the device page: the home device in focus (not Main or the track)", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0 && pg_ndev > 4);
+    /* the 808 Kit's devices (#196): Main, DRUMS (the track), the 808 kit card with its Drum maps inside (no Drum map pages,
+     * D-1059), Output */
+    check("the device page: the home device in focus (not Main or the track)", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0 && pg_ndev == 4);
     {                                                       /* the header (the owner's design, 2026-10-24) */
         uint32_t x, gold = 0;
         for (x = 0; x < 120u; x++)
             gold += px(x, LK_HH - 6u) == P_GOLD;
         check("the LCD: the header's dash of the device in focus gold, its name; K1's tab in its hue", gold >= 2u
-              && on_screen("DRUM MAP") && K1_TAB == KNOB_HUE[0]);
+              && on_screen("808 KIT") && K1_TAB == KNOB_HUE[0]);
     }
     {                                                       /* the footer: the octave in a slot of its own, so the tempo stays
                                                              * put whatever the octave (the owner, 2026-10-24) */
@@ -962,20 +962,17 @@ int main(void)
         check("700 ms later: nothing redrawn (no toast)", lcd_px == 0u);
         lcd_px = 0;
         stop_n = 0;
-        enc(0, 1);                                          /* SELECT: the second Drum map, then the 808 kit card, and back */
-        check("SELECT: the next device, the editor told", pg_cur_dev == 3 && focus_dev == 3 && on_screen("DRUM MAP"));
+        enc(0, 1);                                          /* SELECT: the Output, and back */
+        check("SELECT: the next device, the editor told, its name in the header", pg_cur_dev == 3 && focus_dev == 3
+              && on_screen("OUTPUT"));
         printf("      LCD pixels for one SELECT click: the header %u, the page %u\n", stop_px[0], lcd_px);
-        enc(0, 1);
-        check("SELECT: the next device, the editor told, its name in the header", pg_cur_dev == 4 && focus_dev == 4
-              && on_screen("808 KIT") && !on_screen("DRUM MAP"));
         enc(0, -1);
-        enc(0, -1);
-        check("SELECT back: the device before", pg_cur_dev == 2 && focus_dev == 2 && pg_cur_page == 0);
+        check("SELECT back: the device before", pg_cur_dev == 2 && focus_dev == 2 && pg_cur_page == 0 && !on_screen("OUTPUT"));
         enc(4, 1);
         enc(4, -1);
         later(1100);
         pages_waiting = 0;
-        enc(1, 1);                                          /* (on the Drum map's second page, as the tests below expect) */
+        enc(1, 1);                                          /* (on the kit card's second page, as the tests below expect) */
         later(700);
         tap(BTN_OCT_UP);                                    /* the transport stopped, nothing else to redraw: the footer at once */
         check("OCT+: the footer's octave at once (it stayed = OCT =), the message kept", octave == 1 && on_screen(MSG_FOOT_OCT_UP "+")
@@ -1027,9 +1024,13 @@ int main(void)
             eng_render(l, r, 128);                          /* (the audio's next block: the effective value follows) */
         }
         lcd_px = 0;
+        memcpy(was, fb, sizeof was);
         later(1100);
+        for (i = 0, outside = 0; i < 240u * 240u; i++)
+            outside += was[i] != fb[i] && (i / 240u < y_lo || i / 240u >= y_hi || i % 240u < BAR_X || i % 240u >= BAR_X + BAR_W);
         printf("      (a second later: %u px)\n", lcd_px);
-        check("a second later: nothing redrawn (no toast to end)", lcd_px == 0u && K1_TAB == KNOB_HUE[0]);
+        check("a second later: no toast to end (at most K1's live tick moves to the value the engine ran with)", outside == 0u
+              && K1_TAB == KNOB_HUE[0]);
     }
 
     tap(BTN_HOME);                                          /* HOME on the device pages (#391, D-243) */
@@ -1386,6 +1387,8 @@ int main(void)
         loop();
         check("PLAY held + PRESET: the tempo, the release does not stop", panel >= 0 && (eng_get_param((uint32_t)panel, FM1_P_TEMPO) >> 16) == bpm + 3 && eng_transport_running() == 1);
     }
+    pages_focus(3, 0);                                      /* (the Output: a module's page; the 808 kit card has presets) */
+    loop();
     msg_text[0] = 0;
     enc(6, 1);
     check("PRESET alone on a module's page (#395): no patch, the bar says HOME+PRESET steps them (#450)", presets_stepped == 0 && !strcmp(msg_text, MSG_NONE_PATCHES));
@@ -1409,8 +1412,8 @@ int main(void)
             loop();
         }
         check("every button: CC 127 on the press, 0 on the release", all);
-        pages_focus(3, 0);                                  /* (the second Drum map: SELECT lands on the 808 kit card, where
-                                                             * PRESET loads a sound, so the patch is edited, D-1053) */
+        pages_focus(1, 0);                                  /* (DRUMS: SELECT lands on the 808 kit card, where PRESET loads a
+                                                             * sound, so the patch is edited, D-1053) */
         loop();
         at = mlen;
         enc(0, 1);
@@ -1446,7 +1449,7 @@ int main(void)
     }
 
     {                                                       /* Page buttons (#117), spliced into the 808 Kit's binary */
-        /* LFO (button 3) a Page button: device 2 (the Drum map) page 0, then its page 1 (SEL is fixed since #197) */
+        /* LFO (button 3) a Page button: device 2 (the 808 kit card) page 0, then its page 1 (SEL is fixed since #197) */
         static const uint8_t sec[] = {0, 0, 0, 3, 0, 0, 0, 2, 2, 0, 2, 1};
         uint32_t at = panel_buttons_at();
         static uint8_t before[sizeof pv_bin];
@@ -1472,7 +1475,7 @@ int main(void)
 
         page_show(0);
         trail_n = 0;
-        pages_focus(5, 0);                                  /* (the Output) */
+        pages_focus(3, 0);                                  /* (the Output) */
         loop();
         tap(5);
         check("LFO tapped: its list's first page, a step on the trail, lit", pg_list_btn == 3 && pg_cur_dev == 2 && pg_cur_page == 0
@@ -1495,7 +1498,7 @@ int main(void)
         loop();
         check("let go: back to the step it was on", !pg_list_peek && pg_list_step == 1 && pg_cur_dev == 2 && pg_cur_page == 1);
         tap(BTN_HOME);
-        check("HOME: back to where it was before the list, unlit", pg_list_btn < 0 && pg_cur_dev == 5 && pg_cur_page == 0
+        check("HOME: back to where it was before the list, unlit", pg_list_btn < 0 && pg_cur_dev == 3 && pg_cur_page == 0
               && trail_n == 0 && !(eng_buttons_get() >> 3 & 1u));
         tap(5);
         enc(0, 1);
@@ -1552,7 +1555,7 @@ int main(void)
 
     {                                                       /* ENV (#197): the environment */
         uint32_t d0, n0 = trail_n;
-        pages_focus(2, 1);                                  /* the Drum map, its second page */
+        pages_focus(2, 1);                                  /* the 808 kit card, its second page */
         loop();
         d0 = pg_cur_dev;
         tap(4);
@@ -1593,11 +1596,9 @@ int main(void)
             enc(2, -3);
         }
         later(1500);
-        enc(0, 1);                                          /* (past the second Drum map, D-1053) */
-        later(1500);
-        tap(3);                                             /* the 808 kit card: its keys come from the Drum maps, not Main */
+        tap(3);                                             /* the Output */
         check("SEL on a row that takes no keys: NOTHING HERE TAKES KEYS, nothing armed, the page stays",
-              page == PAGE_ENV && pg_cur_dev == d0 + 2u && m64(eng_arm_mask_get()) == 0u && !strcmp(msg_text, MSG_NOTHING_TAKES_KEYS));
+              page == PAGE_ENV && pg_cur_dev == d0 + 1u && m64(eng_arm_mask_get()) == 0u && !strcmp(msg_text, MSG_NOTHING_TAKES_KEYS));
         tap(4);
         check("ENV again: back where it came from", page == 0 && trail_n == n0);
         pages_focus(1, 0);                                  /* SEL on a row (#395): DRUMS armed, then disarmed */
@@ -1611,13 +1612,13 @@ int main(void)
               && seq_rec && eng_transport_running() && (E.trk_rec >> E.node[eng_steps_module(0)].trk & 1u) && page == PAGE_ENV && !rec_held_used);
         tap(BTN_PLAY);
         check("  PLAY: REC and the transport stopped", !seq_rec && !eng_transport_running() && !E.trk_rec);
-        pages_focus(2, 0);                                  /* the Drum map: its keys come through the track (#395) */
+        pages_focus(2, 0);                                  /* the 808 kit card: its keys come through the track (#395) */
         tap(3);
-        check("SEL on the Drum map's row, its track armed: armed through it, so taken out with it, the keys WIRED",
+        check("SEL on the kit's row, its track armed: armed through it, so taken out with it, the keys WIRED",
               m64(eng_arm_mask_get()) == 0u && !strcmp(msg_text, MSG_KEYS_WIRED));
         tap(3);
         check("SEL there again: the track it plays through armed; the bar names both (#582)", m64(eng_arm_mask_get()) == (uint64_t)1 << eng_steps_module(0)
-              && !strcmp(msg_text, "DRUM MAP" MSG_ARMED_PLUS "DRUMS" MSG_ARMED));
+              && !strcmp(msg_text, "808 KIT" MSG_ARMED_PLUS "DRUMS" MSG_ARMED));
         pages_focus(1, 0);
         tap(3);
         check("SEL again on the track: disarmed, the keys WIRED (the bar says so)", m64(eng_arm_mask_get()) == 0u && eng_armed() < 0
@@ -1627,7 +1628,7 @@ int main(void)
             env_status(0, s0);
             env_status(1, s1);
             env_status(2, s2);
-            check("  nothing armed: the track's and the Drum map's rows say WIRED (the keys reach them by cable, #582), Main's its tempo",
+            check("  nothing armed: the track's and the kit's rows say WIRED (the keys reach them by cable, #582), Main's its tempo",
                   !strcmp(s1, MSG_ROW_WIRED) && !strcmp(s2, MSG_ROW_WIRED) && strstr(s0, "BPM") != 0);
             seq_arm_set(s64((uint64_t)1 << eng_steps_module(0)));
             env_status(1, s1);
@@ -2704,6 +2705,16 @@ int main(void)
                 }
                 check("<7PH, nothing armed: every key plays its own note, white and black", ok);
                 continue;
+            }
+            if (kit < 2u) {                                 /* its Drum maps inside the kit card (D-1059): no Drum map pages;
+                                                             * Main, DRUMS, the kit card that DRUMS drives, the Output */
+                uint32_t d, maps = 0;
+                pages_ensure();
+                for (d = 0; d < pg_ndev; d++)
+                    maps += pg_dev[d].module >= 0 && E.node[pg_dev[d].module].type == T_DRUMMAP;
+                snprintf(what, sizeof what, "%s: no Drum map device; the kit card follows DRUMS, which drives it", KIT[kit]);
+                check(what, maps == 0u && pg_ndev == 4u && pg_dev[1].module == eng_steps_module(0) && pg_dev[2].module < 0
+                      && pg_dev[2].track == 1u && pg_dev[2].nmem > 0u);
             }
             snprintf(what, sizeof what, "%s: the keys reach the drum track's Drum map", KIT[kit]);
             check(what, map >= 0 && map == eng_steps_drummap((uint32_t)eng_steps_module(0)) && (kit < 3u || eng_armed() == eng_steps_module(0)));

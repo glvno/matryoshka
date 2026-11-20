@@ -2072,11 +2072,11 @@ async function main() {
     async arming() {
       await check('arming: the 808 Kit opens, synced', await openSynced('808 Kit'));
       await check('arming: a patch loads with nothing armed: the footer says KEYS WIRED', await emu.waitText('KEYS WIRED', 3000));
-      await emu.tap(B.scl);                         // the home device, the Drum map: its keys come through DRUMS (#395)
-      await check('arming: SEL on a device fed through a track arms it with the track, the bar names both (#582)', await emu.waitText('DRUM MAP + DRUMS ARMED', 1500));
+      await emu.tap(B.scl);                         // the home device, the kit card: its keys come through DRUMS (#395, D-1059)
+      await check('arming: SEL on a device fed through a track arms it with the track, the bar names both (#582)', await emu.waitText('808 KIT + DRUMS ARMED', 1500));
       await check('arming: the editor shows the set the FM-1 armed (ARMS_NOW, #191)', !!(await until(async () => (await T()).armed.length > 0, 2000)));
       await emu.elapse(1300);
-      await emu.turn(ENC.select, 2);                // past the second Drum map (D-1053) to the kit's card: its voices take no keys
+      await emu.turn(ENC.select, 2);                // past the FX bus to the Output: it takes no keys
       await emu.elapse(300);
       await emu.tap(B.scl);
       await check('arming: SEL on a device that takes no keys says so', await emu.waitText('NOTHING HERE TAKES KEYS', 1500));
@@ -2095,7 +2095,7 @@ async function main() {
       await emu.elapse(1000);
       await emu.tap(B.env, 120);
       await check('arming: ENV opens the environment', await emu.waitText('ENVIRONMENT', 3000));
-      await emu.turn(ENC.select, -1);               // the Drum map's row, then DRUMS'
+      await emu.turn(ENC.select, -1);               // the kit's row, then DRUMS'
       await emu.elapse(300);
       await emu.tap(B.scl);
       await check('arming: SEL on the last armed row: disarmed, the keys WIRED', await emu.waitText('KEYS WIRED', 1500));
