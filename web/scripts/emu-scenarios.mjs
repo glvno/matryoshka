@@ -2311,9 +2311,9 @@ async function main() {
       };
       const at0 = await kick();
       await loudCheck('808 velocity: at 0 the kick plays', at0, at0 > LOUD, `peak ${at0}`);
-      // the VELOCITY page, ALGO a page at a time (its name in the header, as the hihat page in hats909)
+      // the VELOCITY page, the card's 14th, ALGO a page at a time (its name in the header, as the hihat page in hats909)
       let found = await emu.text('VELOCITY');
-      for (let n = 0; n < 12 && !found; n++) {
+      for (let n = 0; n < 16 && !found; n++) {
         await emu.turn(ENC.algo, 1);
         found = await emu.waitText('VELOCITY', 1000);
       }
