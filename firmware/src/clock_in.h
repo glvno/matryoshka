@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 glvno */
-/* MIDI clock in and transport in (GLO > MIDI > CLOCK IN, D-452, #870; MIDI 2/2 > TRANSPORT IN, #596): the realtime and
+/* MIDI clock in and transport in (GLO > MIDI > CLOCK IN, D-452, #870; MIDI 2/3 > TRANSPORT IN, #596): the realtime and
  * Song Position messages midi_input.h takes from the MIDI ring, on the main thread. CLOCK IN takes the clock (0xF8),
  * TRANSPORT IN takes Start, Continue, Stop and Song Position; each works without the other. MIDI clock drives the clock
  * while it comes, and the Steps tracks step on its ticks: the host's first clock after its Start is their tick 0

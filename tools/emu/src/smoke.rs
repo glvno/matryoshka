@@ -1493,7 +1493,8 @@ fn count_in(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.tap(GLO, 120, 400)?;
-    m.turn(ALGO, 1, 400)?;                   // MIDI 2/2 (#596)
+    m.turn(ALGO, 1, 400)?;                   // MIDI 2/3 (#596), MIDI 3/3 (#1067), then PANEL
+    m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "count-in: the menu's PANEL tab has COUNT-IN", "COUNT-IN");
     t.screen(&m, "count-in: OFF as made", "OFF");
@@ -1508,7 +1509,8 @@ fn count_in(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.tap(GLO, 120, 400)?;
-    m.turn(ALGO, 1, 400)?;                   // MIDI 2/2, then PANEL
+    m.turn(ALGO, 1, 400)?;                   // MIDI 2/3, MIDI 3/3, then PANEL
+    m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "count-in: the setting survives a boot (the settings record's byte 12)", "1 BAR");
     m.tap(HOME, 120, 400)?;
@@ -1597,7 +1599,8 @@ fn global_tempo(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.tap(GLO, 120, 400)?;
-    m.turn(ALGO, 1, 400)?;                   // MIDI 2/2 (#596)
+    m.turn(ALGO, 1, 400)?;                   // MIDI 2/3 (#596), MIDI 3/3 (#1067), then PANEL
+    m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "tempo: the menu's PANEL tab has TEMPO", "TEMPO");
     t.screen(&m, "tempo: GLOBAL as made", "GLOBAL");
@@ -1622,7 +1625,8 @@ fn global_tempo(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     tempo_turn(&mut m, 1)?;
     t.screen(&m, "tempo: the global tempo survives a boot without SAVE (299, and a click)", "TEMPO 300");
     m.tap(GLO, 120, 400)?;
-    m.turn(ALGO, 1, 400)?;                   // MIDI 2/2, then PANEL
+    m.turn(ALGO, 1, 400)?;                   // MIDI 2/3, MIDI 3/3, then PANEL
+    m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     m.turn(K4, 1, 400)?;
     t.screen(&m, "tempo: K4 turns it to PATCH", "PATCH");
@@ -1634,7 +1638,8 @@ fn global_tempo(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.tap(GLO, 120, 400)?;
-    m.turn(ALGO, 1, 400)?;                   // MIDI 2/2, then PANEL
+    m.turn(ALGO, 1, 400)?;                   // MIDI 2/3, MIDI 3/3, then PANEL
+    m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "tempo: PATCH survives a boot without SAVE", "PATCH");
     m.turn(K4, -1, 400)?;
@@ -1789,7 +1794,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.screen(&m, "  (the next patch)", &presets[1].0);
     patch_turn(&mut m, -1, 500)?;
     t.screen(&m, "  (and back, so step 4 starts from patch 1)", &presets[0].0);
-    let info = turn_until(&mut m, ALGO, 1, "VERSION", 8)?;   // MIDI 2/2, PANEL, PANEL 2/2, SYSTEM, SYSTEM 2/2, EQ, INFO
+    let info = turn_until(&mut m, ALGO, 1, "VERSION", 8)?;   // MIDI 2/3, MIDI 3/3, PANEL, PANEL 2/2, SYSTEM, SYSTEM 2/2, EQ, INFO
     t.snap(&m, "menu-info");
     t.check("ALGO until the INFO tab (at most 8 clicks)", info, String::new());
     m.tap(HOME, 120, 400)?;

@@ -430,7 +430,7 @@ static int ct_enter(uint32_t s, uint32_t v)
         }
         if (v == 4)
             return ct_fx_load();
-        if (v == 5) {                                   /* MIDI learn waits for a row (GLO > MIDI 2/2, LEARN, #1067) */
+        if (v == 5) {                                   /* MIDI learn waits for a row (GLO > MIDI 3/3, LEARN, #1067) */
             if (ct_load("ORACLE V"))
                 return 0;
             ct_focus_assembly();
