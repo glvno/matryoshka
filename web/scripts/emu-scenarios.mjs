@@ -2290,6 +2290,84 @@ async function main() {
       await check('909 hats: the next card preset from the FM-1 sets both levels back to 1', !!back, `${await gains()}`);
       await emu.elapse(1200);
     },
+    // D-1053 amended (Q11): the 808 Kit's VELOCITY row, turned up on the FM-1, plays a key at the default velocity (100, an
+    // armed track's) at 100 / 127 of what it played at 0
+    async velocity808() {
+      await check('808 velocity: the 808 Kit opens, synced', await openSynced('808 Kit'));
+      const row = JSON.parse(await patchJson()).assemblies.find((a) => a.name === '808 kit').params.at(-1);
+      await check('808 velocity: the card\'s last row is VELOCITY, a Macro at 0', row?.label === 'velocity', JSON.stringify(row));
+      const value = async () => JSON.parse(await patchJson()).modules.find((m) => m.id === row.module).params.value;
+      await emu.tap(B.scl);                         // the kit card, armed with DRUMS: black key 6 plays the low tom at velocity 100
+      await check('808 velocity: SEL arms the kit with DRUMS', await emu.waitText('808 KIT + DRUMS ARMED', 1500));
+      await emu.elapse(1300);
+      const kick = async () => {
+        const m = await emu.mark();
+        await emu.key(BLACK[5], true);              // (the tom: a struck resonator peaks the same every hit; the kick's free-running
+                                                     // oscillator peaks wherever its phase is, up to 15 % apart)
+        await emu.elapse(300);
+        await emu.key(BLACK[5], false);
+        const p = await emu.peak(m);
+        await emu.elapse(1200);
+        return p;
+      };
+      const at0 = await kick();
+      await loudCheck('808 velocity: at 0 the low tom plays', at0, at0 > LOUD, `peak ${at0}`);
+      // the VELOCITY page, the card's 14th, ALGO a page at a time (its name in the header, as the hihat page in hats909)
+      let found = await emu.text('VELOCITY');
+      for (let n = 0; n < 16 && !found; n++) {
+        await emu.turn(ENC.algo, 1);
+        found = await emu.waitText('VELOCITY', 1000);
+      }
+      await check('808 velocity: ALGO reaches the VELOCITY page', found);
+      await emu.turn(ENC.k1, 120);
+      const full = await until(async () => ((await value()) === 1 ? 1 : null), 3000);
+      await check('808 velocity: K1 turns VELOCITY to 1, the editor follows', full === 1, `value ${await value()}`);
+      await emu.elapse(800);
+      const at1 = await kick();
+      await emu.snap('velocity-808');
+      await check('808 velocity: at 1 the same key plays at 100 / 127 of its level at 0', Math.abs(at1 / at0 - 100 / 127) < 0.05, `peak ${at0} -> ${at1} (${(at1 / at0).toFixed(3)})`);
+      await emu.turn(ENC.k1, -120);
+      await check('808 velocity: back to 0', !!(await until(async () => ((await value()) === 0 ? 1 : null), 3000)), `value ${await value()}`);
+      await emu.elapse(800);
+    },
+    // D-1055 amended (#1158 option 2): the 909 Kit's VELOCITY row, as the 808 Kit's in velocity808
+    async velocity909() {
+      await check('909 velocity: the 909 Kit opens, synced', await openSynced('909 Kit'));
+      const row = JSON.parse(await patchJson()).assemblies.find((a) => a.name === '909 kit').params.at(-1);
+      await check('909 velocity: the card\'s last row is VELOCITY, a Macro at 0', row?.label === 'velocity', JSON.stringify(row));
+      const value = async () => JSON.parse(await patchJson()).modules.find((m) => m.id === row.module).params.value;
+      await emu.tap(B.scl);                         // the kit card, armed with DRUMS: black key 1 plays the kick at velocity 100
+      await check('909 velocity: SEL arms the kit with DRUMS', await emu.waitText('909 KIT + DRUMS ARMED', 1500));
+      await emu.elapse(1300);
+      const kick = async () => {
+        const m = await emu.mark();
+        await emu.key(BLACK[0], true);
+        await emu.elapse(300);
+        await emu.key(BLACK[0], false);
+        const p = await emu.peak(m);
+        await emu.elapse(1200);
+        return p;
+      };
+      const at0 = await kick();
+      await loudCheck('909 velocity: at 0 the kick plays', at0, at0 > LOUD, `peak ${at0}`);
+      // the VELOCITY page, the card's last, ALGO a page at a time
+      let found = await emu.text('VELOCITY');
+      for (let n = 0; n < 16 && !found; n++) {
+        await emu.turn(ENC.algo, 1);
+        found = await emu.waitText('VELOCITY', 1000);
+      }
+      await check('909 velocity: ALGO reaches the VELOCITY page', found);
+      await emu.turn(ENC.k1, 120);
+      const full = await until(async () => ((await value()) === 1 ? 1 : null), 3000);
+      await check('909 velocity: K1 turns VELOCITY to 1, the editor follows', full === 1, `value ${await value()}`);
+      await emu.elapse(800);
+      const at1 = await kick();
+      await emu.snap('velocity-909');
+      await check('909 velocity: at 1 the same key plays at 100 / 127 of its level at 0', Math.abs(at1 / at0 - 100 / 127) < 0.05, `peak ${at0} -> ${at1} (${(at1 / at0).toFixed(3)})`);
+      await emu.turn(ENC.k1, -120);
+      await check('909 velocity: back to 0', !!(await until(async () => ((await value()) === 0 ? 1 : null), 3000)), `value ${await value()}`);
+      await emu.elapse(800);
+    },
     // #432: a device set to no preset (a patch just opened) stands on the entry whose values it has: Silver Box's engine
     // opens on Init's, so the first PRESET turn right loads the preset after Init, not Init again. It must open on that
     // engine whatever the scenarios before left in focus (#496)

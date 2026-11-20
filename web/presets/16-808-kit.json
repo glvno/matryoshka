@@ -385,7 +385,7 @@
    "factoryPatterns": {
     "version": 1,
     "ids": [
-     "cc10a3a2"
+     "d1e2b3d5"
     ]
    },
    "patterns": [
@@ -6213,7 +6213,7 @@
    "y": 2400,
    "params": {
     "ka": 0.25,
-    "kb": 0,
+    "kb": -0.5,
     "off": 0.5
    },
    "att": [
@@ -7628,6 +7628,135 @@
   },
   {
    "id": 138,
+   "type": "macro",
+   "x": 700,
+   "y": 2680,
+   "params": {
+    "value": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "value"
+    ],
+    "p2": []
+   }
+  },
+  {
+   "id": 139,
+   "type": "matrix",
+   "x": 1340,
+   "y": 2680,
+   "params": {
+    "i1o1": 0,
+    "i2o1": 0,
+    "i3o1": 0,
+    "i4o1": 0,
+    "i1o2": 0,
+    "i2o2": 0,
+    "i3o2": 0,
+    "i4o2": 0,
+    "i1o3": 0,
+    "i2o3": 0,
+    "i3o3": 0,
+    "i4o3": 0,
+    "i1o4": 0,
+    "i2o4": 0,
+    "i3o4": 0,
+    "i4o4": 0
+   },
+   "att": [
+    0.25,
+    1
+   ],
+   "map": {
+    "p1": [
+     "i1o1",
+     "i2o2",
+     "i3o3",
+     "i4o4"
+    ],
+    "p2": []
+   }
+  },
+  {
+   "id": 140,
+   "type": "matrix",
+   "x": 1980,
+   "y": 2680,
+   "params": {
+    "i1o1": 0,
+    "i2o1": 0,
+    "i3o1": 0,
+    "i4o1": 0,
+    "i1o2": 0,
+    "i2o2": 0,
+    "i3o2": 0,
+    "i4o2": 0,
+    "i1o3": 0,
+    "i2o3": 0,
+    "i3o3": 0,
+    "i4o3": 0,
+    "i1o4": 0,
+    "i2o4": 0,
+    "i3o4": 0,
+    "i4o4": 0
+   },
+   "att": [
+    0.25,
+    1
+   ],
+   "map": {
+    "p1": [
+     "i1o1",
+     "i2o2",
+     "i3o3",
+     "i4o4"
+    ],
+    "p2": []
+   }
+  },
+  {
+   "id": 141,
+   "type": "matrix",
+   "x": 2620,
+   "y": 2680,
+   "params": {
+    "i1o1": 0,
+    "i2o1": 0,
+    "i3o1": 0,
+    "i4o1": 0,
+    "i1o2": 0,
+    "i2o2": 0,
+    "i3o2": 0,
+    "i4o2": 0,
+    "i1o3": 0,
+    "i2o3": 0,
+    "i3o3": 0,
+    "i4o3": 0,
+    "i1o4": 0,
+    "i2o4": 0,
+    "i3o4": 0,
+    "i4o4": 0
+   },
+   "att": [
+    0.25,
+    1
+   ],
+   "map": {
+    "p1": [
+     "i1o1",
+     "i2o2",
+     "i3o3"
+    ],
+    "p2": []
+   }
+  },
+  {
+   "id": 142,
    "type": "shape",
    "x": 7420,
    "y": 20,
@@ -7654,7 +7783,7 @@
    "bypass": true
   },
   {
-   "id": 139,
+   "id": 143,
    "type": "shape",
    "x": 7420,
    "y": 580,
@@ -7681,7 +7810,7 @@
    "bypass": true
   },
   {
-   "id": 140,
+   "id": 144,
    "type": "reverb",
    "x": 7740,
    "y": 20,
@@ -7708,7 +7837,7 @@
    "bypass": true
   },
   {
-   "id": 141,
+   "id": 145,
    "type": "scale",
    "x": 7740,
    "y": 300,
@@ -7731,7 +7860,7 @@
    "bypass": true
   },
   {
-   "id": 142,
+   "id": 146,
    "type": "scale",
    "x": 7740,
    "y": 580,
@@ -7754,7 +7883,7 @@
    "bypass": true
   },
   {
-   "id": 143,
+   "id": 147,
    "type": "math",
    "x": 7740,
    "y": 860,
@@ -7778,7 +7907,7 @@
    "bypass": true
   },
   {
-   "id": 144,
+   "id": 148,
    "type": "macro",
    "x": 7740,
    "y": 1140,
@@ -7798,7 +7927,7 @@
    "bypass": true
   },
   {
-   "id": 145,
+   "id": 149,
    "type": "math",
    "x": 7740,
    "y": 1420,
@@ -9545,62 +9674,312 @@
   },
   {
    "from": {
-    "module": 4,
+    "module": 138,
     "port": "out"
    },
    "to": {
-    "module": 138,
+    "module": 139,
+    "port": "p1"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "v1"
+   },
+   "to": {
+    "module": 139,
+    "port": "in1"
+   }
+  },
+  {
+   "from": {
+    "module": 139,
+    "port": "out1"
+   },
+   "to": {
+    "module": 68,
     "port": "in"
    }
   },
   {
    "from": {
-    "module": 4,
-    "port": "out"
+    "module": 3,
+    "port": "v2"
    },
    "to": {
     "module": 139,
+    "port": "in2"
+   }
+  },
+  {
+   "from": {
+    "module": 139,
+    "port": "out2"
+   },
+   "to": {
+    "module": 69,
     "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "v3"
+   },
+   "to": {
+    "module": 139,
+    "port": "in3"
+   }
+  },
+  {
+   "from": {
+    "module": 139,
+    "port": "out3"
+   },
+   "to": {
+    "module": 122,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "v4"
+   },
+   "to": {
+    "module": 139,
+    "port": "in4"
+   }
+  },
+  {
+   "from": {
+    "module": 139,
+    "port": "out4"
+   },
+   "to": {
+    "module": 71,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 138,
+    "port": "out"
+   },
+   "to": {
+    "module": 140,
+    "port": "p1"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "v5"
+   },
+   "to": {
+    "module": 140,
+    "port": "in1"
+   }
+  },
+  {
+   "from": {
+    "module": 140,
+    "port": "out1"
+   },
+   "to": {
+    "module": 72,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "v6"
+   },
+   "to": {
+    "module": 140,
+    "port": "in2"
+   }
+  },
+  {
+   "from": {
+    "module": 140,
+    "port": "out2"
+   },
+   "to": {
+    "module": 82,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "v7"
+   },
+   "to": {
+    "module": 140,
+    "port": "in3"
+   }
+  },
+  {
+   "from": {
+    "module": 140,
+    "port": "out3"
+   },
+   "to": {
+    "module": 116,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "v8"
+   },
+   "to": {
+    "module": 140,
+    "port": "in4"
+   }
+  },
+  {
+   "from": {
+    "module": 140,
+    "port": "out4"
+   },
+   "to": {
+    "module": 70,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 138,
+    "port": "out"
+   },
+   "to": {
+    "module": 141,
+    "port": "p1"
+   }
+  },
+  {
+   "from": {
+    "module": 64,
+    "port": "v1"
+   },
+   "to": {
+    "module": 141,
+    "port": "in1"
    }
   },
   {
    "from": {
     "module": 141,
-    "port": "out"
+    "port": "out1"
    },
    "to": {
-    "module": 143,
-    "port": "a"
-   }
-  },
-  {
-   "from": {
-    "module": 142,
-    "port": "out"
-   },
-   "to": {
-    "module": 143,
-    "port": "b"
-   }
-  },
-  {
-   "from": {
-    "module": 143,
-    "port": "add"
-   },
-   "to": {
-    "module": 140,
+    "module": 90,
     "port": "in"
    }
   },
   {
    "from": {
-    "module": 140,
+    "module": 64,
+    "port": "v2"
+   },
+   "to": {
+    "module": 141,
+    "port": "in2"
+   }
+  },
+  {
+   "from": {
+    "module": 141,
+    "port": "out2"
+   },
+   "to": {
+    "module": 103,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 64,
+    "port": "v3"
+   },
+   "to": {
+    "module": 141,
+    "port": "in3"
+   }
+  },
+  {
+   "from": {
+    "module": 141,
+    "port": "out3"
+   },
+   "to": {
+    "module": 137,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 138,
     "port": "out"
    },
    "to": {
+    "module": 67,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 4,
+    "port": "out"
+   },
+   "to": {
+    "module": 142,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 4,
+    "port": "out"
+   },
+   "to": {
+    "module": 143,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
     "module": 145,
+    "port": "out"
+   },
+   "to": {
+    "module": 147,
     "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 146,
+    "port": "out"
+   },
+   "to": {
+    "module": 147,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 147,
+    "port": "add"
+   },
+   "to": {
+    "module": 144,
+    "port": "in"
    }
   },
   {
@@ -9609,33 +9988,43 @@
     "port": "out"
    },
    "to": {
-    "module": 145,
+    "module": 149,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 148,
+    "port": "out"
+   },
+   "to": {
+    "module": 149,
     "port": "b"
    }
   },
   {
    "from": {
-    "module": 138,
-    "port": "out"
-   },
-   "to": {
-    "module": 141,
-    "port": "in"
-   }
-  },
-  {
-   "from": {
-    "module": 139,
-    "port": "out"
-   },
-   "to": {
     "module": 142,
+    "port": "out"
+   },
+   "to": {
+    "module": 145,
     "port": "in"
    }
   },
   {
    "from": {
-    "module": 141,
+    "module": 143,
+    "port": "out"
+   },
+   "to": {
+    "module": 146,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 145,
     "port": "out"
    },
    "to": {
@@ -9645,7 +10034,7 @@
   },
   {
    "from": {
-    "module": 145,
+    "module": 149,
     "port": "mul"
    },
    "to": {
@@ -9655,7 +10044,7 @@
   },
   {
    "from": {
-    "module": 142,
+    "module": 146,
     "port": "out"
    },
    "to": {
@@ -9665,7 +10054,7 @@
   },
   {
    "from": {
-    "module": 145,
+    "module": 149,
     "port": "mul"
    },
    "to": {
@@ -10121,7 +10510,11 @@
     128,
     137,
     3,
-    64
+    64,
+    138,
+    139,
+    140,
+    141
    ],
    "inputs": [
     {
@@ -10379,6 +10772,12 @@
       "1/16T",
       "1/32"
      ]
+    },
+    {
+     "module": 138,
+     "param": "value",
+     "label": "velocity",
+     "head": "velocity"
     }
    ],
    "preset": "Init",
@@ -10721,74 +11120,74 @@
    "y": 20,
    "open": false,
    "modules": [
-    138,
-    139
+    142,
+    143
    ],
    "inputs": [
     {
-     "module": 138,
+     "module": 142,
      "port": "in",
      "label": "in"
     },
     {
-     "module": 139,
+     "module": 143,
      "port": "in",
      "label": "in 2"
     }
    ],
    "outputs": [
     {
-     "module": 138,
+     "module": 142,
      "port": "out",
      "label": "out"
     },
     {
-     "module": 139,
+     "module": 143,
      "port": "out",
      "label": "out 2"
     }
    ],
    "params": [
     {
-     "module": 138,
+     "module": 142,
      "param": "drive",
      "label": "drive",
      "also": [
       {
-       "module": 139,
+       "module": 143,
        "param": "drive"
       }
      ]
     },
     {
-     "module": 138,
+     "module": 142,
      "param": "mode",
      "label": "mode",
      "also": [
       {
-       "module": 139,
+       "module": 143,
        "param": "mode"
       }
      ]
     },
     {
-     "module": 138,
+     "module": 142,
      "param": "level",
      "label": "level",
      "also": [
       {
-       "module": 139,
+       "module": 143,
        "param": "level"
       }
      ]
     },
     {
-     "module": 138,
+     "module": 142,
      "param": "sym",
      "label": "sym",
      "also": [
       {
-       "module": 139,
+       "module": 143,
        "param": "sym"
       }
      ]
@@ -10806,70 +11205,70 @@
    "y": 20,
    "open": false,
    "modules": [
-    140,
-    141,
-    142,
-    143,
     144,
-    145
+    145,
+    146,
+    147,
+    148,
+    149
    ],
    "inputs": [
     {
-     "module": 141,
+     "module": 145,
      "port": "in",
      "label": "in"
     },
     {
-     "module": 142,
+     "module": 146,
      "port": "in",
      "label": "in 2"
     }
    ],
    "outputs": [
     {
-     "module": 141,
+     "module": 145,
      "port": "out",
      "label": "out"
     },
     {
-     "module": 145,
+     "module": 149,
      "port": "mul",
      "label": "mul"
     },
     {
-     "module": 142,
+     "module": 146,
      "port": "out",
      "label": "out 2"
     }
    ],
    "params": [
     {
-     "module": 140,
+     "module": 144,
      "param": "size",
      "label": "size"
     },
     {
-     "module": 140,
+     "module": 144,
      "param": "damp",
      "label": "damp"
     },
     {
-     "module": 144,
+     "module": 148,
      "param": "value",
      "label": "mix"
     },
     {
-     "module": 140,
+     "module": 144,
      "param": "pre",
      "label": "pre"
     },
     {
-     "module": 140,
+     "module": 144,
      "param": "mod",
      "label": "mod"
     },
     {
-     "module": 140,
+     "module": 144,
      "param": "freeze",
      "label": "freeze"
     }
@@ -10888,107 +11287,107 @@
    "modules": [],
    "inputs": [
     {
-     "module": 138,
+     "module": 142,
      "port": "in",
      "label": "in"
     },
     {
-     "module": 139,
+     "module": 143,
      "port": "in",
      "label": "in 2"
     }
    ],
    "outputs": [
     {
-     "module": 141,
+     "module": 145,
      "port": "out",
      "label": "out"
     },
     {
-     "module": 145,
+     "module": 149,
      "port": "mul",
      "label": "mul"
     },
     {
-     "module": 142,
+     "module": 146,
      "port": "out",
      "label": "out 2"
     }
    ],
    "params": [
     {
-     "module": 138,
+     "module": 142,
      "param": "drive",
      "label": "drive",
      "head": "Drive",
      "also": [
       {
-       "module": 139,
+       "module": 143,
        "param": "drive"
       }
      ]
     },
     {
-     "module": 138,
+     "module": 142,
      "param": "mode",
      "label": "mode",
      "also": [
       {
-       "module": 139,
+       "module": 143,
        "param": "mode"
       }
      ]
     },
     {
-     "module": 138,
+     "module": 142,
      "param": "level",
      "label": "level",
      "also": [
       {
-       "module": 139,
+       "module": 143,
        "param": "level"
       }
      ]
     },
     {
-     "module": 138,
+     "module": 142,
      "param": "sym",
      "label": "sym",
      "also": [
       {
-       "module": 139,
+       "module": 143,
        "param": "sym"
       }
      ]
     },
     {
-     "module": 140,
+     "module": 144,
      "param": "size",
      "label": "size",
      "head": "Reverb"
     },
     {
-     "module": 140,
+     "module": 144,
      "param": "damp",
      "label": "damp"
     },
     {
-     "module": 144,
+     "module": 148,
      "param": "value",
      "label": "mix"
     },
     {
-     "module": 140,
+     "module": 144,
      "param": "pre",
      "label": "pre"
     },
     {
-     "module": 140,
+     "module": 144,
      "param": "mod",
      "label": "mod"
     },
     {
-     "module": 140,
+     "module": 144,
      "param": "freeze",
      "label": "freeze"
     }

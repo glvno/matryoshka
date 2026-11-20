@@ -408,8 +408,9 @@ static int grow_test(int n, char **argv)
         long nb;
         uint8_t *o = slurp(argv[k], &nb);
         uint32_t m, j, ne = 0, i, was;
-        /* (a kit older than counted records; or a counted twin larger than a bank slot, which the FM-1 never holds:
-         * Verona Drum 1 fits only in format 64's shorter layout since #866, golden.ts writes its counted twin anyway) */
+        /* (a kit older than counted records; or a counted twin larger than a bank slot, which the FM-1 never holds: the 808
+         * and 909 Kits with their VELOCITY rows and Verona Drum 1 since #866 fit only in format 64's shorter layout, golden.ts
+         * writes their counted twins anyway) */
         if (o[1] < ENG_COUNTED || (uint32_t)nb > M1_PATCH_MAX) {
             free(o);
             continue;
