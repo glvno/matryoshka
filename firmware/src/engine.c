@@ -12980,9 +12980,7 @@ static uint32_t sch_wait(uint32_t l, uint32_t need, uint32_t n)
         ENG_LANE_WAITED(t0);
     return p;
 }
-/* (noinline: tools/build.py FAST_TEXT places it in RAM by name, and at -Os, FELUCCA_SPEED=0, it was inlined into its two
- * callers, so the experiments builds failed "sch_lane (not in the build)") */
-static void __attribute__((noinline)) sch_lane(uint32_t l, uint32_t n)
+static void sch_lane(uint32_t l, uint32_t n)
 {
     sch_ctx_t c = {0};
     uint32_t i, base = l ? sch.n[0] : 0u, seen = 0;
