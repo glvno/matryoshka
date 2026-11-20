@@ -670,14 +670,16 @@ static void test_usb_log(void)
  * separate (usb.c sysex_byte / sx_frame, midi_uart.c um_byte); they share only the MIDI-in ring, which ep1_take checks
  * for room. In an update session or update mode nothing drains it, so without midi_in_quiet the ring fills and EP1 is
  * NAKed for good. */
-static uint32_t trs_n;                                          /* TRS bytes fed so far (picks the next one) */
+static uint32_t trs_n;                                          /* TRS bytes fed so far (picks the next one; the DMA's cursor) */
 static void trs_feed(uint32_t n)                                /* n bytes through the jack's DMA ring, as the ISR takes them */
 {
     static const uint8_t TRS[] = {0xFE, 0xF8, 0x90, 0x3C, 0xF8, 0x40, 0xF0, 0x01, 0xFE, 0x02, 0xF7, 0xF8, 0xB0, 0x10,
                                   0x7F, 0xFE, 0xF8, 0x80, 0x3C, 0x00};   /* AS, clock, a note on / off, a CC, a SysEx */
     uint32_t i;
+    if (!trs_n)
+        um_ring_clear();                                        /* (uart_midi_init's, before the DMA starts) */
     for (i = 0; i < n; i++, trs_n++)
-        um_ring[(um.rd + um.pend + i) & (UM_RING - 1u)] = TRS[trs_n % sizeof TRS];
+        um_ring[trs_n & (UM_RING - 1u)] = TRS[trs_n % sizeof TRS];
     uart_midi_take(n);
 }
 
@@ -841,6 +843,41 @@ static void test_song_position(void)
     mi_r = mi_w = 0;
     um_byte(0xF2); um_byte(3); um_byte(2); um_byte(9);
     CHECK(mi_w == 1u && midi_in_q[0] == (0x03u | 0xF2u << 8 | 3u << 16 | 2u << 24), "Song Position: TRS's queued, no running status after");
+    mi_r = mi_w = 0;
+}
+
+/* A nanoPAD2 pad through a USB MIDI host box into the TRS jack: a press (Note On) and, a while later, its release (Note
+ * Off, velocity 64), with nothing between them. The DMA's count (HRXCNT) once missed a byte that was in the ring; read by
+ * the count, the reader then stayed a byte behind, so each press completed only with its release's first byte and the
+ * pad sounded when let go (the owner's 1.23.0 device check, 2026-11-20). Read by content, a missed count changes nothing */
+static void trs_dma(const uint8_t *b, uint32_t n, uint32_t count)   /* n bytes into the ring at the DMA's cursor, `count` told */
+{
+    uint32_t i;
+    for (i = 0; i < n; i++, trs_n++)
+        um_ring[trs_n & (UM_RING - 1u)] = b[i];
+    uart_midi_take(count);
+}
+static void test_trs_missed_count(void)
+{
+    static const uint8_t press[] = {0x90, 53, 106}, release[] = {0x80, 53, 64};
+    uint32_t k, plays = 0, lets_go = 0, quiet = 0;
+    mi_r = mi_w = 0;
+    midi_in_resume();
+    midi_in_overflow = 0;
+    um.st = um.got = um.sysex = 0;
+    for (k = 0; k < 30u; k++) {                                 /* (180 bytes: round the ring and past its wrap) */
+        trs_dma(press, sizeof press, k ? 3u : 2u);              /* the first press's count misses a byte */
+        plays += mi_w - mi_r == 1u && midi_in_q[mi_r % MQ] == (0x09u | 0x90u << 8 | 53u << 16 | 106u << 24);
+        mi_r = mi_w;
+        trs_dma(release, sizeof release, 3);
+        lets_go += mi_w - mi_r == 1u && midi_in_q[mi_r % MQ] == (0x08u | 0x80u << 8 | 53u << 16 | 64u << 24);
+        mi_r = mi_w;
+        trs_dma(press, 0, 0);                                   /* (a poll with nothing new) */
+        quiet += mi_w == mi_r;
+    }
+    CHECK(plays == 30u, "TRS pad: every press plays when pressed, though the count missed a byte (%u of 30)", plays);
+    CHECK(lets_go == 30u, "TRS pad: every release lets go when released (%u of 30)", lets_go);
+    CHECK(quiet == 30u, "TRS pad: a poll with nothing new reads nothing (%u of 30)", quiet);
     mi_r = mi_w = 0;
 }
 #endif
@@ -1217,6 +1254,7 @@ int main(int argc, char **argv)
     test_midi_in_quiet();
     test_sysex_burst();
     test_song_position();
+    test_trs_missed_count();
     test_deaf_host();
     test_cut_sysex();
 #endif

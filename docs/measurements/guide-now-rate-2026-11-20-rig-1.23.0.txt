@@ -1,0 +1,7 @@
+== GUIDE_NOW rate
+Algo Four, after HELLO, idle: {} in 2 s
+808 Kit, after HELLO, idle: {} in 2 s
+909 Kit, after HELLO, idle: {} in 2 s
+808 Kit: SEL (arms DRUMS): {'0x54': 1, '0x58': 1} in 2 s
+808 Kit: ENV (environment): {'0x58': 1} in 2 s
+808 Kit: SEQ (drum grid): {'0x58': 1} in 2 s
