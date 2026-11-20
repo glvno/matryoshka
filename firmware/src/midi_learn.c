@@ -7,10 +7,11 @@
  * wheel, breath, sustain, foot, K1..K4, morph, pitch bend; a note's sound) waits until its mapping is cleared. CC 80..86
  * (the patch buttons) and 120..127 (the channel mode messages) are never learned. Mappings follow MENU > MIDI CHANNEL.
  *
- * Learning (D-939): SEL held + K1..K4 on a device page (panel.c sel_learn) picks that knob's row, which does not move.
- * The first control to send three different values (two for a switch row), or the first note played, moves it from then
- * on. Another patch, or LEARN_MS without a step, ends the wait; SEL + a knob again picks another row. Controls with a fixed
- * job heard meanwhile (FIXED_CC) are named when the learn ends: they still do their job. GLO > MIDI 3/3 lists the mappings
+ * Learning (D-939): HOME held + SEL (panel.c), or MIDI 3/3's LEARN turned right, toggles learn mode on a device page or
+ * the environment. The next knob turned picks its row, which does not move (learn_row), and the first control to send
+ * three different values (two for a switch row), or the first note played, moves it from then on; that ends learn mode.
+ * A HOME tap, HOME + SEL again, another patch, or LEARN_MS without a step ends it too. Controls with a fixed job heard
+ * meanwhile (FIXED_CC) are named when the learn ends: they still do their job. GLO > MIDI 3/3 lists the mappings
  * (MAPPING) and clears the one it shows (CLEAR). A linked editor hears each change (MAP_NOW) and every move (PARAM_NOW, at
  * most every MAP_REPORT_MS for a mapping).
  *
@@ -39,6 +40,7 @@ static uint8_t map_sel;                                 /* the mapping GLO > MID
 typedef struct { uint8_t due, mod, par; int32_t v; uint32_t at; } map_rep_t;
 static map_rep_t map_rep[ENG_MAP_RAMPS];               /* the moves told to the editor (PARAM_NOW), per ramp slot */
 static char *seq_note_name(char *p, uint32_t n);        /* (seq_ui.c: C4 is note 60) */
+static void screen_back(void);                         /* (panel.c) */
 static int map_has(uint32_t src);
 
 /* the running patch's mappings: their count, *e at the first one's bytes */
@@ -97,7 +99,8 @@ static int map_switch(uint32_t m, uint32_t j)
     return n == 2u || (!n && d->pmin[j] == 0 && d->pmax[j] == 65536 && d->pinc[j] == 65536);
 }
 
-/* is a learn under way? It ends with another patch or LEARN_MS after its last step */
+/* is a learn under way? 1: learn mode waits for a knob, 2: a row waits for a control. It ends with another patch or
+ * LEARN_MS after its last step */
 static int learn_live(void)
 {
     if (ml.on && (ml.gen != pages_gen() || fm1_ms - ml.at > LEARN_MS))
@@ -105,15 +108,38 @@ static int learn_live(void)
     return ml.on;
 }
 
-/* SEL held + knob k on a device page (panel.c sel_learn, D-939): row k of the page in focus waits for a control and does
- * not move */
+/* learn mode on or off (D-939): HOME held + SEL (panel.c) or MIDI 3/3's LEARN turned right. On a device page or the
+ * environment the next knob turned picks its row (learn_row); the SEQ and SONG pages and sandbox mode refuse it */
+static void learn_mode(int on)
+{
+    if (!on) {
+        if (ml.on)
+            ui_msg(MSG_LEARN_OFF, 1500);
+        ml.on = 0;
+        return;
+    }
+    if (sb_on) {
+        ui_msg(MSG_LEARN_SANDBOX, 1500);
+        return;
+    }
+    if (page != 0u && page != PAGE_ENV) {               /* (the SEQ and SONG pages and the rest: no row to pick) */
+        ui_msg(MSG_LEARN_HERE, 1500);
+        return;
+    }
+    ml.gen = pages_gen();
+    ml.at = fm1_ms;
+    ml.on = 1;
+    ui_msg(MSG_LEARN_TURN, LEARN_MS);
+}
+
+/* a knob k turned in learn mode (panel.c learn_knob): row k of the page in focus waits for a control and does not move;
+ * a row that takes nothing from MIDI leaves learn mode waiting for another knob */
 static void learn_row(uint32_t k)
 {
     const ppage_t *pg = pages_now();
     uint32_t m, j;
     int t;
     char text[40], *p;
-    ml.on = 0;
     if (!pg || k >= pg->nrows || (m = pg->mod[k]) == SETTING_ROW || ((j = pg->par[k]) & POLY_ROW) || (t = eng_type(m)) < 0 ||
         DEF_FIXED((uint32_t)t, j)) {
         ui_msg(MSG_LEARN_NO_ROW, 1500);
@@ -126,7 +152,7 @@ static void learn_row(uint32_t k)
     ml.also = 0;
     ml.gen = pages_gen();
     ml.at = fm1_ms;
-    ml.on = 1;
+    ml.on = 2;
     p = put(text, MSG_LEARN);
     caps(p, pg->lab[k], pg->llen[k], 12u);
     put(p + str_len(p), MSG_LEARN_MOVE)[0] = 0;
@@ -170,7 +196,7 @@ static void learn_bind(uint32_t src)
 static int learn_take(uint32_t src, uint32_t raw)
 {
     uint32_t i, k;
-    if (!learn_live())
+    if (learn_live() != 2)
         return 0;
     if (src >= ENG_MAP_NOTE) {
         if (!raw)
@@ -244,7 +270,7 @@ static int map_has(uint32_t src)
     uint32_t n, i;
     if (!map_learnable(src))
         return 0;
-    if (learn_live())
+    if (learn_live() == 2)
         return 1;
     n = map_list(&e);
     for (i = 0; i < n; i++, e += ENG_MAP_BYTES)
@@ -298,7 +324,7 @@ static int map_midi(uint32_t src, uint32_t raw)
     return 1;
 }
 
-/* ---- GLO > MIDI 3/3 (menu.c): MAPPING, CLEAR and how to learn (SEL + a knob) */
+/* ---- GLO > MIDI 3/3 (menu.c): MAPPING, CLEAR and LEARN (HOME + SEL; turned right it starts learn mode) */
 
 /* MAPPING's label: the mapping shown, "CC 1  1/2" (a note: "NOTE C#-1 1/2"), or MAPPINGS when there are none */
 static const char *map_label(void)
@@ -327,7 +353,7 @@ static void map_value(uint32_t row, char *out)
     uint32_t n = map_list(&e);
     char *p = out;
     if (row == MR_LEARN)
-        p = put(p, "SEL + KNOB");
+        p = put(p, "HOME + SEL");
     else if (row == MR_MAP_CLEAR)
         p = put(p, n ? "TURN >" : "-");
     else if (!n)
@@ -359,7 +385,10 @@ static void map_step(uint32_t row, int32_t s)
 {
     const uint8_t *e = 0;
     uint32_t n = map_list(&e);
-    if (row == MR_MAPS) {
+    if (row == MR_LEARN && s > 0) {                     /* (the menu closes: learn mode on the page it came from) */
+        screen_back();
+        learn_mode(1);
+    } else if (row == MR_MAPS) {
         int32_t v = (int32_t)map_sel + (s > 0 ? 1 : -1);
         map_sel = (uint8_t)(n ? (v < 0 ? 0 : v >= (int32_t)n ? (int32_t)n - 1 : v) : 0);
     } else if (row == MR_MAP_CLEAR && s > 0 && n) {

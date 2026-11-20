@@ -871,8 +871,8 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   being the CC, 127 for pitch bend (`MAP_BEND`) or 128 + n for note n (`MAP_NOTE`, `mapSourceByte` / `mapSource`); the
   firmware reads it in place (`engine.c` `eng_maps`, `midi_learn.c`): `midi_input.h` asks `map_midi` before the fixed
   CCs, and a hit moves its row through `pages_map_move` (`row_set_unit`, the row's also-list, a ramp slot after the
-  knobs', `ENG_RAMPS`). The FM-1 learns too: SEL held while a knob turns on a device page picks that knob's row
-  (panel.c `sel_learn`, `learn_row`, `learn_take`). MAP (0x1C) and MAP_NOW (0x63), feature bit 28, keep the editor's list and the FM-1's
+  knobs', `ENG_RAMPS`). The FM-1 learns too: HOME held + SEL (panel.c) or MIDI 3/3's LEARN toggles learn mode on a device
+  page or the environment, and the next knob turned picks its row (`learn_mode`, `learn_knob`, `learn_row`, `learn_take`). MAP (0x1C) and MAP_NOW (0x63), feature bit 28, keep the editor's list and the FM-1's
   copy the same under Live; MAP_NOW may end with a tail (the learned source byte, a count, the fixed-job CCs) after a
   learn on the FM-1 that heard them, which the editor shows as the same warning (`parseMapNow`).
 - **Main dock: button block (#113, design board D):** the knob column is K1..K4 with their captions, then the DEVICE / PAGE

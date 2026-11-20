@@ -453,26 +453,17 @@ static int knob_fast(uint32_t s, int32_t clicks)
     return fast;
 }
 
-/* SEL held + K1..K4 (D-939): on a device page MIDI learn for that knob's row (midi_learn.c learn_row; the row does not
- * move), elsewhere SEL + a knob learns nothing and the bar says so (SEQ and SONG pages, sandbox mode); sel_used then keeps
- * SEL's release from arming or opening anything, as SEL + OCT keeps the SONG page shut */
+/* learn mode (D-939, midi_learn.c learn_mode): a knob turned on a device page or the environment picks its row for MIDI
+ * learn, which does not move. sel_used: SEL went into HOME + SEL, so its release arms and opens nothing */
 static uint8_t sel_used;
-static void sel_learn(int32_t *st)
+static void learn_knob(int32_t *st)
 {
     uint32_t k;
-    if (!(panel_held >> BTN_SEL & 1u) || !(st[2] | st[3] | st[4] | st[5]))
+    if (learn_live() != 1 || (page != 0u && page != PAGE_ENV) || !(st[2] | st[3] | st[4] | st[5]))
         return;
-    if (page == 0u && !sb_on) {
-        for (k = 0; k < 3u && !st[2u + k]; k++)
-            ;
-        learn_row(k);
-    } else if (sb_on || page == PAGE_SONG || (page == PAGE_SEQ && seq_held < 0 && !sr_on))
-        ui_msg(MSG_LEARN_HERE, 1500);
-    else
-        return;
-    sel_used = 1;
-    if (page == PAGE_SEQ)
-        seq_pen_ms = fm1_ms | 1u;
+    for (k = 0; k < 3u && !st[2u + k]; k++)
+        ;
+    learn_row(k);
     st[2] = st[3] = st[4] = st[5] = 0;
 }
 
@@ -500,7 +491,7 @@ static void panel_encoders(int32_t *st)
     for (k = 0; k < 7u; k++)                        /* a turn while the track's clear asks: not cleared (#231) */
         if (st[k])
             seq_clear_cancel();
-    sel_learn(st);
+    learn_knob(st);
     if (page == PAGE_SEQ && seq_held >= 0 && (st[0] | st[1] | st[2] | st[3] | st[4] | st[5] | st[6]))
         seq_held_tap = 0;                           /* any knob turned with a step held: the step used, its release switches
                                                      * nothing (the owner's 1.9.0 device check, 2026-11-03) */
@@ -1271,8 +1262,18 @@ static void panel_edges(uint32_t p, uint32_t rel)
                                                      * out of a dive back), unless PRESET turned the patch meanwhile; held
                                                      * alone it is nothing (#395) */
         home_turned = 0;
+    if ((p & (1u << BTN_SEL)) && (panel_held >> BTN_HOME & 1u)) {   /* HOME held + SEL (D-939): MIDI learn mode on or off;
+                                                     * neither release does its own job then */
+        learn_mode(!learn_live());
+        sel_used = 1;
+        home_turned = 1;
+        if (page == PAGE_SEQ)
+            seq_pen_ms = fm1_ms | 1u;
+    }
     if ((rel & (1u << BTN_HOME)) && !home_turned && page == PAGE_SEQ && sr_on)
         sr_stop();                                  /* HOME in step record: it ends, the page stays (#532, D-808) */
+    else if ((rel & (1u << BTN_HOME)) && !home_turned && learn_live())
+        learn_mode(0);                              /* HOME in learn mode: it ends, the page stays (D-243, D-939) */
     else if ((rel & (1u << BTN_HOME)) && !home_turned)
         home_tap();
     if ((p & (1u << BTN_PLAY)) && (panel_held >> BTN_SEQ & 1u) && !sb_on) {   /* SEQ held + PLAY (#632): play once, on the

@@ -113,7 +113,10 @@
 #define MSG_LEARN_MOVES " MOVES "                       /* CC 1 MOVES name */
 #define MSG_LEARN_FULL "NO ROOM FOR A MAPPING"
 #define MSG_LEARN_ALSO " ALSO SENT: "                   /* CC 16 ALSO SENT: TURNS K1 (D-939) */
-#define MSG_LEARN_HERE "LEARN: ON A DEVICE PAGE"       /* SEL + a knob where it learns nothing */
+#define MSG_LEARN_HERE "LEARN: ON A DEVICE PAGE"       /* learn mode asked for on the SEQ or SONG page */
+#define MSG_LEARN_SANDBOX "LEARN: NOT IN SANDBOX"
+#define MSG_LEARN_TURN "LEARN: TURN A KNOB"            /* learn mode on (HOME + SEL, D-939) */
+#define MSG_LEARN_OFF "LEARN OFF"
 #define MSG_MAP_CLEARED " CLEARED"                      /* after the control: CC 1 CLEARED */
 
 #endif

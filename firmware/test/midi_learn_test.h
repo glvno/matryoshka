@@ -87,16 +87,46 @@ static void midi_learn_tests(void)
         const ppage_t *pg = target;
         uint32_t fk = k;
         int32_t vel64;
-        pages_focus(fd, fg);                            /* (the row's page in focus: SEL + its knob picks it) */
+        pages_focus(fd, fg);                            /* (the row's page in focus: in learn mode its knob picks it) */
         check("  its page in focus again", pages_now() == pg);
-        learn_row(fk);
-        check("MIDI learn on the FM-1: SEL + a knob picks its row, which waits for a control", learn_live() == 1 && ml.mod == m && ml.par == j);
+        page = 0;
+        panel_held |= 1u << BTN_HOME;                   /* HOME held + SEL (D-939) */
+        panel_edges(1u << BTN_HOME, 0);
+        panel_held |= 1u << BTN_SEL;
+        panel_edges(1u << BTN_SEL, 0);
+        panel_held &= ~(1u << BTN_SEL);
+        panel_edges(0, 1u << BTN_SEL);
+        panel_held &= ~(1u << BTN_HOME);
+        panel_edges(0, 1u << BTN_HOME);
+        check("MIDI learn on the FM-1: HOME + SEL starts learn mode (neither release does its job), the bar says so",
+              learn_live() == 1 && page == 0u && pages_now() == pg && strstr(msg_text, "LEARN: TURN A KNOB"));
+        panel_held |= 1u << BTN_HOME;
+        panel_edges(1u << BTN_HOME, 0);
+        panel_held &= ~(1u << BTN_HOME);
+        panel_edges(0, 1u << BTN_HOME);
+        check("  a HOME tap ends it, the page stays", !learn_live() && page == 0u && pages_now() == pg && strstr(msg_text, "LEARN OFF"));
+        page = PAGE_SEQ;
+        learn_mode(1);
+        check("  on the SEQ page learn mode is refused: LEARN: ON A DEVICE PAGE", !learn_live() && strstr(msg_text, "LEARN: ON A DEVICE PAGE"));
+        page = 0;
+        sb_on = 1;
+        learn_mode(1);
+        check("  in sandbox mode too: LEARN: NOT IN SANDBOX", !learn_live() && strstr(msg_text, "LEARN: NOT IN SANDBOX"));
+        sb_on = 0;
+        learn_mode(1);
+        {
+            int32_t st[7] = {0}, before = eng_get_param(m, j);
+            st[2u + fk] = 1;
+            panel_encoders(st);
+            check("  in learn mode a knob picks its row, which waits for a control and does not move", learn_live() == 2 && ml.mod == m
+                  && ml.par == j && eng_get_param(m, j) == before);
+        }
         ml_cc(1, 16, 127);                              /* (a pad's touch: CC 16, a fixed job, two values only) */
         ml_cc(1, 7, 10);
         ml_cc(1, 7, 10);
         ml_cc(1, 7, 20);
         ml_cc(1, 16, 0);
-        check("  two different values of CC 7 and a touch CC 16: still waiting, the row unmoved", learn_live() == 1);
+        check("  two different values of CC 7 and a touch CC 16: still waiting, the row unmoved", learn_live() == 2);
         ml_cc(1, 7, 30);
         check("  the third: CC 7 moves the row, in the patch, the editor told (MAP_NOW)", !learn_live()
               && eng_maps(pv_bin, pv_len, &e) == 1u && e[0] == 7u && e[1] == m && e[2] == j && host_map_told == heard + 1u);
