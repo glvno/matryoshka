@@ -662,23 +662,35 @@ function reachable(p: Patch, a: AssemblyInst, dir: 'in' | 'out', module: number,
   return !!c && isExposed(c, dir, module, port);
 }
 
+/** is this parameter on a direct member, or set by a row of a child (as its first or one it also sets: a child's row may
+ * reach a sibling's module, so the child that holds the module is not the only one that can show it) */
 function reachableParam(p: Patch, a: AssemblyInst, module: number, param: string): boolean {
-  if (a.modules.includes(module)) return true;
-  const c = childrenOf(p, a).find((x) => allModules(p, x).includes(module));
-  return !!c && isPromoted(c, module, param);
+  return a.modules.includes(module) || childrenOf(p, a).some((c) => isPromoted(c, module, param));
+}
+
+/** the outermost assembly `a` is nested in, itself when it is top level */
+function outermost(p: Patch, a: AssemblyInst): AssemblyInst {
+  let top = a;
+  for (let up = parentOf(p, a.id), n = 0; up && n < MAX_DEPTH; up = parentOf(p, up.id), n++) top = up;
+  return top;
 }
 
 /**
  * The card's rows with their further targets checked (#357): a target that is gone, not reachable, set from a screen, a
  * Voice allocator's, another row's or of another range than the row's first goes; a row whose first is gone is led by
- * the next target that stays. Position names stay on a Selector's `pos` row only (#358). The rows themselves are checked
- * by the caller.
+ * the next target that stays. A further target may be a module anywhere in the outermost card around this one, a
+ * sibling card's included (#1124: the 909 Kit's hihat LEVEL also sets the open hat's level VCA); one inside this card
+ * must be reachable. Position names stay on a Selector's `pos` row only (#358). The rows themselves are checked by the
+ * caller.
  */
 function cleanRows(p: Patch, a: AssemblyInst, member: Set<number>, defs?: Record<string, ModuleDef>): ParamRef[] {
   if (!a.params.some((r) => r.also || r.names)) return a.params;
   const typeOf = (id: number): string | undefined => p.modules.find((m) => m.id === id)?.type;
   const pdOf = (t: RowTarget): ParamDef | undefined => { const ty = typeOf(t.module); return ty && defs?.[ty] ? rowDef(defs[ty], t.param) : undefined; };
-  const ok = (t: RowTarget): boolean => member.has(t.module) && (!defs || (!!pdOf(t) && !pdOf(t)!.onScreen && typeOf(t.module) !== 'alloc')) && reachableParam(p, a, t.module, t.param);
+  const top = new Set(allModules(p, outermost(p, a)));
+  const ok = (t: RowTarget, further: boolean): boolean =>
+    (!defs || (!!pdOf(t) && !pdOf(t)!.onScreen && typeOf(t.module) !== 'alloc')) &&
+    (member.has(t.module) ? reachableParam(p, a, t.module, t.param) : further && top.has(t.module));
   const firsts = new Set(a.params.map((r) => `${r.module}:${r.param}`));
   const seen = new Set<string>();
   return a.params.map((r) => {
@@ -687,7 +699,7 @@ function cleanRows(p: Patch, a: AssemblyInst, member: Set<number>, defs?: Record
     if (r.also) {
       const ts = rowTargets(r).filter((t, i) => {
         const k = `${t.module}:${t.param}`;
-        if (!ok(t) || seen.has(k) || (i > 0 && firsts.has(k))) return false;
+        if (!ok(t, i > 0) || seen.has(k) || (i > 0 && firsts.has(k))) return false;
         seen.add(k);
         return true;
       });
@@ -1353,7 +1365,10 @@ export function toDef(p: Patch, a: AssemblyInst): AssemblyDef {
   };
   const row = (r: ParamRef): ParamRef => {
     const n = remap(r);
-    if (r.also) n.also = r.also.map(remap);
+    // a further target in a sibling card (cleanRows) is not in a nested card saved on its own: the saved row leaves it
+    const also = r.also?.filter((t) => local.has(t.module)).map(remap);
+    if (also?.length) n.also = also;
+    else delete n.also;
     if (r.names) n.names = [...r.names];
     if (r.top !== undefined) n.top = r.top;
     if (r.copies) n.copies = { ...r.copies };

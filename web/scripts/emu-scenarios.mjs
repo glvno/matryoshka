@@ -2233,6 +2233,35 @@ async function main() {
         await check(`focus turns: ${enc === ENC.select ? 'SELECT' : 'ALGO'} ${n > 0 ? '+1' : '-1'}: the editor shows the FM-1's device`, r.ok, r.at);
       }
     },
+    // #1124 (D-635, D-1055): the 909 Kit's hihat LEVEL also sets the open hat's level VCA, which sits in the sibling open
+    // hat card. A K knob turn on the FM-1 moves both in the editor, and a card preset from the FM-1 sets both again
+    async hats909() {
+      await check('909 hats: the 909 Kit opens, synced', await openSynced('909 Kit'));
+      const row = JSON.parse(await patchJson()).assemblies.find((a) => a.name === '909 kit').params.find((r) => r.head === 'hihat');
+      await check('909 hats: the hihat LEVEL row sets a second level VCA', row?.label === 'level' && row.also?.length === 1, JSON.stringify(row));
+      const gains = async () => { const p = JSON.parse(await patchJson()); return [row.module, row.also[0].module].map((id) => p.modules.find((m) => m.id === id).params.gain); };
+      // the page with CH DECAY on it, ALGO a page at a time from the card's first
+      let found = await emu.text('CH DECAY');
+      for (let n = 0; n < 12 && !found; n++) {
+        await emu.turn(ENC.algo, 1);
+        found = await emu.waitText('CH DECAY', 1000);
+      }
+      await check('909 hats: ALGO reaches the hihat page', found);
+      const before = await gains();
+      let moved = null;
+      for (let k = ENC.k1; k <= ENC.k4 && !moved; k++) {
+        await emu.turn(k, -10);
+        moved = await until(async () => { const g = await gains(); return g[0] < before[0] ? g : null; }, 1500);
+      }
+      await emu.snap('hats-909');
+      await check('909 hats: turning hihat LEVEL down on the FM-1 moves the closed and the open hat, to the same value',
+        !!moved && moved[1] === moved[0], `before ${before}, after ${moved ?? (await gains())}`);
+      await emu.elapse(800);
+      await emu.turn(ENC.preset, 1);
+      const back = await until(async () => { const g = await gains(); return g[0] === 1 && g[1] === 1 ? g : null; }, 3000);
+      await check('909 hats: the next card preset from the FM-1 sets both levels back to 1', !!back, `${await gains()}`);
+      await emu.elapse(1200);
+    },
     // #432: a device set to no preset (a patch just opened) stands on the entry whose values it has: Silver Box's engine
     // opens on Init's, so the first PRESET turn right loads the preset after Init, not Init again. It must open on that
     // engine whatever the scenarios before left in focus (#496)

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The 909 Kit's hi-hat LEVEL sets both hi-hats, as on the TR-909.** Turning the hihat LEVEL knob down used to quiet only the closed hat. Now the open hat follows it, in the editor and on the FM-1. At its usual setting the kit sounds exactly as before. Your saved 909 Kit sounds keep all their settings, and the closed hat's level becomes the shared one.
+
 ## 1.22.0 — 2026-11-19
 
 - **The FM-1 follows Song Position, and clock and transport have their own switches.** A DAW or looper that sends Song Position and Continue now starts the FM-1's Steps tracks at that point, its songs included, also when it jumps back mid-play at a loop point. GLO > MIDI has a second page with TRANSPORT IN and TRANSPORT OUT, beside CLOCK IN and CLOCK OUT, so the FM-1 can follow a tempo without its Start and Stop, or the other way round. MIDI OUT now covers only the panel's controls. On the SONG page, PLAY starts the song from the entry under the cursor and tells the DAW where with Song Position. Needs the next firmware (#596).
