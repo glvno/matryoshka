@@ -19,7 +19,8 @@ static void midi_drain_mode(int quick)
         uint32_t chn = ((pkt >> 8) & 15u) + 1u;
         if (quick && (!cfg.ch || cfg.ch == chn) &&
             (st == 0xC0u || (st == 0xB0u && ((n >= 16u && n <= 19u) ||
-                                             (n >= 80u && n < 80u + ENG_PANEL_BUTTONS)))))
+                                             (n >= 80u && n < 80u + ENG_PANEL_BUTTONS))) ||
+             ((st == 0xB0u || st == 0xE0u) && map_has(st == 0xE0u ? ENG_MAP_BEND : n))))   /* (MIDI learn: as CC 16..19) */
             break;
         RING_PUBLISH();
         mi_r++;
@@ -32,7 +33,9 @@ static void midi_drain_mode(int quick)
             else
                 eng_note_off(n, chn);
         } else if (!cfg.ch || cfg.ch == chn) {  /* other channel messages on the MIDI channel (MENU > MIDI CHANNEL; 0 = all) */
-            if (st == 0xB0u && n == 123u) {
+            if ((st == 0xB0u && map_midi(n, v)) || (st == 0xE0u && map_midi(ENG_MAP_BEND, v << 7 | n))) {
+                /* a learned control (#1067, midi_learn.c): it moves its row, or a learn takes it, and does nothing else */
+            } else if (st == 0xB0u && n == 123u) {
                 eng_all_notes_off();
             } else if (st == 0xB0u && n == 1u) {        /* mod wheel: the Main module's mod output */
                 eng_ctl(ENG_CTL_MOD, (int32_t)(v * 65536u / 127u));
@@ -75,6 +78,8 @@ static void midi_drain_mode(int quick)
     }
     midi_in_overflow = 0;
     clk_in_idle();
+    if (!quick)
+        map_poll();                             /* (the learned controls' last moves the editor has not heard yet) */
     midi_draining = 0;
 }
 

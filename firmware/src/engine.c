@@ -954,9 +954,14 @@ static eng_t eng_one ENG_POOL;
 /* the patterns eng_patterns_record and eng_locks_record leave out (bit p; eng_patterns_omit): the clean linked ones, whose
  * content is the pattern store's (#901). A load clears it. Not in E: the pool has no room */
 static uint64_t pat_omit;
-/* the knobs' pending ramps (#405, eng_knob_param): the module and parameter, blocks left, the offset still to go, its step */
-typedef struct { int32_t mod, par, left, off, step; } ramp_t;
-static ramp_t ramp[ENG_KNOBS];
+/* the knobs' and the learned MIDI controls' pending ramps (#405, #1067, eng_knob_param): the module and parameter, blocks
+ * left, the offset still to go, its step. ramp_any: some ramp is pending. The main loop sets it after a ramp's fields
+ * (ramp_start); each block's ramp_tick sets it again from every slot's blocks left. The audio interrupt preempts the main
+ * loop, never the other way round, so a start is never lost between them */
+typedef struct { int32_t off, step; uint8_t mod, par, left; } ramp_t;   /* (12 bytes: a module below 128, a parameter byte,
+                                                                          * ENG_RAMP_BLOCKS blocks at most) */
+static ramp_t ramp[ENG_RAMPS];
+static volatile uint8_t ramp_any;
 static int32_t ramp_buf[2][MAX_PAR];       /* (one per lane, #271) */
 static void toggles_sync(void);
 static volatile uint32_t clk_ticks;   /* MIDI clock ticks (eng_clock_tick, the main loop) */
@@ -2039,6 +2044,82 @@ const uint8_t *eng_skip_fx(const uint8_t *p, const uint8_t *end, uint16_t flags)
     return p;
 }
 
+uint32_t eng_maps_at(const uint8_t *p, uint32_t len)
+{
+    uint32_t at = len >= 8u ? eng_section_at(p, len, ENG_SEC_FX) : 0u;
+    const uint8_t *next;
+    if (!at || at > len || !(next = eng_skip_fx(p + at, p + len, (uint16_t)((uint16_t)p[6] | (uint16_t)p[7] << 8))))
+        return 0;
+    at = (uint32_t)(next - p);
+    if (p[6] & 2u) {                             /* (the macro ranges: u8 count, five bytes each) */
+        if (at >= len)
+            return 0;
+        at += 1u + 5u * p[at];
+    }
+    return at <= len ? at : 0;
+}
+
+uint32_t eng_maps(const uint8_t *p, uint32_t len, const uint8_t **e)
+{
+    uint32_t at = eng_maps_at(p, len);
+    if (!at || at >= len || at + 1u + ENG_MAP_BYTES * p[at] != len)
+        return 0;
+    *e = p + at + 1u;
+    return p[at];
+}
+
+int eng_maps_set(uint8_t *p, uint32_t *len, uint32_t cap, const uint8_t *e, uint32_t n)
+{
+    uint32_t at = eng_maps_at(p, *len), k;
+    if (!at || n > ENG_MAPS_MAX || (n && at + 1u + ENG_MAP_BYTES * n > cap))
+        return 0;
+    if (!n) {
+        *len = at;
+        return 1;
+    }
+    for (k = 0; k < ENG_MAP_BYTES * n; k++)       /* (e is never inside p) */
+        p[at + 1u + k] = e[k];
+    p[at] = (uint8_t)n;
+    *len = at + 1u + ENG_MAP_BYTES * n;
+    return 1;
+}
+
+int eng_map_edit(uint8_t *p, uint32_t *len, uint32_t cap, uint32_t src, uint32_t mod, uint32_t par, uint32_t lo, uint32_t hi, int on)
+{
+    uint8_t keep[ENG_MAPS_MAX * ENG_MAP_BYTES];
+    const uint8_t *e = 0;
+    uint32_t at = eng_maps_at(p, *len), n, i, k, m = 0, dropped = 0;
+    if (!at)
+        return 0;
+    n = eng_maps(p, *len, &e);
+    if (!n && at != *len)                        /* (a section that does not end the binary) */
+        return 0;
+    for (i = 0; i < n; i++, e += ENG_MAP_BYTES) {
+        if (e[0] == src || (on && e[1] == mod && e[2] == par)) {
+            dropped++;
+            continue;
+        }
+        if (m < ENG_MAPS_MAX)
+            for (k = 0; k < ENG_MAP_BYTES; k++)
+                keep[ENG_MAP_BYTES * m + k] = e[k];
+        m++;
+    }
+    if (!on) {
+        if (!dropped)
+            return 0;
+    } else {
+        if (m >= ENG_MAPS_MAX)
+            return 0;
+        keep[ENG_MAP_BYTES * m] = (uint8_t)src;
+        keep[ENG_MAP_BYTES * m + 1u] = (uint8_t)mod;
+        keep[ENG_MAP_BYTES * m + 2u] = (uint8_t)par;
+        keep[ENG_MAP_BYTES * m + 3u] = (uint8_t)lo;
+        keep[ENG_MAP_BYTES * m + 4u] = (uint8_t)hi;
+        m++;
+    }
+    return eng_maps_set(p, len, cap, keep, m);
+}
+
 /* The record cannot point at a made-up page. Check the assembly device, every target
  * appearing in its parameter rows (including tied extras), and the first such page. */
 static int fx_page_valid(const uint8_t *p, uint32_t len, uint32_t at, const uint8_t *rec)
@@ -2196,8 +2277,9 @@ int eng_load(const uint8_t *p, uint32_t len)
     key_memory = 0;
     E.kev = E.kev_legacy; E.blk_thru = E.blk_legacy; E.rin = E.rin_legacy;
     E.stamp = 0;
-    for (i = 0; i < ENG_KNOBS; i++)              /* (a knob ramp of the patch before: gone) */
+    for (i = 0; i < ENG_RAMPS; i++)              /* (a knob ramp of the patch before: gone) */
         ramp[i].left = 0;
+    ramp_any = 0;
     E.clk_seen = clk_ticks;
     E.clk_pulse = 0;
     E.narp = 0;
@@ -3190,7 +3272,8 @@ void eng_set_param(uint32_t module, uint32_t param, int32_t q16)
  * value at once: eng_get_param, the editor's mirror, MIDI out and a save all see it. Only the base apply_cv derives the
  * effective value from lags: knob k's ramp holds the difference between where the module stood and the new value, and
  * render_voice shrinks it by one step a block to zero. A new click on the same row starts from where its ramp stands
- * (no jump back); a click on another row takes the knob's slot over. With no ramp pending the engine is bit for bit what
+ * (no jump back); a click on another row takes the knob's slot over. A learned MIDI control (#1067) ramps the same way in
+ * a slot after the knobs'. With no ramp pending the engine is bit for bit what
  * it was without them (tools/engine_exact.sh). The browser engine does not ramp: its sliders are continuous. The main
  * loop starts a ramp while the audio interrupt renders: a start that lands inside apply_cv of that module can make one
  * block use the step as a jump, which is what every click did before. */
@@ -3200,17 +3283,18 @@ static void ramp_start(uint32_t k, int32_t m, int32_t j, int32_t from, int32_t t
     if (r->left && r->mod == m && r->par == j)
         from += r->off;
     r->left = 0;
-    r->mod = m;
-    r->par = j;
+    r->mod = (uint8_t)m;
+    r->par = (uint8_t)j;
     r->off = from - to;
     r->step = r->off / ENG_RAMP_BLOCKS;
     r->left = ENG_RAMP_BLOCKS;
+    ramp_any = 1;                                   /* (after the fields: a block between them sees the ramp or not at all) */
 }
 /* once a block: every pending ramp one step nearer to zero */
 static void ramp_tick(void)
 {
-    uint32_t k;
-    for (k = 0; k < ENG_KNOBS; k++) {
+    uint32_t k, any = 0;
+    for (k = 0; k < ENG_RAMPS; k++) {
         ramp_t *r = &ramp[k];
         if (!r->left)
             continue;
@@ -3218,7 +3302,9 @@ static void ramp_tick(void)
             r->off -= r->step;
         else
             r->off = 0;
+        any |= (uint32_t)r->left;
     }
+    ramp_any = (uint8_t)(any != 0);
 }
 /* the base values with the P-locks on node nd (#524, engine.ts applyCv: a lock in place of the normal value): a copy of
  * par with each locked parameter at its lock, clamped to its range (to its top: a stretch), or par when none locks it */
@@ -3276,7 +3362,7 @@ HOT const int32_t *ramp_base(const node_t *nd, const int32_t *par, uint32_t npar
 {
     uint32_t k, j, any = 0;
     int32_t m = (int32_t)(nd - E.node);
-    for (k = 0; k < ENG_KNOBS; k++)
+    for (k = 0; k < ENG_RAMPS; k++)
         if (ramp[k].left && ramp[k].mod == m && (uint32_t)ramp[k].par < npar) {
             if (!any) {
                 for (j = 0; j < npar; j++)
@@ -3298,7 +3384,7 @@ void eng_knob_param(uint32_t knob, uint32_t module, uint32_t param, int32_t q16)
     was = E.node[module].par[param];
     E.node[module].par[param] = q16;                /* (as eng_set_param: the parameter at once) */
     tempo_follow(module, param, q16);
-    if (knob < ENG_KNOBS && was != q16 && !(d->pchoice && d->pchoice[param]))
+    if (knob < ENG_RAMPS && was != q16 && !(d->pchoice && d->pchoice[param]))
         ramp_start(knob, (int32_t)module, (int32_t)param, was, q16);
 }
 
@@ -11793,7 +11879,7 @@ HOT void apply_cv(const node_t *nd, inst_t *it, uint32_t n, const inst_t *prev, 
     uint32_t j, s, m, have = nd->cvp, side = nd->side, mapped = 0;   /* (#1072: which inputs to read, from eng_load) */
     const int32_t *par = nd->par, *parb = par + d->npar;   /* (the node's and the instance's slots, kept in registers; PARB) */
     int32_t *eff = it->eff;
-    if (ramp[0].left | ramp[1].left | ramp[2].left | ramp[3].left)   /* a knob's click still on its way (#405) */
+    if (ramp_any)                                /* a knob's click or a learned control's move still on its way (#405, #1067) */
         par = ramp_base(nd, par, d->npar, IT_LANE(nd, it));
     if (nd->locked)                              /* P-locks (#524) */
         par = lock_base(nd, par, d->npar, IT_LANE(nd, it));
@@ -13126,7 +13212,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                     E.trk_once[nd->trk] = ((nd->conn >> STEPS_I_CLK) & 1u) ? 0u : (uint8_t)(s + 2u);
             }
         }
-        if (ENG_RARELY(ramp[0].left | ramp[1].left | ramp[2].left | ramp[3].left))
+        if (ENG_RARELY(ramp_any))
             ramp_tick();
         E.morph = ENG_RARELY(E.has_b) ? morph_position(n) : 0;
         {   /* the clock: MIDI ticks while external, else the global tempo (D-907) or the Main module's (whole bpm x 24 ticks a

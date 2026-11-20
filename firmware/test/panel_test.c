@@ -808,6 +808,18 @@ static void drum_bank_suite(void)
 
     drum_open("808 KIT");
     check("808 Kit: 12 rows, BD .. CB on black keys 1..8", eng_keys_rows(rm, rr) == 12u && blacks_send(K808[0]) && foot_reads(MSG_ROWS "1-8"));
+    {                                                       /* (1.23 qualification: a condition past bit 15 holds here, OCT picks
+                                                             * the bank; main.c guide_poll compared GUIDE_NOW byte 14, which a
+                                                             * pass without the conditions reads as 0, so it sent one on every
+                                                             * pass and the link to the editor filled) */
+        uint8_t told[GUIDE_BYTES], now[GUIDE_BYTES];
+        guide_state(told, 1);
+        guide_state(now, 0);
+        check("  GUIDE_NOW: OCT picks the bank (condition 16, byte 14), and a pass with nothing new sees no change",
+              (told[14] >> (HC_OCT_BANKS - 16) & 1u) && !guide_changed(now, told));
+        now[12] ^= 1u;
+        check("  a change outside the conditions (the octave byte) is still seen", guide_changed(now, told));
+    }
     tap(BTN_OCT_UP);
     check("  OCT+: MT/MC HT/HC CY AC on black keys 1..4, the rest silent", drum_bank == 1u && blacks_send(K808[1])
           && !strcmp(msg_text, MSG_ROWS "9-16: MT/MC HT/HC..") && foot_reads(MSG_ROWS "9-16"));
@@ -1252,11 +1264,11 @@ int main(void)
         patch_enc(1);
         check("HOME held + PRESET in the menu: the next patch, HOME's release stays in the menu", presets_stepped == stepped + 2 && page == PAGE_MENU);
         presets_stepped = stepped;
-        check("  the header says MIDI 1/2 (#596)", on_screen("MIDI 1/2"));
+        check("  the header says MIDI 1/3 (#596, #1067)", on_screen("MIDI 1/3"));
         enc(1, 1);
         check("ALGO: MIDI's second page, TRANSPORT IN on K1, TRANSPORT OUT on K2, both ON as made (#596)", menu_tab == MT_MIDI
               && menu_page2 && menu_page() && pages_now()->nrows == 2u && pages_now()->par[0] == MR_TIN && pages_now()->par[1] == MR_TOUT
-              && on_screen("MIDI 2/2") && on_screen("TRANSPORT IN") && on_screen("TRANSPORT OUT") && cfg.transport_in && cfg.transport_out);
+              && on_screen("MIDI 2/3") && on_screen("TRANSPORT IN") && on_screen("TRANSPORT OUT") && cfg.transport_in && cfg.transport_out);
         enc(2, -1);
         check("  K1 left: TRANSPORT IN OFF", cfg.transport_in == 0u && on_screen("OFF"));
         enc(3, -1);
@@ -1264,8 +1276,13 @@ int main(void)
         cfg_defaults();
         check("  FACTORY RESET's defaults: both ON", cfg.transport_in == 1u && cfg.transport_out == 1u);
         enc(1, -1);
-        check("ALGO back: MIDI 1/2", menu_tab == MT_MIDI && !menu_page2 && pages_now()->par[3] == MR_CLKOUT);
+        check("ALGO back: MIDI 1/3", menu_tab == MT_MIDI && !menu_page2 && pages_now()->par[3] == MR_CLKOUT);
         enc(1, 1);
+        enc(1, 1);
+        check("ALGO twice: MIDI's third page, MIDI learn: LEARN, MAPPINGS (none), CLEAR (#1067)", menu_tab == MT_MIDI && menu_page2 == 2u
+              && pages_now()->nrows == 3u && pages_now()->par[0] == MR_LEARN && pages_now()->par[1] == MR_MAPS
+              && pages_now()->par[2] == MR_MAP_CLEAR && on_screen("LEARN") && on_screen("MAPPINGS") && on_screen("NONE")
+              && on_screen("MIDI 3/3"));
         enc(1, 1);
         check("ALGO: the PANEL tab (LEDs, knob accel, count-in, tempo)", menu_tab == MT_PANEL && pages_now()->nrows == 4u && pages_now()->par[0] == MR_LEDS && pages_now()->par[2] == MR_CIN && pages_now()->par[3] == MR_TEMPO);
         enc(4, 1);                                          /* K3: COUNT-IN (#414), OFF > 1 BAR > 2 BARS */
@@ -1482,7 +1499,8 @@ int main(void)
         enc(1, 1);
         enc(1, 1);
         enc(1, 1);
-        enc(1, 1);                                          /* (MIDI's and PANEL's two pages, #596, #1011) */
+        enc(1, 1);
+        enc(1, 1);                                          /* (MIDI's three pages, #596, #1067, and PANEL's two, #1011) */
         enc(3, 1);
         check("again: the menu, SYSTEM, FACTORY RESET armed", page == PAGE_MENU && menu_tab == MT_SYSTEM && menu_armed == MR_DEFAULTS);
         later(MENU_ARM_MS + 100u);

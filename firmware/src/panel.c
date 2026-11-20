@@ -660,6 +660,8 @@ static void panel_encoders(int32_t *st)
             continue;
         if (fine)
             home_turned = 1;
+        if (!menu_page() && learn_pick(k))          /* MIDI learn waits for a row (#1067): this knob's, which stays as it is */
+            continue;
         if ((r = pages_turn(k, c, knob_fast(2u + k, c), fine, &mod, &par, &v)) < 0)
             continue;
         if (r == 2) {                               /* the menu: an FM-1 setting (pages_turn set it): not the patch's, not the editor's */
@@ -1491,8 +1493,9 @@ static void panel_align(const uint8_t *g)
     if (want == 0u && (g[3] != pg_cur_dev || g[4] != pg_cur_page) && pages_focus(g[3], g[4]))
         ui_dirty = 2;
     if (want == PAGE_MENU) {
-        menu_tab = (uint8_t)(g[6] & 127u);
-        menu_page2 = (uint8_t)(menu_two(menu_tab) && g[6] >> 7);   /* (the tab's second page, #702, #1011) */
+        menu_tab = (uint8_t)(g[6] & 63u);
+        menu_page2 = (uint8_t)(menu_two(menu_tab) && g[6] >> 7 ? (g[6] & 64u ? 2u : 1u) : 0u);   /* (bit 7: a later page, #702,
+                                                     * #1011; bit 6 with it: the third, MIDI 3/3, #1067) */
     }
     if (want != page) {
         if (want == PAGE_SONG)

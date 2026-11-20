@@ -923,6 +923,63 @@ static int fx_test(const char *path)
     return 0;
 }
 
+/* proto_test --maps MAPS.m1p [OLD.m1p] (tools/golden.sh, the midi-learn kit; #1067): the MIDI mapping section after the
+ * macro ranges. The kit's three mappings read back as written (patchbin.ts mapRecord) and the binary passes m1_valid. The
+ * FM-1's edits of its copy keep the section last: a macro range added and removed (m1_patch_range) leaves the mappings
+ * and gives the same bytes back; MIDI learn's edits (m1_patch_map) replace a source's and a row's mapping, drop one,
+ * refuse a 17th and a missing one; MAP replaces them all, MAP with none drops the section; MAP_NOW reports them. With
+ * OLD (a binary of a format before ENG_COUNTED), a mapping added to its copy survives m1_set_current's upgrade */
+static int maps_test(int n, char **argv)
+{
+    long nb;
+    uint8_t *o = slurp(argv[0], &nb), map1[1u + 2u * ENG_MAP_BYTES] = {2, 9, 0, 1, 0, 255, 10, 0, 2, 0, 255}, d[128];
+    const uint8_t *e = 0;
+    uint32_t at, k, r0;
+    CHECK(m1_valid(o, (uint32_t)nb) && eng_load(o, (uint32_t)nb) == 0);
+    CHECK(eng_maps(o, (uint32_t)nb, &e) == 3u && (at = eng_maps_at(o, (uint32_t)nb)) == (uint32_t)nb - 16u);
+    CHECK(e[0] == 1u && e[5] == ENG_MAP_BEND && e[8] == 51u && e[9] == 204u && e[10] == 74u && e[13] == 255u && e[14] == 0u);
+    CHECK((o[6] & 2u) && o[at - 16u] == 3u);                     /* (the kit's three macro ranges just before) */
+    m1_set_current(o, (uint32_t)nb);
+    m1_patch_range(1, 0, 0, 1, 10, 20);                          /* a range more (a section of its own without one): the mappings move along, still last */
+    CHECK(m1_cur_len == (uint32_t)nb + ((o[6] & 2u) ? 5u : 6u) && m1_valid(m1_cur, m1_cur_len) && eng_maps(m1_cur, m1_cur_len, &e) == 3u && e[10] == 74u);
+    m1_patch_range(1, 0, 0, 0, 0, 0);
+    CHECK(m1_cur_len == (uint32_t)nb && !memcmp(m1_cur, o, (size_t)nb));
+    CHECK(m1_patch_map(2, 1, 1, 0, 255, 1) && eng_maps(m1_cur, m1_cur_len, &e) == 4u && m1_valid(m1_cur, m1_cur_len));
+    CHECK(m1_patch_map(3, e[1], e[2], 0, 255, 1) && eng_maps(m1_cur, m1_cur_len, &e) == 4u && e[0] != 1u);   /* (CC 1's row: CC 3 now) */
+    CHECK(m1_patch_map(3, 0, 0, 0, 0, 0) && eng_maps(m1_cur, m1_cur_len, &e) == 3u && !m1_patch_map(3, 0, 0, 0, 0, 0));
+    for (k = 0; eng_maps(m1_cur, m1_cur_len, &e) < ENG_MAPS_MAX; k++)
+        CHECK(m1_patch_map(20u + k, 50u + k, 0, 0, 255, 1));
+    CHECK(!m1_patch_map(110, 90, 0, 0, 255, 1) && m1_valid(m1_cur, m1_cur_len));
+    CHECK(send_frame(C_MAP, map1, sizeof map1) == 1 && eng_maps(m1_cur, m1_cur_len, &e) == 2u && !memcmp(e, map1 + 1, 10));
+    r0 = nreplies;
+    m1_map_now();
+    CHECK(nreplies == r0 + 1u && replies[r0][4] == R_MAP_NOW && m1_unpack7(replies[r0] + 5, reply_len[r0] - 6u, d, sizeof d) == 11u
+          && !memcmp(d, map1, 11));
+    map1[0] = 0;
+    CHECK(send_frame(C_MAP, map1, 1) == 1 && m1_cur_len == at && eng_maps_at(m1_cur, m1_cur_len) == at && m1_valid(m1_cur, m1_cur_len));
+    m1_map_now();
+    CHECK(m1_unpack7(replies[r0 + 1u] + 5, reply_len[r0 + 1u] - 6u, d, sizeof d) == 1u && d[0] == 0u);
+    nreplies = r0;
+    k = 0;
+    if (n > 1) {
+        long ob;
+        uint8_t *old = slurp(argv[1], &ob), buf[M1_PATCH_MAX];
+        uint32_t len = (uint32_t)ob;
+        if (old[1] < ENG_COUNTED) {
+            memcpy(buf, old, (size_t)ob);
+            CHECK(eng_map_edit(buf, &len, M1_PATCH_MAX, 1, 0, 0, 0, 255, 1) && len == (uint32_t)ob + 6u);
+            m1_set_current(buf, len);
+            CHECK(m1_cur[1] == ENG_UPGRADED && eng_maps(m1_cur, m1_cur_len, &e) == 1u && e[0] == 1u && e[4] == 255u);
+            k = 1;
+        }
+        free(old);
+    }
+    free(o);
+    printf("MIDI mappings ok: read back, kept last through macro range edits, learned, replaced, dropped, capped at %u, MAP and MAP_NOW%s\n",
+           ENG_MAPS_MAX, k ? ", kept through an older copy's upgrade" : "");
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 3 && !strcmp(argv[1], "--fx"))
@@ -943,7 +1000,24 @@ int main(int argc, char **argv)
         return grow_test(argc - 2, argv + 2);
     if (argc >= 2 && !strcmp(argv[1], "--same"))
         return same_test(argc - 2, argv + 2);
+    if (argc >= 3 && !strcmp(argv[1], "--maps"))
+        return maps_test(argc - 2, argv + 2);
     long np, ns, i, at = 0;
+    if (argc == 4 && !strcmp(argv[1], "--add-map")) {        /* IN OUT (tools/old_format.sh): IN with a MIDI mapping section
+                                                              * (CC 1 on module 0's parameter 0), as MIDI learn on the FM-1
+                                                              * writes it into a copy of any format (#1067) */
+        long nb;
+        uint8_t *in = slurp(argv[2], &nb), out[M1_PATCH_MAX];
+        uint32_t len = (uint32_t)nb;
+        FILE *f;
+        CHECK(len <= M1_PATCH_MAX);
+        memcpy(out, in, len);
+        if (!eng_map_edit(out, &len, M1_PATCH_MAX, 1, 0, 0, 0, 255, 1))
+            return 3;                                           /* (malformed, or no room) */
+        CHECK((f = fopen(argv[3], "wb")) && fwrite(out, 1, len, f) == len && !fclose(f));
+        free(in);
+        return 0;
+    }
     uint8_t *patch, *syx;
     static int32_t a_l[128 * 40], a_r[128 * 40], b_l[128 * 40], b_r[128 * 40];
     uint32_t mod, par, acks_ok = 0, amod, ain;

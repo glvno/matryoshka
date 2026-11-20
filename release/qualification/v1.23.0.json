@@ -1,0 +1,190 @@
+{
+  "schema": 1,
+  "version": "1.23.0",
+  "firmware_product": "FM-1_7012300",
+  "source_commit": "0df86a7f3bb021b1478978f69e1eb2e4e657cccf",
+  "source_tree": "319756e17bd887b2fcffc3e6378aa5853f2cb958",
+  "status": "automated and rig checks passed; owner's device check and the go for publication pending",
+  "release_approval": {
+    "status": "pending",
+    "scope": "Publication of v1.23.0 from the tag on release/1.23: the frozen commit plus only this record, the qualified package in web/public/firmware/, the coverage record and the rig measurements (D-1163); its firmware/ and tools/ equal the qualified source (D-105)."
+  },
+  "plan": "D-1166 with its proposed amendment (third freeze, PR #1156, with #1154). The candidates 17919ac7 (#1149, the GUIDE_NOW flood) and 01841906 (#1152, the TRS MIDI reader) are not released; every check below ran again on this frozen commit (D-144)",
+  "owner_hardware_check_trs": "owner on his FM-1 through his H2MIDI, 2026-11-20, on CI run 44798118984 (main + #1154): \"fix confirmed\"",
+  "artifacts": {
+    "package": {
+      "name": "matryoshka-1.23.0.fwsc",
+      "size": 610656,
+      "sha256": "67a3c5ba4c70d620773bf458bfe0e3c77b4f973408f4235a87aac7c328cc7456"
+    },
+    "normal": {
+      "name": "matryoshka-1.23.0-app.bin",
+      "size": 576788,
+      "sha256": "a3d0966461386ddab7e61482bf06c896719eba3639bb7db66756db0c14409978"
+    },
+    "normal_elf": {
+      "name": "matryoshka-1.23.0-app.elf",
+      "size": 645308,
+      "sha256": "54cb6042c2a03f2f9044406e1340fac4649bd0de6c35e9c4d4f4c5d3507c1ae0"
+    },
+    "normal_sidecar": {
+      "name": "matryoshka-1.23.0.json",
+      "size": 411,
+      "sha256": "3de4679cb5cc838a2ce437c6a6c608e82a8a30686472041a9c242e27a7416252"
+    },
+    "bridge": {
+      "name": "matryoshka-emu.bin",
+      "size": 573612,
+      "sha256": "a1fed1aea6fa4b85457563e4d2e71e9084c88b322929b0682d31617164154bde"
+    }
+  },
+  "build_manifest_sha256": "625809492e390dd68fe9d747d93a5ab95ff49816924b3d316801bc7e482a695a",
+  "build": "release run 44800227005: image 576788 B; RAM .data+.bss 20436 B of 24576 (4140 B free, the RAM headroom); pool 409592 B of 417792 (8200 B headroom, the floor 8192); no compiler warnings",
+  "ci_runs": {
+    "release": 44800227005,
+    "web_rc": 44800231130,
+    "freeze_pr": 1156
+  },
+  "full_scenarios": "358 of 358 checks passed",
+  "smoke": [
+    "emu:smoke on /Users/mg/projects/music/fm1/modular-1/build/release-1.23.0/dl3/matryoshka-release-1.23.0/matryoshka-1.23.0-app.bin beside the scenarios (/Users/mg/projects/music/fm1/wt/rel-1230/build/emu/smoke.log)"
+  ],
+  "editor_side": "68 of 68 checks passed",
+  "boot": "boot check: PASS (40 checks, 0 failed; the editor link and the update handshake checked on the M1_EMU_MIDI build; 54.4 s",
+  "old_format": "older format ok: 663 binaries load, upgrade and render bit-identically; 0 upgraded as today's encoder writes them, 332 differ, 331 too big to upgrade, 0 already in today's format; 2245 records grown to all their parameters render the same",
+  "slot_upgrade": {
+    "ok": true,
+    "upgraded": [
+      "BRIEFCASE 3",
+      "909 KIT"
+    ],
+    "bc3": "slot [2, 2324]\nv1.22.0 bytes [2453, 2260]\nv1.23.0 bytes [2, 2325]"
+  },
+  "hardware": {
+    "irq_vs_1.22.0": "D-1165, one session, both installed fresh, TIMER5 body 3.05..3.34 us, traffic notes 0: program 18 1897.9 -> 1891.2 us; program 6 1767.0 -> 1764.2 us; program 3 2035.7 -> 2029.2 us; 18 Cassia 1 fx 2106.4 -> 2108.1 us; 05 Expander S fx 2322.0 -> 2305.4 us; 03 Hera 6 fx 2066.1 -> 2052.2 us; 06 Algo Four fx 2160.2 -> 2141.4 us; differences -18.8..1.7 us (spread about 50: none if inside)",
+    "guide_now": "== GUIDE_NOW rate\nAlgo Four, after HELLO, idle: {} in 2 s\n808 Kit, after HELLO, idle: {} in 2 s\n909 Kit, after HELLO, idle: {} in 2 s\n808 Kit: SEL (arms DRUMS): {'0x54': 1, '0x58': 1} in 2 s\n808 Kit: ENV (environment): {'0x58': 1} in 2 s\n808 Kit: SEQ (drum grid): {'0x58': 1} in 2 s\n",
+    "rig_scenarios": [
+      "55 of 58 checks passed, 3 skipped (1.2 output: MONO, both sounds on both sides, each a bit quieter: the rig's USB audio is taken before OUTPUT's mix (audio.c): the emulator's I2S proves it, the owner hears it; 1.3 output: MONO L, both sounds on the left, the right silent: the rig's USB audio is take"
+    ],
+    "midi_learn": "15 of 15",
+    "cpu_survey": "every FX stage on: worst 81.8 % stopped, 84.5 % running (bar 85 %), dropped 0; as shipped 76.3 / 77.6 %; vs 1.22.0 same session (FX, stopped) [-0.0, 3.1] mean 1.65",
+    "master_eq_cost": {
+      "0-0-0": [
+        82.1,
+        83.6
+      ],
+      "6-0-0": [
+        85.3,
+        87.4
+      ],
+      "6-6-0": [
+        86.1,
+        88.4
+      ],
+      "6-6-6": [
+        88.6,
+        89.2
+      ]
+    },
+    "clock_in": {
+      "run1": {
+        "reference: clock running before the Start": [
+          0.0,
+          -0.06,
+          0.09
+        ],
+        "Start first, the first clock a tick later": [
+          0.01,
+          -0.06,
+          0.06
+        ],
+        "stall 800 ms, then on": [
+          -0.02,
+          -0.08,
+          0.13
+        ],
+        "stall 800 ms, then the missed ticks in a burst": [
+          0.01,
+          -0.07,
+          0.63
+        ],
+        "before the Start while running (10 ticks short of a bar line)": [
+          -0.03,
+          -0.05,
+          0.03
+        ],
+        "after the Start while running": [
+          0.01,
+          -0.05,
+          0.06
+        ],
+        "SPP 20 + Continue while stopped (30 ticks into the bar)": [
+          0.02,
+          -0.05,
+          0.05
+        ],
+        "SPP 8 + Continue while running (a loop point, 48 ticks into the bar)": [
+          0.03,
+          -0.05,
+          0.07
+        ]
+      },
+      "run2": {
+        "reference: clock running before the Start": [
+          0.0,
+          -0.05,
+          0.06
+        ],
+        "Start first, the first clock a tick later": [
+          0.03,
+          -0.06,
+          0.11
+        ],
+        "stall 800 ms, then on": [
+          0.03,
+          -0.07,
+          0.1
+        ],
+        "stall 800 ms, then the missed ticks in a burst": [
+          -0.02,
+          -0.37,
+          0.09
+        ],
+        "before the Start while running (10 ticks short of a bar line)": [
+          0.01,
+          -0.03,
+          0.04
+        ],
+        "after the Start while running": [
+          0.03,
+          -0.01,
+          0.09
+        ],
+        "SPP 20 + Continue while stopped (30 ticks into the bar)": [
+          0.05,
+          -0.03,
+          0.07
+        ],
+        "SPP 8 + Continue while running (a loop point, 48 ticks into the bar)": [
+          0.02,
+          -0.06,
+          0.1
+        ]
+      }
+    },
+    "fpucheck": [
+      "all equal",
+      "all equal"
+    ],
+    "cores": [
+      "2 CORES; barred no; trace 0xc1000002; split on",
+      "self-test passed 13934, failed 0; refused jobs 0; jobs done 512786; core 1 stack 2484 B used; longest wait 2343 us since the last read"
+    ],
+    "format_65_loads": "== eq-shelves\n  awake parts per job: core 0 4.00, core 1 4.00 (in all, core 0 1392, core 1 1392)\n== eq-filters\n  awake parts per job: core 0 6.00, core 1 2.00 (in all, core 0 2076, core 1 692)\n== elvira-seq-slim\n  awake parts per job: core 0 47.00, core 1 36.00 (in all, core 0 16309, core 1 12492)\n"
+  },
+  "known_issue": "Reel's loop runs one 16th ahead (#870), unchanged",
+  "owner_checks": {
+    "status": "pending",
+    "steps": "in the record pull request's body (D-139, D-1166)"
+  }
+}

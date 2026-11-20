@@ -60,6 +60,7 @@ static void result(const char *name)
     check("MIDI during a draw writes no LCD pixels or in-flight line buffer", !inside_xfers && !lcd_line_clobbers);
     lcd_test_transfer = 0;
 }
+#include "midi_learn_test.h"
 int main(void)
 {
     check("factory patch loads", load_at(0) == 0);
@@ -175,5 +176,6 @@ int main(void)
             }
         check("Cassia has a MIDI-editable voices row", found);
     }
+    midi_learn_tests();                                 /* (#1067, on Cassia 1: midi_learn_test.h) */
     return failed ? 1 : 0;
 }

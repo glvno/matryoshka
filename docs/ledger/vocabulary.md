@@ -342,6 +342,10 @@ One of the Matrix module's 16 amounts, from −1 to 1, that sets how much of one
 
 How far one note of a **Steps track** plays off its step: up to 23 twenty-fourths of a step early or late. An early note on a pass's first step plays at the end of the pass before when the pattern plays again ([D-832](steps.md#D-832)).
 
+### MIDI learn
+
+Teaching a card row to follow one control of a MIDI controller: a control change (CC) number or pitch bend. The editor or the FM-1 waits for the control that moves, and from then on that control moves the row. The patch keeps what it learned, so the FM-1 plays it on its own too.
+
 ### MIDI profile
 
 A per-firmware table that turns a connected FM-1's MIDI messages into panel inputs, so the web app can follow any firmware.

@@ -29,7 +29,7 @@ gcc -O1 -w -o "$T/new_test" firmware/test/host_test.c -lm -lpthread
 gcc -O1 -w -o "$T/proto_test" firmware/test/proto_test.c -lm
 KNOWN=tools/old_format_known.txt
 known() { grep -v '^#' "$KNOWN" | grep -qx "$BASE $1"; }
-fail=0 n=0 nk=0 pairs=""
+fail=0 n=0 nk=0 nm=0 pairs=""
 for p in "$T"/base/build/golden/*.m1p; do
   k="${p%.m1p}"; b="$(basename "$k")"
   HOST_TEST_DUMP="$T/out/$b.base" "$T/base_test" "$p" "$k.ev" "$k.f32" > /dev/null || true
@@ -40,6 +40,12 @@ for p in "$T"/base/build/golden/*.m1p; do
     if known "$b"; then echo "DIFFERS (known) $b"; nk=$((nk + 1)); else echo "DIFFERS $b"; fail=1; fi
   elif known "$b"; then echo "listed in $KNOWN but renders the same again: $b"
   fi
+  # (#1067) the same binary with a MIDI mapping section after it, as MIDI learn on the FM-1 writes into a copy of any
+  # format: BASE's engine ignores the bytes and plays it as without them
+  if "$T/proto_test" --add-map "$p" "$T/out/$b.m1p"; then
+    HOST_TEST_DUMP="$T/out/$b.mapped" "$T/base_test" "$T/out/$b.m1p" "$k.ev" "$k.f32" > /dev/null || true
+    if [ -s "$T/out/$b.base" ] && cmp -s "$T/out/$b.base" "$T/out/$b.mapped"; then nm=$((nm + 1)); else echo "DIFFERS $b with a MIDI mapping section after it ($BASE)"; fail=1; fi
+  fi
   new="build/golden/$b.m1p"; [ -f "$new" ] || new=-
   pairs="$pairs $p $new"
 done
@@ -47,6 +53,7 @@ if [ $fail = 0 ]; then
   if [ $nk = 0 ]; then echo "all $n older binaries ($BASE) render bit-identically with today's engine"
   else echo "all $n older binaries ($BASE) render bit-identically with today's engine, except $nk known, intended differences ($KNOWN)"; fi
 fi
+echo "$nm older binaries with a MIDI mapping section after them render with $BASE's engine as without it"
 # shellcheck disable=SC2086
 "$T/proto_test" --old $pairs || fail=1
 exit $fail

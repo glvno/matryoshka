@@ -27,7 +27,7 @@ static uint32_t bank_slots = 60u;          /* proto.c / slotstore.c: the slots t
 static uint64_t bank_mask = 0x3FFFu;     /* slotstore.c: the occupied slots (the preview: the factory patches) */
 static uint8_t pv_bin[4096];               /* the previewed patch (proto.c's m1_cur) */
 static uint32_t pv_len;
-#define FELUCCA_VERSION "v1.22.0-DEV"
+#define FELUCCA_VERSION "v1.23.0-DEV"
 #define FM1_TICKS_PER_US 24u
 
 /* lcd.c's two line buffers (#377) and their rule: on the device the DMA reads the one just sent until the next transfer
@@ -319,6 +319,16 @@ static void defaults_now(void) { host_defaults++; }
 static uint32_t host_tempo_told;            /* proto.c's TEMPO_NOW sent (panel_test.c) */
 static void m1_tempo_now(void) { host_tempo_told++; }
 #endif
+/* MIDI learn (midi_learn.c, #1067): proto.c's edits of the mappings, on the previewed binary; a move's PARAM_NOW is the
+ * harness's (panel_test.c, fm1_sim.c, the wasm build, ui_preview.c) */
+static void m1_param_now(uint32_t mod, uint32_t par, int32_t v);
+static uint32_t host_map_told;              /* proto.c's MAP_NOW sent (panel_test.c) */
+static void m1_map_now(void) { host_map_told++; }
+static int m1_patch_map(uint32_t src, uint32_t mod, uint32_t par, uint32_t lo, uint32_t hi, int on)
+{
+    return eng_map_edit(pv_bin, &pv_len, 3840u, src, mod, par, lo, hi, on);
+}
+#include "../src/midi_learn.c"
 #include "../src/menu.c"
 /* what seq_ui.c reaches in proto.c and the HAL, for the preview */
 static struct { uint32_t buttons; } fm1_in;

@@ -60,6 +60,7 @@ import { CATEGORIES, MUTATE_AMOUNTS, PROFILES, type Category } from './mutate';
 import { filterRound, OVERSAMPLE, PASS, probePhrase, PROBE_HOLD, PROBE_RENDER } from './mutate-render';
 import { buildFlashTab } from './flasher';
 import { attachKeyboard, attachMidi, editorCc, followOctave, isFm1In, isOpenSelect, isTextEntry } from './input';
+import { bindingOfRow, sourceName } from './midi-learn';
 import { playsNothing, watchIgnoredFm1s, type IgnoredFm1s } from './ignored-fm1s';
 import { Piano } from './piano';
 import { sliderJack } from './slider-jack';
@@ -441,6 +442,12 @@ device.onEvent = (e) => {
     }
     fromDevice = true;
     try { fm1Event(e, 'device'); } finally { fromDevice = false; }
+    return;
+  }
+  if (e.kind === 'maps') {   // MIDI learn on the FM-1 (#1067, MAP_NOW): its mappings come into the patch, as its knobs' values do
+    if (!live() || linkBusy()) return;
+    fromDevice = true;
+    try { editor.takeDeviceMaps(e.maps); } finally { fromDevice = false; }
     return;
   }
   if (e.kind === 'presetStored') {   // a preset stored on the FM-1 (#195): under Live it comes into the editor's library
@@ -997,6 +1004,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     if (fromDevice) uploadGate.forget();   // (from the FM-1: P-locks set there, #524; it has them, its bytes are not known)
     else if (live()) structureChanged();
     if (!fromEmu) queueEmu();
+    showLearned();
   },
   onAtt(id, index, value) {
     if (fromDevice) uploadGate.forget();   // (the FM-1 changed its patch itself, or the copy of its panel did: its bytes are not known)
@@ -1143,6 +1151,15 @@ const editor = new Editor($('canvas'), firstPatch, {
     capabilityInspector?.sync();
     queueSave(p);
     syncSides();
+    showLearned();
+  },
+  onLearn(row) {   // (MIDI learn, #1067: a row waits for its source, or stopped waiting)
+    pinStatus(row ? { tag: 'MIDI learn', text: `Move a knob, a fader, a pad’s axis or the pitch bend wheel of a MIDI controller: it will move ${row}. Esc cancels.`, more: { label: 'Cancel', run: () => void editor.learn.cancel() } } : null, 'learn');
+  },
+  onMaps() {   // (MIDI learn, #1067: the mappings changed in the editor: the FM-1's copy follows, MAP; one from the FM-1 is not sent back)
+    if (!live() || fromDevice) return;
+    if (indexedLiveReady() && device.hasMaps) { device.maps(editor.patch); liveEdited(); }
+    else dirty = true;
   },
   onError(msg) {
     status.textContent = msg;
@@ -1158,6 +1175,7 @@ const editor = new Editor($('canvas'), firstPatch, {
   },
   onLoad(p) {
     quick.close();   // (its cards and chain belong to the patch it was opened on)
+    editor.learn.cancel();   // (a row of the patch left waits no more)
     loadsSeen++;
     device.invalidateOrigins();
     emuFresh = true;
@@ -1913,6 +1931,9 @@ const commands = (): Command[] => {
     kind: 'assembly', tags: ['assembly', ...(defIsEngine(d) ? ['engine'] : []), shelf], label: d.name, detail: d.blurb ? `${d.blurb} · ${shelf}` : shelf, keywords: `insert ${d.blurb ?? ''} ${summary(d)}`,
     run: () => editor.insert(d),
   });
+  // MIDI learn (#1067): the row last pressed, or the one selected while choosing or arranging a card
+  const learnRow = editor.learnTarget();
+  const learned = learnRow && bindingOfRow(editor.patch, learnRow);
   return [
     { kind: 'command', label: 'Save patch', keywords: 'keep store your patches', run: saveCurrent },
     { kind: 'command', label: 'Save patch as .json', keywords: 'export download file', run: savePatch },
@@ -1989,6 +2010,12 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Reset the integrated loudness', detail: 'the Output card', keywords: 'lufs level meter loudness rule target', run: () => loudness.reset() },
     { kind: 'command', label: 'Output scope', detail: outScope.open ? 'shown: fold it' : 'open it', keywords: 'oscilloscope waveform spectrum fft spectrogram gram analyser analyzer meter output hear candidate sound design', run: inPatch(() => { snapSide.setFolded(false); outScope.toggle(); }) },
     { kind: 'command', label: 'FM-1 & MIDI settings', keywords: 'connect send store sync hardware keyboard release', run: () => $<HTMLDialogElement>('device-bar').showModal() },
+    { kind: 'command', label: 'MIDI learn…', detail: learnRow ? editor.rowName(learnRow) : 'click the row first', keywords: 'controller cc pitch bend knob fader pad axis assign map bind', run: inPatch(() => {
+      if (learnRow) editor.startLearn(learnRow);
+      else status.textContent = 'MIDI learn: click the row it should move, then MIDI learn… again (or use the row’s ⋮ menu)';
+    }) },
+    ...(learned ? [{ kind: 'command' as const, label: 'Unlearn MIDI', detail: `${sourceName(learned.src)} → ${editor.rowName(learned)}`, keywords: 'midi learn forget remove controller cc pitch bend', run: inPatch(() => editor.unlearn(learned)) }] : []),
+    ...(editor.learn.waitingRow ? [{ kind: 'command' as const, label: 'Cancel MIDI learn', detail: 'Esc', keywords: 'stop', run: () => void editor.learn.cancel() }] : []),
     { kind: 'command', label: 'Install firmware', keywords: 'flash update hardware matryoshka return stock official v15', run: () => openInstall() },
     { kind: 'command', label: 'About Matryoshka', keywords: 'credits support ko-fi donate ai usage transparency', run: () => void about.open() },
     { kind: 'command', label: 'Keyboard shortcuts', keywords: 'help', detail: '?', run: () => help.showModal() },
@@ -2243,7 +2270,7 @@ window.addEventListener('keydown', (e) => {
   }
   // in pick / arrange mode Esc clears the row selection first, a second Esc ends the mode (#186)
   // (then it stops listening to a signal on its own, #939)
-  else if (k === 'Escape') (editor.cancelArm(), editor.clearRows() || editor.endPick() || editor.stopListening(), (diffPanel.hidden = true), (done = true));
+  else if (k === 'Escape') (editor.cancelArm(), editor.learn.cancel() || editor.clearRows() || editor.endPick() || editor.stopListening(), (diffPanel.hidden = true), (done = true));
   else if (k === 'Delete' || k === 'Backspace') done = editor.deleteRows() || editor.removeSelected();
   else if (mod && k.toLowerCase() === 'a') (editor.selectAllRows() || editor.selectAll(), (done = true));
   else if ((k === ' ' || k === 'Enter') && !mod && !e.altKey && editor.applyRows()) done = true; // pick mode: show / hide the selected rows
@@ -3307,6 +3334,45 @@ const noteKeys = attachKeyboard({ send: (m) => (audition.played(m), sink.send(m,
   if (stampOctave(editor.patch)) queueSave(editor.patch);
 });
 noteKeys.set(editor.patch.octave ?? 0);
+/** the patch's learned MIDI sources in FM-1 & MIDI (#1067): each with its row, the job it gets back once removed, and Remove */
+function showLearned(): void {
+  const items = editor.bindings();
+  const none = document.createElement('span');
+  none.className = 'muted';
+  none.textContent = 'Nothing learned yet.';
+  $('midi-learn-list').replaceChildren(...(items.length ? items.map((b) => {
+    const line = document.createElement('div');
+    line.className = 'midi-learn-item';
+    const text = document.createElement('span');
+    text.textContent = `${b.source} → ${b.row}${b.fm1 ? '' : ' (editor only: no FM-1 page shows this row)'}`;
+    if (b.job) text.title = `While it is learned, ${b.source} no longer moves ${b.job}`;
+    // (where the source's lowest and highest values land in the row's range, in %; the FM-1 plays the same ends)
+    const end = (v: number, label: string, set: (x: number) => void): HTMLInputElement => {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.min = '0';
+      input.max = '100';
+      input.step = '1';
+      input.className = 'midi-learn-end';
+      input.value = String(Math.round(v * 100));
+      input.title = `${label}: where ${b.source}’s ${label === 'Low' ? 'lowest' : 'highest'} value puts ${b.row}, in % of its range`;
+      input.setAttribute('aria-label', `${label} end of ${b.source}`);
+      input.onchange = () => set(Math.min(100, Math.max(0, Number(input.value) || 0)) / 100);
+      return input;
+    };
+    const lo = end(b.lo, 'Low', (x) => editor.setLearnRange(b.at, x, b.hi));
+    const hi = end(b.hi, 'High', (x) => editor.setLearnRange(b.at, b.lo, x));
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'sm';
+    remove.textContent = 'Remove';
+    remove.title = `${b.source} stops moving ${b.row}${b.job ? ` and moves ${b.job} again` : ''}`;
+    remove.onclick = () => editor.removeBinding(b.src);
+    line.append(text, lo, hi, remove);
+    return line;
+  }) : [none]));
+}
+showLearned();
 // Web MIDI: asked for at start (below) unless the user switched it off with the MIDI button, which also switches it back on.
 const midiBtn = $('midi-btn');
 let midiSwitch: ((on: boolean) => void) | null = null;
@@ -3341,7 +3407,13 @@ const setMidi = async (on: boolean): Promise<void> => {
   midiAsking = true;
   watchIgnored();
   midiSwitch = await attachMidi(
-    { send: (m) => (audition.played(m), sink.send(m)) },   // (its notes go into the takes too, #945)
+    // (its notes go into the takes too, #945; a controller's CC or pitch bend may go to MIDI learn, #1067: never an FM-1's,
+    // whose knobs keep their meaning)
+    { send: (m, from) => {
+      if (from && !isFm1In(from, device.input?.id) && editor.learn.take(m)) return;
+      audition.played(m);
+      sink.send(m);
+    } },
     (s) => {
       if (!host.running) status.textContent = s;
     },

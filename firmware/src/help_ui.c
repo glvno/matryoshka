@@ -85,6 +85,7 @@ static int hc_menu_system(void) { return menu_tab == MT_SYSTEM && !menu_page2; }
 static int hc_harm(void) { return (sr_on ? eng_steps_harm((uint32_t)seq_module()) : eng_keys_harm()) >= 0; }   /* (the keys reach a Harmonizer: its chord buttons, #598) */
 static int hc_fx_bank(void) { return eng_fx_count() > 0u; }
 static int hc_pattern_store(void) { return pt_on; }   /* (the pattern store is claimed: the SEQ page's pattern rows, #901) */
+static int hc_learning(void) { return learn_live() == 1; }   /* (MIDI learn waits for a knob to pick its row, midi_learn.c, #1067) */
 static int hc_oct_banks(void) { return drum_bank_oct(); }   /* (OCT picks the drum bank, not the octave: D-520) */
 static int hc_drum_banks(void) { return page == PAGE_SEQ && seq_map() >= 0 && seq_rl_n > ENG_DRUM_ROWS; }   /* (a drum grid in banks: SEL + OCT) */
 
@@ -477,8 +478,9 @@ static void help_knobs_turn(int32_t select, int32_t algo)
  *   6 the menu's tab               7..8 the buttons held (matrix ids, LE)
  *   9..10 the rows' conditions that hold (LE; bit c: controls.h HC_FN[c], c = 1.. as controls.ts CONDITIONS from 1)
  *   11 the sheet's first row shown 12 the keys' octave (i8)       13 step record's cursor (a step of the pattern)
+ *   14 the conditions' bits 16..23 (#1067: CONDITIONS from 16, `learning`; an editor before it reads the first 14 bytes)
  * The conditions are asked only with `conds` (they read the preset store): GUIDE_NOW asks them when anything else changed */
-#define GUIDE_BYTES 14u
+#define GUIDE_BYTES 15u
 static void guide_state(uint8_t *p, int conds)
 {
     uint32_t c, hc = 0;
@@ -492,7 +494,8 @@ static void guide_state(uint8_t *p, int conds)
     p[3] = (uint8_t)pg_cur_dev;
     p[4] = (uint8_t)pg_cur_page;
     p[5] = seq_trk;
-    p[6] = (uint8_t)(menu_tab | (menu_page2 ? 128u : 0u));   /* (bit 7: the tab's second page, SYSTEM's #702, PANEL's #1011) */
+    p[6] = (uint8_t)(menu_tab | (menu_page2 ? 128u : 0u) | (menu_page2 > 1u ? 64u : 0u));   /* (bit 7: a later page, SYSTEM's #702,
+                                                     * PANEL's #1011, MIDI's #596; bit 6 with it: the third, MIDI 3/3, #1067) */
     p[7] = (uint8_t)panel_held;
     p[8] = (uint8_t)((panel_held >> 8) & 0x3Fu);
     p[9] = (uint8_t)hc;
@@ -500,4 +503,17 @@ static void guide_state(uint8_t *p, int conds)
     p[11] = help_top;
     p[12] = (uint8_t)(int8_t)octave;
     p[13] = sr_k;
+    p[14] = (uint8_t)(hc >> 16);
+}
+
+/* does state g, read without its conditions (guide_state's conds 0), differ from `last`, a whole GUIDE_NOW, in anything
+ * but the conditions (bytes 9, 10 and 14)? main.c guide_poll asks the conditions only when it does: a byte left out of
+ * this compare that a pass without them reads as 0 would send a GUIDE_NOW on every pass while a condition there holds */
+static int guide_changed(const uint8_t *g, const uint8_t *last)
+{
+    uint32_t i;
+    for (i = 0; i < GUIDE_BYTES; i++)
+        if (i != 9u && i != 10u && i != 14u && g[i] != last[i])
+            return 1;
+    return 0;
 }
