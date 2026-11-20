@@ -181,8 +181,9 @@ export function stepOf(engine: string, older: LineageEntry, newer: LineageEntry,
   return { ops, dropped, how: hand ? 'hand' : 'auto', why: hand && 'why' in hand ? hand.why : undefined };
 }
 
-/** a step after another: the earlier rows each of the last structure's rows reads (null: a table over a row that is not
- * kept as it was, which no map needs yet) */
+/** a step after another: the earlier rows each of the last structure's rows reads (null: a table or a line over a row
+ * that is not kept as it was, which no map needs yet). A line over a row that took its Init takes the newer Init (a row a
+ * structure added has no earlier value to move: Verona Drum 1's drum 2 FM FREQ, #866) */
 function compose(first: StepOp[], then: StepOp[]): StepOp[] | null {
   const out: StepOp[] = [];
   for (const op of then) {
@@ -190,6 +191,10 @@ function compose(first: StepOp[], then: StepOp[]): StepOp[] | null {
     else if (op.k === 'copy') out.push(first[op.i]);
     else if (op.k === 'line') {
       const x = first[op.x], key = op.key !== undefined ? first[op.key] : undefined;
+      if (x.k === 'init' && op.key === undefined) {
+        out.push(x);
+        continue;
+      }
       if (x.k !== 'copy' || (key && key.k !== 'copy')) return null;
       out.push({ ...op, x: x.i, ...(key && key.k === 'copy' ? { key: key.i } : {}) });
     } else {

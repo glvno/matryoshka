@@ -64,19 +64,20 @@ describe("format 64's shorter layout (D-1025)", () => {
     expect(w.length).toBe(layout(p, undefined, SLIM).size);
   });
 
-  it('keeps every factory patch in its older format unless none holds it, and counts the smallest form', () => {
+  it('keeps every factory patch in its older format unless no older form fits, and counts the smallest form', () => {
     const slim: string[] = [];
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const l = layout(make());
-      if (l.v === SLIM) {
+      if (l.base.bytes > DEVICE.bytes && l.counted > DEVICE.bytes) {
+        expect(l.v, name).toBe(SLIM);
         slim.push(name);
-        expect(Math.min(l.base.bytes, l.counted), name).toBeGreaterThan(DEVICE.bytes);
-      }
+      } else expect(l.v, name).toBeLessThan(SLIM);
       expect(l.need, name).toBe(Math.min(l.base.bytes, l.counted, l.slim));
       expect(l.slim, name).toBeLessThan(l.base.bytes);
     }
-    // (Scrounge's ten grooves fit only in the shorter layout, so it needs firmware 1.22: D-1056)
-    expect(slim).toEqual(['Scrounge']);
+    // (Scrounge's ten grooves, D-1056, and Verona Drum 1 with FM FREQ over the knob's range, #866: firmware 1.22 or later.
+    // Another one is a choice to make on purpose)
+    expect(slim).toEqual(['Scrounge', 'Verona Drum 1']);
     expect(DEVICE.bytes - layout(FM1_PRESETS['909 Kit']()).need).toBeGreaterThan(300);
   });
 

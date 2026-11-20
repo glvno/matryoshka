@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Scrounge has four more grooves, with the Scrooge's per-step CHOP and TIME.** Patterns 7 to 10 roll the hits two to five times inside a step (CHOP), push steps a little late for a laid-back snare, a triplet shuffle or a flam (TIME), and give each track its own length, all back on step 1 after 32 steps (LEN GLB). Song 2 plays them in turn. Patterns 1 to 6, song 1 and every Scrounge sound play exactly as before. Scrounge with its new grooves needs firmware 1.22 or later. An FM-1 on older firmware keeps the last factory sounds it can play: the editor still offers it those.
+- **Verona Drum 1's FM FREQ covers the DRM1 MKIV's whole range.** On DRUM 1 it runs from 1.25 Hz to 550 Hz, and on DRUM 2 from 1.25 Hz to 785 Hz. At the low end the FM is a slow wobble, as on the original. Every factory sound, preset and demo pattern plays exactly as before. Your saved Verona Drum 1 sounds keep their FM FREQ. Needs firmware 1.22 or later.
 
 ## 1.23.0 — 2026-11-20
 

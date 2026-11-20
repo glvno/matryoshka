@@ -2,7 +2,7 @@
 // Verona Drum 1 and Verona Drum 1 XL (#613, after the Vermona DRM1 MKIV; docs/ledger/patches-and-presets.md D-862..D-864): the
 // cards carry the original's knobs per channel, every row sounds its channel, and a closed hi-hat cuts an open one.
 import { describe, expect, it } from 'vitest';
-import { DRUM1_HZ, DRUM2_HZ, KICK_HZ } from '../scripts/verona-voices';
+import { DRUM1_FM, DRUM1_HZ, DRUM2_FM, DRUM2_HZ, KICK_HZ } from '../scripts/verona-voices';
 import { Engine } from './engine';
 import { instIsEngine } from './engines';
 import type { Patch } from './patch';
@@ -179,6 +179,40 @@ describe('Verona Drum 1 (#613)', () => {
     }
   });
 
+  /** the octaves above middle C a DRUM's modulator plays at FM FREQ `v`: its tune and its two Attenuverters (fmTravel),
+   * in the browser engine's arithmetic (float32 signals) and engine.c's (Q16, a product floored) */
+  const fmPitch = (p: Patch, head: string, v: number): { browser: number; fm1: number } => {
+    const mod = (id: number) => p.modules.find((m) => m.id === id)!;
+    const r = rowAt(p, head, 'fm freq');
+    const s1 = mod(p.cables.find((c) => c.from.module === r.module)!.to.module);
+    const s2 = mod(p.cables.find((c) => c.from.module === s1.id)!.to.module);
+    const osc = mod(p.cables.find((c) => c.from.module === s2.id)!.to.module);
+    const f32 = Math.fround, q = (x: number): number => Math.round(x * 65536);
+    const browser = f32(f32(f32(v) * s1.params.gain + s1.params.offset) * s2.params.gain + s2.params.offset) + osc.params.coarse / 12;
+    const x1 = Math.floor((q(v) * q(s1.params.gain)) / 65536) + q(s1.params.offset);
+    const x2 = Math.floor((x1 * q(s2.params.gain)) / 65536) + q(s2.params.offset);
+    return { browser, fm1: (x2 + q(osc.params.coarse / 12)) / 65536 };
+  };
+
+  it('FM FREQ spans the original knob\'s range, and Metal Works\' modulator plays its 1.22 pitch exactly in both engines (#866)', () => {
+    const p = fm1();
+    for (const [head, { hz: [lo, hi] }] of [['drum 1', DRUM1_FM], ['drum 2', DRUM2_FM]] as const) {
+      const hz = (v: number): number => 261.6255653 * 2 ** fmPitch(p, head, v).browser;
+      expect(rowAt(p, head, 'fm freq').param, head).toBe('value');
+      expect(Math.abs(Math.log2(hz(0) / lo)), head).toBeLessThan(0.01);
+      expect(Math.log2(hz(1) / hi), head).toBeGreaterThanOrEqual(0);
+      // (the line goes through a card step exactly, so its top lands past the original's, by under a tenth of an octave)
+      expect(Math.log2(hz(1) / hi), head).toBeLessThan(0.1);
+    }
+    // Metal Works set drum 1's modulator 9 semitones over middle C (its coarse tune before #866): the same bits now
+    const a = p.assemblies!.find((x) => x.name === 'Verona Drum 1')!;
+    const metal = factoryPresets().find((x) => x.structure === structureOf(p, a) && x.name === 'Metal Works')!;
+    applyPreset(p, a, metal);
+    const r = rowAt(p, 'drum 1', 'fm freq');
+    const v = p.modules.find((m) => m.id === r.module)!.params.value;
+    expect(fmPitch(p, 'drum 1', v)).toEqual({ browser: 0.75, fm1: 0.75 });
+  });
+
   it('the kick\'s ATTACK shapes its spike: the click\'s front stays, a tail after it widens it (#866)', () => {
     const render = (attack: number): Float32Array => {
       const p = fm1();
@@ -230,15 +264,16 @@ describe('Verona Drum 1 (#613)', () => {
     old[pitch2] = 7;   // a fifth over PITCH's 19 ... an octave under it: -1
     const values = migrateValues(migration, old, init.values);
     const moved = migration.rows.filter((r) => typeof r === 'number' && r >= 0) as number[];
-    // (every row but the two pitches, which go through a line, the five rows the knobs' travel moved to Init (#866): the
-    // kick's PITCH, BEND and ATTACK, DRUM 1's PITCH and FM INT, and the clap's NOISE, the claps' only level now (#866))
-    expect(new Set(moved).size).toBe(old.length - 2 - 6);
+    // (every row but the two pitches and DRUM 1's FM FREQ, which go through a line (FM FREQ's since #866), the five rows the
+    // knobs' travel moved to Init (#866): the kick's PITCH, BEND and ATTACK, DRUM 1's PITCH and FM INT, and the clap's
+    // NOISE, the claps' only level now (#866))
+    expect(new Set(moved).size).toBe(old.length - 3 - 6);
     expect(migration.rows.filter((r) => r === -1)).toHaveLength(21 + 6);   // DRUM 2, HI HAT 2, two TRIGs, NOISE COLOR; those six
     migration.rows.forEach((r, i) => { if (typeof r === 'number' && r >= 0) expect(values[i]).toBe(old[r]); });
     const now = readLineage().engines['Verona Drum 1'].find((x) => x.structure === init.structure)!;
     const at = (id: string): number => now.rows.findIndex((r) => r[0] === id);
-    expect(values[at('const#30.value')]).toBeCloseTo(-1, 3);   // multi / pitch 2 (Q16)
-    expect(values[at('vca#41.gain')]).toBe(old[before.rows.findIndex((r) => r[0] === 'env#31.l1')]);   // snare / noise
+    expect(values[at('const#33.value')]).toBeCloseTo(-1, 3);   // multi / pitch 2 (Q16)
+    expect(values[at('vca#44.gain')]).toBe(old[before.rows.findIndex((r) => r[0] === 'env#31.l1')]);   // snare / noise
   });
 
   it('a closed hit cuts the open hi-hat ringing, and dies in its fixed short time', () => {
