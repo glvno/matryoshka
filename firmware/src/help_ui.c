@@ -505,3 +505,15 @@ static void guide_state(uint8_t *p, int conds)
     p[13] = sr_k;
     p[14] = (uint8_t)(hc >> 16);
 }
+
+/* does state g, read without its conditions (guide_state's conds 0), differ from `last`, a whole GUIDE_NOW, in anything
+ * but the conditions (bytes 9, 10 and 14)? main.c guide_poll asks the conditions only when it does: a byte left out of
+ * this compare that a pass without them reads as 0 would send a GUIDE_NOW on every pass while a condition there holds */
+static int guide_changed(const uint8_t *g, const uint8_t *last)
+{
+    uint32_t i;
+    for (i = 0; i < GUIDE_BYTES; i++)
+        if (i != 9u && i != 10u && i != 14u && g[i] != last[i])
+            return 1;
+    return 0;
+}

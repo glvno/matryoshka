@@ -28,6 +28,7 @@ Source: <https://github.com/keremimo/melodee> (Kerem Kilic, Ellic Studio, a Felu
 
 - `firmware/hal/fm1_core1_stop.h`: the safe hold of the second core, adapted there from Felucca 1.6.1. Its notice lists what Matryoshka changed. It keeps Melodee's copyright lines, Kerem Kilic and Leo Kuroshita.
 - `firmware/hal/fm1_power.h`: the stock V15 supply setup at power-on, and `firmware/test/power_test.c`, its host test (Melodee's `tests/power_test.c`). Built since issue #735. The notice at the top of each file lists what Matryoshka changed. They keep Melodee's copyright line, Kerem Kilic.
+- `firmware/src/midi_uart.c`: the TRS jack's ring is read by content, not by the DMA's count, as Melodee's `firmware/src/midi_uart.c` reads it (a slot not yet read holds 0xFD). The file keeps Felucca's parser and Leo Kuroshita's notice, and adds Kerem Kilic's.
 
 - `firmware/src/usb.c`: the playback endpoint setup and receive-buffer release follow `firmware/src/usb_audio.c` at full commit `165d177a425944f3d30b0b669255a6ed0050c3a5`. The feedback endpoint layout follows `usb_audio_desc.h`. Matryoshka keeps its capture endpoint and uses its own smaller playback ring and interrupt hand-off. The copied hardware sequence keeps Kerem Kilic’s notice.
 

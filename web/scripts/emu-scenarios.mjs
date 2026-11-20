@@ -2051,7 +2051,7 @@ async function main() {
       const took = (await emu.ms()) - t0;
       await emu.snap('deaf-steps');
       await emu.press(B.seq, 120);
-      const back = await emu.until(3000, '= OCT =');
+      const back = await emu.until(3000, 'ROWS 1-8');  // (the 808 Kit's device page: its drum bank where the octave was, D-520)
       await check('deaf: 30 steps entered with no app reading the FM-1, the panel keeps up', back !== null && back <= 400,
         `SEQ closed the page ${back === null ? 'not within 3000' : `after ${back}`} emulated ms (a reading host: about 140; the 30 steps took ${took} ms)`);
       await emu.deaf(false);
@@ -2067,7 +2067,7 @@ async function main() {
       await emu.press(WHITE[0], 40);                // (the step back)
       await emu.wait(200);
       await emu.press(B.seq, 120);
-      await emu.until(3000, '= OCT =');
+      await emu.until(3000, 'ROWS 1-8');
       const n1 = (await T()).loads;
       await open('Init');
       const s = await sentAfter(n1);

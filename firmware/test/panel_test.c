@@ -808,6 +808,18 @@ static void drum_bank_suite(void)
 
     drum_open("808 KIT");
     check("808 Kit: 12 rows, BD .. CB on black keys 1..8", eng_keys_rows(rm, rr) == 12u && blacks_send(K808[0]) && foot_reads(MSG_ROWS "1-8"));
+    {                                                       /* (1.23 qualification: a condition past bit 15 holds here, OCT picks
+                                                             * the bank; main.c guide_poll compared GUIDE_NOW byte 14, which a
+                                                             * pass without the conditions reads as 0, so it sent one on every
+                                                             * pass and the link to the editor filled) */
+        uint8_t told[GUIDE_BYTES], now[GUIDE_BYTES];
+        guide_state(told, 1);
+        guide_state(now, 0);
+        check("  GUIDE_NOW: OCT picks the bank (condition 16, byte 14), and a pass with nothing new sees no change",
+              (told[14] >> (HC_OCT_BANKS - 16) & 1u) && !guide_changed(now, told));
+        now[12] ^= 1u;
+        check("  a change outside the conditions (the octave byte) is still seen", guide_changed(now, told));
+    }
     tap(BTN_OCT_UP);
     check("  OCT+: MT/MC HT/HC CY AC on black keys 1..4, the rest silent", drum_bank == 1u && blacks_send(K808[1])
           && !strcmp(msg_text, MSG_ROWS "9-16: MT/MC HT/HC..") && foot_reads(MSG_ROWS "9-16"));
