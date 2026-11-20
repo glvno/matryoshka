@@ -1491,6 +1491,31 @@ async function main() {
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
     },
+    async drumBanks() {   // D-520 (banks, the owner 2026-11-19): the 909 Kit's 17 rows from the black keys, 8 at a time
+      await check('banks: the 909 Kit opens, synced', await openSynced('909 Kit'));
+      await check('banks: the footer reads ROWS 1-8 (its drum rows in banks, not the octave)', await emu.waitText('ROWS 1-8', 3000));
+      await emu.tap(B.octUp);
+      await check('banks: OCT+ shows ROWS 9-16, the nudge names its first rows', await emu.waitText('ROWS 9-16: MID TOM CRASH', 3000));
+      await emu.windows(8, 25);                     // (quiet first)
+      await emu.key(BLACK[1], true);                // black key 2 in bank 2: CRASH
+      const held = await emu.windows(16, 25);
+      await emu.key(BLACK[1], false);
+      await emu.windows(20, 25);
+      const top = Math.max(...held.map((x) => x[1]));
+      await loudCheck('banks: black key 2 plays CRASH from the FM-1\'s own keys, heard', top, top > LOUD, `peak ${top}; ${prof(held)}`);
+      // the SEQ page shows the same bank by name; SEL held + OCT- / OCT+ picks the bank there
+      await emu.tap(B.seq, 120);
+      await check('banks: SEQ opens the drum grid on ROWS 9-16 (CRASH on screen)', (await emu.waitText('ALGO track', 3000)) && (await emu.waitText('CRASH', 2000)));
+      await emu.key(B.scl, true);
+      await emu.elapse(100);
+      await emu.tap(B.octDown);
+      await emu.key(B.scl, false);
+      await emu.elapse(200);
+      await check('banks: SEL + OCT- on the grid: ROWS 1-8 (SNARE), the SEQ page stays', (await emu.waitText('SNARE', 2000)) && (await emu.waitText('ROWS 1-8', 2000))
+        && (await emu.text('ALGO track')));
+      await emu.tap(B.seq, 120);
+      await emu.waitOwnPage(3000);
+    },
     async playOnce() {   // #632 (D-820): SEQ held + PLAY counts in a bar with a click, plays the pattern once, stops by itself
       await check('play once: the 808 Kit opens, synced', await openSynced('808 Kit'));
       await emu.key(B.seq, true);

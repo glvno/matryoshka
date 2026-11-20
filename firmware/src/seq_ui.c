@@ -51,7 +51,7 @@ static void seq_cin_engine(uint32_t bars)
 }
 static uint8_t seq_thru_note[27];       /* a black key held on a drum track's page (#368): its note + 1 (0 none), sounding through */
 static uint8_t seq_thru_mod[27];        /* ... the track it sounds through, let go there */
-static uint8_t seq_row;                 /* the grid's selected row: a Drum map's row, or the roll's (0 the top: its highest pitch) */
+static uint8_t seq_row;                 /* the grid's selected row: a row of the drum bank shown, or the roll's (0 the top: its highest pitch) */
 static uint8_t seq_roll_lo = 57;        /* the roll (#241): the pitch of its lowest row (0..120) */
 static int8_t seq_roll_trk = -1;        /* the track its window was opened for (-1: open it again), and the patch then */
 static uint32_t seq_roll_gen;
@@ -158,23 +158,70 @@ static int seq_black(uint32_t n)
 
 static int seq_module(void) { return eng_steps_module(seq_trk); }
 
-/* a drum track (the #139 follow-up): the Drum map the selected track plays (-1: none, a melodic track: the roll), a row's
- * note and name (the binary's, else ROW n) */
+/* a drum track (the #139 follow-up): the Drum map the selected track plays first (-1: none, a melodic track: the roll).
+ * Its rows are one list (D-520, eng_steps_rows: every Drum map the track plays), shown in banks of 8: drum_bank picks the
+ * bank, for the grid and the keys alike (SEL + OCT here, OCT on a device page and the environment: drum_bank_step). It
+ * stays across patches, as the octave does; a list with fewer banks shows its last. seq_map loads the list; the row
+ * helpers load it again when the track or the patch changed since */
+static uint8_t seq_rl_map[ENG_DRUM_LIST], seq_rl_row[ENG_DRUM_LIST], seq_rl_n;
+static int seq_rl_mod = -2;                     /* the track the list is of (-1: none), in the patch of seq_rl_gen */
+static uint32_t seq_rl_gen;
+static uint8_t drum_bank;
+static uint32_t drum_bank_in(uint32_t n)
+{
+    uint32_t last = n ? (n - 1u) / ENG_DRUM_ROWS : 0u;
+    return drum_bank < last ? drum_bank : last;
+}
 static int seq_map(void)
 {
-    int mod = seq_module();
-    return mod >= 0 ? eng_steps_drummap((uint32_t)mod) : -1;
+    int mod = seq_module(), map = mod >= 0 ? eng_steps_drummap((uint32_t)mod) : -1;
+    seq_rl_n = (uint8_t)(map >= 0 ? eng_steps_rows((uint32_t)mod, seq_rl_map, seq_rl_row) : 0u);
+    seq_rl_mod = mod;
+    seq_rl_gen = eng_generation();
+    return map;
 }
-static uint32_t seq_row_note(int map, uint32_t r) { int n = eng_drummap_note((uint32_t)map, r); return n < 0 ? STEP_NOTE : (uint32_t)n; }
-static void seq_row_name(int map, uint32_t r, char *out)
+/* list row i's name (the binary's, else ROW i + 1) */
+static void drum_row_name(const uint8_t *map, const uint8_t *row, uint32_t i, char *out)
 {
     char num[8];
-    if (map >= 0 && m1_drum_name((uint32_t)map, r, out))
+    if (m1_drum_name(map[i], row[i], out))
         return;
-    fmt_int(num, (int32_t)r + 1);
+    fmt_int(num, (int32_t)i + 1);
     put(put(out, "ROW "), num)[0] = 0;
 }
-/* the note row r of the grid edits: a Drum map's row's, or the roll's pitch */
+/* the grid's rows: the shown bank's, from list row seq_rl_first; how many (1..8, 0 for a list with none) */
+static uint32_t seq_rl_first(void)
+{
+    if (seq_rl_mod != seq_module() || seq_rl_gen != eng_generation())
+        (void)seq_map();
+    return drum_bank_in(seq_rl_n) * ENG_DRUM_ROWS;
+}
+static uint32_t seq_bank_rows(void)
+{
+    uint32_t f = seq_rl_first();
+    return seq_rl_n - f < ENG_DRUM_ROWS ? seq_rl_n - f : ENG_DRUM_ROWS;
+}
+#define ROW_NONE 0xFFu                  /* the note of a grid row past the list's end: none (it matches no note) */
+/* grid row r's note and name (map: the track's first Drum map) */
+static uint32_t seq_row_note(int map, uint32_t r)
+{
+    uint32_t i = seq_rl_first() + r;
+    int n;
+    (void)map;
+    if (i >= seq_rl_n)
+        return ROW_NONE;
+    n = eng_drummap_note(seq_rl_map[i], seq_rl_row[i]);
+    return n < 0 ? STEP_NOTE : (uint32_t)n;
+}
+static void seq_row_name(int map, uint32_t r, char *out)
+{
+    uint32_t i = seq_rl_first() + r;
+    (void)map;
+    out[0] = 0;
+    if (i < seq_rl_n)
+        drum_row_name(seq_rl_map, seq_rl_row, i, out);
+}
+/* the note row r of the grid edits: a drum bank's row's, or the roll's pitch */
 static uint32_t seq_grid_note(int map, uint32_t r) { return map >= 0 ? seq_row_note(map, r) : seq_roll_lo + 7u - r; }
 
 /* the armed track's index among the Steps modules, -1 none */
@@ -202,6 +249,49 @@ static int seq_play_keys(void)
 static int seq_kbd(void)
 {
     return seq_rec && page == PAGE_SEQ && seq_mod_armed(seq_module()) && seq_map() < 0 && eng_transport_running();
+}
+
+/* the drum rows the black keys play here (D-520), as one list into map / row (ENG_DRUM_LIST each), the count: on the SEQ
+ * page the drum grid's track's, elsewhere the keys' (eng_keys_rows); on the roll and in sandbox mode none. More than 8:
+ * they come in banks (drum_bank), the footer names the one shown (drum_bank_label) */
+static uint32_t drum_rows_now(uint8_t *map, uint8_t *row)
+{
+    uint32_t i;
+    if (sb_on)
+        return 0;
+    if (page == PAGE_SEQ) {
+        if (seq_map() < 0)
+            return 0;
+        for (i = 0; i < seq_rl_n; i++) {
+            map[i] = seq_rl_map[i];
+            row[i] = seq_rl_row[i];
+        }
+        return seq_rl_n;
+    }
+    return eng_keys_rows(map, row);
+}
+/* OCT- / OCT+ pick the bank here (D-520) instead of the octave: a device page or the environment while the keys reach more
+ * than 8 drum rows (the SEQ page: SEL held + OCT, panel.c) */
+static int drum_bank_oct(void)
+{
+    uint8_t map[ENG_DRUM_LIST], row[ENG_DRUM_LIST];
+    return (page == 0 || page == PAGE_ENV) && drum_rows_now(map, row) > ENG_DRUM_ROWS;
+}
+/* the bank shown as words, "ROWS 9-16" (the footer's octave slot, pages_ui.c foot_layout), 0 when there are no banks */
+static int drum_bank_label(char *out)
+{
+    uint8_t map[ENG_DRUM_LIST], row[ENG_DRUM_LIST];
+    uint32_t n = drum_rows_now(map, row), first;
+    char num[8];
+    if (n <= ENG_DRUM_ROWS)
+        return 0;
+    first = drum_bank_in(n) * ENG_DRUM_ROWS;
+    fmt_int(num, (int32_t)first + 1);
+    out = put(put(out, MSG_ROWS), num);
+    *out++ = '-';
+    fmt_int(num, (int32_t)(first + ENG_DRUM_ROWS));
+    put(out, num)[0] = 0;
+    return 1;
 }
 
 static int32_t seq_len(int mod)
@@ -360,10 +450,10 @@ static void seq_leds(void)
         if (kbd || sr_on) {                      /* the armed track's keyboard, step record's: the keys held bright, every */
             uint32_t note = (uint32_t)clampi(53 + (int32_t)n + 12 * octave, 0, 127);   /* C dim (to find your place; */
             lit = (int)((sr_on ? sr_keys : ent_keys) >> n & 1u);                       /* a drum grid: its rows' keys) */
-            dim = !lit && (sr_on && map >= 0 ? b >= 0 && b < (int)ENG_DRUM_ROWS : note % 12u == 0u);
+            dim = !lit && (sr_on && map >= 0 ? b >= 0 && b < (int)seq_bank_rows() : note % 12u == 0u);
         } else if (mod >= 0 && b >= 0) {        /* the rows (a drum track's; the roll's on screen, black key 1 its */
             uint32_t row = map >= 0 ? (uint32_t)b : 7u - (uint32_t)b;   /* bottom row, #387): the selected one bright */
-            if (b < (int)ENG_DRUM_ROWS)          /* (blinking: muted), the others with notes dim */
+            if (b < (map >= 0 ? (int)seq_bank_rows() : (int)ENG_DRUM_ROWS))   /* (blinking: muted), the others with notes dim */
                 lit = row == seq_row && (!eng_steps_muted((uint32_t)mod) || blink), dim = row != seq_row && (rows >> b & 1u);
         } else if (w >= 0 && mod >= 0) {        /* the selected row's notes on the page's steps */
             int k = seq_pg * 16 + w, on = k < seq_len(mod) && seq_step_has(mod, (uint32_t)k, rn);
@@ -409,7 +499,7 @@ static void seq_row_step(int32_t d, int fine)
         seq_roll_aim(mod);
         seq_roll_lo = (uint8_t)clampi((int32_t)seq_roll_lo - (fine ? d : 8 * d), 0, 120);
     } else
-        seq_row = (uint8_t)clampi((int32_t)seq_row + d, 0, (int32_t)ENG_DRUM_ROWS - 1);
+        seq_row = (uint8_t)clampi((int32_t)seq_row + d, 0, (int32_t)seq_bank_rows() - 1);
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
 
@@ -664,8 +754,8 @@ static int sr_pitch(int map, uint32_t n)
     int b = seq_black(n), own = clampi(53 + (int32_t)n + 12 * octave, 0, 127);
     if (map < 0)
         return own;
-    if (b >= 0 && b < (int)ENG_DRUM_ROWS)
-        return eng_drummap_note((uint32_t)map, (uint32_t)b);
+    if (b >= 0 && b < (int)seq_bank_rows())
+        return (int)seq_row_note(map, (uint32_t)b);
     return eng_drummap_repeat((uint32_t)map) ? own : -1;
 }
 
@@ -926,7 +1016,7 @@ static void seq_key(uint32_t n, int down)
     if (mod < 0)
         return;
     if (b >= 0) {
-        if (b >= (int)ENG_DRUM_ROWS)
+        if (b >= (int)seq_bank_rows())
             return;
         /* the row's note sounds through the track while the key is held (#368, the owner 2026-10-28: running or stopped)
          * and the row is picked, REC on or off (#395); while REC records the track (it is armed: seq_rec_sync) the note is
@@ -1923,7 +2013,8 @@ static void seq_grid_ground(void)
 
 static void seq_grid_draw(int full, int mod, int map, const char *info)
 {
-    uint32_t cell[ENG_DRUM_ROWS][16], note[ENG_DRUM_ROWS], r, i, lo = map >= 0 ? 0xFFu : seq_roll_lo, mark = 0, locked = 0, hit = 0;
+    uint32_t cell[ENG_DRUM_ROWS][16], note[ENG_DRUM_ROWS], r, i, mark = 0, locked = 0, hit = 0;
+    uint32_t lo = map >= 0 ? 0xFFu - seq_rl_first() / ENG_DRUM_ROWS : seq_roll_lo;   /* (a drum grid: 0xFF less its bank) */
     uint8_t tim[ENG_DRUM_ROWS][16];              /* each hit's GRID_TIME_SHIFT code (#675, #677) */
     const uint32_t *ws;
     int nn = eng_steps_notes((uint32_t)mod, &ws), j, pos = eng_steps_pos((uint32_t)mod), tick;

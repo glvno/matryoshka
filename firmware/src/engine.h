@@ -482,6 +482,12 @@ int eng_drum_name(const uint8_t *p, uint32_t len, uint32_t module, uint32_t r, c
 /* the Drum map a Steps module's keys out goes into (the #139 follow-up: the SEQ page shows its rows), -1 none; its row r's note */
 int eng_steps_drummap(uint32_t module);
 int eng_drummap_note(uint32_t map, uint32_t r);
+/* a drum track's rows as one list (D-520): the rows of every Drum map the track plays (directly or through its
+ * Arpeggiator), the maps in module order; with two maps or more, the rows whose note is 0 left out. Each row's map and
+ * its row in that map into map[i], row[i]; the count (0: no Drum map). The panel shows them in banks of ENG_DRUM_ROWS */
+#define ENG_DRUM_BANKS 3u
+#define ENG_DRUM_LIST (ENG_DRUM_ROWS * ENG_DRUM_BANKS)
+uint32_t eng_steps_rows(uint32_t module, uint8_t *map, uint8_t *row);
 /* 1: the Drum map `map` repeats its rows over the keybed (#184: its repeat is on), so every key plays a row */
 int eng_drummap_repeat(uint32_t map);
 /* a drum track's step (the #139 follow-up): does a note on `note` start on step k (its note word, 0 none); switch it on (one step at
@@ -796,9 +802,11 @@ eng_mset_t eng_arms(uint32_t m);
  * keys, a member of a group the keys play; 0 not (the environment marks the devices the cables reach WIRED, #582) */
 int eng_hears_keys(uint32_t m);
 /* the Drum map Main's keys reach (the armed set's, else the ones cabled), when they reach one and nothing that plays them as
- * notes (a group, the shared keyboard, an Arpeggiator, a track into no Drum map): the panel's black keys 1..8 play its rows
- * (panel.c panel_key); -1 none */
+ * notes (a group, the shared keyboard, an Arpeggiator, a track into no Drum map): the first of them; -1 none. And the rows
+ * of every Drum map they reach as one list, as eng_steps_rows: the panel's black keys 1..8 play a bank of 8 of them
+ * (panel.c panel_key); 0 none */
 int eng_keys_drummap(void);
+uint32_t eng_keys_rows(uint8_t *map, uint8_t *row);
 /* the Harmonizer Main's keys reach (#598; one that hears them, is not bypassed and plays a group): the panel's seven lowest
  * keys are its chord buttons then (panel.c panel_key, the Side layout); -1 none */
 int eng_keys_harm(void);
