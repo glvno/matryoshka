@@ -82,6 +82,9 @@ pub(crate) const LOUD: i32 = 1000;
 
 /// on the device page (pages_ui.c): the footer's octave at 0 ("= OCT =")
 pub(crate) const DEVICE_PAGE: &str = "= OCT =";
+/// on the device page of a patch whose Drum map has more than 8 rows (the 808 Kit): the footer's octave slot names the
+/// drum bank the black keys play instead, here the first (pages_ui.c foot_layout, seq_ui.c drum_bank_label, D-520)
+const DRUM_DEVICE_PAGE: &str = "ROWS 1-8";
 
 /// A factory patch as presets.h stores it, unpacked (the format: firmware/src/lz_unpack.h)
 fn lz_unpack(src: &[u8]) -> Vec<u8> {
@@ -1284,7 +1287,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.tap(PLAY, 120, 1300)?;
     t.screen(&m, "rec: PLAY stops the transport and the recording", "DRUMS ARM");
     m.tap(SEQ, 120, 400)?;
-    t.screen(&m, "seq: SEQ again closes the page", DEVICE_PAGE);
+    t.screen(&m, "seq: SEQ again closes the page", DRUM_DEVICE_PAGE);
     t.screen(&m, "arm: the device page names the armed track", "ARM DRUMS");
     m.key(REC, true);
     m.run_for(200)?;
@@ -1296,7 +1299,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.tap(REC, 120, 300)?;                   // nothing armed: REC runs, the device page stays (#395)
     t.screen(&m, "rec: REC with nothing armed says so", "REC: NO TRACK ARMED");
     m.run_for(1200)?;
-    t.screen(&m, "rec: REC never changes the page", DEVICE_PAGE);
+    t.screen(&m, "rec: REC never changes the page", DRUM_DEVICE_PAGE);
     m.tap(REC, 120, 300)?;
     t.screen(&m, "rec: REC again: off", "REC OFF");
     m.tap(PLAY, 120, 300)?;
