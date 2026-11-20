@@ -7,11 +7,11 @@
  * wheel, breath, sustain, foot, K1..K4, morph, pitch bend; a note's sound) waits until its mapping is cleared. CC 80..86
  * (the patch buttons) and 120..127 (the channel mode messages) are never learned. Mappings follow MENU > MIDI CHANNEL.
  *
- * Learning (D-939): HOME held + SEL (panel.c), or MIDI 3/3's LEARN turned right, toggles learn mode on a device page or
+ * Learning (D-939): HOME held + SEL (panel.c), or MIDI 3/4's LEARN turned right, toggles learn mode on a device page or
  * the environment. The next knob turned picks its row, which does not move (learn_row), and the first control to send
  * three different values (two for a switch row), or the first note played, moves it from then on; that ends learn mode.
  * A HOME tap, HOME + SEL again, another patch, or LEARN_MS without a step ends it too. Controls with a fixed job heard
- * meanwhile (FIXED_CC) are named when the learn ends: they still do their job. GLO > MIDI 3/3 lists the mappings
+ * meanwhile (FIXED_CC) are named when the learn ends: they still do their job. GLO > MIDI 3/4 lists the mappings
  * (MAPPING) and clears the one it shows (CLEAR). A linked editor hears each change (MAP_NOW) and every move (PARAM_NOW, at
  * most every MAP_REPORT_MS for a mapping).
  *

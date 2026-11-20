@@ -150,7 +150,7 @@
 //                                                    the FM-1 (its SEQ page loaded, saved or saved as new; SAVE wrote it)
 //   63 MAP_NOW  count u8, then the mappings as MAP has them, then optionally src u8, k u8, k CC numbers
 //                                                    unasked: the running patch's MIDI learn mappings after a learn or a
-//                                                    clear on the FM-1 (GLO > MIDI 3/3, HOME + SEL, #1067, feature bit
+//                                                    clear on the FM-1 (GLO > MIDI 3/4, HOME + SEL, #1067, feature bit
 //                                                    28). The tail follows only a learn during which the same input also
 //                                                    sent fixed-job CCs (16..19, 1, 2, 22, 64, 65): the learned source
 //                                                    byte and those CCs, the "also sent" warning; older firmware sends none
