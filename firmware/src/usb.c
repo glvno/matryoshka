@@ -51,6 +51,9 @@ static uint8_t ur_rx[180 + 4] UR_DMA_MEM __attribute__((aligned(4)));
 static uint8_t ur_fb[4] UR_DMA_MEM __attribute__((aligned(4)));
 static uint16_t ur_frame;
 static uint8_t ur_paused;
+#ifndef UR_ONSET
+#define UR_ONSET(pk) ((void)(pk))     /* each half's peak of the host's playback (ur_mix; modular.c: clock_in.h's onset) */
+#endif
 #endif
 #ifndef FELUCCA_UAC_48K
 #define FELUCCA_UAC_48K 1
@@ -844,12 +847,13 @@ static int uac_play_mix(int32_t *out, uint32_t n)
 {
     if (!usb.up || !usb.config || usb.suspended) {
         ur_r = ur_w; ur_playing = 0;
+        UR_ONSET(0u);
         return 0;
     }
 #if FELUCCA_DEVICE_IDENTITY
     ur_level = di_level;
 #endif
-    ur_mix(out, n);
+    UR_ONSET(ur_mix(out, n));
     return ur_playing && ur_level;
 }
 #endif
