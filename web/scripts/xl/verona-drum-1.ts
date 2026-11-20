@@ -20,7 +20,7 @@ import { fixNotes, patternNotes, type StepNote } from '../../src/track';
 import { assembliesOf } from '../../src/assembly';
 import { mod, players, wire } from '../factory-build';
 import { around, define, KIT_NOTES, matchLevel, type Built } from './def';
-import { clap, drum, DRUM1_HZ, DRUM2_HZ, hihat, kick, multi, ownNoise, snare, TRIG_NAMES, type Voice } from '../verona-voices';
+import { clap, drum, DRUM1_FM, DRUM1_HZ, DRUM2_FM, DRUM2_HZ, hihat, kick, multi, ownNoise, snare, TRIG_NAMES, type Voice } from '../verona-voices';
 import type { Xl } from './xl';
 
 const NOTES = 'The whole Vermona DRM1 MKIV: all eight channels with every knob, PAN and VOLUME each, MASTER. The rows ' +
@@ -52,8 +52,8 @@ const ENGINE: Built = define('Verona Drum 1 XL', (b) => {
   b.module(closed).names = ['HH 1 CL', 'HH 2 CL', '-', '-', '-', '-', '-', '-'];
   const voices: Voice[] = [
     kick(b, 1, ownNoise),
-    drum(b, 2, { hz: DRUM1_HZ, coarse: -17, decay: 0.35 }),
-    drum(b, 3, { hz: DRUM2_HZ, coarse: -7, decay: 0.25 }),
+    drum(b, 2, { hz: DRUM1_HZ, fm: DRUM1_FM, coarse: -17, decay: 0.35 }),
+    drum(b, 3, { hz: DRUM2_HZ, fm: DRUM2_FM, coarse: -7, decay: 0.25 }),
     multi(b, 4),
     snare(b, 5, ownNoise),
     hihat(b, 6, ownNoise, { trig: 2 }),

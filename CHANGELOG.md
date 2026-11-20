@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Verona Drum 1's FM FREQ covers the DRM1 MKIV's whole range.** On DRUM 1 it runs from 1.25 Hz to 550 Hz, and on DRUM 2 from 1.25 Hz to 785 Hz. At the low end the FM is a slow wobble, as on the original. Every factory sound, preset and demo pattern plays exactly as before. Your saved Verona Drum 1 sounds keep their FM FREQ. Needs firmware 1.22 or later.
+
 ## 1.23.0 — 2026-11-20
 
 - **Oracle V gets the Prophet-5's sustain pedal modes and its A-440 tone.** A sustain pedal (MIDI CC 64) now works on Oracle V in either of the Prophet-5 Rev 4's two ways, chosen with the new **pedal** row. **REL** is the original Prophet-5's way: the pedal is a second Release switch, so with Release OFF a note let go while the pedal is down fades at the release you set, and one let go with it up stops short. **HOLD** holds the notes while the pedal is down, as a piano's does. The new **a-440** row plays a 440 Hz reference tone, for tuning by ear with the **tune** row. The factory patch and its presets sound exactly as before. A saved Oracle V sound keeps all its settings, with the pedal on REL and the tone OFF. Needs the next firmware (#862).
