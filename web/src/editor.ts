@@ -24,7 +24,8 @@ import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, NAME_MAX, pageLa
 import { cableRole } from './cable-role';
 import { addBreak, fm1Name, layoutOf, moveRows, moveSection, pagesOf, removeBreak, removeHeading, removeRows, renameHeading, rowKey, setLayout, type KnobOf, type Layout, type RowSpot, type Sec } from './arrange';
 import type { ParameterValues } from './engine';
-import { delayRoom, deviceBudget, deviceSection, DEVICE, LINE_TYPES, lineBudget, linesAdvice, MAP_BEND, mapRecord } from './patchbin';
+import { delayRoom, deviceBudget, deviceSection, DEVICE, LINE_TYPES, lineBudget, linesAdvice, mapRecord, mapSource } from './patchbin';
+import type { MapEntry } from './protocol';
 import { cardCostText, cardCostTitle, type CardCost, type CardCosts } from './cpu';
 import { choiceName, formatValue, longName, moduleName, moduleTag, moduleTitle, paramHint } from './labels';
 import { outputRange } from './ranges';
@@ -74,7 +75,7 @@ import {
   type CommentBox,
 } from './patch';
 import { addComment, COMMENT_H, COMMENT_W, moveComments, pasteComments, removeComments, setCommentText, sizeComment } from './comments';
-import { bindingOfRow, bindRow, fixMidiLearn, MIDI_LEARN_MAX, MidiLearn, setLearnRange, sourceJob, sourceName, unbindRow, unbindSource, type LearnRow, type LearnSource, type MidiBinding } from './midi-learn';
+import { alsoSentText, bindingOfRow, bindRow, fixMidiLearn, MIDI_LEARN_MAX, MidiLearn, setLearnRange, sourceJob, sourceName, sourceNote, switchRow, unbindRow, unbindSource, type LearnRow, type LearnSource, type MidiBinding } from './midi-learn';
 import { patternStrip, type PatternStrip } from './pattern-strip';
 import { SongView } from './song';
 import type { PatternView } from './engine';
@@ -483,6 +484,7 @@ export class Editor {
     this.ev.onSnapshots?.();
     this.stopListening();   // (another patch's module of the same id is another signal)
     this.routingOpen.clear();
+    this.alsoSent.clear();   // (another patch's row of the same module id is another row)
     this.stack = [];
     this.selected.clear();
     this.selectedAsm.clear();
@@ -6833,7 +6835,12 @@ export class Editor {
   readonly learn = new MidiLearn({
     patch: () => this.patch,
     setRow: (module, param, u) => this.setRowAt(module, param, u),
-    learned: (b) => this.bindLearned(b),
+    switchAt: (module, param) => {
+      const m = this.patch.modules.find((x) => x.id === module);
+      const pd = m && DEFS[m.type].params.find((q) => q.name === param);
+      return m && pd && switchRow(pd) && pd.max > pd.min ? (this.shownParam(m, param) - pd.min) / (pd.max - pd.min) : null;
+    },
+    learned: (b, also) => this.bindLearned(b, also),
     waiting: (row) => {
       for (const el of this.modulesEl.querySelectorAll<HTMLElement>('.param.learning')) el.classList.remove('learning');
       if (row) for (const el of this.modulesEl.querySelectorAll<HTMLElement>(`.param[data-mod="${row.module}"][data-param="${row.param}"]`)) el.classList.add('learning');
@@ -6842,6 +6849,9 @@ export class Editor {
   });
   /** the row last pressed: the palette's MIDI learn… acts on it */
   private lastRow: LearnRow | null = null;
+  /** the "also sent" warnings of this session's learns (#1067; not saved), by source: the row learned and the fixed-job
+   *  CCs its input also sent (midi-learn.ts alsoSentText). Shown beside the binding while that source still moves that row */
+  private alsoSent = new Map<LearnSource, { row: LearnRow; ccs: number[] }>();
 
   /** a row's name for the status line and the bindings list: its device and its card row ("Briefcase 3 › x") */
   rowName(r: LearnRow): string {
@@ -6862,16 +6872,25 @@ export class Editor {
   startLearn(r: LearnRow): void {
     const m = this.patch.modules.find((x) => x.id === r.module);
     const pd = m && DEFS[m.type].params.find((q) => q.name === r.param);
-    if (pd) this.learn.start(r, !!pd.toggle || pd.choices?.length === 2);
+    if (pd) this.learn.start(r, switchRow(pd));
   }
 
-  /** learn found the row's source: an undo step that reloads nothing; refused when the patch holds MIDI_LEARN_MAX others */
-  private bindLearned(b: MidiBinding): void {
+  /** a source's "also sent" warning for its row (none: forgotten) */
+  private warnAlso(b: MidiBinding, ccs: number[]): void {
+    if (alsoSentText(ccs)) this.alsoSent.set(b.src, { row: { module: b.module, param: b.param }, ccs });
+    else this.alsoSent.delete(b.src);
+  }
+
+  /** learn found the row's source: an undo step that reloads nothing; refused when the patch holds MIDI_LEARN_MAX others.
+   *  `also`: the fixed-job CCs the same input also sent meanwhile, a warning in the status line and the list */
+  private bindLearned(b: MidiBinding, also: number[]): void {
     let fits = true;
+    this.warnAlso(b, also);
     this.editBindings((p) => void (fits = bindRow(p, b)));
-    if (!fits) return this.ev.onError(`A patch holds ${MIDI_LEARN_MAX} MIDI controls at most: remove one in FM-1 & MIDI first.`);
-    const job = sourceJob(b.src);
-    this.ev.onError(`${sourceName(b.src)} now moves ${this.rowName(b)}.${job ? ` While it is learned, it no longer moves ${job}.` : ''} Unlearn it from the row’s ⋮ menu or in FM-1 & MIDI.`);
+    if (!fits) return this.warnAlso(b, []), this.ev.onError(`A patch holds ${MIDI_LEARN_MAX} MIDI controls at most: remove one in FM-1 & MIDI first.`);
+    const job = sourceJob(b.src), warn = alsoSentText(also);
+    const meanwhile = sourceNote(b.src) !== null ? ' While it is learned, it plays no note in this patch.' : job ? ` While it is learned, it no longer moves ${job}.` : '';
+    this.ev.onError(`${sourceName(b.src)} now moves ${this.rowName(b)}.${meanwhile}${warn ? ` ${warn}.` : ''} Unlearn it from the row’s ⋮ menu or in FM-1 & MIDI.`);
   }
 
   /** forget a row's MIDI source (its ⋮ menu, the palette): an undo step */
@@ -6896,23 +6915,29 @@ export class Editor {
   }
 
   /** the patch's learned sources for the list in FM-1 & MIDI: each with its row's name, the job it gets back once removed,
-   *  its range and whether the FM-1 plays it */
-  bindings(): { src: LearnSource; source: string; row: string; job: string | null; at: LearnRow; lo: number; hi: number; fm1: boolean }[] {
-    return (this.patch.midiLearn ?? []).filter((b) => this.patch.modules.some((m) => m.id === b.module))
-      .map((b) => ({ src: b.src, source: sourceName(b.src), row: this.rowName(b), job: sourceJob(b.src), at: { module: b.module, param: b.param }, lo: b.lo ?? 0, hi: b.hi ?? 1, fm1: this.onFm1(b) }));
+   *  its range, whether the FM-1 plays it and this session's "also sent" warning for it ('' none) */
+  bindings(): { src: LearnSource; source: string; row: string; job: string | null; at: LearnRow; lo: number; hi: number; fm1: boolean; also: string }[] {
+    return (this.patch.midiLearn ?? []).filter((b) => this.patch.modules.some((m) => m.id === b.module)).map((b) => {
+      const w = this.alsoSent.get(b.src);
+      const also = w && w.row.module === b.module && w.row.param === b.param ? alsoSentText(w.ccs) : '';
+      return { src: b.src, source: sourceName(b.src), row: this.rowName(b), job: sourceJob(b.src), at: { module: b.module, param: b.param }, lo: b.lo ?? 0, hi: b.hi ?? 1, fm1: this.onFm1(b), also };
+    });
   }
 
   /** the FM-1's mappings after a learn or a clear there (MAP_NOW, device-form indices; protocol.ts parseMapNow): the rows
-   *  it plays take its sources, the bindings it does not play stay; one undo step */
-  takeDeviceMaps(list: { src: number; module: number; param: number; lo: number; hi: number }[]): void {
+   *  it plays take its sources, the bindings it does not play stay; one undo step. `also`: a learn's "also sent" tail
+   *  (the learned source byte and the fixed-job CCs), kept beside that binding as the editor's own learn keeps it */
+  takeDeviceMaps(list: MapEntry[], also: { src: number; ccs: number[] } | null = null): void {
     const dev = deviceView(this.patch, true).patch;
     const ours = (this.patch.midiLearn ?? []).filter((b) => !this.onFm1(b));
     const theirs = list.flatMap((e) => {
       const m = dev.modules[e.module], pd = m && !(e.param & 0x80) ? DEFS[m.type].params[e.param] : undefined;
-      return m && pd ? [{ src: e.src === MAP_BEND ? 'bend' as const : e.src, module: m.id, param: pd.name, lo: e.lo / 255, hi: e.hi / 255 }] : [];
+      return m && pd ? [{ src: mapSource(e.src), module: m.id, param: pd.name, lo: e.lo / 255, hi: e.hi / 255 }] : [];
     });
+    const all = fixMidiLearn([...ours, ...theirs], this.patch.modules, DEFS);
+    const learned = also && all.find((b) => b.src === mapSource(also.src));
+    if (learned) this.warnAlso(learned, also.ccs);
     this.editBindings((p) => {
-      const all = fixMidiLearn([...ours, ...theirs], p.modules, DEFS);
       if (all.length) p.midiLearn = all;
       else delete p.midiLearn;
     });

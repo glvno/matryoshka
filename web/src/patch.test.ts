@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
-import { addModule, ensureMain, newPatch, NOTES_MAX, validatePatch, type Patch } from './patch';
+import { addModule, ensureMain, newPatch, NOTE_NAMES, NOTES_MAX, validatePatch, type Patch } from './patch';
 import { encodePatch } from './patchbin';
 
 describe('the Main module', () => {
@@ -47,5 +47,17 @@ describe('the canvas view a patch remembers', () => {
     expect(load({ zoom: 0.6, x: 1200, y: 40 })).toEqual({ zoom: 0.6, x: 1200, y: 40 });
     expect(load({ zoom: 1, x: -5, y: 3 })).toEqual({ zoom: 1, x: -5, y: 3 });
     for (const bad of [null, 3, { zoom: 0, x: 0, y: 0 }, { zoom: 1, x: 'a', y: 0 }, { zoom: Infinity, x: 0, y: 0 }, { x: 0, y: 0 }]) expect(load(bad)).toBeUndefined();
+  });
+});
+
+describe('a learned note in the patch (MIDI learn, #1067)', () => {
+  it('keeps `note:N` for 0..127 through JSON, drops anything else; notes are named with C4 = 60', () => {
+    const p = newPatch(DEFS);
+    const main = p.modules.find((m) => m.type === 'fm1')!;
+    const [a, b] = DEFS.fm1.params.filter((q) => !q.screen).map((q) => q.name);
+    const raw = [{ src: 'note:36', module: main.id, param: a }, { src: 'note:200', module: main.id, param: b }, { src: 'note:C2', module: main.id, param: b }, { src: 'note:127', module: main.id, param: b }];
+    expect(validatePatch(JSON.parse(JSON.stringify({ ...p, midiLearn: raw })), DEFS).midiLearn)
+      .toEqual([{ src: 'note:36', module: main.id, param: a }, { src: 'note:127', module: main.id, param: b }]);
+    expect([NOTE_NAMES[36], NOTE_NAMES[60], NOTE_NAMES[61]]).toEqual(['C2', 'C4', 'C#4']);
   });
 });

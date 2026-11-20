@@ -21,8 +21,7 @@
 // P-locks (#524, #519 Q11): a step with locks shows a dot under it. Clicking the dot, or right-clicking any step, opens the
 // step's locks: each locked row with its value to edit or delete, and a row of the track's device to lock (at its normal
 // value, to edit from there).
-import { NOTE_NAMES } from './modules';
-import { STEPS_MAX, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef } from './patch';
+import { NOTE_NAMES, STEPS_MAX, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef } from './patch';
 import { chordFits, COND_ORDER, condName, isDrone, locksAt, MICRO_MAX, MICRO_STEPS, microName, RATCHET_MAX, setChord, setCond, setLock, setStep, setStepValue, setTiming, STEP_NOTE, STEP_VEL, stepView, type StepLock, type StepNote, type StepView } from './track';
 
 /** a row of the track's device a step can lock (#524): its module's parameter, its label ("filter cutoff"), its definition

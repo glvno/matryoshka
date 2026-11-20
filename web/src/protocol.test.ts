@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { editorSkips, parsePeak, parseScreen, testKeyFrame, testScreenFrame, testTurnFrame, fm1Ascii, parseInfo, parseSandbox, SANDBOX_BYTES, SANDBOX_EXT_BYTES, sandboxFrame, sandboxPayload, type SandboxPage, chunkFrames, CMD, commitFrame, crc16, devicePresetName, frame, LIVE_MS, liveFrame, pack7, paramFrame, parse, parsePresetData, parsePresetEntry, parsePresetStored, parseSlot, presetPutFrame, slotEraseFrame, slotFrame, slotInfoFrame, unpack7 } from './protocol';
+import { editorSkips, parsePeak, parseScreen, testKeyFrame, testScreenFrame, testTurnFrame, fm1Ascii, parseInfo, parseSandbox, SANDBOX_BYTES, SANDBOX_EXT_BYTES, sandboxFrame, sandboxPayload, type SandboxPage, chunkFrames, CMD, commitFrame, crc16, devicePresetName, frame, LIVE_MS, liveFrame, MAP_CMD, pack7, paramFrame, parse, parseMapNow, parsePresetData, parsePresetEntry, parsePresetStored, parseSlot, presetPutFrame, slotEraseFrame, slotFrame, slotInfoFrame, unpack7 } from './protocol';
 
 /** sandbox_msg.h's SB_* sizes, its #define expressions evaluated in order */
 const SB: Record<string, number> = {};
@@ -253,5 +253,21 @@ describe('patterns and songs on the wire (#375, format 48)', () => {
     expect(parsePatternNow([9, 1])).toEqual({ pattern: 9, song: 1 });
     expect(parseSongNow([8, 0])).toBeNull();
     expect(parseSongNow([0, 2, 1, 1])).toBeNull();
+  });
+});
+
+describe('MIDI learn on the wire (#1067)', () => {
+  const wire = (payload: number[]): number[] => parse(frame(MAP_CMD.mapNow, payload))!.payload;
+  it('MAP_NOW without the tail, as older firmware sends it, and with a note mapping (128 + n)', () => {
+    expect(parseMapNow(wire([2, 1, 3, 4, 0, 255, 164, 5, 6, 51, 204]))).toEqual({
+      maps: [{ src: 1, module: 3, param: 4, lo: 0, hi: 255 }, { src: 164, module: 5, param: 6, lo: 51, hi: 204 }], also: null });
+    expect(parseMapNow(wire([0]))).toEqual({ maps: [], also: null });
+    expect(parseMapNow([2, 1, 3, 4, 0])).toBeNull();
+  });
+  it('MAP_NOW with the "also sent" tail: the learned source byte, then the count and the fixed-job CCs', () => {
+    expect(parseMapNow(wire([1, 74, 3, 4, 0, 255, 74, 2, 16, 64]))).toEqual({ maps: [{ src: 74, module: 3, param: 4, lo: 0, hi: 255 }], also: { src: 74, ccs: [16, 64] } });
+    expect(parseMapNow(wire([1, 164, 3, 4, 0, 255, 164, 1, 22]))?.also).toEqual({ src: 164, ccs: [22] });
+    expect(parseMapNow([1, 74, 3, 4, 0, 255, 74, 3, 16])?.also).toBeNull();   // (a cut tail: the mappings still count)
+    expect(parseMapNow([1, 74, 3, 4, 0, 255, 74, 0])?.also).toBeNull();
   });
 });

@@ -20,12 +20,16 @@ static void midi_drain_mode(int quick)
         if (quick && (!cfg.ch || cfg.ch == chn) &&
             (st == 0xC0u || (st == 0xB0u && ((n >= 16u && n <= 19u) ||
                                              (n >= 80u && n < 80u + ENG_PANEL_BUTTONS))) ||
-             ((st == 0xB0u || st == 0xE0u) && map_has(st == 0xE0u ? ENG_MAP_BEND : n))))   /* (MIDI learn: as CC 16..19) */
+             ((st == 0xB0u || st == 0xE0u) && map_has(st == 0xE0u ? ENG_MAP_BEND : n)) ||   /* (MIDI learn: as CC 16..19) */
+             ((st == 0x90u || st == 0x80u) && map_has(ENG_MAP_NOTE + n))))   /* (a learned note: never played, D-496) */
             break;
         RING_PUBLISH();
         mi_r++;
         if (st == 0xF0u) {                      /* realtime and Song Position (MENU > CLOCK IN): clock_in.h */
             clk_in_rt(pkt);
+        } else if ((st == 0x90u || st == 0x80u) && (!cfg.ch || cfg.ch == chn) &&
+                   map_midi(ENG_MAP_NOTE + n, st == 0x90u ? v : 0u)) {
+            /* a learned note (#1067, midi_learn.c, on the MIDI channel): it moves its row, or a learn takes it, and plays nothing */
         } else if (st == 0x90u || st == 0x80u) {  /* notes on every channel: the engine judges them (a Voice allocator may take its own channel) */
             eng_midi_channel(cfg.ch);
             if (st == 0x90u && v)

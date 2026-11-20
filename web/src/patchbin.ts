@@ -115,9 +115,9 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //                end (0..255 of the parameter's range, octaves for a log one): the pin's value (0..1, or −1..1 when bipolar)
 //                lands between the ends
 //   format 65 (#1067, mapRecord), when the patch has MIDI learn mappings the FM-1 plays, no flag: the bytes after the macro
-//                ranges (or where they would be) are u8 count (1..MAPS_MAX), then per mapping u8 source (CC 0..119, or
-//                MAP_BEND), u8 the row's module index, u8 its parameter byte, u8 low end, u8 high end (0..255 of the row's
-//                range); the FM-1 edits it in place (MIDI learn on the FM-1, MAP)
+//                ranges (or where they would be) are u8 count (1..MAPS_MAX), then per mapping u8 source (CC 0..119, MAP_BEND
+//                for pitch bend, MAP_NOTE + n for note n), u8 the row's module index, u8 its parameter byte, u8 low end, u8 high
+//                end (0..255 of the row's range); the FM-1 edits it in place (MIDI learn on the FM-1, MAP)
 //
 // Type indices are the position in TYPE_ORDER (append only: the firmware has the same list in defs.h).
 // Port indices are positions in ModuleDef.outputs / inputs (explicit ports first, then the `<param>_cv` inputs).
@@ -138,6 +138,7 @@ import { instIsEngine } from './engines';
 import { engineUnreached } from './arm';
 import { FX_STAGE_TARGET_MAX, fxBusOf, fxHelperIds, type FxStageKind } from './fx-bus';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
+import { noteSource, sourceNote, type LearnSource } from './midi-learn';
 
 export const TYPE_ORDER: string[] = Object.keys(DEFS).filter((t) => !EDITOR_ONLY.has(t));
 /** bytes of a poly group record: parts, assign, legato, priority, five flaw bytes per part, the note source, the MIDI
@@ -771,12 +772,19 @@ export function rangeList(p: Patch): { mod: number; pin: number; par: number; lo
 
 /** the source byte of pitch bend in the MIDI mapping section (engine.h ENG_MAP_BEND: CC 127 is never learned) */
 export const MAP_BEND = 127;
+/** the source byte of note 0 in the MIDI mapping section: note n is MAP_NOTE + n (engine.h ENG_MAP_NOTE) */
+export const MAP_NOTE = 128;
+/** a learned source as the mapping section's byte */
+export const mapSourceByte = (src: LearnSource): number => (src === 'bend' ? MAP_BEND : typeof src === 'number' ? src : MAP_NOTE + sourceNote(src)!);
+/** a mapping section's source byte as a learned source (a CC byte as it is: fixMidiLearn checks it) */
+export const mapSource = (byte: number): LearnSource => (byte === MAP_BEND ? 'bend' : byte >= MAP_NOTE ? noteSource(byte - MAP_NOTE) : byte);
 /** the most mappings a patch holds (engine.h ENG_MAPS_MAX; midi-learn.ts MIDI_LEARN_MAX) */
 export const MAPS_MAX = 16;
 /** the MIDI mapping section (format 65, #1067; engine.h eng_maps), the last of the binary: u8 count, then per learned
  * source that moves a row the FM-1 shows (a device page row; not a poly group's setting, not a row set only at load) u8
- * the source (CC number, or MAP_BEND), u8 the row's module index, u8 its parameter byte, u8 its low end, u8 its high end
- * (0..255 of the row's range). [] without one. `dev`: the device form, `devs` its device pages (deviceSection) */
+ * the source (mapSourceByte: CC number, MAP_BEND, or MAP_NOTE + note), u8 the row's module index, u8 its parameter byte,
+ * u8 its low end, u8 its high end (0..255 of the row's range). [] without one. `dev`: the device form, `devs` its device
+ * pages (deviceSection) */
 export function mapRecord(source: Patch, dev: Patch, devs: Device[]): number[] {
   const list = source.midiLearn ?? [];
   if (!list.length) return [];
@@ -788,7 +796,7 @@ export function mapRecord(source: Patch, dev: Patch, devs: Device[]): number[] {
     if (i === undefined || !shown.has(`${b.module}/${b.param}`) || out.length >= 5 * MAPS_MAX) continue;
     const type = dev.modules[i].type, par = rowParam(type, b.param);
     if (par < 0 || par & POLY_ROW || DEFS[type].params[par].fixed) continue;
-    out.push(b.src === 'bend' ? MAP_BEND : b.src, i, par, Math.round((b.lo ?? 0) * 255), Math.round((b.hi ?? 1) * 255));
+    out.push(mapSourceByte(b.src), i, par, Math.round((b.lo ?? 0) * 255), Math.round((b.hi ?? 1) * 255));
   }
   return out.length ? [out.length / 5, ...out] : [];
 }

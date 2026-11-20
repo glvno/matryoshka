@@ -710,6 +710,7 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .routing-controls .midi-learn-line { display: flex; gap: 6px; margin: 0 0 8px; }
 .midi-learn-list { display: flex; flex-direction: column; gap: 4px; }
 .midi-learn-list .midi-learn-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.midi-learn-list .midi-learn-also { color: var(--warning); }
 .routing-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .routing-head strong { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .routing-controls output { margin-left: auto; }

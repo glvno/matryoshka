@@ -7,7 +7,7 @@ import { devicesOf, NAME_MAX } from './pages';
 import { assemblyById, makeAssembly } from './assembly';
 import { instIsEngine } from './engines';
 import { engineBytes } from './test-bin';
-import { deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR, COUNTED, SLIM, layout } from './patchbin';
+import { deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR, COUNTED, SLIM, layout, MAP_BEND, MAP_NOTE, mapSource, mapSourceByte } from './patchbin';
 import { PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
@@ -370,5 +370,13 @@ describe('a name on the FM-1\'s screen (deviceText)', () => {
     expect(deviceText('Verona Drum 1')).toBe('Verona Drum1');
     expect(deviceText('Cassia 1')).toBe('Cassia 1');
     expect(deviceText('supersaw stack')).toBe('supersaw sta');
+  });
+});
+
+describe('a MIDI mapping\'s source byte (#1067, format 65)', () => {
+  it('is the CC, 127 for pitch bend or 128 + n for note n, and reads back the same', () => {
+    expect([mapSourceByte(0), mapSourceByte(119), mapSourceByte('bend'), mapSourceByte('note:0'), mapSourceByte('note:36'), mapSourceByte('note:127')])
+      .toEqual([0, 119, MAP_BEND, MAP_NOTE, 164, 255]);
+    for (const src of [0, 74, 119, 'bend', 'note:0', 'note:36', 'note:127'] as const) expect(mapSource(mapSourceByte(src))).toBe(src);
   });
 });

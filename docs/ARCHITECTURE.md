@@ -853,18 +853,28 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   over everything; a row out of view gets none). MIDI CC 16..19 turn the bound rows (`Editor.turnKnob`, from main.ts's
   sink). The knob ticks under sliders (knob-rest.ts) are gone with the knob outputs.
 - **MIDI learn (#1067, `midi-learn.ts`, [D-1317](ledger/editor.md#D-1317), [D-1027](ledger/patch-format.md#D-1027), [D-496](ledger/link-and-midi.md#D-496), [D-939](ledger/device-ui.md#D-939)):**
-  `Patch.midiLearn` lists `{ src, module, param, lo?, hi? }` (src a CC 0..119 outside 80..86, or `'bend'`; ends 0..1 in
-  steps of 1/255): `validatePatch` (`fixMidiLearn`) keeps one row per source and one source per row, 16 at most.
-  `attachMidi` passes a CC's and a bend's input; main.ts hands those not from an FM-1 (`isFm1In`) to `Editor.learn`
-  (`MidiLearn.take`) before the sink, so a learned source never reaches `editorCc`, the engines or the FM-1 as a CC. A
-  waiting row takes the first source with three different values (two for a switch). A learned source sets its row
-  through `Editor.setRowAt` (turnKnob's mapping) between its ends, at most every `MOVE_GAP_MS` = 25 ms, so the edit goes
-  out under Live as a slider's does and undo groups it as a gesture. patchbin.ts `mapRecord` writes the sources on rows
-  the FM-1's pages show as the binary's last section (any patch with MIDI learn is format 65, `FORMAT_1_23`); the firmware reads it in
-  place (`engine.c` `eng_maps`, `midi_learn.c`): `midi_input.h` asks `map_midi` before the fixed CCs, and a hit moves its
-  row through `pages_map_move` (`row_set_unit`, the row's also-list, a ramp slot after the knobs', `ENG_RAMPS`). GLO >
-  MIDI 3/3 learns on the FM-1 (`learn_start`, `learn_pick` from panel.c's knobs, `learn_take`). MAP (0x1C) and MAP_NOW
-  (0x63), feature bit 28, keep the editor's list and the FM-1's copy the same under Live.
+  `Patch.midiLearn` lists `{ src, module, param, lo?, hi? }` (src a CC 0..119 outside 80..86, `'bend'`, or a note as
+  `'note:N'`, N 0..127; ends 0..1 in steps of 1/255): `validatePatch` (`fixMidiLearn`) keeps one row per source and one
+  source per row, 16 at most. A note is named as `NOTE_NAMES` (patch.ts) names it, C4 = 60, so note 36 shows as
+  `NOTE C2`, on the FM-1 too. `attachMidi` passes a note's, a CC's and a bend's input; main.ts hands those not from an
+  FM-1 (`isFm1In`) to `Editor.learn` (`MidiLearn.take`, through `learnFirst`) before the sink, so a learned source never
+  reaches `editorCc`, the keys, the engines or the FM-1. A waiting row takes a note-on at once, else the first source
+  with three different values (two for a switch). While it waits, the fixed-job CCs (16..19, 1, 2, 22, 64, 65) heard
+  from each input are kept; when the learn completes, those from the learned control's input (less any another row
+  learned) become the "also sent" warning (`alsoSentText`: `CC 16 also sent: turns K1`), in the status line and beside
+  the mapping in FM-1 & MIDI for the session (not in the patch). A learned CC or bend sets its row through
+  `Editor.setRowAt` (turnKnob's mapping) between its ends, at most every `MOVE_GAP_MS` = 25 ms; a learned note-on flips
+  a switch row (a toggle or a two-way choice) to the end farther from its position (the high end on a tie), and sets
+  any other row at velocity / 127 between the ends; its note-off does nothing. Either way the edit goes out under Live
+  as a slider's does and undo groups it as a gesture. patchbin.ts `mapRecord` writes the sources on rows the FM-1's
+  pages show as the binary's last section (any patch with MIDI learn is format 65, `FORMAT_1_23`), the source byte
+  being the CC, 127 for pitch bend (`MAP_BEND`) or 128 + n for note n (`MAP_NOTE`, `mapSourceByte` / `mapSource`); the
+  firmware reads it in place (`engine.c` `eng_maps`, `midi_learn.c`): `midi_input.h` asks `map_midi` before the fixed
+  CCs, and a hit moves its row through `pages_map_move` (`row_set_unit`, the row's also-list, a ramp slot after the
+  knobs', `ENG_RAMPS`). The FM-1 learns too: HOME held + SEL (panel.c) or MIDI 3/3's LEARN toggles learn mode on a device
+  page or the environment, and the next knob turned picks its row (`learn_mode`, `learn_knob`, `learn_row`, `learn_take`). MAP (0x1C) and MAP_NOW (0x63), feature bit 28, keep the editor's list and the FM-1's
+  copy the same under Live; MAP_NOW may end with a tail (the learned source byte, a count, the fixed-job CCs) after a
+  learn on the FM-1 that heard them, which the editor shows as the same warning (`parseMapNow`).
 - **Main dock: button block (#113, design board D):** the knob column is K1..K4 with their captions, then the DEVICE / PAGE
   pickers under them; each dial's binding wire starts at a fixed `.knob-jack` on the dock's top edge (ring + core in the
   knob colour, a faint stem down to the dial; `pointer-events: none`, not a port). The button block is the FM-1's two rows

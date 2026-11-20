@@ -572,10 +572,10 @@ static const ppage_t *menu_tab_page(void)
 {
     static const char *const LAB[8][PG_ROWS] = {{"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", "CLOCK OUT"}, {"LEDS", "KNOB ACCEL", "COUNT-IN", "TEMPO"}, {"UPDATE MODE", "FACTORY RESET", "QUICK START", "OUTPUT"},
                                                 {"LOW", "MID", "HIGH", "MID FREQ"}, {"TIME SIG", "", "", ""}, {"EDITOR", "3.5MM OUT", "USB RETURN", ""},
-                                                {"TRANSPORT IN", "TRANSPORT OUT", "", ""}, {"LEARN", "", "CLEAR", ""}};
+                                                {"TRANSPORT IN", "TRANSPORT OUT", "", ""}, {"", "CLEAR", "LEARN", ""}};
     static const uint8_t ROW[8][PG_ROWS] = {{MR_CH, MR_CLOCK, MR_MOUT, MR_CLKOUT}, {MR_LEDS, MR_ACCEL, MR_CIN, MR_TEMPO}, {MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_OUTPUT},
                                             {MR_EQ_LOW, MR_EQ_MID, MR_EQ_HIGH, MR_EQ_FREQ}, {MR_METER, MR_METER, MR_METER, MR_METER}, {MR_EDITOR, MR_OUT35, MR_USB_RETURN, MR_OUT35},
-                                            {MR_TIN, MR_TOUT, MR_TOUT, MR_TOUT}, {MR_LEARN, MR_MAPS, MR_MAP_CLEAR, MR_MAP_CLEAR}};
+                                            {MR_TIN, MR_TOUT, MR_TOUT, MR_TOUT}, {MR_MAPS, MR_MAP_CLEAR, MR_LEARN, MR_LEARN}};
     static const uint8_t N[8] = {4, 4, 4, 4, 1, 3, 2, 3};   /* (the tabs, then the later pages: PANEL's, #1011, SYSTEM's, #702,
                                                          * MIDI's 2/3, #596, and 3/3, MIDI learn, #1067) */
     uint32_t tab = menu_tab > MT_EQ ? MT_MIDI : menu_tab, t = tab, k;

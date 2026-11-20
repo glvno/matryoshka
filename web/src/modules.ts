@@ -4,7 +4,7 @@
 import { fixedDoes } from './controls';
 import { ARP_MODES, ARP_RATE_CHOICES, ARP_RATES } from './arpeggiator';
 import { HARM_EXT, HARM_SUS, HARM_TYPES, HARM_VOICING } from './harmonizer';
-import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
+import { DRUM_ROWS, NOTE_NAMES, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
 import { COND_FILL, COND_FIRST, COND_NEI, COND_NOT, COND_PRE, isDrone, MICRO_STEPS, STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepLock, type StepNote } from './track';
 import WT from './wavetables.json';
 import { rateEnvelopeInit, rateEnvelopeProcess } from './rate-envelope';
@@ -3482,9 +3482,6 @@ export const UNISON_MODES = ['off', 'on'];
 export const UNISON_ASSIGN = [...UNISON_MODES, 'share'];
 /** a Voice allocator's MIDI channel: `all` = the device's channel (MENU > MIDI CHANNEL on the FM-1, every channel in the browser) */
 export const KEY_CHANNELS = ['all', ...Array.from({ length: 16 }, (_, i) => `${i + 1}`)];
-const PITCH_CLASSES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-/** MIDI note numbers as names, C4 = 60 (the allocator's key range) */
-export const NOTE_NAMES = Array.from({ length: 128 }, (_, n) => `${PITCH_CLASSES[n % 12]}${Math.floor(n / 12) - 1}`);
 /**
  * Voice allocator: a polysynth's CPU. It takes the keys held on its `keys` input (Main's keys) and hands them to `voices`
  * voices (assign, priority, legato as poly.ts describes; unison: up to stack voices play the note the priority picks, with zero selecting all). Each

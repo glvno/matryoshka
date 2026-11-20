@@ -888,16 +888,24 @@ static void m1_patch_range(uint32_t mod, uint32_t pin, uint32_t par, int on, uin
 }
 
 /* the running patch's MIDI mappings (#1067) to a linked editor: MAP_NOW, u8 count, then the mappings as the binary has
- * them (engine.h eng_maps) */
-static void m1_map_now(void)
+ * them (engine.h eng_maps); after a learn on the FM-1 that heard other controls with a fixed job, then the learned source,
+ * their count and their CC numbers (na of them in also; the editor warns beside that mapping) */
+static void m1_map_now(uint32_t src, const uint8_t *also, uint32_t na)
 {
-    uint8_t p[1u + ENG_MAPS_MAX * ENG_MAP_BYTES];
+    uint8_t p[1u + ENG_MAPS_MAX * ENG_MAP_BYTES + 2u + 9u];
     const uint8_t *e = 0;
-    uint32_t n = eng_maps(m1_cur, m1_cur_len, &e), k;
+    uint32_t n = eng_maps(m1_cur, m1_cur_len, &e), k, w;
     p[0] = (uint8_t)n;
     for (k = 0; k < n * ENG_MAP_BYTES; k++)
         p[1u + k] = e[k];
-    m1_reply_long(R_MAP_NOW, p, 1u + n * ENG_MAP_BYTES);     /* (81 bytes at most: past m1_reply's frame) */
+    w = 1u + n * ENG_MAP_BYTES;
+    if (na) {
+        p[w++] = (uint8_t)src;
+        p[w++] = (uint8_t)(na < 9u ? na : 9u);
+        for (k = 0; k < na && k < 9u; k++)
+            p[w++] = also[k];
+    }
+    m1_reply_long(R_MAP_NOW, p, w);                      /* (92 bytes at most: past m1_reply's frame) */
 }
 
 /* the stored copy follows a MIDI learn on the FM-1 (midi_learn.c): source src maps to module mod's row byte par (on), or

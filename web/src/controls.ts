@@ -56,7 +56,7 @@ export const EFFECTS = [
   'entry', 'entry_pattern', 'add_entry', 'dup_entry', 'transpose', 'song_play', 'song', 'delete_entry', 'back_steps',
   'tab', 'scroll', 'set', 'save_close', 'run_row',
   'editor', 'analog_out', 'chord_button', 'fx_page', 'fx_toggle', 'fx_row',
-  'pattern_save', 'pattern_new', 'pattern_load', 'condition', 'fill', 'ratchet', 'micro', 'drum_bank', 'learn_row',
+  'pattern_save', 'pattern_new', 'pattern_load', 'condition', 'fill', 'ratchet', 'micro', 'drum_bank', 'learn_row', 'learn_mode', 'learn_end',
 ] as const;
 export type Effect = (typeof EFFECTS)[number];
 
@@ -168,7 +168,11 @@ export const CONTROLS: ControlRow[] = [
   { id: 'adjust', gesture: { do: [K('1234')] }, does: 'adjust values', when: '!learning', sheet: { device: 30 }, effect: 'param',
     help: 'the four rows of the page in focus (on a Matrix’s page: the framed column’s pins, in 1..in 4)' },
   { id: 'learn-row', gesture: { do: [K('1234')] }, does: 'pick row to learn', when: 'learning', sheet: { device: 31 }, effect: 'learn_row',
-    help: 'MIDI learn (GLO > MIDI 3/3, LEARN): the knob’s row waits for a MIDI control and does not move; the first control to send three different values moves it from then on (two for a switch). LEARN turned left, another patch or 30 s without a step ends the wait' },
+    help: 'MIDI learn mode: the knob’s row waits for a MIDI control and does not move; the first control to send three different values (two for a switch), or the first note played, moves it from then on and does nothing else in this patch. That ends learn mode, as do HOME, another patch or 30 s without a step' },
+  { id: 'learn-mode', gesture: { hold: 'HOME', do: [B('SEL')] }, does: 'MIDI learn', when: '!learning', sheet: { device: 45 }, effect: 'learn_mode',
+    help: 'MIDI learn mode, on a device page or the environment: turn the knob of the row to learn, then move a control on a MIDI controller. Neither HOME’s release nor SEL’s does its own job. GLO > MIDI 3/3 lists and clears the mappings, and its LEARN turned right starts learn mode too' },
+  { id: 'learn-end', gesture: { do: [B('HOME')] }, does: 'end learn', when: 'learning', sheet: { device: 46 }, effect: 'learn_end',
+    help: 'leaves MIDI learn mode (LEARN OFF); the page stays. HOME + SEL again does the same' },
   { id: 'fine', gesture: { hold: 'HOME', do: [K('1234')] }, does: 'fine adjust', sheet: { device: 40 }, effect: 'fine',
     help: 'fine turns: the least step of the row' },
   { id: 'arm-device', gesture: { do: [B('SEL')] }, does: 'arm only this', when: 'dev_keys', sheet: { device: 50 }, effect: 'arm',
@@ -506,7 +510,7 @@ export const CONDITION_TEXT: Record<Condition, string> = {
   roll_preview: 'a melodic track with note preview on', roll_silent: 'a melodic track with note preview off',
   fx_bank: 'a patch with a recognized master FX bus', pattern_store: 'while the pattern store is on',
   oct_banks: 'the keys on a drum track of more than 8 rows', drum_banks: 'a drum track of more than 8 rows',
-  learning: 'while MIDI learn waits for a row (GLO > MIDI 3/3, LEARN)',
+  learning: 'while MIDI learn mode waits for a knob (HOME + SEL)',
 };
 
 /** a gesture in words: "HOME held + PRESET", "a held step + K2", "OCT- / OCT+" */

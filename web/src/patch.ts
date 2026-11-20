@@ -383,8 +383,9 @@ export interface Patch {
   /** free text boxes on the canvas, like Max comments (#518; comments.ts): no ports, absent while there are none. Editor
    * only, like `notes`: they travel in a link and a .json file; the binary format and the FM-1 ignore them */
   comments?: CommentBox[];
-  /** MIDI learn (#1067, midi-learn.ts): a controller's CC or pitch bend and the row each moves, absent while there are none.
-   * Editor only, like `comments`: it travels in a link, a .json file and undo; the binary format and the FM-1 ignore it */
+  /** MIDI learn (#1067, midi-learn.ts): a controller's CC, pitch bend or note (`note:36`) and the row each moves, absent
+   * while there are none. It travels in a link, a .json file and undo; the binary carries those on rows the FM-1's pages
+   * show (patchbin.ts mapRecord) */
   midiLearn?: MidiBinding[];
 }
 
@@ -436,6 +437,10 @@ export function fixComments(raw: unknown): CommentBox[] {
 
 /** the computer keyboard's octave range (Patch.octave, input.ts) */
 export const OCTAVE_MIN = -3, OCTAVE_MAX = 3;
+
+const PITCH_CLASSES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+/** MIDI note numbers as names, C4 = 60 (the allocator's key range, a learned note's name; the FM-1's seq_note_name the same) */
+export const NOTE_NAMES = Array.from({ length: 128 }, (_, n) => `${PITCH_CLASSES[n % 12]}${Math.floor(n / 12) - 1}`);
 
 /** do two patches have the same structure (modules of the same types in the same order, the same cables), so that one can be the B side of the other? */
 export function sameStructure(a: Patch, b: Patch): boolean {

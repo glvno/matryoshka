@@ -33,8 +33,7 @@ function rig(): { p: Patch; osc: number } {
   return { p, osc: osc.id };
 }
 
-/** every condition holding (bit c: CONDITIONS[c - 1]) but MIDI learn's wait for a row (#1067), which makes K1..K4 pick a
- *  row instead of adjusting it */
+/** every condition holding (bit c: CONDITIONS[c - 1]) but MIDI learn mode, which makes K1..K4 pick a row and HOME end it */
 const ALL_CONDS = CONDITIONS.reduce((m, c, i) => (c === 'learning' ? m : m | (1 << (i + 1))), 0);
 const cond = (...on: Condition[]): number => on.reduce((m, c) => m | (1 << (CONDITIONS.indexOf(c) + 1)), 0);
 const at = (s: HelpState, o: Partial<StripInput> = {}): StripInput => ({ state: HELP_STATES.indexOf(s), held: 0, stepHeld: false, conditions: ALL_CONDS, ...o });

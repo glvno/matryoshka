@@ -386,9 +386,8 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
         break;
     case MR_LEARN:
     case MR_MAPS:
-    case MR_MAP_CLEAR:                              /* MIDI learn (midi_learn.c, #1067): LEARN closes the menu as it starts */
-        if (map_step(row, s))
-            return;
+    case MR_MAP_CLEAR:                              /* MIDI learn (midi_learn.c, #1067): LEARN turned right starts learn mode (D-939) */
+        map_step(row, s);
         break;
     default: break;
     }
