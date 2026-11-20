@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.22.0 — 2026-11-19
 
 - **The FM-1 follows Song Position, and clock and transport have their own switches.** A DAW or looper that sends Song Position and Continue now starts the FM-1's Steps tracks at that point, its songs included, also when it jumps back mid-play at a loop point. GLO > MIDI has a second page with TRANSPORT IN and TRANSPORT OUT, beside CLOCK IN and CLOCK OUT, so the FM-1 can follow a tempo without its Start and Stop, or the other way round. MIDI OUT now covers only the panel's controls. On the SONG page, PLAY starts the song from the entry under the cursor and tells the DAW where with Song Position. Needs the next firmware (#596).
 - **An EQ module.** One band of a parametric equalizer: low shelf, bell, high shelf, low pass, high pass or notch, from 10 Hz to 22 kHz, ±18 dB, with q. Chain several for more bands, or drop in the factory assembly EQ (a low shelf, a bell and a high shelf). Its curve keeps its analog shape right up to the top of the range, without the squeeze a plain digital EQ has near 20 kHz, at no extra CPU while it plays. Patches with an EQ need the next firmware (for #1107).
