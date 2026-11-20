@@ -23,7 +23,7 @@ static struct {
     uint8_t nc;
     uint32_t gen, at;                                   /* the patch it learns for (pages_gen), its last step (fm1_ms) */
     struct { uint8_t src, n; uint16_t v[2]; } c[LEARN_CANDS];   /* the controls heard: their different values so far */
-} ml;
+} ml ENG_LOWRAM;                                        /* (.lowram, zeroed at boot: the RAM region has no room left) */
 static uint8_t map_sel;                                 /* the mapping GLO > MIDI 3/3 shows (MAPPING, CLEAR) */
 typedef struct { uint8_t due, mod, par; int32_t v; uint32_t at; } map_rep_t;
 static map_rep_t map_rep[ENG_MAP_RAMPS];               /* the moves told to the editor (PARAM_NOW), per ramp slot */

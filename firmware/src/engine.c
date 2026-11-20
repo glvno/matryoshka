@@ -958,7 +958,8 @@ static uint64_t pat_omit;
  * left, the offset still to go, its step. ramp_any: some ramp is pending. The main loop sets it after a ramp's fields
  * (ramp_start); each block's ramp_tick sets it again from every slot's blocks left. The audio interrupt preempts the main
  * loop, never the other way round, so a start is never lost between them */
-typedef struct { int32_t mod, par, left, off, step; } ramp_t;
+typedef struct { int32_t off, step; uint8_t mod, par, left; } ramp_t;   /* (12 bytes: a module below 128, a parameter byte,
+                                                                          * ENG_RAMP_BLOCKS blocks at most) */
 static ramp_t ramp[ENG_RAMPS];
 static volatile uint8_t ramp_any;
 static int32_t ramp_buf[2][MAX_PAR];       /* (one per lane, #271) */
@@ -3282,8 +3283,8 @@ static void ramp_start(uint32_t k, int32_t m, int32_t j, int32_t from, int32_t t
     if (r->left && r->mod == m && r->par == j)
         from += r->off;
     r->left = 0;
-    r->mod = m;
-    r->par = j;
+    r->mod = (uint8_t)m;
+    r->par = (uint8_t)j;
     r->off = from - to;
     r->step = r->off / ENG_RAMP_BLOCKS;
     r->left = ENG_RAMP_BLOCKS;
