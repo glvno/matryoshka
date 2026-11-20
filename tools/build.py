@@ -479,9 +479,11 @@ def build_app():
 
     def symv(name):
         return int(re.search(r"^([0-9a-f]+) .*\s" + name + r"$", syms, re.M).group(1), 16)
-    moved = [f"{f} at {symv(f):#x}, not {a:#x}" for f, a in pinned.items() if symv(f) != a]
+    at = {mm.group(2): int(mm.group(1), 16) for mm in re.finditer(r"^([0-9a-f]+) .*\.text\s+[0-9a-f]+\s+(\S+)$", syms, re.M)}
+    moved = [f"{f} at {at[f]:#x}, not {a:#x}" if f in at else f"{f} not in the symbols" for f, a in pinned.items()
+             if at.get(f) != a]
     if moved:
-        raise SystemExit(f"build: pinned functions not where text_layout.py planned them: {'; '.join(moved[:5])}")
+        raise SystemExit(f"build: functions not where text_layout.py planned them: {'; '.join(moved[:8])}")
     img = bytearray((OUT / "text.bin").read_bytes())
     # .ram_text, .c1_text (the second core's waiting loop, #271) and .data follow .text at their load addresses; the boot
     # copies them by words (main.c fm1_cstart)
