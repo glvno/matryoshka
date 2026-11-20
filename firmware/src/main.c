@@ -1574,10 +1574,7 @@ static void guide_poll(void)
         return;
     guide_state(g, 0);
     sig = help_state_sig();
-    for (i = 0; i < GUIDE_BYTES; i++)
-        if (i != 9u && i != 10u && g[i] != last[i])
-            break;
-    if (i == GUIDE_BYTES && sig == last_sig && !m1_guide_due)
+    if (!guide_changed(g, last) && sig == last_sig && !m1_guide_due)
         return;
     m1_guide_due = 0;
     last_sig = sig;
