@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **The 808 Kit and the 909 Kit can play soft and loud steps: a VELOCITY knob, last on each kit's card.** Turn it up and every sound follows how hard it is played, whether the note comes from a MIDI keyboard, the FM-1's keys or a step's velocity in a pattern. Turned all the way up, a step at velocity 64 plays about half as loud as one at 127, and the accent still adds on top. It starts at 0, where both kits and their presets sound as before. Your saved kit sounds keep all their settings, with VELOCITY at 0. Verona Drum 1 and Scrounge already follow velocity.
+- **Verona Drum 1's FM FREQ covers the DRM1 MKIV's whole range.** On DRUM 1 it runs from 1.25 Hz to 550 Hz, and on DRUM 2 from 1.25 Hz to 785 Hz. At the low end the FM is a slow wobble, as on the original. Every factory sound, preset and demo pattern plays exactly as before. Your saved Verona Drum 1 sounds keep their FM FREQ. Needs firmware 1.22 or later.
 
 ## 1.23.0 — 2026-11-20
 

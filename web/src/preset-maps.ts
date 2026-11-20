@@ -143,6 +143,34 @@ export const HAND_MAPS: HandMap[] = [
       'vca#67.gain': 'init',
     },
   },
+  // ---- Verona Drum 1's FM FREQ over the original's travel (#866): it was the modulator's coarse tune (semitones) and is
+  // now a Macro over 1.25 to 550 Hz (drum 1) or 785 Hz (drum 2), a straight line in octaves from 16.35 Hz
+  // (scripts/verona-voices.ts fmTravel). The other rows go by channel and label: the inserted modules move every later
+  // one, and the automatic map would pair some with the wrong channel.
+  {
+    engine: 'Verona Drum 1', from: '81c25295', to: '62778a73',
+    why: '#866: FM FREQ over the knob\'s travel; rows by channel and label',
+    rows: {
+      'pan#105.pan': { from: 'pan#99.pan' }, 'env#26.l1': { from: 'env#23.l1' }, 'shape#24.drive': { from: 'shape#21.drive' }, 'pan#106.pan': { from: 'pan#100.pan' },
+      'vca#27.gain': { from: 'vca#24.gain' }, 'env#78.r2': { from: 'env#75.r2' }, 'macro#80.value': { from: 'macro#77.value' }, 'scale#79.gain': { from: 'scale#76.gain' },
+      'env#86.l1': { from: 'env#80.l1' }, 'osc#76.level': { from: 'osc#73.level' }, 'shape#84.drive': { from: 'shape#78.drive' }, 'pan#107.pan': { from: 'pan#101.pan' },
+      'vca#87.gain': { from: 'vca#81.gain' }, 'env#28.r2': { from: 'env#25.r2' }, 'scale#29.offset': { from: 'scale#26.offset' }, 'scale#29.gain': { from: 'scale#26.gain' },
+      'env#40.l1': { from: 'env#37.l1' }, 'const#33.value': { from: 'const#30.value' }, 'const#37.value': { from: 'const#34.value' }, 'filter#41.cutoff': { from: 'filter#38.cutoff' },
+      'pan#108.pan': { from: 'pan#102.pan' }, 'vca#42.gain': { from: 'vca#39.gain' }, 'env#45.r2': { from: 'env#42.r2' }, 'vca#46.gain': { from: 'vca#43.gain' },
+      'env#43.r2': { from: 'env#40.r2' }, 'vca#44.gain': { from: 'vca#41.gain' }, 'env#47.l1': { from: 'env#44.l1' }, 'filter#48.res': { from: 'filter#45.res' },
+      'filter#48.cutoff': { from: 'filter#45.cutoff' }, 'pan#109.pan': { from: 'pan#103.pan' }, 'vca#49.gain': { from: 'vca#46.gain' }, 'env#53.r3': { from: 'env#50.r3' },
+      'filter#56.cutoff': { from: 'filter#53.cutoff' }, 'scale#55.gain': { from: 'scale#52.gain' }, 'env#54.l1': { from: 'env#51.l1' }, 'filter#56.res': { from: 'filter#53.res' },
+      'xfade#51.mix': { from: 'xfade#48.mix' }, 'osc#50.coarse': { from: 'osc#47.coarse' }, 'select#62.pos': { from: 'select#59.pos' }, 'pan#110.pan': { from: 'pan#104.pan' },
+      'vca#59.gain': { from: 'vca#56.gain' }, 'env#91.r3': { from: 'env#85.r3' }, 'filter#94.cutoff': { from: 'filter#88.cutoff' }, 'scale#93.gain': { from: 'scale#87.gain' },
+      'env#92.l1': { from: 'env#86.l1' }, 'filter#94.res': { from: 'filter#88.res' }, 'xfade#89.mix': { from: 'xfade#83.mix' }, 'osc#88.coarse': { from: 'osc#82.coarse' },
+      'select#100.pos': { from: 'select#94.pos' }, 'pan#111.pan': { from: 'pan#105.pan' }, 'vca#97.gain': { from: 'vca#91.gain' }, 'env#71.r2': { from: 'env#68.r2' },
+      'vca#72.gain': { from: 'vca#69.gain' }, 'lfo#65.wide': { from: 'lfo#62.wide' }, 'noise#69.color': { from: 'noise#66.color' }, 'vca#70.gain': { from: 'vca#67.gain' },
+      'filter#73.res': { from: 'filter#70.res' }, 'filter#73.cutoff': { from: 'filter#70.cutoff' }, 'pan#112.pan': { from: 'pan#106.pan' }, 'vca#74.gain': { from: 'vca#71.gain' },
+      // (FM FREQ: the coarse tune through fmTravel's line, inverted; the modulator 9 semitones over middle C lands on 0.96)
+      'macro#23.value': { line: 'osc#16.coarse', mul: [0.00945685426], add: [0.874888312], min: 0, max: 1 },
+      'macro#83.value': { line: 'osc#73.coarse', mul: [0.00890047805], add: [0.823611473], min: 0, max: 1 },
+    },
+  },
   // ---- the whole NOON (D-1054): each channel's pitch, second slider and volume go to its `main`, `secondary` and `volume`
   // (DOT's and BACID's Ladder cutoff and resonance are now their Multimode's, the same numbers). CYMPATH's pitch was its
   // oscillator's coarse tune and is now the main slider's Macro, -10 .. +40 semitones over 0 .. 1. A one-way LINK amount

@@ -17,11 +17,14 @@
 //  - DRUM 1 / DRUM 2: a sine through the waveshaper (WAVE), the one envelope (DECAY) on the level and, by BEND, the pitch
 //    (centre none, clockwise falling, counter-clockwise rising), a sine modulator into the pitch (FM INT its depth, off
 //    fully counter-clockwise, FM FREQ its pitch, restarted by every hit at its peak, the Oscillator's phase 90, as the
-//    original's), the spike (ATTACK). Drum 2 covers a higher range, as the original's.
+//    original's), the spike (ATTACK). Drum 2 covers a higher range, as the original's. FM FREQ spans the original knob's
+//    range, 1.25 to 550 Hz on drum 1 and 1.25 to 785 Hz on drum 2 (Vermona's list of the MKIV's changes): fmTravel.
 //  - PITCH of KICK, DRUM 1 and DRUM 2 spans the original knob's range (Vermona's list of the MKIV's changes): a Macro whose
 //    macro range sets the bend Attenuverter's offset (travel), the Oscillator at middle C.
 //  - MULTI: three square oscillators; PITCH moves all three, PITCH 2 and PITCH 3 set the second and third below it
 //    (octaves), and fully counter-clockwise they are off; BEND as Drum's, the spike (ATTACK), then a high pass (HIGHPASS).
+//    PITCH 2 / 3 still reach above PITCH, which the original's do not (#866): a row over only its travel would be a Macro,
+//    whose 0.01 steps are 48 cents of four octaves (the Offset's are 12), and the factory presets' tunings would move.
 //  - SNARE: the spike rings a resonant low pass (ATTACK the spike, RESONANCE, FILTER its pitch: the tonal part). Beside it
 //    the noise (NOISE its level, DECAY NOISE its length) and the pseudo reverb, a longer noise tail (REVERB its level,
 //    DECAY REV its length). The DRM1's "electronic pseudo reverb" is not described further; a tail is the plainest reading.
@@ -89,6 +92,53 @@ function travel(b: VoiceBuilder, col: number, row: number, m: number, lo: number
 export const KICK_HZ: [number, number] = [22, 380];
 export const DRUM1_HZ: [number, number] = [18, 300];
 export const DRUM2_HZ: [number, number] = [24, 430];
+/** each DRUM's FM FREQ range (Hz), from the same list: the modulator reaches down to 1.25 Hz, an LFO's pace; and the
+ * modulator's tune before #866 (semitones from middle C) that the row still plays, bit for bit (fmTravel): drum 1's at
+ * Metal Works' FM FREQ, drum 2's Init */
+export const DRUM1_FM = { hz: [1.25, 550] as [number, number], exact: 9 };
+export const DRUM2_FM = { hz: [1.25, 785] as [number, number], exact: -24 };
+/** the FM modulator's own tune (semitones): C0, 16.35 Hz; FM FREQ's Attenuverters move it from there by its pitch input
+ * (the Oscillator's tune alone stops at 16 Hz; its pitch input does not) */
+export const FM_COARSE = -48;
+
+/**
+ * FM FREQ over the original knob's range: a Macro (0..1, the card's steps 0.01) through two Attenuverters into the
+ * modulator's pitch (octaves above FM_COARSE), a straight line in octaves from `hz[0]` up past `hz[1]` (four octaves are
+ * the most one Attenuverter's gain reaches, so the second multiplies by 4, which is exact in both engines). The line goes
+ * through the card step `at` nearest `st` semitones above middle C, the modulator's tune before #866, so that a factory
+ * preset that set it plays the same bits: the first gain and the two offsets are the nearest (in 1/65536 steps, as the
+ * binary holds them) for which the browser engine (float32 signals) and engine.c (Q16, products floored) both give
+ * exactly `st` at `at`. Returns the Macro and the two Attenuverters.
+ */
+function fmTravel(b: VoiceBuilder, col: number, row: number, fm: number, hz: [number, number], st: number): [number, number, number] {
+  const base = 261.6255653 * 2 ** (FM_COARSE / 12);
+  const [lo, hi] = hz.map((f) => Math.log2(f / base));
+  const want = st / 12 - FM_COARSE / 12;                                   // (octaves above FM_COARSE)
+  if (Math.fround(want) !== want || !Number.isInteger(want * 65536)) throw new Error(`fmTravel: ${st} st is not exact`);
+  const at = Math.round(((want - lo) / (hi - lo)) * 100) / 100;
+  const vq = Math.round(at * 65536), v32 = Math.fround(at), T = want * 65536;
+  const g0 = Math.round(((want - lo) / (4 * at)) * 65536);
+  for (let d = 0; d < 4096; d++) {
+    for (const g of d ? [g0 + d, g0 - d] : [g0]) {
+      for (let o2 = -4 * 65536 + (((T % 4) + 4) % 4); o2 < -4 * 65536 + 256; o2 += 4) {
+        const x1 = (T - o2) / 4, o1 = x1 - Math.floor((vq * g) / 65536);    // (engine.c: s1, then s2's x 4 + o2)
+        const x2 = Math.fround(Math.fround(v32 * (g / 65536) + o1 / 65536) * 4 + o2 / 65536);   // (the browser's)
+        if (x2 !== want) continue;
+        const s1 = b.add('scale', col, row, { gain: g / 65536, offset: o1 / 65536 });
+        const s2 = b.add('scale', col + 0.5, row, { gain: 4, offset: o2 / 65536 });
+        // (Init: the modulator's Init before #866, 24 semitones below middle C, to the card's 0.01; FM INT is 0 there)
+        const init = Math.round(((-24 / 12 - FM_COARSE / 12 - (4 * o1 + o2) / 65536) / ((4 * g) / 65536)) * 100) / 100;
+        const k = b.add('macro', col + 0.25, row - 0.2, { value: init });
+        b.wire(k, 'out', s1, 'in');
+        b.wire(s1, 'out', s2, 'in');
+        b.wire(s2, 'out', fm, 'pitch');
+        return [k, s1, s2];
+      }
+    }
+  }
+  throw new Error(`fmTravel: no line plays ${st} st exactly`);
+}
+
 /** the kick's spike: its fixed peak, its fall from the peak (s), and how long the tail ATTACK adds lasts (s) */
 export const KICK_SPIKE = { level: 0.5, fall: 0.002, tail: 0.008 };
 /** the kick's BEND and a DRUM's FM INT turned fully up: octaves of sweep, octaves of the modulator's swing */
@@ -137,13 +187,14 @@ export function kick(b: VoiceBuilder, col: number, noise: NoiseFrom, o: { coarse
 }
 
 /** DRUM 1 / DRUM 2: DECAY PITCH BEND ATTACK FM INT FM FREQ WAVE */
-export function drum(b: VoiceBuilder, col: number, o: { hz: [number, number]; coarse: number; decay: number }): Voice {
+export function drum(b: VoiceBuilder, col: number, o: { hz: [number, number]; fm: { hz: [number, number]; exact: number }; coarse: number; decay: number }): Voice {
   const osc = b.add('osc', col, 0, { wave: 0, coarse: 0, level: 1 });
-  const fm = b.add('osc', col, 1, { wave: 0, coarse: -24, level: 0, phase: 90 });
+  const fm = b.add('osc', col, 1, { wave: 0, coarse: FM_COARSE, level: 0, phase: 90 });
   const fmInt = b.add('scale', col, 1.5, { gain: BEND_MAX, offset: 0 });
   const amp = decayEnv(b, col, 2, o.decay);
   const bend = b.add('scale', col, 2.5, { gain: 0.5, offset: 0 });
   const pitch = travel(b, col + 0.5, 2.5, bend, octaves(o.hz[0]), octaves(o.hz[1]), o.coarse / 12);
+  const [fmFreq, fmTune, fmTimes] = fmTravel(b, col, 1.2, fm, o.fm.hz, o.fm.exact);
   const wave = b.add('shape', col, 3, { drive: 1.2, mode: 0, level: 0.8 });
   const vca = b.add('vca', col, 3.5, { gain: 1 });
   const spike = decayEnv(b, col, 4, 0.002, 0.3);
@@ -158,10 +209,10 @@ export function drum(b: VoiceBuilder, col: number, o: { hz: [number, number]; co
   b.wire(vca, 'out', sum, 'in');
   b.wire(spike, 'env', sum, 'in');
   return {
-    members: [osc, fm, fmInt, amp, bend, pitch, wave, vca, spike, sum],
+    members: [osc, fm, fmTune, fmTimes, fmFreq, fmInt, amp, bend, pitch, wave, vca, spike, sum],
     gate: [[amp, 'gate'], [spike, 'gate'], [fm, 'sync']],
     vel: [sum, 'cv'], out: [sum, 'out'],
-    rows: [['decay', amp, 'r2'], ['pitch', pitch, 'value'], ['bend', bend, 'gain'], ['attack', spike, 'l1'], ['fm int', fm, 'level'], ['fm freq', fm, 'coarse'], ['wave', wave, 'drive']],
+    rows: [['decay', amp, 'r2'], ['pitch', pitch, 'value'], ['bend', bend, 'gain'], ['attack', spike, 'l1'], ['fm int', fm, 'level'], ['fm freq', fmFreq, 'value'], ['wave', wave, 'drive']],
   };
 }
 

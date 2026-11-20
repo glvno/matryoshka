@@ -64,16 +64,21 @@ describe("format 64's shorter layout (D-1025)", () => {
     expect(w.length).toBe(layout(p, undefined, SLIM).size);
   });
 
-  it('keeps every factory patch in its older format when one holds it, and counts the smallest form', () => {
+  it('keeps every factory patch in its older format unless no older form fits, and counts the smallest form', () => {
+    const slim: string[] = [];
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const l = layout(make());
-      // (the 808 and 909 Kits fit only in format 64 since their VELOCITY rows, D-1053, D-1055, D-1026)
-      expect(l.v < SLIM, name).toBe(Math.min(l.base.bytes, l.counted) <= DEVICE.bytes);
-      expect(l.v < SLIM || name === '808 Kit' || name === '909 Kit', name).toBe(true);
+      if (l.base.bytes > DEVICE.bytes && l.counted > DEVICE.bytes) {
+        expect(l.v, name).toBe(SLIM);
+        slim.push(name);
+      } else expect(l.v, name).toBeLessThan(SLIM);
       expect(l.need, name).toBe(Math.min(l.base.bytes, l.counted, l.slim));
       expect(l.slim, name).toBeLessThan(l.base.bytes);
     }
-    // (the room format 64 gave the 909 Kit holds its VELOCITY row: 76 bytes left, D-1055)
+    // (the 808 and 909 Kits with their VELOCITY rows, D-1053, D-1055; Verona Drum 1 with FM FREQ over the knob's range,
+    // #866: firmware 1.22 or later. Another one is a choice to make on purpose)
+    expect(slim).toEqual(['808 Kit', '909 Kit', 'Verona Drum 1']);
+    // (the room format 64 gave the 909 Kit holds its VELOCITY row, D-1055)
     expect(DEVICE.bytes - layout(FM1_PRESETS['909 Kit']()).need).toBeGreaterThan(50);
   });
 
