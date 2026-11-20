@@ -1871,7 +1871,7 @@ static void drawn_note(uint32_t k, const bar_t *b)
 }
 
 /* the page's bars as they are now (pages_now), for a draw */
-static bar_t pg_bar[PG_ROWS];
+static bar_t pg_bar[PG_ROWS] UI_POOL;
 static void bars_get(const ppage_t *pg)
 {
     uint32_t k;
@@ -2559,7 +2559,7 @@ static void fx_draw(int full)
 /* a device's list holds one structure's factory presets (at most FC_STRUCT_PRESETS, factory.c) and up to two user
  * namespaces (dp_list) */
 #define PR_MAX (FC_STRUCT_PRESETS + 2u * PS_SLOTS)
-static uint16_t pr_list[PR_MAX];
+static uint16_t pr_list[PR_MAX] UI_POOL;
 static int32_t pr_vals[PS_MAXV] ENG_POOL;              /* existing store/factory decode scratch */
 static uint8_t dp_short;                                /* the entry dp_load loaded last had fewer values than the device's rows */
 static const int32_t *pr_at = pr_vals;                  /* decoded entry values; no heap or audio-path decompression */
