@@ -1207,8 +1207,8 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     t.screen(&m, "seq: the 808 Kit loads", "808 KIT");
     m.run_for(1200)?;                        // (PRESET's toast over)
     t.screen(&m, "arm: a patch loads with nothing armed, the footer says KEYS WIRED (#395)", "KEYS WIRED");
-    m.tap(SEL, 120, 300)?;                   // the home device, the Drum map: its keys come through DRUMS, armed with it
-    t.screen(&m, "arm: SEL on a device fed through a track arms it with the track (#395), named too (#582)", "DRUM MAP + DRUMS ARMED");
+    m.tap(SEL, 120, 300)?;                   // the home device, the kit (its Drum map inside, D-1059): SEL arms DRUMS
+    t.screen(&m, "arm: SEL on a device fed through a track arms it with the track (#395), named too (#582)", "808 KIT + DRUMS ARMED");
     m.run_for(1200)?;
     let mk = m.mark();
     m.tap(14 + 1, 120, 300)?;                // F#3, black key 1, on the device page: the kick (Main's keys into DRUMS, #141)
@@ -1493,6 +1493,7 @@ fn count_in(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.tap(GLO, 120, 400)?;
+    m.turn(ALGO, 1, 400)?;                   // MIDI 2/2 (#596)
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "count-in: the menu's PANEL tab has COUNT-IN", "COUNT-IN");
     t.screen(&m, "count-in: OFF as made", "OFF");
@@ -1507,6 +1508,7 @@ fn count_in(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.tap(GLO, 120, 400)?;
+    m.turn(ALGO, 1, 400)?;                   // MIDI 2/2, then PANEL
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "count-in: the setting survives a boot (the settings record's byte 12)", "1 BAR");
     m.tap(HOME, 120, 400)?;
@@ -1595,6 +1597,7 @@ fn global_tempo(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.tap(GLO, 120, 400)?;
+    m.turn(ALGO, 1, 400)?;                   // MIDI 2/2 (#596)
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "tempo: the menu's PANEL tab has TEMPO", "TEMPO");
     t.screen(&m, "tempo: GLOBAL as made", "GLOBAL");
@@ -1619,6 +1622,7 @@ fn global_tempo(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     tempo_turn(&mut m, 1)?;
     t.screen(&m, "tempo: the global tempo survives a boot without SAVE (299, and a click)", "TEMPO 300");
     m.tap(GLO, 120, 400)?;
+    m.turn(ALGO, 1, 400)?;                   // MIDI 2/2, then PANEL
     m.turn(ALGO, 1, 400)?;
     m.turn(K4, 1, 400)?;
     t.screen(&m, "tempo: K4 turns it to PATCH", "PATCH");
@@ -1630,6 +1634,7 @@ fn global_tempo(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.tap(GLO, 120, 400)?;
+    m.turn(ALGO, 1, 400)?;                   // MIDI 2/2, then PANEL
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "tempo: PATCH survives a boot without SAVE", "PATCH");
     m.turn(K4, -1, 400)?;
@@ -1784,9 +1789,9 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.screen(&m, "  (the next patch)", &presets[1].0);
     patch_turn(&mut m, -1, 500)?;
     t.screen(&m, "  (and back, so step 4 starts from patch 1)", &presets[0].0);
-    let info = turn_until(&mut m, ALGO, 1, "VERSION", 6)?;
+    let info = turn_until(&mut m, ALGO, 1, "VERSION", 8)?;   // MIDI 2/2, PANEL, PANEL 2/2, SYSTEM, SYSTEM 2/2, EQ, INFO
     t.snap(&m, "menu-info");
-    t.check("ALGO until the INFO tab (at most 6 clicks)", info, String::new());
+    t.check("ALGO until the INFO tab (at most 8 clicks)", info, String::new());
     m.tap(HOME, 120, 400)?;
     t.screen(&m, "HOME tapped: back out of the menu", DEVICE_PAGE);
     m.tap(HOME, 1000, 400)?;
