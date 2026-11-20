@@ -180,6 +180,29 @@ tests['oracle-lfo-500'] = (() => {
   }
   return p;
 })();
+// #862: Oracle V's pedal (Main's sustain, MIDI CC 64) and A-440. REL with the Release switch OFF: a key let go with the
+// pedal up releases fast, with it down at the release row's time, and lifting it mid-release shortens the rest. HOLD: the
+// pedal holds both envelopes' gates after the key is let go. A-440 ON: the tone with no key held, then a key beside it.
+const oracleRows = (rows: [string, number][]): Patch => {
+  const p = PRESETS['Oracle V']();
+  const card = p.assemblies!.find((a) => a.label === 'Oracle V')!.params;
+  for (const [label, v] of rows) {
+    const r = card.find((x) => x.label === label)!;
+    p.modules.find((m) => m.id === r.module)!.params[r.param] = v;
+  }
+  return p;
+};
+tests['oracle-pedal-rel'] = oracleRows([['release', 1], ['pedal', 1]]);
+events['oracle-pedal-rel'] = [[0, 'on', 60], [128 * 30, 'off', 60], [128 * 50, 'cc', 64, 64], [128 * 55, 'on', 64], [128 * 80, 'off', 64],
+  [128 * 95, 'cc', 64, 63], [128 * 110, 'on', 67], [128 * 115, 'cc', 64, 127], [128 * 130, 'off', 67]];
+ends['oracle-pedal-rel'] = 128 * 200;
+tests['oracle-pedal-hold'] = oracleRows([['release', 2], ['pedal', 2]]);
+events['oracle-pedal-hold'] = [[0, 'cc', 64, 127], [128 * 5, 'on', 60], [128 * 40, 'off', 60], [128 * 60, 'on', 64], [128 * 70, 'off', 64],
+  [128 * 90, 'cc', 64, 0], [128 * 120, 'on', 67], [128 * 140, 'off', 67]];
+ends['oracle-pedal-hold'] = 128 * 200;
+tests['oracle-a440'] = oracleRows([['a-440', 2]]);
+events['oracle-a440'] = [[128 * 40, 'on', 57], [128 * 80, 'off', 57]];
+ends['oracle-a440'] = 128 * 120;
 // #649: an XL the FM-1's one memory arena holds (Hera 6 XL: 151 module copies, past the 128 of the fixed pools before it;
 // Wanderer XL fitted too and took Wanderer's factory slot, D-348)
 for (const n of ['Hera 6 XL']) tests[n] = relocatedPatches[n]();
