@@ -14,7 +14,7 @@
  * at most every MAP_REPORT_MS for a mapping). */
 
 #define LEARN_MS 30000u
-#define LEARN_CANDS 4u                                  /* controls a learn tells apart at once (an X-Y pad sends two) */
+#define LEARN_CANDS 2u                                  /* controls a learn tells apart at once (an X-Y pad sends two) */
 #define MAP_REPORT_MS 25u
 
 static struct {

@@ -607,7 +607,8 @@ void eng_set_param(uint32_t module, uint32_t param, int32_t q16);
  * ramp slot, #1067): the parameter takes the value at once, what the module uses reaches it over ENG_RAMP_BLOCKS blocks;
  * a choice parameter (defs.h pchoice) is set at once */
 #define ENG_KNOBS 4u
-#define ENG_MAP_RAMPS 4u             /* ramp slots of the learned MIDI controls (#1067): mapping i ramps in slot i % 4 */
+#define ENG_MAP_RAMPS 2u             /* ramp slots of the learned MIDI controls (#1067): mapping i ramps in slot i % 2 (an X-Y
+                                      * pad's two axes at once; a third control moving with them takes a slot over) */
 #define ENG_RAMPS (ENG_KNOBS + ENG_MAP_RAMPS)
 #define ENG_RAMP_BLOCKS 8            /* 8 x 128 frames = 23 ms at ENG_SR (a power of two: the step is a shift) */
 void eng_knob_param(uint32_t knob, uint32_t module, uint32_t param, int32_t q16);
