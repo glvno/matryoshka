@@ -1,0 +1,598 @@
+{
+ "method": "tools/m1_link.py --rig meq LOW MID HIGH, then tools/rig_cpu_survey.py on Expander S with every stage of its master FX bus on (8 voices), stopped and --run; the bands at +6 dB, MID FREQ 1 kHz; reset to flat after",
+ "patch": "05 Expander S fx.bin",
+ "runs": {
+  "0 0 0": {
+   "stopped": [
+    {
+     "slot": 0,
+     "name": "05 Expander S fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2757,
+     "n0_samples": [
+      2757,
+      1329,
+      1376,
+      1354
+     ],
+     "n0_mean_us": [
+      1037,
+      777,
+      1038,
+      787
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2732,
+     "n1_samples": [
+      2732,
+      1703,
+      1703,
+      1689
+     ],
+     "n1_mean_us": [
+      1306,
+      1278,
+      1319,
+      1289
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2729,
+     "n4_samples": [
+      2729,
+      1978,
+      1984,
+      1984
+     ],
+     "n4_mean_us": [
+      1621,
+      1684,
+      1637,
+      1707
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2743,
+     "n8_samples": [
+      2743,
+      2307,
+      2359,
+      2362
+     ],
+     "n8_mean_us": [
+      2277,
+      2279,
+      2327,
+      2325
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    }
+   ],
+   "running": [
+    {
+     "slot": 0,
+     "name": "05 Expander S fx",
+     "transport": true,
+     "hold_seconds": 2.0,
+     "n0_us": 2711,
+     "n0_samples": [
+      2711,
+      1412,
+      1427,
+      1454
+     ],
+     "n0_mean_us": [
+      1139,
+      847,
+      1114,
+      842
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2738,
+     "n1_samples": [
+      2738,
+      1738,
+      1731,
+      1753
+     ],
+     "n1_mean_us": [
+      1407,
+      1303,
+      1380,
+      1331
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2707,
+     "n4_samples": [
+      2707,
+      1973,
+      2013,
+      2041
+     ],
+     "n4_mean_us": [
+      1667,
+      1620,
+      1703,
+      1659
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2721,
+     "n8_samples": [
+      2721,
+      2367,
+      2392,
+      2425
+     ],
+     "n8_mean_us": [
+      2288,
+      2293,
+      2343,
+      2346
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    }
+   ]
+  },
+  "6 0 0": {
+   "stopped": [
+    {
+     "slot": 0,
+     "name": "05 Expander S fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2807,
+     "n0_samples": [
+      2807,
+      1443,
+      1418,
+      1452
+     ],
+     "n0_mean_us": [
+      1160,
+      874,
+      1210,
+      889
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2802,
+     "n1_samples": [
+      2802,
+      1787,
+      1804,
+      1779
+     ],
+     "n1_mean_us": [
+      1416,
+      1374,
+      1430,
+      1389
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2833,
+     "n4_samples": [
+      2833,
+      2061,
+      2068,
+      2062
+     ],
+     "n4_mean_us": [
+      1700,
+      1766,
+      1718,
+      1764
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2839,
+     "n8_samples": [
+      2839,
+      2406,
+      2440,
+      2455
+     ],
+     "n8_mean_us": [
+      2352,
+      2364,
+      2405,
+      2408
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    }
+   ],
+   "running": [
+    {
+     "slot": 0,
+     "name": "05 Expander S fx",
+     "transport": true,
+     "hold_seconds": 2.0,
+     "n0_us": 2834,
+     "n0_samples": [
+      2834,
+      1548,
+      1548,
+      1537
+     ],
+     "n0_mean_us": [
+      1026,
+      984,
+      894,
+      1006
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2805,
+     "n1_samples": [
+      2805,
+      1816,
+      1817,
+      1818
+     ],
+     "n1_mean_us": [
+      1471,
+      1406,
+      1497,
+      1418
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2839,
+     "n4_samples": [
+      2839,
+      2070,
+      2086,
+      2076
+     ],
+     "n4_mean_us": [
+      1742,
+      1706,
+      1769,
+      1732
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2818,
+     "n8_samples": [
+      2818,
+      2475,
+      2509,
+      2509
+     ],
+     "n8_mean_us": [
+      2378,
+      2374,
+      2427,
+      2421
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    }
+   ]
+  },
+  "6 6 0": {
+   "stopped": [
+    {
+     "slot": 0,
+     "name": "05 Expander S fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2866,
+     "n0_samples": [
+      2866,
+      1478,
+      1484,
+      1484
+     ],
+     "n0_mean_us": [
+      1025,
+      887,
+      1041,
+      892
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2860,
+     "n1_samples": [
+      2860,
+      1839,
+      1821,
+      1852
+     ],
+     "n1_mean_us": [
+      1437,
+      1537,
+      1443,
+      1532
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2861,
+     "n4_samples": [
+      2861,
+      2116,
+      2117,
+      2107
+     ],
+     "n4_mean_us": [
+      1863,
+      1751,
+      1877,
+      1769
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2889,
+     "n8_samples": [
+      2889,
+      2448,
+      2483,
+      2485
+     ],
+     "n8_mean_us": [
+      2405,
+      2410,
+      2445,
+      2454
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    }
+   ],
+   "running": [
+    {
+     "slot": 0,
+     "name": "05 Expander S fx",
+     "transport": true,
+     "hold_seconds": 2.0,
+     "n0_us": 2875,
+     "n0_samples": [
+      2875,
+      1550,
+      1550,
+      1534
+     ],
+     "n0_mean_us": [
+      1000,
+      1060,
+      1018,
+      1072
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2878,
+     "n1_samples": [
+      2878,
+      1868,
+      1846,
+      1865
+     ],
+     "n1_mean_us": [
+      1450,
+      1550,
+      1460,
+      1561
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2882,
+     "n4_samples": [
+      2882,
+      2137,
+      2192,
+      2192
+     ],
+     "n4_mean_us": [
+      1856,
+      1757,
+      1858,
+      1812
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2852,
+     "n8_samples": [
+      2852,
+      2490,
+      2528,
+      2532
+     ],
+     "n8_mean_us": [
+      2404,
+      2424,
+      2475,
+      2472
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    }
+   ]
+  },
+  "6 6 6": {
+   "stopped": [
+    {
+     "slot": 0,
+     "name": "05 Expander S fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "n0_us": 2912,
+     "n0_samples": [
+      2912,
+      1502,
+      1526,
+      1497
+     ],
+     "n0_mean_us": [
+      983,
+      1232,
+      991,
+      1153
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2931,
+     "n1_samples": [
+      2931,
+      1892,
+      1876,
+      1899
+     ],
+     "n1_mean_us": [
+      1466,
+      1496,
+      1476,
+      1506
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2919,
+     "n4_samples": [
+      2919,
+      2146,
+      2149,
+      2149
+     ],
+     "n4_mean_us": [
+      1850,
+      1794,
+      1870,
+      1818
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2925,
+     "n8_samples": [
+      2925,
+      2492,
+      2527,
+      2530
+     ],
+     "n8_mean_us": [
+      2447,
+      2451,
+      2490,
+      2497
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    }
+   ],
+   "running": [
+    {
+     "slot": 0,
+     "name": "05 Expander S fx",
+     "transport": true,
+     "hold_seconds": 2.0,
+     "n0_us": 2892,
+     "n0_samples": [
+      2892,
+      1573,
+      1581,
+      1566
+     ],
+     "n0_mean_us": [
+      1041,
+      1156,
+      1059,
+      1049
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2882,
+     "n1_samples": [
+      2882,
+      1926,
+      1926,
+      1929
+     ],
+     "n1_mean_us": [
+      1485,
+      1568,
+      1493,
+      1557
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2891,
+     "n4_samples": [
+      2891,
+      2198,
+      2227,
+      2227
+     ],
+     "n4_mean_us": [
+      1903,
+      1818,
+      1958,
+      1841
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2922,
+     "n8_samples": [
+      2922,
+      2522,
+      2572,
+      2572
+     ],
+     "n8_mean_us": [
+      2461,
+      2468,
+      2511,
+      2514
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    }
+   ]
+  }
+ }
+}
