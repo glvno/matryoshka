@@ -51,6 +51,8 @@ const PMIG_CASES_H: &str = include_str!("../../../firmware/test/pmig_cases.h");
 /// Released copies of factory patches unlike today's: a firmware-tier patch's, then a factory-region patch's
 /// (web/scripts/legacy-factory.ts, D-887)
 const RELEASED_CASES_H: &str = include_str!("../../../firmware/test/released_cases.h");
+/// The Drum maps' default row names (DRUM_ROW_NAME), which format 64 leaves out of a patch binary
+const DEFS_H: &str = include_str!("../../../firmware/src/defs.h");
 
 /// Panel ids (fm1-emu / Felucca's table, confirmed by M-VAVE's fm1_open)
 pub(crate) const OCT_DOWN: u8 = 0;
@@ -154,16 +156,126 @@ pub(crate) fn released_cases() -> Vec<(String, Vec<u8>)> {
     packed_list(RELEASED_CASES_H, "RELEASED_CASES")
 }
 
-/// A patch's Drum map row names (patchbin.ts, flag bit 7: DRUM_ROWS names of TRACK_NAME_MAX bytes, ASCII, zero padded):
-/// the first run of eight such names in its bytes
-fn drum_row_names(patch: &[u8]) -> Option<Vec<String>> {
-    let name = |c: &[u8]| {
-        let end = c.iter().position(|&b| b == 0).unwrap_or(8);
-        c[0].is_ascii_alphanumeric() && c[..end].iter().all(|b| (0x20..0x7f).contains(b)) && c[end..].iter().all(|&b| b == 0)
+/// Rows of a Drum map, and bytes of a row name before format 64 (engine.h ENG_DRUM_ROWS, ENG_DRUM_NAME)
+const DRUM_ROWS: usize = 8;
+const DRUM_NAME: usize = 8;
+/// The first format that writes only the row names off their default (engine.h ENG_SLIM, patchbin.ts SLIM, D-1025)
+const SLIM: u8 = 64;
+
+/// A Drum map row's default name, the one the FM-1 shows for a row a format 64 binary does not name (defs.h DRUM_ROW_NAME)
+fn drum_default_names() -> Result<Vec<String>, String> {
+    let d = &DEFS_H[DEFS_H.find("DRUM_ROW_NAME[").ok_or("defs.h: no DRUM_ROW_NAME")?..];
+    let body = &d[d.find('{').ok_or("defs.h: DRUM_ROW_NAME")? + 1..d.find('}').ok_or("defs.h: DRUM_ROW_NAME")?];
+    let names: Vec<String> = body.split(',').map(|s| s.trim().trim_matches('"').to_string()).collect();
+    if names.len() != DRUM_ROWS {
+        return Err(format!("defs.h: DRUM_ROW_NAME has {} names", names.len()));
+    }
+    Ok(names)
+}
+
+/// The Drum maps' row names section (patchbin.ts, header flag bit 7; engine.c eng_names_end), if one starts at p[at]: u8
+/// count (here at least 1), then per map in module order u8 its module index and its names: before format 64 every row's
+/// in DRUM_NAME zero padded bytes; since, u8 the rows it names (bit r: row r) and each of those as u8 length (0..DRUM_NAME)
+/// and its characters. Its end, and per map each row's name (None: not named, its default). Every name must be ASCII text.
+fn names_section(p: &[u8], mut at: usize) -> Option<(usize, Vec<Vec<Option<String>>>)> {
+    let text = |b: &[u8]| b.iter().all(|c| (0x20..0x7f).contains(c)).then(|| String::from_utf8_lossy(b).into_owned());
+    let n = *p.get(at)?;
+    at += 1;
+    let (mut maps, mut last) = (Vec::new(), None);
+    for _ in 0..n {
+        let module = *p.get(at)?;
+        if module >= p[2] || last.is_some_and(|l| module <= l) {
+            return None;
+        }
+        last = Some(module);
+        let mut rows = Vec::new();
+        if p[1] < SLIM {
+            let b = p.get(at + 1..at + 1 + DRUM_ROWS * DRUM_NAME)?;
+            for c in b.chunks(DRUM_NAME) {
+                let end = c.iter().position(|&x| x == 0).unwrap_or(DRUM_NAME);
+                if c[end..].iter().any(|&x| x != 0) {
+                    return None;
+                }
+                rows.push(Some(text(&c[..end])?));
+            }
+            at += 1 + b.len();
+        } else {
+            let named = *p.get(at + 1)?;
+            at += 2;
+            for r in 0..DRUM_ROWS {
+                if named >> r & 1 == 0 {
+                    rows.push(None);
+                    continue;
+                }
+                let k = *p.get(at)? as usize;
+                if k > DRUM_NAME {
+                    return None;
+                }
+                rows.push(Some(text(p.get(at + 1..at + 1 + k)?)?));
+                at += 1 + k;
+            }
+        }
+        maps.push(rows);
+    }
+    (n > 0).then_some((at, maps))
+}
+
+/// The end of the sections a binary has after its row names, from p[at]: the pattern origins (p[7] bit 5, u16 LE count, 6
+/// bytes each), the master FX bus (p[7] bit 6: u8 count 1..4, per stage u8 kind, ascending, device, page, n 1..8, n
+/// modules), the macro ranges (p[6] bit 1: u8 count, 5 bytes each) and from format 65 the MIDI learn mappings (any bytes
+/// left: u8 count 1.., 5 bytes each); engine.c eng_section_at, eng_skip_fx, eng_maps_at, eng_maps
+fn tail_end(p: &[u8], mut at: usize) -> Option<usize> {
+    if p[7] & 32 != 0 {
+        let b = p.get(at..at + 2)?;
+        at += 2 + 6 * u16::from_le_bytes([b[0], b[1]]) as usize;
+    }
+    if p[7] & 64 != 0 {
+        let count = *p.get(at)?;
+        if !(1..=4).contains(&count) {
+            return None;
+        }
+        at += 1;
+        let mut last = None;
+        for _ in 0..count {
+            let s = p.get(at..at + 4)?;
+            if s[0] >= 4 || last.is_some_and(|k| s[0] <= k) || !(1..=8).contains(&s[3]) {
+                return None;
+            }
+            last = Some(s[0]);
+            at += 4 + s[3] as usize;
+        }
+    }
+    if p[6] & 2 != 0 {
+        at += 1 + 5 * *p.get(at)? as usize;
+    }
+    if p[1] >= 65 && at < p.len() {
+        let n = p[at];
+        if n == 0 {
+            return None;
+        }
+        at += 1 + 5 * n as usize;
+    }
+    Some(at)
+}
+
+/// The row names of a patch's first Drum map (module order) as the FM-1's SEQ page shows them (engine.c eng_drum_name):
+/// from its row names section, a row format 64 does not name with its default. The sections before it start past the
+/// module records, whose sizes take the firmware's type table; so the section is the one offset of the binary where a
+/// row names section starts whose end the sections after it (tail_end) carry exactly to the binary's end. Err says why
+/// there is no such single offset.
+fn drum_row_names(p: &[u8]) -> Result<Vec<String>, String> {
+    if p.len() < 8 || p[1] < 33 || p[6] & 128 == 0 {
+        return Err(format!("format {}, flags {:#06x}: no row names section", p.get(1).unwrap_or(&0), p.get(6..8).map_or(0, |f| f[0] as u16 | (f[1] as u16) << 8)));
+    }
+    let found: Vec<(usize, Vec<Vec<Option<String>>>)> = (8..p.len())
+        .filter_map(|at| names_section(p, at).filter(|(end, _)| tail_end(p, *end) == Some(p.len())).map(|(_, maps)| (at, maps)))
+        .collect();
+    let [(_, maps)] = &found[..] else {
+        let at: Vec<usize> = found.iter().map(|f| f.0).collect();
+        return Err(format!("format {}: {} offsets hold a row names section that ends the binary, not one {at:?}", p[1], found.len()));
     };
-    (0..patch.len().saturating_sub(63))
-        .find(|&i| patch[i..i + 64].chunks(8).all(name))
-        .map(|i| patch[i..i + 64].chunks(8).map(|c| String::from_utf8_lossy(c).trim_end_matches('\0').to_string()).collect())
+    let default = drum_default_names()?;
+    Ok(maps[0].iter().zip(default).map(|(n, d)| n.clone().unwrap_or(d)).collect())
 }
 
 /// The device preset PRESET loads first on a factory patch's engine that is set to no preset and off every entry's values:
@@ -1225,8 +1337,13 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.tap(SEQ, 120, 400)?;
     t.screen(&m, "seq: SEQ opens the drum grid on its track", "ALGO track");
     t.screen(&m, "arm: the SEQ page arms the track it shows (#395)", "DRUMS ARM");
-    let row8 = drum_row_names(&presets[kit].1).map(|r| r[7].clone()).unwrap_or_default();
-    t.screen(&m, &format!("seq: the row names come with the patch (format 33): row 8 {row8}"), &row8);
+    let format = presets[kit].1[1];
+    match drum_row_names(&presets[kit].1).and_then(|r| if r[7].is_empty() { Err("row 8 has no name".into()) } else { Ok(r[7].clone()) }) {
+        Ok(row8) => {
+            t.screen(&m, &format!("seq: the row names come with the patch (format {format}): row 8 {row8}"), &row8);
+        }
+        Err(e) => t.check(&format!("seq: the row names come with the patch (format {format}): row 8"), false, e),
+    }
     let name = |m: &Machine, r: usize| m.lcd()[(44 + 19 * r + 1) * 240 + 49]; // a row name's field (x 4..49), coral when selected
     let (sel, unsel) = (name(&m, 0), name(&m, 1));
     t.check("seq: row 1 selected", sel != unsel, format!("{sel:#06x} / {unsel:#06x}"));
@@ -1973,6 +2090,29 @@ mod tests {
         let list = factory();
         assert_eq!(list.len(), n);
         assert!(list.iter().all(|(_, b)| b.len() > 8 && b[0] == 0xA1), "patch magic");
+    }
+
+    /// a Drum map's row names come out of a patch binary of either layout, a format 64 one's unnamed rows as their
+    /// defaults; the factory 808 Kit's too
+    #[test]
+    fn drum_row_names_both_layouts() {
+        let default = drum_default_names().unwrap();
+        // format 63: two modules, flag bit 7 only; a stray byte, then the section: one map (module 1), every row padded
+        let mut old = vec![0xA1, 63, 2, 0, 0, 0, 0x80, 0, 0x55, 1, 1];
+        for r in 0..DRUM_ROWS {
+            let mut name = format!("ROW{r}").into_bytes();
+            name.resize(DRUM_NAME, 0);
+            old.extend(name);
+        }
+        assert_eq!(drum_row_names(&old).unwrap()[7], "ROW7");
+        // format 64 with macro ranges: the map names rows 2 and 8 (bits 1, 7), then one 5-byte macro range
+        let slim = [0xA1, 64, 2, 0, 0, 0, 0x82, 0, 0x55, 1, 1, 0x82, 2, b'S', b'D', 2, b'C', b'B', 1, 0, 0, 0, 0, 0];
+        let names = drum_row_names(&slim).unwrap();
+        assert_eq!((names[0].as_str(), names[1].as_str(), names[7].as_str()), (default[0].as_str(), "SD", "CB"));
+        assert!(drum_row_names(&slim[..slim.len() - 1]).is_err(), "a cut short tail");
+        let kit = factory().into_iter().find(|(n, _)| n == "808 KIT").unwrap().1;
+        let names = drum_row_names(&kit).unwrap();
+        assert!(names.iter().all(|n| !n.is_empty()), "{names:?}");
     }
 
     /// parts run side by side and add up in order; a part that halts or panics fails its own "keeps running" check
