@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The FM-1 no longer floods its link to the editor while the 808 Kit or the 909 Kit is open.** With the editor connected, 1.23.0 sent its panel state over and over with nothing changed. This happened on the device page, the environment page and the drum grid of a kit with more than 8 drum sounds, and while MIDI learn waited for a knob. The FM-1 then spent its time waiting on the link, and the editor could miss what the FM-1 told it, such as the track armed on the FM-1. Now the state goes out only when something changes, as before.
+
 ## 1.23.0 — 2026-11-20
 
 - **MIDI learn, on the FM-1 too: any knob, fader, pad axis or pitch bend wheel can move a row, even on a page that is not showing.** In the editor, open a row's ⋮ menu and choose **MIDI learn…** (or click the row and pick **MIDI learn…** in the palette), then move the control on your MIDI controller. On the FM-1, open GLO › MIDI, turn ALGO to the third page, turn LEARN right, turn the knob of the row you want, then move the control. From then on that control moves the row whatever page is in focus, and the FM-1 keeps doing it without the editor: the patch carries what it learned, and SAVE keeps it. A Korg nanoPAD2's X-Y pad can drive Briefcase 3's joystick this way; learn each axis on its own. In FM-1 & MIDI, Low and High set where the control's ends land in the row's range, and the list marks a control only the editor plays (a row no FM-1 page shows). A learned control does only that in its patch: a learned CC 1 no longer moves the mod wheel. A patch holds up to 16 learned controls. Patches with MIDI learn need the next firmware (#1067).

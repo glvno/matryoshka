@@ -42,8 +42,8 @@ async function rig(name: string, inputs: boolean) {
     seen();
   });
   const settle = (): void => { if (inputs && fm1Panel) align.soon(); };
-  // the FM-1's GUIDE_NOW: when its state changed (bytes 9 and 10 aside, as main.c guide_poll)
-  const sig = (g: PanelState): string => g.raw.filter((_, i) => i !== 9 && i !== 10).join();
+  // the FM-1's GUIDE_NOW: when its state changed (the conditions, bytes 9, 10 and 14, aside, as help_ui.c guide_changed)
+  const sig = (g: PanelState): string => g.raw.filter((_, i) => i !== 9 && i !== 10 && i !== 14).join();
   let last = sig(fm1.guide()!);
   const report = (): void => {
     const g = fm1.guide()!;
