@@ -156,7 +156,7 @@ export async function ensureRigIgnored(target, buttons, encoders, persist = fals
     try {
       if (!(await target.waitText('ALGO tab', 3000))) throw new Error('the settings menu did not open');
       let found = false;
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 8; i++) {   // (SYSTEM 2/2 is six ALGO steps on: MIDI 2/3, MIDI 3/3, PANEL 1/2, 2/2, SYSTEM 1/2, 2/2)
         const { texts } = await target.screen();
         if (texts.some((t) => t.s === 'SYSTEM 2/2') && texts.some((t) => t.s === 'EDITOR')) {
           found = true;
