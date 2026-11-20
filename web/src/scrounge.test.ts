@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The full Scrounge (factory/bank.json since D-1056): the neutral labs Scrooge with one Steps track per row, LEN GLB, the
-// per-voice SLEW, MELT and switches, one VOL, and its six grooves as patterns 1 to 6 with song 1 (CHAIN) playing them.
+// per-voice SLEW, MELT and switches, one VOL, and its grooves as patterns 1 to 11: song 1 (CHAIN) plays the first six,
+// song 2 the five with per-step CHOP and TIME (scripts/gen-scrounge-grooves.ts).
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { Engine } from './engine';
@@ -165,7 +166,7 @@ describe('Scrounge (the FM-1 version: the whole Scrooge, D-1056)', () => {
     expect(rms(bL, 0, bL.length)).toBeLessThan(rms(bR, 0, bR.length) / 100);
   });
 
-  it('holds its six grooves as patterns 1 to 6, song 1 (CHAIN) playing them in turn', () => {
+  it('holds its grooves as patterns 1 to 11, song 1 (CHAIN) playing the first six in turn', () => {
     const p = scrounge();
     expect(p.modules.find((m) => m.type === 'fm1')!.seq!.songs![0]).toEqual([0, 1, 2, 3, 4, 5].map((pat) => ({ pat, shift: 0 })));
     // (Dusty Boom Bap first: the grooves after it share most of its rows, so a track whose row is the same keeps no copy)
@@ -173,12 +174,39 @@ describe('Scrounge (the FM-1 version: the whole Scrooge, D-1056)', () => {
     const kick = (j: number): StepNote[] => (track(p, 'VOICE 1').patterns?.[j - 1]?.notes ?? track(p, 'VOICE 1').notes)!;
     expect(kick(1)).toEqual(lane('X...X...X...X...', 53));
     expect(kick(5)).toEqual(lane('X.....x...X..x..', 53));
-    const grooves = new Set([0, 1, 2, 3, 4, 5].map((j) => JSON.stringify(SCROUNGE_TRACKS.map((n) => {
+    const grooves = new Set(Array.from({ length: 11 }, (_, j) => JSON.stringify(SCROUNGE_TRACKS.map((n) => {
       const t = track(p, n);
       return j ? t.patterns?.[j - 1] ?? t.notes : t.notes;
     }))));
-    expect(grooves.size).toBe(6);
-    expect(track(p, 'LEN GLB').patterns).toBeUndefined();
+    expect(grooves.size).toBe(11);
+    // (only pattern 10, Odd Lengths, sets LEN GLB's length: the others reset every track after 16 steps)
+    expect(track(p, 'LEN GLB').patterns?.map((x) => x?.len)).toEqual([...Array(8).fill(undefined), 32]);
+  });
+
+  it('plays per-step CHOP (ratchets) and TIME (micro timing) only in patterns 7 to 11, which song 2 chains', () => {
+    const p = scrounge();
+    const timed = (j: number): StepNote[] => SCROUNGE_TRACKS.flatMap((n) => {
+      const t = track(p, n);
+      return ((j ? t.patterns?.[j - 1]?.notes ?? t.notes : t.notes) ?? []).filter((x) => x.ratchet || x.micro);
+    });
+    for (let j = 0; j < 6; j++) expect(timed(j), `pattern ${j + 1}`).toEqual([]);
+    expect([6, 7, 8, 9, 10].map((j) => timed(j).some((x) => x.ratchet))).toEqual([true, true, false, true, true]);
+    expect([6, 7, 8, 9, 10].map((j) => timed(j).some((x) => x.micro))).toEqual([true, false, true, false, false]);
+    expect(p.modules.find((m) => m.type === 'fm1')!.seq!.songs![1]).toEqual([6, 7, 8, 9, 10].map((pat) => ({ pat, shift: 0 })));
+    // (and they reach the sound: pattern 7, Chopped Dust, plays otherwise without its chops and its late snare)
+    const play = (q: Patch): Float32Array => {
+      const e = new Engine(SR);
+      e.load(q);
+      e.setPattern(6);
+      e.transport(true);
+      const l = new Float32Array(SR * 2), r = new Float32Array(l.length);
+      e.render(l, r);
+      return l.map((v, i) => v + r[i]);
+    };
+    const plain = scrounge();
+    for (const m of plain.modules) for (const x of m.patterns?.[5]?.notes ?? []) { delete x.ratchet; delete x.micro; }
+    const a = play(p), b = play(plain);
+    expect(rms(a.map((v, i) => v - b[i]), 0, a.length)).toBeGreaterThan(1e-3);
   });
 
   it('moves a preset of the earlier card: the A-B pan to its switch\'s nearest position, VOL A onto VOL (D-1056)', () => {

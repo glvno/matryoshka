@@ -408,7 +408,8 @@ static int grow_test(int n, char **argv)
         long nb;
         uint8_t *o = slurp(argv[k], &nb);
         uint32_t m, j, ne = 0, i, was;
-        if (o[1] < ENG_COUNTED) {
+        /* (a twin past a bank slot, Scrounge's counted one: the FM-1 never runs it, m1_set_current refuses it) */
+        if (o[1] < ENG_COUNTED || nb > (long)M1_PATCH_MAX) {
             free(o);
             continue;
         }

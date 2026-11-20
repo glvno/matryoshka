@@ -3,6 +3,14 @@
     {
       "file": "matryoshka-factory.bin",
       "version": 18,
+      "set": "4f4f5f",
+      "layout": 1,
+      "format": 64,
+      "bytes": 58170
+    },
+    {
+      "file": "factory/matryoshka-factory-v18.bin",
+      "version": 18,
       "set": "ef9dec",
       "layout": 1,
       "format": 55,
