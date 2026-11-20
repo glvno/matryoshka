@@ -829,7 +829,26 @@ static void drum_bank_suite(void)
         octave = 0;
         check("  the footer: the tempo at the same x in every octave state, the octave's slot its widest", moved == 0u && widest == FOOT_OCT_W);
     }
-    drum_bank = 1;                                          /* (a bank picked on another patch: no effect here) */
+    {                                                       /* the bank stays across patch loads, clamped to the new kit's banks;
+                                                             * no bank on a kit of 8 rows (the owner, 2026-11-19) */
+        drum_open("909 KIT");
+        tap(BTN_OCT_UP);
+        tap(BTN_OCT_UP);
+        check("bank across loads: the 909 Kit on ROWS 17-24", drum_bank == 2u && foot_reads(MSG_ROWS "17-24"));
+        (void)load("808 KIT");
+        pv_gen++;
+        page_show(0);
+        screen_patch();
+        later(500);
+        check("  the 808 Kit loaded: clamped to its last bank, ROWS 9-16, MT/MC on black key 1", drum_bank == 1u && foot_reads(MSG_ROWS "9-16")
+              && black_sends(0) == 67);
+        (void)load("MERIDIAN 8");
+        pv_gen++;
+        page_show(0);
+        screen_patch();
+        later(500);
+        check("  Meridian 8 loaded (8 rows): no bank, the octave footer", drum_bank == 0u && foot_reads(MSG_FOOT_OCT));
+    }
     tap(BTN_OCT_UP);
     check("  OCT+ shifts the octave as before, black key 1 still plays row 1", octave == 1 && foot_reads(MSG_FOOT_OCT_UP "+")
           && black_sends(0) == eng_drummap_note((uint32_t)eng_keys_drummap(), 0));

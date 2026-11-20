@@ -161,15 +161,31 @@ static int seq_module(void) { return eng_steps_module(seq_trk); }
 /* a drum track (the #139 follow-up): the Drum map the selected track plays first (-1: none, a melodic track: the roll).
  * Its rows are one list (D-520, eng_steps_rows: every Drum map the track plays), shown in banks of 8: drum_bank picks the
  * bank, for the grid and the keys alike (SEL + OCT here, OCT on a device page and the environment: drum_bank_step). It
- * stays across patches, as the octave does; a list with fewer banks shows its last. seq_map loads the list; the row
- * helpers load it again when the track or the patch changed since */
+ * stays across patches, as the octave does, clamped as a patch loads to the banks its longest drum list has (0 for 8
+ * rows or fewer); a list with fewer banks shows its last. seq_map loads the list; the row helpers load it again when the
+ * track or the patch changed since */
 static uint8_t seq_rl_map[ENG_DRUM_LIST], seq_rl_row[ENG_DRUM_LIST], seq_rl_n;
 static int seq_rl_mod = -2;                     /* the track the list is of (-1: none), in the patch of seq_rl_gen */
 static uint32_t seq_rl_gen;
 static uint8_t drum_bank;
+static uint32_t drum_bank_gen;                  /* the patch drum_bank was last clamped in */
+static void drum_bank_clamp(void)
+{
+    if (drum_bank_gen != eng_generation()) {    /* (another patch: the bank clamped to its longest drum list) */
+        uint8_t m[ENG_DRUM_LIST], r[ENG_DRUM_LIST];
+        uint32_t most = eng_keys_rows(m, r), t, k;
+        drum_bank_gen = eng_generation();
+        for (t = 0; (int)t < eng_steps_count(); t++)
+            if ((k = eng_steps_rows((uint32_t)eng_steps_module(t), m, r)) > most)
+                most = k;
+        if (drum_bank > (most ? (most - 1u) / ENG_DRUM_ROWS : 0u))
+            drum_bank = (uint8_t)(most ? (most - 1u) / ENG_DRUM_ROWS : 0u);
+    }
+}
 static uint32_t drum_bank_in(uint32_t n)
 {
     uint32_t last = n ? (n - 1u) / ENG_DRUM_ROWS : 0u;
+    drum_bank_clamp();
     return drum_bank < last ? drum_bank : last;
 }
 static int seq_map(void)
@@ -257,6 +273,7 @@ static int seq_kbd(void)
 static uint32_t drum_rows_now(uint8_t *map, uint8_t *row)
 {
     uint32_t i;
+    drum_bank_clamp();                          /* (a patch just loaded: the bank clamped before anything shows it) */
     if (sb_on)
         return 0;
     if (page == PAGE_SEQ) {
