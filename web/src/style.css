@@ -498,6 +498,9 @@ dialog.sync-ask { width: 420px; }
 .sync-ask-actions button { min-height: 40px; padding: 6px 16px; font: 700 13px/1.15 'Barlow Semi Condensed', system-ui, sans-serif; letter-spacing: .05em; text-transform: uppercase; }
 @media (max-width: 700px) { .sync-ask-actions button { flex: 1; min-height: 44px; } }
 .store-slot-list { width: 100%; font: 13px/1.5 ui-monospace, 'SF Mono', Menlo, monospace; white-space: pre; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 5px; padding: 4px; }
+/* the FM-1's master EQ (master-eq.ts, #1107): a name, a slider and its value per row */
+.meq-row { display: grid; grid-template-columns: 11em 1fr 5.5em; align-items: center; gap: 8px; font-size: 14px; }
+.meq-row output { text-align: right; font-variant-numeric: tabular-nums; }
 /* "Which FM-1?" (fm1-pick.ts, D-965): one full-width button per FM-1, its label over what else tells it apart */
 .fm1-pick-list { display: flex; flex-direction: column; gap: 6px; }
 .fm1-pick-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 44px; padding: 8px 12px; text-align: left; }

@@ -326,6 +326,10 @@ The FM-1 panel module (type `fm1`), the patch's only source of keys and MIDI.
 
 The panel under the canvas where the patch's one Main module lives: knobs, device and page pickers, the FM-1's buttons.
 
+### Master EQ
+
+The FM-1's own three-band equalizer on its speaker and headphone jack: a setting of the FM-1 (GLO › EQ), not part of any patch, so it shapes every patch the same way. It is not a stage of a [master FX bus](#master-fx-bus).
+
 ### Master FX bus
 
 An editable assembly of ordinary modules between an instrument and Output, with one to four present stages in Drive, Chorus, Delay, Reverb order. Its graph, grouping and control bindings identify it, not its name or a saved identity tag.

@@ -123,7 +123,7 @@ int main(int argc, char **argv)
     if (page == PAGE_SONG)                                  /* the SONG page (#375) */
         song_prep();
     booting = 0;
-    if (argc > 7) {                                         /* page 5: the menu's tab (4 = GUIDE) */
+    if (argc > 7) {                                         /* page 5: the menu's tab (3 = EQ, 5 = GUIDE) */
         int t = atoi(argv[7]);
         menu_tab = (uint8_t)(t < 0 ? 0 : t >= MT_COUNT ? MT_COUNT - 1 : t);
         if (t == 12 || t == 13) {                           /* 12: SYSTEM's second page (#702), 13: PANEL's (#1011) */

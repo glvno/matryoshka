@@ -34,6 +34,17 @@ static int m1_store(const uint8_t *p, uint32_t n)
     return 0;
 }
 static int m1_device_settings(const uint8_t *p, uint32_t n, uint8_t *out) { (void)p; (void)n; out[0]=6; return 1; }
+static uint8_t meq_bytes[4];                                    /* main.c m1_master_eq's stand-in: what the link set */
+static int m1_master_eq(const uint8_t *p, uint32_t n, uint8_t *out)
+{
+    uint32_t i;
+    out[0] = n && n != 4u ? 1u : 0u;
+    for (i = 0; n == 4u && i < 4u; i++)
+        meq_bytes[i] = p[i];
+    for (i = 0; i < 4u; i++)
+        out[1u + i] = meq_bytes[i];
+    return 5;
+}
 static int m1_flash_ok(void) { return 1; }
 static void m1_ui_changed(void) {}
 static void m1_ui_rows(void) {}
@@ -1155,6 +1166,17 @@ int main(int argc, char **argv)
         CHECK(n == 20u && (p[3] & M1_INFO_EDITOR_IGNORE) && (p[3] & M1_INFO_MIDI_OUT) && p[14] == M1_FEATURES4);
         editor_ignore_on = 0;
         CHECK(p[14] & 4u);                                    /* #915: feature bit 26, the factory region's commands */
+        CHECK(p[14] & 8u);                                    /* #1107: feature bit 27, MASTER_EQ */
+        {                                                     /* MASTER_EQ reaches main.c's hook with its bytes; the reply's layout */
+            static const uint8_t set[4] = {0xFAu, 0u, 4u, 26u};   /* (LOW -3 dB, HIGH +2 dB, MID FREQ 2 kHz) */
+            uint8_t r[8];
+            nreplies = 0;
+            CHECK(send_frame(C_MASTER_EQ, set, 4u) == 1 && nreplies == 1u && replies[0][4] == R_MASTER_EQ);
+            CHECK(m1_unpack7(replies[0] + 5, reply_len[0] - 6u, r, sizeof r) == 5u && r[0] == 0u && !memcmp(r + 1, set, 4u));
+            nreplies = 0;
+            CHECK(send_frame(C_MASTER_EQ, set, 0u) == 1 && nreplies == 1u);
+            CHECK(m1_unpack7(replies[0] + 5, reply_len[0] - 6u, r, sizeof r) == 5u && r[0] == 0u && !memcmp(r + 1, set, 4u));
+        }
     }
 #ifndef PROTO_TEST_FACTORY
     /* the factory region's commands (#915, D-490): the frames reach the hooks with their fields; the answers' layout */

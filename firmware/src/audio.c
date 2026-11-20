@@ -36,6 +36,22 @@ static volatile uint32_t snd_heard_ms;
 static volatile uint8_t st_busy;                   /* a store write runs (storage_hw.c st_op, #656): its steps can hold a half
                                                     * back, which the overload guard must not take for the patch's load */
 static int32_t eng_l[HALF_FRAMES], eng_r[HALF_FRAMES];
+#include "master_eq.h"                             /* GLO > EQ (#1107): on the analog output, after USB audio took the half */
+
+/* the analog half (o, after USB audio took it) again from the equalized engine half, at MASTER's level; left as it is
+ * while every band is at 0 dB. Out of line: the audio interrupt runs from RAM (build.py FAST_TEXT), this from the flash */
+static __attribute__((noinline)) void meq_analog(int32_t *o)
+{
+    uint32_t i;
+    int32_t m;
+    if (!meq_run(eng_l, eng_r, HALF_FRAMES))
+        return;
+    m = snd_muted ? 0 : (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
+    for (i = 0; i < HALF_FRAMES; i++) {
+        o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
+        o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;
+    }
+}
 #if FELUCCA_UAC
 /* USB audio out (usb.c, included after this file): the ring's fill is sampled as a half starts, then the half's I2S words
  * (24 bit in the low bits; silence while the engine is stopped) go to the ring, >> 8 to 16 bit */
@@ -129,6 +145,8 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
 #if FELUCCA_UAC
         uac_tap(o, HALF_FRAMES);
 #endif
+        if (eng_run && (meq_low | meq_mid | meq_high | meq_fade))
+            meq_analog(o);                          /* the master EQ (master_eq.h): the analog half only; flat, no call */
         bt_m[BT_M_TAP1] = fm1_ticks();
         {
             int clk = eng_run && eng_click_mix(eng_l, eng_r, HALF_FRAMES);   /* a count-in's click (play once's, REC's):

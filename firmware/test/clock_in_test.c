@@ -1,11 +1,14 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 glvno */
-/* MIDI clock in (D-452, #870, firmware/src/clock_in.h) on the host: a stand-in host sends MIDI clock, Start, Continue,
- * Stop and Song Position at a tempo other than the FM-1's, as a looper does (Reel at a loop's record-to-playback turn:
- * the clock stalls, sends the missed ticks in a burst or not, then Stop / Start or Song Position + Continue). The
- * messages reach clock_in.h at the half buffer they arrive in, the engine renders half buffers as the audio ISR does,
- * and the test checks that the 808 Kit's first Steps track steps on the host's ticks: step k on the host's tick 6k after
- * its Start, tick 0 being the first clock after it (the FM-1's own clock out counts the same, clock_out.h).
+/* MIDI clock in and transport in (D-452, #870, #596, firmware/src/clock_in.h) on the host: a stand-in host sends MIDI
+ * clock, Start, Continue, Stop and Song Position at a tempo other than the FM-1's, as a looper does (Reel at a loop's
+ * record-to-playback turn: the clock stalls, sends the missed ticks in a burst or not, then Stop / Start or Song Position
+ * + Continue). The messages reach clock_in.h at the half buffer they arrive in, the engine renders half buffers as the
+ * audio ISR does, and the test checks that the 808 Kit's first Steps track steps on the host's ticks: step k on the host's
+ * tick 6k after its Start, tick 0 being the first clock after it (the FM-1's own clock out counts the same,
+ * clock_out.h), and after a Song Position n step n on the first clock after its Continue. A Song Position + Continue
+ * must land every Steps track (its step, its song entry, its passes) where playing from the top puts it, in a pattern,
+ * in songs, in every direction and at every rate. CLOCK IN and TRANSPORT IN work alone and together.
  *   tools/clock_in_test.sh */
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,8 +18,8 @@
 
 #define HALF 128u
 static struct {
-    uint8_t clock_in;
-} cfg = {1};
+    uint8_t clock_in, transport_in;
+} cfg = {1, 1};
 static volatile uint32_t fm1_ms;
 static uint8_t ui_dirty;
 static void leds_play(void) {}
@@ -183,6 +186,96 @@ static int host_start(int preroll, int ticks)
     return from;
 }
 
+/* (#596) every Steps track's state after a Song Position + Continue, against the same tick reached by playing from the
+ * top: its step, visit, times round the pattern (from 0 at the start: the test sets it), passes, half ticks, song entry and
+ * pattern. One MIDI clock a half buffer, so both runs measure the same samples a tick */
+#define FF_TRK 16
+typedef struct { int32_t pos, visit, count, half, spos, pat; uint32_t loop, pass; } ff_st;
+static const int FF_AT[] = {1, 2, 3, 5, 7, 15, 16, 17, 31, 33, 63, 64, 65, 100, 127, 128, 129, 255, 256, 257, 1000, 4095,
+                            4096, 9999, 16383};
+#define FF_N ((int)(sizeof FF_AT / sizeof FF_AT[0]))
+static void ff_get(ff_st *s)
+{
+    int k;
+    for (k = 0; k < eng_steps_count() && k < FF_TRK; k++) {
+        int mod = eng_steps_module((uint32_t)k);
+        const inst_t *it = &inst_pool[E.node[mod].inst0];
+        uint32_t t = E.node[mod].trk;
+        s[k].pos = it->s.stp.pos;
+        s[k].visit = it->s.stp.visit;
+        s[k].count = it->s.stp.count;
+        s[k].half = it->s.stp.half;
+        s[k].spos = E.trk_spos[t];
+        s[k].pat = E.trk_pat[t];
+        s[k].loop = it->s.stp.loop;
+        s[k].pass = it->s.stp.pass;
+    }
+}
+static void ff_loops0(void)
+{
+    int k;
+    for (k = 0; k < eng_steps_count(); k++)
+        inst_pool[E.node[eng_steps_module((uint32_t)k)].inst0].s.stp.loop = 0;
+}
+static void ff_send(uint32_t b, uint32_t d1, uint32_t d2) { clk_in_rt((b == 0xF2u ? 3u : 0xFu) | b << 8 | d1 << 16 | d2 << 24); }
+static void ff_clock(void)
+{
+    static int32_t l[HALF], r[HALF];
+    ff_send(0xF8u, 0, 0);
+    fm1_ms = (uint32_t)(samples * 1000u / ENG_SR);
+    clk_in_idle();
+    eng_render(l, r, HALF);
+    samples += HALF;
+}
+static void ff_landing(int i)                       /* Stop, then Song Position FF_AT[i] + Continue and its clock */
+{
+    ff_send(0xFCu, 0, 0);
+    ff_clock();
+    ff_clock();
+    ff_loops0();
+    ff_send(0xF2u, (uint32_t)FF_AT[i] & 0x7Fu, (uint32_t)FF_AT[i] >> 7);
+    ff_send(0xFBu, 0, 0);
+    ff_clock();
+}
+static void ff_suite(const char *name, int npos)   /* (the first npos of FF_AT) */
+{
+    static ff_st want[FF_N][FF_TRK], got[FF_TRK];
+    int i, k, t, n = eng_steps_count() < FF_TRK ? eng_steps_count() : FF_TRK, bad = 0, bad_at = -1, bad_k = -1;
+    ff_send(0xFCu, 0, 0);
+    for (k = 0; k < 4; k++)
+        ff_clock();
+    ff_loops0();
+    ff_send(0xFAu, 0, 0);
+    ff_clock();                                     /* (tick 0) */
+    for (t = 1, i = 0; i < npos; t++) {
+        ff_clock();
+        if (t == 6 * FF_AT[i])
+            ff_get(want[i++]);
+    }
+    for (i = 0; i < npos; i++) {
+        ff_landing(i);
+        ff_get(got);
+        for (k = 0; k < n; k++)
+            if (memcmp(&got[k], &want[i][k], sizeof got[k]) && !bad++) {
+                bad_at = i;
+                bad_k = k;
+            }
+    }
+    snprintf(what, sizeof what, "%s: Song Position + Continue lands the track where playing from the top puts it, at %d "
+             "positions up to %d (%d off)", name, npos, FF_AT[npos - 1], bad);
+    check(what, bad == 0 && n > 0);
+    if (bad) {
+        const ff_st *w = &want[bad_at][bad_k], *g = &got[bad_k];
+        ff_landing(bad_at);
+        ff_get(got);
+        printf("      (the first at Song Position %d, track %d: pos %d / %d, visit %d / %d, count %d / %d, half %d / %d, entry %d / %d, "
+               "pattern %d / %d, loop %u / %u, pass %u / %u: Song Position / from the top)\n", FF_AT[bad_at], bad_k, g->pos, w->pos,
+               g->visit, w->visit, g->count, w->count, g->half, w->half, g->spos, w->spos, g->pat, w->pat, g->loop, w->loop, g->pass, w->pass);
+    }
+    ff_send(0xFCu, 0, 0);
+    ff_clock();
+}
+
 int main(void)
 {
     int from, mid, k;
@@ -326,14 +419,80 @@ int main(void)
         }
     }
 
-    reset();                                        /* Continue from a Song Position the FM-1 does not follow (#596): it plays on */
-    host_start(24, 96);
-    host_send(0xFCu, 0, 0);
-    host_send(0xF2u, 4, 0);
-    host_send(0xFBu, 0, 0);
-    host_ticks(48);
-    sim_host();
-    check("Stop, Song Position 4, Continue: the transport runs on MIDI clock", eng_transport_running() && eng_clock_is_external());
+    {   /* (d) Song Position + Continue (#596): the tracks play from the position, its step on the next clock; after a Stop,
+         * and while running (a looper relocating at its loop point, as Reel may), with a 700 ms stall before it or not */
+        static const int spp[] = {4, 5, 37, 300, 16383};
+        int stall, run;
+        for (run = 0; run < 2; run++)
+            for (stall = 0; stall < 2; stall++)
+                for (k = 0; k < 5; k++) {
+                    reset();
+                    host_start(24, 96 + 17);        /* (mid-step, mid-bar) */
+                    if (stall)
+                        host_wait_ms(700);
+                    if (!run)
+                        host_send(0xFCu, 0, 0);
+                    host_send(0xF2u, (uint32_t)spp[k] & 0x7Fu, (uint32_t)spp[k] >> 7);
+                    host_send(0xFBu, 0, 0);
+                    sim_to(host_t + 1);
+                    host_ticks(1);
+                    sim_host();
+                    snprintf(what, sizeof what, "%s%s, Song Position %d, Continue: step %d on the first clock", stall ? "a 700 ms stall, " : "",
+                             run ? "running" : "Stop", spp[k], spp[k] % trk_len);
+                    check(what, eng_steps_pos((uint32_t)trk_mod) == spp[k] % trk_len && eng_run_ticks() == 6 * spp[k]);
+                    mid = log_n;
+                    host_ticks(96 * 2);
+                    sim_host();
+                    expect_in_step("  and on from there", mid, 30);
+                }
+    }
+    check("(the 808 Kit's first track is 16 steps at 1/16)", trk_len == 16);
+
+    {   /* the track lands where playing from the top puts it (#596): the 808 Kit's pattern, its song, then a song of
+         * patterns with their own lengths and rates, in every direction, with the track at other lengths and rates */
+        uint32_t mod = (uint32_t)trk_mod, p, c;
+        static const uint8_t SHAPE[4][2] = {{16, 4}, {7, 1}, {12, 3}, {5, 0}};   /* (steps, the track's rate: 1/16 at most) */
+        static const char *const SHAPE_NAME[4] = {"16 steps at 1/16", "7 steps at 1/4T", "12 steps at 1/8T", "5 steps at 1/4"};
+        static const char *const DIR_NAME[4] = {"forward", "backward", "ping-pong", "random"};
+        static const uint8_t P[] = {0, 1, 1, 2, 0, 3, 2};
+        ff_suite("the 808 Kit's pattern", FF_N);
+        check("  (the 808 Kit has a song)", eng_song_len(0) > 1);
+        eng_song_set(1);
+        ff_suite("the 808 Kit's song", FF_N);
+        eng_song_set(0);
+        for (p = 1; p <= 3u; p++) {                 /* patterns 2..4: made by a step set on each (stopped: it plays at once) */
+            eng_pattern_set(p);
+            ff_clock();
+            eng_steps_toggle(mod, p, 60, 100);
+        }
+        eng_pattern_set(0);
+        ff_clock();
+        check("  (patterns 2..4 made: pattern 2 has 12 steps at 1/64 of its own, pattern 3 5 steps, pattern 4 the rate 1/2)",
+              eng_pattern_has(mod, 1) && eng_pattern_has(mod, 2) && eng_pattern_has(mod, 3) && eng_pattern_shape(mod, 1, 12, 8) == 0
+              && eng_pattern_shape(mod, 2, 5, 0xFFu) == 0 && eng_pattern_shape(mod, 3, 0, 7) == 0);
+        while (eng_song_len(2) > 0)
+            (void)eng_song_delete(2, 0);
+        for (p = 0; p < sizeof P; p++)
+            (void)eng_song_put(2, p, P[p], (int32_t)p - 3);
+        eng_song_set(3);
+        for (c = 0; c < 17u; c++) {                 /* song 3 (patterns 1, 2, 2, 3, 1, 4, 3): every direction, four shapes; */
+            char name[160];                         /* then the pattern alone, random, 12 steps at 1/8T */
+            uint32_t d = c < 16u ? c / 4u : 3u, s = c < 16u ? c % 4u : 2u;
+            eng_set_param(mod, STEPS_P_DIR, (int32_t)(d << 16));
+            eng_set_param(mod, STEPS_P_LEN, (int32_t)((uint32_t)SHAPE[s][0] << 16));
+            eng_set_param(mod, STEPS_P_RATE, (int32_t)((uint32_t)SHAPE[s][1] << 16));
+            if (c == 16u)
+                eng_song_set(0);
+            snprintf(name, sizeof name, "%s, %s, the track %s", c < 16u ? "song 3 of patterns with their own lengths and rates"
+                     : "the pattern alone", DIR_NAME[d], SHAPE_NAME[s]);
+            ff_suite(name, c == 7u || c == 13u || c == 16u ? FF_N : 21);   /* (three of them up to 16383, the rest up to 1000) */
+        }
+        check("the 808 Kit loads again", factory_load("808 KIT") == 0);
+        eng_set_param((uint32_t)eng_find(T_FM1), FM1_P_TEMPO, 120 << 16);
+        trk_mod = eng_steps_module(0);
+        last_pos = -1;
+        host_t = (double)samples;                   /* (the suites rendered without the host: its time goes on from here) */
+    }
 
     reset();                                        /* the host goes away while the transport runs: the FM-1 waits for it */
     host_start(24, 96);
@@ -376,11 +535,54 @@ int main(void)
     snprintf(what, sizeof what, "  then the FM-1's own tempo (%d steps in the second's last 850 ms)", log_n - from);
     check(what, eng_run_ticks() >= 0 && !eng_clock_is_external() && log_n - from >= 7 && log_n - from <= 8);
 
-    reset();
-    cfg.clock_in = 0;                               /* CLOCK IN off: none of it */
+    reset();                                        /* CLOCK IN and TRANSPORT IN (#596): each alone, both off */
+    cfg.transport_in = 0;
     host_start(24, 96);
-    check("CLOCK IN off: clock and Start are not followed", !eng_transport_running() && !eng_clock_is_external());
+    check("TRANSPORT IN off: the clock is followed, Start is not", !eng_transport_running() && eng_clock_is_external());
+    eng_transport(1);                               /* (PLAY: the FM-1's own transport, on the host's clock) */
+    host_ticks(1);
+    sim_host();
+    mid = log_n;
+    host_ticks(96);
+    sim_host();
+    check("  PLAY starts it on the host's next clock, and it runs on the host's tempo", eng_transport_running() && eng_clock_is_external()
+          && eng_run_ticks() == 96 && log_n - mid >= 15);
+    host_send(0xFCu, 0, 0);
+    host_ticks(24);
+    sim_host();
+    check("  the host's Stop is not followed either", eng_transport_running());
+    eng_transport(0);
+    cfg.transport_in = 1;
+
+    reset();
+    cfg.clock_in = 0;
+    host_start(24, 0);
+    host_wait_ms(10);
+    sim_host();
+    check("CLOCK IN off: Start is followed at once, on the FM-1's own tempo", eng_transport_running() && eng_run_ticks() >= 0
+          && !eng_clock_is_external());
+    host_ticks(96);
+    sim_host();
+    check("  the host's clock is not", !eng_clock_is_external());
+    host_send(0xFCu, 0, 0);
+    host_send(0xF2u, 37, 0);
+    host_send(0xFBu, 0, 0);
+    host_wait_ms(10);                               /* (a block stopped, then the start: less than a tick at 120 bpm) */
+    sim_host();
+    snprintf(what, sizeof what, "  Song Position 37 + Continue: from there at once, step 5 of 16 (run ticks %d, step %d)",
+             eng_run_ticks(), eng_steps_pos((uint32_t)trk_mod));
+    check(what, eng_transport_running() && eng_run_ticks() == 222 && eng_steps_pos((uint32_t)trk_mod) == 37 % 16);
+    host_send(0xFCu, 0, 0);
+    host_wait_ms(10);
+    sim_host();
+    check("  Stop is followed", !eng_transport_running());
+
+    reset();
+    cfg.transport_in = 0;                           /* (CLOCK IN still off) */
+    host_start(24, 96);
+    check("CLOCK IN and TRANSPORT IN off: neither clock nor Start is followed", !eng_transport_running() && !eng_clock_is_external());
     cfg.clock_in = 1;
+    cfg.transport_in = 1;
 
     {   /* the log (DIAG 145..147, tools/m1_link.py midilog): what came in, in order, with its time and the engine's state;
          * steady clocks folded into one entry, an irregular one its own; frozen CIN_LOG_AFTER messages after a Stop,

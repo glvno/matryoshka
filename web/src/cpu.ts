@@ -89,6 +89,9 @@ export interface CpuTable {
   /** the second core (#271): what an idle one costs core 0 a block (us), and the share of a split poly group's odd parts
    * that comes off core 0 (fitted on the rig: scripts/cpu-costs.ts CORES) */
   cores?: { idleUs: number; splitEff: number; survey: string };
+  /** the master EQ (GLO › EQ, #1107, D-938), a setting of the FM-1, not of a patch: the first band on and each further band,
+   * us a block (scripts/cpu-costs.ts MASTER_EQ). A patch's estimate leaves it out (masterEqUse) */
+  masterEq?: { firstUs: number; bandUs: number; survey: string };
   /** the time per block the counted engine leaves out (the rest of the audio interrupt: key scan, USB poll), whatever the patch */
   fixedUs: number;
   /** the time the audio interrupt has per block (128 frames at 44118 Hz) */
@@ -137,6 +140,11 @@ export const CPU_WARN = 0.8;
  * reads the rig's steady peak, and the overload guard drops a voice when its mean passes 90 % of the half buffer
  * (D-362); the mean runs a few points under the peak, which leaves that much for note starts and the transport */
 export const CPU_VOICE_TOP = 0.9;
+/** what the FM-1's master EQ (GLO › EQ, D-938) adds to every patch's load, a fraction of the block, with `bands` of its
+ * three off 0 dB (0: nothing, it does no work). A setting of the FM-1, not of the patch: cpuEstimate leaves it out, and
+ * the editor's Master EQ dialog shows it (master-eq.ts) */
+export const masterEqUse = (bands: number, table: CpuTable = CPU): number =>
+  bands > 0 && table.masterEq ? (table.masterEq.firstUs + (bands - 1) * table.masterEq.bandUs) / table.blockUs : 0;
 
 export interface CpuModule {
   id: number;

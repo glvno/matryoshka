@@ -966,17 +966,20 @@ static void toggles_sync(void);
 static volatile uint32_t clk_ticks;   /* MIDI clock ticks (eng_clock_tick, the main loop) */
 static volatile uint8_t clk_ext;      /* MIDI clock drives the clock */
 static volatile uint8_t transport_on; /* the transport (eng_transport) */
-/* MIDI Start (eng_transport_top, #870): the main loop notes the MIDI ticks so far (top_clk) and counts top_gen up, the next
- * block takes it (top_seen). The ticks that came before the Start are the old run's; the transport then starts on the next
- * MIDI tick after it, waiting for one up to top_wait samples more when no MIDI clock drives yet (TOP_WAIT: a tick at 20 bpm
- * and some; without one it starts on the tempo). tick0: this block's start is on a MIDI tick, tick 0 (the host's first
- * clock after its Start), which steps nothing on; tick_skip: this block's first tick is that one (Steps and Euclid count
- * from the next) */
+/* MIDI Start (eng_transport_top, #870) and Continue after a Song Position (eng_transport_at, #596): the main loop notes the
+ * MIDI ticks so far (top_clk) and counts top_gen up, the next block takes it (top_seen). The ticks that came before the
+ * request are the old run's; the transport then starts on the next MIDI tick after it, waiting for one up to top_wait
+ * samples more when no MIDI clock drives yet and the request asked for it (top_ask_wait; TOP_WAIT: a tick at 20 bpm and
+ * some; without one it starts on the tempo). tick0: this block's start is on a MIDI tick, tick 0 (the host's first clock
+ * after its Start), which steps nothing on; tick_skip: this block's first tick is that one (Steps and Euclid count from
+ * the next). top_ask_at: the clock ticks into the song the start lands on (a Song Position's sixteenths x 6), top_ff the
+ * same once a block took it, waiting for the start; ff_ticks: this block's start lands there (m_steps: steps_ff) */
 #define TOP_WAIT (ENG_SR * 3u / 20u)
-static volatile uint8_t top_gen;
-static volatile uint32_t top_clk;
+static volatile uint8_t top_gen, top_ask_wait;
+static volatile uint32_t top_clk, top_ask_at;
 static uint8_t top_seen, tick0, tick_skip;
 static uint16_t top_wait;
+static uint32_t top_ff, ff_ticks;
 static volatile uint8_t fill_on;      /* FILL held (#674, eng_fill): notes with a FILL condition play */
 /* play once (#632, eng_play_once; engine.ts playOnce, the same): the main loop's last word (once_cmd: 1 play once, 2 end
  * it) counts once_gen up and the next block takes it (once_seen); the engine's state (once_st: 0 not, 1 counting in, 2
@@ -5101,9 +5104,15 @@ void eng_transport(int on)
 }
 /* MIDI Start (#870): the transport from the top, on the next MIDI tick (waiting up to 150 ms for one when no MIDI clock
  * drives yet). Running, it stops for a block first */
-void eng_transport_top(void)
+void eng_transport_top(void) { eng_transport_at(0u, 1); }
+/* Song Position + Continue (#596), and PLAY from a SONG page entry: the transport from `ticks` clock ticks into the song,
+ * each Steps track there as if it had played from the top without a sound (steps_ff); the start itself is MIDI Start's
+ * (`wait`: up to 150 ms for a first MIDI tick when no MIDI clock drives yet; MIDI clock in off asks for none) */
+void eng_transport_at(uint32_t ticks, int wait)
 {
     eng_transport(1);
+    top_ask_at = ticks;
+    top_ask_wait = (uint8_t)(wait != 0);
     top_clk = clk_ticks;                         /* (before top_gen: the block that sees the Start sees this too) */
     top_gen++;
 }
@@ -5177,14 +5186,19 @@ static int32_t steps_cycle(int32_t len, int32_t dir)
     return dir == 2 && len > 1 ? 2 * (len - 1) : len;
 }
 typedef struct { int32_t visit, pos; uint32_t loop; } step_visit_t;
+/* the step a traversal's visit lands on, on its time `loop` round the pattern */
+static int32_t steps_pos_at(const inst_t *it, int32_t len, int32_t dir, int32_t visit, uint32_t loop)
+{
+    return dir == 3 ? (int32_t)(hash32(it->s.stp.seed ^ (loop * 0x9e3779b9u) ^ ((uint32_t)(visit + 1) * 0x85ebca6bu)) % (uint32_t)len)
+        : dir == 1 ? len - 1 - visit : dir == 2 && visit >= len ? 2 * (len - 1) - visit : visit;
+}
 /* Preview only: recording and playback must choose the same next step, including random mode. */
 static step_visit_t steps_next(const inst_t *it, int32_t len, int32_t dir)
 {
     step_visit_t next;
     next.visit = it->s.stp.pos < 0 || it->s.stp.visit + 1 >= steps_cycle(len, dir) ? 0 : it->s.stp.visit + 1;
     next.loop = it->s.stp.loop + (next.visit == 0 ? 1u : 0u);
-    next.pos = dir == 3 ? (int32_t)(hash32(it->s.stp.seed ^ (next.loop * 0x9e3779b9u) ^ ((uint32_t)(next.visit + 1) * 0x85ebca6bu)) % (uint32_t)len)
-        : dir == 1 ? len - 1 - next.visit : dir == 2 && next.visit >= len ? 2 * (len - 1) - next.visit : next.visit;
+    next.pos = steps_pos_at(it, len, dir, next.visit, next.loop);
     return next;
 }
 
@@ -10592,6 +10606,96 @@ static void steps_turn(uint32_t t)
 }
 
 static const uint8_t RATE_HT[9] = {48, 32, 24, 16, 12, 8, 6, 96, 3};   /* half ticks a step: track.ts STEPS_RATE_HT */
+/* the half ticks a step of the pattern track t plays: its own rate, else the track's (modules.ts steps: shape) */
+static int32_t steps_ht(const inst_t *it, uint32_t t)
+{
+    return RATE_HT[TRK_P(t) && E.pat_rate[t][TRK_P(t)] != 0xFFu ? E.pat_rate[t][TRK_P(t)] : clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8)];
+}
+/* Song Position (#596; modules.ts stepsFf, the same): this block's start lands ff_ticks clock ticks into the song. Track t
+ * takes every step before that tick without a sound, as m_steps takes them from the top: the start's first step, each
+ * pass's end with a song's next entry or a queued pattern, its times round the pattern and its passes. The steps within a
+ * pass go at once; once its passes repeat (in a song: its whole song, from its second time through), as many repeats as
+ * fit go at once, so a long position costs no more than a short one. A step comes a step's half ticks after the one
+ * before; after a step half a tick on (1/64) a rate of whole ticks waits for the tick after, as m_steps counts. Its half
+ * ticks then stand where that tick leaves them. Returns the steps the start takes on its first sample: 1 when a step falls
+ * on that tick, else 0. Out of line (ENG_RARE): only a start at a Song Position takes it */
+ENG_RARE int32_t steps_ff(inst_t *it, uint32_t t, int32_t dir, int32_t *len, int32_t *ht)
+{
+    uint32_t end = 2u * ff_ticks, h = 0, last = 0, seen = 0, a_h = 0, a_loop = 0, a_pass = 0;   /* (in half ticks) */
+    int song = E.song && E.song_n[E.song - 1u];
+    while (h < end) {                            /* a step falls on half tick h, before the landing */
+        int32_t r = steps_cycle(*len, dir) - 1 - (int32_t)it->s.stp.visit;
+        if (it->s.stp.pos >= 0 && r > 0) {       /* the steps left before the pass's end */
+            uint32_t m = (end - h - 1u) / (uint32_t)*ht + 1u;
+            if (m > (uint32_t)r)
+                m = (uint32_t)r;
+            it->s.stp.visit = (uint8_t)(it->s.stp.visit + m);
+            it->s.stp.pos = (int8_t)steps_pos_at(it, *len, dir, it->s.stp.visit, it->s.stp.loop);
+            last = h + (m - 1u) * (uint32_t)*ht;
+            h = last + (uint32_t)*ht;
+            continue;
+        }
+        {                                        /* the pass's end, or the start's first step (m_steps's step there) */
+            uint32_t was = E.trk_pat[t];
+            step_visit_t next;
+            steps_turn(t);
+            it->s.stp.pass = it->s.stp.pos < 0 || E.trk_pat[t] != was ? 0u : it->s.stp.pass + 1u;
+            if (it->s.stp.pos < 0)
+                E.trk_pre[t] = 0;
+            *len = steps_len(it, t);
+            *ht = steps_ht(it, t);
+            next = steps_next(it, *len, dir);
+            it->s.stp.pos = (int8_t)next.pos;
+            it->s.stp.visit = (uint8_t)next.visit;
+            it->s.stp.loop = next.loop;
+        }
+        last = h;
+        h += (uint32_t)*ht + (!(*ht & 1) && (last & 1u));
+        if (!song || E.trk_spos[t] == 0) {       /* a repeat begins: its second and third beginnings measure it */
+            if (++seen == 2u) {
+                a_h = last;
+                a_loop = it->s.stp.loop;
+                a_pass = it->s.stp.pass;
+            } else if (seen == 3u) {
+                uint32_t per = last - a_h, k = (end - last - 1u) / per;
+                last += k * per;
+                h += k * per;
+                it->s.stp.loop += k * (it->s.stp.loop - a_loop);
+                it->s.stp.pass += k * (it->s.stp.pass - a_pass);
+                it->s.stp.pos = (int8_t)steps_pos_at(it, *len, dir, it->s.stp.visit, it->s.stp.loop);
+            }
+        }
+    }
+    it->s.stp.count = 0;
+    it->s.stp.half = 0;
+    if (h == end)
+        return 1;
+    it->s.stp.count = (int16_t)(end - last);     /* (as the tick before would leave them; a step half a tick on, 1/64) */
+    if ((*ht & 1) && it->s.stp.count + 1 == *ht) {
+        it->s.stp.half = (E.tick_len >> 1 > 0 ? E.tick_len >> 1 : 1) + 1;   /* (+1: this sample counts it down once) */
+        it->s.stp.count = -1;
+    }
+    return 0;
+}
+/* PLAY from a SONG page entry (#596): the clock ticks from song s's top to the start of its entry k on the Steps track
+ * `module`, each entry before it one pass of that track (its pattern's own length and rate, else the track's) */
+int eng_song_ticks(uint32_t module, uint32_t s, uint32_t k)
+{
+    const inst_t *it = steps_inst(module);
+    uint32_t t, j, h = 0;
+    int32_t dir;
+    if (!it || s >= ENG_SONGS || k > E.song_n[s])
+        return -1;
+    t = E.node[module].trk;
+    dir = clampi(round_q16(EF(it, STEPS_P_DIR)), 0, 3);
+    for (j = 0; j < k; j++) {
+        uint32_t p = E.song_pat[s][j], q = (E.pat_has[t] >> p & 1u) ? p : 0u;
+        int32_t len = q && E.pat_len[t][q] ? E.pat_len[t][q] : clampi(round_q16(EF(it, STEPS_P_LEN)), 1, TRACK_STEPS);
+        int32_t rate = q && E.pat_rate[t][q] != 0xFFu ? E.pat_rate[t][q] : clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8);
+        h += (uint32_t)(steps_cycle(len, dir) * RATE_HT[rate]);
+    }
+    return (int32_t)(h / 2u);
+}
 /* An internally clocked track with no reset cable, from sample i of an n-sample block: the first sample m_steps's loop must
  * take one at a time, n if none. Those are a gap or a hit to show, the transport's start (sample 0), the block's tick, a
  * half step's or a swung step's countdown reaching 0, and a timed note's end. Every sample before it only counts down and
@@ -10717,7 +10821,12 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
                 it->s.stp.half = 0;
                 it->s.stp.pos = -1;
                 E.trk_spos[t] = -1;              /* (a song starts again from its first entry) */
-                adv++;
+                if (ENG_RARELY(ff_ticks)) {      /* (a Song Position: the steps up to it without a sound, #596) */
+                    adv += steps_ff(it, t, dir, &len, &ht);
+                    step = (ht * E.tick_len) >> 1;
+                } else {
+                    adv++;
+                }
             }
             if (it->s.stp.half > 0 && E.running && --it->s.stp.half == 0)
                 adv++;
@@ -11241,133 +11350,7 @@ static void m_lpg(const node_t *nd, inst_t *it, uint32_t n)
  * float (D-1112), states in steps of Q16 held to +-EQ_LIM, the output cut toward zero to a whole step; its six numbers
  * (eq_design) are worked out in float only when a setting changes (D-1111), without libm, so the FM-1, the editor's wasm
  * engine and the host give the same bits. */
-#define EQ_PI 3.14159265f
-
-/* sin x for 0 <= x <= pi: the series to x^13 on 0..pi/2 (within 1e-9), the other half mirrored */
-static float eq_sin(float x)
-{
-    float x2;
-    if (x > 0.5f * EQ_PI)
-        x = EQ_PI - x;
-    x2 = x * x;
-    return x * (1.0f - x2 * (1.0f / 6.0f) * (1.0f - x2 * (1.0f / 20.0f) * (1.0f - x2 * (1.0f / 42.0f) * (1.0f - x2 * (1.0f / 72.0f)
-           * (1.0f - x2 * (1.0f / 110.0f) * (1.0f - x2 * (1.0f / 156.0f)))))));
-}
-
-/* e^x - 1 for x <= 0, without exp2_f(x) - 1's cancellation near 0: the series to x^9 above -0.5 (within 3e-10) */
-static float eq_expm1(float x)
-{
-    if (x < -0.5f)
-        return exp2_f(x * 1.44269504f) - 1.0f;
-    return x * (1.0f + x * (1.0f / 2.0f) * (1.0f + x * (1.0f / 3.0f) * (1.0f + x * (1.0f / 4.0f) * (1.0f + x * (1.0f / 5.0f)
-           * (1.0f + x * (1.0f / 6.0f) * (1.0f + x * (1.0f / 7.0f) * (1.0f + x * (1.0f / 8.0f) * (1.0f + x * (1.0f / 9.0f)))))))));
-}
-
-/* the square root of x (0 for x <= 0): a first guess from the exponent's bits (within 6 %), then three Newton steps */
-static float eq_sqrt(float x)
-{
-    union { float f; int32_t i; } u;
-    float y;
-    if (x <= 0.0f)
-        return 0.0f;
-    u.f = x;
-    u.i = 0x1FBD1DF5 + (u.i >> 1);
-    y = u.f;
-    y = 0.5f * (y + x / y);
-    y = 0.5f * (y + x / y);
-    return 0.5f * (y + x / y);
-}
-
-/* modules.ts eqPoles: the poles of a two-pole filter at wp (radians a sample) with damping z, mapped exactly (impulse
- * invariance), as the state variable filter's cutoff g and damping k that have them */
-static void eq_poles(float wp, float z, float *g, float *k)
-{
-    if (z < 1.0f) {
-        float e = eq_expm1(-z * wp), r = 1.0f + e, omr2 = -e * (1.0f + r);   /* r = e^(-z wp), omr2 = 1 - r^2 */
-        float th = wp * eq_sqrt(1.0f - z * z), s = eq_sin(th), h = eq_sin(0.5f * th);
-        float nn = eq_sqrt(omr2 * omr2 + 4.0f * r * r * s * s);
-        *g = nn / ((1.0f + r) * (1.0f + r) - 4.0f * r * h * h);
-        *k = 2.0f * omr2 / nn;
-    } else {
-        float sq = eq_sqrt(z * z - 1.0f), e1 = eq_expm1(-wp / (z + sq)), e2 = eq_expm1(-wp * (z + sq));
-        float w1 = -e1 / (2.0f + e1), w2 = -e2 / (2.0f + e2);
-        *g = eq_sqrt(w1 * w2);
-        *k = (w1 + w2) / *g;
-    }
-}
-
-/* |a shelf's analog curve|^2 at W x its frequency (modules.ts eqDesign's level): shape 0 low, 2 high, a = 10^(gain / 40) */
-static float eq_shelf(int shape, float a, float q, float W)
-{
-    float W2 = W * W, a2 = a * a, bw = a * W2 / (q * q), u, v;
-    if (shape == 0) {
-        u = a2 - a * W2;
-        v = 1.0f - a * W2;
-    } else {
-        u = a - a2 * W2;
-        v = a - W2;
-    }
-    return (u * u + a2 * bw) / (v * v + bw);
-}
-
-/* modules.ts eqDesign then eqCoefs: the six numbers a sample uses (a1, a2, a3 and the weights of the input, the band
- * pass and the low pass) for shape (EQ_SHAPES), f0 (Hz), gain (dB) and q. f0 is at most 22 kHz, under modules.ts EQ_TOP
- * of ENG_SR: no cap here. */
-static void eq_design(int shape, float f0, float gain, float q, float *c)
-{
-    int inv = (shape == 0 && gain < 0.0f) || (shape == 2 && gain > 0.0f);
-    float w0 = f0 * (2.0f * EQ_PI / (float)ENG_SR), a = exp2_f((inv ? -gain : gain) * 0.0830482024f);   /* 10^(gain / 40) */
-    float sa = eq_sqrt(a), a2 = a * a, g, k, x, X, d0, mh, mb, ml, a1;
-    if ((shape == 0 || shape == 2) && q > EQ_SHELF_Q)
-        q = EQ_SHELF_Q;
-    eq_poles(shape == 0 ? w0 / sa : shape == 2 ? w0 * sa : w0, shape == 1 ? 0.5f / (a * q) : 0.5f / q, &g, &k);
-    x = eq_sin(0.5f * w0) / (eq_sin(0.5f * EQ_PI - 0.5f * w0) * g);   /* tan(w0 / 2) / g */
-    X = x * x;
-    d0 = (1.0f - X) * (1.0f - X) + k * k * X;
-    if (shape == 1) {                    /* bell: 1 at 0 Hz, the gain (a2) and flat at f0 */
-        float G2 = a2 * a2, t;
-        ml = 1.0f;
-        mh = eq_sqrt(G2 + (1.0f - G2) / (X * X));
-        t = G2 * (k * k - 2.0f * (1.0f - X)) + 2.0f * mh * (1.0f - mh * X);
-        mb = eq_sqrt(t);
-    } else if (shape == 3) {             /* low pass: 1 at 0 Hz, q at f0, no zero at Nyquist */
-        ml = 1.0f;
-        mh = eq_sqrt((q * q * d0 - 1.0f - g * g * X) / (X * X + X / (g * g)));
-        mb = g + mh / g;
-    } else if (shape == 4) {             /* high pass: both zeros at 0 Hz, q at f0 */
-        ml = mb = 0.0f;
-        mh = q * eq_sqrt(d0) / X;
-    } else if (shape == 5) {             /* notch: both zeros at f0, 1 at 0 Hz */
-        ml = 1.0f;
-        mb = 0.0f;
-        mh = 1.0f / X;
-    } else {                             /* shelves: the analog levels at 0 Hz, at Nyquist and where the zeros are */
-        float wm = shape == 0 ? w0 * sa : w0 / sa, xm, Xm, t;
-        if (wm > EQ_SHELF_TOP)
-            wm = EQ_SHELF_TOP;
-        xm = eq_sin(0.5f * wm) / (eq_sin(0.5f * EQ_PI - 0.5f * wm) * g);   /* tan(wm / 2) / g */
-        Xm = xm * xm;
-        ml = shape == 0 ? a2 : 1.0f;
-        mh = eq_sqrt(eq_shelf(shape, a, q, (float)ENG_SR / (2.0f * f0)));
-        t = ml - mh * Xm;
-        mb = eq_sqrt((eq_shelf(shape, a, q, wm / w0) * ((1.0f - Xm) * (1.0f - Xm) + k * k * Xm) - t * t) / Xm);
-    }
-    if (inv) {                           /* turned over: the zeros become the poles */
-        float s = eq_sqrt(ml / mh), nk = mb / eq_sqrt(ml * mh), nb = k * s / ml;
-        g *= s;
-        k = nk;
-        mb = nb;
-        mh = 1.0f / mh;
-        ml = 1.0f / ml;
-    }
-    a1 = 1.0f / (1.0f + g * (g + k));
-    c[0] = a1;
-    c[1] = g * a1;
-    c[2] = g * c[1];
-    c[3] = mh;
-    c[4] = mb - k * mh;
-    c[5] = ml - mh;
-}
+#include "eq_design.h"                     /* eq_design: the six numbers (shared with the master EQ, master_eq.h) */
 
 /* the six numbers are worked out again only when shape, freq, gain or q changes; from the old ones to the new they go in
  * straight lines over the block (no click, no zipper). D-1109: states both under RING_END at the end of a silent block
@@ -13190,12 +13173,14 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             int start;
             t = clk_ticks;
             tick_skip = 0;
+            ff_ticks = 0;
             if (!run)
-                top_wait = 0;
-            if (ENG_RARELY(top_gen != top_seen)) {   /* MIDI Start (eng_transport_top): from the top, on the next MIDI */
-                top_seen = top_gen;                  /* tick after it. The ticks before it are the old run's, counted */
-                top_wait = TOP_WAIT;                 /* now; running, a block stopped first, and the ticks after the */
-                E.ticks += top_clk - E.clk_seen;     /* Start wait for the start */
+                top_wait = top_ff = 0;
+            if (ENG_RARELY(top_gen != top_seen)) {   /* MIDI Start (eng_transport_top) or Continue after a Song */
+                top_seen = top_gen;                  /* Position (eng_transport_at): on the next MIDI tick after it. */
+                top_wait = top_ask_wait ? TOP_WAIT : 0u;   /* The ticks before it are the old run's, counted now; */
+                top_ff = top_ask_at;                 /* running, a block stopped first, and the ticks after the */
+                E.ticks += top_clk - E.clk_seen;     /* request wait for the start */
                 E.clk_seen = top_clk;
                 if (E.running) {
                     run = 0;
@@ -13214,8 +13199,10 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             }
             start = run && !E.running;
             if (ENG_RARELY(start)) {
-                E.tick_acc = 0;                  /* the transport starts: the tempo's ticks from here */
-                E.run_ticks = E.ticks;
+                E.tick_acc = 0;                  /* the transport starts: the tempo's ticks from here, and its run */
+                E.run_ticks = E.ticks - top_ff;  /* ticks from the song's top (a Song Position: steps_ff) */
+                ff_ticks = top_ff;
+                top_ff = 0;
             }
             if (ENG_RARELY(run != cko.run)) {    /* MIDI clock out: the transport's edge, and tick 0 on a start's first sample */
                 cko.run = run;

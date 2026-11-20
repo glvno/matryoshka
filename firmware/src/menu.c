@@ -2,7 +2,7 @@
  * Copyright (C) 2026 morgulbrut */
 /* The settings menu, after ui.c, pages_ui.c and sandbox_ui.c, before main.c:
  *
- * MENU (GLO; GLO again or HOME closes it; #395; its controls: web/src/controls.ts, #553): the FM-1's settings in tabs (MIDI: MIDI CHANNEL, CLOCK IN, MIDI OUT, CLOCK OUT; its second page: MIDI learn's LEARN, MAPPING, CLEAR, midi_learn.c, #1067). ALGO steps the tabs: MIDI, PANEL and SYSTEM
+ * MENU (GLO; GLO again or HOME closes it; #395; its controls: web/src/controls.ts, #553): the FM-1's settings in tabs (MIDI: MIDI CHANNEL, CLOCK IN, MIDI OUT, CLOCK OUT; its second page: TRANSPORT IN, TRANSPORT OUT, #596; its third: MIDI learn's LEARN, MAPPING, CLEAR, midi_learn.c, #1067). ALGO steps the tabs: MIDI, PANEL and SYSTEM
  * are pages of settings on K1..K4 (SYSTEM: UPDATE MODE, FACTORY RESET, QUICK START, OUTPUT; its second page: EDITOR, 3.5MM OUT, USB RETURN), drawn as a device page (pages_ui.c menu_tab_page; the knobs go through panel.c as on
  * a device page); INFO lists readings (drawn here) and GUIDE is a text SELECT scrolls (the ideas, D-248). The values are applied at once
  * and saved with the state (SAVE: main.c save bits; SAVE in the menu closes it). UPDATE MODE and FACTORY RESET (SYSTEM)
@@ -28,7 +28,8 @@ static void defaults_now(void);
 static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "COUNT-IN", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
                                               "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "BATTERY", "UPDATE MODE", "FACTORY RESET",
                                               "QUICK START", "TEMPO", "CLOCK OUT", "OUTPUT", "PROCESSOR", "EDITOR", "3.5MM OUT", "USB RETURN", "NAME",
-                                              "TIME SIG", "LEARN", "MAPPING", "CLEAR"};
+                                              "TIME SIG", "LOW", "MID", "HIGH", "MID FREQ", "TRANSPORT IN", "TRANSPORT OUT", "LEARN", "MAPPING",
+                                              "CLEAR"};
 #define INFO_N 7u
 static const uint8_t INFO_ROWS[INFO_N] = {MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_CORES, MR_DEVICE_NAME};   /* the INFO tab's list, top down */
 #define MENU_ARM_MS 5000u                               /* an armed SYSTEM row waits this long for GLO's hold */
@@ -96,11 +97,44 @@ static void menu_value(uint32_t row, char *out)
     case MR_CLOCK: p = put(p, ONOFF[cfg.clock_in]); break;
     case MR_MOUT: p = put(p, ONOFF[cfg.midi_out]); break;
     case MR_CLKOUT: p = put(p, ONOFF[cfg.clock_out]); break;
+    case MR_TIN: p = put(p, ONOFF[cfg.transport_in]); break;
+    case MR_TOUT: p = put(p, ONOFF[cfg.transport_out]); break;
     case MR_QUICK: p = put(p, ONOFF[cfg.quick]); break;
     case MR_OUTPUT: p = put(p, out_mono == 2u ? "MONO L" : out_mono ? "MONO" : "STEREO"); break;
     case MR_EDITOR: p = put(p, cfg.editor_ignore ? "IGNORE" : "ALLOW"); break;
     case MR_OUT35: p = put(p, ONOFF[!out_off]); break;
     case MR_USB_RETURN: fmt_int(p, di_level); p += str_len(p); *p++='%'; break;
+    case MR_EQ_LOW:                              /* the master EQ's gains (#1107): 0 DB, +1.5 DB, -12.0 DB */
+    case MR_EQ_MID:
+    case MR_EQ_HIGH: {
+        int32_t g = (int8_t)(row == MR_EQ_LOW ? meq_low : row == MR_EQ_MID ? meq_mid : meq_high), a = g < 0 ? -g : g;
+        if (g)
+            *p++ = g < 0 ? '-' : '+';
+        fmt_int(p, a / 2);
+        p += str_len(p);
+        if (g) {
+            *p++ = '.';
+            *p++ = a & 1 ? '5' : '0';
+        }
+        p = put(p, " DB");
+        break;
+    }
+    case MR_EQ_FREQ: {                           /* 100 HZ .. 890 HZ, 1.0 KHZ .. 8.1 KHZ */
+        int32_t hz = (int32_t)(meq_hz(meq_freq) + 0.5f);
+        if (hz < 1000) {
+            fmt_int(p, hz);
+            p += str_len(p);
+            p = put(p, " HZ");
+        } else {
+            hz = (hz + 50) / 100;
+            fmt_int(p, hz / 10);
+            p += str_len(p);
+            *p++ = '.';
+            *p++ = (char)('0' + hz % 10);
+            p = put(p, " KHZ");
+        }
+        break;
+    }
     case MR_DEVICE_NAME: p=put(p, di_name[0] ? di_name : "Matryoshka"); break;
     case MR_VERSION: p = put(p, FELUCCA_VERSION); break;
     case MR_CORES: p = put(p, cores_up == 2 ? "2 CORES" : "1 CORE"); break;   /* (#271: main.c c1_poll) */
@@ -215,10 +249,10 @@ static void menu_draw(int full)
         text_bc(&FONT_S, 8, 222, menu_tab == MT_GUIDE ? HINT_MENU_GUIDE : HINT_MENU_INFO, C_HINT, C_BG, 226, TA_LEFT);   /* (controls.h) */
         shown = menu_tab;
     }
-    for (t = 0; t < MT_COUNT; t++) {     /* the tabs: chips, the open one in seafoam (as a device's pages) */
-        uint32_t w = text_w(&FONT_S, MENU_TAB_NAME[t], -1) + 12u;
+    for (t = 0; t < MT_COUNT; t++) {     /* the tabs: chips, the open one in seafoam (as a device's pages; six fit in 240) */
+        uint32_t w = text_w(&FONT_S, MENU_TAB_NAME[t], -1) + 10u;
         text_bc(&FONT_S, x, 24, MENU_TAB_NAME[t], t == menu_tab ? C_BG : C_DIM, t == menu_tab ? 0x7E38u : C_TRACK, w, TA_CENTER);
-        x += w + 3u;
+        x += w + 2u;
     }
     text_bc(&FONT_L, 8, 42, menu_tab == MT_GUIDE ? "Guide" : "Info", C_ACC, C_BG, 200, TA_LEFT);
     if (menu_tab == MT_GUIDE) {
@@ -283,7 +317,9 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
     }
     case MR_CLOCK: cfg.clock_in = (uint8_t)up; break;
     case MR_MOUT: cfg.midi_out = (uint8_t)up; break;
-    case MR_CLKOUT: cfg.clock_out = (uint8_t)up; break;  /* MIDI clock out with MIDI OUT (#473) */
+    case MR_CLKOUT: cfg.clock_out = (uint8_t)up; break;  /* MIDI clock out (#473; without MIDI OUT too, #596) */
+    case MR_TIN: cfg.transport_in = (uint8_t)up; break;  /* MIDI Start / Continue / Stop / Song Position in (#596) */
+    case MR_TOUT: cfg.transport_out = (uint8_t)up; break;   /* PLAY's Start / Continue / Stop / Song Position out (#596) */
     case MR_QUICK: cfg.quick = (uint8_t)up; break;  /* the quick start after power-on (D-240, D-247) */
     case MR_OUTPUT: {                                   /* STEREO, MONO (the sum on both sides), MONO L (on the left only), #612 */
         int32_t v = (int32_t)out_mono + d;
@@ -314,6 +350,26 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
         }
         break;
     }
+    case MR_EQ_LOW:                                     /* the master EQ (#1107): half a decibel a click; kept 5 s later, */
+    case MR_EQ_MID:                                     /* without SAVE, as TEMPO (tempo_glo.h gt_changed) */
+    case MR_EQ_HIGH: {
+        volatile uint8_t *g = row == MR_EQ_LOW ? &meq_low : row == MR_EQ_MID ? &meq_mid : &meq_high;
+        uint8_t v = meq_gain_of((int8_t)*g + s);
+        if (v != *g) {
+            *g = v;
+            gt_changed(fm1_ms);
+        }
+        break;
+    }
+    case MR_EQ_FREQ: {                                  /* MID FREQ: a sixth of an octave a click */
+        int32_t v = (int32_t)meq_freq + s;
+        v = v < 0 ? 0 : v > (int32_t)MEQ_FREQS - 1 ? (int32_t)MEQ_FREQS - 1 : v;
+        if ((uint32_t)v != meq_freq) {
+            meq_freq = (uint8_t)v;
+            gt_changed(fm1_ms);
+        }
+        break;
+    }
     case MR_UPDATE:
     case MR_DEFAULTS:                               /* a turn right arms the row for GLO's hold (menu_fire), left disarms it */
         menu_armed = MR_COUNT;
@@ -339,14 +395,15 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
     ui_dirty = 1;
 }
 
-static void menu_tab_go(int32_t s)                      /* ALGO: the next / previous tab, drawn whole (another layout); PANEL
-                                                         * and SYSTEM take two steps, their pages 1/2 and 2/2 (#702, #1011) */
+static void menu_tab_go(int32_t s)                      /* ALGO: the next / previous tab, drawn whole (another layout); MIDI
+                                                        * takes three steps, its pages 1/3..3/3 (#596, #1067), PANEL and
+                                                        * SYSTEM two, 1/2 and 2/2 (#702, #1011) */
 {
-    if (menu_two(menu_tab) && (s > 0) != (menu_page2 != 0)) {
-        menu_page2 = (uint8_t)(s > 0);
+    if (s > 0 ? menu_page2 + 1u < menu_pages(menu_tab) : menu_page2 > 0u) {
+        menu_page2 = (uint8_t)(s > 0 ? menu_page2 + 1u : menu_page2 - 1u);
     } else {
         menu_tab = (uint8_t)((menu_tab + (s > 0 ? 1u : MT_COUNT - 1u)) % MT_COUNT);
-        menu_page2 = (uint8_t)(menu_two(menu_tab) && s < 0);
+        menu_page2 = (uint8_t)(s < 0 ? menu_pages(menu_tab) - 1u : 0u);
     }
     menu_armed = MR_COUNT;
     update_arm = 0;

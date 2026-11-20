@@ -13,7 +13,7 @@ static void leds_play(void);
 static void leds_panel(void);
 static void leds_avail(void);
 static void midi_send(uint32_t status, uint32_t d1, uint32_t d2);
-static void midi_send_rt(uint32_t b);                   /* a one-byte real-time message (Start 0xFA, Stop 0xFC) */
+static void midi_send_play(uint32_t b, uint32_t spp);   /* PLAY's Start 0xFA, Continue 0xFB after Song Position spp, Stop 0xFC */
 static void preset_step(int32_t d);                     /* PRESET: the next / previous patch */
 static void save_state(void);                           /* SAVE */
 static void settings_store(void);                       /* the settings record now, alone (HOME + SAVE on the quick start) */
@@ -396,13 +396,18 @@ static void page_hold_poll(void)
 static void play_toggle(void)                       /* PLAY: the transport (the Main module's run output and clock); a stop
                                                      * ends recording too (#395: PLAY stops everything). A start in step
                                                      * record makes it a live take: REC records (the owner, 2026-11-02,
-                                                     * D-804; seq_rec_press ends step record) */
+                                                     * D-804; seq_rec_press ends step record). On the SONG page a start
+                                                     * plays from the cursor's entry, with Song Position and Continue (#596) */
 {
     int was = eng_transport_running(), run = !was && eng_once_state() != 1, take = run && sr_on;   /* (in play once's count-in:
                                                      * it stops, #632) */
-    if (run || was)
-        midi_send_rt(run ? 0xFAu : 0xFCu);          /* (asked first: main.c sends it with the render that starts or stops) */
-    eng_transport(run);
+    uint32_t spp = run ? song_play_spp() : 0u;
+    if (run || was)                                 /* (asked first: main.c sends it with the render that starts or stops) */
+        midi_send_play(!run ? 0xFCu : spp ? 0xFBu : 0xFAu, spp);
+    if (spp)
+        eng_transport_at(spp * 6u, 0);
+    else
+        eng_transport(run);
     if (!eng_transport_running() && seq_rec)
         seq_rec_off();
     if (take && eng_transport_running())
@@ -1440,8 +1445,9 @@ static void panel_align(const uint8_t *g)
     if (want == 0u && (g[3] != pg_cur_dev || g[4] != pg_cur_page) && pages_focus(g[3], g[4]))
         ui_dirty = 2;
     if (want == PAGE_MENU) {
-        menu_tab = (uint8_t)(g[6] & 127u);
-        menu_page2 = (uint8_t)(menu_two(menu_tab) && g[6] >> 7);   /* (the tab's second page, #702, #1011) */
+        menu_tab = (uint8_t)(g[6] & 63u);
+        menu_page2 = (uint8_t)(menu_two(menu_tab) && g[6] >> 7 ? (g[6] & 64u ? 2u : 1u) : 0u);   /* (bit 7: a later page, #702,
+                                                     * #1011; bit 6 with it: the third, MIDI 3/3, #1067) */
     }
     if (want != page) {
         if (want == PAGE_SONG)

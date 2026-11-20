@@ -62,7 +62,12 @@ static void mlog_add(uint32_t s, uint32_t a, uint32_t b)
     midi_out++;
 }
 static void midi_send(uint32_t status, uint32_t d1, uint32_t d2) { mlog_add(status, d1, d2); }
-static void midi_send_rt(uint32_t b) { mlog_add(b, 0xFFu, 0xFFu); }
+static void midi_send_play(uint32_t b, uint32_t spp)   /* (Song Position before a Continue: F2, its two bytes) */
+{
+    if (b == 0xFBu)
+        mlog_add(0xF2u, spp & 127u, spp >> 7 & 127u);
+    mlog_add(b, 0xFFu, 0xFFu);
+}
 /* the log since `from` holds this message */
 static int sent(int from, uint32_t s, uint32_t a, uint32_t b)
 {
@@ -1075,11 +1080,25 @@ int main(void)
         patch_enc(1);
         check("HOME held + PRESET in the menu: the next patch, HOME's release stays in the menu", presets_stepped == stepped + 2 && page == PAGE_MENU);
         presets_stepped = stepped;
+        check("  the header says MIDI 1/3 (#596, #1067)", on_screen("MIDI 1/3"));
         enc(1, 1);
-        check("ALGO: MIDI's second page, MIDI learn: LEARN, MAPPINGS (none), CLEAR (#1067)", menu_tab == MT_MIDI && menu_page2
+        check("ALGO: MIDI's second page, TRANSPORT IN on K1, TRANSPORT OUT on K2, both ON as made (#596)", menu_tab == MT_MIDI
+              && menu_page2 && menu_page() && pages_now()->nrows == 2u && pages_now()->par[0] == MR_TIN && pages_now()->par[1] == MR_TOUT
+              && on_screen("MIDI 2/3") && on_screen("TRANSPORT IN") && on_screen("TRANSPORT OUT") && cfg.transport_in && cfg.transport_out);
+        enc(2, -1);
+        check("  K1 left: TRANSPORT IN OFF", cfg.transport_in == 0u && on_screen("OFF"));
+        enc(3, -1);
+        check("  K2 left: TRANSPORT OUT OFF", cfg.transport_out == 0u);
+        cfg_defaults();
+        check("  FACTORY RESET's defaults: both ON", cfg.transport_in == 1u && cfg.transport_out == 1u);
+        enc(1, -1);
+        check("ALGO back: MIDI 1/3", menu_tab == MT_MIDI && !menu_page2 && pages_now()->par[3] == MR_CLKOUT);
+        enc(1, 1);
+        enc(1, 1);
+        check("ALGO twice: MIDI's third page, MIDI learn: LEARN, MAPPINGS (none), CLEAR (#1067)", menu_tab == MT_MIDI && menu_page2 == 2u
               && pages_now()->nrows == 3u && pages_now()->par[0] == MR_LEARN && pages_now()->par[1] == MR_MAPS
               && pages_now()->par[2] == MR_MAP_CLEAR && on_screen("LEARN") && on_screen("MAPPINGS") && on_screen("NONE")
-              && on_screen("MIDI 2/2"));
+              && on_screen("MIDI 3/3"));
         enc(1, 1);
         check("ALGO: the PANEL tab (LEDs, knob accel, count-in, tempo)", menu_tab == MT_PANEL && pages_now()->nrows == 4u && pages_now()->par[0] == MR_LEDS && pages_now()->par[2] == MR_CIN && pages_now()->par[3] == MR_TEMPO);
         enc(4, 1);                                          /* K3: COUNT-IN (#414), OFF > 1 BAR > 2 BARS */
@@ -1172,6 +1191,41 @@ int main(void)
         check("ALGO back: SYSTEM 1/2", menu_tab == MT_SYSTEM && !menu_page2 && pages_now()->par[3] == MR_OUTPUT && on_screen("SYSTEM 1/2"));
         enc(1, 1);
         enc(1, 1);
+        check("ALGO again: EQ, the master EQ (#1107): LOW, MID, HIGH, MID FREQ, flat at 1 kHz as made", menu_tab == MT_EQ && menu_page()
+              && pages_now()->nrows == 4u && pages_now()->par[0] == MR_EQ_LOW && pages_now()->par[1] == MR_EQ_MID && pages_now()->par[2] == MR_EQ_HIGH
+              && pages_now()->par[3] == MR_EQ_FREQ && on_screen("MID FREQ") && on_screen("0 DB") && on_screen("1.0 KHZ") && on_screen("EQ"));
+        gt_due = 0;
+        enc(2, 1);
+        loop();
+        check("  K1 right: LOW +0.5 DB, the settings record due (kept without SAVE, as TEMPO)", (int8_t)meq_low == 1 && on_screen("+0.5 DB") && gt_due != 0u);
+        enc(2, -3);
+        loop();
+        check("  K1 left: -1.0 DB", (int8_t)meq_low == -2 && on_screen("-1.0 DB"));
+        enc(4, 60);
+        loop();
+        check("  K3 far right: HIGH stops at +12.0 DB", (int8_t)meq_high == MEQ_GAIN_MAX && on_screen("+12.0 DB"));
+        enc(5, -30);
+        loop();
+        check("  K4 far left: MID FREQ stops at 100 HZ", meq_freq == 0u && on_screen("100 HZ"));
+        enc(5, 6);
+        loop();
+        check("  K4 six clicks right: an octave up, 200 HZ", meq_freq == 6u && on_screen("200 HZ"));
+        {
+            uint8_t d[MEQ_BYTES];
+            meq_pack(d);
+            meq_defaults();
+            meq_unpack(d);
+            check("  the settings as bytes and back (main.c's settings extension)", (int8_t)meq_low == -2 && meq_mid == 0u && (int8_t)meq_high == MEQ_GAIN_MAX
+                  && meq_freq == 6u);
+            d[0] = 0x80u;                                   /* (out of range: held) */
+            d[3] = 200u;
+            meq_unpack(d);
+            check("  bytes out of range: the gain held to -12 DB, MID FREQ back at 1 kHz", (int8_t)meq_low == -MEQ_GAIN_MAX && meq_freq == MEQ_FREQ_DEFAULT);
+        }
+        cfg_defaults();
+        check("  FACTORY RESET's defaults: flat at 1 kHz", !meq_low && !meq_mid && !meq_high && meq_freq == MEQ_FREQ_DEFAULT);
+        gt_due = 0;
+        enc(1, 1);
         check("ALGO again: INFO, a list, not a page", menu_tab == MT_INFO && !menu_page() && on_screen("BANK SLOTS") && on_screen("VERSION"));
         check("  its top bar is the plain bar with the patch's name, not the coral header's top", on_screen(patch_label));
         enc(1, 1);
@@ -1261,7 +1315,8 @@ int main(void)
         enc(1, 1);
         enc(1, 1);
         enc(1, 1);
-        enc(1, 1);                                          /* (MIDI's two pages, #1067, and PANEL's, #1011) */
+        enc(1, 1);
+        enc(1, 1);                                          /* (MIDI's three pages, #596, #1067, and PANEL's two, #1011) */
         enc(3, 1);
         check("again: the menu, SYSTEM, FACTORY RESET armed", page == PAGE_MENU && menu_tab == MT_SYSTEM && menu_armed == MR_DEFAULTS);
         later(MENU_ARM_MS + 100u);
@@ -4565,6 +4620,34 @@ int main(void)
                 for (x = 8u; x < 15u; x++)
                     tri += px(x, y) == C_ACC;
             check("  stopped again: no marker, SONG 1 STOPPED", !tri && bar_shows(MSG_SONG "1" MSG_SONG_STOPPED, C_ACC));
+            {                                           /* PLAY from the cursor's entry (#596): Song Position + Continue */
+                int at = mlen = 0, t = eng_song_ticks((uint32_t)mod, 0, 1), f2 = 0, k;   /* (the MIDI log holds 256: empty) */
+                uint32_t spp = t > 0 ? (uint32_t)t / 6u : 0u;
+                enc(0, -1);                             /* (END to entry 02) */
+                tap(BTN_PLAY);
+                for (i = 0; i < 4u; i++)
+                    eng_render(l, r, 128);
+                loop();
+                check("PLAY on entry 02: Song Position (its start: entry 01's pass in sixteenths), then Continue, no Start; the "
+                      "track starts on entry 02, the run ticks from the song's top", spp > 0 && sent(at, 0xF2u, spp & 127u, spp >> 7)
+                      && sent(at, 0xFBu, 0xFFu, 0xFFu) && !sent(at, 0xFAu, 0xFFu, 0xFFu) && eng_transport_running() && song_playing() == 1
+                      && eng_run_ticks() >= (int32_t)(6u * spp));
+                tap(BTN_PLAY);
+                eng_render(l, r, 128);
+                at = mlen;
+                enc(0, -1);                             /* (entry 01) */
+                tap(BTN_PLAY);
+                for (i = 0; i < 4u; i++)
+                    eng_render(l, r, 128);
+                loop();
+                for (k = at; k < mlen; k++)
+                    f2 += mlog[k][0] == 0xF2u;
+                check("  PLAY on entry 01: Start, from the top", sent(at, 0xFAu, 0xFFu, 0xFFu) && !f2 && song_playing() == 0
+                      && eng_run_ticks() < 24);
+                tap(BTN_PLAY);
+                eng_render(l, r, 128);
+                loop();
+            }
             enc(0, -5);
         }
         enc(5, -1);

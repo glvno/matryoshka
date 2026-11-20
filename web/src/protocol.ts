@@ -15,8 +15,8 @@
 //                                                    flash bank, without loading them; ACK (3 = not a valid patch)
 //   14 SLOT_ERASE  slot u8                           empty a slot; ACK
 //   15 SLOT_INFO   slot u8                           device answers SLOT_INFO (42)
-//   1B MAP      count u8, then per MIDI mapping source u8, module u8, param u8, low u8, high u8 (patchbin.ts mapRecord)
-//                                                    the running patch's MIDI learn mappings (#1067, feature bit 27), all
+//   1C MAP      count u8, then per MIDI mapping source u8, module u8, param u8, low u8, high u8 (patchbin.ts mapRecord)
+//                                                    the running patch's MIDI learn mappings (#1067, feature bit 28), all
 //                                                    of them, in place of its own; no reply
 //   20 PARAM    module u8, param u8, value i32       live parameter change (Q16.16), no reply
 //   21 ATT      module u8, input u8 (0 p1, 1 p2), value i32   live attenuverter change (Q16.16, -2..2), no reply
@@ -141,8 +141,8 @@
 //   5D PAT_STORED  id u16 (0xFFFF: a chunk taken), status u8 (PAT_STATUS), count u8 (with S_USED: the slots that link it)
 //   5E PAT_LINK_NOW  pattern u8, id u16 (0 none), hash u32   unasked: the running patch's link of that pattern changed on
 //                                                    the FM-1 (its SEQ page loaded, saved or saved as new; SAVE wrote it)
-//   62 MAP_NOW  count u8, then the mappings as MAP has them   unasked: the running patch's MIDI learn mappings after a
-//                                                    learn or a clear on the FM-1 (GLO > MIDI 2/2, #1067, feature bit 27)
+//   63 MAP_NOW  count u8, then the mappings as MAP has them   unasked: the running patch's MIDI learn mappings after a
+//                                                    learn or a clear on the FM-1 (GLO > MIDI 3/3, #1067, feature bit 28)
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
 //               feature bit 8, bit3 GLO > SYSTEM > EDITOR at IGNORE: with feature bit 19, #702), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
@@ -409,10 +409,42 @@ export const FEATURE_FX_PRESETS = 1 << 24;
 export const FEATURE_PATTERN_STORE = 1 << 25;
 /** INFO feature bit 26 (byte 14 bit 2, #915, D-490): the factory region's commands (firmware/src/factory.c) */
 export const FEATURE_FACTORY = 1 << 26;
-/** INFO feature bit 27 (byte 14 bit 3, #1067): MIDI learn on the FM-1, MAP and MAP_NOW (firmware/src/midi_learn.c) */
-export const FEATURE_MAP = 1 << 27;
+/** INFO feature bit 27 (byte 14 bit 3, #1107): MASTER_EQ, the FM-1's master EQ (GLO › EQ) over the link */
+export const FEATURE_MASTER_EQ = 1 << 27;
+/** MASTER_EQ and its answer (firmware/src/proto.c C_MASTER_EQ, main.c m1_master_eq) */
+export const MASTER_EQ = { cmd: 0x1b, reply: 0x62 } as const;
+/** the master EQ's gains go to ±this many decibels in half-decibel steps; MID FREQ is one of MASTER_EQ_FREQS sixths of an
+ *  octave from 100 Hz (firmware/src/master_eq.h MEQ_GAIN_MAX, MEQ_FREQS) */
+export const MASTER_EQ_DB = 12;
+export const MASTER_EQ_FREQS = 39;
+/** MID FREQ's default: 1 kHz (master_eq.h MEQ_FREQ_DEFAULT) */
+export const MASTER_EQ_FREQ_DEFAULT = 20;
+/** the master EQ: LOW, MID and HIGH in decibels (half-decibel steps), MID FREQ as its index (masterEqHz) */
+export interface MasterEq { low: number; mid: number; high: number; freq: number }
+/** MID FREQ's index in Hz: 100 × 2^(index / 6) */
+export const masterEqHz = (i: number): number => 100 * 2 ** (i / 6);
+/** MASTER_EQ: empty reads; the four bytes (gains in half decibels, two's complement) set */
+export function masterEqFrame(eq?: MasterEq): Uint8Array {
+  if (!eq) return frame(MASTER_EQ.cmd);
+  const half = [eq.low, eq.mid, eq.high].map((db) => {
+    const h = db * 2;
+    if (!Number.isInteger(h) || Math.abs(h) > 2 * MASTER_EQ_DB) throw new Error(`A master EQ gain goes from -${MASTER_EQ_DB} to +${MASTER_EQ_DB} dB in half-decibel steps.`);
+    return h & 0xff;
+  });
+  if (!Number.isInteger(eq.freq) || eq.freq < 0 || eq.freq >= MASTER_EQ_FREQS) throw new Error('MID FREQ goes from 100 Hz to 8 kHz.');
+  return frame(MASTER_EQ.cmd, [...half, eq.freq]);
+}
+/** MASTER_EQ's answer: status (0 ok, 1 refused), then the master EQ as it is */
+export function parseMasterEq(p: Parsed | null): MasterEq {
+  if (p?.cmd !== MASTER_EQ.reply || p.payload.length !== 5) throw new Error('The FM-1 sent an incomplete master EQ reply.');
+  if (p.payload[0]) throw new Error('The FM-1 could not use that master EQ setting.');
+  const db = (b: number): number => ((b << 24) >> 24) / 2;
+  return { low: db(p.payload[1]), mid: db(p.payload[2]), high: db(p.payload[3]), freq: p.payload[4] };
+}
+/** INFO feature bit 28 (byte 14 bit 4, #1067): MIDI learn on the FM-1, MAP and MAP_NOW (firmware/src/midi_learn.c) */
+export const FEATURE_MAP = 1 << 28;
 /** MIDI learn's command and report (#1067) */
-export const MAP_CMD = { map: 0x1b, mapNow: 0x62 } as const;
+export const MAP_CMD = { map: 0x1c, mapNow: 0x63 } as const;
 /** MAP: the running patch's mappings, the section patchbin.ts mapRecord writes ([] none) */
 export const mapFrame = (record: number[]): Uint8Array => frame(MAP_CMD.map, record.length ? record : [0]);
 /** a MAP_NOW payload: the mappings, device-form indices (source: a CC number or 127 for pitch bend; ends 0..255) */

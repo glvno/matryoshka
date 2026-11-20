@@ -7,7 +7,7 @@
  * wheel, breath, sustain, foot, K1..K4, morph, pitch bend) waits until its mapping is cleared. CC 80..86 (the patch
  * buttons) and 120..127 (the channel mode messages) are never learned. Mappings follow MENU > MIDI CHANNEL.
  *
- * Learning: GLO > MIDI 2/2, LEARN turned right, closes the menu. The next knob turned on a page picks its row (the row
+ * Learning: GLO > MIDI 3/3, LEARN turned right, closes the menu. The next knob turned on a page picks its row (the row
  * does not move then), and the first control to send three different values (two for a switch row) moves it from then
  * on. LEARN turned left, another patch, or LEARN_MS without a step end the wait. The same page lists the mappings
  * (MAPPING) and clears the one it shows (CLEAR). A linked editor hears each change (MAP_NOW) and every move (PARAM_NOW,
@@ -24,7 +24,7 @@ static struct {
     uint32_t gen, at;                                   /* the patch it learns for (pages_gen), its last step (fm1_ms) */
     struct { uint8_t src, n; uint16_t v[2]; } c[LEARN_CANDS];   /* the controls heard: their different values so far */
 } ml;
-static uint8_t map_sel;                                 /* the mapping GLO > MIDI 2/2 shows (MAPPING, CLEAR) */
+static uint8_t map_sel;                                 /* the mapping GLO > MIDI 3/3 shows (MAPPING, CLEAR) */
 typedef struct { uint8_t due, mod, par; int32_t v; uint32_t at; } map_rep_t;
 static map_rep_t map_rep[ENG_MAP_RAMPS];               /* the moves told to the editor (PARAM_NOW), per ramp slot */
 static void screen_back(void);                         /* (panel.c) */
@@ -75,7 +75,7 @@ static int learn_live(void)
     return ml.on;
 }
 
-/* LEARN turned right (GLO > MIDI 2/2): the menu closes, the next knob turned picks its row */
+/* LEARN turned right (GLO > MIDI 3/3): the menu closes, the next knob turned picks its row */
 static void learn_start(void)
 {
     ml.on = 1;
@@ -251,7 +251,7 @@ static int map_midi(uint32_t src, uint32_t raw)
     return 1;
 }
 
-/* ---- GLO > MIDI 2/2 (menu.c): LEARN, MAPPING, CLEAR */
+/* ---- GLO > MIDI 3/3 (menu.c): LEARN, MAPPING, CLEAR */
 
 /* MAPPING's label: the mapping shown, "CC 1  1/2", or MAPPINGS when there are none */
 static const char *map_label(void)
