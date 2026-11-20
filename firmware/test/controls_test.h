@@ -211,7 +211,7 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_CONDITION: return a->cond_n != b->cond_n;
     case CE_RATCHET: return a->ratchet_sum != b->ratchet_sum && a->micro_sum == b->micro_sum;
     case CE_MICRO: return a->micro_sum != b->micro_sum && a->ratchet_sum == b->ratchet_sum && a->seq_pg == b->seq_pg && a->octave == b->octave;
-    case CE_LEARN_ROW: return b->learn == 1u && a->learn == 2u;   /* (a row picked: the learn waits for its control) */
+    case CE_LEARN_ROW: return !b->learn && a->learn == 1u && a->params == b->params;   /* (SEL + a knob: its row waits for a control, unmoved) */
     case CE_DRUM_BANK: return a->bank != b->bank && a->octave == b->octave && a->seq_pg == b->seq_pg && a->page == b->page;
     case CE_FILL: return a->msg_sum != b->msg_sum && a->page == b->page && a->notes_sum == b->notes_sum && a->mutes == b->mutes
                          && a->params == b->params && !eng_fill_on();   /* (FILL said, and let go with FX; FX's own job not done) */
@@ -434,7 +434,7 @@ static int ct_enter(uint32_t s, uint32_t v)
         }
         if (v == 4)
             return ct_fx_load();
-        if (v == 5) {                                   /* MIDI learn waits for a row (GLO > MIDI 3/3, LEARN, #1067) */
+        if (v == 5) {                                   /* a page whose K1 takes MIDI (SEL + a knob learns its row, D-939) */
             if (ct_load("ORACLE V"))
                 return 0;
             ct_focus_assembly();
@@ -444,8 +444,7 @@ static int ct_enter(uint32_t s, uint32_t v)
                     pages_page(1);
             }
             later(500);
-            learn_start();
-            return learn_live() == 1;
+            return 1;
         }
         return 0;
     case HS_ENV:

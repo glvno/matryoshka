@@ -453,6 +453,29 @@ static int knob_fast(uint32_t s, int32_t clicks)
     return fast;
 }
 
+/* SEL held + K1..K4 (D-939): on a device page MIDI learn for that knob's row (midi_learn.c learn_row; the row does not
+ * move), elsewhere SEL + a knob learns nothing and the bar says so (SEQ and SONG pages, sandbox mode); sel_used then keeps
+ * SEL's release from arming or opening anything, as SEL + OCT keeps the SONG page shut */
+static uint8_t sel_used;
+static void sel_learn(int32_t *st)
+{
+    uint32_t k;
+    if (!(panel_held >> BTN_SEL & 1u) || !(st[2] | st[3] | st[4] | st[5]))
+        return;
+    if (page == 0u && !sb_on) {
+        for (k = 0; k < 3u && !st[2u + k]; k++)
+            ;
+        learn_row(k);
+    } else if (sb_on || page == PAGE_SONG || (page == PAGE_SEQ && seq_held < 0 && !sr_on))
+        ui_msg(MSG_LEARN_HERE, 1500);
+    else
+        return;
+    sel_used = 1;
+    if (page == PAGE_SEQ)
+        seq_pen_ms = fm1_ms | 1u;
+    st[2] = st[3] = st[4] = st[5] = 0;
+}
+
 /* the encoders turned: st[0..6] = SELECT, ALGO, K1..K4, PRESET (clicks since the last call; the array is used up) */
 static void panel_encoders(int32_t *st)
 {
@@ -477,6 +500,7 @@ static void panel_encoders(int32_t *st)
     for (k = 0; k < 7u; k++)                        /* a turn while the track's clear asks: not cleared (#231) */
         if (st[k])
             seq_clear_cancel();
+    sel_learn(st);
     if (page == PAGE_SEQ && seq_held >= 0 && (st[0] | st[1] | st[2] | st[3] | st[4] | st[5] | st[6]))
         seq_held_tap = 0;                           /* any knob turned with a step held: the step used, its release switches
                                                      * nothing (the owner's 1.9.0 device check, 2026-11-03) */
@@ -660,8 +684,6 @@ static void panel_encoders(int32_t *st)
             continue;
         if (fine)
             home_turned = 1;
-        if (!menu_page() && learn_pick(k))          /* MIDI learn waits for a row (#1067): this knob's, which stays as it is */
-            continue;
         if ((r = pages_turn(k, c, knob_fast(2u + k, c), fine, &mod, &par, &v)) < 0)
             continue;
         if (r == 2) {                               /* the menu: an FM-1 setting (pages_turn set it): not the patch's, not the editor's */
@@ -1154,15 +1176,17 @@ static void panel_edges(uint32_t p, uint32_t rel)
             seq_select((uint32_t)pages_focus_track());
         page_set(PAGE_SEQ);
     }
-    if (p & (1u << BTN_SEL))
+    if (p & (1u << BTN_SEL)) {
         sel_down_ms = fm1_ms;
+        sel_used = 0;
+    }
     if ((rel & (1u << BTN_SEL)) && page == PAGE_SEQ) {   /* SEL tapped on the SEQ page (no key as the pen since its press,
                                                      * a key in the same pass counting): the SONG page (#375, D-541) */
         if (!(seq_pen_ms && (int32_t)((seq_pen_ms & ~1u) - (sel_down_ms & ~1u)) >= 0) && eng_steps_count()) {
             song_prep();
             page_set(PAGE_SONG);
         }
-    } else if (rel & (1u << BTN_SEL))               /* SEL (#197, fixed): one level deeper */
+    } else if ((rel & (1u << BTN_SEL)) && !sel_used)   /* SEL (#197, fixed): one level deeper (not after SEL + a knob) */
         sel_open();
     if (p & (1u << BTN_ENV))                        /* ENV (#197, fixed): the environment, on its release (held + SAVE: a preset) */
         env_held_used = 0;

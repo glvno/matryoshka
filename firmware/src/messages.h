@@ -107,13 +107,13 @@
 #define MSG_SONG_STOPPED " STOPPED"
 
 /* MIDI learn (midi_learn.c, #1067) */
-#define MSG_LEARN_TURN "LEARN: TURN A ROW'S KNOB"
 #define MSG_LEARN "LEARN "                              /* LEARN name: MOVE A CONTROL */
 #define MSG_LEARN_MOVE ": MOVE A CONTROL"
 #define MSG_LEARN_NO_ROW "NO MIDI FOR THIS ROW"
 #define MSG_LEARN_MOVES " MOVES "                       /* CC 1 MOVES name */
 #define MSG_LEARN_FULL "NO ROOM FOR A MAPPING"
-#define MSG_LEARN_OFF "LEARN CANCELLED"
+#define MSG_LEARN_ALSO " ALSO SENT: "                   /* CC 16 ALSO SENT: TURNS K1 (D-939) */
+#define MSG_LEARN_HERE "LEARN: ON A DEVICE PAGE"       /* SEL + a knob where it learns nothing */
 #define MSG_MAP_CLEARED " CLEARED"                      /* after the control: CC 1 CLEARED */
 
 #endif

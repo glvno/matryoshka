@@ -1279,9 +1279,9 @@ int main(void)
         check("ALGO back: MIDI 1/3", menu_tab == MT_MIDI && !menu_page2 && pages_now()->par[3] == MR_CLKOUT);
         enc(1, 1);
         enc(1, 1);
-        check("ALGO twice: MIDI's third page, MIDI learn: LEARN, MAPPINGS (none), CLEAR (#1067)", menu_tab == MT_MIDI && menu_page2 == 2u
-              && pages_now()->nrows == 3u && pages_now()->par[0] == MR_LEARN && pages_now()->par[1] == MR_MAPS
-              && pages_now()->par[2] == MR_MAP_CLEAR && on_screen("LEARN") && on_screen("MAPPINGS") && on_screen("NONE")
+        check("ALGO twice: MIDI's third page: MAPPINGS (none), CLEAR, and how to learn, SEL + KNOB (#1067, D-939)", menu_tab == MT_MIDI
+              && menu_page2 == 2u && pages_now()->nrows == 3u && pages_now()->par[0] == MR_MAPS && pages_now()->par[1] == MR_MAP_CLEAR
+              && pages_now()->par[2] == MR_LEARN && on_screen("MAPPINGS") && on_screen("NONE") && on_screen("SEL + KNOB")
               && on_screen("MIDI 3/3"));
         enc(1, 1);
         check("ALGO: the PANEL tab (LEDs, knob accel, count-in, tempo)", menu_tab == MT_PANEL && pages_now()->nrows == 4u && pages_now()->par[0] == MR_LEDS && pages_now()->par[2] == MR_CIN && pages_now()->par[3] == MR_TEMPO);

@@ -322,8 +322,17 @@ static void m1_tempo_now(void) { host_tempo_told++; }
 /* MIDI learn (midi_learn.c, #1067): proto.c's edits of the mappings, on the previewed binary; a move's PARAM_NOW is the
  * harness's (panel_test.c, fm1_sim.c, the wasm build, ui_preview.c) */
 static void m1_param_now(uint32_t mod, uint32_t par, int32_t v);
-static uint32_t host_map_told;              /* proto.c's MAP_NOW sent (panel_test.c) */
-static void m1_map_now(void) { host_map_told++; }
+static uint32_t host_map_told, host_map_na;  /* proto.c's MAP_NOW sent (panel_test.c), and the controls its tail named */
+static uint8_t host_map_also[9];
+static void m1_map_now(uint32_t src, const uint8_t *also, uint32_t na)
+{
+    uint32_t k;
+    (void)src;
+    host_map_told++;
+    host_map_na = na;
+    for (k = 0; k < na && k < 9u; k++)
+        host_map_also[k] = also[k];
+}
 static int m1_patch_map(uint32_t src, uint32_t mod, uint32_t par, uint32_t lo, uint32_t hi, int on)
 {
     return eng_map_edit(pv_bin, &pv_len, 3840u, src, mod, par, lo, hi, on);

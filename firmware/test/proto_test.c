@@ -952,12 +952,21 @@ static int maps_test(int n, char **argv)
     CHECK(!m1_patch_map(110, 90, 0, 0, 255, 1) && m1_valid(m1_cur, m1_cur_len));
     CHECK(send_frame(C_MAP, map1, sizeof map1) == 1 && eng_maps(m1_cur, m1_cur_len, &e) == 2u && !memcmp(e, map1 + 1, 10));
     r0 = nreplies;
-    m1_map_now();
+    m1_map_now(0, 0, 0);
     CHECK(nreplies == r0 + 1u && replies[r0][4] == R_MAP_NOW && m1_unpack7(replies[r0] + 5, reply_len[r0] - 6u, d, sizeof d) == 11u
           && !memcmp(d, map1, 11));
+    {                                                            /* after an FM-1 learn: the learned source and the fixed-job CCs heard (D-939) */
+        static const uint8_t also[2] = {16, 64};
+        m1_map_now(map1[1], also, 2);
+        CHECK(m1_unpack7(replies[r0 + 1u] + 5, reply_len[r0 + 1u] - 6u, d, sizeof d) == 15u && !memcmp(d, map1, 11) && d[11] == map1[1]
+              && d[12] == 2u && d[13] == 16u && d[14] == 64u);
+        nreplies = r0 + 1u;
+    }
+    CHECK(m1_patch_map(ENG_MAP_NOTE + 36u, map1[2], map1[3], 0, 255, 1) && eng_maps(m1_cur, m1_cur_len, &e) == 2u
+          && m1_valid(m1_cur, m1_cur_len));                       /* (a note: source 128 + 36, D-1027; the row's mapping moves to it) */
     map1[0] = 0;
     CHECK(send_frame(C_MAP, map1, 1) == 1 && m1_cur_len == at && eng_maps_at(m1_cur, m1_cur_len) == at && m1_valid(m1_cur, m1_cur_len));
-    m1_map_now();
+    m1_map_now(0, 0, 0);
     CHECK(m1_unpack7(replies[r0 + 1u] + 5, reply_len[r0 + 1u] - 6u, d, sizeof d) == 1u && d[0] == 0u);
     nreplies = r0;
     k = 0;

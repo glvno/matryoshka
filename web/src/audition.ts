@@ -5,8 +5,7 @@
 // second line holds WAV, Rec (a timer and Save while it records) and a status that fades back. The choice and My take
 // are this browser's, not the patch's.
 import type { HostMsg } from './worklet';
-import type { Patch } from './patch';
-import { NOTE_NAMES } from './modules';
+import { NOTE_NAMES, type Patch } from './patch';
 import { popMenu, type MenuItem } from './menu';
 import { PHRASES, ROOT_OCTAVES, TakeRecorder, drumNotes, makePhrase, rootNote, takePhrase, type Phrase, type PhraseKind, type PhraseNote } from './phrases';
 import { WAV_RATE, encodeWav, joinChunks, wavName } from './wav';

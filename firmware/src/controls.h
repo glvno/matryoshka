@@ -25,9 +25,8 @@ static int hc_fx_bank(void);
 static int hc_pattern_store(void);
 static int hc_oct_banks(void);
 static int hc_drum_banks(void);
-static int hc_learning(void);
-enum { HC_NONE, HC_LIST, HC_DEV_PRESETS, HC_DEV_STORE, HC_DEV_KEYS, HC_LONG_TRACK, HC_TRACKS, HC_MENU_GUIDE, HC_MENU_PAGE, HC_MENU_SYSTEM, HC_ROLL, HC_HARM, HC_ROLL_PREVIEW, HC_ROLL_SILENT, HC_FX_BANK, HC_PATTERN_STORE, HC_OCT_BANKS, HC_DRUM_BANKS, HC_LEARNING, HC_COUNT };
-static int (*const HC_FN[HC_COUNT])(void) = {0, hc_list, hc_dev_presets, hc_dev_store, hc_dev_keys, hc_long_track, hc_tracks, hc_menu_guide, hc_menu_page, hc_menu_system, hc_roll, hc_harm, hc_roll_preview, hc_roll_silent, hc_fx_bank, hc_pattern_store, hc_oct_banks, hc_drum_banks, hc_learning};
+enum { HC_NONE, HC_LIST, HC_DEV_PRESETS, HC_DEV_STORE, HC_DEV_KEYS, HC_LONG_TRACK, HC_TRACKS, HC_MENU_GUIDE, HC_MENU_PAGE, HC_MENU_SYSTEM, HC_ROLL, HC_HARM, HC_ROLL_PREVIEW, HC_ROLL_SILENT, HC_FX_BANK, HC_PATTERN_STORE, HC_OCT_BANKS, HC_DRUM_BANKS, HC_COUNT };
+static int (*const HC_FN[HC_COUNT])(void) = {0, hc_list, hc_dev_presets, hc_dev_store, hc_dev_keys, hc_long_track, hc_tracks, hc_menu_guide, hc_menu_page, hc_menu_system, hc_roll, hc_harm, hc_roll_preview, hc_roll_silent, hc_fx_bank, hc_pattern_store, hc_oct_banks, hc_drum_banks};
 
 /* a line of the sheet: its spec (help_ui.c help_part), the row it belongs to (CTL_ROW; CTL_PATCH: no spec, the patch
  * buttons go here), shown when HC_FN[cond]() is not neg */
@@ -58,8 +57,8 @@ static const ctl_line_t CTL_LINE[105] = {
     {"n:ALGO~{list}'s pages", 20, 1, 0},   /* list-pages */
     {"n:ALGO~this device's pages", 21, 1, 1},   /* device-pages */
     {"n:PRESET~this device's presets", 22, 2, 0},   /* device-presets */
-    {"c:1234~adjust values", 23, 18, 1},   /* adjust */
-    {"c:1234~pick row to learn", 24, 18, 0},   /* learn-row */
+    {"c:1234~adjust values", 23, 0, 0},   /* adjust */
+    {"k:SEL|t:+|c:1234~MIDI learn row", 24, 0, 0},   /* learn-row */
     {"k:HOME|t:+|c:1234~fine adjust", 25, 0, 0},   /* fine */
     {"k:SEL~arm only this", 26, 4, 0},   /* arm-device */
     {"k:ENV|t:then|k:SEL~arm several", 27, 4, 0},   /* arm-several */
@@ -145,7 +144,7 @@ static const ctl_line_t CTL_LINE[105] = {
 #define CTL_END 255u
 static const uint8_t CTL_SHEET[2][10][24] = {
     {
-        {19, 21, 29, 30, 24, 25, 26, 27, 28, 22, 23, 20, 12, 36, 104, CTL_END},   /* device */
+        {19, 21, 29, 30, 24, 26, 25, 27, 28, 22, 23, 20, 12, 36, 104, CTL_END},   /* device */
         {31, 35, 33, 32, 13, 36, CTL_END},   /* env */
         {43, 42, 52, 55, 57, 51, 65, 66, 67, 68, 69, 48, 49, 53, 54, 58, 59, 60, 61, 62, 50, 63, 64, CTL_END},   /* drum */
         {55, 56, 29, 30, 41, 65, 66, 67, 68, 45, 46, 47, 81, 50, 51, 69, CTL_END},   /* roll */
@@ -259,7 +258,7 @@ static const ctl_row_t CTL_ROW[CTL_NROWS] = {
     {"device-pages", CE_DEVICE_PAGE, CH_NONE, CH_NONE, CW_PRESS, 0, 1, 0, {{CK_ENCODER, 1, 0}}},
     {"device-presets", CE_PRESET, CH_NONE, CH_NONE, CW_PRESS, 0, 1, 0, {{CK_ENCODER, 6, 0}}},
     {"adjust", CE_PARAM, CH_NONE, CH_NONE, CW_PRESS, 0, 1, 0, {{CK_KNOBS, 15, 0}}},
-    {"learn-row", CE_LEARN_ROW, CH_NONE, CH_NONE, CW_PRESS, 0, 1, 0, {{CK_KNOBS, 15, 0}}},
+    {"learn-row", CE_LEARN_ROW, CH_NONE, 3, CW_PRESS, 0, 1, 0, {{CK_KNOBS, 15, 0}}},
     {"fine", CE_FINE, CH_NONE, 8, CW_PRESS, 0, 1, 0, {{CK_KNOBS, 15, 0}}},
     {"arm-device", CE_ARM, CH_NONE, CH_NONE, CW_PRESS, 0, 1, 0, {{CK_BUTTON, 3, 0}}},
     {"arm-several", CE_ARM, 4, CH_NONE, CW_PRESS, 0, 1, 0, {{CK_BUTTON, 3, 0}}},

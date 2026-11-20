@@ -384,11 +384,9 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
         update_arm = fm1_ms | 1u;
         ui_msg(row == MR_UPDATE ? MSG_HOLD_UPDATE : MSG_HOLD_RESET, MENU_ARM_MS);   /* (26 characters) */
         break;
-    case MR_LEARN:
     case MR_MAPS:
-    case MR_MAP_CLEAR:                              /* MIDI learn (midi_learn.c, #1067): LEARN closes the menu as it starts */
-        if (map_step(row, s))
-            return;
+    case MR_MAP_CLEAR:                              /* MIDI learn's mappings (midi_learn.c, #1067; LEARN: a hint, D-939) */
+        map_step(row, s);
         break;
     default: break;
     }

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **MIDI learn in one move on the FM-1: hold SEL and turn a row's knob, then move the control.** The row stays where it is until the control moves it. GLO › MIDI's third page no longer has a LEARN entry; it lists and clears the mappings and reminds you of SEL + knob. If the controller also sent something that has its own job on the FM-1 (for example a pad's touch message on CC 16, which turns K1), the bar says so when the learn ends, e.g. `CC 16 ALSO SENT: TURNS K1`, and the editor's FM-1 & MIDI list shows it too. Turn that message off in the controller's own editor, or learn it onto a row of its own (#1067).
+- **Notes can be learned too.** Play a key or pad on a MIDI controller while a row waits, in the editor or on the FM-1. That note then switches a switch on or off each time it is played, or sets any other row by how hard you play, and it no longer plays a sound in that patch. The list names it, e.g. `NOTE C2`. Patches with a learned note need the next firmware; 1.23 plays the note as a note (#1067).
+
 ## 1.23.0 — 2026-11-20
 
 - **MIDI learn, on the FM-1 too: any knob, fader, pad axis or pitch bend wheel can move a row, even on a page that is not showing.** In the editor, open a row's ⋮ menu and choose **MIDI learn…** (or click the row and pick **MIDI learn…** in the palette), then move the control on your MIDI controller. On the FM-1, open GLO › MIDI, turn ALGO to the third page, turn LEARN right, turn the knob of the row you want, then move the control. From then on that control moves the row whatever page is in focus, and the FM-1 keeps doing it without the editor: the patch carries what it learned, and SAVE keeps it. A Korg nanoPAD2's X-Y pad can drive Briefcase 3's joystick this way; learn each axis on its own. In FM-1 & MIDI, Low and High set where the control's ends land in the row's range, and the list marks a control only the editor plays (a row no FM-1 page shows). A learned control does only that in its patch: a learned CC 1 no longer moves the mod wheel. A patch holds up to 16 learned controls. Patches with MIDI learn need the next firmware (#1067).

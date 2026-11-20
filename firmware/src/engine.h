@@ -477,7 +477,7 @@ uint32_t eng_fx_targets(uint32_t stage, const uint8_t **targets);
 int eng_fx_on(uint32_t stage);             /* desired UI state, independent of a processing tail */
 void eng_fx_set(uint32_t stage, int on);    /* coherent stereo stage; does not change parameter values */
 /* The MIDI mappings (#1067, MIDI learn): the last section of a binary, after the macro ranges (or where they would be).
- * u8 count (1..ENG_MAPS_MAX), then per mapping u8 source (a CC 0..119, or ENG_MAP_BEND), u8 the row's module and u8 its
+ * u8 count (1..ENG_MAPS_MAX), then per mapping u8 source (a CC 0..119, ENG_MAP_BEND, or ENG_MAP_NOTE + a note), u8 the row's module and u8 its
  * parameter byte as a device page row has them, u8 low end, u8 high end (0..255 of the row's range: the control's lowest
  * value lands on the low end; low above high turns it round). No section: no mappings. The editor writes it from format
  * ENG_MAPS on; the FM-1 reads it in a binary of any format and its MIDI learn writes it into a copy of any format (an
@@ -486,6 +486,7 @@ void eng_fx_set(uint32_t stage, int on);    /* coherent stereo stage; does not c
 #define ENG_MAPS 65                         /* (patchbin.ts FORMAT_1_23) */
 #define ENG_MAPS_MAX 16u
 #define ENG_MAP_BEND 127u                   /* the source byte of pitch bend (CC 127 is never learned) */
+#define ENG_MAP_NOTE 128u                   /* the source byte of MIDI note n: 128 + n (D-1027) */
 #define ENG_MAP_BYTES 5u
 /* where the mapping section of binary p starts (its count byte), len when it has none; 0 when a section before it is
  * malformed */

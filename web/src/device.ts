@@ -20,7 +20,7 @@ export function deviceLayoutKey(patch: Patch): string {
 import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type DeviceSettings, FEATURE_MASTER_EQ, MASTER_EQ, masterEqFrame, parseMasterEq, type MasterEq, armsFrame, parseArmsNow, FEATURE_WIDE_ARMS, editorSkips, FEATURE_ARMS, FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, slotCount, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 import { FEATURE_PATTERN_STORE, parseLinkNow, parsePatData, parsePatEntry, parsePatStored, PAT_OK, PAT_STATUS, PAT_USED, patDelFrame, patGetFrame, patPutFrames, patsFrame, type PatListItem, type StoredPatternEntry } from './protocol';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
-import { FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo } from './protocol';
+import { FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo, type MapEntry } from './protocol';
 import { factoryInfo, installFactory } from './factory-content';
 import { fxPresetInfo } from './fx-preset-format';
 import { autoPick, fm1Label, NOT_CHOSEN, readFm1Id, rememberedFm1, rememberFm1, suggested, type Fm1Choice, type Fm1Id } from './fm1-choice';
@@ -209,8 +209,9 @@ export type DeviceEvent =
   /** the running patch's link of pattern `pattern` changed on the FM-1 (PAT_LINK_NOW, #901): the stored id (0 none) and its
    *  payload hash */
   | { kind: 'link'; pattern: number; id: number; hash: number }
-  /** the running patch's MIDI learn mappings after a learn or a clear on the FM-1 (MAP_NOW, #1067; device-form indices) */
-  | { kind: 'maps'; maps: { src: number; module: number; param: number; lo: number; hi: number }[] };
+  /** the running patch's MIDI learn mappings after a learn or a clear on the FM-1 (MAP_NOW, #1067; device-form indices),
+   *  with the "also sent" warning of a learn there (null none) */
+  | { kind: 'maps'; maps: MapEntry[]; also: { src: number; ccs: number[] } | null };
 
 /** what the editor says when older firmware cannot store a preset whole (more than 88 values, D-476) */
 export const PRESET_NEEDS_UPDATE = 'Update the FM-1 to store this preset on it';
@@ -425,7 +426,7 @@ export class DeviceLink {
         return this.onEvent({ kind: 'param', module: p.payload[0], param: p.payload[1], value: v });
       }
       const mn = p?.cmd === MAP_CMD.mapNow ? parseMapNow(p.payload) : null;
-      if (mn) return this.onEvent({ kind: 'maps', maps: mn });
+      if (mn) return this.onEvent({ kind: 'maps', ...mn });
       if (p?.cmd === CMD.focusNow && p.payload.length >= 2) return this.onEvent({ kind: 'focus', device: p.payload[0], page: p.payload[1] });
       const stored = p ? parsePresetStored(p) : null;
       if (stored) return this.onEvent({ kind: 'presetStored', ...stored });
