@@ -266,6 +266,30 @@ def llvm_objcopy():
     raise SystemExit("build: FAST_TEXT needs llvm-objcopy on the host (apt install llvm, brew install llvm)")
 
 
+TEXT_PINS = os.environ.get("TEXT_PINS", str(FW / "text_pins.txt"))   # functions at fixed flash addresses (text_layout.py);
+                                                                      # TEXT_PINS= (empty) links in the compiler's order
+
+
+def text_ld(lead, main):
+    """the linker script and {function: planned address}: firmware/app.ld as it is without TEXT_PINS, else a copy whose
+    .text links matryoshka.o's functions in tools/text_layout.py's order"""
+    if not TEXT_PINS or not Path(TEXT_PINS).exists():
+        return FW / "app.ld", {}
+    import text_layout
+    lines, where, notes = text_layout.plan(text_layout.read_pins(TEXT_PINS), [text_layout.text_sections(p) for p in lead],
+                                           text_layout.text_sections(main))
+    for n in notes:
+        print(f"text_layout: {n}")
+    src = (FW / "app.ld").read_text()
+    old = "KEEP(*(.text.crt0)) *(.text*)"
+    if src.count(old) != 1:
+        raise SystemExit(f"build: app.ld's .text does not read '{old}'")
+    files = " ".join(f"*{p.name}(.text*)" for p in lead)
+    ld = GEN / "app.ld"
+    ld.write_text(src.replace(old, f"KEEP(*(.text.crt0)) {files}\n        " + "\n        ".join(lines) + "\n        *(.text*)"))
+    return ld, where
+
+
 # ---- the FPU's instructions in the disassembly (#979)
 # JieLi's objdump cannot print the FPU's instructions (`3f e5` / `3f f5`) nor the float compares: it prints their first two
 # bytes as "<unknown instruction>" and reads the rest as an instruction of its own, which can run on into the instruction
@@ -435,8 +459,10 @@ def build_app():
     elf = OUT / "matryoshka.elf"
     lib = toolchain() / "pi32v2" / "lib" / "r3"     # the FPU's libm and float helpers (FPU_FLAGS)
     libm = [str(lib / "libm.a")] if os.environ.get("M1_BENCH") == "1" else []   # the benchmark's sinf, expf, ...
-    tc("pi32v2/bin/ld", "-T", FW / "app.ld", OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o", OUT / "fm1_cpu1.o",
-       OUT / "matryoshka.o", *libm, str(lib / "libcompiler-rt.a"), "-o", elf)   # float and 64-bit helpers
+    lead = [OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o", OUT / "fm1_cpu1.o"]
+    ld, pinned = text_ld(lead, OUT / "matryoshka.o")
+    tc("pi32v2/bin/ld", "-T", ld, *lead, OUT / "matryoshka.o", *libm, str(lib / "libcompiler-rt.a"), "-o", elf)  # (float
+    # and 64-bit helpers)
     for sect in ("text.bin", "data.bin", "ramtext.bin", "c1text.bin", "fasttext.bin"):
         (OUT / sect).unlink(missing_ok=True)
     *_, syms, dis, rt, c1 = tc_all(("common/bin/objcopy", "-O", "binary", "-j", ".text", elf, OUT / "text.bin"),
@@ -453,6 +479,9 @@ def build_app():
 
     def symv(name):
         return int(re.search(r"^([0-9a-f]+) .*\s" + name + r"$", syms, re.M).group(1), 16)
+    moved = [f"{f} at {symv(f):#x}, not {a:#x}" for f, a in pinned.items() if symv(f) != a]
+    if moved:
+        raise SystemExit(f"build: pinned functions not where text_layout.py planned them: {'; '.join(moved[:5])}")
     img = bytearray((OUT / "text.bin").read_bytes())
     # .ram_text, .c1_text (the second core's waiting loop, #271) and .data follow .text at their load addresses; the boot
     # copies them by words (main.c fm1_cstart)
