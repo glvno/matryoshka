@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The 808 Kit's VELOCITY row (D-1053 amended): 0 to 1, how far each voice's level follows its Drum map row's velocity
+// The 808 and 909 Kits' VELOCITY row (D-1053, D-1055 amended): 0 to 1, how far each voice's level follows its Drum map row's velocity
 // (MIDI notes, the FM-1's keys and Steps' per-step velocity all arrive there). A voice plays at 1 - VELOCITY + VELOCITY x
 // velocity / 127 of a hit at 127; an AC accent still adds its own level on top. At 0, as shipped, the kit plays sample for
 // sample as without the row, in the browser engine and the FM-1 engine.
@@ -20,27 +20,32 @@ import { rowOrder, structureOf } from './structure';
 
 const SR = 48000;
 const BLOCK = 128;
-/** the Drum map rows' keys: BD, CB (F3, F4), CY and AC (B4, C5) */
-const BD = 53, CB = 65, CY = 71, AC = 72;
+/** each kit, its card and three rows' keys that take no velocity of their own, and its accent row's key */
+const KITS = [
+  { patch: '808 Kit', card: '808 kit', keys: [53, 65, 71], ac: 72 },   // (BD, CB, CY; AC)
+  { patch: '909 Kit', card: '909 kit', keys: [57, 64, 69], ac: 72 },   // (CLAP, RIM, CRASH; ACCENT)
+];
 let wasm: WebAssembly.Module;
 beforeAll(() => {
   wasm = new WebAssembly.Module(readFileSync(buildFm1EngineWasm(join(tmpdir(), `kit-velocity-${process.pid}.wasm`))));
 }, 120_000);
 
-const kit = (): Patch => FM1_PRESETS['808 Kit']();
-const cardOf = (p: Patch) => assembliesOf(p).find((a) => a.name === '808 kit' && !parentOf(p, a.id))!;
+let kitName = '808 Kit', cardName = '808 kit';
+const kit = (): Patch => FM1_PRESETS[kitName]();
+const cardOf = (p: Patch) => assembliesOf(p).find((a) => a.name === cardName && !parentOf(p, a.id))!;
 const velocityRow = (p: Patch) => cardOf(p).params.find((r) => r.label === 'velocity')!;
 function withVelocity(p: Patch, v: number): Patch {
   const r = velocityRow(p);
   p.modules.find((m) => m.id === r.module)!.params[r.param] = v;
   return p;
 }
-/** the kit without its VELOCITY row: the row's Macro and the Matrices it drives gone, the accent Math's `kb` back at 0 */
+/** the kit without its VELOCITY row: the row's Macro and the Matrices it drives gone, the 808's accent Math's `kb` back at 0 */
 function without(p: Patch): Patch {
   const q = structuredClone(p);
   const macro = velocityRow(q).module;
   for (const c of q.cables.filter((x) => x.from.module === macro)) {
-    const m = q.modules.find((x) => x.id === c.to.module)!;
+    const m = q.modules.find((x) => x.id === c.to.module);
+    if (!m) continue;   // (the 909's last Matrix takes the Macro twice: on p1 and on its fourth input)
     if (m.type === 'math') m.params.kb = 0;
     else removeModule(q, m.id);
   }
@@ -102,8 +107,12 @@ function hit(p: Patch, keys: number[], vel: number, fm1: boolean): number {
 }
 const peakOf = (x: Float32Array): number => x.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
 
-describe('808 Kit: the VELOCITY row (D-1053 amended)', () => {
-  const secs = FACTORY_KITS.find((k) => k.patch === '808 Kit')!.patterns.length * 2 + 1;
+describe.each(KITS)('$patch: the VELOCITY row (D-1053, D-1055 amended)', ({ patch, card: cardLabel, keys, ac: AC }) => {
+  const secs = FACTORY_KITS.find((k) => k.patch === patch)!.patterns.length * 2 + 1;
+  beforeAll(() => {
+    kitName = patch;
+    cardName = cardLabel;
+  });
 
   it('is the card\'s last row, 0 in the patch and in every factory preset of the card', () => {
     const p = kit(), card = cardOf(p), row = velocityRow(p);
@@ -123,10 +132,10 @@ describe('808 Kit: the VELOCITY row (D-1053 amended)', () => {
   }, 120_000);
 
   it.each([false, true])('turns a hit down to 1 - VELOCITY + VELOCITY x velocity of one at 127, an accent on top (FM-1 engine: %s)', (fm1) => {
-    for (const key of [BD, CB, CY]) for (const d of [0, 0.5, 1]) {
+    for (const key of keys) for (const d of [0, 0.5, 1]) {
       const loud = hit(withVelocity(kit(), d), [key], 1, fm1);
       for (const v of [100 / 127, 0.4]) expect(hit(withVelocity(kit(), d), [key], v, fm1) / loud, `key ${key} at ${d}, velocity ${v}`).toBeCloseTo(1 - d + d * v, 2);
-      // (an accent adds half a plain hit at ACCENT LEVEL's Init, whatever the velocity)
+      // (an accent adds half a plain hit at ACCENT LEVEL's or TOTAL ACCENT's Init, whatever the velocity)
       expect(hit(withVelocity(kit(), d), [key, AC], 0.4, fm1) / loud, `key ${key} at ${d}, accented`).toBeCloseTo(1.5 - d * 0.6, 2);
     }
   }, 120_000);

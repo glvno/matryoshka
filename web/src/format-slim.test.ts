@@ -67,13 +67,14 @@ describe("format 64's shorter layout (D-1025)", () => {
   it('keeps every factory patch in its older format when one holds it, and counts the smallest form', () => {
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const l = layout(make());
-      // (the 808 Kit fits only in format 64 since its VELOCITY row, D-1053, D-1026)
+      // (the 808 and 909 Kits fit only in format 64 since their VELOCITY rows, D-1053, D-1055, D-1026)
       expect(l.v < SLIM, name).toBe(Math.min(l.base.bytes, l.counted) <= DEVICE.bytes);
-      expect(l.v < SLIM || name === '808 Kit', name).toBe(true);
+      expect(l.v < SLIM || name === '808 Kit' || name === '909 Kit', name).toBe(true);
       expect(l.need, name).toBe(Math.min(l.base.bytes, l.counted, l.slim));
       expect(l.slim, name).toBeLessThan(l.base.bytes);
     }
-    expect(DEVICE.bytes - layout(FM1_PRESETS['909 Kit']()).need).toBeGreaterThan(300);
+    // (the room format 64 gave the 909 Kit holds its VELOCITY row: 76 bytes left, D-1055)
+    expect(DEVICE.bytes - layout(FM1_PRESETS['909 Kit']()).need).toBeGreaterThan(50);
   });
 
   it('writes format 64 for a patch that fits the FM-1 in no older form', () => {

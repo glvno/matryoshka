@@ -211,7 +211,7 @@ describe('binary patch format', () => {
   });
 
   it('carries the Drum maps\' row names for the FM-1 (format 33, flag bit 7): their own, else the defaults', () => {
-    const p = PRESETS['909 Kit']();   // (in its older format: the 808 Kit is format 64, which stores only renamed rows)
+    const p = PRESETS['Verona Drum 1']();   // (in its older format: the 808 and 909 Kits are format 64, which stores only renamed rows)
     const map = p.modules.find((m) => m.type === 'drummap')!;
     map.names = ['boom'];
     const b = encodePatch(p);

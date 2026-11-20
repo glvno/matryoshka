@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **The 808 Kit can play soft and loud steps: a VELOCITY knob, last on its card.** Turn it up and every sound follows how hard it is played, whether the note comes from a MIDI keyboard, the FM-1's keys or a step's velocity in a pattern. Turned all the way up, a step at velocity 64 plays about half as loud as one at 127, and the AC row's accent still adds on top. It starts at 0, where the kit and its presets sound exactly as before. Your saved 808 Kit sounds keep all their settings, with VELOCITY at 0. The 909 Kit has no room for it yet, and Verona Drum 1 and Scrounge already follow velocity.
+- **The 808 Kit and the 909 Kit can play soft and loud steps: a VELOCITY knob, last on each kit's card.** Turn it up and every sound follows how hard it is played, whether the note comes from a MIDI keyboard, the FM-1's keys or a step's velocity in a pattern. Turned all the way up, a step at velocity 64 plays about half as loud as one at 127, and the accent still adds on top. It starts at 0, where both kits and their presets sound as before. Your saved kit sounds keep all their settings, with VELOCITY at 0. Verona Drum 1 and Scrounge already follow velocity.
 
 ## 1.23.0 — 2026-11-20
 

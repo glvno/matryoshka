@@ -98,11 +98,11 @@ it('preserves a second (bass) track and the mixer\'s other input when selecting 
   bass.name = 'PATTERN';
   bass.notes = [{ at: 0, len: 2, note: 36, vel: 100 }];
   const others = structuredClone(p.modules.filter((m) => m.type === 'steps' && m.id !== t.id));
-  const mix = p.modules.find((m) => m.type === 'mixer' && p.cables.some((c) => c.from.module === m.id && p.modules.some((o) => o.type === 'output' && o.id === c.to.module)))!;
-  const level = mix.params.l4;
+  const out = p.modules.find((m) => m.type === 'output')!;   // (the 909's voices go straight into it since VELOCITY, D-1055)
+  const level = out.params.level;
   applyPreset(p, a, presets[1]);
   expect(p.modules.filter((m) => m.type === 'steps' && m.id !== t.id)).toEqual(others);
-  expect(mix.params.l4).toBe(level);
+  expect(out.params.level).toBe(level);
 });
 
 it('does not recover factory provenance from a USER name or identical values after save/load', () => {
