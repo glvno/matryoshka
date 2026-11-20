@@ -2240,13 +2240,14 @@ async function main() {
       const row = JSON.parse(await patchJson()).assemblies.find((a) => a.name === '909 kit').params.find((r) => r.head === 'hihat');
       await check('909 hats: the hihat LEVEL row sets a second level VCA', row?.label === 'level' && row.also?.length === 1, JSON.stringify(row));
       const gains = async () => { const p = JSON.parse(await patchJson()); return [row.module, row.also[0].module].map((id) => p.modules.find((m) => m.id === id).params.gain); };
-      // the page with CH DECAY on it, ALGO a page at a time from the card's first
-      let found = await emu.text('CH DECAY');
+      // the hihat page, ALGO a page at a time from the card's first (its name in the header: the rows' big labels are
+      // not in the emulator's text font)
+      let found = await emu.text('HIHAT');
       for (let n = 0; n < 12 && !found; n++) {
         await emu.turn(ENC.algo, 1);
-        found = await emu.waitText('CH DECAY', 1000);
+        found = await emu.waitText('HIHAT', 1000);
       }
-      await check('909 hats: ALGO reaches the hihat page', found);
+      await check('909 hats: ALGO reaches the hihat page', found, JSON.stringify({ editor: (await T()).focus, mirror: await page.evaluate(() => window.__m1test.emu()) }));
       const before = await gains();
       let moved = null;
       for (let k = ENC.k1; k <= ENC.k4 && !moved; k++) {
