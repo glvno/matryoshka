@@ -24,25 +24,45 @@
  * host goes on sending clock while stopped; a Start or Continue lets it run again. RAM only: it lasts while the FM-1
  * stays on (unplugging USB keeps it). On the device the ring is the update session's staging buffers (modular.c
  * CIN_LOG_RING, ota.c ota_buf: the pool has no room of its own, D-100), so an update empties it. DIAG 145 (the header,
- * and the read starts at the oldest entry), 146 (the next 4 entries), 147 (empty it); tools/m1_link.py midilog. */
+ * and the read starts at the oldest entry), 146 (the next 4 entries), 147 (empty it); tools/m1_link.py midilog.
+ *
+ * Audio onset (#870: where a looper's audio downbeat lands against its Start and clock): the host's USB playback into
+ * the FM-1 (usb_return.h) going from silence to sound. The audio ISR hands each half's peak (ur_mix: the OR of the
+ * samples' magnitudes, made in the loop that already mixes them) to cin_onset_block; a half that reaches CIN_ONSET_THR
+ * after at least CIN_ONSET_QUIET halves below it is an onset: its TIMER4 time and the engine's ticks are kept in the
+ * ring's last entry (cin_onset, so the ring holds CIN_LOG_N = 255 entries and no RAM is added), and the main thread logs
+ * it as an entry of its own (st CIN_ONSET_ST) at its next drain or message, on the log's clock. The time is the half's
+ * mix into the output, block resolution (2.9 ms), after the playback queue's ~6 ms. Each silence of 200 ms or more
+ * gives one, so each loop's first hit appears; frozen after a Stop as the messages are; not counted as a message. The
+ * header carries the threshold and the silence (DIAG 145). */
 #ifndef CIN_LOG_NOW
 #define CIN_LOG_NOW() fm1_ticks()
 #endif
-#define CIN_LOG_N 256u
+#define CIN_LOG_N 255u                          /* (+1: the onset's state, cin_onset) */
 #define CIN_LOG_AFTER 64u
+#define CIN_ONSET_ST 0x01u                      /* an audio onset's entry (not a MIDI status) */
+#define CIN_ONSET_THR 256u                      /* sound: a sample of either side at +256 / -257 of 32768 or beyond (-42
+                                                 * dBFS); a power of two, which the OR peak compares exactly */
+#define CIN_ONSET_QUIET 69u                     /* halves of silence before an onset (128 frames each: 200 ms) */
 typedef struct {
     uint32_t us;                                /* microseconds (the log's own clock: wraps after 71 minutes) */
-    uint16_t v;                                 /* Start / Stop / Continue: the engine's ticks (low 16 bits); Song Position: its
-                                                 * value; a clock: from its first to its last clock, in units of 100 us */
-    uint8_t st;                                 /* the status byte: F2, F8, FA, FB, FC */
+    uint16_t v;                                 /* Start / Stop / Continue / audio onset: the engine's ticks (low 16 bits);
+                                                 * Song Position: its value; a clock: from its first to its last clock, in
+                                                 * units of 100 us */
+    uint8_t st;                                 /* the status byte: F2, F8, FA, FB, FC; CIN_ONSET_ST an audio onset */
     uint8_t fl;                                 /* bit 0 the transport runs (eng_run_ticks), 1 MIDI clock drives, 2 CLOCK IN on;
-                                                 * a clock: bits 3..7 the clocks folded into it after it */
+                                                 * a clock: bits 3..7 the clocks folded into it after it; an audio onset:
+                                                 * bits 3..7 the bits of its half's peak (the peak is below 2^bits) */
 } cin_ent_t;
 #ifdef CIN_LOG_RING
 #define cin_log CIN_LOG_RING
+_Static_assert((CIN_LOG_N + 1u) * sizeof(cin_ent_t) <= CIN_LOG_RING_BYTES, "the log and the onset's state fit the ring");
 #else
-static cin_ent_t cin_log[CIN_LOG_N];
+static cin_ent_t cin_log[CIN_LOG_N + 1u];
 #endif
+#define cin_onset (cin_log[CIN_LOG_N])         /* the onset's state: us its TIMER4 time | 1 while the main thread has not
+                                                 * logged it (0: none), v the engine's ticks then, st its peak's bits, fl
+                                                 * the silent halves before the newest half (up to 255) */
 static uint32_t cin_log_w, cin_log_rd, cin_log_n;   /* entries made, DIAG 146's next entry, messages logged (since boot or
                                                      * the last DIAG 147) */
 static uint32_t cin_log_us, cin_log_tk, cin_log_ms, cin_log_clk, cin_log_gap;   /* the log's clock; the last clock's time,
@@ -71,11 +91,49 @@ static uint8_t cin_log_state(void)
 {
     return (uint8_t)((eng_run_ticks() >= 0 ? 1u : 0u) | (eng_clock_is_external() ? 2u : 0u) | (cfg.clock_in ? 4u : 0u));
 }
+/* the audio ISR (modular.c UR_ONSET, with the engine running): one half of the host's playback, pk its peak (ur_mix) */
+static void cin_onset_block(uint32_t pk)
+{
+    cin_ent_t *s = &cin_onset;
+    if (pk < CIN_ONSET_THR) {
+        if (s->fl < 255u)
+            s->fl++;
+        return;
+    }
+    if (s->fl >= CIN_ONSET_QUIET && !s->us) {
+        uint32_t b = 9u;
+        while (pk >> b)
+            b++;
+        s->v = (uint16_t)eng_ticks();
+        s->st = (uint8_t)b;
+        RING_PUBLISH();
+        s->us = CIN_LOG_NOW() | 1u;
+    }
+    s->fl = 0;
+}
+/* the main thread: an onset the ISR found becomes an entry, at its own time on the log's clock (frozen: dropped) */
+static void cin_onset_log(void)
+{
+    cin_ent_t *s = &cin_onset, *e;
+    uint32_t t = *(volatile uint32_t *)&s->us;
+    if (!t)
+        return;
+    if (cin_log_stop != 1u) {
+        uint32_t us = cin_log_clock();
+        e = &cin_log[cin_log_w++ % CIN_LOG_N];
+        e->us = us - (CIN_LOG_NOW() - t) / FM1_TICKS_PER_US;
+        e->v = s->v;
+        e->st = CIN_ONSET_ST;
+        e->fl = (uint8_t)(cin_log_state() | s->st << 3);
+    }
+    s->us = 0;
+}
 static void cin_log_add(uint32_t pkt)
 {
     uint32_t st = (pkt >> 8) & 0xFFu, us;
     uint8_t fl;
     cin_ent_t *e;
+    cin_onset_log();                            /* (an onset before this message comes first) */
     if (st == 0xFAu || st == 0xFBu)
         cin_log_stop = 0;
     else if (cin_log_stop == 1u)
@@ -105,9 +163,10 @@ static void cin_log_add(uint32_t pkt)
     if (st == 0xFCu)
         cin_log_stop = CIN_LOG_AFTER + 1u;
 }
-/* DIAG 145..147 (main.c m1_diag): 145 the header (messages logged, the ring's size, the entries it holds, frozen, the
- * log's clock now, the engine's ticks now, the transport's state now, entries made) and the read from the oldest entry;
- * 146 the next 4 entries (8 bytes each: us u32, v u16, st, fl; past the newest: zeros); 147 empties the log */
+/* DIAG 145..147 (main.c m1_diag): 145 the header (messages logged, the ring's size, the entries it holds, frozen | the
+ * onset's silence in halves << 8 | its threshold << 16, the log's clock now, the engine's ticks now, the transport's
+ * state now, entries made) and the read from the oldest entry; 146 the next 4 entries (8 bytes each: us u32, v u16, st,
+ * fl; past the newest: zeros); 147 empties the log */
 static uint32_t cin_log_diag(uint32_t page, uint8_t *out)
 {
     uint32_t i, held = cin_log_w < CIN_LOG_N ? cin_log_w : CIN_LOG_N;
@@ -116,7 +175,7 @@ static uint32_t cin_log_diag(uint32_t page, uint8_t *out)
         v[0] = cin_log_n;
         v[1] = CIN_LOG_N;
         v[2] = held;
-        v[3] = cin_log_stop == 1u;
+        v[3] = (cin_log_stop == 1u) | CIN_ONSET_QUIET << 8 | CIN_ONSET_THR << 16;
         v[4] = cin_log_clock();
         v[5] = eng_ticks();
         v[6] = cin_log_state();
@@ -148,6 +207,7 @@ static uint32_t cin_log_diag(uint32_t page, uint8_t *out)
     }
     cin_log_w = cin_log_rd = cin_log_n = cin_log_gap = 0;   /* 147 */
     cin_log_stop = 0;
+    cin_onset.us = 0;
     out[0] = 0;
     return 1u;
 }
@@ -192,9 +252,11 @@ static void clk_in_rt(uint32_t pkt)
         ui_dirty = 1;
 }
 
-/* after each drain: MIDI clock lets go of the clock half a second after its last tick, unless the transport runs on it */
+/* after each drain: an onset the audio ISR found goes into the log; MIDI clock lets go of the clock half a second after
+ * its last tick, unless the transport runs on it */
 static void clk_in_idle(void)
 {
+    cin_onset_log();
     if (midi_clk_seen && (!cfg.clock_in || (fm1_ms - midi_clk_ms > 500u && eng_run_ticks() < 0))) {
         midi_clk_seen = 0;
         eng_clock_external(0);

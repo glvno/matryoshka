@@ -53,27 +53,34 @@ static int32_t ur_clip(int32_t x)
 }
 /* After the recording tap and count-in click; before analog mono/off.
  * Consume even at level zero. A stopped host becomes silence, never a
- * repeated final sample. No stream allocation and no floating point. */
-static void ur_mix(int32_t *out, uint32_t n)
+ * repeated final sample. No stream allocation and no floating point.
+ * Returns the block's peak as the OR of both sides' magnitudes (one's
+ * complement for negative samples), 0 when nothing played: its highest set
+ * bit is the peak's, so a power-of-two threshold compares exactly (#870:
+ * clock_in.h's audio onset). A caller that ignores it costs nothing. */
+static uint32_t ur_mix(int32_t *out, uint32_t n)
 {
-    uint32_t epoch = ur_epoch, r = ur_r;
+    uint32_t epoch = ur_epoch, r = ur_r, pk = 0;
     if (ur_seen != epoch || !ur_alt) {
         ur_seen = epoch; ur_playing = 0; ur_r = ur_w;
-        return;
+        return 0;
     }
     if (!ur_playing) {
-        if (ur_w-r < UR_PRIME) return;
+        if (ur_w-r < UR_PRIME) return 0;
         ur_playing = 1;
     }
     int32_t gain = ((int32_t)ur_level * 256) / 100;
     for (uint32_t i = 0; i < n; i++) {
-        if (ur_epoch != epoch || !ur_alt) { ur_playing = 0; ur_r = ur_w; return; }
+        if (ur_epoch != epoch || !ur_alt) { ur_playing = 0; ur_r = ur_w; return pk; }
         if (r == ur_w) { ur_playing = 0; ur_underruns++; break; }
         uint32_t s = ur_ring[r & (UR_N-1u)];
-        out[2*i] = ur_clip(out[2*i] + (int16_t)s * gain);
-        out[2*i+1] = ur_clip(out[2*i+1] + (int16_t)(s>>16) * gain);
+        int32_t sl = (int16_t)s, sr = (int16_t)(s>>16);
+        out[2*i] = ur_clip(out[2*i] + sl * gain);
+        out[2*i+1] = ur_clip(out[2*i+1] + sr * gain);
+        pk |= (uint32_t)(sl ^ (sl >> 31)) | (uint32_t)(sr ^ (sr >> 31));
         r++;
         RING_PUBLISH();
         ur_r = r;
     }
+    return pk;
 }

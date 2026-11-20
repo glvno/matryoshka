@@ -35,6 +35,24 @@ int main(void)
     for(unsigned i=0;i<256;i++) assert(o[i]==0);
     uint32_t w=ur_w;
     uint8_t bad[185]={0}; ur_receive(bad,3); ur_receive(bad,185); assert(ur_w==w);
+    /* The peak ur_mix returns (#870, clock_in.h's onset): the OR of both sides' magnitudes, one's complement for a
+     * negative sample, so a power-of-two threshold sees +256 and -257, not +255 or -256; 0 when nothing played. */
+    {
+        const int16_t cases[][3] = {{0,0,0}, {255,-256,0}, {256,0,1}, {0,256,1}, {-257,0,1}, {0,-257,1}, {-32768,0,1}};
+        for (unsigned c = 0; c < sizeof cases / sizeof cases[0]; c++) {
+            uint32_t p[32], pk;
+            ur_start(1); assert(ur_mix(o,128) == 0);
+            for (unsigned k = 0; k < 8; k++) {
+                for (unsigned i = 0; i < 32; i++) p[i] = 0;
+                if (k == 1) p[7] = (uint16_t)cases[c][0] | (uint32_t)(uint16_t)cases[c][1] << 16;
+                ur_receive((const uint8_t *)p, sizeof p);
+            }
+            memset(o,0,sizeof o); pk = ur_mix(o,128);
+            assert((pk >= 256u) == (uint32_t)cases[c][2]);
+            if (c == 6) assert(pk == 32767u);
+        }
+        ur_start(1); assert(ur_mix(o,128) == 0); assert(ur_mix(o,128) == 0); /* priming: nothing played */
+    }
     /* A host follows the explicit feedback, with up to 16 ms of response lag.
      * Consume 128-frame halves at measured and nearby clocks, varied render phase.
      * Verify no lost/duplicated PCM frames after priming during 60 seconds. */
