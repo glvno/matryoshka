@@ -7,16 +7,21 @@
  * wheel, breath, sustain, foot, K1..K4, morph, pitch bend; a note's sound) waits until its mapping is cleared. CC 80..86
  * (the patch buttons) and 120..127 (the channel mode messages) are never learned. Mappings follow MENU > MIDI CHANNEL.
  *
- * Learning (D-939): HOME held + SEL (panel.c), or MIDI 3/3's LEARN turned right, toggles learn mode on a device page or
+ * Learning (D-939): HOME held + SEL (panel.c), or MIDI 3/4's LEARN turned right, toggles learn mode on a device page or
  * the environment. The next knob turned picks its row, which does not move (learn_row), and the first control to send
  * three different values (two for a switch row), or the first note played, moves it from then on; that ends learn mode.
  * A HOME tap, HOME + SEL again, another patch, or LEARN_MS without a step ends it too. Controls with a fixed job heard
- * meanwhile (FIXED_CC) are named when the learn ends: they still do their job. GLO > MIDI 3/3 lists the mappings
+ * meanwhile (FIXED_CC) are named when the learn ends: they still do their job. GLO > MIDI 3/4 lists the mappings
  * (MAPPING) and clears the one it shows (CLEAR). A linked editor hears each change (MAP_NOW) and every move (PARAM_NOW, at
  * most every MAP_REPORT_MS for a mapping).
  *
  * A note (source ENG_MAP_NOTE + its number) toggles a switch row at each note-on, between the mapping's ends; any other
- * row takes the note-on's velocity between them. Its note-off does nothing. */
+ * row takes the note-on's velocity between them. Its note-off does nothing.
+ *
+ * The global pad map (pad_map.h, #1067): in learn mode while Main's keys reach a kit, a drum key picks its row (in the
+ * bank OCT- / OCT+ show, D-520) and the next note played becomes that row's pad; learn mode then waits for the next
+ * row's pad, until the last row, a HOME tap or HOME + SEL. A pad plays its row, after the patch's own learned notes
+ * (pad_midi). GLO > MIDI 4/4 shows it: PAD MAP, a row and its pad, CLEAR, CLEAR ALL. */
 
 #define LEARN_MS 30000u
 #define LEARN_CANDS 2u                                  /* controls a learn tells apart at once (an X-Y pad sends two) */
@@ -29,20 +34,25 @@ static const char *const FIXED_JOB[9] = {"TURNS K1", "TURNS K2", "TURNS K3", "TU
                                          "SUSTAIN", "FOOT"};
 
 static struct {
-    uint8_t on;                                         /* 1: a row waits for a control */
+    uint8_t on;                                         /* 1: learn mode waits, 2: a row waits for a control, 3: a drum row
+                                                         * (mod) waits for a pad; par counts the pads learned, need = 1 while
+                                                         * the bar names the last one, before the next row's prompt */
     uint8_t mod, par, need;                             /* the row (a page row's module and parameter bytes), values to see */
     uint8_t nc;
     uint16_t also;                                      /* bit i: FIXED_CC[i] was heard meanwhile */
     uint32_t gen, at;                                   /* the patch it learns for (pages_gen), its last step (fm1_ms) */
     struct { uint8_t src, n; uint16_t v[2]; } c[LEARN_CANDS];   /* the controls heard: their different values so far */
 } ml ENG_LOWRAM;                                        /* (.lowram, zeroed at boot: the RAM region has no room left) */
-static uint8_t map_sel;                                 /* the mapping GLO > MIDI 3/3 shows (MAPPING, CLEAR) */
+static uint8_t map_sel;                                 /* the mapping GLO > MIDI 3/4 shows (MAPPING, CLEAR) */
+static uint8_t pad_sel;                                 /* the pad map's row GLO > MIDI 4/4 shows */
+static uint8_t pad_sound[PAD_ROWS];                     /* the note a row's pad started, + 1 (0: none): its note-off ends it */
 typedef struct { uint8_t due, mod, par; int32_t v; uint32_t at; } map_rep_t;
 static map_rep_t map_rep[ENG_MAP_RAMPS];               /* the moves told to the editor (PARAM_NOW), per ramp slot */
 static char *seq_note_name(char *p, uint32_t n);        /* (seq_ui.c: C4 is note 60) */
 static void screen_back(void);                         /* (panel.c) */
+static int m1_drum_name(uint32_t map, uint32_t r, char *out);   /* (proto.c; the host's after this file) */
 static int map_has(uint32_t src);
-
+#define PAD_SHOW_MS 1000u                               /* a pad learned: its name shows this long before the next row's prompt */
 /* the running patch's mappings: their count, *e at the first one's bytes */
 static uint32_t map_list(const uint8_t **e)
 {
@@ -99,8 +109,8 @@ static int map_switch(uint32_t m, uint32_t j)
     return n == 2u || (!n && d->pmin[j] == 0 && d->pmax[j] == 65536 && d->pinc[j] == 65536);
 }
 
-/* is a learn under way? 1: learn mode waits for a knob, 2: a row waits for a control. It ends with another patch or
- * LEARN_MS after its last step */
+/* is a learn under way? 1: learn mode waits for a knob or a drum key, 2: a row waits for a control, 3: a drum row waits
+ * for a pad. It ends with another patch or LEARN_MS after its last step */
 static int learn_live(void)
 {
     if (ml.on && (ml.gen != pages_gen() || fm1_ms - ml.at > LEARN_MS))
@@ -108,12 +118,49 @@ static int learn_live(void)
     return ml.on;
 }
 
-/* learn mode on or off (D-939): HOME held + SEL (panel.c) or MIDI 3/3's LEARN turned right. On a device page or the
- * environment the next knob turned picks its row (learn_row); the SEQ and SONG pages and sandbox mode refuse it */
+/* does learn mode wait for a knob or a drum key (panel.c learn_knob, panel_key) */
+static int learn_keys(void)
+{
+    int s = learn_live();
+    return s == 1 || s == 3;
+}
+
+/* the drum rows Main's keys reach, as eng_keys_rows lists them (D-520); 0 when they reach none (sandbox mode: plain notes) */
+static uint32_t pad_rows(uint8_t *rm, uint8_t *rr)
+{
+    return sb_on || eng_keys_drummap() < 0 ? 0u : eng_keys_rows(rm, rr);
+}
+
+/* drum row i as the bar names it: its number, then its name in capitals (at most max characters), "1 BASS DRU" */
+static char *pad_name(char *p, uint32_t i, uint32_t max)
+{
+    uint8_t rm[ENG_DRUM_LIST], rr[ENG_DRUM_LIST];
+    char name[ENG_DRUM_NAME + 1u];
+    uint32_t rn = pad_rows(rm, rr);
+    fmt_int(p, (int32_t)i + 1);
+    p += str_len(p);
+    if (i < rn && m1_drum_name(rm[i], rr[i], name) && name[0]) {
+        *p++ = ' ';
+        caps(p, name, str_len(name), max);
+        p += str_len(p);
+    }
+    *p = 0;
+    return p;
+}
+
+/* learn mode on or off (D-939): HOME held + SEL (panel.c) or MIDI 3/4's LEARN turned right. On a device page or the
+ * environment the next knob turned picks its row (learn_row), a drum key its pad's row (pad_pick); the SEQ and SONG pages
+ * and sandbox mode refuse it */
 static void learn_mode(int on)
 {
+    uint8_t rm[ENG_DRUM_LIST], rr[ENG_DRUM_LIST];
     if (!on) {
-        if (ml.on)
+        if (ml.on == 3 && ml.par) {                     /* (pads learned this time: how many rows have one now) */
+            char text[24];
+            fmt_int(put(text, MSG_PADS), (int32_t)pad_count());
+            put(text + str_len(text), MSG_PADS_LEARNED)[0] = 0;
+            ui_msg(text, 2000);
+        } else if (ml.on)
             ui_msg(MSG_LEARN_OFF, 1500);
         ml.on = 0;
         return;
@@ -129,7 +176,89 @@ static void learn_mode(int on)
     ml.gen = pages_gen();
     ml.at = fm1_ms;
     ml.on = 1;
-    ui_msg(MSG_LEARN_TURN, LEARN_MS);
+    ml.par = 0;
+    ml.need = 0;
+    ui_msg(pad_rows(rm, rr) ? MSG_LEARN_KIT : MSG_LEARN_TURN, LEARN_MS);
+}
+
+/* the bar's prompt for drum row ml.mod: 1 BASS DRU: HIT A PAD */
+static void pad_prompt(void)
+{
+    char text[40];
+    put(pad_name(text, ml.mod, 12u), MSG_PAD_HIT)[0] = 0;
+    ui_msg(text, LEARN_MS);
+}
+
+/* a drum key in learn mode (panel.c panel_key): list row i of the rows the keys reach waits for a pad; the key still plays */
+static void pad_pick(uint32_t i)
+{
+    if (i >= PAD_ROWS) {
+        ui_msg(MSG_PAD_ROWS, 1500);
+        return;
+    }
+    ml.mod = (uint8_t)i;
+    ml.need = 0;
+    ml.gen = pages_gen();
+    ml.at = fm1_ms;
+    ml.on = 3;
+    pad_prompt();
+}
+
+/* a pad's note n (raw its velocity, 0 a note-off) on the MIDI channel chn: it plays its row of the kit the keys reach, at
+ * the pad's velocity, and its note-off ends what it started. 1 taken; 0 not a pad, PAD MAP off, or no such row now: the
+ * note plays as itself */
+static int pad_midi(uint32_t n, uint32_t raw, uint32_t chn)
+{
+    uint8_t rm[ENG_DRUM_LIST], rr[ENG_DRUM_LIST];
+    int r = pad_row_of(n), note;
+    if (r < 0)
+        return 0;
+    if (!raw) {                                         /* (the note its note-on started, whatever the keys reach by now) */
+        if (!pad_sound[r])
+            return 0;
+        eng_midi_channel(cfg.ch);
+        eng_note_off(pad_sound[r] - 1u, chn);
+        pad_sound[r] = 0;
+        return 1;
+    }
+    if (!pad_on || (uint32_t)r >= pad_rows(rm, rr) || (note = eng_drummap_note(rm[r], rr[r])) < 0)
+        return 0;
+    pad_sound[r] = (uint8_t)(note + 1);
+    eng_midi_channel(cfg.ch);
+    eng_note_on((uint32_t)note, (int32_t)(raw * 65536u / 127u), chn);
+    return 1;
+}
+
+/* a note-on while a drum row waits for a pad (midi_input.h, on the MIDI channel): it becomes the row's pad, plays it, and
+ * the next row waits (its prompt after PAD_SHOW_MS: map_poll); after the last row learn mode ends. 1 taken */
+static int pad_learn(uint32_t n, uint32_t raw, uint32_t chn)
+{
+    uint8_t rm[ENG_DRUM_LIST], rr[ENG_DRUM_LIST];
+    uint32_t rn, r;
+    char text[40], *p;
+    if (learn_live() != 3 || !raw)
+        return 0;
+    rn = pad_rows(rm, rr);
+    r = ml.mod;
+    if (r >= rn)
+        return 0;
+    pad_set(r, n);
+    gt_changed(fm1_ms);                                 /* (kept as the settings are, without SAVE) */
+    m1_pads_now();
+    ml.par++;
+    pad_midi(n, raw, chn);
+    p = put(map_src_name(text, ENG_MAP_NOTE + n), MSG_PAD_TO);
+    pad_name(p, r, 11u);
+    ui_msg(text, LEARN_MS);
+    if (++r < rn && r < PAD_ROWS) {
+        ml.mod = (uint8_t)r;
+        ml.need = 1;
+        ml.at = fm1_ms;
+    } else
+        learn_mode(0);
+    if (!ui_dirty)
+        ui_dirty = 1;
+    return 1;
 }
 
 /* a knob k turned in learn mode (panel.c learn_knob): row k of the page in focus waits for a control and does not move;
@@ -250,7 +379,8 @@ static void map_report(uint32_t i, uint32_t mod, uint32_t par, int32_t v)
     }
 }
 
-/* the moves map_report held back, once their MAP_REPORT_MS are over (midi_input.h, after each drain) */
+/* the moves map_report held back, once their MAP_REPORT_MS are over, and the next drum row's prompt once the pad learned
+ * has shown PAD_SHOW_MS (midi_input.h, after each drain) */
 static void map_poll(void)
 {
     uint32_t i;
@@ -260,6 +390,10 @@ static void map_poll(void)
             map_rep[i].due = 0;
             m1_param_now(map_rep[i].mod, map_rep[i].par, map_rep[i].v);
         }
+    if (ml.need && ml.on == 3 && learn_live() == 3 && fm1_ms - ml.at >= PAD_SHOW_MS) {
+        ml.need = 0;
+        pad_prompt();
+    }
 }
 
 /* does control src move a row of the running patch, or does a learn wait for a control (midi_input.h: the message then
@@ -270,7 +404,7 @@ static int map_has(uint32_t src)
     uint32_t n, i;
     if (!map_learnable(src))
         return 0;
-    if (learn_live() == 2)
+    if (learn_live() == 2 || (learn_live() == 3 && src >= ENG_MAP_NOTE))   /* (a pad's learn: as a control's) */
         return 1;
     n = map_list(&e);
     for (i = 0; i < n; i++, e += ENG_MAP_BYTES)
@@ -324,7 +458,7 @@ static int map_midi(uint32_t src, uint32_t raw)
     return 1;
 }
 
-/* ---- GLO > MIDI 3/3 (menu.c): MAPPING, CLEAR and LEARN (HOME + SEL; turned right it starts learn mode) */
+/* ---- GLO > MIDI 3/4 (menu.c): MAPPING, CLEAR and LEARN (HOME + SEL; turned right it starts learn mode) */
 
 /* MAPPING's label: the mapping shown, "CC 1  1/2" (a note: "NOTE C#-1 1/2"), or MAPPINGS when there are none */
 static const char *map_label(void)
@@ -352,7 +486,13 @@ static void map_value(uint32_t row, char *out)
     const uint8_t *e = 0;
     uint32_t n = map_list(&e);
     char *p = out;
-    if (row == MR_LEARN)
+    if (row == MR_PADS_ON)                              /* (the pad map, MIDI 4/4) */
+        p = put(p, pad_on ? "ON" : "OFF");
+    else if (row == MR_PAD_ROW)
+        p = pad_note[pad_sel] == PAD_NONE ? put(p, "-") : map_src_name(p, ENG_MAP_NOTE + pad_note[pad_sel]);
+    else if (row == MR_PAD_CLEAR)
+        p = put(p, pad_note[pad_sel] == PAD_NONE ? "-" : "TURN >");
+    else if (row == MR_LEARN)
         p = put(p, "HOME + SEL");
     else if (row == MR_MAP_CLEAR)
         p = put(p, n ? "TURN >" : "-");
@@ -370,11 +510,42 @@ static void map_value(uint32_t row, char *out)
     *p = 0;
 }
 
+/* the pad map's rows GLO > MIDI 4/4 steps through: as many as the kit the keys reach has (at most PAD_ROWS), all of them
+ * while they reach none */
+static uint32_t pad_menu_rows(void)
+{
+    uint8_t rm[ENG_DRUM_LIST], rr[ENG_DRUM_LIST];
+    uint32_t rn = pad_rows(rm, rr);
+    return rn && rn < PAD_ROWS ? rn : PAD_ROWS;
+}
+
+/* MIDI 4/4's row label: the row shown, its number and name (1 BASS DRU) */
+static const char *pad_label(void)
+{
+    static char t[16];
+    uint32_t n = pad_menu_rows();
+    if (pad_sel >= n)
+        pad_sel = (uint8_t)(n - 1u);
+    pad_name(t, pad_sel, 9u);
+    return t;
+}
+
+/* CLEAR ALL (menu.c menu_fire, after GLO's hold): every row's pad gone */
+static void pad_clear_now(void)
+{
+    pad_clear_all();
+    gt_changed(fm1_ms);
+    m1_pads_now();
+    ui_msg(MSG_PADS_CLEARED, 1500);
+}
+
 /* a row's place in its range over width px (menu.c setting_bar) */
 static uint32_t map_bar(uint32_t row, uint32_t width)
 {
     const uint8_t *e = 0;
     uint32_t n = map_list(&e);
+    if (row == MR_PAD_ROW)
+        return pad_sel * width / (pad_menu_rows() - 1u);
     if (row == MR_MAPS)
         return n > 1u ? (map_sel < n ? map_sel : n - 1u) * width / (n - 1u) : n ? width : 0u;
     return 0u;
@@ -388,6 +559,22 @@ static void map_step(uint32_t row, int32_t s)
     if (row == MR_LEARN && s > 0) {                     /* (the menu closes: learn mode on the page it came from) */
         screen_back();
         learn_mode(1);
+    } else if (row == MR_PADS_ON) {
+        if (pad_on != (s > 0)) {
+            pad_on = (uint8_t)(s > 0);
+            gt_changed(fm1_ms);
+            m1_pads_now();
+        }
+    } else if (row == MR_PAD_ROW) {
+        int32_t v = (int32_t)pad_sel + (s > 0 ? 1 : -1), top = (int32_t)pad_menu_rows() - 1;
+        pad_sel = (uint8_t)(v < 0 ? 0 : v > top ? top : v);
+    } else if (row == MR_PAD_CLEAR && s > 0 && pad_note[pad_sel] != PAD_NONE) {
+        char text[24];
+        put(map_src_name(text, ENG_MAP_NOTE + pad_note[pad_sel]), MSG_MAP_CLEARED)[0] = 0;
+        pad_set(pad_sel, PAD_NONE);
+        gt_changed(fm1_ms);
+        m1_pads_now();
+        ui_msg(text, 1500);
     } else if (row == MR_MAPS) {
         int32_t v = (int32_t)map_sel + (s > 0 ? 1 : -1);
         map_sel = (uint8_t)(n ? (v < 0 ? 0 : v >= (int32_t)n ? (int32_t)n - 1 : v) : 0);

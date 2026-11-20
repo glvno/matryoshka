@@ -2,13 +2,13 @@
 import { recoveredLines } from './test-buffer-budget';
 // Connecting the FM-1 syncs by default (#171): the decision on connect and the chip's state; Live over the budget (#200).
 import { describe, expect, it } from 'vitest';
-import { chipState, DeviceLink, holdsFactoryLinks, IGNORED_NOW, ignoredFound, linkCandidates, type LinkCandidate, liveSync, notFound, sysexRefused, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, transportOf } from './device';
+import { chipState, DeviceLink, type DeviceEvent, holdsFactoryLinks, IGNORED_NOW, ignoredFound, linkCandidates, type LinkCandidate, liveSync, notFound, sysexRefused, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, transportOf } from './device';
 import { factoryEntries } from './pattern-store';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
 import { deviceBudget, encodePatch, FLAG_PATTERN_ORIGINS, VERSION } from './patchbin';
 import { FM1_PRESETS } from './presets';
-import { CMD, frame, liveFrame, parse } from './protocol';
+import { CMD, frame, liveFrame, PADS_CMD, parse } from './protocol';
 import { subtractiveSaw } from './test-patches';
 import { withFxBus } from './fx-bus';
 
@@ -438,6 +438,39 @@ describe('DeviceLink.connect', () => {
   it('a request with no port open rejects, not a TypeError on null (#754)', async () => {
     const err = await new DeviceLink().hello().catch((e: Error) => e);
     expect(err).toBeInstanceOf(Error);
+  });
+  it('reads the global pad map after connect when the FM-1 keeps one (feature bit 29), and says each PADS_NOW', async () => {
+    const fm1 = { i: port('p', 'FM-1'), o: port('P', 'FM-1') };
+    const notes = Array.from({ length: 24 }, (_, i) => (i ? 0xff : 36));
+    fm1.o.send = (d) => {
+      fm1.o.sent.push(d);
+      const p = parse(d)!;
+      const answer = p.cmd === CMD.hello ? frame(CMD.info, [1, 64, 255, 3, 1, 0, 1, 48, 48, 0, 0, 0, 0, 0, 0x20])
+        : p.cmd === PADS_CMD.pads ? frame(PADS_CMD.padsNow, [1, ...notes]) : null;
+      if (answer) setTimeout(() => fm1.i.onmidimessage?.({ data: answer }), 0);
+    };
+    const link = new DeviceLink();
+    // (connect drops events until it links: the PADS_NOW that counts is the answer to the read sent after that)
+    const pads = new Promise<DeviceEvent>((resolve) => { link.onEvent = (e) => { if (e.kind === 'pads') resolve(e); }; });
+    await withMidi([fm1.i], [fm1.o], () => link.connect());
+    expect(link.hasPads).toBe(true);
+    expect(fm1.o.sent.some((d) => parse(d)?.cmd === PADS_CMD.pads && parse(d)!.payload.length === 0)).toBe(true);
+    expect(await pads).toEqual({ kind: 'pads', on: true, notes: [36, ...Array(23).fill(null)] });
+    fm1.o.sent.length = 0;
+    link.setPad(2, 40);
+    link.setPad(3, null);
+    link.clearPads();
+    link.padsOn(false);
+    expect(fm1.o.sent.map((d) => parse(d)!.payload)).toEqual([[2, 40], [3, 0xff], [0xfe], [0xfd, 0]]);
+  });
+  it('sends no PADS to an FM-1 without the pad map', async () => {
+    const fm1 = { i: port('q', 'FM-1'), o: port('Q', 'FM-1') };
+    answering(fm1.o, fm1.i);
+    const link = new DeviceLink();
+    await withMidi([fm1.i], [fm1.o], () => link.connect());
+    link.setPad(0, 36);
+    expect(link.hasPads).toBe(false);
+    expect(fm1.o.sent.some((d) => parse(d)?.cmd === PADS_CMD.pads)).toBe(false);
   });
 });
 

@@ -28,8 +28,10 @@ static void midi_drain_mode(int quick)
         if (st == 0xF0u) {                      /* realtime and Song Position (MENU > CLOCK IN): clock_in.h */
             clk_in_rt(pkt);
         } else if ((st == 0x90u || st == 0x80u) && (!cfg.ch || cfg.ch == chn) &&
-                   map_midi(ENG_MAP_NOTE + n, st == 0x90u ? v : 0u)) {
-            /* a learned note (#1067, midi_learn.c, on the MIDI channel): it moves its row, or a learn takes it, and plays nothing */
+                   (pad_learn(n, st == 0x90u ? v : 0u, chn) || map_midi(ENG_MAP_NOTE + n, st == 0x90u ? v : 0u) ||
+                    pad_midi(n, st == 0x90u ? v : 0u, chn))) {
+            /* a learned note (#1067, midi_learn.c, on the MIDI channel): it moves its row, or a learn takes it, and plays
+             * nothing; else a pad of the global pad map (pad_map.h) plays its drum row */
         } else if (st == 0x90u || st == 0x80u) {  /* notes on every channel: the engine judges them (a Voice allocator may take its own channel) */
             eng_midi_channel(cfg.ch);
             if (st == 0x90u && v)

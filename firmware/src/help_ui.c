@@ -87,7 +87,7 @@ static int hc_fx_bank(void) { return eng_fx_count() > 0u; }
 static int hc_pattern_store(void) { return pt_on; }   /* (the pattern store is claimed: the SEQ page's pattern rows, #901) */
 static int hc_oct_banks(void) { return drum_bank_oct(); }   /* (OCT picks the drum bank, not the octave: D-520) */
 static int hc_drum_banks(void) { return page == PAGE_SEQ && seq_map() >= 0 && seq_rl_n > ENG_DRUM_ROWS; }   /* (a drum grid in banks: SEL + OCT) */
-static int hc_learning(void) { return learn_live() == 1; }   /* (learn mode waits for a knob: HOME + SEL, D-939) */
+static int hc_learning(void) { return learn_keys(); }   /* (learn mode waits for a knob or a drum key: HOME + SEL, D-939) */
 
 /* the rows of the patch buttons with a job in the loaded patch (FX, LFO, EDIT, ARP; SEL, ENV and GLO are fixed): the
  * button by its own name, then its job: a Toggle "name on/off", a Page button "name pages", a Gate with a cable from its
@@ -494,8 +494,9 @@ static void guide_state(uint8_t *p, int conds)
     p[3] = (uint8_t)pg_cur_dev;
     p[4] = (uint8_t)pg_cur_page;
     p[5] = seq_trk;
-    p[6] = (uint8_t)(menu_tab | (menu_page2 ? 128u : 0u) | (menu_page2 > 1u ? 64u : 0u));   /* (bit 7: a later page, SYSTEM's #702,
-                                                     * PANEL's #1011, MIDI's #596; bit 6 with it: the third, MIDI 3/3, #1067) */
+    p[6] = (uint8_t)(menu_tab | (menu_page2 ? 128u : 0u) | (menu_page2 > 1u ? 64u : 0u) | (menu_page2 > 2u ? 32u : 0u));   /* (bit 7:
+                                                     * a later page, SYSTEM's #702, PANEL's #1011, MIDI's #596; bit 6 with it:
+                                                     * the third, MIDI 3/4; bit 5 with both: the fourth, MIDI 4/4, #1067) */
     p[7] = (uint8_t)panel_held;
     p[8] = (uint8_t)((panel_held >> 8) & 0x3Fu);
     p[9] = (uint8_t)hc;

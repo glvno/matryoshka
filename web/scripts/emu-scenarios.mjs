@@ -792,7 +792,7 @@ async function main() {
   async function menuTo(row) {
     await emu.tap(B.glo);
     if (!(await emu.waitText('ALGO tab', 3000))) return false;   // (the menu's hint line: the menu is open)
-    for (let i = 0; i < 8; i++) {                               // (MIDI 1/3..3/3, PANEL 1/2 and 2/2, SYSTEM 1/2 and 2/2, then EQ)
+    for (let i = 0; i < 8; i++) {                               // (MIDI 1/4..4/4, PANEL 1/2 and 2/2, SYSTEM 1/2 and 2/2, then EQ)
       if (await emu.waitText(row, 600 / SLACK)) return true;    // (a probe: not stretched by SLACK)
       await emu.turn(ENC.algo, 1);
     }
@@ -2469,7 +2469,7 @@ async function main() {
     async editorIgnore() {   // #702: GLO > SYSTEM > EDITOR at IGNORE: the editor lets go, Connect skips the FM-1 and says why
       // (the rig tools' page connects to an FM-1 at IGNORE all the same: the test rig is set so, D-123)
       if (DEVICE) return skip('editor ignore: the editor leaves an FM-1 at IGNORE alone', 'the test tools\' page connects to it by design (#702)');
-      /** GLO > SYSTEM's second page (ALGO steps MIDI 1/3..3/3, PANEL 1/2 and 2/2, SYSTEM 1/2, SYSTEM 2/2) */
+      /** GLO > SYSTEM's second page (ALGO steps MIDI 1/4..4/4, PANEL 1/2 and 2/2, SYSTEM 1/2, SYSTEM 2/2) */
       const editorRow = async () => {
         await emu.tap(B.glo);
         for (let i = 0; i < 8 && !(await emu.text('SYSTEM 2/2')); i++) {   // (not 'EDITOR': the footer may say FROM EDITOR)

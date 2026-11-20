@@ -64,6 +64,7 @@
 #define MSG_HOLD_GLO "HOLD GLO 2 S"
 #define MSG_HOLD_UPDATE MSG_HOLD_GLO ": UPDATE MODE"
 #define MSG_HOLD_RESET MSG_HOLD_GLO ": RESET BANK"
+#define MSG_HOLD_PADS MSG_HOLD_GLO ": CLEAR PADS"
 #define MSG_LOW_BATTERY "LOW BATTERY"
 
 /* the footer (pages_ui.c foot_layout, seq_ui.c seq_arm_label) */
@@ -116,7 +117,16 @@
 #define MSG_LEARN_HERE "LEARN: ON A DEVICE PAGE"       /* learn mode asked for on the SEQ or SONG page */
 #define MSG_LEARN_SANDBOX "LEARN: NOT IN SANDBOX"
 #define MSG_LEARN_TURN "LEARN: TURN A KNOB"            /* learn mode on (HOME + SEL, D-939) */
+#define MSG_LEARN_KIT "LEARN: KNOB OR DRUM KEY"        /* learn mode on while the keys reach a kit: a drum key learns a pad */
 #define MSG_LEARN_OFF "LEARN OFF"
 #define MSG_MAP_CLEARED " CLEARED"                      /* after the control: CC 1 CLEARED */
+/* the global pad map (midi_learn.c, #1067): 1 BASS DRUM: HIT A PAD, NOTE C2 > 1 BASS DRUM, PADS: 3 LEARNED */
+#define MSG_PAD_HIT ": HIT A PAD"
+#define MSG_PAD_TO " > "
+#define MSG_PADS "PADS: "
+#define MSG_PADS_LEARNED " LEARNED"
+#define MSG_PAD_ROWS "PADS: THE FIRST 24 ROWS"        /* a drum key past row 24 in learn mode */
+#define MSG_PAD_KIT "DRUM KEYS: ON A KIT ONLY"         /* a key in learn mode while the keys reach no kit */
+#define MSG_PADS_CLEARED "PADS CLEARED"
 
 #endif

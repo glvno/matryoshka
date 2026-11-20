@@ -454,12 +454,13 @@ static int knob_fast(uint32_t s, int32_t clicks)
 }
 
 /* learn mode (D-939, midi_learn.c learn_mode): a knob turned on a device page or the environment picks its row for MIDI
- * learn, which does not move. sel_used: SEL went into HOME + SEL, so its release arms and opens nothing */
+ * learn, which does not move, also while a drum row waits for a pad. sel_used: SEL went into HOME + SEL, so its release
+ * arms and opens nothing */
 static uint8_t sel_used;
 static void learn_knob(int32_t *st)
 {
     uint32_t k;
-    if (learn_live() != 1 || (page != 0u && page != PAGE_ENV) || !(st[2] | st[3] | st[4] | st[5]))
+    if (!learn_keys() || (page != 0u && page != PAGE_ENV) || !(st[2] | st[3] | st[4] | st[5]))
         return;
     for (k = 0; k < 3u && !st[2u + k]; k++)
         ;
@@ -813,13 +814,17 @@ static int panel_key(uint32_t n, int down, int quick)
          * their own note when the first map repeats its rows (#184: the repeat picks the row); MIDI out sends what plays:
          * the row's note, the key's own, nothing for a silent key, so a recording played back into a Drum map hits the same
          * rows */
-        if (map < 0)
+        if (map < 0) {
             key_eng[n] = key_note[n];
-        else {
+            if (learn_keys())                       /* (learn mode: a key learns a pad only on a kit, #1067) */
+                ui_msg(MSG_PAD_KIT, 1500);
+        } else {
             uint8_t rm[ENG_DRUM_LIST], rr[ENG_DRUM_LIST];
             uint32_t rn = eng_keys_rows(rm, rr), i = drum_bank_in(rn) * ENG_DRUM_ROWS + (uint32_t)b;
             key_eng[n] = b >= 0 && b < (int)ENG_DRUM_ROWS && i < rn ? (uint8_t)eng_drummap_note(rm[i], rr[i])
                 : eng_drummap_repeat((uint32_t)map) ? key_note[n] : KEY_SILENT;
+            if (b >= 0 && b < (int)ENG_DRUM_ROWS && i < rn && learn_keys())
+                pad_pick(i);                        /* (learn mode: the drum key's row waits for a pad, the global pad map) */
         }
         key_sounding |= bit;
         if (key_eng[n] == KEY_SILENT && map >= 0)
@@ -1518,9 +1523,10 @@ static void panel_align(const uint8_t *g)
     if (want == 0u && (g[3] != pg_cur_dev || g[4] != pg_cur_page) && pages_focus(g[3], g[4]))
         ui_dirty = 2;
     if (want == PAGE_MENU) {
-        menu_tab = (uint8_t)(g[6] & 63u);
-        menu_page2 = (uint8_t)(menu_two(menu_tab) && g[6] >> 7 ? (g[6] & 64u ? 2u : 1u) : 0u);   /* (bit 7: a later page, #702,
-                                                     * #1011; bit 6 with it: the third, MIDI 3/3, #1067) */
+        menu_tab = (uint8_t)(g[6] & 31u);
+        menu_page2 = (uint8_t)(menu_two(menu_tab) ? (g[6] >> 7 & 1u) + (g[6] >> 6 & 1u) + (g[6] >> 5 & 1u) : 0u);   /* (bit 7: a
+                                                     * later page, #702, #1011; bit 6 with it: the third, MIDI 3/4; bit 5 with
+                                                     * both: the fourth, MIDI 4/4, #1067) */
     }
     if (want != page) {
         if (want == PAGE_SONG)

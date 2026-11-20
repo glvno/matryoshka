@@ -238,6 +238,7 @@ static const uint8_t *m1_panel(void) { uint32_t at = eng_panel_at(pv_bin, pv_len
 static int m1_panel_label(uint32_t i, char *out) { return eng_panel_label(pv_bin, pv_len, i, out) > 0; }
 #define BATT_START 900                     /* the battery (ui.c): full, no USB host (fm1_open's simulator has 900 too) */
 #include "../src/sandbox_msg.h"
+#include "../src/pad_map.h"
 #include "../src/ui.c"
 static uint32_t m1_pattern_origin(uint32_t mod, uint32_t pattern)
 {
@@ -322,6 +323,8 @@ static void m1_tempo_now(void) { host_tempo_told++; }
 /* MIDI learn (midi_learn.c, #1067): proto.c's edits of the mappings, on the previewed binary; a move's PARAM_NOW is the
  * harness's (panel_test.c, fm1_sim.c, the wasm build, ui_preview.c) */
 static void m1_param_now(uint32_t mod, uint32_t par, int32_t v);
+static uint32_t host_pads_told;             /* proto.c's PADS_NOW sent (the global pad map, #1067) */
+static void m1_pads_now(void) { host_pads_told++; }
 static uint32_t host_map_told, host_map_na;  /* proto.c's MAP_NOW sent (panel_test.c), and the controls its tail named */
 static uint8_t host_map_also[9];
 static void m1_map_now(uint32_t src, const uint8_t *also, uint32_t na)

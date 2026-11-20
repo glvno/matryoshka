@@ -170,9 +170,9 @@ export const CONTROLS: ControlRow[] = [
   { id: 'learn-row', gesture: { do: [K('1234')] }, does: 'pick row to learn', when: 'learning', sheet: { device: 31 }, effect: 'learn_row',
     help: 'MIDI learn mode: the knob’s row waits for a MIDI control and does not move; the first control to send three different values (two for a switch), or the first note played, moves it from then on and does nothing else in this patch. That ends learn mode, as do HOME, another patch or 30 s without a step' },
   { id: 'learn-mode', gesture: { hold: 'HOME', do: [B('SEL')] }, does: 'MIDI learn', when: '!learning', sheet: { device: 45 }, effect: 'learn_mode',
-    help: 'MIDI learn mode, on a device page or the environment: turn the knob of the row to learn, then move a control on a MIDI controller. Neither HOME’s release nor SEL’s does its own job. GLO > MIDI 3/3 lists and clears the mappings, and its LEARN turned right starts learn mode too' },
+    help: 'MIDI learn mode, on a device page or the environment: turn the knob of the row to learn, then move a control on a MIDI controller. While the keys reach a drum kit, a black key picks its drum row instead and the next pad hit on the controller plays that row from then on, in every patch (GLO > MIDI 4/4); learn mode then waits for the next row’s pad. Neither HOME’s release nor SEL’s does its own job. GLO > MIDI 3/4 lists and clears the mappings, and its LEARN turned right starts learn mode too' },
   { id: 'learn-end', gesture: { do: [B('HOME')] }, does: 'end learn', when: 'learning', sheet: { device: 46 }, effect: 'learn_end',
-    help: 'leaves MIDI learn mode (LEARN OFF); the page stays. HOME + SEL again does the same' },
+    help: 'leaves MIDI learn mode (LEARN OFF, or PADS: 3 LEARNED after pads); the page stays. HOME + SEL again does the same' },
   { id: 'fine', gesture: { hold: 'HOME', do: [K('1234')] }, does: 'fine adjust', sheet: { device: 40 }, effect: 'fine',
     help: 'fine turns: the least step of the row' },
   { id: 'arm-device', gesture: { do: [B('SEL')] }, does: 'arm only this', when: 'dev_keys', sheet: { device: 50 }, effect: 'arm',
@@ -510,7 +510,7 @@ export const CONDITION_TEXT: Record<Condition, string> = {
   roll_preview: 'a melodic track with note preview on', roll_silent: 'a melodic track with note preview off',
   fx_bank: 'a patch with a recognized master FX bus', pattern_store: 'while the pattern store is on',
   oct_banks: 'the keys on a drum track of more than 8 rows', drum_banks: 'a drum track of more than 8 rows',
-  learning: 'while MIDI learn mode waits for a knob (HOME + SEL)',
+  learning: 'while MIDI learn mode waits for a knob or a drum key (HOME + SEL)',
 };
 
 /** a gesture in words: "HOME held + PRESET", "a held step + K2", "OCT- / OCT+" */

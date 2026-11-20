@@ -564,23 +564,25 @@ static void pages_patch_ask(void)
 static void setting_step(uint32_t row, int32_t s);      /* menu.c */
 static void menu_value(uint32_t row, char *out);
 static uint8_t menu_armed = MR_COUNT;                   /* menu.c: the SYSTEM row a turn armed for GLO's hold (MR_COUNT: none) */
-static const char *map_label(void);                     /* midi_learn.c: MIDI 3/3's MAPPING row's label */
+static const char *map_label(void);                     /* midi_learn.c: MIDI 3/4's MAPPING row's label */
 static uint32_t map_bar(uint32_t row, uint32_t width);
+static const char *pad_label(void);                     /* midi_learn.c: MIDI 4/4's row label (1 BASS DRUM) */
 static const char *const MENU_TAB_NAME[MT_COUNT] = {"MIDI", "PANEL", "SYSTEM", "EQ", "INFO", "GUIDE"};
 static ppage_t pg_menu;
 static const ppage_t *menu_tab_page(void)
 {
-    static const char *const LAB[8][PG_ROWS] = {{"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", "CLOCK OUT"}, {"LEDS", "KNOB ACCEL", "COUNT-IN", "TEMPO"}, {"UPDATE MODE", "FACTORY RESET", "QUICK START", "OUTPUT"},
+    static const char *const LAB[9][PG_ROWS] = {{"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", "CLOCK OUT"}, {"LEDS", "KNOB ACCEL", "COUNT-IN", "TEMPO"}, {"UPDATE MODE", "FACTORY RESET", "QUICK START", "OUTPUT"},
                                                 {"LOW", "MID", "HIGH", "MID FREQ"}, {"TIME SIG", "", "", ""}, {"EDITOR", "3.5MM OUT", "USB RETURN", ""},
-                                                {"TRANSPORT IN", "TRANSPORT OUT", "", ""}, {"", "CLEAR", "LEARN", ""}};
-    static const uint8_t ROW[8][PG_ROWS] = {{MR_CH, MR_CLOCK, MR_MOUT, MR_CLKOUT}, {MR_LEDS, MR_ACCEL, MR_CIN, MR_TEMPO}, {MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_OUTPUT},
+                                                {"TRANSPORT IN", "TRANSPORT OUT", "", ""}, {"", "CLEAR", "LEARN", ""}, {"PAD MAP", "", "CLEAR", "CLEAR ALL"}};
+    static const uint8_t ROW[9][PG_ROWS] = {{MR_CH, MR_CLOCK, MR_MOUT, MR_CLKOUT}, {MR_LEDS, MR_ACCEL, MR_CIN, MR_TEMPO}, {MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_OUTPUT},
                                             {MR_EQ_LOW, MR_EQ_MID, MR_EQ_HIGH, MR_EQ_FREQ}, {MR_METER, MR_METER, MR_METER, MR_METER}, {MR_EDITOR, MR_OUT35, MR_USB_RETURN, MR_OUT35},
-                                            {MR_TIN, MR_TOUT, MR_TOUT, MR_TOUT}, {MR_MAPS, MR_MAP_CLEAR, MR_LEARN, MR_LEARN}};
-    static const uint8_t N[8] = {4, 4, 4, 4, 1, 3, 2, 3};   /* (the tabs, then the later pages: PANEL's, #1011, SYSTEM's, #702,
-                                                         * MIDI's 2/3, #596, and 3/3, MIDI learn, #1067) */
+                                            {MR_TIN, MR_TOUT, MR_TOUT, MR_TOUT}, {MR_MAPS, MR_MAP_CLEAR, MR_LEARN, MR_LEARN},
+                                            {MR_PADS_ON, MR_PAD_ROW, MR_PAD_CLEAR, MR_PADS_CLEAR}};
+    static const uint8_t N[9] = {4, 4, 4, 4, 1, 3, 2, 3, 4};   /* (the tabs, then the later pages: PANEL's, #1011, SYSTEM's, #702,
+                                                         * MIDI's 2/4, #596, 3/4, MIDI learn, and 4/4, the pad map, #1067) */
     uint32_t tab = menu_tab > MT_EQ ? MT_MIDI : menu_tab, t = tab, k;
     if (menu_page2 && menu_two(tab))
-        t = tab == MT_PANEL ? 4u : tab == MT_SYSTEM ? 5u : menu_page2 > 1u ? 7u : 6u;
+        t = tab == MT_PANEL ? 4u : tab == MT_SYSTEM ? 5u : 5u + menu_page2;
     pg_menu.name = MENU_TAB_NAME[tab];
     pg_menu.nlen = (uint8_t)str_len(pg_menu.name);
     pg_menu.part = 0;
@@ -590,7 +592,8 @@ static const ppage_t *menu_tab_page(void)
     for (k = 0; k < PG_ROWS; k++) {
         pg_menu.mod[k] = SETTING_ROW;
         pg_menu.par[k] = ROW[t][k];
-        pg_menu.lab[k] = ROW[t][k] == MR_MAPS ? map_label() : LAB[t][k];   /* (the mapping shown: CC 1  1/2) */
+        pg_menu.lab[k] = ROW[t][k] == MR_MAPS ? map_label() : ROW[t][k] == MR_PAD_ROW ? pad_label() : LAB[t][k];   /* (the mapping
+                                                         * shown: CC 1  1/2; the pad map's row: 1 BASS DRUM) */
         pg_menu.llen[k] = (uint8_t)str_len(pg_menu.lab[k]);
     }
     return &pg_menu;
@@ -604,8 +607,9 @@ static uint32_t setting_bar(uint32_t row, uint32_t width)
          : row == MR_EQ_LOW || row == MR_EQ_MID || row == MR_EQ_HIGH   /* (a gain from -12 dB at the left to +12 at the right) */
          ? (uint32_t)((int8_t)(row == MR_EQ_LOW ? meq_low : row == MR_EQ_MID ? meq_mid : meq_high) + MEQ_GAIN_MAX) * width / (2u * MEQ_GAIN_MAX)
          : row == MR_EQ_FREQ ? meq_freq * width / (MEQ_FREQS - 1u)
-         : row == MR_UPDATE || row == MR_DEFAULTS ? (menu_armed == row ? width : 0u)
-         : row == MR_LEARN || row == MR_MAPS || row == MR_MAP_CLEAR ? map_bar(row, width)
+         : row == MR_UPDATE || row == MR_DEFAULTS || row == MR_PADS_CLEAR ? (menu_armed == row ? width : 0u)
+         : row == MR_LEARN || row == MR_MAPS || row == MR_MAP_CLEAR || row == MR_PAD_ROW || row == MR_PAD_CLEAR ? map_bar(row, width)
+         : row == MR_PADS_ON ? pad_on * width
          : (row == MR_CLOCK ? cfg.clock_in : row == MR_MOUT ? cfg.midi_out : row == MR_CLKOUT ? cfg.clock_out : row == MR_TIN ? cfg.transport_in : row == MR_TOUT ? cfg.transport_out : row == MR_QUICK ? cfg.quick : row == MR_TEMPO ? gt_patch : row == MR_OUT35 ? !out_off : cfg.accel) ? width : 0u;
 }
 

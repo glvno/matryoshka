@@ -21,6 +21,7 @@ import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type
 import { FEATURE_PATTERN_STORE, parseLinkNow, parsePatData, parsePatEntry, parsePatStored, PAT_OK, PAT_STATUS, PAT_USED, patDelFrame, patGetFrame, patPutFrames, patsFrame, type PatListItem, type StoredPatternEntry } from './protocol';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 import { FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo, type MapEntry } from './protocol';
+import { FEATURE_PADS, PADS_CMD, padsClearAllFrame, padsOnFrame, padsReadFrame, padsSetFrame, parsePadsNow, type PadMap } from './protocol';
 import { factoryInfo, installFactory } from './factory-content';
 import { fxPresetInfo } from './fx-preset-format';
 import { autoPick, fm1Label, NOT_CHOSEN, readFm1Id, rememberedFm1, rememberFm1, suggested, type Fm1Choice, type Fm1Id } from './fm1-choice';
@@ -211,7 +212,10 @@ export type DeviceEvent =
   | { kind: 'link'; pattern: number; id: number; hash: number }
   /** the running patch's MIDI learn mappings after a learn or a clear on the FM-1 (MAP_NOW, #1067; device-form indices),
    *  with the "also sent" warning of a learn there (null none) */
-  | { kind: 'maps'; maps: MapEntry[]; also: { src: number; ccs: number[] } | null };
+  | { kind: 'maps'; maps: MapEntry[]; also: { src: number; ccs: number[] } | null }
+  /** the global pad map as the FM-1 has it (PADS_NOW, feature bit 29): the answer to every PADS (connect reads it), and
+   *  after a change on the FM-1 (a learn, a clear, PAD MAP turned) */
+  | ({ kind: 'pads' } & PadMap);
 
 /** what the editor says when older firmware cannot store a preset whole (more than 88 values, D-476) */
 export const PRESET_NEEDS_UPDATE = 'Update the FM-1 to store this preset on it';
@@ -353,6 +357,7 @@ export class DeviceLink {
       throw new Error(ignoredFound(1));
     }
     this.identity = ids[pick] ?? await this.identify(0, 1);
+    if (this.hasPads) this.out!.send(padsReadFrame());   // (the FM-1 does not send its map after HELLO: read it; a 'pads' event)
     return info;
   }
 
@@ -427,6 +432,8 @@ export class DeviceLink {
       }
       const mn = p?.cmd === MAP_CMD.mapNow ? parseMapNow(p.payload) : null;
       if (mn) return this.onEvent({ kind: 'maps', ...mn });
+      const pd = p?.cmd === PADS_CMD.padsNow ? parsePadsNow(p.payload) : null;
+      if (pd) return this.onEvent({ kind: 'pads', ...pd });
       if (p?.cmd === CMD.focusNow && p.payload.length >= 2) return this.onEvent({ kind: 'focus', device: p.payload[0], page: p.payload[1] });
       const stored = p ? parsePresetStored(p) : null;
       if (stored) return this.onEvent({ kind: 'presetStored', ...stored });
@@ -784,6 +791,26 @@ export class DeviceLink {
     if (!this.connected || !this.hasMaps) return;
     const dev = deviceView(patch, true).patch;
     this.out!.send(mapFrame(mapRecord(patch, dev, deviceSection(patch, dev))));
+  }
+
+  /** the firmware keeps the global pad map (INFO feature bit 29: PADS, PADS_NOW) */
+  get hasPads(): boolean {
+    return !!this.info && (this.info.features & FEATURE_PADS) !== 0;
+  }
+
+  /** drum row `row` (0..23) played by the pad sending MIDI note `note`, null none (PADS; the FM-1 answers PADS_NOW) */
+  setPad(row: number, note: number | null): void {
+    if (this.connected && this.hasPads) this.out!.send(padsSetFrame(row, note));
+  }
+
+  /** every row's pad cleared (PADS; the FM-1 answers PADS_NOW) */
+  clearPads(): void {
+    if (this.connected && this.hasPads) this.out!.send(padsClearAllFrame());
+  }
+
+  /** PAD MAP off or on (PADS; the FM-1 answers PADS_NOW) */
+  padsOn(on: boolean): void {
+    if (this.connected && this.hasPads) this.out!.send(padsOnFrame(on));
   }
 
   /** the firmware keeps presets (#195, INFO feature bit 7) */
