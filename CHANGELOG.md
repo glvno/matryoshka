@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The 808 Kit can play soft and loud steps: a VELOCITY knob, last on its card.** Turn it up and every sound follows how hard it is played, whether the note comes from a MIDI keyboard, the FM-1's keys or a step's velocity in a pattern. Turned all the way up, a step at velocity 64 plays about half as loud as one at 127, and the AC row's accent still adds on top. It starts at 0, where the kit and its presets sound exactly as before. Your saved 808 Kit sounds keep all their settings, with VELOCITY at 0. The 909 Kit has no room for it yet, and Verona Drum 1 and Scrounge already follow velocity.
+
 ## 1.23.0 — 2026-11-20
 
 - **MIDI learn, on the FM-1 too: any knob, fader, pad axis or pitch bend wheel can move a row, even on a page that is not showing.** In the editor, open a row's ⋮ menu and choose **MIDI learn…** (or click the row and pick **MIDI learn…** in the palette), then move the control on your MIDI controller. On the FM-1, open GLO › MIDI, turn ALGO to the third page, turn LEARN right, turn the knob of the row you want, then move the control. From then on that control moves the row whatever page is in focus, and the FM-1 keeps doing it without the editor: the patch carries what it learned, and SAVE keeps it. A Korg nanoPAD2's X-Y pad can drive Briefcase 3's joystick this way; learn each axis on its own. In FM-1 & MIDI, Low and High set where the control's ends land in the row's range, and the list marks a control only the editor plays (a row no FM-1 page shows). A learned control does only that in its patch: a learned CC 1 no longer moves the mod wheel. A patch holds up to 16 learned controls. Patches with MIDI learn need the next firmware (#1067).

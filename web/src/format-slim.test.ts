@@ -64,10 +64,12 @@ describe("format 64's shorter layout (D-1025)", () => {
     expect(w.length).toBe(layout(p, undefined, SLIM).size);
   });
 
-  it('keeps every factory patch in its older format and counts the smallest form', () => {
+  it('keeps every factory patch in its older format when one holds it, and counts the smallest form', () => {
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const l = layout(make());
-      expect(l.v, name).toBeLessThan(SLIM);
+      // (the 808 Kit fits only in format 64 since its VELOCITY row, D-1053, D-1026)
+      expect(l.v < SLIM, name).toBe(Math.min(l.base.bytes, l.counted) <= DEVICE.bytes);
+      expect(l.v < SLIM || name === '808 Kit', name).toBe(true);
       expect(l.need, name).toBe(Math.min(l.base.bytes, l.counted, l.slim));
       expect(l.slim, name).toBeLessThan(l.base.bytes);
     }

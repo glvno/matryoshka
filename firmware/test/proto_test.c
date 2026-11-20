@@ -408,7 +408,8 @@ static int grow_test(int n, char **argv)
         long nb;
         uint8_t *o = slurp(argv[k], &nb);
         uint32_t m, j, ne = 0, i, was;
-        if (o[1] < ENG_COUNTED) {
+        if (o[1] < ENG_COUNTED || nb > (long)M1_PATCH_MAX) {   /* (a twin written past the FM-1's bytes is never its copy:
+                                                                * the 808 Kit counted, which fits only in format 64) */
             free(o);
             continue;
         }
