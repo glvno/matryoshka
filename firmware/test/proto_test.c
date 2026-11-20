@@ -675,6 +675,27 @@ static int patterns_test(const char *kit_path, const char *song_path)
     m1_set_current(song, (uint32_t)ns);
     CHECK(eng_load(m1_cur, m1_cur_len) == 0 && eng_song() == 1 && eng_song_len(0) == 4 && eng_song_len(1) == 2 && pat_agree());
     CHECK(eng_song_get(0, 2) == (2 | 0xF9 << 8));
+    {                                                           /* SONG_NOW: s, n, n (pattern, shift), 7-bit packed */
+        uint8_t p[2u + 2u * ENG_SONG_LEN], want[8u + (8u * sizeof p + 6u) / 7u], d[sizeof p];
+        uint32_t r0 = nreplies, k, w = 0;
+        p[0] = 0;
+        p[1] = 4;
+        for (k = 0; k < 4u; k++) {
+            p[2u + 2u * k] = (uint8_t)eng_song_get(0, k);
+            p[3u + 2u * k] = (uint8_t)(eng_song_get(0, k) >> 8);
+        }
+        want[w++] = 0xF0;
+        want[w++] = 0x7D;
+        want[w++] = 0x4D;
+        want[w++] = 0x31;
+        want[w++] = R_SONG_NOW;
+        w += m1_pack7(p, 10u, want + w);
+        want[w++] = 0xF7;
+        m1_song_now(0);
+        CHECK(nreplies == r0 + 1u && reply_len[r0] == w && !memcmp(replies[r0], want, w));
+        CHECK(m1_unpack7(replies[r0] + 5, reply_len[r0] - 6u, d, sizeof d) == 10u && d[1] == 4u && d[6] == 2u && d[7] == 0xF9u);
+        nreplies = r0;
+    }
     /* a patch without patterns (an older format, upgraded): choosing pattern 2 makes the section, pattern 1 drops it */
     {
         static uint8_t plain[M1_PATCH_MAX], up[M1_PATCH_MAX];
