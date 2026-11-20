@@ -63,7 +63,7 @@ def plan(pins, lead, main):
     crt0 = [s for secs in lead for s in secs if s[0] == ".text.crt0"]
     for n, size, al in crt0 + [s for secs in lead for s in secs if s[0] != ".text.crt0"]:
         at = align(at, al) + size
-    fn = lambda sec: sec[0][len(".text."):] if sec[0].startswith(".text.") else None
+    fn = lambda sec: sec[0].split(".")[-1] if sec[0].startswith(".text.") else None   # (.text.NAME, .text.cold.NAME)
     pinned = sorted((a, s) for s in main if fn(s) in pins for a in [pins[fn(s)]])
     pool = [s for s in main if fn(s) not in pins]
     lines, where, notes, pad = [], {}, [], 0
