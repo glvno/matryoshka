@@ -179,7 +179,7 @@ export function sharedArticulationFactory(source: Patch): Patch {
     }
     wire(filter, port, amp.id, 'in');
   };
-  if (source.name === 'Oracle V') insert(13, 'lp24', left, [65, 17]);
+  if (source.name === 'Oracle V') insert(13, 'lp24', left, [74, 17]); // (74: the A-440 Selector after the voices, #862)
   else if (source.name === 'Hera 4') insert(10, 'lp24', left, [18]);
   else if (source.name === 'Expander S') {
     const bp = p.modules.find(m => m.name === 'shared right bandpass')!;

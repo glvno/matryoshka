@@ -743,6 +743,18 @@ export function mutatePatch(p: Patch, scope: MutateScope, mode: MutateMode, amou
       set.push(g);
     }
   }
+  // the rows' own ranges and steps, once every new value is in: a Selector's position within its new count, a Delay's time
+  // within what its line holds with its new ping-pong (rowRange)
+  const stepped = (t: RowTarget): number => {
+    const m = byId.get(t.module)!, pd = pdOf(t)!;
+    const from = p.modules.find((x) => x.id === t.module)!.params[t.param] ?? pd.default;
+    const rd = rowRange(m.type, m.params, pd);
+    const v = Math.min(rd.max, Math.max(rd.min, m.params[t.param]));
+    return exact.has(key(t)) ? v : stepToward(rd, from, v, { hi: rd.max });
+  };
+  // (before the role rows are looked at again: a range worked out with a Selector between two positions, or any row off
+  // its steps, would not be the range of the values the patch ends with)
+  if (profile) for (const t of set) byId.get(t.module)!.params[t.param] = stepped(t);
   // (several rows can set one stage: an envelope's own row and the Macro or Selector added through its parameter input.
   // Once all have moved, a role row the others took out of its range comes back to its nearest end, so each stage ends
   // in its range)
@@ -762,16 +774,11 @@ export function mutatePatch(p: Patch, scope: MutateScope, mode: MutateMode, amou
       again = true;
     }
   }
-  // the rows' own ranges and steps, once every new value is in: a Selector's position within its new count, a Delay's time
-  // within what its line holds with its new ping-pong (rowRange)
   let moved = 0;
   for (const t of set) {
-    const m = byId.get(t.module)!, pd = pdOf(t)!;
-    const from = p.modules.find((x) => x.id === t.module)!.params[t.param] ?? pd.default;
-    const rd = rowRange(m.type, m.params, pd);
-    const v = Math.min(rd.max, Math.max(rd.min, m.params[t.param]));
-    m.params[t.param] = exact.has(key(t)) ? v : stepToward(rd, from, v, { hi: rd.max });
-    if (m.params[t.param] !== from) moved++;
+    const m = byId.get(t.module)!;
+    m.params[t.param] = stepped(t);
+    if (m.params[t.param] !== (p.modules.find((x) => x.id === t.module)!.params[t.param] ?? pdOf(t)!.default)) moved++;
   }
   return profile ? { patch: out, moved, roles: rows.filter((r) => r.span).length } : { patch: out, moved };
 }
