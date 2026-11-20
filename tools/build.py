@@ -285,7 +285,7 @@ def text_ld(lead, main):
     if src.count(old) != 1:
         raise SystemExit(f"build: app.ld's .text does not read '{old}'")
     files = " ".join(f"*{p.name}(.text*)" for p in lead)
-    ld = GEN / "app.ld"
+    ld = OUT / "app-pinned.ld"
     ld.write_text(src.replace(old, f"KEEP(*(.text.crt0)) {files}\n        " + "\n        ".join(lines) + "\n        *(.text*)"))
     return ld, where
 
