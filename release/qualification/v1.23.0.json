@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "version": "1.23.0",
+  "firmware_product": "FM-1_7012300",
+  "source_commit": "01841906e5a1db8bde831f1450e47aa6a72c0463",
+  "source_tree": "f6e0e983603653c4b01478ad971570faa4cb43e3",
+  "status": "automated and rig checks passed; owner's device check and the go for publication pending",
+  "release_approval": {
+    "status": "pending",
+    "scope": "Publication of v1.23.0 from the tag on release/1.23: the frozen commit plus only this record, the qualified package in web/public/firmware/, the coverage record and the rig measurements (D-1163); its firmware/ and tools/ equal the qualified source (D-105)."
+  },
+  "plan": "D-1166 as amended 2026-11-20 (owner 2026-11-19: \"Cut without my capture\"); re-frozen by PR #1152 with #1151. The candidate frozen at 17919ac7 (PR #1149) is not released: its qualification found the GUIDE_NOW flood on the 808 / 909 Kit; every check below ran again on the new frozen commit (D-144)",
+  "artifacts": {
+    "package": {
+      "name": "matryoshka-1.23.0.fwsc",
+      "size": 610656,
+      "sha256": "ed08902f6c2cde01feb85764e3f7888afc5bcb5d492cbe495db2f6d76372e7f4"
+    },
+    "normal": {
+      "name": "matryoshka-1.23.0-app.bin",
+      "size": 576724,
+      "sha256": "fa3babf7ff355c4bfc5795961dc80cd55c17f768351b4f15d87debda40170297"
+    },
+    "normal_elf": {
+      "name": "matryoshka-1.23.0-app.elf",
+      "size": 645308,
+      "sha256": "ac1fd26602ed385d13dd9bfdda9fe3810771df983ce5e45ebfd5889391878c3d"
+    },
+    "normal_sidecar": {
+      "name": "matryoshka-1.23.0.json",
+      "size": 411,
+      "sha256": "a71c0f96169ab9a50c44b086796a6f8104697b005b4e44a9cbd2cba0cb3fb341"
+    },
+    "bridge": {
+      "name": "matryoshka-emu.bin",
+      "size": 573612,
+      "sha256": "dadc4e3c9a0230eaba16823b37474688a03af8a8618c25d51d031ab9705a8cf6"
+    }
+  },
+  "build_manifest_sha256": "e3a08b6733570caa17635aea0d97e677c138b280e35047ac23b54e655e3a907d",
+  "bundled": "web/public/firmware/matryoshka.fwsc and matryoshka.json from npm run firmware on the package above (v1.23.0, FM-1_7012300, 610656 B, sha256 ed08902f...)",
+  "build": "release run 44695668545: image 576724 B (1.22.0: 570808); RAM .data+.bss 20452 B of 24576 (4124 B free, the RAM headroom); pool 409592 B of 417792 (8200 B headroom, the floor 8192: passes); .lowram 28536 B (12 B free after it); RAM code (.fast_text) 12480 B in NOINIT, 280 B free after it; no compiler warnings",
+  "ci_runs": {
+    "release": 44695668545,
+    "web_rc": 44695672328,
+    "freeze_pr": 1152
+  },
+  "full_host": "PASS in release run 44695668545 (rc mode on the frozen commit)",
+  "full_web": {
+    "rc_run": 44695672328,
+    "run_success": true,
+    "result": "test job, the six slow-render jobs and the coverage seal passed",
+    "coverage_record": "release/coverage/v1.23.0/ (measured on the frozen commit, D-147): core 97.4 % of 6710 lines, interface 40.3 % of 11244"
+  },
+  "full_boot": {
+    "checks": 40,
+    "failed": 0
+  },
+  "full_smoke": {
+    "checks": 309,
+    "failed": 0,
+    "level_warnings": 0
+  },
+  "full_scenarios": {
+    "passed": 358,
+    "failed": 0,
+    "shards": 4,
+    "seconds": 424,
+    "note": "arming, deafHost, focusTurns, checkVerona, check35mmOut and checkStore pass; on 17919ac7 they failed because of the GUIDE_NOW flood (#1151)"
+  },
+  "editor_side_scenarios": {
+    "passed": 68,
+    "failed": 0
+  },
+  "old_format": "tools/old_format.sh v1.22.0 (format 64 -> 65): all 663 older binaries load, upgrade and render bit-identically; 2245 records grown to all their parameters render the same. The v1.4.1 run shows the same 63 unknown differences as the v1.21.0 and v1.22.0 trees (pre-existing, the known list is stale)",
+  "format_65": "1.22.0 on the rig refuses a format-65 patch (Briefcase 3 with two learned CCs: the firmware refused the patch) and reports patch formats 31..64 in INFO, so the 1.23 editor (VERSION 65) offers Update the FM-1 (device.ts syncsWith / syncUpdateNotice, device.test.ts); 1.23.0 reports 31..65 and loads it",
+  "rig_install": {
+    "result": "1.22.0 installed fresh (its package and region, set ef2ce3 v17) and its bank written; then tools/fm1_install.py --rig installed matryoshka-1.23.0.fwsc: FM-1_7012300, factory region set 969c2c, version 18, 57960 B, 12 patches; firmware tier version 18. Left on 1.23.0, normal mode, EDITOR IGNORE, master EQ flat; slot 10 holds the MIDI learn check's Briefcase 3 with one mapping"
+  },
+  "slot_upgrade": {
+    "result": "passed: the untouched BRIEFCASE 3 and 909 KIT slots took 1.23.0's patches; the edited Hera 6, MY IO 4 and MY SILVER kept theirs",
+    "briefcase_3": "same length (3818 B, two pin bytes); proven by its joystick: with C4 held, X at its two ends gives output peaks 1 / 2324 in the slot, as today's bytes (2 / 2325), while v1.22.0's bytes give 2453 / 2260",
+    "file": "docs/measurements/slot-upgrade-2026-11-20-rig-1.23.0.json"
+  },
+  "hardware": {
+    "irq_vs_1.22.0": "D-1165, one session, both installed fresh, quiet link (TIMER5 body 3.06..3.33 us, no traffic note): program 18 1896.8 -> 1889.8 us; program 6 1767.1 -> 1754.5 us; program 3 2035.6 -> 2025.9 us; 18 Cassia 1 fx 2105.0 -> 2096.6 us; 05 Expander S fx 2317.9 -> 2298.6 us; 03 Hera 6 fx 2065.6 -> 2049.5 us; 06 Algo Four fx 2159.0 -> 2138.4 us; differences -20.6..-7.0 us, inside the install spread: none",
+    "guide_now": "GUIDE_NOW (0x58) with the editor linked, 2 s idle: Algo Four, 808 Kit, 909 Kit 0 frames each (17919ac7: 208 and 258); SEL, ENV and SEQ on the 808 Kit send one each, SEL its ARMS_NOW",
+    "rig_scenarios": {
+      "passed": 55,
+      "failed": 0,
+      "skipped": 3,
+      "by_design_skips": [
+        "MONO, MONO L and MONO loudness (D-140)"
+      ]
+    },
+    "midi_learn": "15 of 15 on the rig (docs/measurements/midi-learn-2026-11-20-rig-1.23.0.json): GLO > MIDI 3/3 LEARN / MAPPING / CLEAR; a knob picks the row, CC 22 learned; it moves the row while another page shows; MAPPING names it; SAVE, another patch and back: still mapped (slot 10 grew 6 B); MAP clears, MAP_NOW reaches a linked editor; a format-65 Briefcase 3 with CC 20 / 21 on x / y loads live; pitch bend learned on top; CC 20, CC 21 and bend sent together move x, y and the bent row",
+    "drum_banks_909_level": "emulator scenarios drumBanks and hats909 pass in the full run (D-1151: the emulator stands in for them, the rig does not run them); panel tests in the release run",
+    "cpu_survey": {
+      "result": "passed: nothing shed, no overload, no late half; worst steady with every FX stage on 81.5 % stopped, 84.4 % running (bar 85 %); as shipped 76.0 / 76.9 %; highest single sample 2799 us (06 Algo Four fx, the phase's first sample with the load)",
+      "against_1.22.0_same_session": "every FX stage on, stopped: -0.5..+2.7 points, mean +1.2, within two surveys' spread (D-1165)",
+      "files": "docs/measurements/cpu-survey-2026-11-20-rig-1.23.0*.json"
+    },
+    "master_eq_cost": "Expander S, every FX stage on, 8 keys, stopped / running: flat 81.7 / 83.1, one band 84.9 / 86.5, two 85.7 / 87.6, three 87.9 / 88.9 %; nothing shed",
+    "clock_in": "passed, two runs: every phase's median within 0.05 tick of the reference (bar 0.5), Song Position 20 + Continue stopped and Song Position 8 + Continue at a loop point included; one hit at the burst itself +2.61",
+    "fpucheck": "core 0, core 1 and the host equal on Canvas and Hera 6 gauze 2",
+    "cores": "2 cores, split on, self-test failures 0, refused jobs 0, core 1 stack 2484 B",
+    "format_65_loads": "eq-shelves, eq-filters and elvira-seq-slim load live and play 8 keys"
+  },
+  "known_issue": "Reel's loop runs one 16th ahead (#870), unchanged",
+  "owner_checks": {
+    "status": "pending",
+    "steps": "in the record pull request's body (D-139, D-1166)"
+  }
+}
