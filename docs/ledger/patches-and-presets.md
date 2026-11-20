@@ -118,3 +118,4 @@ Factory patches are the selected defaults, distinct from fitting candidates and 
 - Exact versioned release qualification and the separate publication checkpoint — issues #847, #848, #849, #806
 - Whether Canvas makes room for a demonstration pattern (about 75 bytes: shorter card captions or switch names), so its pulser presets play on PLAY as 8 Lire's and Elvira 2's drones do ([D-1206](#D-1206)) — issue #1086
 - How the broader capability architecture recognizes performance features beyond this factory FX interface — issue #846
+- Verona Drum 1's VELOCITY row, which the owner agreed for every drum kit: each channel's VOLUME already follows its row's velocity in full ([D-899](#D-899)), so a row that plays as before at 0 has nothing to turn on — issue #1158
