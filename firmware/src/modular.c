@@ -183,6 +183,12 @@ static int m1_fact_read(uint32_t off, uint8_t *p, uint32_t n);
 static uint32_t m1_fact_commit(const uint8_t *h);
 #include "tempo_glo.h"            /* the global tempo (D-907): proto.c, menu.c, main.c */
 #include "proto.c"
+#if FELUCCA_OTA
+/* usb.c's frame holds the longest frame proto.c's m1_handle and ota.c's ota_take accept: (8 M + 7) / 7 wire bytes is the
+ * most that decode (8 wire bytes carry 7) to at most M bytes, M their buffer's size; a longer frame is not taken (sx_lost) */
+_Static_assert(sizeof sx_frame >= 4u + (8u * M1_RX_MAX + 7u) / 7u && sizeof sx_frame >= (8u * OTA_FRAME_MAX + 7u) / 7u,
+               "sx_frame holds every frame a handler takes");
+#endif
 #define FC_MEM ENG_NOINIT      /* factory.c: its headers and merged list (fc_scan sets them first) */
 #include "factory.c"           /* the factory content: the firmware tier and the factory region (#915) */
 #include "slotstore.c"

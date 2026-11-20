@@ -393,10 +393,20 @@ static void m1_arms_now(eng_mset_t mask)
     m1_reply(R_ARMS_NOW, p, sizeof p);
 }
 
+/* the long frames to the host, one at a time: m1_send queues a whole frame before it returns (usb.c ota_wire_send), so
+ * every frame longer than m1_reply's 48 bytes is built in m1_tx, and the payloads the unasked LOCKS_NOW and SONG_NOW
+ * gather go in m1_txp (both in the pool, not the RAM region) */
+#define M1_TX_TRACK (8u + (8u * (3u + 4u * TRACK_NOTES_MAX) + 6u) / 7u)   /* TRACK: module, n, n u32, the pattern */
+#define M1_TX_LONG (8u + (8u * (21u + 4u * M1_PVALS) + 6u) / 7u)          /* PRESET_DATA, the longest payload */
+static uint8_t m1_tx[M1_TX_LONG > M1_TX_TRACK ? M1_TX_LONG : M1_TX_TRACK] ENG_POOL;
+#define M1_TXP_LOCKS (3u + 7u * ENG_PAT_LOCKS)
+#define M1_TXP_SONG (2u + 2u * ENG_SONG_LEN)
+static uint8_t m1_txp[M1_TXP_LOCKS > M1_TXP_SONG ? M1_TXP_LOCKS : M1_TXP_SONG] ENG_POOL;
+
 /* unasked: a track's notes after an edit on the panel (the editor follows): module, n, n u32 LE */
 static void m1_track_pattern_now(uint32_t mod, uint32_t pattern)
 {
-    static uint8_t f[8u + (8u * (3u + 4u * TRACK_NOTES_MAX) + 6u) / 7u];
+    uint8_t *f = m1_tx;
     const uint32_t *w;
     int n = eng_pattern_notes(mod, pattern, &w);
     uint32_t o = 0, k, len, acc = 0, nb = 0;
@@ -555,7 +565,7 @@ static uint32_t m1_pkey_get(const uint8_t *d, char *name)
 /* a long frame to the host (a preset's values) */
 static void m1_reply_long(uint32_t cmd, const uint8_t *payload, uint32_t n)
 {
-    static uint8_t f[8u + (8u * (21u + 4u * M1_PVALS) + 6u) / 7u] ENG_POOL;
+    uint8_t *f = m1_tx;
     uint32_t w = 0;
     f[w++] = 0xF0;
     f[w++] = 0x7D;
@@ -801,7 +811,7 @@ static void m1_pat_stored(uint32_t id, uint32_t status, uint32_t count)
  * (step, module, parameter, i32 LE value) */
 static void m1_locks_now(uint32_t mod, uint32_t pat)
 {
-    static uint8_t p[3u + 7u * ENG_PAT_LOCKS] ENG_POOL;
+    uint8_t *p = m1_txp;
     int n = eng_locks_list(mod, pat, p + 3, 7u * ENG_PAT_LOCKS);
     if (n < 0)
         return;
@@ -822,9 +832,8 @@ static void m1_pattern_now(void)
 /* unasked: song s's entries after an edit on the SONG page: s, n, n (pattern, shift) */
 static void m1_song_now(uint32_t s)
 {
-    static uint8_t p[2u + 2u * ENG_SONG_LEN];
-    static uint8_t f[8u + (8u * sizeof p + 6u) / 7u];
-    uint32_t n = (uint32_t)eng_song_len(s), k, w = 0;
+    uint8_t *p = m1_txp;
+    uint32_t n = (uint32_t)eng_song_len(s), k;
     p[0] = (uint8_t)s;
     p[1] = (uint8_t)n;
     for (k = 0; k < n; k++) {
@@ -832,14 +841,7 @@ static void m1_song_now(uint32_t s)
         p[2u + 2u * k] = (uint8_t)e;
         p[3u + 2u * k] = (uint8_t)(e >> 8);
     }
-    f[w++] = 0xF0;
-    f[w++] = 0x7D;
-    f[w++] = 0x4D;
-    f[w++] = 0x31;
-    f[w++] = R_SONG_NOW;
-    w += m1_pack7(p, 2u + 2u * n, f + w);
-    f[w++] = 0xF7;
-    m1_send(f, w);
+    m1_reply_long(R_SONG_NOW, p, 2u + 2u * n);
 }
 
 /* the stored copy follows a macro range edit: update, append or remove the entry (the section comes last but for the
@@ -910,11 +912,12 @@ static int m1_patch_map(uint32_t src, uint32_t mod, uint32_t par, uint32_t lo, u
 
 /* f: the bytes between F0 and F7. Returns 1 if the frame was ours (and is consumed). */
 #define M1_RX_A (2u + 4u * TRACK_NOTES_MAX + 8u)                /* TRACK */
-#define M1_RX_B (5u + M1_PNAME + 4u * M1_PVALS)                 /* PRESET_PUT */
+#define M1_RX_B (5u + M1_PNAME + 4u * M1_PVALS)                 /* PRESET_PUT (PRESET_GET builds its reply, as long, in d) */
 #define M1_RX_MAX (M1_RX_A > M1_RX_B ? M1_RX_A : M1_RX_B)
 static int m1_handle(const uint8_t *f, uint32_t n)
 {
     static uint8_t d[M1_RX_MAX] ENG_POOL;              /* (the largest frame: TRACK or PRESET_PUT; static, in the pool) */
+    static int32_t vals[M1_PVALS] ENG_POOL;            /* a preset's values: PRESET_GET's and PRESET_PUT's */
     uint32_t len;
     if (n < 4u || f[0] != 0x7D || f[1] != 0x4D || f[2] != 0x31)
         return 0;
@@ -1165,8 +1168,8 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         break;
     }
     case C_PRESET_GET: {                                     /* #195: structure, name -> PRESET_DATA (count 0xFF: none) */
-        static uint8_t p[4u + M1_PNAME + 1u + 4u * M1_PVALS] ENG_POOL;
-        static int32_t v[M1_PVALS] ENG_POOL;
+        uint8_t *p = d;                                      /* the reply, over the request: its key is read first */
+        int32_t *v = vals;
         char name[M1_PNAME + 1u];
         uint32_t st, nv = 0, i;
         if (len < 4u + M1_PNAME)
@@ -1190,7 +1193,7 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         break;
     }
     case C_PRESET_PUT: {                                     /* #195: structure, name, n, n i32 values -> ACK */
-        static int32_t v[M1_PVALS] ENG_POOL;
+        int32_t *v = vals;
         char name[M1_PNAME + 1u];
         uint32_t st, nv, i;
         int rc;

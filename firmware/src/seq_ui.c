@@ -1899,7 +1899,7 @@ static uint8_t seq_grid_lo = 0xFFu;     /* the roll's lowest pitch as drawn (0xF
 static uint8_t seq_grid_ok;             /* the grid is on the LCD (else the next draw is a whole one) */
 static uint32_t seq_grid_mark;          /* the roll's markers as drawn: bit c a note above the window on column c, bit 16 + c
                                          * one below */
-static char seq_grid_text[3][48];       /* the info, track and hint lines as drawn */
+static char seq_grid_text[3][48] UI_POOL;   /* the info, track and hint lines as drawn (pages_ui.c UI_POOL) */
 
 static uint32_t seq_grid_x(uint32_t i) { return GRID_X + 11u * i + 2u * (i / 4u); }
 
@@ -2240,7 +2240,7 @@ static void seq_draw(int full)
 #define SONG_RH 19u
 static uint8_t song_sel;                /* the song shown (0..ENG_SONGS - 1) */
 static uint8_t song_cur, song_top;      /* the cursor (an entry, or the song's length: END), the first row shown */
-static char song_text[SONG_ROWS + 3u][48];   /* the rows, the info, the footer and the hint as drawn (a row's first byte: 1 the cursor, 2 not, | 4 the entry playing) */
+static char song_text[SONG_ROWS + 3u][48] UI_POOL;   /* the rows, the info, the footer and the hint as drawn (a row's first byte: 1 the cursor, 2 not, | 4 the entry playing) */
 static uint8_t song_ok;                 /* the page is on the LCD as song_text says */
 static int16_t song_shown_play = -2;    /* the entry playing as drawn */
 static int8_t song_shown_run = -1;      /* the transport as the bar last said it (SONG n PLAYS / STOPPED) */
