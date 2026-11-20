@@ -2,7 +2,7 @@
  * Copyright (C) 2026 morgulbrut */
 /* The settings menu, after ui.c, pages_ui.c and sandbox_ui.c, before main.c:
  *
- * MENU (GLO; GLO again or HOME closes it; #395; its controls: web/src/controls.ts, #553): the FM-1's settings in tabs (MIDI: MIDI CHANNEL, CLOCK IN, MIDI OUT, CLOCK OUT; its second page: TRANSPORT IN, TRANSPORT OUT, #596). ALGO steps the tabs: MIDI, PANEL and SYSTEM
+ * MENU (GLO; GLO again or HOME closes it; #395; its controls: web/src/controls.ts, #553): the FM-1's settings in tabs (MIDI: MIDI CHANNEL, CLOCK IN, MIDI OUT, CLOCK OUT; its second page: TRANSPORT IN, TRANSPORT OUT, #596; its third: MIDI learn's LEARN, MAPPING, CLEAR, midi_learn.c, #1067). ALGO steps the tabs: MIDI, PANEL and SYSTEM
  * are pages of settings on K1..K4 (SYSTEM: UPDATE MODE, FACTORY RESET, QUICK START, OUTPUT; its second page: EDITOR, 3.5MM OUT, USB RETURN), drawn as a device page (pages_ui.c menu_tab_page; the knobs go through panel.c as on
  * a device page); INFO lists readings (drawn here) and GUIDE is a text SELECT scrolls (the ideas, D-248). The values are applied at once
  * and saved with the state (SAVE: main.c save bits; SAVE in the menu closes it). UPDATE MODE and FACTORY RESET (SYSTEM)
@@ -28,7 +28,8 @@ static void defaults_now(void);
 static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "COUNT-IN", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
                                               "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "BATTERY", "UPDATE MODE", "FACTORY RESET",
                                               "QUICK START", "TEMPO", "CLOCK OUT", "OUTPUT", "PROCESSOR", "EDITOR", "3.5MM OUT", "USB RETURN", "NAME",
-                                              "TIME SIG", "LOW", "MID", "HIGH", "MID FREQ", "TRANSPORT IN", "TRANSPORT OUT"};
+                                              "TIME SIG", "LOW", "MID", "HIGH", "MID FREQ", "TRANSPORT IN", "TRANSPORT OUT", "LEARN", "MAPPING",
+                                              "CLEAR"};
 #define INFO_N 7u
 static const uint8_t INFO_ROWS[INFO_N] = {MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_CORES, MR_DEVICE_NAME};   /* the INFO tab's list, top down */
 #define MENU_ARM_MS 5000u                               /* an armed SYSTEM row waits this long for GLO's hold */
@@ -159,6 +160,7 @@ static void menu_value(uint32_t row, char *out)
         p += str_len(p);
         *p++ = '%';
         break;
+    case MR_LEARN: case MR_MAPS: case MR_MAP_CLEAR: map_value(row, out); return;   /* (MIDI learn, midi_learn.c) */
     default: p = put(p, menu_armed == row ? "HOLD GLO" : "TURN >"); break;   /* (UPDATE MODE, FACTORY RESET) */
     }
     *p = 0;
@@ -382,20 +384,26 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
         update_arm = fm1_ms | 1u;
         ui_msg(row == MR_UPDATE ? MSG_HOLD_UPDATE : MSG_HOLD_RESET, MENU_ARM_MS);   /* (26 characters) */
         break;
+    case MR_LEARN:
+    case MR_MAPS:
+    case MR_MAP_CLEAR:                              /* MIDI learn (midi_learn.c, #1067): LEARN closes the menu as it starts */
+        if (map_step(row, s))
+            return;
+        break;
     default: break;
     }
     ui_dirty = 1;
 }
 
-static void menu_tab_go(int32_t s)                      /* ALGO: the next / previous tab, drawn whole (another layout); MIDI,
-                                                         * PANEL and SYSTEM take two steps, their pages 1/2 and 2/2 (#596,
-                                                         * #702, #1011) */
+static void menu_tab_go(int32_t s)                      /* ALGO: the next / previous tab, drawn whole (another layout); MIDI
+                                                        * takes three steps, its pages 1/3..3/3 (#596, #1067), PANEL and
+                                                        * SYSTEM two, 1/2 and 2/2 (#702, #1011) */
 {
-    if (menu_two(menu_tab) && (s > 0) != (menu_page2 != 0)) {
-        menu_page2 = (uint8_t)(s > 0);
+    if (s > 0 ? menu_page2 + 1u < menu_pages(menu_tab) : menu_page2 > 0u) {
+        menu_page2 = (uint8_t)(s > 0 ? menu_page2 + 1u : menu_page2 - 1u);
     } else {
         menu_tab = (uint8_t)((menu_tab + (s > 0 ? 1u : MT_COUNT - 1u)) % MT_COUNT);
-        menu_page2 = (uint8_t)(menu_two(menu_tab) && s < 0);
+        menu_page2 = (uint8_t)(s < 0 ? menu_pages(menu_tab) - 1u : 0u);
     }
     menu_armed = MR_COUNT;
     update_arm = 0;

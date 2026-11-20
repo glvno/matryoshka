@@ -3,7 +3,7 @@
 /* MIDI clock out and transport out (#473, #596, docs/ARCHITECTURE.md "MIDI out map"): the FM-1 sends MIDI clock (0xF8, 24
  * a quarter note) over USB at the tempo that plays (the global tempo, or Main's: D-907), all the time, and Start / Stop
  * when PLAY starts and stops the transport. PLAY from a SONG page entry sends Song Position (the entry's start in
- * sixteenths) and Continue in place of Start. GLO > MIDI > CLOCK OUT turns the clock off, MIDI 2/2 > TRANSPORT OUT the
+ * sixteenths) and Continue in place of Start. GLO > MIDI > CLOCK OUT turns the clock off, MIDI 2/3 > TRANSPORT OUT the
  * Start, Continue, Stop and Song Position; each goes without the other, and neither needs MIDI OUT (the panel's own
  * controls). While MIDI clock in drives the clock (D-452) the engine makes no ticks of its own, so nothing is passed on:
  * no loops.

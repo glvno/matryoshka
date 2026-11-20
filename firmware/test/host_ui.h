@@ -319,6 +319,16 @@ static void defaults_now(void) { host_defaults++; }
 static uint32_t host_tempo_told;            /* proto.c's TEMPO_NOW sent (panel_test.c) */
 static void m1_tempo_now(void) { host_tempo_told++; }
 #endif
+/* MIDI learn (midi_learn.c, #1067): proto.c's edits of the mappings, on the previewed binary; a move's PARAM_NOW is the
+ * harness's (panel_test.c, fm1_sim.c, the wasm build, ui_preview.c) */
+static void m1_param_now(uint32_t mod, uint32_t par, int32_t v);
+static uint32_t host_map_told;              /* proto.c's MAP_NOW sent (panel_test.c) */
+static void m1_map_now(void) { host_map_told++; }
+static int m1_patch_map(uint32_t src, uint32_t mod, uint32_t par, uint32_t lo, uint32_t hi, int on)
+{
+    return eng_map_edit(pv_bin, &pv_len, 3840u, src, mod, par, lo, hi, on);
+}
+#include "../src/midi_learn.c"
 #include "../src/menu.c"
 /* what seq_ui.c reaches in proto.c and the HAL, for the preview */
 static struct { uint32_t buttons; } fm1_in;
