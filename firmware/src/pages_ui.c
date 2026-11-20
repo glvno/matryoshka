@@ -1614,7 +1614,7 @@ static void toast_first(void)
 static int sb_foot(char *name, char *tempo);            /* sandbox_ui.c */
 typedef struct {
     uint8_t mode, rec, off;                             /* 1: sandbox mode (gold); REC (the name in red); 3.5MM OUT OFF (the mark) */
-    char a[40], t[8], o[8], w[12];                      /* the name, the tempo, the octave, WIRED */
+    char a[40], t[8], o[12], w[12];                     /* the name, the tempo, the octave (or the drum bank), WIRED */
     uint32_t xa, xt, xo, xw;                            /* where each goes */
 } foot_t;
 static uint32_t ft_drawn;                               /* the hash of the footer as drawn (0: not on the screen) */
@@ -1627,6 +1627,7 @@ static uint32_t ft_drawn;                               /* the hash of the foote
 #define OFF_FX (BATT_FX - 3u - OFF_FW)
 static const char OFF_MARK[6][10] = {"..#......", ".##.#..#.", "###..##..", "###..##..", ".##.#..#.", "..#......"};
 static int seq_arm_label(char *out, int *rec);          /* (seq_ui.c) */
+static int drum_bank_label(char *out);                  /* (seq_ui.c: ROWS 9-16 while the black keys play a bank of drum rows) */
 static const uint8_t NOTE_A[9][6] = {                   /* the quarter note as the mock draws it (4-bit coverage), x - 1 .. x + 4 */
     {0, 0, 0, 0, 6, 9}, {0, 0, 0, 0, 6, 9}, {0, 0, 0, 0, 6, 9}, {0, 0, 0, 0, 6, 9}, {0, 0, 0, 0, 6, 9},
     {0, 3, 11, 14, 12, 9}, {2, 15, 15, 15, 15, 10}, {3, 15, 15, 15, 14, 2}, {0, 11, 15, 12, 2, 0}};
@@ -1669,6 +1670,8 @@ static uint32_t foot_layout(foot_t *f)
         *q = 0;
         wt = text_w(&FONT_F, f->t, -1) + 8u;
         wo = FOOT_OCT_W;
+        if (drum_bank_label(f->o))                      /* (the drum bank instead, D-520: its slot as wide as ROWS 17-24) */
+            wo = text_w(&FONT_F, MSG_ROWS "17-24", -1);
         {                                               /* nothing armed: KEYS WIRED after the name, in the tempo's ink */
             uint32_t ww = wired ? text_w(&FONT_F, " " MSG_KEYS_WIRED, -1) : 0u;
             fit(f->a, &FONT_F, 240u - 12u - 13u - wm - wt - wo - 3u * 6u - ww);
@@ -1682,7 +1685,7 @@ static uint32_t foot_layout(foot_t *f)
         gap16 = (228u - wa - wt - wo - 13u - wm) * 16u / 3u;  /* (space between: the battery ends at the right margin) */
         f->xa = 6u;
         f->xt = 6u + ((wa * 16u + gap16 + 8u) >> 4);
-        f->xo = 6u + (((wa + wt) * 16u + 2u * gap16 + 8u) >> 4) + (FOOT_OCT_W - text_w(&FONT_F, f->o, -1)) / 2u;
+        f->xo = 6u + (((wa + wt) * 16u + 2u * gap16 + 8u) >> 4) + (wo - text_w(&FONT_F, f->o, -1)) / 2u;
     }
     for (s = (const char *)f; s < (const char *)(f + 1); s++)   /* (what it shows, the battery apart: foot_batt) */
         h = (h ^ (uint8_t)*s) * 16777619u;

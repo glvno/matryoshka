@@ -21,6 +21,7 @@ typedef struct {
     int32_t micro_sum;
     uint32_t song_sel, song_cur, song_len, song_sum, song, clear_at, del_at, msg_sum;
     uint32_t fx_row, fx_on;
+    uint32_t bank;                                      /* the drum bank (D-520) */
     uint32_t stored, store_sum, pat_sum;                /* the pattern store (#901): its entries, their ids and hashes, and
                                                          * the selected pattern's notes on every track */
     int mlen;
@@ -65,6 +66,7 @@ static void ct_take(ct_snap_t *s)
     s->tempo = (panel >= 0 ? eng_get_param((uint32_t)panel, FM1_P_TEMPO) : 0) + (int32_t)eng_tempo_global_get();
     s->params = ct_params();
     s->fx_row = fx_row;
+    s->bank = drum_bank;
     for (i = 0; i < eng_fx_count(); i++)
         s->fx_on |= (uint32_t)eng_fx_on(i) << i;
     s->arms = eng_arm_mask_get();
@@ -207,6 +209,7 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_CONDITION: return a->cond_n != b->cond_n;
     case CE_RATCHET: return a->ratchet_sum != b->ratchet_sum && a->micro_sum == b->micro_sum;
     case CE_MICRO: return a->micro_sum != b->micro_sum && a->ratchet_sum == b->ratchet_sum && a->seq_pg == b->seq_pg && a->octave == b->octave;
+    case CE_DRUM_BANK: return a->bank != b->bank && a->octave == b->octave && a->seq_pg == b->seq_pg && a->page == b->page;
     case CE_FILL: return a->msg_sum != b->msg_sum && a->page == b->page && a->notes_sum == b->notes_sum && a->mutes == b->mutes
                          && a->params == b->params && !eng_fill_on();   /* (FILL said, and let go with FX; FX's own job not done) */
     case CE_CHORD_BUTTON: {                             /* (#598) a chord button: its key under the split out, no note played */
@@ -263,6 +266,7 @@ static void ct_reset(void)
     page = 0;
     trail_n = 0;
     octave = 0;
+    drum_bank = 0;
     menu_tab = 0;
     menu_armed = MR_COUNT;
     man_top = 0;
@@ -433,6 +437,13 @@ static int ct_enter(uint32_t s, uint32_t v)
             if (!ct_fx_load())
                 return 0;
             tap(BTN_ENV);
+            return page == PAGE_ENV;
+        }
+        if (v == 3) {                                   /* the 808 Kit: the keys reach its DRUMS, 12 rows in two banks (D-520) */
+            if (ct_load("808 KIT"))
+                return 0;
+            tap(BTN_ENV);
+            later(500);
             return page == PAGE_ENV;
         }
         if (v > 1 || ct_load(v ? "<7PH" : "ORACLE V"))

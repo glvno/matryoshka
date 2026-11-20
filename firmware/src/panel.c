@@ -793,12 +793,19 @@ static int panel_key(uint32_t n, int down, int quick)
             ui_dirty = ui_dirty ? ui_dirty : 1;
         }
         key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
-        /* the keys reach a Drum map (the owner, 2026-10-23): black keys 1..8 play its rows 1..8 at any octave, as on the
-         * SEQ page, the white keys nothing, or their own note when the map repeats its rows (#184: the repeat picks the
-         * row); MIDI out sends what plays: the row's note, the key's own, nothing for a silent key, so a recording played
-         * back into a Drum map hits the same rows */
-        key_eng[n] = map < 0 ? key_note[n] : b >= 0 && b < (int)ENG_DRUM_ROWS ? (uint8_t)eng_drummap_note((uint32_t)map, (uint32_t)b)
-            : eng_drummap_repeat((uint32_t)map) ? key_note[n] : KEY_SILENT;
+        /* the keys reach a Drum map (the owner, 2026-10-23; banks 2026-11-19, D-520): black keys 1..8 play the shown bank
+         * of 8 of the rows of every Drum map they reach, at any octave, as on the SEQ page, the white keys nothing, or
+         * their own note when the first map repeats its rows (#184: the repeat picks the row); MIDI out sends what plays:
+         * the row's note, the key's own, nothing for a silent key, so a recording played back into a Drum map hits the same
+         * rows */
+        if (map < 0)
+            key_eng[n] = key_note[n];
+        else {
+            uint8_t rm[ENG_DRUM_LIST], rr[ENG_DRUM_LIST];
+            uint32_t rn = eng_keys_rows(rm, rr), i = drum_bank_in(rn) * ENG_DRUM_ROWS + (uint32_t)b;
+            key_eng[n] = b >= 0 && b < (int)ENG_DRUM_ROWS && i < rn ? (uint8_t)eng_drummap_note(rm[i], rr[i])
+                : eng_drummap_repeat((uint32_t)map) ? key_note[n] : KEY_SILENT;
+        }
         key_sounding |= bit;
         if (key_eng[n] == KEY_SILENT && map >= 0)
             drum_white_due = 1;                     /* (a key handler: state only, the bar is the loop's, D-228) */
@@ -890,6 +897,39 @@ static void preset_store_focused(void)
 static uint8_t oct_used;
 /* the buttons whose press went out as MIDI: their release goes too (while a card shows most presses do not) */
 static uint32_t midi_btn_sent;
+
+/* OCT- / OCT+ (d -1 / +1) picking the drum bank (D-520): the previous or next 8 rows, clamped at the first and the last
+ * bank; a nudge names the bank and its first rows ("ROWS 9-16: MID TOM CRASH..", D-249: 26 characters at most). On the
+ * SEQ page the selected row stays within the bank */
+#define DRUM_BANK_MSG 26u
+static void drum_bank_step(int32_t d)
+{
+    uint8_t map[ENG_DRUM_LIST], row[ENG_DRUM_LIST];
+    uint32_t n = drum_rows_now(map, row), b, i, end;
+    char m[40], name[16], *q;
+    if (n <= ENG_DRUM_ROWS)
+        return;
+    b = (uint32_t)clampi((int32_t)drum_bank_in(n) + d, 0, (int32_t)((n - 1u) / ENG_DRUM_ROWS));
+    drum_bank = (uint8_t)b;
+    if (page == PAGE_SEQ)                           /* (drum_rows_now loaded the grid's rows: seq_map) */
+        seq_row = (uint8_t)clampi(seq_row, 0, (int32_t)seq_bank_rows() - 1);
+    ui_dirty = ui_dirty ? ui_dirty : 1;             /* (the footer; the SEQ page's names and cells, the keys' lights) */
+    (void)drum_bank_label(m);
+    q = m + str_len(m);
+    *q++ = ':';
+    end = b * ENG_DRUM_ROWS + ENG_DRUM_ROWS < n ? b * ENG_DRUM_ROWS + ENG_DRUM_ROWS : n;
+    for (i = b * ENG_DRUM_ROWS; i < end; i++) {
+        drum_row_name(map, row, i, name);
+        if ((uint32_t)(q - m) + 1u + str_len(name) + (i + 1u < end ? 2u : 0u) > DRUM_BANK_MSG) {
+            q = put(q, "..");
+            break;
+        }
+        *q++ = ' ';
+        q = put(q, name);
+    }
+    *q = 0;
+    ui_msg(m, NUDGE_MS);
+}
 
 /* a button let go while a card shows: nothing it does on a release, but what it holds ends (a Gate's jack, a Page
  * button's hold, GLO's 2 s hold), and the flags its next press would clear are cleared */
@@ -1064,6 +1104,14 @@ static void panel_edges(uint32_t p, uint32_t rel)
     }
     if (page == PAGE_MENU)                          /* the menu: OCT- / OCT+ do nothing there (#395) */
         oct_rel = 0;
+    if (oct_rel && (drum_bank_oct() || (page == PAGE_SEQ && (panel_held >> BTN_SEL & 1u) && seq_map() >= 0 && seq_rl_n > ENG_DRUM_ROWS))) {
+        if (page == PAGE_SEQ)                       /* OCT on a device page or the environment, SEL held + OCT on a drum grid,
+                                                     * while the keys reach more than 8 drum rows: the bank (D-520); SEL's
+                                                     * release then does not open the SONG page */
+            seq_pen_ms = fm1_ms | 1u;
+        drum_bank_step((int32_t)(oct_rel >> BTN_OCT_UP & 1u) - (int32_t)(oct_rel >> BTN_OCT_DOWN & 1u));
+        oct_rel = 0;
+    }
     if (page == PAGE_SEQ && sr_on && seq_map() < 0 && (p >> BTN_ACC & 1u) && (panel_held >> BTN_SEL & 1u))
         sr_preview_toggle();
     if (page == PAGE_SEQ && seq_map() >= 0 && !sr_on && (((p >> BTN_LFO & 1u) && (panel_held >> BTN_ACC & 1u))

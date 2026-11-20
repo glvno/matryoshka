@@ -261,9 +261,9 @@ class Target {
   }
   /** wait up to `ms` (times SLACK) for `s` on the LCD */
   waitText(s, ms = 3000) { return this.waitFor(() => this.text(s), ms); }
-  /** wait up to `ms` for the FM-1's own device page (its octave in the footer), not the sandbox page, which has the same
-   *  footer with SANDBOX in it (D-232) */
-  waitOwnPage(ms = 3000) { return this.waitFor(async () => (await this.text('= OCT =')) && !(await this.text('SANDBOX')), ms); }
+  /** wait up to `ms` for the FM-1's own device page (its octave in the footer, or a drum track's bank, ROWS 1-8, D-520),
+   *  not the sandbox page, which has the same footer with SANDBOX in it (D-232) */
+  waitOwnPage(ms = 3000) { return this.waitFor(async () => ((await this.text('= OCT =')) || (await this.text('ROWS '))) && !(await this.text('SANDBOX')), ms); }
   /** wait up to `ms` for the sandbox page with the editor's page on it (D-232): a device page (its octave in the footer)
    *  with SANDBOX where the patch's name goes, and not the card that shows before the first page */
   waitSandboxPage(ms = 3000) {
@@ -359,7 +359,7 @@ class Emu extends Target {
    *  back each, none when a device page shows (there a tap would move to its first page); false after `tries` */
   async home(tries = 6) {
     for (let i = 0; ; i++) {
-      if (await this.text('= OCT =')) return true;
+      if ((await this.text('= OCT =')) || (await this.text('ROWS '))) return true;
       if (i >= tries) return false;
       await this.tap(B.home);
       await this.elapse(300);
@@ -1488,6 +1488,33 @@ async function main() {
       await check('hold: step write while REC plays: a white key places a step on the row the black key picked', noteAt(ns, 12, 55)?.len === 1 && ns.length === 2, fmt(ns));
       await emu.tap(B.play);                        // PLAY stops the transport and the recording
       await emu.elapse(300);
+      await emu.tap(B.seq, 120);
+      await emu.waitOwnPage(3000);
+    },
+    async drumBanks() {   // D-520 (banks, the owner 2026-11-19): the 909 Kit's 17 rows from the black keys, 8 at a time
+      await check('banks: the 909 Kit opens, synced', await openSynced('909 Kit'));
+      await check('banks: the footer reads ROWS 1-8 (its drum rows in banks, not the octave)', await emu.waitText('ROWS 1-8', 3000));
+      await emu.tap(B.octUp);
+      await check('banks: OCT+ shows ROWS 9-16, the nudge names its first rows', await emu.waitText('ROWS 9-16: MID TOM CRASH', 3000));
+      const before = await emu.windows(8, 25);      // (quiet first)
+      await emu.key(BLACK[1], true);                // black key 2 in bank 2: CRASH
+      const held = await emu.windows(16, 25);
+      await emu.key(BLACK[1], false);
+      await emu.windows(20, 25);
+      const top = Math.max(...held.map((x) => x[1])), floor = Math.max(...before.map((x) => x[1]));
+      // (a cymbal: its peak sits under LOUD, which the plates reach; heard is well over the quiet before it)
+      await loudCheck('banks: black key 2 plays CRASH from the FM-1\'s own keys, heard', top, top > 4 * QUIET && top > 4 * floor,
+        `peak ${top}, quiet before ${floor}; ${prof(held)}`);
+      // the SEQ page shows the same bank by name; SEL held + OCT- / OCT+ picks the bank there
+      await emu.tap(B.seq, 120);
+      await check('banks: SEQ opens the drum grid on ROWS 9-16 (CRASH on screen)', (await emu.waitText('ALGO track', 3000)) && (await emu.waitText('CRASH', 2000)));
+      await emu.key(B.scl, true);
+      await emu.elapse(100);
+      await emu.tap(B.octDown);
+      await emu.key(B.scl, false);
+      await emu.elapse(200);
+      await check('banks: SEL + OCT- on the grid: ROWS 1-8 (SNARE), the SEQ page stays', (await emu.waitText('SNARE', 2000)) && (await emu.waitText('ROWS 1-8', 2000))
+        && (await emu.text('ALGO track')));
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
     },
