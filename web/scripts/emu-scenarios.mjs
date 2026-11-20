@@ -2297,20 +2297,21 @@ async function main() {
       const row = JSON.parse(await patchJson()).assemblies.find((a) => a.name === '808 kit').params.at(-1);
       await check('808 velocity: the card\'s last row is VELOCITY, a Macro at 0', row?.label === 'velocity', JSON.stringify(row));
       const value = async () => JSON.parse(await patchJson()).modules.find((m) => m.id === row.module).params.value;
-      await emu.tap(B.scl);                         // the kit card, armed with DRUMS: black key 1 plays the kick at velocity 100
+      await emu.tap(B.scl);                         // the kit card, armed with DRUMS: black key 6 plays the low tom at velocity 100
       await check('808 velocity: SEL arms the kit with DRUMS', await emu.waitText('808 KIT + DRUMS ARMED', 1500));
       await emu.elapse(1300);
       const kick = async () => {
         const m = await emu.mark();
-        await emu.key(BLACK[0], true);
+        await emu.key(BLACK[5], true);              // (the tom: a struck resonator peaks the same every hit; the kick's free-running
+                                                     // oscillator peaks wherever its phase is, up to 15 % apart)
         await emu.elapse(300);
-        await emu.key(BLACK[0], false);
+        await emu.key(BLACK[5], false);
         const p = await emu.peak(m);
         await emu.elapse(1200);
         return p;
       };
       const at0 = await kick();
-      await loudCheck('808 velocity: at 0 the kick plays', at0, at0 > LOUD, `peak ${at0}`);
+      await loudCheck('808 velocity: at 0 the low tom plays', at0, at0 > LOUD, `peak ${at0}`);
       // the VELOCITY page, the card's 14th, ALGO a page at a time (its name in the header, as the hihat page in hats909)
       let found = await emu.text('VELOCITY');
       for (let n = 0; n < 16 && !found; n++) {
