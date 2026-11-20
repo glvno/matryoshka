@@ -2,7 +2,8 @@
 // Scrounge's grooves after its first six (factory/bank.json, D-1056): patterns 7 on of its tracks, and song 2, which chains
 // them. They play what the first six do not: the Scrooge's per-step CHOP (a Steps ratchet, #675: the step's curve fires 2
 // to 5 times inside its step), its per-step TIME (micro timing, #677: the curve starts up to 23/24 of a step late) and its
-// tracks' own lengths under LEN GLB. Patterns 1 to 6 and song 1 stay as they are.
+// tracks' own lengths under LEN GLB. Patterns 1 to 6 and song 1 stay as they are. Four grooves, so the patch keeps some
+// room for a player's own notes (the owner, 2026-11-20).
 // Run from web/:  npx vite-node scripts/gen-scrounge-grooves.ts
 // then gen-presets.ts, legacy-factory.ts and npm run export-defs.
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -57,12 +58,6 @@ const GROOVES: Groove[] = [
     'MOD X': 'x.....x....',
     'MOD Y': 'x............',
     'LEN GLB': 'x' + '.'.repeat(31),
-  },
-  // 11, Chop Roll: a fill to chain into, the snare rolling up from two chops a step to five
-  {
-    'VOICE 1': 'X.......X.....x.',
-    'VOICE 2': '................',
-    'VOICE 3': { steps: '....x...x.x.xxxx', chop: { 10: 2, 12: 2, 13: 3, 14: 4, 15: 5 } },
   },
 ];
 

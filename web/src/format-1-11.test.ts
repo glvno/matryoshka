@@ -120,7 +120,7 @@ describe('counted records (#667, format 51)', () => {
       const p = make();
       const l = layout(p);
       // in its old format when that holds it; counted (Wanderer and Vernon 100, with their PATTERN track) when not; format
-      // 64's shorter layout when no older form holds it (Scrounge with its eleven grooves, D-1026, D-1056)
+      // 64's shorter layout when no older form holds it (Scrounge with its ten grooves, D-1026, D-1056)
       expect(formatOf(p), name).toBe(l.base.bytes <= DEVICE.bytes ? l.base.v : l.counted <= DEVICE.bytes ? COUNTED : SLIM);
       expect(deviceBudget(p).items.find((i) => i.key === 'bytes')!.used, name).toBe(Math.min(l.base.bytes, l.counted, l.slim));   // (and format 64's, D-1026)
     }
