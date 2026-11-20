@@ -150,9 +150,9 @@ describe('909 Kit (the FM-1 version: the whole TR-909, D-1055)', () => {
     const was = (target: string): number => old[before.rows.findIndex((r) => r[0] === target)];
     const at = (target: string): number => values[now.rows.findIndex((r) => r[0] === target)];
     const atInit = (target: string): number => init.values[now.rows.findIndex((r) => r[0] === target)];
-    for (const [to, from] of [['osc#46.coarse', 'osc#2.coarse'], ['mixer#55.l2', 'mixer#11.l2'], ['env#49.r3', 'env#5.r3'],
-      ['osc#61.coarse', 'osc#17.coarse'], ['mixer#64.l1', 'mixer#20.l1'], ['env#102.r3', 'env#25.r3']]) expect(at(to), to).toBe(was(from));
-    for (const t of ['filter#58.cutoff', 'vca#56.gain', 'env#107.r3']) expect(at(t), t).toBe(atInit(t));
+    for (const [to, from] of [['osc#50.coarse', 'osc#2.coarse'], ['mixer#58.l2', 'mixer#11.l2'], ['env#53.r3', 'env#5.r3'],
+      ['osc#64.coarse', 'osc#17.coarse'], ['mixer#67.l1', 'mixer#20.l1'], ['env#104.r3', 'env#25.r3']]) expect(at(to), to).toBe(was(from));
+    for (const t of ['filter#61.cutoff', 'vca#59.gain', 'env#109.r3']) expect(at(t), t).toBe(atInit(t));
     expect(migration.rows.filter((r) => typeof r === 'number' && r >= 0)).toHaveLength(6);
   });
 
@@ -181,9 +181,10 @@ describe('909 Kit (the FM-1 version: the whole TR-909, D-1055)', () => {
     expect(migration.to).toBe(now.structure);
     const old = before.rows.map((_, i) => (i + 1) / 100);
     const values = migrateValues(migration, old, now.rows.map(() => 0));
-    for (const [k, [target]] of now.rows.entries()) {
-      const from = target === 'vca#103.gain+vca#111.gain' ? 'vca#103.gain' : target;
-      expect(values[k], target).toBe(old[before.rows.findIndex((r) => r[0] === from)]);
+    for (const [k, [target, , pos]] of now.rows.entries()) {
+      // (by card position: the local ids moved with VELOCITY's modules, D-1055; VELOCITY itself, the last row, at Init)
+      const from = before.rows.findIndex((r) => r[2] === pos);
+      expect(values[k], target).toBe(from < 0 ? 0 : old[from]);
     }
   });
 });

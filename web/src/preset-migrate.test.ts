@@ -76,7 +76,7 @@ describe('the FM-1\'s copy (the firmware tier\'s migrations section, test/pmig_c
     expect(readFileSync(new URL('../../firmware/test/pmig_cases.h', import.meta.url), 'utf8')).toBe(want);
   });
   it('the tables stay small', () => {
-    expect(migrationSection(PRESET_MIGRATIONS).length).toBeLessThan(4300);   // (2,240 with the #658 engines: each earlier Cassia 1 structure moves onto its 153 rows; 3,073 once Expander S's structures move onto its ADS card, D-745; 3,273 once Verona Drum 1's move onto its eight channels, D-899; 2,970 once identical lines and tables share their values and Meridian 8's move onto the whole NOON, D-1054; 3,028 once the 808 Kit's eight-voice card moves onto the whole TR-808, D-1053; 3,131 once Briefcase 3's card moves onto the pin-board card, D-1052; 3,177 once the 909 Kit's lean card moves onto the whole TR-909, D-1055; 3,298 with Scrounge's, D-1056; 3,399 once Meridian 8's two earlier cards move onto the card with decay, release and drive rows, D-1054; 3,490 once Verona Drum 1's 1.16 card moves onto the knobs' travel, #866, its re-ranged rows at Init; 3,502 as the firmware tier's section with its counts, #915; 3,680 once 8 Lire's 1.11 card moves onto the structure with the pressure plates, #851; 3,759 once Oracle V's three earlier cards move onto the card with the 500 Hz LFO, #862; 4,080 once Elvira 2's earlier cards move onto its 101-row lighter-set card, D-1058; 4,216 once the 909 Kit's three earlier cards move onto the card whose hihat LEVEL sets both hats, #1124. The guard is a test, not a firmware limit: the tables cost flash, which is the real budget)
+    expect(migrationSection(PRESET_MIGRATIONS).length).toBeLessThan(4600);   // (2,240 with the #658 engines: each earlier Cassia 1 structure moves onto its 153 rows; 3,073 once Expander S's structures move onto its ADS card, D-745; 3,273 once Verona Drum 1's move onto its eight channels, D-899; 2,970 once identical lines and tables share their values and Meridian 8's move onto the whole NOON, D-1054; 3,028 once the 808 Kit's eight-voice card moves onto the whole TR-808, D-1053; 3,131 once Briefcase 3's card moves onto the pin-board card, D-1052; 3,177 once the 909 Kit's lean card moves onto the whole TR-909, D-1055; 3,298 with Scrounge's, D-1056; 3,399 once Meridian 8's two earlier cards move onto the card with decay, release and drive rows, D-1054; 3,490 once Verona Drum 1's 1.16 card moves onto the knobs' travel, #866, its re-ranged rows at Init; 3,502 as the firmware tier's section with its counts, #915; 3,680 once 8 Lire's 1.11 card moves onto the structure with the pressure plates, #851; 3,759 once Oracle V's three earlier cards move onto the card with the 500 Hz LFO, #862; 4,080 once Elvira 2's earlier cards move onto its 101-row lighter-set card, D-1058; 4,216 once the 909 Kit's three earlier cards move onto the card whose hihat LEVEL sets both hats, #1124; 4,303 once Oracle V's four earlier cards move onto the card with the pedal and A-440, #862; 4,462 once Verona Drum 1's four earlier cards move onto the card with FM FREQ over the knob's travel, #866; 4,559 once the 808 and 909 Kits' cards move onto the cards with VELOCITY, D-1053, D-1055. The guard is a test, not a firmware limit: the tables cost flash, which is the real budget)
   });
 });
 
@@ -148,11 +148,11 @@ describe('moving presets (D-865)', () => {
     vals[at(old, 'ladder#12.cvamt')] = 2.5;
     const out = migrateValues(m, vals, initOf(m.to)!);
     const get = (id: string): number => out[at(now, id)];
-    expect([get('select#24.pos'), get('select#25.pos')]).toEqual([1, 2]);                       // A: saw OFF, pulse ON
-    expect([get('select#28.pos'), get('select#29.pos'), get('select#30.pos')]).toEqual([1, 2, 1]); // B: tri ON
-    expect([get('select#47.pos'), get('select#48.pos'), get('select#49.pos')]).toEqual([1, 1, 2]); // LFO: square ON
-    expect(get('mixer#31.l1')).toBe(0.61);    // A level
-    expect(get('scale#40.gain')).toBe(2.5);   // env amt
+    expect([get('select#22.pos'), get('select#23.pos')]).toEqual([1, 2]);                       // A: saw OFF, pulse ON
+    expect([get('select#26.pos'), get('select#27.pos'), get('select#28.pos')]).toEqual([1, 2, 1]); // B: tri ON
+    expect([get('select#43.pos'), get('select#44.pos'), get('select#45.pos')]).toEqual([1, 1, 2]); // LFO: square ON
+    expect(get('mixer#29.l1')).toBe(0.61);    // A level
+    expect(get('scale#37.gain')).toBe(2.5);   // env amt
   });
 
   it('a preset with fewer values than its rows (Cassia 1 stored on an FM-1 before 1.8.2): the rest take Init', () => {
