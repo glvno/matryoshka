@@ -91,8 +91,9 @@ static uint8_t cin_log_state(void)
 {
     return (uint8_t)((eng_run_ticks() >= 0 ? 1u : 0u) | (eng_clock_is_external() ? 2u : 0u) | (cfg.clock_in ? 4u : 0u));
 }
-/* the audio ISR (modular.c UR_ONSET, with the engine running): one half of the host's playback, pk its peak (ur_mix) */
-static void cin_onset_block(uint32_t pk)
+/* the audio ISR (modular.c UR_ONSET, with the engine running): one half of the host's playback, pk its peak (ur_mix).
+ * Out of line: inlined, it would grow the ISR's copy in NOINIT (build.py FAST_TEXT), which has little room */
+static void __attribute__((noinline)) cin_onset_block(uint32_t pk)
 {
     cin_ent_t *s = &cin_onset;
     if (pk < CIN_ONSET_THR) {
