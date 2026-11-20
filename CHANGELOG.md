@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Verona Drum 1's FM FREQ covers the DRM1 MKIV's whole range.** On DRUM 1 it runs from 1.25 Hz to 550 Hz, and on DRUM 2 from 1.25 Hz to 785 Hz. At the low end the FM is a slow wobble, as on the original. Every factory sound, preset and demo pattern plays exactly as before. Your saved Verona Drum 1 sounds keep their FM FREQ. Needs firmware 1.22 or later.
 - **The 909 Kit's hi-hat LEVEL sets both hi-hats, as on the TR-909.** Turning the hihat LEVEL knob down used to quiet only the closed hat. Now the open hat follows it, in the editor and on the FM-1. At its usual setting the kit sounds exactly as before. Your saved 909 Kit sounds keep all their settings, and the closed hat's level becomes the shared one.
 - **Every sound of the 808 Kit and the 909 Kit plays from the FM-1's own keys.** The black keys used to reach only a kit's first 8 sounds, so the 909's MID TOM, CRASH, RIDE, ACCENT and its flams, the 808's toms, cymbal and accent, and Verona Drum 1's two closed hats could not be played or edited on the FM-1. Now a kit's sounds come 8 at a time: OCT- and OCT+ switch to the next 8 on a device page and the environment, and the footer shows which (ROWS 1-8, ROWS 9-16, ROWS 17-24). On the SEQ page, hold SEL and press OCT- or OCT+: the grid shows those 8 rows with their names, ready to edit. Kits with 8 sounds or fewer work as before, and OCT still changes the octave there. The editor's piano roll now lists all of a kit's sounds by name. Needs the next firmware.
 

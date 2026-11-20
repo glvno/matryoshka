@@ -19,7 +19,7 @@
 #   drum 1 / bend = 0.5                -4..4
 #   drum 1 / attack = 0.3              0..1
 #   drum 1 / fm int = 0                0..1
-#   drum 1 / fm freq = -24 st          -48..48 st
+#   drum 1 / fm freq = 0.65            0..1
 #   drum 1 / wave = 1.2                1..32
 #   drum 1 / pan = -0.35               -1..1
 #   drum 1 / volume = 1.27             0..2
@@ -29,7 +29,7 @@
 #   drum 2 / bend = 0.5                -4..4
 #   drum 2 / attack = 0.3              0..1
 #   drum 2 / fm int = 0                0..1
-#   drum 2 / fm freq = -24 st          -48..48 st
+#   drum 2 / fm freq = 0.61            0..1
 #   drum 2 / wave = 1.2                1..32
 #   drum 2 / pan = 0.35                -1..1
 #   drum 2 / volume = 1.27             0..2
@@ -93,10 +93,11 @@
 # pitch (kick, drum 1, drum 2): 0..1 over the original knob's range, the kick 22..380 Hz, drum 1 18..300 Hz, drum 2
 # 24..430 Hz. bend: 0 none, up a falling sweep, below 0 a rising one; the kick's only falls, 0..1 up to four octaves. time:
 # the kick's pitch sweep. kick / attack: the spike's shape, 0 a 3 ms click, up a tail that widens it into a push. fm int:
-# 0 off, up to four octaves either way. wave: 1 a sine, up to an overdriven square. clap: the claps' rate, so their number
-# (below about 22 Hz one clap); clap / noise their level (each clap a short noise burst). pitch 2 / pitch 3: octaves below
-# the multi's pitch, off at -4. A hi-hat's row plays it open or closed by its trig switch; the HH 1 CL and HH 2 CL rows
-# (G4, A4) play it closed whatever trig says.
+# 0 off, up to four octaves either way. fm freq: 0..1 over the original knob's range, drum 1 1.25..550 Hz, drum 2
+# 1.25..785 Hz (0.96 on drum 1 is 440 Hz, the A above middle C). wave: 1 a sine, up to an overdriven square. clap: the
+# claps' rate, so their number (below about 22 Hz one clap); clap / noise their level (each clap a short noise burst).
+# pitch 2 / pitch 3: octaves below the multi's pitch, off at -4. A hi-hat's row plays it open or closed by its trig
+# switch; the HH 1 CL and HH 2 CL rows (G4, A4) play it closed whatever trig says.
 engine: Verona Drum 1
 
 preset: Dance Floor
@@ -175,7 +176,7 @@ preset: Metal Works
 # FM in the audio range on drum 1 (atonal, metallic), the multi's three squares spread for a bell, hats bending up
 drum 1 / pitch = 0.99
 drum 1 / fm int = 0.38
-drum 1 / fm freq = 9
+drum 1 / fm freq = 0.96
 drum 1 / decay = 0.6
 drum 1 / bend = -0.3
 drum 1 / wave = 3

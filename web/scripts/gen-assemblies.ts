@@ -8,7 +8,7 @@ import { defaultMap, defaultParams, rowDef, STEP_VEL, type ModuleInst, type Poly
 import { defIsEngine } from '../src/engines';
 import { pinsToParams, type AssemblyDef, type NestedDef, type PortRef, type ParamRef } from '../src/assembly';
 import { cardRows } from '../src/preset-cards';
-import { clap, drum, DRUM1_HZ, DRUM2_HZ, hihat, kick, multi, ownNoise, sharedNoise, snare, TRIG_NAMES, type Voice } from './verona-voices';
+import { clap, drum, DRUM1_FM, DRUM1_HZ, DRUM2_FM, DRUM2_HZ, hihat, kick, multi, ownNoise, sharedNoise, snare, TRIG_NAMES, type Voice } from './verona-voices';
 import { columnLabel, rowLabel } from './vcs3-board';
 import { updateLineage } from './lineage-lib';
 import { junoDef } from './xl/hera-6';
@@ -4640,12 +4640,12 @@ asm('Verona Drum 1', 'Drums', (b) => {
   /** heading, column, its voice, its pan */
   const built: [string, number, Voice, number][] = [
     ['kick', 1, kick(b, 1, noise), 0],
-    ['drum 1', 2, drum(b, 2, { hz: DRUM1_HZ, coarse: -17, decay: 0.35 }), -0.35],
+    ['drum 1', 2, drum(b, 2, { hz: DRUM1_HZ, fm: DRUM1_FM, coarse: -17, decay: 0.35 }), -0.35],
     ['multi', 4, multi(b, 4), 0.25],
     ['snare', 5, snare(b, 5, noise), 0],
     ['hi hat 1', 6, hihat(b, 6, noise, { trig: 1 }), -0.2],
     ['clap', 8, clap(b, 8, ownNoise, { color: true }), 0.1],
-    ['drum 2', 3, drum(b, 3, { hz: DRUM2_HZ, coarse: -7, decay: 0.25 }), 0.35],
+    ['drum 2', 3, drum(b, 3, { hz: DRUM2_HZ, fm: DRUM2_FM, coarse: -7, decay: 0.25 }), 0.35],
     ['hi hat 2', 7, hihat(b, 7, noise, { trig: 1, pitch: 27 }), 0.3],
   ];
   const channels = [...built].sort((x, y) => x[1] - y[1]);   // (the panel's order: the Drum map's rows, the card)
