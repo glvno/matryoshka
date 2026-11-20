@@ -159,4 +159,33 @@ static void midi_learn_tests(void)
         } else
             check("MIDI learn: (no switch row in this patch to toggle)", 1);
     }
+    {                                                   /* four learned controls moved at once: each glides in a slot of its own */
+        uint32_t rm[ENG_MAP_RAMPS], rj[ENG_MAP_RAMPS], nr = 0, q, all = 1;
+        for (d = 0; d < pg_npage && nr < ENG_MAP_RAMPS; d++)
+            for (g = 0; g < pg_page[d].nrows && nr < ENG_MAP_RAMPS; g++) {
+                const ppage_t *pg = &pg_page[d];
+                int t = eng_type(pg->mod[g]);
+                if (pg->mod[g] == SETTING_ROW || (pg->par[g] & POLY_ROW) || t < 0 || DEF_FIXED((uint32_t)t, pg->par[g])
+                    || (DEFS[t].pchoice && DEFS[t].pchoice[pg->par[g]]))
+                    continue;
+                for (q = 0; q < nr && !(rm[q] == pg->mod[g] && rj[q] == pg->par[g]); q++)
+                    ;
+                if (q == nr)
+                    rm[nr] = pg->mod[g], rj[nr] = pg->par[g], nr++;
+            }
+        for (q = 0; q < nr; q++)
+            (void)m1_patch_map(40u + q, rm[q], rj[q], 0, 255, 1);
+        for (q = 0; q < nr; q++)                        /* (each from its bottom to its top: a move to ramp) */
+            ml_cc(1, 40u + q, 0);
+        for (q = 0; q < 50u; q++)
+            eng_render(0, 0, 0);
+        for (q = 0; q < nr; q++)
+            ml_cc(1, 40u + q, 127);
+        for (q = 0; q < nr; q++)
+            all &= ramp[ENG_KNOBS + q].left == ENG_RAMP_BLOCKS && ramp[ENG_KNOBS + q].mod == rm[q] && ramp[ENG_KNOBS + q].par == rj[q];
+        check("MIDI learn: four controls moved at once glide together, each in a ramp slot of its own (ENG_MAP_RAMPS 4)",
+              nr == ENG_MAP_RAMPS && ENG_MAP_RAMPS == 4u && all);
+        for (q = 0; q < nr; q++)
+            (void)m1_patch_map(40u + q, 0, 0, 0, 0, 0);
+    }
 }

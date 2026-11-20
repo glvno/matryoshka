@@ -4,6 +4,7 @@
 
 - **MIDI learn in one move on the FM-1: hold SEL and turn a row's knob, then move the control.** The row stays where it is until the control moves it. GLO › MIDI's third page no longer has a LEARN entry; it lists and clears the mappings and reminds you of SEL + knob. If the controller also sent something that has its own job on the FM-1 (for example a pad's touch message on CC 16, which turns K1), the bar says so when the learn ends, e.g. `CC 16 ALSO SENT: TURNS K1`, and the editor's FM-1 & MIDI list shows it too. Turn that message off in the controller's own editor, or learn it onto a row of its own (#1067).
 - **Notes can be learned too.** Play a key or pad on a MIDI controller while a row waits, in the editor or on the FM-1. That note then switches a switch on or off each time it is played, or sets any other row by how hard you play, and it no longer plays a sound in that patch. The list names it, e.g. `NOTE C2`. Patches with a learned note need the next firmware; 1.23 plays the note as a note (#1067).
+- **Up to four learned controls glide at once.** Moving four mapped knobs, faders or pad axes together now smooths each one's row, where 1.23 smoothed two and stepped the rest (#1067).
 
 ## 1.23.0 — 2026-11-20
 
