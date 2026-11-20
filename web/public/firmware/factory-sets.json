@@ -2,11 +2,11 @@
   "sets": [
     {
       "file": "matryoshka-factory.bin",
-      "version": 18,
+      "version": 19,
       "set": "8a37df",
       "layout": 1,
       "format": 55,
-      "bytes": 58171
+      "bytes": 58183
     }
   ]
 }

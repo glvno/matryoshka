@@ -10,5 +10,5 @@ static const uint8_t RCASE_1[] = {246,27,161,55,80,1,122,0,96,81,5,0,0,0,3,20,1,
 #define N_RELEASED_CASES 2
 static const struct { const char *name; const uint8_t *lz; uint16_t lz_len, len; } RELEASED_CASES[N_RELEASED_CASES] = {
     {"MONOLITH D", RCASE_0, sizeof RCASE_0, 2148},   /* v1.13.0, firmware tier */
-    {"ORACLE V", RCASE_1, sizeof RCASE_1, 2845},   /* v1.22.0, factory region */
+    {"ORACLE V", RCASE_1, sizeof RCASE_1, 2845},   /* v1.23.0, factory region */
 };
