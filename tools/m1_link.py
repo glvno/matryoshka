@@ -1107,6 +1107,10 @@ def print_blocktime(w, spans, j, sp, patch, held):
               f"core 1 starting it): mean {j[0] / 1000:.2f} us, most {j[1] / 1000:.2f} us")
     print(f"TIMER5: {j[4]} interrupts nested in the audio ISR, {j[5]} outside it ({(j[4] + j[5]) / blocks:.1f} a half); "
           f"each (its C body) mean {j[2] / 1000:.2f} us, most {j[3] / 1000:.2f} us")
+    if j[2] > 4000:                                    # (#1139: 3.0..3.4 us on a quiet link; its USB polls grow with traffic)
+        print("  NOTE: TIMER5's body is over 4 us: the host was sending on the USB link during the window (an upload, another "
+              "tool, the minute after an install), which lengthens the audio ISR by up to about 75 us; compare it only with "
+              "a window like it (docs/measurements/2026-11-19-irq-1.22.md)")
     reads, step, nint, tot, body, nbody, naud, smax = sp
     print(f"page 139 (5 ms of back-to-back TIMER4 reads): {reads} reads, the shortest step {step} ns (about one mark's "
           f"cost); {nint} interrupts outside the audio ISR took {tot / 1000:.1f} us in all, their C bodies "

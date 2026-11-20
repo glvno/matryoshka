@@ -83,6 +83,13 @@ export const HAND_MAPS: HandMap[] = [
       'filter#55.cutoff': 'init',
     },
   },
+  // ---- the 909 Kit's one hi-hat LEVEL (#1124): the hihat LEVEL row also sets the open hat's level VCA, as the TR-909's
+  // one HH LEVEL knob does. The row keeps the closed hat's value; every other row is still there.
+  {
+    engine: '909 kit', from: 'c8210529', to: '1c8069fc',
+    why: '#1124: one LEVEL for both hi-hats; the closed hat\'s level is the shared one',
+    rows: { 'vca#103.gain+vca#111.gain': { from: 'vca#103.gain' } },
+  },
   // ---- the whole DRM1 MKIV (D-899): each row of the six-channel card goes to the same channel's row of the same label
   // (HI HAT is HI HAT 1); the duplicated drum and hat modules would otherwise pair with the wrong channel. The snare's NOISE
   // and REVERB were its envelopes' peaks with one VCA at 1 and are now their VCAs' gains: the same number. MULTI's PITCH 2

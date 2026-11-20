@@ -690,6 +690,174 @@ static void fx_suite(void)
 
 #include "fx_preset_panel_test.h"
 
+/* D-520, the banks (the owner, 2026-11-19): a drum track's rows are one list, the rows of every Drum map it plays; black
+ * keys 1..8 play 8 of them, OCT picks which 8 on a device page (the footer ROWS 1-8 .. in the octave's place, a nudge naming
+ * the bank), SEL + OCT on the SEQ page, where the grid shows those 8 with their names. A kit of 8 rows: as before */
+static const uint32_t BLACK_N[8] = {1, 3, 5, 8, 10, 13, 15, 17};   /* black keys 1..8 at octave 0 (F#3 G#3 A#3 C#4 ...) */
+/* black key b (0..7) pressed and let go: the note it sent on MIDI out, -1 none */
+static int black_sends(uint32_t b)
+{
+    int from = mlen, i, got = -1;
+    panel_keys(1u << BLACK_N[b]);
+    panel_keys(0);
+    for (i = from; i < mlen && got < 0; i++)
+        if (mlog[i][0] == 0x90u)
+            got = mlog[i][1];
+    return got;
+}
+static int blacks_send(const int *want)
+{
+    uint32_t b;
+    int ok = 1;
+    for (b = 0; b < 8u; b++)
+        ok &= black_sends(b) == want[b];
+    return ok;
+}
+static void drum_open(const char *name)
+{
+    page = 0;
+    trail_n = 0;
+    octave = 0;
+    mlen = 0;                                               /* (the MIDI log from here: it holds 256) */
+    drum_bank = 0;
+    (void)load(name);
+    pv_gen++;
+    page_show(0);
+    screen_patch();
+    pages_ensure();
+    pages_focus(pages_home(), 0);
+    later(2000);
+}
+static int foot_reads(const char *s)
+{
+    foot_t f;
+    (void)foot_layout(&f);
+    return !strcmp(f.o, s);
+}
+static void sel_oct(uint32_t oct)                       /* SEL held + OCT- / OCT+ */
+{
+    panel_held |= 1u << BTN_SEL;
+    panel_edges(1u << BTN_SEL, 0);
+    loop();
+    tap(oct);
+    panel_held &= ~(1u << BTN_SEL);
+    panel_edges(0, 1u << BTN_SEL);
+    loop();
+}
+static void drum_bank_suite(void)
+{
+    static const int K909[3][8] = {{53, 55, 57, 59, 60, 62, 64, 65}, {67, 69, 71, 72, 54, 56, 63, 68}, {66, -1, -1, -1, -1, -1, -1, -1}};
+    static const int K808[2][8] = {{53, 55, 57, 59, 60, 62, 64, 65}, {67, 69, 71, 72, -1, -1, -1, -1}};
+    uint8_t rm[ENG_DRUM_LIST], rr[ENG_DRUM_LIST];
+    char nm[16];
+    int drums, map;
+    uint32_t w;
+    cfg.midi_out = 1;
+    drum_open("909 KIT");
+    check("909 Kit (D-520 banks): its keys reach 17 drum rows, its three Drum maps' as one list", eng_keys_rows(rm, rr) == 17u);
+    check("  black keys 1..8 play KICK .. HI TOM, the footer reads ROWS 1-8", blacks_send(K909[0]) && foot_reads(MSG_ROWS "1-8"));
+    tap(BTN_OCT_UP);
+    check("  OCT+: ROWS 9-16, the nudge names its first rows, the octave stays", drum_bank == 1u && octave == 0
+          && !strcmp(msg_text, MSG_ROWS "9-16: MID TOM CRASH..") && str_len(msg_text) <= 26u && foot_reads(MSG_ROWS "9-16"));
+    check("  black keys 1..8 play MID TOM CRASH RIDE ACCENT and the BD SD LT MT FLAMs (MIDI out: each row's own note)", blacks_send(K909[1]));
+    tap(BTN_OCT_UP);
+    check("  OCT+ again: ROWS 17-24, HT FLAM on black key 1, the others silent", drum_bank == 2u && !strcmp(msg_text, MSG_ROWS "17-24: HT FLAM")
+          && foot_reads(MSG_ROWS "17-24") && blacks_send(K909[2]));
+    tap(BTN_OCT_UP);
+    check("  OCT+ at the last bank: it stays", drum_bank == 2u && octave == 0);
+    tap(BTN_OCT_DOWN);
+    tap(BTN_OCT_DOWN);
+    check("  OCT- twice: ROWS 1-8 again", drum_bank == 0u && foot_reads(MSG_ROWS "1-8") && blacks_send(K909[0]));
+
+    seq_select(0);                                          /* the SEQ page on DRUMS: the grid shows the bank's rows */
+    tap(BTN_SEQ);
+    drums = eng_steps_module(0);
+    map = seq_map();
+    seq_row_name(map, 1, nm);
+    check("909 Kit's SEQ page: the grid's rows 1-8 (SNARE second), the footer ROWS 1-8", page == PAGE_SEQ && map >= 0 && !strcmp(nm, "SNARE")
+          && foot_reads(MSG_ROWS "1-8"));
+    tap(BTN_OCT_UP);
+    check("  OCT+ alone pages the steps as before (one page: ALL STEPS SHOWN), the bank stays", drum_bank == 0u && page == PAGE_SEQ);
+    sel_oct(BTN_OCT_UP);
+    seq_row_name(seq_map(), 1, nm);
+    check("  SEL + OCT+: the grid shows ROWS 9-16 by name, SEL's release does not open SONG", drum_bank == 1u && page == PAGE_SEQ
+          && !strcmp(nm, "CRASH") && on_screen("CRASH") && foot_reads(MSG_ROWS "9-16"));
+    th = thru_head;
+    panel_keys(1u << BLACK_N[1]);                           /* black key 2: CRASH, picked and sounding through the track */
+    panel_keys(0);
+    check("  black key 2 picks CRASH (note 69), the row the white keys write", seq_row == 1 && seq_row_note(seq_map(), seq_row) == 69u);
+    w = eng_steps_note((uint32_t)drums, 1, 69);
+    panel_keys(1u << 2);                                    /* G3: step 2 */
+    panel_keys(0);
+    loop();
+    check("  a white key switches CRASH's hit on the step", (eng_steps_note((uint32_t)drums, 1, 69) != 0) != (w != 0));
+    panel_keys(1u << 2);
+    panel_keys(0);
+    loop();
+    sel_oct(BTN_OCT_UP);
+    seq_row_name(seq_map(), 0, nm);
+    check("  SEL + OCT+ again: ROWS 17-24, HT FLAM alone, the selected row kept within it", drum_bank == 2u && !strcmp(nm, "HT FLAM")
+          && seq_row == 0 && (seq_row_name(seq_map(), 1, nm), nm[0] == 0));
+    panel_keys(1u << BLACK_N[3]);                           /* black key 4: no row in this bank */
+    panel_keys(0);
+    check("  a black key past the bank's rows picks nothing", seq_row == 0);
+    sel_oct(BTN_OCT_DOWN);
+    sel_oct(BTN_OCT_DOWN);
+    check("  SEL + OCT- twice: ROWS 1-8", drum_bank == 0u);
+    tap(BTN_HOME);
+
+    drum_open("808 KIT");
+    check("808 Kit: 12 rows, BD .. CB on black keys 1..8", eng_keys_rows(rm, rr) == 12u && blacks_send(K808[0]) && foot_reads(MSG_ROWS "1-8"));
+    tap(BTN_OCT_UP);
+    check("  OCT+: MT/MC HT/HC CY AC on black keys 1..4, the rest silent", drum_bank == 1u && blacks_send(K808[1])
+          && !strcmp(msg_text, MSG_ROWS "9-16: MT/MC HT/HC..") && foot_reads(MSG_ROWS "9-16"));
+
+    drum_open("MERIDIAN 8");                                /* (drum_bank 0 again: drum_open) */
+    check("a kit of 8 rows (Meridian 8): no banks, the footer = OCT =", eng_keys_rows(rm, rr) == 8u && foot_reads(MSG_FOOT_OCT));
+    {                                                       /* the octave's own slot: the tempo stays put whatever the octave */
+        foot_t f;
+        uint32_t xt = 0, widest = 0, moved = 0;
+        int32_t o;
+        for (o = -3; o <= 3; o++) {
+            octave = o;
+            (void)foot_layout(&f);
+            if (o == -3)
+                xt = f.xt;
+            moved += f.xt != xt;
+            widest = text_w(&FONT_F, f.o, -1) > widest ? text_w(&FONT_F, f.o, -1) : widest;
+        }
+        octave = 0;
+        check("  the footer: the tempo at the same x in every octave state, the octave's slot its widest", moved == 0u && widest == FOOT_OCT_W);
+    }
+    {                                                       /* the bank stays across patch loads, clamped to the new kit's banks;
+                                                             * no bank on a kit of 8 rows (the owner, 2026-11-19) */
+        drum_open("909 KIT");
+        tap(BTN_OCT_UP);
+        tap(BTN_OCT_UP);
+        check("bank across loads: the 909 Kit on ROWS 17-24", drum_bank == 2u && foot_reads(MSG_ROWS "17-24"));
+        (void)load("808 KIT");
+        pv_gen++;
+        page_show(0);
+        screen_patch();
+        later(500);
+        check("  the 808 Kit loaded: clamped to its last bank, ROWS 9-16, MT/MC on black key 1", drum_bank == 1u && foot_reads(MSG_ROWS "9-16")
+              && black_sends(0) == 67);
+        (void)load("MERIDIAN 8");
+        pv_gen++;
+        page_show(0);
+        screen_patch();
+        later(500);
+        check("  Meridian 8 loaded (8 rows): no bank, the octave footer", drum_bank == 0u && foot_reads(MSG_FOOT_OCT));
+    }
+    tap(BTN_OCT_UP);
+    check("  OCT+ shifts the octave as before, black key 1 still plays row 1", octave == 1 && foot_reads(MSG_FOOT_OCT_UP "+")
+          && black_sends(0) == eng_drummap_note((uint32_t)eng_keys_drummap(), 0));
+    octave = 0;
+    drum_bank = 0;
+    mlen = 0;
+    page_show(0);
+}
+
 int main(void)
 {
     static uint16_t before[240 * 240];
@@ -892,28 +1060,31 @@ int main(void)
               && on_screen("808 KIT") && K1_TAB == KNOB_HUE[0]);
     }
     {                                                       /* the footer: the octave in a slot of its own, so the tempo stays
-                                                             * put whatever the octave (the owner, 2026-10-24) */
+                                                             * put whatever the octave (the owner, 2026-10-24); the 808 Kit's 12
+                                                             * drum rows: the bank in its place (D-520), the tempo put there too
+                                                             * (a kit of 8 rows: drum_bank_suite) */
         foot_t f;
-        uint32_t xt = 0, widest = 0, moved = 0;
+        uint32_t xt = 0, moved = 0, rows = 1;
         int32_t o, was = octave;
         for (o = -3; o <= 3; o++) {
             octave = o;
+            drum_bank = (uint8_t)(o & 1);
             (void)foot_layout(&f);
             if (o == -3)
                 xt = f.xt;
             moved += f.xt != xt;
-            widest = text_w(&FONT_F, f.o, -1) > widest ? text_w(&FONT_F, f.o, -1) : widest;
+            rows &= !strcmp(f.o, o & 1 ? MSG_ROWS "9-16" : MSG_ROWS "1-8");
         }
         octave = was;
-        check("the footer: the tempo at the same x in every octave state, the octave's slot its widest", moved == 0u
-              && widest == FOOT_OCT_W);
+        drum_bank = 0;
+        check("the footer on the 808 Kit: ROWS 1-8 / 9-16 in the octave's slot, the tempo at the same x in every state", moved == 0u && rows);
     }
     {                                                       /* #291: the screen as text, as SCREEN reports it */
         uint8_t idx[SCR_N];
         uint32_t n = scr_list(idx), i, ordered = 1;
         for (i = 1; i < n; i++)
             ordered &= scr_text[idx[i - 1]].y <= scr_text[idx[i]].y;
-        check("the screen as text: the device page's octave and K1's row, in reading order", on_screen(MSG_FOOT_OCT) && n > 4u && ordered);
+        check("the screen as text: the device page's octave slot (ROWS 1-8) and K1's row, in reading order", on_screen(MSG_ROWS "1-8") && n > 4u && ordered);
     }
 
     {   /* SELECT / ALGO (the owner's design, 2026-10-24): no toast, the header shows where they went; the header's sections
@@ -975,11 +1146,11 @@ int main(void)
         enc(1, 1);                                          /* (on the kit card's second page, as the tests below expect) */
         later(700);
         tap(BTN_OCT_UP);                                    /* the transport stopped, nothing else to redraw: the footer at once */
-        check("OCT+: the footer's octave at once (it stayed = OCT =), the message kept", octave == 1 && on_screen(MSG_FOOT_OCT_UP "+")
-              && !on_screen(MSG_FOOT_OCT) && on_screen(MSG_OCTAVE "+1"));
+        check("OCT+ (the 808 Kit's drum rows, D-520): the footer's ROWS 9-16 at once, the nudge kept", drum_bank == 1u && octave == 0
+              && on_screen(MSG_ROWS "9-16: MT/MC") && !on_screen(MSG_ROWS "1-8"));
         tap(BTN_OCT_DOWN);
-        check("OCT-: = OCT = again", octave == 0 && on_screen(MSG_FOOT_OCT));
-        later(1100);                                        /* (the OCTAVE message ends) */
+        check("OCT-: ROWS 1-8 again", drum_bank == 0u && octave == 0 && on_screen(MSG_ROWS "1-8"));
+        later(NUDGE_MS + 100u);                             /* (the bank's nudge ends) */
         param_now = 0;
     }
 
@@ -1418,6 +1589,7 @@ int main(void)
             loop();
         }
         check("every button: CC 127 on the press, 0 on the release", all);
+        drum_bank = 0;                                      /* (OCT- then OCT+ on the 808 Kit picked its second drum bank, D-520) */
         pages_focus(1, 0);                                  /* (DRUMS: SELECT lands on the 808 kit card, where PRESET loads a
                                                              * sound, so the patch is edited, D-1053) */
         loop();
@@ -2733,12 +2905,12 @@ int main(void)
                 panel_keys(1u << n);
                 for (i = 0; i < 3; i++)
                     eng_render(l, r, 128);
-                ok &= (inst_pool[E.node[map].inst0].s.dm.gate >> b & 1u) && key_eng[n] == seq_row_note(map, b)
-                      && sent(m0, 0x90u, seq_row_note(map, b), 100u) && mlen == m0 + 1;
+                ok &= (inst_pool[E.node[map].inst0].s.dm.gate >> b & 1u) && key_eng[n] == (uint32_t)eng_drummap_note((uint32_t)map, b)
+                      && sent(m0, 0x90u, (uint32_t)eng_drummap_note((uint32_t)map, b), 100u) && mlen == m0 + 1;
                 panel_keys(0);
                 for (i = 0; i < 3; i++)
                     eng_render(l, r, 128);
-                ok &= inst_pool[E.node[map].inst0].s.dm.gate == 0 && sent(m0, 0x80u, seq_row_note(map, b), 0u) && mlen == m0 + 2;
+                ok &= inst_pool[E.node[map].inst0].s.dm.gate == 0 && sent(m0, 0x80u, (uint32_t)eng_drummap_note((uint32_t)map, b), 0u) && mlen == m0 + 2;
             }
             snprintf(what, sizeof what, "%s: black keys 1..8 play rows 1..8 (the device page), MIDI out the rows' notes", KIT[kit]);
             check(what, ok);
@@ -2780,7 +2952,7 @@ int main(void)
             panel_keys(1u << 3);
             for (i = 0; i < 3; i++)
                 eng_render(l, r, 128);
-            ok = inst_pool[E.node[map].inst0].s.dm.gate == 2u && sent(mlen - 1, 0x90u, seq_row_note(map, 1), 100u);
+            ok = inst_pool[E.node[map].inst0].s.dm.gate == 2u && sent(mlen - 1, 0x90u, (uint32_t)eng_drummap_note((uint32_t)map, 1), 100u);
             panel_keys(0);
             octave = 0;
             tap(BTN_ENV);                                   /* the environment: the same */
@@ -2794,12 +2966,12 @@ int main(void)
             check(what, ok);
             for (i = 0; i < 3; i++)
                 eng_render(l, r, 128);
-            eng_note_on(seq_row_note(map, 2), ENG_ONE, 1);  /* MIDI in: by note number, as before */
+            eng_note_on((uint32_t)eng_drummap_note((uint32_t)map, 2), ENG_ONE, 1);  /* MIDI in: by note number, as before */
             for (i = 0; i < 3; i++)
                 eng_render(l, r, 128);
             snprintf(what, sizeof what, "%s: a MIDI note still plays the row of its note", KIT[kit]);
             check(what, inst_pool[E.node[map].inst0].s.dm.gate == 4u);
-            eng_note_off(seq_row_note(map, 2), 1);
+            eng_note_off((uint32_t)eng_drummap_note((uint32_t)map, 2), 1);
             if (kit == 3u) {
                 held_key(BTN_REC, 1);
                 check("<7PH: DRUMS disarmed, Main's keys back on PATTERN", eng_armed() < 0 && eng_keys_drummap() < 0);
@@ -4416,6 +4588,47 @@ int main(void)
             snap_to(getenv("PANEL_SNAP_ROWS"));
         }
     }
+    {   /* the 909 Kit's one hi-hat LEVEL (#1124): the hihat LEVEL row also sets the open hat's level VCA, which sits in the
+         * sibling open hat card inside the 909 kit card; a K knob turn and a card preset load set both */
+        uint32_t d, g, k, fg = 0, fk = 0, found = 0, ch = 0, oh = 0, gain = 0;
+        int32_t was;
+        while (page != 0u && trail_n)
+            tap(BTN_HOME);
+        check("909 Kit: loads", load("909 KIT") == 0);
+        pv_gen++;
+        page = 0;
+        trail_n = 0;
+        pg_list_btn = -1;
+        pages_ensure();
+        for (d = 0; d < pg_ndev && !(pg_dev[d].nlen == 7u && !memcmp(pg_dev[d].name, "909 kit", 7)); d++)
+            ;
+        check("909 Kit: the 909 kit card is a device", d < pg_ndev);
+        for (g = 0; d < pg_ndev && !found && g < pg_dev[d].npg; g++)
+            for (k = 0; !found && k < pg_page[pg_dev[d].pg0 + g].nrows; k++) {
+                const ppage_t *pg = &pg_page[pg_dev[d].pg0 + g];
+                const uint8_t *x = row_more(pg, k);
+                if (x && x[0] == 1u && eng_type(pg->mod[k]) == T_VCA && eng_type(x[1]) == T_VCA && x[2] == pg->par[k]) {
+                    found = 1;
+                    fg = g;
+                    fk = k;
+                    ch = pg->mod[k];
+                    oh = x[1];
+                    gain = pg->par[k];
+                }
+            }
+        check("909 Kit: one VCA level row also sets a second VCA (the hihat LEVEL: closed and open hat)", found && ch != oh);
+        if (found) {
+            pages_focus(d, fg);
+            later(50);
+            was = eng_get_param(oh, gain);
+            enc(2u + fk, -4);
+            check("909 Kit: turning hihat LEVEL down moves the closed and the open hat's VCA, to the same value",
+                  eng_get_param(ch, gain) < was && eng_get_param(oh, gain) == eng_get_param(ch, gain));
+            (void)dp_list(d);
+            check("909 Kit: its Init preset sets both back", dp_load(d, 0) == 0 && eng_get_param(ch, gain) == was
+                  && eng_get_param(oh, gain) == was);
+        }
+    }
     /* The panel's two recording entry points preview the same reverse step as playback. */
     {
         FILE *f = fopen("build/panel-fixtures/steps-direction-1-64.m1p", "rb");
@@ -5097,6 +5310,7 @@ int main(void)
         check("arm-many: its Drum map seen as a device", seen == 1u);
         page_show(0);
     }
+    drum_bank_suite();
     nudge_suite();
     steprec_suite();
     host_pt_init();                                     /* (the pattern store on: the SEQ page's pattern rows show, #901) */

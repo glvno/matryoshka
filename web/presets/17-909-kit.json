@@ -873,7 +873,7 @@
    "factoryPatterns": {
     "version": 1,
     "ids": [
-     "b1165f72"
+     "06deed68"
     ]
    },
    "patterns": [
@@ -7396,7 +7396,13 @@
     {
      "module": 38,
      "param": "gain",
-     "label": "level"
+     "label": "level",
+     "also": [
+      {
+       "module": 103,
+       "param": "gain"
+      }
+     ]
     },
     {
      "module": 27,
@@ -8456,7 +8462,13 @@
      "module": 38,
      "param": "gain",
      "label": "level",
-     "head": "hihat"
+     "head": "hihat",
+     "also": [
+      {
+       "module": 103,
+       "param": "gain"
+      }
+     ]
     },
     {
      "module": 27,

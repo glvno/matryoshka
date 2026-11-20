@@ -86,6 +86,8 @@ static int hc_harm(void) { return (sr_on ? eng_steps_harm((uint32_t)seq_module()
 static int hc_fx_bank(void) { return eng_fx_count() > 0u; }
 static int hc_pattern_store(void) { return pt_on; }   /* (the pattern store is claimed: the SEQ page's pattern rows, #901) */
 static int hc_learning(void) { return learn_live() == 1; }   /* (MIDI learn waits for a knob to pick its row, midi_learn.c, #1067) */
+static int hc_oct_banks(void) { return drum_bank_oct(); }   /* (OCT picks the drum bank, not the octave: D-520) */
+static int hc_drum_banks(void) { return page == PAGE_SEQ && seq_map() >= 0 && seq_rl_n > ENG_DRUM_ROWS; }   /* (a drum grid in banks: SEL + OCT) */
 
 /* the rows of the patch buttons with a job in the loaded patch (FX, LFO, EDIT, ARP; SEL, ENV and GLO are fixed): the
  * button by its own name, then its job: a Toggle "name on/off", a Page button "name pages", a Gate with a cable from its

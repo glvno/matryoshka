@@ -4975,11 +4975,13 @@ eng_mset_t eng_arms(uint32_t m)
 }
 int eng_armed(void) { return E.loaded && E.arm ? (int)E.arm - 1 : -1; }   /* (the first armed track: REC records into it) */
 
-/* the Drum map the keys reach (engine.h; the panel's black keys play its rows): of what hears Main's keys now (the armed
- * set, else what is cabled to them) at least one Drum map, on the keys or behind a track (through its Arpeggiator too), and
- * nothing that plays them as notes: a group taking the keys, the shared keyboard with Main's pitch / gate / velocity
- * cabled, an Arpeggiator on Main's keys, a track into no Drum map. The first such map, -1 none */
-int eng_keys_drummap(void)
+/* the Drum maps the keys reach (engine.h eng_keys_drummap, eng_keys_rows; the panel's black keys play their rows): of what
+ * hears Main's keys now (the armed set, else what is cabled to them) at least one Drum map, on the keys or behind a track
+ * (through its Arpeggiator too), and nothing that plays them as notes: a group taking the keys, the shared keyboard with
+ * Main's pitch / gate / velocity cabled, an Arpeggiator on Main's keys, a track into no Drum map. Every such map into
+ * *maps; the first, -1 none */
+static eng_mset_t steps_maps(uint32_t module);
+static int keys_maps(eng_mset_t *maps)
 {
     uint32_t m, g;
     int map = -1;
@@ -5001,14 +5003,46 @@ int eng_keys_drummap(void)
             return -1;
     for (m = 0; m < E.nmod; m++) {
         int d = -1;
-        if (E.node[m].type == T_DRUMMAP && E.node[m].ksrc == 1u && (!E.armany || ARMED(m)))
+        if (E.node[m].type == T_DRUMMAP && E.node[m].ksrc == 1u && (!E.armany || ARMED(m))) {
             d = (int)m;
-        else if (E.node[m].type == T_STEPS && hears_trk(m) && (d = eng_steps_drummap(m)) < 0)
-            return -1;
+            *maps = mset_or(*maps, mset_one(m));
+        } else if (E.node[m].type == T_STEPS && hears_trk(m)) {
+            if ((d = eng_steps_drummap(m)) < 0)
+                return -1;
+            *maps = mset_or(*maps, steps_maps(m));
+        }
         if (map < 0)
             map = d;
     }
     return map;
+}
+int eng_keys_drummap(void)
+{
+    eng_mset_t maps = mset_none();
+    return keys_maps(&maps);
+}
+
+/* the rows of the Drum maps in `maps` as one list (D-520): the maps in module order, each map's rows in order; with two
+ * maps or more, the rows whose note is 0 are left out (unless that leaves none). At most ENG_DRUM_LIST */
+static uint32_t drum_list(eng_mset_t maps, uint8_t *map, uint8_t *row)
+{
+    uint32_t m, r, n = 0, count = 0, all;
+    for (m = 0; m < E.nmod; m++)
+        count += mset_has(maps, m) && E.node[m].type == T_DRUMMAP;
+    for (all = count == 1u; all < 2u && !n; all++)
+        for (m = 0; m < E.nmod; m++)
+            if (mset_has(maps, m) && E.node[m].type == T_DRUMMAP)
+                for (r = 0; r < ENG_DRUM_ROWS && n < ENG_DRUM_LIST; r++)
+                    if (all || eng_drummap_note(m, r) > 0) {
+                        map[n] = (uint8_t)m;
+                        row[n++] = (uint8_t)r;
+                    }
+    return n;
+}
+uint32_t eng_keys_rows(uint8_t *map, uint8_t *row)
+{
+    eng_mset_t maps = mset_none();
+    return keys_maps(&maps) < 0 ? 0u : drum_list(maps, map, row);
 }
 
 /* live recording on a track (#135, #139; engine.ts setRec): while it runs, the notes played through it land on the
@@ -6025,6 +6059,18 @@ int eng_drum_name(const uint8_t *p, uint32_t len, uint32_t module, uint32_t r, c
     out[c] = 0;
     return c > 0;
 }
+/* the Drum maps a track plays: from its keys out, directly or through the Arpeggiator it feeds */
+static eng_mset_t steps_maps(uint32_t module)
+{
+    eng_mset_t s = mset_none();
+    uint32_t i;
+    if (!steps_inst(module))
+        return s;
+    for (i = 0; i < E.nmod; i++)
+        if (E.node[i].type == T_DRUMMAP && (E.node[i].ksrc >= 2u && key_after(E.node[i].ksrc - 2u, module)))
+            s = mset_or(s, mset_one(i));
+    return s;
+}
 int eng_steps_drummap(uint32_t module)
 {
     uint32_t i;
@@ -6034,6 +6080,10 @@ int eng_steps_drummap(uint32_t module)
         if (E.node[i].type == T_DRUMMAP && (E.node[i].ksrc >= 2u && key_after(E.node[i].ksrc - 2u, module)))
             return (int)i;                       /* (directly, or through the Arpeggiator the track plays) */
     return -1;
+}
+uint32_t eng_steps_rows(uint32_t module, uint8_t *map, uint8_t *row)
+{
+    return drum_list(steps_maps(module), map, row);
 }
 int eng_drummap_note(uint32_t map, uint32_t r)
 {

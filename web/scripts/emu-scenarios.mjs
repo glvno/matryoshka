@@ -261,9 +261,9 @@ class Target {
   }
   /** wait up to `ms` (times SLACK) for `s` on the LCD */
   waitText(s, ms = 3000) { return this.waitFor(() => this.text(s), ms); }
-  /** wait up to `ms` for the FM-1's own device page (its octave in the footer), not the sandbox page, which has the same
-   *  footer with SANDBOX in it (D-232) */
-  waitOwnPage(ms = 3000) { return this.waitFor(async () => (await this.text('= OCT =')) && !(await this.text('SANDBOX')), ms); }
+  /** wait up to `ms` for the FM-1's own device page (its octave in the footer, or a drum track's bank, ROWS 1-8, D-520),
+   *  not the sandbox page, which has the same footer with SANDBOX in it (D-232) */
+  waitOwnPage(ms = 3000) { return this.waitFor(async () => ((await this.text('= OCT =')) || (await this.text('ROWS '))) && !(await this.text('SANDBOX')), ms); }
   /** wait up to `ms` for the sandbox page with the editor's page on it (D-232): a device page (its octave in the footer)
    *  with SANDBOX where the patch's name goes, and not the card that shows before the first page */
   waitSandboxPage(ms = 3000) {
@@ -359,7 +359,7 @@ class Emu extends Target {
    *  back each, none when a device page shows (there a tap would move to its first page); false after `tries` */
   async home(tries = 6) {
     for (let i = 0; ; i++) {
-      if (await this.text('= OCT =')) return true;
+      if ((await this.text('= OCT =')) || (await this.text('ROWS '))) return true;
       if (i >= tries) return false;
       await this.tap(B.home);
       await this.elapse(300);
@@ -1491,6 +1491,33 @@ async function main() {
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
     },
+    async drumBanks() {   // D-520 (banks, the owner 2026-11-19): the 909 Kit's 17 rows from the black keys, 8 at a time
+      await check('banks: the 909 Kit opens, synced', await openSynced('909 Kit'));
+      await check('banks: the footer reads ROWS 1-8 (its drum rows in banks, not the octave)', await emu.waitText('ROWS 1-8', 3000));
+      await emu.tap(B.octUp);
+      await check('banks: OCT+ shows ROWS 9-16, the nudge names its first rows', await emu.waitText('ROWS 9-16: MID TOM CRASH', 3000));
+      const before = await emu.windows(8, 25);      // (quiet first)
+      await emu.key(BLACK[1], true);                // black key 2 in bank 2: CRASH
+      const held = await emu.windows(16, 25);
+      await emu.key(BLACK[1], false);
+      await emu.windows(20, 25);
+      const top = Math.max(...held.map((x) => x[1])), floor = Math.max(...before.map((x) => x[1]));
+      // (a cymbal: its peak sits under LOUD, which the plates reach; heard is well over the quiet before it)
+      await loudCheck('banks: black key 2 plays CRASH from the FM-1\'s own keys, heard', top, top > 4 * QUIET && top > 4 * floor,
+        `peak ${top}, quiet before ${floor}; ${prof(held)}`);
+      // the SEQ page shows the same bank by name; SEL held + OCT- / OCT+ picks the bank there
+      await emu.tap(B.seq, 120);
+      await check('banks: SEQ opens the drum grid on ROWS 9-16 (CRASH on screen)', (await emu.waitText('ALGO track', 3000)) && (await emu.waitText('CRASH', 2000)));
+      await emu.key(B.scl, true);
+      await emu.elapse(100);
+      await emu.tap(B.octDown);
+      await emu.key(B.scl, false);
+      await emu.elapse(200);
+      await check('banks: SEL + OCT- on the grid: ROWS 1-8 (SNARE), the SEQ page stays', (await emu.waitText('SNARE', 2000)) && (await emu.waitText('ROWS 1-8', 2000))
+        && (await emu.text('ALGO track')));
+      await emu.tap(B.seq, 120);
+      await emu.waitOwnPage(3000);
+    },
     async playOnce() {   // #632 (D-820): SEQ held + PLAY counts in a bar with a click, plays the pattern once, stops by itself
       await check('play once: the 808 Kit opens, synced', await openSynced('808 Kit'));
       await emu.key(B.seq, true);
@@ -2232,6 +2259,36 @@ async function main() {
         await emu.snap(`focus-turn-${k++}`);
         await check(`focus turns: ${enc === ENC.select ? 'SELECT' : 'ALGO'} ${n > 0 ? '+1' : '-1'}: the editor shows the FM-1's device`, r.ok, r.at);
       }
+    },
+    // #1124 (D-635, D-1055): the 909 Kit's hihat LEVEL also sets the open hat's level VCA, which sits in the sibling open
+    // hat card. A K knob turn on the FM-1 moves both in the editor, and a card preset from the FM-1 sets both again
+    async hats909() {
+      await check('909 hats: the 909 Kit opens, synced', await openSynced('909 Kit'));
+      const row = JSON.parse(await patchJson()).assemblies.find((a) => a.name === '909 kit').params.find((r) => r.head === 'hihat');
+      await check('909 hats: the hihat LEVEL row sets a second level VCA', row?.label === 'level' && row.also?.length === 1, JSON.stringify(row));
+      const gains = async () => { const p = JSON.parse(await patchJson()); return [row.module, row.also[0].module].map((id) => p.modules.find((m) => m.id === id).params.gain); };
+      // the hihat page, ALGO a page at a time from the card's first (its name in the header: the rows' big labels are
+      // not in the emulator's text font)
+      let found = await emu.text('HIHAT');
+      for (let n = 0; n < 12 && !found; n++) {
+        await emu.turn(ENC.algo, 1);
+        found = await emu.waitText('HIHAT', 1000);
+      }
+      await check('909 hats: ALGO reaches the hihat page', found, JSON.stringify({ editor: (await T()).focus, mirror: await page.evaluate(() => window.__m1test.emu()) }));
+      const before = await gains();
+      let moved = null;
+      for (let k = ENC.k1; k <= ENC.k4 && !moved; k++) {
+        await emu.turn(k, -10);
+        moved = await until(async () => { const g = await gains(); return g[0] < before[0] ? g : null; }, 1500);
+      }
+      await emu.snap('hats-909');
+      await check('909 hats: turning hihat LEVEL down on the FM-1 moves the closed and the open hat, to the same value',
+        !!moved && moved[1] === moved[0], `before ${before}, after ${moved ?? (await gains())}`);
+      await emu.elapse(800);
+      await emu.turn(ENC.preset, 1);
+      const back = await until(async () => { const g = await gains(); return g[0] === 1 && g[1] === 1 ? g : null; }, 3000);
+      await check('909 hats: the next card preset from the FM-1 sets both levels back to 1', !!back, `${await gains()}`);
+      await emu.elapse(1200);
     },
     // #432: a device set to no preset (a patch just opened) stands on the entry whose values it has: Silver Box's engine
     // opens on Init's, so the first PRESET turn right loads the preset after Init, not Init again. It must open on that

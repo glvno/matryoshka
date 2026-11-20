@@ -56,12 +56,12 @@ export const EFFECTS = [
   'entry', 'entry_pattern', 'add_entry', 'dup_entry', 'transpose', 'song_play', 'song', 'delete_entry', 'back_steps',
   'tab', 'scroll', 'set', 'save_close', 'run_row',
   'editor', 'analog_out', 'chord_button', 'fx_page', 'fx_toggle', 'fx_row',
-  'pattern_save', 'pattern_new', 'pattern_load', 'condition', 'fill', 'ratchet', 'micro', 'learn_row',
+  'pattern_save', 'pattern_new', 'pattern_load', 'condition', 'fill', 'ratchet', 'micro', 'drum_bank', 'learn_row',
 ] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 /** the conditions a row can show under (help_ui.c hc_<name>); '!name': when it is false */
-export const CONDITIONS = ['list', 'dev_presets', 'dev_store', 'dev_keys', 'long_track', 'tracks', 'menu_guide', 'menu_page', 'menu_system', 'roll', 'harm', 'roll_preview', 'roll_silent', 'fx_bank', 'pattern_store', 'learning'] as const;
+export const CONDITIONS = ['list', 'dev_presets', 'dev_store', 'dev_keys', 'long_track', 'tracks', 'menu_guide', 'menu_page', 'menu_system', 'roll', 'harm', 'roll_preview', 'roll_silent', 'fx_bank', 'pattern_store', 'oct_banks', 'drum_banks', 'learning'] as const;
 export type Condition = (typeof CONDITIONS)[number];
 
 export interface ControlRow {
@@ -134,8 +134,10 @@ export const CONTROLS: ControlRow[] = [
     help: 'the SEQ page: from a Steps track’s device page that track, else the track shown last' },
   { id: 'seq-back', gesture: { do: [B('SEQ')] }, does: 'back', everywhere: at(70, ['drum', 'roll', 'live', 'song']), listed: false, effect: 'back', hint: 'SEQ back',
     help: 'out of the SEQ or SONG page, back where you were' },
-  { id: 'octave', gesture: { do: [B('OCT-'), B('OCT+')] }, does: 'octave', sheet: { step: 90 }, everywhere: at(80, but('drum', 'menu', 'step')), effect: 'octave', hint: 'OCT octave',
+  { id: 'octave', gesture: { do: [B('OCT-'), B('OCT+')] }, does: 'octave', when: '!oct_banks', sheet: { step: 90 }, everywhere: at(80, but('drum', 'menu', 'step')), effect: 'octave', hint: 'OCT octave',
     help: 'the keys’ octave, up to three either way, on release: pressing both opens the controls sheet and changes neither' },
+  { id: 'drum-bank', gesture: { do: [B('OCT-'), B('OCT+')] }, does: 'next/prev 8 rows', when: 'oct_banks', everywhere: at(80, ['device', 'env']), effect: 'drum_bank',
+    help: 'while the keys reach a drum track with more than 8 rows (the rows of every Drum map it plays, as one list), the next or previous 8 of them: black keys 1..8 play that bank of rows, the footer shows ROWS 1-8, ROWS 9-16 or ROWS 17-24 in the octave’s place, and the bar names the bank and its first rows' },
   { id: 'tempo', gesture: { hold: 'PLAY', do: [E('PRESET')] }, does: 'tempo', everywhere: at(90, ALL), effect: 'tempo',
     help: 'the tempo, 1 bpm a click (the global one while TEMPO is GLOBAL; in sandbox mode the browser’s); PLAY’s release then neither starts nor stops' },
   { id: 'patch', gesture: { hold: 'HOME', do: [E('PRESET')] }, does: 'patches', everywhere: at(100, but('menu', 'sandbox')), effect: 'patch',
@@ -204,7 +206,7 @@ export const CONTROLS: ControlRow[] = [
   { id: 'step', gesture: { do: [WHITE] }, does: 'toggle rowstep n', plain: 'step on / off', sheet: { drum: 20 }, effect: 'step', hint: 'WHITE step',
     help: 'the selected drum row’s hit on that step' },
   { id: 'row-key', gesture: { do: [BLACK] }, does: 'pick a row', sheet: { drum: 10 }, effect: 'row', hint: 'BLACK row',
-    help: 'black keys 1..8 pick the drum rows and sound them while held; while REC records, the hit goes into the nearest step' },
+    help: 'black keys 1..8 pick the drum rows shown and sound them while held; while REC records, the hit goes into the nearest step' },
   { id: 'row-select', gesture: { do: [E('SELECT')] }, does: 'pick a row', sheet: { drum: 130 }, listed: false, effect: 'row', hint: 'SELECT row',
     help: 'the row, silently' },
   { id: 'roll-view', gesture: { do: [E('SELECT')] }, does: 'next 8-pitch page', sheet: { roll: 70, live: 30 }, effect: 'roll_view', hint: 'SELECT view',
@@ -214,6 +216,8 @@ export const CONTROLS: ControlRow[] = [
     help: 'the view jumps to that key’s pitch; in step record this writes nothing and sounds only when note preview is on' },
   { id: 'steps-page', gesture: { do: [B('OCT-'), B('OCT+')] }, does: 'next/prev 16 steps', when: 'long_track', sheet: { drum: 90 }, effect: 'steps_page', hint: 'OCT 17+',
     help: 'a track of more than 16 steps: the next or previous 16' },
+  { id: 'drum-bank-seq', gesture: { hold: 'SEL', do: [B('OCT-'), B('OCT+')] }, does: 'other 8 rows', plain: 'the next or previous 8 drum rows', when: 'drum_banks', sheet: { drum: 92, step: 92 }, effect: 'drum_bank',
+    help: 'a drum track with more than 8 rows: the grid shows the next or previous 8, with their names, and black keys 1..8 pick, sound and write those rows; the footer shows ROWS 1-8, ROWS 9-16 or ROWS 17-24' },
   { id: 'track', gesture: { do: [E('ALGO')] }, does: 'track', sheet: { drum: 140, roll: 180, live: 40 }, effect: 'track', hint: 'ALGO track',
     help: 'the track shown, which the page arms' },
   { id: 'pattern', gesture: { do: [E('PRESET')] }, does: 'pattern', sheet: { drum: 60, roll: 190, live: 50 }, effect: 'pattern',
@@ -349,6 +353,7 @@ const STRIP: Record<string, string | ({ _: string } & Partial<Record<HelpState, 
   'pattern-save': 'save this pattern to the pattern store (over its link)', 'pattern-new': 'save this pattern to the store as a new copy',
   'pattern-load': 'load stored patterns into this pattern as you turn',
   clear: 'clear the whole track (press REC again to confirm)', 'steps-page': 'show the next or previous 16 steps',
+  'drum-bank': 'play the next or previous 8 drum sounds from the black keys', 'drum-bank-seq': 'show the next or previous 8 drum sounds',
   tie: 'tie the note on through that step (on its own step: a drone)', 'row-drone': 'make the selected row one long held note (a drone)', 'held-pitch': "change this step's pitch", 'held-velocity': "change this step's velocity",
   'held-chance': 'change the chance this step plays', 'held-chance-select': 'change the chance this step plays', 'held-cond': 'choose when this step plays: FILL, 1ST, every Nth pass',
   'held-ratchet': 'repeat this step 2 to 5 times inside the step', 'held-micro': 'push this step a little earlier or later',
@@ -500,6 +505,7 @@ export const CONDITION_TEXT: Record<Condition, string> = {
   menu_system: 'the SYSTEM tab', roll: 'a melodic track', harm: 'the keys on a Harmonizer: the seven lowest keys',
   roll_preview: 'a melodic track with note preview on', roll_silent: 'a melodic track with note preview off',
   fx_bank: 'a patch with a recognized master FX bus', pattern_store: 'while the pattern store is on',
+  oct_banks: 'the keys on a drum track of more than 8 rows', drum_banks: 'a drum track of more than 8 rows',
   learning: 'while MIDI learn waits for a row (GLO > MIDI 3/3, LEARN)',
 };
 
@@ -536,7 +542,7 @@ export const FM1_NOTES: { keys: string; text: string }[] = [
   { keys: 'OCT- + OCT+', text: 'the controls sheet: what the controls do where the FM-1 is now (its tab) and everywhere (EVERYWHERE), made from the same table as this list. ALGO switches the tab, SELECT scrolls, HOME closes it; the note keys and PLAY still work, the other controls do nothing meanwhile' },
   { keys: 'quick start', text: 'the card after power-on: HOME closes it, OCT- + OCT+ opens the controls sheet instead, HOME + SAVE turns it off for good (GLO › SYSTEM › QUICK START or FACTORY RESET turns it on again); any other knob or button closes it and then does its job' },
   { keys: 'FX, LFO, EDIT, ARP', text: 'patch buttons: the patch normally decides what each does (a gate, a Toggle that bypasses a module or assembly, or a list of device pages). On patches with a recognized master FX bus, FX lists the added effects; SELECT picks an effect, K1-K4 edit it, SEL turns it on or off, and FX or HOME returns. Effects already on the instrument’s interface stay there instead. The sheet lists the loaded patch’s jobs. On the SEQ and SONG pages FX and LFO keep the jobs below' },
-  { keys: 'the keys', text: 'they play what is armed (SEL, REC held + a black key, the SEQ page arms the track it shows); nothing armed, Main’s cables decide (KEYS WIRED, and the environment says WIRED on the devices they reach). While the keys reach a Drum map, black keys 1..8 play its rows on every page' },
+  { keys: 'the keys', text: 'they play what is armed (SEL, REC held + a black key, the SEQ page arms the track it shows); nothing armed, Main’s cables decide (KEYS WIRED, and the environment says WIRED on the devices they reach). While the keys reach a Drum map, black keys 1..8 play its rows on every page; a drum track with more than 8 rows (several Drum maps) plays them 8 at a time, OCT picking which 8 (SEL + OCT on the SEQ page)' },
   { keys: 'SAVE held at power-on', text: 'safe mode: the fallback patch, nothing read from flash; a restart leaves it (the loading screen says HOLD SAVE: SAFE MODE)' },
 ];
 

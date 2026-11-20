@@ -31,7 +31,8 @@ import { outputRange } from './ranges';
 import { picker } from './picker';
 import { selector } from './selector';
 import type { OriginUpdate } from './pattern-origin';
-import { ALLOC, deviceView, copiesOf, makeRoom, polyGroups, polyOfModule, setPoly, trackDrumMap, trackTargets } from './poly';
+import { ALLOC, deviceView, copiesOf, makeRoom, polyGroups, polyOfModule, setPoly, trackTargets } from './poly';
+import { trackDrumRows } from './drum-rows';
 import { dragControl } from './deck';
 import { isPin, PinsInUse, removeRoute } from './parameter-routing';
 import {
@@ -1970,9 +1971,9 @@ export class Editor {
       strip: () => this.stripFor(id).el,
       label: () => trackLabel(this.patch, id),
       plays: () => this.trackPlays(id),
-      drums: () => {
-        const map = trackDrumMap(this.patch, id);
-        return map ? Array.from({ length: DRUM_ROWS }, (_, r) => ({ name: drumRowName(map.names, r), note: Math.round(map.params[`n${r + 1}`] ?? 0) })) : null;
+      drums: () => {                // (every Drum map's rows, as the FM-1's SEQ page lists them in its banks: D-520, D-634)
+        const rows = trackDrumRows(this.patch, id);
+        return rows.length ? rows.map(({ name, note }) => ({ name, note })) : null;
       },
       notes: (n) => {
         const t = found();

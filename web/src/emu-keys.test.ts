@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The Emulator view's keys (emu-keys.ts) on the real firmware UI as WebAssembly (#467): the panel's keys sound what the
-// FM-1 plays for them (D-520: black keys 1..8 play a Drum map's rows 1..8, also with `repeat` on, D-430), MIDI notes their
-// own note number.
+// FM-1 plays for them (D-520: black keys 1..8 play a bank of 8 of the drum rows, also with `repeat` on, D-430; OCT picks
+// the bank), MIDI notes their own note number.
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { trackDrumRows } from './drum-rows';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { EmuKeys, keyBits, type EmuPanel } from './emu-keys';
 import { Fm1Ui } from './fm1-ui';
@@ -89,5 +90,49 @@ describe('the Emulator view plays the keys as the FM-1 does (#467)', () => {
     expect(keys.route(on(56), true).length).toBe(1);
     shown = false;
     expect(keys.route(off(56), true).length).toBe(1);   // (held when the view was left: still let go, so it ends)
+  }, 30_000);
+});
+
+describe('the Emulator view plays the drum banks as the FM-1 does (D-520)', () => {
+  /** the black keys 1..8 at octave 0, what each sounds now (null: silent) */
+  const blacks = (keys: EmuKeys): (number | null)[] => BLACK.slice(0, 8).map((b) => {
+    const note = 53 + b;
+    const out = keys.route(on(note), true);
+    keys.route(off(note), true);
+    return out.length && out[0].t === 'on' ? out[0].note : null;
+  });
+  const oct = (ui: Fm1Ui, id: 0 | 1): void => { ui.button(id, true); ui.button(id, false); };
+
+  it('the 909 Kit: OCT+ / OCT- step through its 17 rows 8 at a time, the octave stays', async () => {
+    const { keys, ui } = await panelOn('909 Kit');
+    const kit = FM1_PRESETS['909 Kit']();
+    const rows = trackDrumRows(kit, kit.modules.find((m) => m.type === 'steps')!.id).map((r) => r.note);
+    expect(rows.length).toBe(17);
+    expect(blacks(keys)).toEqual(rows.slice(0, 8));
+    oct(ui, 1);
+    expect(ui.octave).toBe(0);
+    expect(blacks(keys)).toEqual([67, 69, 71, 72, 54, 56, 63, 68]);   // MID TOM CRASH RIDE ACCENT, the BD SD LT MT FLAMs
+    oct(ui, 1);
+    expect(blacks(keys)).toEqual([66, null, null, null, null, null, null, null]);   // HT FLAM
+    oct(ui, 1);
+    expect(blacks(keys)[0]).toBe(66);   // (the last bank: OCT+ stays)
+    oct(ui, 0);
+    oct(ui, 0);
+    expect(blacks(keys)).toEqual([53, 55, 57, 59, 60, 62, 64, 65]);
+    expect(ui.octave).toBe(0);
+  }, 30_000);
+
+  it('the 808 Kit: bank 2 holds MT/MC HT/HC CY AC', async () => {
+    const { keys, ui } = await panelOn('808 Kit');
+    oct(ui, 1);
+    expect(blacks(keys)).toEqual([67, 69, 71, 72, null, null, null, null]);
+  }, 30_000);
+
+  it('a kit of 8 rows (Meridian 8): OCT stays the octave, the black keys play its rows at any octave', async () => {
+    const { keys, ui, rows } = await panelOn('Meridian 8');
+    oct(ui, 1);
+    expect(ui.octave).toBe(1);
+    const out = keys.route(on(53 + 12 + BLACK[0]), true);
+    expect(out[0]).toMatchObject({ t: 'on', note: rows[0] });
   }, 30_000);
 });
