@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, rowDef, validatePatch } from './patch';
-import { makeAssembly, fixAssemblies, keepParams, promote, setColumnBreak, setHeading } from './assembly';
+import { assembliesOf, makeAssembly, fixAssemblies, keepParams, promote, removeMember, setColumnBreak, setHeading } from './assembly';
 import { layoutOf, moveRows, moveSection, setLayout, type KnobOf, type Layout } from './arrange';
 import { devicesOf, patternDriver, findRow, fixFocus, homeDevice, groupStarts, LABEL_MAX, pageLabel, pageTitle } from './pages';
 import { PRESETS } from './presets';
@@ -21,11 +21,13 @@ describe('device pages', () => {
     expect(devicesOf(p, DEFS).find((d) => d.asm === a.id)!.track).toBe(track.id);
     expect(patternDriver(p, a, DEFS)).toBeUndefined();
   });
-  it('808 keeps its direct Drum maps before the indirectly triggered kit', () => {
+  it('808: DRUMS, then the kit card with its Drum maps inside (D-1059); a Drum map outside comes before the kit it triggers', () => {
     const p = PRESETS['808 Kit']();
-    const ds = devicesOf(p, DEFS);
-    expect(ds.slice(0, 5).map((d) => d.asm !== undefined ? 'kit' : p.modules.find((m) => m.id === d.module)!.type))
-      .toEqual(['fm1', 'steps', 'drummap', 'drummap', 'kit']);
+    const kinds = (): string[] => devicesOf(p, DEFS).slice(0, 5).map((d) => d.asm !== undefined ? 'kit' : p.modules.find((m) => m.id === d.module)!.type);
+    expect(kinds()).toEqual(['fm1', 'steps', 'kit', 'kit', 'output']);   // (the kit card, then the master FX bus)
+    const card = assembliesOf(p).find((a) => a.name === '808 kit')!;
+    for (const m of p.modules.filter((x) => x.type === 'drummap')) removeMember(p, card, m.id);
+    expect(kinds()).toEqual(['fm1', 'steps', 'drummap', 'drummap', 'kit']);
   });
 
   it('a plain module is a device of its parameters, four to a page; scopes are none', () => {

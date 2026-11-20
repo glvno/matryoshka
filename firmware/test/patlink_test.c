@@ -464,13 +464,13 @@ static void kits(void)
         pt_on = 1;
         printf("patlink: %s: %u linked patterns from the factory entries, its song over them\n", names[i], (unsigned)n);
     }
-    /* SAVE of an edited one (the 909 Kit's last, which would not fit in the patch): a new stored entry under the factory
-     * entry's name, linked, so the binary keeps its size; the others stay linked to the factory's */
+    /* SAVE of an edited one (the 909 Kit's last): a new stored entry under the factory entry's name, linked, so the binary
+     * takes the size it had before the edit; the others stay linked to the factory's */
     p = pl_links(&n)[3u * (n - 1u)];
     id = pl_link(p);
     OK(!pl_read(id, m1_up, sizeof m1_up, &in));
-    edit(p);
     len = m1_cur_len;
+    edit(p);
     nreplies = 0;
     pl_writeback();
     {

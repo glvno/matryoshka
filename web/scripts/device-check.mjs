@@ -94,15 +94,16 @@ export function checkScenarios(h) {
     return check(name, ok, detail);
   }
 
-  /** GLO's menu is up: its tab strip shows (MIDI PANEL SYSTEM INFO GUIDE; the INFO tab has no MENU header) */
+  /** GLO's menu is up: its tab strip shows (MIDI PANEL SYSTEM EQ INFO GUIDE; the INFO tab has no MENU header) */
   const inMenu = async () => { const t = await emu.texts(); return t.includes('PANEL') && t.includes('GUIDE'); };
-  /** GLO's menu on the tab whose rows show `row` (ALGO steps the tabs: MIDI, PANEL, SYSTEM, INFO, GUIDE) */
+  /** GLO's menu on the tab whose rows show `row` (ALGO steps the tabs and their pages: MIDI 1/2, MIDI 2/2, PANEL 1/2,
+   * PANEL 2/2, SYSTEM 1/2, SYSTEM 2/2, EQ, INFO, GUIDE; D-923) */
   async function menuTab(row) {
     if (!(await inMenu())) {
       await emu.tap(B.glo);
       await emu.waitFor(inMenu, 3000);
     }
-    for (let i = 0; i < 6 && !(await emu.text(row)); i++) {
+    for (let i = 0; i < 9 && !(await emu.text(row)); i++) {
       await emu.turn(ENC.algo, 1);
       await emu.elapse(300);
     }

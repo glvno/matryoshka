@@ -2921,7 +2921,14 @@ static int dp_pattern_module(uint32_t d)
             else sources = mset_or(sources, eng_arms(f));
         }
     }
-    if (has_map) sources = maps;  /* The drum map owns the drum default; companion melodic tracks keep their patterns. */
+    /* The drum map owns the drum default when a Steps track reaches it; companion melodic tracks keep their patterns. Maps
+     * that no track reaches drive nothing, so the other gate and keys sources decide (pages.ts patternDriver) */
+    if (has_map)
+        for (i = 0; i < (uint32_t)eng_nmodules(); i++)
+            if (mset_has(maps, i) && eng_type(i) == T_STEPS) {
+                sources = maps;
+                break;
+            }
     for (i = 0; i < (uint32_t)eng_nmodules(); i++) if (mset_has(sources, i) && eng_type(i) == T_STEPS) {
         if (found >= 0) return -1;
         found = (int)i;
