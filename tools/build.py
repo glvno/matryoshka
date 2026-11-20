@@ -564,6 +564,12 @@ def check(img, syms, dis, rts):
         errors.append(".fast_text is not inside NOINIT")
     placed = {mm.group(2): mm.group(1) for mm in re.finditer(r"^[0-9a-f]+ .*\sF\s+(\S+)\s+[0-9a-f]+\s+(\S+)$", syms, re.M)}
     off = [f"{f} ({placed.get(f, 'not in the build')})" for f in FAST_TEXT if placed.get(f) != ".fast_text"]
+    # (FAST_TEXT comes from the -O2 build's profile: at -Os, FELUCCA_SPEED=0, a function the compiler did not keep as one of
+    # its own, such as sch_lane, is in its callers, so only one compiled elsewhere fails there)
+    gone = [f for f in FAST_TEXT if f not in placed] if os.environ.get("FELUCCA_SPEED", SPEED) == "0" else []
+    if gone:
+        notes.append(f"FAST_TEXT functions not compiled as their own at -Os (in their callers): {', '.join(gone)}")
+        off = [o for o in off if o.split(" ", 1)[0] not in gone]
     if off:                                       # renamed, so out of line: else it was inlined, or is gone
         errors.append(f"FAST_TEXT functions not in .fast_text: {', '.join(off)}")
     if not sym("_pool_end") <= sym("_c1_ustack") < sym("_c1_sstack_top") <= sym("_guard0"):

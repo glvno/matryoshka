@@ -78,13 +78,14 @@ export function sharedFilterFactory(source: Patch): Patch {
   };
 
   if (source.name === 'Oracle V') {
+    const a440 = 74; // the A-440 Selector after the voices, the engine's way out (#862)
     const key = mono(6);
     const env = contour(12); // original EG still drives per-note oscillator poly-mod
     move(13, 38, 40, 41);
     wire(key.id, 'gate', env.id, 'gate');
     remove(c => (c.from.module === 6 && c.to.module === 38) || (c.from.module === 12 && c.to.module === 40)
       || (c.to.module === 13 && (c.from.module === 32 || c.from.module === 37))
-      || (c.from.module === 13 && c.to.module === 15) || (c.from.module === 15 && c.to.module === 65));
+      || (c.from.module === 13 && c.to.module === 15) || (c.from.module === 15 && c.to.module === a440));
     wire(key.id, 'vel', 38, 'in2');
     wire(env.id, 'env', 40, 'in');
     wire(32, 'out', 15, 'in');
@@ -95,9 +96,8 @@ export function sharedFilterFactory(source: Patch): Patch {
     wire(37, 'out', polyMod.id, 'in');
     wire(42, 'out', polyMod.id, 'cv');
     wire(polyMod.id, 'out', 13, 'cv');
-    wire(13, 'lp24', 65, 'l');
-    wire(13, 'lp24', 65, 'r');
-    root.outputs = [{ module: 13, port: 'lp24', label: 'out' }];
+    wire(13, 'lp24', a440, 'in1');
+    wire(13, 'lp24', a440, 'in2');
     module(13).name = 'shared filter';
     const outputScope = p.cables.find(c => c.to.module === 17 && c.to.port === 'a')!;
     outputScope.from = { module: 13, port: 'lp24' };
