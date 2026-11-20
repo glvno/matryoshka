@@ -574,6 +574,7 @@ pub fn run(app: &[u8], out: &str, levels: Option<&str>, strict: bool) -> ExitCod
         ("master-eq", Box::new(move |t: &mut Run, e: &mut u64| master_eq(app, t, e))),
         ("long-delay", Box::new(move |t: &mut Run, e: &mut u64| long_delay(app, t, e))),
         ("verona", Box::new(move |t: &mut Run, e: &mut u64| verona_hats(app, t, e, p))),
+        ("pad-map", Box::new(move |t: &mut Run, e: &mut u64| pad_map(app, t, e, p))),
     ];
     run_parts(&mut t, &mut emulated, parts);
     let wall = t0.elapsed().as_secs_f64();
@@ -1202,6 +1203,61 @@ fn verona_hats(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, 
     Ok(())
 }
 
+/// The global pad map (#1067): on the 808 Kit, HOME + SEL starts learn mode, black key 1 picks BD's row, and a pad's
+/// MIDI note 100 (no row of the kit's) becomes its pad and plays BD from then on; learn mode waits for row 2 until a
+/// HOME tap. The pad still plays BD after a boot without SAVE (the settings extension), and GLO > MIDI 4/4 shows it.
+fn pad_map(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
+    let Some(slot) = presets.iter().position(|(n, _)| n.starts_with("808")) else {
+        t.check("pad map: the factory 808 Kit is there", false, String::new());
+        return Ok(());
+    };
+    const PAD: u8 = 100; // E7: a note no row of the 808 Kit plays
+    const BLACK1: u8 = 15; // F#3, black key 1: row 1, BD
+    let open = |flash: Option<&[u8]>| -> Result<Machine, String> {
+        let mut m = Machine::boot(app, flash);
+        quick_start(&mut m, 9000)?;
+        wait_text(&mut m, DEVICE_PAGE, 9000)?;
+        m.run_for(2500)?;
+        m.midi(&[0xC0, slot as u8], 500)?;
+        m.run_for(1500)?;
+        Ok(m)
+    };
+    let mut m = open(None)?;
+    t.screen(&m, "pad map: the 808 Kit loads", &presets[slot].0);
+    let before = midi_note_peak(&mut m, PAD, 300)?;
+    m.run_for(1000)?;
+    m.key(HOME, true);
+    m.run_for(150)?;
+    m.tap(SEL, 120, 150)?;
+    m.key(HOME, false);
+    m.run_for(400)?;
+    t.screen(&m, "pad map: HOME + SEL on a kit: LEARN: KNOB OR DRUM KEY", "KNOB OR DRUM KEY");
+    m.tap(BLACK1, 120, 400)?;
+    t.screen(&m, "  black key 1: 1 BD: HIT A PAD", "1 BD: HIT A PAD");
+    m.midi(&[0x90, PAD, 100], 300)?;
+    m.midi(&[0x80, PAD, 0], 200)?;
+    t.screen(&m, "  the pad's note: NOTE E7 > 1 BD", "NOTE E7 > 1 BD");
+    m.run_for(1200)?;
+    t.screen(&m, "  a second later row 2 waits: 2 SD: HIT A PAD", "2 SD: HIT A PAD");
+    m.tap(HOME, 120, 400)?;
+    t.screen(&m, "  a HOME tap ends learn mode: PADS: 1 LEARNED", "PADS: 1 LEARNED");
+    m.run_for(2500)?;
+    let after = midi_note_peak(&mut m, PAD, 300)?;
+    t.check("pad map: note 100 played nothing before, now it plays BD", before < QUIET && after > 4 * QUIET, format!("peak before {before}, after {after}"));
+    m.run_for(6000)?; // (the settings are kept about 5 s after a change, without SAVE)
+    let flash = m.flash();
+    *emulated += m.ms();
+    let mut m = open(Some(&flash))?;
+    let kept = midi_note_peak(&mut m, PAD, 300)?;
+    t.check("  after a boot without SAVE the pad still plays BD (the settings extension)", kept > 4 * QUIET, format!("peak {kept}"));
+    m.run_for(1000)?;
+    m.tap(GLO, 120, 400)?;
+    let on = turn_until(&mut m, ALGO, 1, "PAD MAP", 3)?;
+    t.check("  GLO > MIDI 4/4: PAD MAP, row 1 BD with its pad NOTE E7", on && font::on_screen(m.lcd(), "1 BD") && font::on_screen(m.lcd(), "NOTE E7"), String::new());
+    *emulated += m.ms();
+    Ok(())
+}
+
 /// <7PH (editor-only since D-890, its bytes kept; web/scripts/emu-patches.ts) in the slot after the factory patches of a
 /// bank the first boot wrote: the flash to boot from, and that slot
 fn bank_with_7ph(app: &[u8], presets: &[(String, Vec<u8>)]) -> Result<(Vec<u8>, u8), String> {
@@ -1613,7 +1669,8 @@ fn count_in(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.tap(GLO, 120, 400)?;
-    m.turn(ALGO, 1, 400)?;                   // MIDI 2/3 (#596), MIDI 3/3 (#1067), then PANEL
+    m.turn(ALGO, 1, 400)?;                   // MIDI 2/4 (#596), MIDI 3/4, MIDI 4/4 (#1067), then PANEL
+    m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "count-in: the menu's PANEL tab has COUNT-IN", "COUNT-IN");
@@ -1629,7 +1686,8 @@ fn count_in(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.tap(GLO, 120, 400)?;
-    m.turn(ALGO, 1, 400)?;                   // MIDI 2/3, MIDI 3/3, then PANEL
+    m.turn(ALGO, 1, 400)?;                   // MIDI 2/4, MIDI 3/4, MIDI 4/4, then PANEL
+    m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "count-in: the setting survives a boot (the settings record's byte 12)", "1 BAR");
@@ -1750,7 +1808,8 @@ fn global_tempo(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.tap(GLO, 120, 400)?;
-    m.turn(ALGO, 1, 400)?;                   // MIDI 2/3 (#596), MIDI 3/3 (#1067), then PANEL
+    m.turn(ALGO, 1, 400)?;                   // MIDI 2/4 (#596), MIDI 3/4, MIDI 4/4 (#1067), then PANEL
+    m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "tempo: the menu's PANEL tab has TEMPO", "TEMPO");
@@ -1776,7 +1835,8 @@ fn global_tempo(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     tempo_turn(&mut m, 1)?;
     t.screen(&m, "tempo: the global tempo survives a boot without SAVE (299, and a click)", "TEMPO 300");
     m.tap(GLO, 120, 400)?;
-    m.turn(ALGO, 1, 400)?;                   // MIDI 2/3, MIDI 3/3, then PANEL
+    m.turn(ALGO, 1, 400)?;                   // MIDI 2/4, MIDI 3/4, MIDI 4/4, then PANEL
+    m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     m.turn(K4, 1, 400)?;
@@ -1789,7 +1849,8 @@ fn global_tempo(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.tap(GLO, 120, 400)?;
-    m.turn(ALGO, 1, 400)?;                   // MIDI 2/3, MIDI 3/3, then PANEL
+    m.turn(ALGO, 1, 400)?;                   // MIDI 2/4, MIDI 3/4, MIDI 4/4, then PANEL
+    m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     m.turn(ALGO, 1, 400)?;
     t.screen(&m, "tempo: PATCH survives a boot without SAVE", "PATCH");
@@ -1945,7 +2006,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.screen(&m, "  (the next patch)", &presets[1].0);
     patch_turn(&mut m, -1, 500)?;
     t.screen(&m, "  (and back, so step 4 starts from patch 1)", &presets[0].0);
-    let info = turn_until(&mut m, ALGO, 1, "VERSION", 8)?;   // MIDI 2/3, MIDI 3/3, PANEL, PANEL 2/2, SYSTEM, SYSTEM 2/2, EQ, INFO
+    let info = turn_until(&mut m, ALGO, 1, "VERSION", 9)?;   // MIDI 2/4, 3/4, 4/4, PANEL, PANEL 2/2, SYSTEM, SYSTEM 2/2, EQ, INFO
     t.snap(&m, "menu-info");
     t.check("ALGO until the INFO tab (at most 8 clicks)", info, String::new());
     m.tap(HOME, 120, 400)?;

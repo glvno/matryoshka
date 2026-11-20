@@ -182,6 +182,7 @@ static int m1_fact_sum(uint32_t s, uint32_t *crc);
 static int m1_fact_read(uint32_t off, uint8_t *p, uint32_t n);
 static uint32_t m1_fact_commit(const uint8_t *h);
 #include "tempo_glo.h"            /* the global tempo (D-907): proto.c, menu.c, main.c */
+#include "pad_map.h"              /* the global pad map (#1067): proto.c's PADS, ui.c's FACTORY RESET, midi_learn.c, main.c */
 #include "proto.c"
 #if FELUCCA_OTA
 /* usb.c's frame holds the longest frame proto.c's m1_handle and ota.c's ota_take accept: (8 M + 7) / 7 wire bytes is the

@@ -176,6 +176,14 @@
         <span class="menu-heading">MIDI learn (this patch)</span>
         <div id="midi-learn-list" class="midi-learn-list" role="group" aria-label="MIDI controls learned by this patch"></div>
         <p class="muted">A row’s ⋮ menu or the palette’s <b>MIDI learn…</b> waits for a knob, a fader, a pad’s axis or the pitch bend wheel of a MIDI controller, or one of its notes; the first that moves drives the row (a note at once). A learned note flips a switch row each time it is played and sets any other row by how hard it is played; it no longer plays a note in this patch. Low and High set where the control’s ends land in the row’s range (%). A learned control no longer does its usual job (CC 1 no longer moves Main’s mod wheel). When the controller also sent a CC with a job of its own while learn waited, the status line and this list say so (“CC 16 also sent: turns K1”). CC 80..86 and 120..127 cannot be learned, nor anything from an FM-1. The patch keeps what it learned, and the FM-1 plays it on its own for every row its pages show. On the FM-1, hold HOME and press SEL for learn mode, turn a row’s knob, then move the control.</p>
+        <!-- the global pad map (main.ts showPads): only while the connected FM-1 keeps one (INFO feature bit 29, PADS / PADS_NOW) -->
+        <div id="pads-section" class="pads-section" hidden>
+          <span class="menu-heading">Pads</span>
+          <button id="pads-on" type="button" aria-pressed="false" title="Whether the FM-1 plays drum rows from the pads below">PAD MAP: off</button>
+          <div id="pads-list" class="midi-learn-list" role="group" aria-label="The outside pad that plays each drum row of the FM-1's keys"></div>
+          <button id="pads-clear" type="button" title="Clear every row's pad on the FM-1">Clear all</button>
+          <p class="muted">Pads are learned on the FM-1: HOME + SEL, then a drum key, then hit the pad. The map belongs to the FM-1, not to a patch: it plays the drum track that takes the keys, in any kit.</p>
+        </div>
         <!-- the global tempo (main.ts, tempo.ts, D-907): Global or Patch, shared with a connected FM-1 (its GLO > PANEL > TEMPO) -->
         <span class="menu-heading">Tempo</span>
         <button id="tempo-btn" type="button" aria-pressed="true">Tempo: global</button>

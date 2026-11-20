@@ -24,11 +24,11 @@ import { fm1Label } from './fm1-choice';
 import { chooseFm1 } from './fm1-pick';
 import { SITE_URL } from './site';
 import { sandboxKey, sandboxPage, sandboxStep, sandboxTempoTurn } from './sandbox-mode';
-import { editorSkips, LIVE_MS, panelOffBy, slotLabel, type PanelState, type SlotInfo } from './protocol';
+import { editorSkips, LIVE_MS, PAD_ROWS, panelOffBy, slotLabel, withPad, type PadMap, type PanelState, type SlotInfo } from './protocol';
 import { chooseSlot } from './store-slot';
 import { Fm1View } from './fm1-view';
 import { panelPlay, EmuKeys } from './emu-keys';
-import { keysHarm, SandboxKeys } from './sandbox-keys';
+import { keysDrumRows, keysHarm, SandboxKeys } from './sandbox-keys';
 import { LinkedHarmKeys } from './linked-harm-keys';
 import { Editor, NOTHING_TO_MOVE, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { navKey, WHEEL_SETTINGS, type NavKey, type WheelSetting } from './canvas-nav';
@@ -341,11 +341,14 @@ async function offerInstall(): Promise<void> {
 syncChip();
 device.onStatus = (msg) => {
   devStatus(msg);
+  showPads();
   if (!device.connected) {
     clearDevicePatternOrigins(); installedLayout = null;
     showBudget(); libraryDeviceChanged();
   }
 };
+/** the connected FM-1's global pad map as its last PADS_NOW said (showPads): null before that, and once it is gone */
+let padMap: PadMap | null = null;
 // the FM-1 on its own (#65): while Live is on, its knobs and patch buttons move the editor's, and the status line follows its slot
 let fromDevice = false;
 /** the armed set is the FM-1's own (ARMS_NOW, #191): it routes the editor's notes to it, so they keep going there */
@@ -397,6 +400,7 @@ device.onEvent = (e) => {
     showBudget();
     // INFO changes capabilities, not the connection or its in-flight bank operations.
     for (const pane of Object.values(libraryPanes)) pane.refresh();
+    showPads();
     return syncChip();   // INFO also refreshes the memory rule for this device
   }
   if (e.kind === 'keys') {   // a key edge the FM-1's panel took (#549): through the copy too, as the FM-1 took it
@@ -448,6 +452,11 @@ device.onEvent = (e) => {
     if (!live() || linkBusy()) return;
     fromDevice = true;
     try { editor.takeDeviceMaps(e.maps, e.also); } finally { fromDevice = false; }
+    return;
+  }
+  if (e.kind === 'pads') {   // the global pad map (PADS_NOW): the answer to a PADS, or a learn / clear / PAD MAP on the FM-1
+    padMap = { on: e.on, notes: e.notes };
+    showPads();
     return;
   }
   if (e.kind === 'presetStored') {   // a preset stored on the FM-1 (#195): under Live it comes into the editor's library
@@ -1005,6 +1014,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     else if (live()) structureChanged();
     if (!fromEmu) queueEmu();
     showLearned();
+    showPads();   // (the open kit names the rows)
   },
   onAtt(id, index, value) {
     if (fromDevice) uploadGate.forget();   // (the FM-1 changed its patch itself, or the copy of its panel did: its bytes are not known)
@@ -1090,6 +1100,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     armPlays = plays;
     armThrough = through;
     showArmed();
+    showPads();   // (the armed set picks the rows the keys reach)
   },
   onRec(id, on) {
     host.send({ t: 'rec', id, on });
@@ -2934,6 +2945,7 @@ try {
 async function connectFm1(ask = false): Promise<void> {
   if (device.connected) clearDevicePatternOrigins();
   installedLayout = null;
+  padMap = null;   // (this FM-1's own map comes with its PADS_NOW)
   try {
     const info = await device.connect({ ask });
     showBudget();
@@ -2948,11 +2960,13 @@ async function connectFm1(ask = false): Promise<void> {
     if (device.hasPatternStore) await device.listPatterns().catch(() => {});
     offerSync();
     libraryDeviceChanged();
+    showPads();
     if (syncsWith(device.info)) void offerFirmwareUpdate();   // (else sayUpdate has offered the update already)
     void offerFactoryContent();
   } catch (e) {
     showBudget();
     libraryDeviceChanged();
+    showPads();
     devStatus((e as Error).message);
   }
   watchIgnored();   // (SysEx is allowed now, if the browser asked: the FM-1s set to ignore the editor are known from here, #1045)
@@ -3379,6 +3393,64 @@ function showLearned(): void {
   }) : [none]));
 }
 showLearned();
+/** FM-1 & MIDI's Pads, only while the connected FM-1 keeps the global pad map (INFO feature bit 29): PAD MAP, then per drum
+ *  row the FM-1's keys reach (every row of the open kit, up to 24; all 24 without a kit) its pad's note, with × to clear it */
+function showPads(): void {
+  const shown = device.connected && device.hasPads;
+  $('pads-section').hidden = !shown;
+  if (!shown) {
+    padMap = null;
+    return;
+  }
+  const map = padMap;
+  const on = $<HTMLButtonElement>('pads-on');
+  on.disabled = !map;
+  on.setAttribute('aria-pressed', String(!!map?.on));
+  on.textContent = map ? `PAD MAP: ${map.on ? 'on' : 'off'}` : 'PAD MAP: reading the FM-1…';
+  const rows = keysDrumRows(editor.patch, editor.armedSet);
+  const count = rows.length ? Math.min(rows.length, PAD_ROWS) : PAD_ROWS;
+  $('pads-list').replaceChildren(...Array.from({ length: count }, (_, i) => {
+    const note = map?.notes[i] ?? null;
+    const label = rows[i] ? `${i + 1} ${rows[i].name.toUpperCase()}` : String(i + 1);
+    const line = document.createElement('div');
+    line.className = 'midi-learn-item';
+    const name = document.createElement('span');
+    name.textContent = label;
+    const pad = document.createElement('span');
+    pad.textContent = note === null ? '–' : `NOTE ${NOTE_NAMES[note]}`;
+    pad.title = note === null ? 'No pad plays this row' : `The pad sending MIDI note ${note} plays this row`;
+    if (note !== null) {
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'sm';
+      clear.textContent = '×';
+      clear.title = `Clear row ${label}'s pad`;
+      clear.setAttribute('aria-label', `Clear row ${label}'s pad`);
+      clear.onclick = () => {
+        if (!padMap) return;
+        padMap = { ...padMap, notes: withPad(padMap.notes, i, null) };   // (the FM-1's PADS_NOW confirms it)
+        device.setPad(i, null);
+        showPads();
+      };
+      pad.append(' ', clear);
+    }
+    line.append(name, pad);
+    return line;
+  }));
+  $<HTMLButtonElement>('pads-clear').disabled = !map?.notes.some((n) => n !== null);
+}
+$('pads-on').onclick = () => {
+  if (!padMap) return;
+  padMap = { ...padMap, on: !padMap.on };
+  device.padsOn(padMap.on);
+  showPads();
+};
+$('pads-clear').onclick = () => {
+  if (!padMap || !window.confirm('Clear every drum row\'s pad on the FM-1?')) return;
+  padMap = { ...padMap, notes: padMap.notes.map(() => null) };
+  device.clearPads();
+  showPads();
+};
 // Web MIDI: asked for at start (below) unless the user switched it off with the MIDI button, which also switches it back on.
 const midiBtn = $('midi-btn');
 let midiSwitch: ((on: boolean) => void) | null = null;

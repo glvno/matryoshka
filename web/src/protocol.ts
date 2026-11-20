@@ -19,6 +19,12 @@
 //                                                    source: CC 0..119, 127 pitch bend, 128 + n note n)
 //                                                    the running patch's MIDI learn mappings (#1067, feature bit 28), all
 //                                                    of them, in place of its own; no reply
+//   1D PADS     -                                    read the global pad map (#1067 follow-up, feature bit 29); answers PADS_NOW
+//               row u8 (0..23), note u8              that drum row's outside pad: note 0..127, 0xFF none; a note another
+//                                                    row holds leaves that row (one pad per row, one row per pad)
+//               FE                                   clear every row
+//               FD, on u8                            PAD MAP off (0) or on (1)
+//                                                    every form answers PADS_NOW
 //   20 PARAM    module u8, param u8, value i32       live parameter change (Q16.16), no reply
 //   21 ATT      module u8, input u8 (0 p1, 1 p2), value i32   live attenuverter change (Q16.16, -2..2), no reply
 //   22 BYPASS   module u8, on u8 (0/1)               bypass a module (its outputs carry its through input or silence), no reply
@@ -148,6 +154,10 @@
 //                                                    28). The tail follows only a learn during which the same input also
 //                                                    sent fixed-job CCs (16..19, 1, 2, 22, 64, 65): the learned source
 //                                                    byte and those CCs, the "also sent" warning; older firmware sends none
+//   64 PADS_NOW  on u8, then 24 note bytes (0xFF none)   the global pad map: PAD MAP on, and per drum row 1..24 the MIDI note
+//                                                    of the outside pad that plays it (feature bit 29). The answer to every
+//                                                    PADS (the editor reads it after connect), and unasked when the map
+//                                                    changes on the FM-1 (a learn, a clear, PAD MAP turned)
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
 //               feature bit 8, bit3 GLO > SYSTEM > EDITOR at IGNORE: with feature bit 19, #702), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
@@ -157,7 +167,8 @@
 //               [features 16..23: bit16 TEMPO / TEMPO_NOW, bit17 a preset carries up to 176 values, bit18 KEYS_NOW /
 //               GUIDE_NOW, bit19 flags bit3 says EDITOR, bit20 ARMS, bit21 ARMS wide, bit22 DEVICE_SETTINGS, bit23 PATTERN_ORIGIN],
 //               [byte13 allocation rule: 0 separate signal buffers, 1 physical lifetime buffers; unknown/missing means 0],
-//               [features 24..31: bit24 FX presets, bit25 the pattern store is on], [byte15 the bank's slots (absent: 64)],
+//               [features 24..31: bit24 FX presets, bit25 the pattern store is on, bit28 MAP / MAP_NOW, bit29 PADS / PADS_NOW],
+//               [byte15 the bank's slots (absent: 64)],
 //               [bytes16..19 the pattern store's bytes free and in all, u16 LE each]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8), and when EDITOR changed after
 //               a HELLO (feature bit 19)
@@ -465,6 +476,31 @@ export function parseMapNow(payload: number[]): { maps: MapEntry[]; also: { src:
   });
   const at = 1 + 5 * n, k = payload[at + 1];
   return { maps, also: k && payload.length >= at + 2 + k ? { src: payload[at], ccs: payload.slice(at + 2, at + 2 + k) } : null };
+}
+/** INFO feature bit 29 (byte 14 bit 5, #1067 follow-up): the global pad map, PADS and PADS_NOW */
+export const FEATURE_PADS = 1 << 29;
+/** the global pad map's command and report */
+export const PADS_CMD = { pads: 0x1d, padsNow: 0x64 } as const;
+/** the drum rows the pad map holds a pad for (the rows the FM-1's keys reach, 1..24) */
+export const PAD_ROWS = 24;
+/** PADS with nothing: read the map */
+export const padsReadFrame = (): Uint8Array => frame(PADS_CMD.pads, []);
+/** PADS: row 0..23's pad, a MIDI note 0..127, null none */
+export const padsSetFrame = (row: number, note: number | null): Uint8Array => frame(PADS_CMD.pads, [row & 0xff, note === null ? 0xff : note & 0x7f]);
+/** PADS: clear every row */
+export const padsClearAllFrame = (): Uint8Array => frame(PADS_CMD.pads, [0xfe]);
+/** PADS: PAD MAP off or on */
+export const padsOnFrame = (on: boolean): Uint8Array => frame(PADS_CMD.pads, [0xfd, on ? 1 : 0]);
+/** the global pad map: PAD MAP on, and per drum row the pad's MIDI note (null none) */
+export interface PadMap { on: boolean; notes: (number | null)[] }
+/** a PADS_NOW payload, null when short */
+export function parsePadsNow(payload: number[]): PadMap | null {
+  if (payload.length < 1 + PAD_ROWS) return null;
+  return { on: payload[0] !== 0, notes: payload.slice(1, 1 + PAD_ROWS).map((n) => (n > 127 ? null : n)) };
+}
+/** the notes once row `row` takes `note` (null clears it), as the FM-1 does it: a row that held that note lets go of it */
+export function withPad(notes: readonly (number | null)[], row: number, note: number | null): (number | null)[] {
+  return notes.map((n, i) => (i === row ? note : note !== null && n === note ? null : n));
 }
 /** the factory region's commands and answers (#915, D-490) */
 export const FACT = { begin: 0x16, write: 0x17, sum: 0x18, read: 0x19, commit: 0x1a, info: 0x3f, infoReply: 0x5f, sumReply: 0x60, dataReply: 0x61 } as const;
