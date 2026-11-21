@@ -365,7 +365,13 @@ static void test_return_driver(void)
     usb_uac_on=1;
     CHECK(get_desc(0x100,&d,&n) && d[16]==3, "application reports physical serial descriptor");
     CHECK(get_desc(0x302,&d,&n) && n==34 && d[24]=='S' && d[32]=='E', "named product retains Matryoshka prefix");
-    CHECK(get_desc(0x303,&d,&n) && n==66 && d[2]=='0' && d[4]=='1' && d[64]=='0', "full 128-bit serial as UTF16 hex");
+    CHECK(get_desc(0x303,&d,&n) && n==84 && d[2]=='0' && d[4]=='1' && d[64]=='0' && d[66]=='-' && d[67]==0,
+          "named: the 128-bit serial as UTF16 hex, then '-'");
+    CHECK(!memcmp(d+68,"F\0" "0\0" "C\0" "3\0" "D\0" "6\0" "C\0" "D",15), "named: 8 hex digits of FNV-1a(\"STAGE\")");
+    memset(di_name,0,sizeof di_name); di_usb_commit(); di_usb_snapshot();
+    CHECK(get_desc(0x303,&d,&n) && n==66 && d[2]=='0' && d[4]=='1' && d[64]=='0', "unnamed: the bare 128-bit serial");
+    CHECK(get_desc(0x302,&d,&n) && n==22, "unnamed product: Matryoshka");
+    strcpy(di_name,"STAGE"); di_usb_commit(); di_usb_snapshot();
     usb_uac_on=0;
     CHECK(get_desc(0x100,&d,&n) && d[16]==0, "update mode remains serial-free");
     CHECK(get_desc(0x302,&d,&n) && n==22, "update-mode product stays fixed");

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Two named FM-1s now show up as two different MIDI ports.** The FM-1's MIDI input and output carry the name you gave it in the editor (`Matryoshka STAGE`, for example), not only the device. Apps that list or route MIDI ports by their own name, such as MIDI routing apps on the iPad, can now tell two FM-1s apart. An FM-1 without a name keeps the port name `Matryoshka`. Update mode is unchanged. Needs this firmware; reconnect the FM-1 after giving it a name.
+- **A renamed FM-1 now shows its new name in MIDI apps on a computer or an iPad.** A Mac remembers each FM-1 by its USB serial number and keeps showing the name it first saw, often just `Matryoshka`; an iPad seems to do the same. So two FM-1s with different names could look like the same device in a MIDI routing app. Now an FM-1 with a name gives a serial made from that name, and the host sees it as a new device called `Matryoshka` and your name. Give it its name in the editor, then reconnect it. The host may keep the old entry as an offline device; you can delete it (on a Mac, in Audio MIDI Setup). An FM-1 without a name is unchanged. Needs this firmware.
 
 ## 1.24.0 — 2026-11-20
 
