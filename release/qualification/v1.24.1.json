@@ -1,0 +1,229 @@
+{
+  "schema": 1,
+  "version": "1.24.1",
+  "firmware_product": "FM-1_7012401",
+  "source_commit": "16a0e28769f2a2e029c9b49900be41fcae9c8f8c",
+  "source_tree": "acdc9461103a1fd349747e50f79b4e05e011094b",
+  "status": "automated and rig checks passed; owner's device check and the go for publication pending",
+  "release_approval": {
+    "status": "pending",
+    "scope": "Publication of v1.24.1 from the tag on release/1.24: the frozen commit plus only this record, the qualified package in web/public/firmware/, the coverage record and the rig measurements (D-1163); its firmware/ and tools/ equal the qualified source (D-105)."
+  },
+  "plan": "D-1168 (freeze PR #1173)",
+  "artifacts": {
+    "package": {
+      "name": "matryoshka-1.24.1.fwsc",
+      "size": 610656,
+      "sha256": "9c627ded4ebb88b890ffe86e2f15a0c0bebf938ed71e8834dd6977780a069e36"
+    },
+    "normal": {
+      "name": "matryoshka-1.24.1-app.bin",
+      "size": 580044,
+      "sha256": "471e6c81d9476e466e43a37f48df9a0f131cf36b1069d170b7371a6ccb60b825"
+    },
+    "normal_elf": {
+      "name": "matryoshka-1.24.1-app.elf",
+      "size": 649536,
+      "sha256": "e413c4dc608861a7953891952edd9da23cb2594160d723d4b8c08d036635ae4d"
+    },
+    "normal_sidecar": {
+      "name": "matryoshka-1.24.1.json",
+      "size": 411,
+      "sha256": "92bb57645a6116e1d57bc88e5f2f6b08e9d55ae2061efd9de017556776addb1d"
+    },
+    "bridge": {
+      "name": "matryoshka-emu.bin",
+      "size": 576848,
+      "sha256": "b4a31a846bb262bfd8af504b9a5216848c86d8fb52487a33540f7fe7e2923dce"
+    }
+  },
+  "build_manifest_sha256": "9971d7218775f0e09ba338e0463f5052317d9c634995e71606b4980202561534",
+  "build": "release run 44949736854: image 580044 B; RAM .data+.bss 18080 B of 24576 (6496 B free, the RAM headroom); pool 409564 B of 417792 (8228 B headroom, the floor 8192); no compiler warnings",
+  "ci_runs": {
+    "release": 44949736854,
+    "web_rc": 44949739013,
+    "freeze_pr": 1173
+  },
+  "full_scenarios": "374 of 374 checks passed",
+  "smoke": [
+    "emu:smoke on /Users/mg/projects/music/fm1/modular-1/build/release-1.24.1/dl/matryoshka-release-1.24.1/matryoshka-1.24.1-app.bin beside the scenarios (/Users/mg/projects/music/fm1/wt/rel-1241/build/emu/smoke.log)"
+  ],
+  "editor_side": "68 of 68 checks passed",
+  "boot": "boot check: PASS (40 checks, 0 failed; the editor link and the update handshake checked on the M1_EMU_MIDI build; 54.4 s",
+  "old_format": "tools/old_format.sh v1.24.0: all 673 of v1.24.0's golden binaries render bit-identically with today's engine, and 669 with a MIDI mapping section after them play as without it on v1.24.0's engine. Its last step (proto_test --old) stopped at v1.24.0's 808-kit-counted.m1p (3941 B), a counted-format copy bigger than a bank slot (3840 B) that the FM-1 never holds: since 1.24.0 the 808 Kit, the 909 Kit, Scrounge and Verona Drum 1 ship in format 64, and their counted golden copies (808 3941, 909 4102, Scrounge 4210, Verona 3887 B) no longer fit. The same step run by hand with the frozen commit's proto_test over the 669 binaries that fit a slot: older format ok: 669 binaries load, upgrade and render bit-identically; 332 differ from today's encoding, 336 too big to upgrade, 1 already in today's format; 2245 records grown to all their parameters render the same (log oldfmt-v1.24.0-slot-sized.log). The tool's fix (skip a base binary over a slot, as proto_test --grow does) lands after the tag (D-1163).",
+  "slot_upgrade": {
+    "ok": true,
+    "changed": [],
+    "changed_as_expected": true,
+    "kept": [
+      "MONOLITH D",
+      "ORACLE V",
+      "SILVER BOX",
+      "HERA 6",
+      "SALLEN 20",
+      "EXPANDER S",
+      "ALGO FOUR",
+      "CANVAS",
+      "WANDERER",
+      "BRIEFCASE 3",
+      "IO 4",
+      "VERNON 100",
+      "8 LIRE",
+      "ELVIRA 2",
+      "SCROUNGE",
+      "MERIDIAN 8",
+      "808 KIT",
+      "909 KIT",
+      "CASSIA 1",
+      "VERONA DRUM 1",
+      "SHUSH 101",
+      "MY 808 KIT",
+      "MY SILVER"
+    ],
+    "not_kept": []
+  },
+  "hardware": {
+    "midi_endpoint_names": {
+      "1.24.0": "all pass (serial 415035443333360F105D4C5C0720DA78, CoreMIDI uid 0x57813527): ok the rig is on USB at 0x01140000 with a product string and a serial ('Matryoshka TEST RIG', serial 415035443333360F105D4C5C0720DA78); ok one CoreMIDI device online at that location (1 online); ok an unnamed-style serial: the bare 32-hex flash UID ('415035443333360F105D4C5C0720DA78'); ok fm1_install.py --info --location 0x01140000 finds it (FM-1_7012400  [running]  port: Matryoshka TEST RIG  (Matryoshka 1.24.0) | boot code: V15's); ok m1_link.py info --location 0x01140000 finds it (protocol 1, max modules 128, max cables 255, flash ok, patch loaded, delays 255, firmware 1.24.0)",
+      "1.24.1": "all pass (serial 415035443333360F105D4C5C0720DA78-F0821BA7, CoreMIDI uid 0x8644a493): ok the rig is on USB at 0x01140000 with a product string and a serial ('Matryoshka TEST RIG', serial 415035443333360F105D4C5C0720DA78-F0821BA7); ok one CoreMIDI device online at that location (1 online); ok its USB name is \"Matryoshka TEST RIG\" ('Matryoshka TEST RIG'); ok its CoreMIDI device, entity, sources and destinations all show \"Matryoshka TEST RIG\" ({\"device\": \"Matryoshka TEST RIG\", \"entities\": [\"Matryoshka TEST RIG\"], \"sources\": [\"Matryoshka TEST RIG\"], \"destinations\": [\"Matryoshka TEST RIG\"], \"displays\": [\"Matryoshka TEST RIG\", \"Matryoshka TEST RIG\"]}); ok a named serial: the same flash UID + \"-\" + a name suffix, unlike the earlier serial (earlier 415035443333360F105D4C5C0720DA78, now 415035443333360F105D4C5C0720DA78-F0821BA7); ok so CoreMIDI made another device record (another uid than the earlier run's) (earlier 0x57813527, now 0x8644a493); ok fm1_install.py --info --location 0x01140000 finds it (FM-1_7012401  [running]  port: Matryoshka TEST RIG  (Matryoshka 1.24.1) | boot code: V15's); ok m1_link.py info --location 0x01140000 finds it (protocol 1, max modules 128, max cables 255, flash ok, patch loaded, delays 255, firmware 1.24.1)",
+      "renamed QUAL TMP": "all pass (serial 415035443333360F105D4C5C0720DA78-1FBCAA37, CoreMIDI uid 0x0a8f0141): ok the rig is on USB at 0x01140000 with a product string and a serial ('Matryoshka QUAL TMP', serial 415035443333360F105D4C5C0720DA78-1FBCAA37); ok one CoreMIDI device online at that location (1 online); ok its USB name is \"Matryoshka QUAL TMP\" ('Matryoshka QUAL TMP'); ok its CoreMIDI device, entity, sources and destinations all show \"Matryoshka QUAL TMP\" ({\"device\": \"Matryoshka QUAL TMP\", \"entities\": [\"Matryoshka QUAL TMP\"], \"sources\": [\"Matryoshka QUAL TMP\"], \"destinations\": [\"Matryoshka QUAL TMP\"], \"displays\": [\"Matryoshka QUAL TMP\", \"Matryoshka QUAL TMP\"]}); ok a named serial: the same flash UID + \"-\" + a name suffix, unlike the earlier serial (earlier 415035443333360F105D4C5C0720DA78-F0821BA7, now 415035443333360F105D4C5C0720DA78-1FBCAA37); ok so CoreMIDI made another device record (another uid than the earlier run's) (earlier 0x8644a493, now 0x0a8f0141); ok fm1_install.py --info --location 0x01140000 finds it (FM-1_7012401  [running]  port: Matryoshka QUAL TMP  (Matryoshka 1.24.1) | boot code: V15's); ok m1_link.py info --location 0x01140000 finds it (protocol 1, max modules 128, max cables 255, flash ok, patch loaded, delays 255, firmware 1.24.1)",
+      "back to TEST RIG": "all pass (serial 415035443333360F105D4C5C0720DA78-F0821BA7, CoreMIDI uid 0x8644a493): ok the rig is on USB at 0x01140000 with a product string and a serial ('Matryoshka TEST RIG', serial 415035443333360F105D4C5C0720DA78-F0821BA7); ok one CoreMIDI device online at that location (1 online); ok its USB name is \"Matryoshka TEST RIG\" ('Matryoshka TEST RIG'); ok its CoreMIDI device, entity, sources and destinations all show \"Matryoshka TEST RIG\" ({\"device\": \"Matryoshka TEST RIG\", \"entities\": [\"Matryoshka TEST RIG\"], \"sources\": [\"Matryoshka TEST RIG\"], \"destinations\": [\"Matryoshka TEST RIG\"], \"displays\": [\"Matryoshka TEST RIG\", \"Matryoshka TEST RIG\"]}); ok a named serial: the same flash UID + \"-\" + a name suffix, unlike the earlier serial (earlier 415035443333360F105D4C5C0720DA78-1FBCAA37, now 415035443333360F105D4C5C0720DA78-F0821BA7); ok so CoreMIDI made another device record (another uid than the earlier run's) (earlier 0x0a8f0141, now 0x8644a493); ok fm1_install.py --info --location 0x01140000 finds it (FM-1_7012401  [running]  port: Matryoshka TEST RIG  (Matryoshka 1.24.1) | boot code: V15's); ok m1_link.py info --location 0x01140000 finds it (protocol 1, max modules 128, max cables 255, flash ok, patch loaded, delays 255, firmware 1.24.1)",
+      "rename_cycle": {
+        "all_ok": true,
+        "left_named": "TEST RIG"
+      }
+    },
+    "irq_vs_1.24.0": "D-1165, one session, both installed fresh, TIMER5 body 3.1..3.46 us, traffic notes 0: program 18 1882.7 -> 1891.9 us; program 6 1780.6 -> 1781.6 us; program 1 2125.9 -> 2127.7 us; 18 Cassia 1 fx 2093.5 -> 2107.8 us; 05 Expander S fx 2318.2 -> 2314.0 us; 03 Hera 6 fx 2054.8 -> 2062.9 us; 06 Algo Four fx 2152.8 -> 2157.0 us; differences -4.2..14.3 us (spread about 50: none if inside)",
+    "guide_now": "== GUIDE_NOW rate\nAlgo Four, after HELLO, idle: {} in 2 s\n808 Kit, after HELLO, idle: {} in 2 s\n909 Kit, after HELLO, idle: {} in 2 s\n808 Kit: SEL (arms DRUMS): {'0x54': 1, '0x58': 1} in 2 s\n808 Kit: ENV (environment): {'0x58': 1} in 2 s\n808 Kit: SEQ (drum grid): {'0x58': 1} in 2 s\n",
+    "rig_scenarios": [
+      "55 of 58 checks passed, 3 skipped (1.2 output: MONO, both sounds on both sides, each a bit quieter: the rig's USB audio is taken before OUTPUT's mix (audio.c): the emulator's I2S proves it, the owner hears it; 1.3 output: MONO L, both sounds on the left, the right silent: the rig's USB audio is take"
+    ],
+    "midi_learn": "22 of 22",
+    "pad_map": "24 of 24",
+    "cpu_survey": "every FX stage on (the frozen commit's patches): worst 81.6 % stopped, 83.4 % running (bar 85 %), dropped 0; as shipped 73.8 / 76.4 %; vs 1.24.0 same session (1.22.0's FX patches, stopped) [-0.2, 1.6] mean 0.82",
+    "cpu_near_the_bar": {
+      "Scrounge p10": "63.2 % stopped, 77.9 % running (under 85 %)",
+      "808 Kit fx": "74.8 % stopped, 78.8 % running (under 85 %)",
+      "Scrounge as shipped": "63.8 % stopped, 75.4 % running (under 85 %)",
+      "808 Kit as shipped": "64.4 % stopped, 72.5 % running (under 85 %)"
+    },
+    "master_eq_cost": {
+      "0-0-0": [
+        81.8,
+        82.9
+      ],
+      "6-0-0": [
+        84.3,
+        86.1
+      ],
+      "6-6-0": [
+        85.6,
+        87.3
+      ],
+      "6-6-6": [
+        87.2,
+        88.8
+      ]
+    },
+    "clock_in": {
+      "run1": {
+        "reference: clock running before the Start": [
+          0.0,
+          -0.07,
+          0.05
+        ],
+        "Start first, the first clock a tick later": [
+          0.0,
+          -0.1,
+          0.09
+        ],
+        "stall 800 ms, then on": [
+          -0.02,
+          -0.08,
+          0.08
+        ],
+        "stall 800 ms, then the missed ticks in a burst": [
+          -0.02,
+          -0.04,
+          0.02
+        ],
+        "before the Start while running (10 ticks short of a bar line)": [
+          -0.04,
+          -0.06,
+          0.03
+        ],
+        "after the Start while running": [
+          0.01,
+          -0.07,
+          0.11
+        ],
+        "SPP 20 + Continue while stopped (30 ticks into the bar)": [
+          0.01,
+          -0.06,
+          0.04
+        ],
+        "SPP 8 + Continue while running (a loop point, 48 ticks into the bar)": [
+          -0.02,
+          -0.09,
+          0.07
+        ]
+      },
+      "run2": {
+        "reference: clock running before the Start": [
+          -0.01,
+          -0.09,
+          0.08
+        ],
+        "Start first, the first clock a tick later": [
+          -0.02,
+          -0.08,
+          0.03
+        ],
+        "stall 800 ms, then on": [
+          -0.01,
+          -0.08,
+          0.04
+        ],
+        "stall 800 ms, then the missed ticks in a burst": [
+          -0.02,
+          -0.08,
+          0.0
+        ],
+        "before the Start while running (10 ticks short of a bar line)": [
+          0.0,
+          -0.06,
+          0.02
+        ],
+        "after the Start while running": [
+          0.02,
+          -0.04,
+          0.13
+        ],
+        "SPP 20 + Continue while stopped (30 ticks into the bar)": [
+          -0.02,
+          -0.04,
+          0.06
+        ],
+        "SPP 8 + Continue while running (a loop point, 48 ticks into the bar)": [
+          -0.02,
+          -0.07,
+          0.08
+        ]
+      }
+    },
+    "fpucheck": [
+      "all equal",
+      "all equal"
+    ],
+    "cores": [
+      "2 CORES; barred no; trace 0xc1000002; split on",
+      "self-test passed 15615, failed 0; refused jobs 0; jobs done 574484; core 1 stack 2484 B used; longest wait 2430 us since the last read"
+    ],
+    "format_65_loads": "== eq-shelves\n  awake parts per job: core 0 4.00, core 1 4.00 (in all, core 0 1396, core 1 1396)\n== eq-filters\n  awake parts per job: core 0 6.00, core 1 2.00 (in all, core 0 2094, core 1 698)\n== elvira-seq-slim\n  awake parts per job: core 0 47.00, core 1 36.00 (in all, core 0 16309, core 1 12492)\n== midi-learn\n  awake parts per job: core 0 5.00, core 1 4.00 (in all, core 0 1740, core 1 1392)\n"
+  },
+  "known_issue": "Reel's loop runs one 16th ahead (#870), unchanged",
+  "owner_checks": {
+    "status": "pending",
+    "steps": "in the record pull request's body (D-139, D-1168)"
+  }
+}
