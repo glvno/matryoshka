@@ -25,6 +25,8 @@ const KITS = [
   { patch: '808 Kit', card: '808 kit', keys: [53, 65, 71], ac: 72 },   // (BD, CB, CY; AC)
   { patch: '909 Kit', card: '909 kit', keys: [57, 64, 69], ac: 72 },   // (CLAP, RIM, CRASH; ACCENT)
 ];
+/** a whole song in both engines takes over 120 s under the release candidate's coverage run (web.yml mode rc) */
+const SONG_MS = 600_000;
 let wasm: WebAssembly.Module;
 beforeAll(() => {
   wasm = new WebAssembly.Module(readFileSync(buildFm1EngineWasm(join(tmpdir(), `kit-velocity-${process.pid}.wasm`))));
@@ -129,7 +131,7 @@ describe.each(KITS)('$patch: the VELOCITY row (D-1053, D-1055 amended)', ({ patc
     const a = song(p, secs, fm1), b = song(without(p), secs, fm1);
     expect(peakOf(a)).toBeGreaterThan(0.1);
     expect(a.every((v, i) => v === b[i])).toBe(true);
-  }, 120_000);
+  }, SONG_MS);
 
   it.each([false, true])('turns a hit down to 1 - VELOCITY + VELOCITY x velocity of one at 127, an accent on top (FM-1 engine: %s)', (fm1) => {
     for (const key of keys) for (const d of [0, 0.5, 1]) {
@@ -138,12 +140,12 @@ describe.each(KITS)('$patch: the VELOCITY row (D-1053, D-1055 amended)', ({ patc
       // (an accent adds half a plain hit at ACCENT LEVEL's or TOTAL ACCENT's Init, whatever the velocity)
       expect(hit(withVelocity(kit(), d), [key, AC], 0.4, fm1) / loud, `key ${key} at ${d}, accented`).toBeCloseTo(1.5 - d * 0.6, 2);
     }
-  }, 120_000);
+  }, SONG_MS);
 
   it.each([false, true])('only ever turns the song down: no clipping at 1 (D-854) (FM-1 engine: %s)', (fm1) => {
     const at0 = peakOf(song(kit(), secs, fm1)), half = peakOf(song(withVelocity(kit(), 0.5), secs, fm1));
     const full = peakOf(song(withVelocity(kit(), 1), secs, fm1));
     expect(half).toBeLessThan(at0);
     expect(full).toBeLessThan(half);
-  }, 120_000);
+  }, SONG_MS);
 });

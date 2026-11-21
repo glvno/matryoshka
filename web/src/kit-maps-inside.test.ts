@@ -21,6 +21,8 @@ import type { Patch } from './patch';
 
 const SR = 48000;
 const BLOCK = 128;
+/** a whole song in both engines takes over 120 s under the release candidate's coverage run (web.yml mode rc) */
+const SONG_MS = 600_000;
 let wasm: WebAssembly.Module;
 beforeAll(() => {
   wasm = new WebAssembly.Module(readFileSync(buildFm1EngineWasm(join(tmpdir(), `kit-maps-${process.pid}.wasm`))));
@@ -98,12 +100,12 @@ describe.each(FACTORY_KITS.map((k) => k.patch))('%s: its Drum maps inside its ca
     const a = songTs(p, secs), b = songTs(outside(p), secs);
     expect(loud(a)).toBe(true);
     expect(identical(a, b)).toBe(true);
-  }, 120_000);
+  }, SONG_MS);
 
   it('plays every pattern of its song sample for sample as with its Drum maps outside, in the FM-1 engine', () => {
     const p = kit(), q = outside(p);
     const a = songFm1(p, secs), b = songFm1(q, secs);
     expect(loud(a)).toBe(true);
     expect(identical(a, b)).toBe(true);
-  }, 120_000);
+  }, SONG_MS);
 });
