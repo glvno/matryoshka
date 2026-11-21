@@ -301,13 +301,22 @@ static int old_format(int n, char **argv)
 {
     static int32_t a_l[128 * 40], a_r[128 * 40], b_l[128 * 40], b_r[128 * 40];
     static uint8_t old[M1_PATCH_MAX];
-    int k, same = 0, other = 0, kept = 0, current = 0, grown = 0;
+    int k, same = 0, other = 0, kept = 0, current = 0, grown = 0, big = 0;
     for (k = 0; k + 1 < n; k += 2) {
         long no, nn = 0;
         uint8_t *o = slurp(argv[k], &no), *nw = strcmp(argv[k + 1], "-") ? slurp(argv[k + 1], &nn) : 0;
         uint32_t m, r;
-        if (no > (long)M1_PATCH_MAX || o[1] > ENG_PATCH_VERSION) {
-            fprintf(stderr, "%s: not an older format that fits a slot\n", argv[k]);
+        if (no > (long)M1_PATCH_MAX) {                        /* (a golden copy no FM-1 holds: since 1.24 the kits that ship in
+                                                               * format 64 have counted copies over a slot; proto_test --grow
+                                                               * skips them too) */
+            printf("%s: %ld bytes, over a slot (%u): skipped\n", argv[k], no, (unsigned)M1_PATCH_MAX);
+            big++;
+            free(o);
+            free(nw);
+            continue;
+        }
+        if (o[1] > ENG_PATCH_VERSION) {
+            fprintf(stderr, "%s: not an older format\n", argv[k]);
             return 1;
         }
         if (o[1] == ENG_PATCH_VERSION) {                      /* (BASE wrote today's format already: it only has to load) */
@@ -387,8 +396,8 @@ static int old_format(int n, char **argv)
         free(o);
         free(nw);
     }
-    printf("older format ok: %d binaries load, upgrade and render bit-identically; %d upgraded as today's encoder writes them, %d differ, %d too big to upgrade, %d already in today's format; %d records grown to all their parameters render the same\n",
-           n / 2, same, other, kept, current, grown);
+    printf("older format ok: %d binaries load, upgrade and render bit-identically; %d upgraded as today's encoder writes them, %d differ, %d too big to upgrade, %d already in today's format; %d records grown to all their parameters render the same; %d over a slot skipped\n",
+           n / 2 - big, same, other, kept, current, grown, big);
     return 0;
 }
 
