@@ -75,9 +75,9 @@ describe("format 64's shorter layout (D-1025)", () => {
       expect(l.need, name).toBe(Math.min(l.base.bytes, l.counted, l.slim));
       expect(l.slim, name).toBeLessThan(l.base.bytes);
     }
-    // (the 808 and 909 Kits with their VELOCITY rows, D-1053, D-1055; Verona Drum 1 with FM FREQ over the knob's range,
-    // #866: firmware 1.22 or later. Another one is a choice to make on purpose)
-    expect(slim).toEqual(['808 Kit', '909 Kit', 'Verona Drum 1']);
+    // (Scrounge's ten grooves, D-1056; the 808 and 909 Kits with their VELOCITY rows, D-1053, D-1055; Verona Drum 1 with
+    // FM FREQ over the knob's range, #866: firmware 1.22 or later. Another one is a choice to make on purpose)
+    expect(slim).toEqual(['Scrounge', '808 Kit', '909 Kit', 'Verona Drum 1']);
     // (the room format 64 gave the 909 Kit holds its VELOCITY row, D-1055)
     expect(DEVICE.bytes - layout(FM1_PRESETS['909 Kit']()).need).toBeGreaterThan(50);
   });
