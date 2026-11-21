@@ -1,0 +1,764 @@
+{
+ "bpm": 90.0,
+ "steady_offset": 1.3999999999999986,
+ "summary": {
+  "reference: clock running before the Start": {
+   "hits": 20,
+   "on_grid": 20,
+   "first_ticks": [
+    1.38,
+    25.4,
+    61.4,
+    73.46,
+    97.42,
+    121.37
+   ],
+   "vs_reference_median": 0.0,
+   "vs_reference_min": -0.06,
+   "vs_reference_max": 0.08,
+   "bar_positions": [
+    0,
+    24,
+    36,
+    48,
+    60,
+    72
+   ]
+  },
+  "Start first, the first clock a tick later": {
+   "hits": 21,
+   "on_grid": 21,
+   "first_ticks": [
+    1.4,
+    25.41,
+    61.44,
+    73.38,
+    85.43,
+    97.51
+   ],
+   "vs_reference_median": 0.01,
+   "vs_reference_min": -0.04,
+   "vs_reference_max": 0.11,
+   "bar_positions": [
+    0,
+    24,
+    48,
+    60,
+    72,
+    84
+   ]
+  },
+  "stall 800 ms, then on": {
+   "hits": 9,
+   "on_grid": 9,
+   "first_ticks": [
+    385.46,
+    409.39,
+    433.37,
+    445.4,
+    457.44,
+    481.42
+   ],
+   "vs_reference_median": 0.0,
+   "vs_reference_min": -0.05,
+   "vs_reference_max": 0.06,
+   "bar_positions": [
+    0,
+    24,
+    48,
+    60,
+    72
+   ]
+  },
+  "stall 800 ms, then the missed ticks in a burst": {
+   "hits": 9,
+   "on_grid": 9,
+   "first_ticks": [
+    588.0,
+    625.41,
+    637.42,
+    649.44,
+    673.37,
+    697.37
+   ],
+   "vs_reference_median": -0.02,
+   "vs_reference_min": -1.4,
+   "vs_reference_max": 0.04,
+   "bar_positions": [
+    0,
+    11,
+    24,
+    48,
+    60,
+    72
+   ]
+  },
+  "before the Start while running (10 ticks short of a bar line)": {
+   "hits": 5,
+   "on_grid": 5,
+   "first_ticks": [
+    769.45,
+    793.39,
+    817.44,
+    829.44,
+    841.43
+   ],
+   "vs_reference_median": 0.04,
+   "vs_reference_min": -0.01,
+   "vs_reference_max": 0.05,
+   "bar_positions": [
+    0,
+    24,
+    48,
+    60,
+    72
+   ]
+  },
+  "after the Start while running": {
+   "hits": 12,
+   "on_grid": 12,
+   "first_ticks": [
+    1.42,
+    25.46,
+    49.42,
+    61.42,
+    73.44,
+    85.41
+   ],
+   "vs_reference_median": 0.02,
+   "vs_reference_min": -0.05,
+   "vs_reference_max": 0.06,
+   "bar_positions": [
+    0,
+    24,
+    48,
+    60,
+    72,
+    84
+   ]
+  },
+  "SPP 20 + Continue while stopped (30 ticks into the bar)": {
+   "hits": 11,
+   "on_grid": 11,
+   "first_ticks": [
+    121.41,
+    145.38,
+    157.36,
+    169.43,
+    181.46,
+    193.43
+   ],
+   "vs_reference_median": -0.01,
+   "vs_reference_min": -0.07,
+   "vs_reference_max": 0.09,
+   "bar_positions": [
+    0,
+    24,
+    48,
+    60,
+    72,
+    84
+   ]
+  },
+  "SPP 8 + Continue while running (a loop point, 48 ticks into the bar)": {
+   "hits": 9,
+   "on_grid": 9,
+   "first_ticks": [
+    49.45,
+    61.36,
+    73.36,
+    97.41,
+    121.4,
+    157.4
+   ],
+   "vs_reference_median": 0.0,
+   "vs_reference_min": -0.04,
+   "vs_reference_max": 0.05,
+   "bar_positions": [
+    0,
+    24,
+    48,
+    60,
+    72
+   ]
+  }
+ },
+ "hits": [
+  {
+   "host_s": 2.6696,
+   "phase": "reference: clock running before the Start",
+   "tick": 1.38,
+   "vs_steady": -0.02
+  },
+  {
+   "host_s": 3.3368,
+   "phase": "reference: clock running before the Start",
+   "tick": 25.4,
+   "vs_steady": 0.0
+  },
+  {
+   "host_s": 4.3441,
+   "phase": "reference: clock running before the Start",
+   "tick": 61.4,
+   "vs_steady": 0.0
+  },
+  {
+   "host_s": 4.6752,
+   "phase": "reference: clock running before the Start",
+   "tick": 73.46,
+   "vs_steady": 0.06
+  },
+  {
+   "host_s": 5.3385,
+   "phase": "reference: clock running before the Start",
+   "tick": 97.42,
+   "vs_steady": 0.02
+  },
+  {
+   "host_s": 6.0027,
+   "phase": "reference: clock running before the Start",
+   "tick": 121.37,
+   "vs_steady": -0.03
+  },
+  {
+   "host_s": 6.6778,
+   "phase": "reference: clock running before the Start",
+   "tick": 145.44,
+   "vs_steady": 0.04
+  },
+  {
+   "host_s": 7.009,
+   "phase": "reference: clock running before the Start",
+   "tick": 157.38,
+   "vs_steady": -0.02
+  },
+  {
+   "host_s": 7.3441,
+   "phase": "reference: clock running before the Start",
+   "tick": 169.37,
+   "vs_steady": -0.03
+  },
+  {
+   "host_s": 8.0043,
+   "phase": "reference: clock running before the Start",
+   "tick": 193.43,
+   "vs_steady": 0.03
+  },
+  {
+   "host_s": 8.6722,
+   "phase": "reference: clock running before the Start",
+   "tick": 217.43,
+   "vs_steady": 0.03
+  },
+  {
+   "host_s": 9.3414,
+   "phase": "reference: clock running before the Start",
+   "tick": 241.48,
+   "vs_steady": 0.08
+  },
+  {
+   "host_s": 9.6753,
+   "phase": "reference: clock running before the Start",
+   "tick": 253.34,
+   "vs_steady": -0.06
+  },
+  {
+   "host_s": 10.0064,
+   "phase": "reference: clock running before the Start",
+   "tick": 265.42,
+   "vs_steady": 0.02
+  },
+  {
+   "host_s": 10.6707,
+   "phase": "reference: clock running before the Start",
+   "tick": 289.36,
+   "vs_steady": -0.04
+  },
+  {
+   "host_s": 11.3379,
+   "phase": "reference: clock running before the Start",
+   "tick": 313.37,
+   "vs_steady": -0.03
+  },
+  {
+   "host_s": 11.679,
+   "phase": "reference: clock running before the Start",
+   "tick": 325.47,
+   "vs_steady": 0.07
+  },
+  {
+   "host_s": 12.0081,
+   "phase": "reference: clock running before the Start",
+   "tick": 337.39,
+   "vs_steady": -0.01
+  },
+  {
+   "host_s": 12.3442,
+   "phase": "reference: clock running before the Start",
+   "tick": 349.38,
+   "vs_steady": -0.02
+  },
+  {
+   "host_s": 12.6713,
+   "phase": "reference: clock running before the Start",
+   "tick": 361.44,
+   "vs_steady": 0.04
+  },
+  {
+   "host_s": 14.8654,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 1.4,
+   "vs_steady": 0.0
+  },
+  {
+   "host_s": 15.5386,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 25.41,
+   "vs_steady": 0.01
+  },
+  {
+   "host_s": 16.54,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 61.44,
+   "vs_steady": 0.04
+  },
+  {
+   "host_s": 16.8652,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 73.38,
+   "vs_steady": -0.02
+  },
+  {
+   "host_s": 17.2032,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 85.43,
+   "vs_steady": 0.03
+  },
+  {
+   "host_s": 17.5343,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 97.51,
+   "vs_steady": 0.11
+  },
+  {
+   "host_s": 18.1995,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 121.42,
+   "vs_steady": 0.02
+  },
+  {
+   "host_s": 18.8727,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 145.4,
+   "vs_steady": 0.0
+  },
+  {
+   "host_s": 19.2066,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 157.42,
+   "vs_steady": 0.02
+  },
+  {
+   "host_s": 19.5319,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 169.42,
+   "vs_steady": 0.02
+  },
+  {
+   "host_s": 20.2078,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 193.48,
+   "vs_steady": 0.08
+  },
+  {
+   "host_s": 20.8661,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 217.46,
+   "vs_steady": 0.06
+  },
+  {
+   "host_s": 21.5391,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 241.44,
+   "vs_steady": 0.04
+  },
+  {
+   "host_s": 21.8712,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 253.39,
+   "vs_steady": -0.01
+  },
+  {
+   "host_s": 22.2033,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 265.39,
+   "vs_steady": -0.01
+  },
+  {
+   "host_s": 22.5394,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 277.4,
+   "vs_steady": 0.0
+  },
+  {
+   "host_s": 22.8665,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 289.37,
+   "vs_steady": -0.03
+  },
+  {
+   "host_s": 23.5387,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 313.41,
+   "vs_steady": 0.01
+  },
+  {
+   "host_s": 24.2049,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 337.39,
+   "vs_steady": -0.01
+  },
+  {
+   "host_s": 24.53,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 349.36,
+   "vs_steady": -0.04
+  },
+  {
+   "host_s": 24.8691,
+   "phase": "Start first, the first clock a tick later",
+   "tick": 361.4,
+   "vs_steady": 0.0
+  },
+  {
+   "host_s": 26.3412,
+   "phase": "stall 800 ms, then on",
+   "tick": 385.46,
+   "vs_steady": 0.06
+  },
+  {
+   "host_s": 27.0045,
+   "phase": "stall 800 ms, then on",
+   "tick": 409.39,
+   "vs_steady": -0.01
+  },
+  {
+   "host_s": 27.6717,
+   "phase": "stall 800 ms, then on",
+   "tick": 433.37,
+   "vs_steady": -0.03
+  },
+  {
+   "host_s": 28.0048,
+   "phase": "stall 800 ms, then on",
+   "tick": 445.4,
+   "vs_steady": 0.0
+  },
+  {
+   "host_s": 28.3399,
+   "phase": "stall 800 ms, then on",
+   "tick": 457.44,
+   "vs_steady": 0.04
+  },
+  {
+   "host_s": 29.0061,
+   "phase": "stall 800 ms, then on",
+   "tick": 481.42,
+   "vs_steady": 0.02
+  },
+  {
+   "host_s": 29.6733,
+   "phase": "stall 800 ms, then on",
+   "tick": 505.43,
+   "vs_steady": 0.03
+  },
+  {
+   "host_s": 30.6715,
+   "phase": "stall 800 ms, then on",
+   "tick": 541.36,
+   "vs_steady": -0.04
+  },
+  {
+   "host_s": 30.9967,
+   "phase": "stall 800 ms, then on",
+   "tick": 553.35,
+   "vs_steady": -0.05
+  },
+  {
+   "host_s": 32.4645,
+   "phase": "stall 800 ms, then the missed ticks in a burst",
+   "tick": 588.0,
+   "vs_steady": -1.4
+  },
+  {
+   "host_s": 33.0519,
+   "phase": "stall 800 ms, then the missed ticks in a burst",
+   "tick": 625.41,
+   "vs_steady": 0.01
+  },
+  {
+   "host_s": 33.3899,
+   "phase": "stall 800 ms, then the missed ticks in a burst",
+   "tick": 637.42,
+   "vs_steady": 0.02
+  },
+  {
+   "host_s": 33.724,
+   "phase": "stall 800 ms, then the missed ticks in a burst",
+   "tick": 649.44,
+   "vs_steady": 0.04
+  },
+  {
+   "host_s": 34.3852,
+   "phase": "stall 800 ms, then the missed ticks in a burst",
+   "tick": 673.37,
+   "vs_steady": -0.03
+  },
+  {
+   "host_s": 35.0484,
+   "phase": "stall 800 ms, then the missed ticks in a burst",
+   "tick": 697.37,
+   "vs_steady": -0.03
+  },
+  {
+   "host_s": 35.7197,
+   "phase": "stall 800 ms, then the missed ticks in a burst",
+   "tick": 721.42,
+   "vs_steady": 0.02
+  },
+  {
+   "host_s": 36.0557,
+   "phase": "stall 800 ms, then the missed ticks in a burst",
+   "tick": 733.35,
+   "vs_steady": -0.05
+  },
+  {
+   "host_s": 36.3898,
+   "phase": "stall 800 ms, then the missed ticks in a burst",
+   "tick": 745.38,
+   "vs_steady": -0.02
+  },
+  {
+   "host_s": 37.0571,
+   "phase": "before the Start while running (10 ticks short of a bar line)",
+   "tick": 769.45,
+   "vs_steady": 0.05
+  },
+  {
+   "host_s": 37.7213,
+   "phase": "before the Start while running (10 ticks short of a bar line)",
+   "tick": 793.39,
+   "vs_steady": -0.01
+  },
+  {
+   "host_s": 38.3895,
+   "phase": "before the Start while running (10 ticks short of a bar line)",
+   "tick": 817.44,
+   "vs_steady": 0.04
+  },
+  {
+   "host_s": 38.7227,
+   "phase": "before the Start while running (10 ticks short of a bar line)",
+   "tick": 829.44,
+   "vs_steady": 0.04
+  },
+  {
+   "host_s": 39.0508,
+   "phase": "before the Start while running (10 ticks short of a bar line)",
+   "tick": 841.43,
+   "vs_steady": 0.03
+  },
+  {
+   "host_s": 39.4686,
+   "phase": "after the Start while running",
+   "tick": 1.42,
+   "vs_steady": 0.02
+  },
+  {
+   "host_s": 40.1388,
+   "phase": "after the Start while running",
+   "tick": 25.46,
+   "vs_steady": 0.06
+  },
+  {
+   "host_s": 40.8071,
+   "phase": "after the Start while running",
+   "tick": 49.42,
+   "vs_steady": 0.02
+  },
+  {
+   "host_s": 41.1392,
+   "phase": "after the Start while running",
+   "tick": 61.42,
+   "vs_steady": 0.02
+  },
+  {
+   "host_s": 41.4672,
+   "phase": "after the Start while running",
+   "tick": 73.44,
+   "vs_steady": 0.04
+  },
+  {
+   "host_s": 41.8043,
+   "phase": "after the Start while running",
+   "tick": 85.41,
+   "vs_steady": 0.01
+  },
+  {
+   "host_s": 42.1373,
+   "phase": "after the Start while running",
+   "tick": 97.42,
+   "vs_steady": 0.02
+  },
+  {
+   "host_s": 42.8035,
+   "phase": "after the Start while running",
+   "tick": 121.35,
+   "vs_steady": -0.05
+  },
+  {
+   "host_s": 43.4745,
+   "phase": "after the Start while running",
+   "tick": 145.42,
+   "vs_steady": 0.02
+  },
+  {
+   "host_s": 43.8055,
+   "phase": "after the Start while running",
+   "tick": 157.43,
+   "vs_steady": 0.03
+  },
+  {
+   "host_s": 44.1327,
+   "phase": "after the Start while running",
+   "tick": 169.41,
+   "vs_steady": 0.01
+  },
+  {
+   "host_s": 44.4727,
+   "phase": "after the Start while running",
+   "tick": 181.36,
+   "vs_steady": -0.04
+  },
+  {
+   "host_s": 46.3297,
+   "phase": "SPP 20 + Continue while stopped (30 ticks into the bar)",
+   "tick": 121.41,
+   "vs_steady": 0.01
+  },
+  {
+   "host_s": 47.0,
+   "phase": "SPP 20 + Continue while stopped (30 ticks into the bar)",
+   "tick": 145.38,
+   "vs_steady": -0.02
+  },
+  {
+   "host_s": 47.3301,
+   "phase": "SPP 20 + Continue while stopped (30 ticks into the bar)",
+   "tick": 157.36,
+   "vs_steady": -0.04
+  },
+  {
+   "host_s": 47.6641,
+   "phase": "SPP 20 + Continue while stopped (30 ticks into the bar)",
+   "tick": 169.43,
+   "vs_steady": 0.03
+  },
+  {
+   "host_s": 48.0023,
+   "phase": "SPP 20 + Continue while stopped (30 ticks into the bar)",
+   "tick": 181.46,
+   "vs_steady": 0.06
+  },
+  {
+   "host_s": 48.3343,
+   "phase": "SPP 20 + Continue while stopped (30 ticks into the bar)",
+   "tick": 193.43,
+   "vs_steady": 0.03
+  },
+  {
+   "host_s": 48.9977,
+   "phase": "SPP 20 + Continue while stopped (30 ticks into the bar)",
+   "tick": 217.33,
+   "vs_steady": -0.07
+  },
+  {
+   "host_s": 49.6708,
+   "phase": "SPP 20 + Continue while stopped (30 ticks into the bar)",
+   "tick": 241.49,
+   "vs_steady": 0.09
+  },
+  {
+   "host_s": 49.9929,
+   "phase": "SPP 20 + Continue while stopped (30 ticks into the bar)",
+   "tick": 253.34,
+   "vs_steady": -0.06
+  },
+  {
+   "host_s": 50.6681,
+   "phase": "SPP 20 + Continue while stopped (30 ticks into the bar)",
+   "tick": 277.39,
+   "vs_steady": -0.01
+  },
+  {
+   "host_s": 51.0003,
+   "phase": "SPP 20 + Continue while stopped (30 ticks into the bar)",
+   "tick": 289.37,
+   "vs_steady": -0.03
+  },
+  {
+   "host_s": 51.6675,
+   "phase": "SPP 8 + Continue while running (a loop point, 48 ticks into the bar)",
+   "tick": 49.45,
+   "vs_steady": 0.05
+  },
+  {
+   "host_s": 52.0005,
+   "phase": "SPP 8 + Continue while running (a loop point, 48 ticks into the bar)",
+   "tick": 61.36,
+   "vs_steady": -0.04
+  },
+  {
+   "host_s": 52.3317,
+   "phase": "SPP 8 + Continue while running (a loop point, 48 ticks into the bar)",
+   "tick": 73.36,
+   "vs_steady": -0.04
+  },
+  {
+   "host_s": 52.9939,
+   "phase": "SPP 8 + Continue while running (a loop point, 48 ticks into the bar)",
+   "tick": 97.41,
+   "vs_steady": 0.01
+  },
+  {
+   "host_s": 53.6671,
+   "phase": "SPP 8 + Continue while running (a loop point, 48 ticks into the bar)",
+   "tick": 121.4,
+   "vs_steady": 0.0
+  },
+  {
+   "host_s": 54.6641,
+   "phase": "SPP 8 + Continue while running (a loop point, 48 ticks into the bar)",
+   "tick": 157.4,
+   "vs_steady": 0.0
+  },
+  {
+   "host_s": 54.9952,
+   "phase": "SPP 8 + Continue while running (a loop point, 48 ticks into the bar)",
+   "tick": 169.38,
+   "vs_steady": -0.02
+  },
+  {
+   "host_s": 55.6683,
+   "phase": "SPP 8 + Continue while running (a loop point, 48 ticks into the bar)",
+   "tick": 193.44,
+   "vs_steady": 0.04
+  },
+  {
+   "host_s": 56.3295,
+   "phase": "SPP 8 + Continue while running (a loop point, 48 ticks into the bar)",
+   "tick": 217.42,
+   "vs_steady": 0.02
+  }
+ ]
+}
