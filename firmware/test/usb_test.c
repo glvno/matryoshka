@@ -326,26 +326,6 @@ static void walk_config(const char *what, const uint8_t *c, uint32_t len, int ua
 }
 
 static int setup(uint8_t bm, uint8_t req, uint16_t val, uint16_t idx, uint16_t len);
-#if FELUCCA_DEVICE_IDENTITY
-/* the MIDI streaming interface's iInterface and its embedded jacks' iJack all equal s, its external jacks unnamed */
-static int midi_named(const uint8_t *c, uint32_t len, uint8_t s)
-{
-    int ms = 0, seen = 0;
-    for (uint32_t off = 0; off + 2u <= len && c[off]; off += c[off]) {
-        const uint8_t *d = c + off;
-        if (d[1] == 4u) {
-            ms = d[5] == 1u && d[6] == 3u;
-            if (ms) { if (d[8] != s) return 0; seen++; }
-        } else if (ms && d[1] == 0x24u && (d[2] == 2u || d[2] == 3u)) {
-            uint8_t ij = d[2] == 2u ? d[5] : d[6u + 2u * d[5]];
-            if (ij != (d[3] == 1u ? s : 0u)) return 0;
-            seen++;
-        }
-    }
-    return seen == 5;
-}
-#endif
-
 static void test_return_driver(void)
 {
 #if FELUCCA_UAC_RETURN
@@ -385,12 +365,10 @@ static void test_return_driver(void)
     usb_uac_on=1;
     CHECK(get_desc(0x100,&d,&n) && d[16]==3, "application reports physical serial descriptor");
     CHECK(get_desc(0x302,&d,&n) && n==34 && d[24]=='S' && d[32]=='E', "named product retains Matryoshka prefix");
-    CHECK(get_desc(0x200,&d,&n) && midi_named(d,n,2), "MIDI interface and embedded jacks carry the product string");
     CHECK(get_desc(0x303,&d,&n) && n==66 && d[2]=='0' && d[4]=='1' && d[64]=='0', "full 128-bit serial as UTF16 hex");
     usb_uac_on=0;
     CHECK(get_desc(0x100,&d,&n) && d[16]==0, "update mode remains serial-free");
     CHECK(get_desc(0x302,&d,&n) && n==22, "update-mode product stays fixed");
-    CHECK(get_desc(0x200,&d,&n) && midi_named(d,n,0), "update-mode MIDI interface and jacks stay unnamed");
     usb_uac_on=1; memset(di_name,0,sizeof di_name); di_usb_commit(); di_usb_snapshot(); memset(di_serial,0,sizeof di_serial);
 #endif
 }

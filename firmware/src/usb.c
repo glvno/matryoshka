@@ -489,34 +489,22 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
 #define IF_MIDI 1
 #define IF_AS 2
 #endif
-/* s: the string index naming the MIDI streaming interface (iInterface) and its two embedded jacks (iJack), the jacks
- * the bulk endpoints carry. Hosts name a MIDI port after its embedded jack's string; the MIDI Association's "Building a
- * USB MIDI 2.0 Device - Part 1" asks for a name on every embedded jack and iInterface = iProduct on a simple device.
- * 0 leaves them unnamed. The external jacks stay unnamed: host class drivers do not read them. */
-#define D_MIDI(m, s)                                                                                 \
-    9, 4, (m), 0, 2, 1, 3, 0, (s),                                                                   \
+#define D_MIDI(m)                                                                                    \
+    9, 4, (m), 0, 2, 1, 3, 0, 0,                                                                     \
     7, 0x24, 1, 0x00, 0x01, 0x41, 0x00,                                                              \
-    6, 0x24, 2, 1, 1, (s),                                                                           \
+    6, 0x24, 2, 1, 1, 0,                                                                             \
     6, 0x24, 2, 2, 2, 0,                                                                             \
-    9, 0x24, 3, 1, 3, 1, 2, 1, (s),                                                                  \
+    9, 0x24, 3, 1, 3, 1, 2, 1, 0,                                                                    \
     9, 0x24, 3, 2, 4, 1, 1, 1, 0,                                                                    \
     9, 5, 0x01, 2, 64, 0, 0, 0, 0,                                                                   \
     5, 0x25, 1, 1, 1,                                                                                \
     9, 5, 0x81, 2, 64, 0, 0, 0, 0,                                                                   \
     5, 0x25, 1, 1, 3,
-/* The MIDI port's name while the device identity is on: the product string (index 2, "Matryoshka" or "Matryoshka
- * <name>", di_usb_string), so each FM-1's ports carry its own name (D-931). A FELUCCA_UAC=0 build (the update loader)
- * and update mode's MIDI-only descriptors (CFG_DESC_MIDI) stay unnamed, byte for byte. */
-#if FELUCCA_UAC && FELUCCA_DEVICE_IDENTITY
-#define MIDI_STR 2
-#else
-#define MIDI_STR 0
-#endif
 /* audio + MIDI from interface a, in the order FELUCCA_UAC_MIDI_LAST picks */
 #if FELUCCA_UAC_MIDI_LAST
-#define D_AUDIO(a) D_AC(a) D_AS((a) + IF_AS) D_RETURN(a) D_MIDI((a) + IF_MIDI, MIDI_STR)
+#define D_AUDIO(a) D_AC(a) D_AS((a) + IF_AS) D_RETURN(a) D_MIDI((a) + IF_MIDI)
 #else
-#define D_AUDIO(a) D_AC(a) D_MIDI((a) + IF_MIDI, MIDI_STR) D_AS((a) + IF_AS)
+#define D_AUDIO(a) D_AC(a) D_MIDI((a) + IF_MIDI) D_AS((a) + IF_AS)
 #endif
 #define AUD_NIF (2 + FELUCCA_UAC + FELUCCA_UAC_RETURN)
 #define AUD_LEN (92 + (63 + FMT_LEN) * FELUCCA_UAC + 83 * FELUCCA_UAC_RETURN)
@@ -550,7 +538,7 @@ typedef char cfg_plain_len_ok[sizeof CFG_DESC_PLAIN == CFG_LEN_PLAIN ? 1 : -1];
 /* MIDI only (usb_uac_on = 0, update mode): a FELUCCA_UAC=0 build's plain descriptors, byte for byte */
 #define CFG_LEN_MIDI (9 + 92)
 static const uint8_t DEV_DESC_MIDI[18] = {D_DEV_BCD(0x0110, 0, 0, 0, 0)};
-static const uint8_t CFG_DESC_MIDI[] = {D_CFG(CFG_LEN_MIDI, 2), D_AC_MIDI(0) D_MIDI(1, 0)};
+static const uint8_t CFG_DESC_MIDI[] = {D_CFG(CFG_LEN_MIDI, 2), D_AC_MIDI(0) D_MIDI(1)};
 typedef char cfg_midi_len_ok[sizeof CFG_DESC_MIDI == CFG_LEN_MIDI ? 1 : -1];
 static uint8_t usb_uac_on = 1;                             /* the audio function is presented (read by the TIMER5 ISR) */
 #define UAC_ON usb_uac_on
