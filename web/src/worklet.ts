@@ -70,14 +70,16 @@ export type HostMsg =
   /** MIDI Start / Continue / Stop; top: from the top (Start), or `at` clock ticks into the song (Continue after a Song
    * Position: input.ts, #870, #596) */
   | { t: 'clockrun'; on: boolean; top?: boolean; at?: number }
-  | { t: 'bend'; v: number }
-  | { t: 'cc'; n: number; v: number }
+  /** pitch bend, a control change, channel aftertouch, all notes off: `ch` the MIDI channel a controller sent it on (1..16),
+   *  which the engines do not filter on (one set of performance controls) and Live sends on to the FM-1 as it came (#1155) */
+  | { t: 'bend'; v: number; ch?: number }
+  | { t: 'cc'; n: number; v: number; ch?: number }
   /** a test phrase (#945, phrases.ts) played into the keys, block-exact; another replaces it, null stops it */
   | { t: 'phrase'; phrase: Phrase | null; loop?: boolean }
   /** record the engine's output (#946) and send it back in chunks (`rec`), the last one when it stops */
   | { t: 'record'; on: boolean }
-  | { t: 'at'; v: number }
-  | { t: 'panic' }
+  | { t: 'at'; v: number; ch?: number }
+  | { t: 'panic'; ch?: number }
   /** the FM-1 engine's WebAssembly (public/fm1-engine.wasm): compiled here (a compiled module does not cross into an
    * AudioWorklet), it starts beside the browser engine */
   | { t: 'fm1wasm'; bytes: ArrayBuffer }

@@ -121,8 +121,9 @@ export function editorCc(cc: { n: number; v: number }, editor: Pick<Editor, 'tur
  * `noClock` names an input whose MIDI clock (0xF8) is ignored: an FM-1, which sends its clock all the time (#473), so the
  * editor's tempo does not follow it unasked. Start plays from the top (`top`, also while running). Continue after a Song
  * Position plays from there (`at`: its sixteenths x 6 clock ticks, #596), also while running; Continue with no Song
- * Position since the last Start or Continue plays on (the FM-1's clock_in.h the same). A note, a control change and pitch
- * bend come with their input (`from`), for MIDI learn (#1067: never from an FM-1).
+ * Position since the last Start or Continue plays on (the FM-1's clock_in.h the same). Every channel message comes with
+ * its channel (`ch`, 1..16: Live sends it on to the FM-1 on it, #1155); a note, a control change and pitch bend with their
+ * input (`from`) too, for MIDI learn (#1067: never from an FM-1).
  */
 export async function attachMidi(
   host: { send(msg: HostMsg, from?: MIDIInput): void },
@@ -155,17 +156,18 @@ export async function attachMidi(
       spp = -1;
       return void host.send(at > 0 ? { t: 'clockrun', on: true, top: true, at } : at === 0 ? { t: 'clockrun', on: true, top: true } : { t: 'clockrun', on: true });
     }
-    const cmd = s & 0xf0, ch = (s & 0x0f) + 1; // the channel: a Voice allocator can take one only
+    // the channel: a Voice allocator can take one only, and Live sends each message on to the FM-1 on it (#1155)
+    const cmd = s & 0xf0, ch = (s & 0x0f) + 1;
     if (cmd === 0x90 && b > 0) {
       held.add(a | (ch << 7));
       host.send({ t: 'on', note: a, vel: b / 127, ch }, ev.target as MIDIInput);
     } else if (cmd === 0x80 || (cmd === 0x90 && b === 0)) {
       held.delete(a | (ch << 7));
       host.send({ t: 'off', note: a, ch }, ev.target as MIDIInput);
-    } else if (cmd === 0xb0 && a === 123) host.send({ t: 'panic' });
-    else if (cmd === 0xb0) host.send({ t: 'cc', n: a, v: b }, ev.target as MIDIInput); // CC 1 = mod wheel, 16..19 = the Main module's knobs
-    else if (cmd === 0xe0) host.send({ t: 'bend', v: (((b << 7) | a) - 8192) / 8192 }, ev.target as MIDIInput);
-    else if (cmd === 0xd0) host.send({ t: 'at', v: a / 127 });
+    } else if (cmd === 0xb0 && a === 123) host.send({ t: 'panic', ch });
+    else if (cmd === 0xb0) host.send({ t: 'cc', n: a, v: b, ch }, ev.target as MIDIInput); // CC 1 = mod wheel, 16..19 = the Main module's knobs
+    else if (cmd === 0xe0) host.send({ t: 'bend', v: (((b << 7) | a) - 8192) / 8192, ch }, ev.target as MIDIInput);
+    else if (cmd === 0xd0) host.send({ t: 'at', v: a / 127, ch });   // (channel aftertouch; poly aftertouch, 0xA0, the FM-1 does not take: D-453)
   };
   const hook = (): void => {
     for (const input of access.inputs.values()) input.onmidimessage = message;
