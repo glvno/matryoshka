@@ -8,6 +8,7 @@ import { READ_ONLY_ID, type SongEntry, type StepNote } from './track';
 import { deviceSection, encodePatch, FLAG_FX_BUS, FLAG_LINKS, FLAG_PATTERN_ORIGINS, mapRecord, toQ16, VERSION, type LinkStore } from './patchbin';
 import { FNV0, fnv } from './pattern-store';
 import { deviceView } from './poly';
+import type { HostMsg } from './worklet';
 
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
  * the Scope are not there, so the editor's order is not the device's); -1 when the device does not have it */
@@ -946,21 +947,28 @@ export class DeviceLink {
     if (mi >= 0) this.out!.send(bypassFrame(mi, on));
   }
 
-  note(msg: { t: string; note?: number; vel?: number }): void {
+  /** a played message sent on to the FM-1 under Live (main.ts sink.play), on the MIDI channel it came on (#1155: a Voice
+   *  allocator on its own channel, the FM-1's MIDI CHANNEL and its pad map hear it as the controller sent it); none, as
+   *  the editor's own keys and wheels play, is channel 1. Notes, pitch bend (the firmware bends ±2 semitones), control
+   *  changes, channel aftertouch (Main's `at` output) and all notes off (CC 123), as the FM-1 takes them on USB (D-453);
+   *  poly aftertouch it does not take, and the editor has none to send. `keys` false holds the notes and all notes off
+   *  back (the keys of a device armed in the editor stay there, D-802) */
+  play(msg: HostMsg, keys = true): void {
     if (!this.connected) return;
-    if (msg.t === 'on') this.out!.send([0x90, msg.note! & 0x7f, Math.max(1, Math.round((msg.vel ?? 1) * 127))]);
-    else if (msg.t === 'off') this.out!.send([0x80, msg.note! & 0x7f, 0]);
-    else if (msg.t === 'panic') this.out!.send([0xb0, 123, 0]);
+    const c = ((('ch' in msg ? msg.ch : undefined) ?? 1) - 1) & 0x0f;
+    const byte = (v: number): number => Math.max(0, Math.min(127, Math.round(v)));
+    if (msg.t === 'bend') {
+      const x = Math.max(0, Math.min(16383, Math.round(8192 + msg.v * 8192)));
+      this.out!.send([0xe0 | c, x & 0x7f, x >> 7]);
+    } else if (msg.t === 'cc') this.out!.send([0xb0 | c, msg.n & 0x7f, byte(msg.v)]);
+    else if (msg.t === 'at') this.out!.send([0xd0 | c, byte(msg.v * 127)]);
+    else if (!keys) return;
+    else if (msg.t === 'on') this.out!.send([0x90 | c, msg.note & 0x7f, Math.max(1, byte(msg.vel * 127))]);
+    else if (msg.t === 'off') this.out!.send([0x80 | c, msg.note & 0x7f, 0]);
+    else if (msg.t === 'panic') this.out!.send([0xb0 | c, 123, 0]);
   }
 
-  /** pitch bend, -1..1 (the firmware bends ±2 semitones) */
-  bend(v: number): void {
-    if (!this.connected) return;
-    const x = Math.max(0, Math.min(16383, Math.round(8192 + v * 8192)));
-    this.out!.send([0xe0, x & 0x7f, x >> 7]);
-  }
-
-  /** a control change, value 0..127 (CC 1 = mod wheel) */
+  /** a control change from the editor itself, value 0..127, on channel 1 (the patch buttons' CC 80..86) */
   cc(n: number, v: number): void {
     if (!this.connected) return;
     this.out!.send([0xb0, n & 0x7f, Math.max(0, Math.min(127, Math.round(v)))]);

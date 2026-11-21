@@ -157,6 +157,29 @@ describe('attachMidi', () => {
       { t: 'clockrun', on: false },
     ]);
   });
+
+  it('gives every channel message its channel, channel aftertouch too; poly aftertouch plays nothing (#1155)', async () => {
+    const keys = { id: 'k', name: 'Launchkey MIDI', state: 'connected', onmidimessage: null as ((ev: unknown) => void) | null };
+    const nav = navigator as unknown as { requestMIDIAccess?: unknown };
+    const saved = nav.requestMIDIAccess;
+    nav.requestMIDIAccess = async () => ({ inputs: new Map([['k', keys]]), outputs: new Map() });
+    const sent: unknown[] = [];
+    try {
+      await attachMidi({ send: (m: unknown) => void sent.push(m) } as never, () => {});
+      for (const d of [[0x94, 60, 127], [0xa4, 60, 64], [0xd4, 127], [0xb4, 1, 64], [0xe4, 0, 64], [0x84, 60, 0], [0xbf, 123, 0]])
+        keys.onmidimessage!({ target: keys, data: new Uint8Array(d) });
+    } finally {
+      nav.requestMIDIAccess = saved;
+    }
+    expect(sent).toEqual([
+      { t: 'on', note: 60, vel: 1, ch: 5 },
+      { t: 'at', v: 1, ch: 5 },
+      { t: 'cc', n: 1, v: 64, ch: 5 },
+      { t: 'bend', v: 0, ch: 5 },
+      { t: 'off', note: 60, ch: 5 },
+      { t: 'panic', ch: 16 },
+    ]);
+  });
 });
 
 describe('isFm1In', () => {

@@ -792,13 +792,10 @@ const sink = {
     piano.track(msg);
     hands.track(msg);
     if (msg.t === 'on') tutorial.noteOn();
-    if (live() && !fromDevice) {   // (what the FM-1 played itself is not sent back)
-      // (the keys of a device armed in the editor stay here unless the FM-1 takes the editor's arm (ARMS, #191); a set the
-      // FM-1 armed itself hears them there, D-802)
-      if (!editor.armedSet.size || armFromDevice || device.takesArms) device.note(msg as { t: string; note?: number; vel?: number });
-      if (msg.t === 'bend') device.bend(msg.v);
-      else if (msg.t === 'cc') device.cc(msg.n, msg.v);
-    }
+    if (live() && !fromDevice)   // (what the FM-1 played itself is not sent back)
+      // on the channel it came on (#1155); the keys of a device armed in the editor stay here unless the FM-1 takes the
+      // editor's arm (ARMS, #191); a set the FM-1 armed itself hears them there, D-802
+      device.play(msg, !editor.armedSet.size || armFromDevice || device.takesArms);
   },
 };
 /** what the armed devices play (Editor onArm), for the status line */
@@ -1209,7 +1206,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     // a snapshot switch (D-970): both engines start the stop from silence. A Live FM-1 gets All Notes Off (MIDI CC 123), the
     // only silence the link has: it lets go of its notes, while its effect tails ring out unless the switch reloads it
     host.silence(p);
-    if (live()) device.note({ t: 'panic' });
+    if (live()) device.play({ t: 'panic' });
   },
   morphCandidates: patchCandidates,
 }, $('dock'));

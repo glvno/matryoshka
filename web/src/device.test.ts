@@ -3,6 +3,7 @@ import { recoveredLines } from './test-buffer-budget';
 // Connecting the FM-1 syncs by default (#171): the decision on connect and the chip's state; Live over the budget (#200).
 import { describe, expect, it } from 'vitest';
 import { chipState, DeviceLink, type DeviceEvent, holdsFactoryLinks, IGNORED_NOW, ignoredFound, linkCandidates, type LinkCandidate, liveSync, notFound, sysexRefused, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, transportOf } from './device';
+import { attachMidi } from './input';
 import { factoryEntries } from './pattern-store';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
@@ -471,6 +472,30 @@ describe('DeviceLink.connect', () => {
     link.setPad(0, 36);
     expect(link.hasPads).toBe(false);
     expect(fm1.o.sent.some((d) => parse(d)?.cmd === PADS_CMD.pads)).toBe(false);
+  });
+  it('under Live, sends a controller\'s notes, bend, CCs, channel aftertouch and all notes off to the FM-1 on their own channel; no poly aftertouch (#1155)', async () => {
+    const fm1 = { i: port('f', 'FM-1'), o: port('F', 'FM-1') }, keys = port('k', 'Launchkey MIDI');
+    answering(fm1.o, fm1.i);
+    const link = new DeviceLink();
+    const played = (): number[][] => fm1.o.sent.filter((d) => d[0] !== 0xf0).map((d) => [...d]);
+    await withMidi([fm1.i, keys], [fm1.o], async () => {
+      await link.connect();
+      // (input.ts reads the controller as main.ts's sink hears it; sink.play sends each message on with device.play)
+      await attachMidi({ send: (m) => link.play(m) }, () => {}, undefined, (p) => p.id === 'f');
+      for (const d of [[0x94, 60, 100], [0xb4, 1, 64], [0xe4, 0, 0x60], [0xd4, 90], [0xa4, 60, 90], [0x84, 60, 0], [0xb4, 123, 0], [0x90, 62, 127]])
+        keys.onmidimessage!({ target: keys, data: new Uint8Array(d) } as never);
+    });
+    expect(played()).toEqual([
+      [0x94, 60, 100], [0xb4, 1, 64], [0xe4, 0, 0x60], [0xd4, 90],   // (channel 5 stays channel 5; poly aftertouch, 0xA4, is not sent)
+      [0x84, 60, 0], [0xb4, 123, 0], [0x90, 62, 127],
+    ]);
+    // the editor's own keys and wheels (no channel) play on channel 1; an armed device's keys stay in the editor, the rest goes on
+    fm1.o.sent.length = 0;
+    link.play({ t: 'on', note: 60, vel: 1 });
+    link.play({ t: 'at', v: 1 });
+    link.play({ t: 'on', note: 61, vel: 1, ch: 3 }, false);
+    link.play({ t: 'bend', v: 0, ch: 3 }, false);
+    expect(played()).toEqual([[0x90, 60, 127], [0xd0, 127], [0xe2, 0, 0x40]]);
   });
 });
 
