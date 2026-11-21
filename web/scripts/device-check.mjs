@@ -96,8 +96,8 @@ export function checkScenarios(h) {
 
   /** GLO's menu is up: its tab strip shows (MIDI PANEL SYSTEM EQ INFO GUIDE; the INFO tab has no MENU header) */
   const inMenu = async () => { const t = await emu.texts(); return t.includes('PANEL') && t.includes('GUIDE'); };
-  /** GLO's menu on the tab whose rows show `row` (ALGO steps the tabs and their pages: MIDI 1/3, MIDI 2/3, MIDI 3/3,
-   * PANEL 1/2, PANEL 2/2, SYSTEM 1/2, SYSTEM 2/2, EQ, INFO, GUIDE; D-923, D-939) */
+  /** GLO's menu on the tab whose rows show `row` (ALGO steps the tabs and their pages: MIDI 1/4, MIDI 2/4, MIDI 3/4,
+   * MIDI 4/4, PANEL 1/2, PANEL 2/2, SYSTEM 1/2, SYSTEM 2/2, EQ, INFO, GUIDE; D-923, D-939) */
   async function menuTab(row) {
     if (!(await inMenu())) {
       await emu.tap(B.glo);

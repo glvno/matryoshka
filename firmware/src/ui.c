@@ -37,15 +37,15 @@ static void sandbox_bar(void);
 #include "device_identity.h"
 enum { MR_LEDS, MR_ACCEL, MR_CIN, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_TEMPO,
        MR_CLKOUT, MR_OUTPUT, MR_CORES, MR_EDITOR, MR_OUT35, MR_USB_RETURN, MR_DEVICE_NAME, MR_METER, MR_EQ_LOW, MR_EQ_MID, MR_EQ_HIGH,
-       MR_EQ_FREQ, MR_TIN, MR_TOUT, MR_LEARN, MR_MAPS, MR_MAP_CLEAR, MR_COUNT };
+       MR_EQ_FREQ, MR_TIN, MR_TOUT, MR_LEARN, MR_MAPS, MR_MAP_CLEAR, MR_PADS_ON, MR_PAD_ROW, MR_PAD_CLEAR, MR_PADS_CLEAR, MR_COUNT };
 /* the menu's tabs (menu.c, #395): MIDI, PANEL, SYSTEM and EQ (the master EQ, master_eq.h, #1107) are pages of settings on
  * K1..K4, INFO a list of readings, GUIDE a text (the ideas behind the controls, D-248) */
 enum { MT_MIDI, MT_PANEL, MT_SYSTEM, MT_EQ, MT_INFO, MT_GUIDE, MT_COUNT };
 static uint8_t menu_tab;
-static uint8_t menu_page2;                      /* the tab's page past its first, 0 on the first (ALGO steps MIDI 1/3, 2/3: TRANSPORT
-                                                 * IN and OUT, #596, 3/3: MIDI learn, #1067; PANEL 1/2, 2/2: TIME SIG, #1011;
-                                                 * SYSTEM 1/2, 2/2: EDITOR, #702, 3.5MM OUT, #631) */
-static uint32_t menu_pages(uint32_t t) { return t == MT_MIDI ? 3u : t <= MT_SYSTEM ? 2u : 1u; }   /* a tab's pages */
+static uint8_t menu_page2;                      /* the tab's page past its first, 0 on the first (ALGO steps MIDI 1/4, 2/4: TRANSPORT
+                                                 * IN and OUT, #596, 3/4: MIDI learn, 4/4: the pad map, #1067; PANEL 1/2, 2/2: TIME
+                                                 * SIG, #1011; SYSTEM 1/2, 2/2: EDITOR, #702, 3.5MM OUT, #631) */
+static uint32_t menu_pages(uint32_t t) { return t == MT_MIDI ? 4u : t <= MT_SYSTEM ? 2u : 1u; }   /* a tab's pages */
 static int menu_two(uint32_t t) { return menu_pages(t) > 1u; }   /* the tabs with more than one page: MIDI, PANEL, SYSTEM */
 static int menu_page(void) { return page == PAGE_MENU && menu_tab <= MT_EQ; }   /* the menu on a tab drawn as a device page */
 /* the settings of the menu (menu.c); saved with the state (SAVE) */
@@ -78,6 +78,7 @@ static void cfg_defaults(void)
     cfg.editor_ignore = 0;              /* (and EDITOR at ALLOW, #702) */
     out_off = 0;                        /* (and 3.5MM OUT ON, #631) */
     meq_defaults();                     /* (and the master EQ flat, #1107) */
+    pad_defaults();                     /* (and the pad map empty, #1067) */
 }
 static uint32_t cpu_pct;                /* the audio ISR's peak time over the last half second, in % of the 2.9 ms half buffer */
 static uint8_t cores_up = 1;            /* the processor cores at work: 2 while the second core runs and passes its self-test (main.c, #271) */

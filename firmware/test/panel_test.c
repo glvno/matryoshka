@@ -823,6 +823,54 @@ static void drum_bank_suite(void)
     tap(BTN_OCT_UP);
     check("  OCT+: MT/MC HT/HC CY AC on black keys 1..4, the rest silent", drum_bank == 1u && blacks_send(K808[1])
           && !strcmp(msg_text, MSG_ROWS "9-16: MT/MC HT/HC..") && foot_reads(MSG_ROWS "9-16"));
+    {                                                       /* the global pad map (#1067): learn mode, a drum key, a pad */
+        uint32_t told = host_pads_told;
+        int bd, ac;
+        tap(BTN_OCT_DOWN);
+        (void)eng_keys_rows(rm, rr);
+        bd = eng_drummap_note(rm[0], rr[0]);
+        ac = eng_drummap_note(rm[11], rr[11]);
+        pad_defaults();
+        gt_due = 0;
+        learn_mode(1);
+        check("pad map: learn mode on a kit says LEARN: KNOB OR DRUM KEY", learn_live() == 1 && !strcmp(msg_text, MSG_LEARN_KIT));
+        panel_keys(1u << BLACK_N[0]);
+        panel_keys(0);
+        check("  black key 1 picks row 1 for a pad (and still plays): 1 BD: HIT A PAD", learn_live() == 3 && ml.mod == 0u
+              && !strcmp(msg_text, "1 BD" MSG_PAD_HIT) && black_sends(0) == bd);
+        check("  a pad's note 36: row 1's pad, it plays BD, NOTE C2 > 1 BD, row 2 waits, the editor told, kept without SAVE",
+              pad_learn(36, 100, 1) && pad_note[0] == 36u && pad_sound[0] == bd + 1 && !strcmp(msg_text, "NOTE C2 > 1 BD") && learn_live() == 3
+              && ml.mod == 1u && host_pads_told == told + 1u && gt_due);
+        check("  its note-off ends what it started", pad_midi(36, 0, 1) && !pad_sound[0]);
+        later(PAD_SHOW_MS + 100u);
+        map_poll();
+        check("  a second later the bar asks for row 2: 2 SD: HIT A PAD", !strcmp(msg_text, "2 SD" MSG_PAD_HIT));
+        check("  the same pad again moves to row 2 (one row per pad)", pad_learn(36, 90, 1) && pad_note[1] == 36u && pad_note[0] == PAD_NONE);
+        pad_midi(36, 0, 1);
+        tap(BTN_OCT_UP);
+        panel_keys(1u << BLACK_N[3]);
+        panel_keys(0);
+        check("  OCT+ and black key 4: row 12, AC", learn_live() == 3 && ml.mod == 11u && !strcmp(msg_text, "12 AC" MSG_PAD_HIT));
+        check("  the last row learned: learn mode ends, PADS: 2 LEARNED", pad_learn(49, 100, 1) && pad_note[11] == 49u && !learn_live()
+              && !strcmp(msg_text, MSG_PADS "2" MSG_PADS_LEARNED));
+        pad_midi(49, 0, 1);
+        check("pad map: a pad plays its row's note in any learn state, an unmapped note plays as itself", pad_midi(49, 100, 1)
+              && pad_sound[11] == ac + 1 && !pad_midi(50, 100, 1));
+        pad_midi(49, 0, 1);
+        pad_on = 0;
+        check("  PAD MAP OFF: the pad's note plays as itself", !pad_midi(49, 100, 1));
+        pad_on = 1;
+        sb_on = 1;
+        check("  sandbox mode: the pads play their own notes", !pad_midi(49, 100, 1));
+        sb_on = 0;
+        learn_mode(1);
+        panel_keys(1u << BLACK_N[0]);
+        panel_keys(0);
+        tap(BTN_HOME);
+        check("  a HOME tap while a row waits, nothing hit: LEARN OFF", !learn_live() && !strcmp(msg_text, MSG_LEARN_OFF));
+        pad_defaults();
+        tap(BTN_OCT_UP);
+    }
 
     drum_open("MERIDIAN 8");                                /* (drum_bank 0 again: drum_open) */
     check("a kit of 8 rows (Meridian 8): no banks, the footer = OCT =", eng_keys_rows(rm, rr) == 8u && foot_reads(MSG_FOOT_OCT));
@@ -1264,11 +1312,11 @@ int main(void)
         patch_enc(1);
         check("HOME held + PRESET in the menu: the next patch, HOME's release stays in the menu", presets_stepped == stepped + 2 && page == PAGE_MENU);
         presets_stepped = stepped;
-        check("  the header says MIDI 1/3 (#596, #1067)", on_screen("MIDI 1/3"));
+        check("  the header says MIDI 1/4 (#596, #1067)", on_screen("MIDI 1/4"));
         enc(1, 1);
         check("ALGO: MIDI's second page, TRANSPORT IN on K1, TRANSPORT OUT on K2, both ON as made (#596)", menu_tab == MT_MIDI
               && menu_page2 && menu_page() && pages_now()->nrows == 2u && pages_now()->par[0] == MR_TIN && pages_now()->par[1] == MR_TOUT
-              && on_screen("MIDI 2/3") && on_screen("TRANSPORT IN") && on_screen("TRANSPORT OUT") && cfg.transport_in && cfg.transport_out);
+              && on_screen("MIDI 2/4") && on_screen("TRANSPORT IN") && on_screen("TRANSPORT OUT") && cfg.transport_in && cfg.transport_out);
         enc(2, -1);
         check("  K1 left: TRANSPORT IN OFF", cfg.transport_in == 0u && on_screen("OFF"));
         enc(3, -1);
@@ -1276,13 +1324,40 @@ int main(void)
         cfg_defaults();
         check("  FACTORY RESET's defaults: both ON", cfg.transport_in == 1u && cfg.transport_out == 1u);
         enc(1, -1);
-        check("ALGO back: MIDI 1/3", menu_tab == MT_MIDI && !menu_page2 && pages_now()->par[3] == MR_CLKOUT);
+        check("ALGO back: MIDI 1/4", menu_tab == MT_MIDI && !menu_page2 && pages_now()->par[3] == MR_CLKOUT);
         enc(1, 1);
         enc(1, 1);
-        check("ALGO twice: MIDI's third page, MIDI learn: LEARN, MAPPINGS (none), CLEAR (#1067)", menu_tab == MT_MIDI && menu_page2 == 2u
-              && pages_now()->nrows == 3u && pages_now()->par[0] == MR_LEARN && pages_now()->par[1] == MR_MAPS
-              && pages_now()->par[2] == MR_MAP_CLEAR && on_screen("LEARN") && on_screen("MAPPINGS") && on_screen("NONE")
-              && on_screen("MIDI 3/3"));
+        check("ALGO twice: MIDI's third page: MAPPINGS (none), CLEAR, and LEARN reading HOME + SEL (#1067, D-939)", menu_tab == MT_MIDI
+              && menu_page2 == 2u && pages_now()->nrows == 3u && pages_now()->par[0] == MR_MAPS && pages_now()->par[1] == MR_MAP_CLEAR
+              && pages_now()->par[2] == MR_LEARN && on_screen("MAPPINGS") && on_screen("NONE") && on_screen("HOME + SEL")
+              && on_screen("MIDI 3/4"));
+        enc(1, 1);
+        check("ALGO: MIDI's fourth page, the pad map: PAD MAP ON, row 1 with no pad, CLEAR, CLEAR ALL (#1067)", menu_tab == MT_MIDI
+              && menu_page2 == 3u && pages_now()->nrows == 4u && pages_now()->par[0] == MR_PADS_ON && pages_now()->par[1] == MR_PAD_ROW
+              && pages_now()->par[2] == MR_PAD_CLEAR && pages_now()->par[3] == MR_PADS_CLEAR && on_screen("MIDI 4/4") && on_screen("PAD MAP")
+              && on_screen("CLEAR ALL") && pad_on && !pad_count());
+        {
+            uint32_t told = host_pads_told;
+            pad_set(0, 36);
+            pad_set(1, 38);
+            ui_dirty = 1;
+            panel_draw();
+            check("  row 1's pad reads NOTE C2", on_screen("NOTE C2"));
+            enc(4, 1);
+            check("  K3 right clears it: NOTE C2 CLEARED, kept without SAVE, the editor told", pad_note[0] == PAD_NONE && pad_note[1] == 38u
+                  && strstr(msg_text, "NOTE C2 CLEARED") && gt_due && host_pads_told == told + 1u);
+            enc(3, 1);
+            check("  K2 right: row 2, its pad NOTE D2", pad_sel == 1u && on_screen("NOTE D2"));
+            enc(2, -1);
+            check("  K1 left: PAD MAP OFF", !pad_on && on_screen("OFF") && host_pads_told == told + 2u);
+            enc(2, 1);
+            check("  K1 right: ON again", pad_on);
+            enc(5, 1);
+            check("  K4 right arms CLEAR ALL for GLO's hold", menu_armed == MR_PADS_CLEAR && strstr(msg_text, "HOLD GLO 2 S: CLEAR PADS"));
+            check("  GLO's hold: every pad gone, PAD MAP stays on", menu_fire() && !pad_count() && pad_on && strstr(msg_text, "PADS CLEARED"));
+            enc(3, -1);
+            msg_until = fm1_ms;                             /* (the bar's message gone: the header again) */
+        }
         enc(1, 1);
         check("ALGO: the PANEL tab (LEDs, knob accel, count-in, tempo)", menu_tab == MT_PANEL && pages_now()->nrows == 4u && pages_now()->par[0] == MR_LEDS && pages_now()->par[2] == MR_CIN && pages_now()->par[3] == MR_TEMPO);
         enc(4, 1);                                          /* K3: COUNT-IN (#414), OFF > 1 BAR > 2 BARS */
@@ -1500,7 +1575,8 @@ int main(void)
         enc(1, 1);
         enc(1, 1);
         enc(1, 1);
-        enc(1, 1);                                          /* (MIDI's three pages, #596, #1067, and PANEL's two, #1011) */
+        enc(1, 1);
+        enc(1, 1);                                          /* (MIDI's four pages, #596, #1067, and PANEL's two, #1011) */
         enc(3, 1);
         check("again: the menu, SYSTEM, FACTORY RESET armed", page == PAGE_MENU && menu_tab == MT_SYSTEM && menu_armed == MR_DEFAULTS);
         later(MENU_ARM_MS + 100u);

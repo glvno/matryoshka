@@ -15,8 +15,7 @@
 //   copy / cut / paste (at the insert marker), Cmd-D the selection again after itself, B draw mode, Esc deselect /
 //   close. Every gesture is one undo step. While the focus is in the roll it keeps these keys (none reaches the canvas).
 // The editor owns the patch: the roll reads the track through `ops.track()` and writes through `ops.notes`.
-import { NOTE_NAMES } from './modules';
-import type { ModuleInst } from './patch';
+import { NOTE_NAMES, type ModuleInst } from './patch';
 import { renamedKey } from './storage-key';
 import { COND_ORDER, condName, droneRow, fixNotes, isDrone, MICRO_MAX, MICRO_STEPS, microName, RATCHET_MAX, setTiming, STEP_VEL, STEPS_MAX, STEPS_RATES, type StepNote } from './track';
 

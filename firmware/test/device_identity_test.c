@@ -33,6 +33,7 @@ static uint8_t meq[4] = {0, 0, 0, 20};
 static void meq_pack(uint8_t *d) { memcpy(d, meq, 4); }
 static void meq_unpack(const uint8_t *d) { memcpy(meq, d, 4); }
 static void meq_defaults(void) { static const uint8_t flat[4] = {0, 0, 0, 20}; memcpy(meq, flat, 4); }
+#include "../src/pad_map.h"
 #include "../src/settings_ext.h"
 /* #1107: the settings extension lives beside the settings record, written with it; older firmware sees only the record */
 static void settings_ext_test(void)
@@ -48,6 +49,21 @@ static void settings_ext_test(void)
     assert(sl_write_ext(SL_SETTINGS, 0, payload, 16, ext, SET_EXT_LEN) == 0);
     meq_defaults(); sl_scan(); settings_ext_load();
     assert(!memcmp(meq, mine, 4));                              /* kept across a power cycle (a new scan) */
+    pad_set(0, 36); pad_set(23, 51); pad_on = 0; settings_ext_pack(ext);   /* #1067: the pad map, after the EQ */
+    assert(sl_write_ext(SL_SETTINGS, 0, payload, 16, ext, SET_EXT_LEN) == 0);
+    pad_defaults(); sl_scan(); settings_ext_load();
+    assert(pad_note[0] == 36 && pad_note[23] == 51 && pad_count() == 2 && !pad_on && !memcmp(meq, mine, 4));
+    {                                                           /* an extension from before the pad map (4 bytes): its EQ, the map empty */
+        uint8_t old[8] = {SET_EXT_VERSION, MEQ_BYTES};
+        uint32_t crc;
+        memcpy(old + 2, mine, 4);
+        crc = m1_crc16(old, 6);
+        old[6] = (uint8_t)crc;
+        old[7] = (uint8_t)(crc >> 8);
+        assert(sl_write_ext(SL_SETTINGS, 0, payload, 16, old, 8) == 0);
+        meq_defaults(); sl_scan(); settings_ext_load();
+        assert(!memcmp(meq, mine, 4) && !pad_count() && pad_on);
+    }
     assert(!sl_head(SL_SETTINGS, &h, 1) && h.len == 16);        /* what an older firmware reads: the 16 bytes, their CRC */
     assert(!sl_read(SL_SETTINGS, read, &n, 0) && n == 16 && !memcmp(read, payload, 16));
     flash[sl_sector_addr(sl_sec[SL_SETTINGS]) + SL_PAYLOAD + SL_EXT_AT + 3] ^= 1;   /* a damaged extension: flat */

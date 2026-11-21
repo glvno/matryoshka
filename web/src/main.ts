@@ -24,11 +24,11 @@ import { fm1Label } from './fm1-choice';
 import { chooseFm1 } from './fm1-pick';
 import { SITE_URL } from './site';
 import { sandboxKey, sandboxPage, sandboxStep, sandboxTempoTurn } from './sandbox-mode';
-import { editorSkips, LIVE_MS, panelOffBy, slotLabel, type PanelState, type SlotInfo } from './protocol';
+import { editorSkips, LIVE_MS, PAD_ROWS, panelOffBy, slotLabel, withPad, type PadMap, type PanelState, type SlotInfo } from './protocol';
 import { chooseSlot } from './store-slot';
 import { Fm1View } from './fm1-view';
 import { panelPlay, EmuKeys } from './emu-keys';
-import { keysHarm, SandboxKeys } from './sandbox-keys';
+import { keysDrumRows, keysHarm, SandboxKeys } from './sandbox-keys';
 import { LinkedHarmKeys } from './linked-harm-keys';
 import { Editor, NOTHING_TO_MOVE, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { navKey, WHEEL_SETTINGS, type NavKey, type WheelSetting } from './canvas-nav';
@@ -60,11 +60,11 @@ import { CATEGORIES, MUTATE_AMOUNTS, PROFILES, type Category } from './mutate';
 import { filterRound, OVERSAMPLE, PASS, probePhrase, PROBE_HOLD, PROBE_RENDER } from './mutate-render';
 import { buildFlashTab } from './flasher';
 import { attachKeyboard, attachMidi, editorCc, followOctave, isFm1In, isOpenSelect, isTextEntry } from './input';
-import { bindingOfRow, sourceName } from './midi-learn';
+import { bindingOfRow, learnFirst, sourceName } from './midi-learn';
 import { playsNothing, watchIgnoredFm1s, type IgnoredFm1s } from './ignored-fm1s';
 import { Piano } from './piano';
 import { sliderJack } from './slider-jack';
-import { NOTE_NAMES, PANEL_BUTTONS } from './modules';
+import { PANEL_BUTTONS } from './modules';
 import { switches } from './buttons';
 import { Fm1Mirror, identifyFm1, installOffer } from './mirror';
 import { BUTTONS, ENCODERS } from './fm1-ui';
@@ -73,7 +73,7 @@ import { longName, moduleKeywords, moduleName } from './labels';
 import { DeckControls } from './deck';
 import { releaseFocusAfterPointer } from './focus';
 import { DEFS, METERS } from './modules';
-import { addModule, newPatch, trackLabel, validatePatch, type Patch, type SideKey } from './patch';
+import { addModule, newPatch, NOTE_NAMES, trackLabel, validatePatch, type Patch, type SideKey } from './patch';
 import { diffCount, diffLines, diffPatches } from './diff';
 import { loadLibrary, summary } from './assemblies';
 import type { AssemblyDef, AssemblyInst } from './assembly';
@@ -341,11 +341,14 @@ async function offerInstall(): Promise<void> {
 syncChip();
 device.onStatus = (msg) => {
   devStatus(msg);
+  showPads();
   if (!device.connected) {
     clearDevicePatternOrigins(); installedLayout = null;
     showBudget(); libraryDeviceChanged();
   }
 };
+/** the connected FM-1's global pad map as its last PADS_NOW said (showPads): null before that, and once it is gone */
+let padMap: PadMap | null = null;
 // the FM-1 on its own (#65): while Live is on, its knobs and patch buttons move the editor's, and the status line follows its slot
 let fromDevice = false;
 /** the armed set is the FM-1's own (ARMS_NOW, #191): it routes the editor's notes to it, so they keep going there */
@@ -397,6 +400,7 @@ device.onEvent = (e) => {
     showBudget();
     // INFO changes capabilities, not the connection or its in-flight bank operations.
     for (const pane of Object.values(libraryPanes)) pane.refresh();
+    showPads();
     return syncChip();   // INFO also refreshes the memory rule for this device
   }
   if (e.kind === 'keys') {   // a key edge the FM-1's panel took (#549): through the copy too, as the FM-1 took it
@@ -447,7 +451,12 @@ device.onEvent = (e) => {
   if (e.kind === 'maps') {   // MIDI learn on the FM-1 (#1067, MAP_NOW): its mappings come into the patch, as its knobs' values do
     if (!live() || linkBusy()) return;
     fromDevice = true;
-    try { editor.takeDeviceMaps(e.maps); } finally { fromDevice = false; }
+    try { editor.takeDeviceMaps(e.maps, e.also); } finally { fromDevice = false; }
+    return;
+  }
+  if (e.kind === 'pads') {   // the global pad map (PADS_NOW): the answer to a PADS, or a learn / clear / PAD MAP on the FM-1
+    padMap = { on: e.on, notes: e.notes };
+    showPads();
     return;
   }
   if (e.kind === 'presetStored') {   // a preset stored on the FM-1 (#195): under Live it comes into the editor's library
@@ -1005,6 +1014,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     else if (live()) structureChanged();
     if (!fromEmu) queueEmu();
     showLearned();
+    showPads();   // (the open kit names the rows)
   },
   onAtt(id, index, value) {
     if (fromDevice) uploadGate.forget();   // (the FM-1 changed its patch itself, or the copy of its panel did: its bytes are not known)
@@ -1090,6 +1100,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     armPlays = plays;
     armThrough = through;
     showArmed();
+    showPads();   // (the armed set picks the rows the keys reach)
   },
   onRec(id, on) {
     host.send({ t: 'rec', id, on });
@@ -1154,7 +1165,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     showLearned();
   },
   onLearn(row) {   // (MIDI learn, #1067: a row waits for its source, or stopped waiting)
-    pinStatus(row ? { tag: 'MIDI learn', text: `Move a knob, a fader, a pad’s axis or the pitch bend wheel of a MIDI controller: it will move ${row}. Esc cancels.`, more: { label: 'Cancel', run: () => void editor.learn.cancel() } } : null, 'learn');
+    pinStatus(row ? { tag: 'MIDI learn', text: `Move a knob, a fader, a pad’s axis or the pitch bend wheel of a MIDI controller, or play one of its notes: it will move ${row}. Esc cancels.`, more: { label: 'Cancel', run: () => void editor.learn.cancel() } } : null, 'learn');
   },
   onMaps() {   // (MIDI learn, #1067: the mappings changed in the editor: the FM-1's copy follows, MAP; one from the FM-1 is not sent back)
     if (!live() || fromDevice) return;
@@ -2010,11 +2021,11 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Reset the integrated loudness', detail: 'the Output card', keywords: 'lufs level meter loudness rule target', run: () => loudness.reset() },
     { kind: 'command', label: 'Output scope', detail: outScope.open ? 'shown: fold it' : 'open it', keywords: 'oscilloscope waveform spectrum fft spectrogram gram analyser analyzer meter output hear candidate sound design', run: inPatch(() => { snapSide.setFolded(false); outScope.toggle(); }) },
     { kind: 'command', label: 'FM-1 & MIDI settings', keywords: 'connect send store sync hardware keyboard release', run: () => $<HTMLDialogElement>('device-bar').showModal() },
-    { kind: 'command', label: 'MIDI learn…', detail: learnRow ? editor.rowName(learnRow) : 'click the row first', keywords: 'controller cc pitch bend knob fader pad axis assign map bind', run: inPatch(() => {
+    { kind: 'command', label: 'MIDI learn…', detail: learnRow ? editor.rowName(learnRow) : 'click the row first', keywords: 'controller cc pitch bend note pad knob fader axis assign map bind', run: inPatch(() => {
       if (learnRow) editor.startLearn(learnRow);
       else status.textContent = 'MIDI learn: click the row it should move, then MIDI learn… again (or use the row’s ⋮ menu)';
     }) },
-    ...(learned ? [{ kind: 'command' as const, label: 'Unlearn MIDI', detail: `${sourceName(learned.src)} → ${editor.rowName(learned)}`, keywords: 'midi learn forget remove controller cc pitch bend', run: inPatch(() => editor.unlearn(learned)) }] : []),
+    ...(learned ? [{ kind: 'command' as const, label: 'Unlearn MIDI', detail: `${sourceName(learned.src)} → ${editor.rowName(learned)}`, keywords: 'midi learn forget remove controller cc pitch bend note', run: inPatch(() => editor.unlearn(learned)) }] : []),
     ...(editor.learn.waitingRow ? [{ kind: 'command' as const, label: 'Cancel MIDI learn', detail: 'Esc', keywords: 'stop', run: () => void editor.learn.cancel() }] : []),
     { kind: 'command', label: 'Install firmware', keywords: 'flash update hardware matryoshka return stock official v15', run: () => openInstall() },
     { kind: 'command', label: 'About Matryoshka', keywords: 'credits support ko-fi donate ai usage transparency', run: () => void about.open() },
@@ -2934,6 +2945,7 @@ try {
 async function connectFm1(ask = false): Promise<void> {
   if (device.connected) clearDevicePatternOrigins();
   installedLayout = null;
+  padMap = null;   // (this FM-1's own map comes with its PADS_NOW)
   try {
     const info = await device.connect({ ask });
     showBudget();
@@ -2948,11 +2960,13 @@ async function connectFm1(ask = false): Promise<void> {
     if (device.hasPatternStore) await device.listPatterns().catch(() => {});
     offerSync();
     libraryDeviceChanged();
+    showPads();
     if (syncsWith(device.info)) void offerFirmwareUpdate();   // (else sayUpdate has offered the update already)
     void offerFactoryContent();
   } catch (e) {
     showBudget();
     libraryDeviceChanged();
+    showPads();
     devStatus((e as Error).message);
   }
   watchIgnored();   // (SysEx is allowed now, if the browser asked: the FM-1s set to ignore the editor are known from here, #1045)
@@ -3346,6 +3360,12 @@ function showLearned(): void {
     const text = document.createElement('span');
     text.textContent = `${b.source} → ${b.row}${b.fm1 ? '' : ' (editor only: no FM-1 page shows this row)'}`;
     if (b.job) text.title = `While it is learned, ${b.source} no longer moves ${b.job}`;
+    if (b.also) {   // (this session's learn heard fixed-job CCs from the same input: the control may send them too)
+      const warn = document.createElement('small');
+      warn.className = 'midi-learn-also';
+      warn.textContent = b.also;
+      text.append(document.createElement('br'), warn);
+    }
     // (where the source's lowest and highest values land in the row's range, in %; the FM-1 plays the same ends)
     const end = (v: number, label: string, set: (x: number) => void): HTMLInputElement => {
       const input = document.createElement('input');
@@ -3373,6 +3393,64 @@ function showLearned(): void {
   }) : [none]));
 }
 showLearned();
+/** FM-1 & MIDI's Pads, only while the connected FM-1 keeps the global pad map (INFO feature bit 29): PAD MAP, then per drum
+ *  row the FM-1's keys reach (every row of the open kit, up to 24; all 24 without a kit) its pad's note, with × to clear it */
+function showPads(): void {
+  const shown = device.connected && device.hasPads;
+  $('pads-section').hidden = !shown;
+  if (!shown) {
+    padMap = null;
+    return;
+  }
+  const map = padMap;
+  const on = $<HTMLButtonElement>('pads-on');
+  on.disabled = !map;
+  on.setAttribute('aria-pressed', String(!!map?.on));
+  on.textContent = map ? `PAD MAP: ${map.on ? 'on' : 'off'}` : 'PAD MAP: reading the FM-1…';
+  const rows = keysDrumRows(editor.patch, editor.armedSet);
+  const count = rows.length ? Math.min(rows.length, PAD_ROWS) : PAD_ROWS;
+  $('pads-list').replaceChildren(...Array.from({ length: count }, (_, i) => {
+    const note = map?.notes[i] ?? null;
+    const label = rows[i] ? `${i + 1} ${rows[i].name.toUpperCase()}` : String(i + 1);
+    const line = document.createElement('div');
+    line.className = 'midi-learn-item';
+    const name = document.createElement('span');
+    name.textContent = label;
+    const pad = document.createElement('span');
+    pad.textContent = note === null ? '–' : `NOTE ${NOTE_NAMES[note]}`;
+    pad.title = note === null ? 'No pad plays this row' : `The pad sending MIDI note ${note} plays this row`;
+    if (note !== null) {
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'sm';
+      clear.textContent = '×';
+      clear.title = `Clear row ${label}'s pad`;
+      clear.setAttribute('aria-label', `Clear row ${label}'s pad`);
+      clear.onclick = () => {
+        if (!padMap) return;
+        padMap = { ...padMap, notes: withPad(padMap.notes, i, null) };   // (the FM-1's PADS_NOW confirms it)
+        device.setPad(i, null);
+        showPads();
+      };
+      pad.append(' ', clear);
+    }
+    line.append(name, pad);
+    return line;
+  }));
+  $<HTMLButtonElement>('pads-clear').disabled = !map?.notes.some((n) => n !== null);
+}
+$('pads-on').onclick = () => {
+  if (!padMap) return;
+  padMap = { ...padMap, on: !padMap.on };
+  device.padsOn(padMap.on);
+  showPads();
+};
+$('pads-clear').onclick = () => {
+  if (!padMap || !window.confirm('Clear every drum row\'s pad on the FM-1?')) return;
+  padMap = { ...padMap, notes: padMap.notes.map(() => null) };
+  device.clearPads();
+  showPads();
+};
 // Web MIDI: asked for at start (below) unless the user switched it off with the MIDI button, which also switches it back on.
 const midiBtn = $('midi-btn');
 let midiSwitch: ((on: boolean) => void) | null = null;
@@ -3407,13 +3485,12 @@ const setMidi = async (on: boolean): Promise<void> => {
   midiAsking = true;
   watchIgnored();
   midiSwitch = await attachMidi(
-    // (its notes go into the takes too, #945; a controller's CC or pitch bend may go to MIDI learn, #1067: never an FM-1's,
-    // whose knobs keep their meaning)
-    { send: (m, from) => {
-      if (from && !isFm1In(from, device.input?.id) && editor.learn.take(m)) return;
+    // (its notes go into the takes too, #945; a controller's CC, pitch bend or note may go to MIDI learn, #1067: never an
+    // FM-1's, whose knobs and keys keep their meaning; what learn takes reaches nothing else)
+    { send: learnFirst<MIDIInput>(editor.learn, (from) => isFm1In(from, device.input?.id), (m) => {
       audition.played(m);
       sink.send(m);
-    } },
+    }) },
     (s) => {
       if (!host.running) status.textContent = s;
     },

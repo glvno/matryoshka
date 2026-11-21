@@ -199,6 +199,8 @@ static uint32_t m1_test_screen(uint32_t k, uint8_t *out)
 }
 static uint32_t m1_test_peak(void) { return 1234u | 1u << 16 | 1u << 17; }
 #include "../src/tempo_glo.h"
+#include "../src/pad_map.h"
+static uint32_t fm1_ms = 1000u;                                /* (the clock proto.c's PADS keeps the settings by: tempo_glo.h gt_changed) */
 static int tempo_calls;
 static void m1_tempo(uint32_t patch, uint32_t bpm, uint32_t meter)   /* (main.c's) */
 {
@@ -976,14 +978,37 @@ static int maps_test(int n, char **argv)
     CHECK(!m1_patch_map(110, 90, 0, 0, 255, 1) && m1_valid(m1_cur, m1_cur_len));
     CHECK(send_frame(C_MAP, map1, sizeof map1) == 1 && eng_maps(m1_cur, m1_cur_len, &e) == 2u && !memcmp(e, map1 + 1, 10));
     r0 = nreplies;
-    m1_map_now();
+    m1_map_now(0, 0, 0);
     CHECK(nreplies == r0 + 1u && replies[r0][4] == R_MAP_NOW && m1_unpack7(replies[r0] + 5, reply_len[r0] - 6u, d, sizeof d) == 11u
           && !memcmp(d, map1, 11));
+    {                                                            /* after an FM-1 learn: the learned source and the fixed-job CCs heard (D-939) */
+        static const uint8_t also[2] = {16, 64};
+        m1_map_now(map1[1], also, 2);
+        CHECK(m1_unpack7(replies[r0 + 1u] + 5, reply_len[r0 + 1u] - 6u, d, sizeof d) == 15u && !memcmp(d, map1, 11) && d[11] == map1[1]
+              && d[12] == 2u && d[13] == 16u && d[14] == 64u);
+        nreplies = r0 + 1u;
+    }
+    CHECK(m1_patch_map(ENG_MAP_NOTE + 36u, map1[2], map1[3], 0, 255, 1) && eng_maps(m1_cur, m1_cur_len, &e) == 2u
+          && m1_valid(m1_cur, m1_cur_len));                       /* (a note: source 128 + 36, D-1027; the row's mapping moves to it) */
     map1[0] = 0;
     CHECK(send_frame(C_MAP, map1, 1) == 1 && m1_cur_len == at && eng_maps_at(m1_cur, m1_cur_len) == at && m1_valid(m1_cur, m1_cur_len));
-    m1_map_now();
+    m1_map_now(0, 0, 0);
     CHECK(m1_unpack7(replies[r0 + 1u] + 5, reply_len[r0 + 1u] - 6u, d, sizeof d) == 1u && d[0] == 0u);
     nreplies = r0;
+    {                                                            /* the global pad map (#1067): PADS -> PADS_NOW */
+        static const uint8_t set0[2] = {0, 36}, set5[2] = {5, 36}, off[2] = {0xFD, 0}, all[1] = {0xFE};
+        pad_defaults();
+        gt_due = 0;
+        CHECK(send_frame(C_PADS, 0, 0) == 1 && nreplies == r0 + 1u && replies[r0][4] == R_PADS_NOW
+              && m1_unpack7(replies[r0] + 5, reply_len[r0] - 6u, d, sizeof d) == PAD_BYTES && d[0] == 1u && d[1] == PAD_NONE && !gt_due);
+        CHECK(send_frame(C_PADS, set0, 2) == 1 && pad_note[0] == 36u && gt_due);
+        CHECK(send_frame(C_PADS, set5, 2) == 1 && pad_note[5] == 36u && pad_note[0] == PAD_NONE);   /* (one row per pad) */
+        CHECK(m1_unpack7(replies[r0 + 2u] + 5, reply_len[r0 + 2u] - 6u, d, sizeof d) == PAD_BYTES && d[1] == PAD_NONE && d[6] == 36u);
+        CHECK(send_frame(C_PADS, off, 2) == 1 && !pad_on && pad_note[5] == 36u);
+        CHECK(send_frame(C_PADS, all, 1) == 1 && !pad_count() && !pad_on && nreplies == r0 + 5u);
+        pad_defaults();
+        nreplies = r0;
+    }
     k = 0;
     if (n > 1) {
         long ob;
@@ -1191,6 +1216,7 @@ int main(int argc, char **argv)
         editor_ignore_on = 0;
         CHECK(p[14] & 4u);                                    /* #915: feature bit 26, the factory region's commands */
         CHECK(p[14] & 8u);                                    /* #1107: feature bit 27, MASTER_EQ */
+        CHECK(p[14] & 32u);                                   /* #1067: feature bit 29, PADS and PADS_NOW */
         {                                                     /* MASTER_EQ reaches main.c's hook with its bytes; the reply's layout */
             static const uint8_t set[4] = {0xFAu, 0u, 4u, 26u};   /* (LOW -3 dB, HIGH +2 dB, MID FREQ 2 kHz) */
             uint8_t r[8];

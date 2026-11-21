@@ -182,6 +182,7 @@ static int m1_fact_sum(uint32_t s, uint32_t *crc);
 static int m1_fact_read(uint32_t off, uint8_t *p, uint32_t n);
 static uint32_t m1_fact_commit(const uint8_t *h);
 #include "tempo_glo.h"            /* the global tempo (D-907): proto.c, menu.c, main.c */
+#include "pad_map.h"              /* the global pad map (#1067): proto.c's PADS, ui.c's FACTORY RESET, midi_learn.c, main.c */
 #include "proto.c"
 #if FELUCCA_OTA
 /* usb.c's frame holds the longest frame proto.c's m1_handle and ota.c's ota_take accept: (8 M + 7) / 7 wire bytes is the
@@ -206,7 +207,7 @@ _Static_assert(sizeof sx_frame >= 4u + (8u * M1_RX_MAX + 7u) / 7u && sizeof sx_f
 static const uint8_t *pages_src(uint32_t *len) { *len = m1_cur_len; return m1_cur_len ? m1_cur : 0; }
 static uint32_t pages_capacity(void) { return sizeof m1_cur; }
 static uint32_t pages_gen(void) { return m1_gen; }
-#include "midi_learn.c"      /* MIDI learn (#1067): the learned controls move their rows; GLO > MIDI 3/3 */
+#include "midi_learn.c"      /* MIDI learn (#1067): the learned controls move their rows; GLO > MIDI 3/4, the pad map 4/4 */
 #include "menu.c"
 #include "clock_out.h"       /* MIDI clock out (#473): the audio ISR times the ticks, the 2 kHz timer sends them */
 #include "seq_ui.c"

@@ -453,6 +453,21 @@ static int knob_fast(uint32_t s, int32_t clicks)
     return fast;
 }
 
+/* learn mode (D-939, midi_learn.c learn_mode): a knob turned on a device page or the environment picks its row for MIDI
+ * learn, which does not move, also while a drum row waits for a pad. sel_used: SEL went into HOME + SEL, so its release
+ * arms and opens nothing */
+static uint8_t sel_used;
+static void learn_knob(int32_t *st)
+{
+    uint32_t k;
+    if (!learn_keys() || (page != 0u && page != PAGE_ENV) || !(st[2] | st[3] | st[4] | st[5]))
+        return;
+    for (k = 0; k < 3u && !st[2u + k]; k++)
+        ;
+    learn_row(k);
+    st[2] = st[3] = st[4] = st[5] = 0;
+}
+
 /* the encoders turned: st[0..6] = SELECT, ALGO, K1..K4, PRESET (clicks since the last call; the array is used up) */
 static void panel_encoders(int32_t *st)
 {
@@ -477,6 +492,7 @@ static void panel_encoders(int32_t *st)
     for (k = 0; k < 7u; k++)                        /* a turn while the track's clear asks: not cleared (#231) */
         if (st[k])
             seq_clear_cancel();
+    learn_knob(st);
     if (page == PAGE_SEQ && seq_held >= 0 && (st[0] | st[1] | st[2] | st[3] | st[4] | st[5] | st[6]))
         seq_held_tap = 0;                           /* any knob turned with a step held: the step used, its release switches
                                                      * nothing (the owner's 1.9.0 device check, 2026-11-03) */
@@ -660,8 +676,6 @@ static void panel_encoders(int32_t *st)
             continue;
         if (fine)
             home_turned = 1;
-        if (!menu_page() && learn_pick(k))          /* MIDI learn waits for a row (#1067): this knob's, which stays as it is */
-            continue;
         if ((r = pages_turn(k, c, knob_fast(2u + k, c), fine, &mod, &par, &v)) < 0)
             continue;
         if (r == 2) {                               /* the menu: an FM-1 setting (pages_turn set it): not the patch's, not the editor's */
@@ -800,13 +814,17 @@ static int panel_key(uint32_t n, int down, int quick)
          * their own note when the first map repeats its rows (#184: the repeat picks the row); MIDI out sends what plays:
          * the row's note, the key's own, nothing for a silent key, so a recording played back into a Drum map hits the same
          * rows */
-        if (map < 0)
+        if (map < 0) {
             key_eng[n] = key_note[n];
-        else {
+            if (learn_keys())                       /* (learn mode: a key learns a pad only on a kit, #1067) */
+                ui_msg(MSG_PAD_KIT, 1500);
+        } else {
             uint8_t rm[ENG_DRUM_LIST], rr[ENG_DRUM_LIST];
             uint32_t rn = eng_keys_rows(rm, rr), i = drum_bank_in(rn) * ENG_DRUM_ROWS + (uint32_t)b;
             key_eng[n] = b >= 0 && b < (int)ENG_DRUM_ROWS && i < rn ? (uint8_t)eng_drummap_note(rm[i], rr[i])
                 : eng_drummap_repeat((uint32_t)map) ? key_note[n] : KEY_SILENT;
+            if (b >= 0 && b < (int)ENG_DRUM_ROWS && i < rn && learn_keys())
+                pad_pick(i);                        /* (learn mode: the drum key's row waits for a pad, the global pad map) */
         }
         key_sounding |= bit;
         if (key_eng[n] == KEY_SILENT && map >= 0)
@@ -1154,15 +1172,17 @@ static void panel_edges(uint32_t p, uint32_t rel)
             seq_select((uint32_t)pages_focus_track());
         page_set(PAGE_SEQ);
     }
-    if (p & (1u << BTN_SEL))
+    if (p & (1u << BTN_SEL)) {
         sel_down_ms = fm1_ms;
+        sel_used = 0;
+    }
     if ((rel & (1u << BTN_SEL)) && page == PAGE_SEQ) {   /* SEL tapped on the SEQ page (no key as the pen since its press,
                                                      * a key in the same pass counting): the SONG page (#375, D-541) */
         if (!(seq_pen_ms && (int32_t)((seq_pen_ms & ~1u) - (sel_down_ms & ~1u)) >= 0) && eng_steps_count()) {
             song_prep();
             page_set(PAGE_SONG);
         }
-    } else if (rel & (1u << BTN_SEL))               /* SEL (#197, fixed): one level deeper */
+    } else if ((rel & (1u << BTN_SEL)) && !sel_used)   /* SEL (#197, fixed): one level deeper (not after SEL + a knob) */
         sel_open();
     if (p & (1u << BTN_ENV))                        /* ENV (#197, fixed): the environment, on its release (held + SAVE: a preset) */
         env_held_used = 0;
@@ -1247,8 +1267,18 @@ static void panel_edges(uint32_t p, uint32_t rel)
                                                      * out of a dive back), unless PRESET turned the patch meanwhile; held
                                                      * alone it is nothing (#395) */
         home_turned = 0;
+    if ((p & (1u << BTN_SEL)) && (panel_held >> BTN_HOME & 1u)) {   /* HOME held + SEL (D-939): MIDI learn mode on or off;
+                                                     * neither release does its own job then */
+        learn_mode(!learn_live());
+        sel_used = 1;
+        home_turned = 1;
+        if (page == PAGE_SEQ)
+            seq_pen_ms = fm1_ms | 1u;
+    }
     if ((rel & (1u << BTN_HOME)) && !home_turned && page == PAGE_SEQ && sr_on)
         sr_stop();                                  /* HOME in step record: it ends, the page stays (#532, D-808) */
+    else if ((rel & (1u << BTN_HOME)) && !home_turned && learn_live())
+        learn_mode(0);                              /* HOME in learn mode: it ends, the page stays (D-243, D-939) */
     else if ((rel & (1u << BTN_HOME)) && !home_turned)
         home_tap();
     if ((p & (1u << BTN_PLAY)) && (panel_held >> BTN_SEQ & 1u) && !sb_on) {   /* SEQ held + PLAY (#632): play once, on the
@@ -1493,9 +1523,10 @@ static void panel_align(const uint8_t *g)
     if (want == 0u && (g[3] != pg_cur_dev || g[4] != pg_cur_page) && pages_focus(g[3], g[4]))
         ui_dirty = 2;
     if (want == PAGE_MENU) {
-        menu_tab = (uint8_t)(g[6] & 63u);
-        menu_page2 = (uint8_t)(menu_two(menu_tab) && g[6] >> 7 ? (g[6] & 64u ? 2u : 1u) : 0u);   /* (bit 7: a later page, #702,
-                                                     * #1011; bit 6 with it: the third, MIDI 3/3, #1067) */
+        menu_tab = (uint8_t)(g[6] & 31u);
+        menu_page2 = (uint8_t)(menu_two(menu_tab) ? (g[6] >> 7 & 1u) + (g[6] >> 6 & 1u) + (g[6] >> 5 & 1u) : 0u);   /* (bit 7: a
+                                                     * later page, #702, #1011; bit 6 with it: the third, MIDI 3/4; bit 5 with
+                                                     * both: the fourth, MIDI 4/4, #1067) */
     }
     if (want != page) {
         if (want == PAGE_SONG)

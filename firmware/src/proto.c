@@ -74,10 +74,14 @@ enum { C_MASTER_EQ = 0x1B, R_MASTER_EQ = 0x62 };            /* GLO > EQ, the mas
                                                               * and MID FREQ (an index) set; -> MASTER_EQ status (0 ok, 1 out of
                                                               * range), LOW, MID, HIGH, MID FREQ */
 enum { C_MAP = 0x1C, R_MAP_NOW = 0x63 };                    /* the running patch's MIDI mappings (#1067, midi_learn.c) */
+enum { C_PADS = 0x1D, R_PADS_NOW = 0x64 };                  /* the global pad map (#1067, pad_map.h): PADS, empty to read it, row u8
+                                                             * + note u8 (0xFF: none) to set a row, 0xFE to clear every row, 0xFD
+                                                             * + on u8 for PAD MAP; -> PADS_NOW on u8, then the 24 rows' notes,
+                                                             * also unasked after a change on the FM-1 */
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
 #define M1_FEATURES3 255u                                      /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549), bit 19 = INFO's flags bit 3 says GLO > SYSTEM > EDITOR (#702), bit 20 = ARMS, the editor's armed set (#191), bit 21 = ARMS and ARMS_NOW carry ENG_MSET_WORDS words, modules 0..127 (#721; INFO byte 1 says 128), bit 22 = device settings, bit 23 = explicit factory pattern origins / snapshots */
-#define M1_FEATURES4 29u                                      /* INFO byte 14, feature bits 24..31: bit 24 = complete FX-scoped preset recall; bit 25 = the pattern store is on (#901: PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW, format 59's links; m1_pat_info sets it); bit 26 = the factory region (#915, D-490: FACT_INFO, FACT_BEGIN, FACT_WRITE, FACT_SUM, FACT_READ, FACT_COMMIT); bit 27 = MASTER_EQ (#1107); bit 28 = MIDI learn (#1067: MAP, MAP_NOW, the mapping section after the macro ranges) */
+#define M1_FEATURES4 61u                                      /* INFO byte 14, feature bits 24..31: bit 24 = complete FX-scoped preset recall; bit 25 = the pattern store is on (#901: PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW, format 59's links; m1_pat_info sets it); bit 26 = the factory region (#915, D-490: FACT_INFO, FACT_BEGIN, FACT_WRITE, FACT_SUM, FACT_READ, FACT_COMMIT); bit 27 = MASTER_EQ (#1107); bit 28 = MIDI learn (#1067: MAP, MAP_NOW, the mapping section after the macro ranges); bit 29 = the global pad map (#1067: PADS, PADS_NOW) */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_INFO_EDITOR_IGNORE 8u                             /* INFO byte 3 (flags) bit 3: GLO > SYSTEM > EDITOR is at IGNORE, the
                                                               * editor leaves this FM-1 alone (with feature bit 19, #702) */
@@ -888,16 +892,24 @@ static void m1_patch_range(uint32_t mod, uint32_t pin, uint32_t par, int on, uin
 }
 
 /* the running patch's MIDI mappings (#1067) to a linked editor: MAP_NOW, u8 count, then the mappings as the binary has
- * them (engine.h eng_maps) */
-static void m1_map_now(void)
+ * them (engine.h eng_maps); after a learn on the FM-1 that heard other controls with a fixed job, then the learned source,
+ * their count and their CC numbers (na of them in also; the editor warns beside that mapping) */
+static void m1_map_now(uint32_t src, const uint8_t *also, uint32_t na)
 {
-    uint8_t p[1u + ENG_MAPS_MAX * ENG_MAP_BYTES];
+    uint8_t p[1u + ENG_MAPS_MAX * ENG_MAP_BYTES + 2u + 9u];
     const uint8_t *e = 0;
-    uint32_t n = eng_maps(m1_cur, m1_cur_len, &e), k;
+    uint32_t n = eng_maps(m1_cur, m1_cur_len, &e), k, w;
     p[0] = (uint8_t)n;
     for (k = 0; k < n * ENG_MAP_BYTES; k++)
         p[1u + k] = e[k];
-    m1_reply_long(R_MAP_NOW, p, 1u + n * ENG_MAP_BYTES);     /* (81 bytes at most: past m1_reply's frame) */
+    w = 1u + n * ENG_MAP_BYTES;
+    if (na) {
+        p[w++] = (uint8_t)src;
+        p[w++] = (uint8_t)(na < 9u ? na : 9u);
+        for (k = 0; k < na && k < 9u; k++)
+            p[w++] = also[k];
+    }
+    m1_reply_long(R_MAP_NOW, p, w);                      /* (92 bytes at most: past m1_reply's frame) */
 }
 
 /* the stored copy follows a MIDI learn on the FM-1 (midi_learn.c): source src maps to module mod's row byte par (on), or
@@ -908,6 +920,31 @@ static int m1_patch_map(uint32_t src, uint32_t mod, uint32_t par, uint32_t lo, u
         return 0;
     m1_edited = 1;
     return 1;
+}
+
+/* the global pad map (#1067, pad_map.h) to a linked editor: PADS_NOW, PAD MAP, then the 24 rows' notes (0xFF none) */
+static void m1_pads_now(void)
+{
+    uint8_t p[PAD_BYTES];
+    pad_pack(p);
+    m1_reply(R_PADS_NOW, p, PAD_BYTES);
+}
+
+/* PADS from the editor: read the map, set a row's pad, clear every row, or turn PAD MAP; kept as the settings are, without
+ * SAVE (tempo_glo.h gt_changed). Answers PADS_NOW */
+static void m1_pads(const uint8_t *d, uint32_t len)
+{
+    if (len >= 2u && d[0] < PAD_ROWS)
+        pad_set(d[0], d[1]);
+    else if (len >= 1u && d[0] == 0xFEu)
+        pad_clear_all();
+    else if (len >= 2u && d[0] == 0xFDu)
+        pad_on = (uint8_t)(d[1] & 1u);
+    if (len) {
+        gt_changed(fm1_ms);
+        m1_ui_changed();
+    }
+    m1_pads_now();
 }
 
 /* f: the bytes between F0 and F7. Returns 1 if the frame was ours (and is consumed). */
@@ -1109,6 +1146,9 @@ static int m1_handle(const uint8_t *f, uint32_t n)
     case C_MAP:                                              /* count u8, then the mappings as the binary has them (#1067) */
         if (len >= 1u && len >= 1u + ENG_MAP_BYTES * d[0] && eng_maps_set(m1_cur, &m1_cur_len, M1_PATCH_MAX, d + 1, d[0]))
             m1_edited = 1;
+        break;
+    case C_PADS:                                             /* the global pad map (#1067): -> PADS_NOW */
+        m1_pads(d, len);
         break;
     case C_TRACK:                                            /* module u8, n u8, n u32 LE notes (track.ts noteWord), [pattern u8
                                                               * (format 48; without it: the one the track plays)] */

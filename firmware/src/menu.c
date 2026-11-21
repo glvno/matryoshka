@@ -160,8 +160,9 @@ static void menu_value(uint32_t row, char *out)
         p += str_len(p);
         *p++ = '%';
         break;
-    case MR_LEARN: case MR_MAPS: case MR_MAP_CLEAR: map_value(row, out); return;   /* (MIDI learn, midi_learn.c) */
-    default: p = put(p, menu_armed == row ? "HOLD GLO" : "TURN >"); break;   /* (UPDATE MODE, FACTORY RESET) */
+    case MR_LEARN: case MR_MAPS: case MR_MAP_CLEAR:
+    case MR_PADS_ON: case MR_PAD_ROW: case MR_PAD_CLEAR: map_value(row, out); return;   /* (MIDI learn, the pad map: midi_learn.c) */
+    default: p = put(p, menu_armed == row ? "HOLD GLO" : "TURN >"); break;   /* (UPDATE MODE, FACTORY RESET, CLEAR ALL) */
     }
     *p = 0;
 }
@@ -288,6 +289,8 @@ static int menu_fire(void)
     }
     if (row == MR_UPDATE)
         update_only("FROM THE MENU");
+    else if (row == MR_PADS_CLEAR)
+        pad_clear_now();
     else
         defaults_now();
     return 1;
@@ -371,7 +374,8 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
         break;
     }
     case MR_UPDATE:
-    case MR_DEFAULTS:                               /* a turn right arms the row for GLO's hold (menu_fire), left disarms it */
+    case MR_DEFAULTS:
+    case MR_PADS_CLEAR:                             /* a turn right arms the row for GLO's hold (menu_fire), left disarms it */
         menu_armed = MR_COUNT;
         update_arm = 0;
         if (!up)
@@ -382,13 +386,15 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
         }
         menu_armed = (uint8_t)row;
         update_arm = fm1_ms | 1u;
-        ui_msg(row == MR_UPDATE ? MSG_HOLD_UPDATE : MSG_HOLD_RESET, MENU_ARM_MS);   /* (26 characters) */
+        ui_msg(row == MR_UPDATE ? MSG_HOLD_UPDATE : row == MR_PADS_CLEAR ? MSG_HOLD_PADS : MSG_HOLD_RESET, MENU_ARM_MS);   /* (26 characters) */
         break;
     case MR_LEARN:
     case MR_MAPS:
-    case MR_MAP_CLEAR:                              /* MIDI learn (midi_learn.c, #1067): LEARN closes the menu as it starts */
-        if (map_step(row, s))
-            return;
+    case MR_MAP_CLEAR:                              /* MIDI learn (midi_learn.c, #1067): LEARN turned right starts learn mode (D-939) */
+    case MR_PADS_ON:
+    case MR_PAD_ROW:
+    case MR_PAD_CLEAR:                              /* the pad map (midi_learn.c, #1067) */
+        map_step(row, s);
         break;
     default: break;
     }

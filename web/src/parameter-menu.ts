@@ -115,7 +115,7 @@ export function parameterMenu(m: ModuleInst, def: ModuleDef, pd: ParamDef, ev: E
     // (the menu is made once with its row: whether the row waits is read again each time it opens)
     const fill = (): void => line.replaceChildren(
       l.waiting() ? button('Cancel MIDI learn', 'Stop waiting for a control (Esc)', l.cancel)
-        : button(l.src ? 'Learn again…' : 'MIDI learn…', `Then move a knob, a fader, a pad's axis or the pitch bend wheel of a MIDI controller: it moves ${l.row} from then on. Esc cancels`, l.start),
+        : button(l.src ? 'Learn again…' : 'MIDI learn…', `Then move a knob, a fader, a pad's axis or the pitch bend wheel of a MIDI controller, or play one of its notes: it moves ${l.row} from then on. Esc cancels`, l.start),
       ...(l.src ? [button('Unlearn', `${l.src} stops moving ${l.row}`, l.unlearn)] : []));
     fill();
     refreshers.push(fill);
