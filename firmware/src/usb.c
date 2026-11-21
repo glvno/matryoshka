@@ -616,12 +616,21 @@ static void di_usb_snapshot(void)
 {
     for (uint32_t i=0;i<17;i++) di_usb_name[i]=di_usb_saved_name[i];
 }
-static uint8_t di_desc[68] UR_DMA_MEM;
+static uint8_t di_desc[84] UR_DMA_MEM;                     /* the longest string: a named serial, 41 characters */
 static int di_usb_serial_ok(void)
 {
     uint8_t any=0, all=255;
     for (uint32_t i=0;i<16;i++) { any |= di_serial[i]; all &= di_serial[i]; }
     return any && all != 255;
+}
+/* A named FM-1's USB serial is the flash ID, '-' and 8 hexadecimal digits of the name's FNV-1a hash (32 bit): CoreMIDI
+ * keeps one device record per serial and never renames it, so a renamed FM-1 must come back as a new device for its new
+ * name to show (D-931). The same name gives the same serial; an unnamed FM-1 keeps the bare flash ID. */
+static uint32_t di_name_hash(void)
+{
+    uint32_t h=2166136261u;
+    for (uint32_t i=0;i<16 && di_usb_name[i];i++) { h^=(uint8_t)di_usb_name[i]; h*=16777619u; }
+    return h;
 }
 static uint16_t di_usb_string(uint32_t index)
 {
@@ -638,6 +647,11 @@ static uint16_t di_usb_string(uint32_t index)
         for (uint32_t i=0;i<16;i++) {
             di_desc[2+2*n]=(uint8_t)hex[di_serial[i]>>4]; di_desc[3+2*n++]=0;
             di_desc[2+2*n]=(uint8_t)hex[di_serial[i]&15]; di_desc[3+2*n++]=0;
+        }
+        if (di_usb_name[0]) {
+            uint32_t h=di_name_hash();
+            di_desc[2+2*n]='-'; di_desc[3+2*n++]=0;
+            for (uint32_t i=0;i<8;i++) { di_desc[2+2*n]=(uint8_t)hex[(h>>(28-4*i))&15]; di_desc[3+2*n++]=0; }
         }
     }
     di_desc[0]=(uint8_t)(2+2*n); di_desc[1]=3; return di_desc[0];
