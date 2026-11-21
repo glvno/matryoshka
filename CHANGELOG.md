@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Two named FM-1s now show up as two different MIDI ports.** The FM-1's MIDI input and output carry the name you gave it in the editor (`Matryoshka STAGE`, for example), not only the device. Apps that list or route MIDI ports by their own name, such as MIDI routing apps on the iPad, can now tell two FM-1s apart. An FM-1 without a name keeps the port name `Matryoshka`. Update mode is unchanged. Needs this firmware; reconnect the FM-1 after giving it a name.
+
 ## 1.24.0 — 2026-11-20
 
 - **Scrounge has four more grooves, with the Scrooge's per-step CHOP and TIME.** Patterns 7 to 10 roll the hits two to five times inside a step (CHOP), push steps a little late for a laid-back snare, a triplet shuffle or a flam (TIME), and give each track its own length, all back on step 1 after 32 steps (LEN GLB). Song 2 plays them in turn. Patterns 1 to 6, song 1 and every Scrounge sound play exactly as before. Scrounge with its new grooves needs firmware 1.22 or later. An FM-1 on older firmware keeps the last factory sounds it can play: the editor still offers it those.
