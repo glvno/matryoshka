@@ -190,7 +190,7 @@ describe('Scrounge (the FM-1 version: the whole Scrooge, D-1056)', () => {
       return ((j ? t.patterns?.[j - 1]?.notes ?? t.notes : t.notes) ?? []).filter((x) => x.ratchet || x.micro);
     });
     for (let j = 0; j < 6; j++) expect(timed(j), `pattern ${j + 1}`).toEqual([]);
-    expect([6, 7, 8, 9].map((j) => timed(j).some((x) => x.ratchet))).toEqual([true, true, false, true]);
+    expect([6, 7, 8, 9].map((j) => timed(j).some((x) => x.ratchet))).toEqual([true, true, false, false]);
     expect([6, 7, 8, 9].map((j) => timed(j).some((x) => x.micro))).toEqual([true, false, true, false]);
     expect(p.modules.find((m) => m.type === 'fm1')!.seq!.songs![1]).toEqual([6, 7, 8, 9].map((pat) => ({ pat, shift: 0 })));
     // (and they reach the sound: pattern 7, Chopped Dust, plays otherwise without its chops and its late snare)

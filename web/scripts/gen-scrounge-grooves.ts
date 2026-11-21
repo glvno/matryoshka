@@ -48,12 +48,13 @@ const GROOVES: Groove[] = [
     'VOICE 4': '................',
     'VOICE 5': 'x.......x.....x.',
   },
-  // 10, Odd Lengths: each track its own length (the Scrooge's LEN TRK), all back to step 1 after 32 steps (LEN GLB)
+  // 10, Odd Lengths: each track its own length (the Scrooge's LEN TRK), all back to step 1 after 32 steps (LEN GLB); no
+  // CHOP, which put its busiest steps near the FM-1's CPU limit (the owner, 2026-11-20)
   {
     'VOICE 1': 'X.....x...X.....',
     'VOICE 2': 'x.x.xx.',
     'VOICE 3': '....X.....x.',
-    'VOICE 4': { steps: 'x..o.', chop: { 0: 3 } },
+    'VOICE 4': 'x..o.',
     'VOICE 5': 'x...x..x.',
     'MOD X': 'x.....x....',
     'MOD Y': 'x............',

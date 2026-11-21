@@ -3,10 +3,10 @@
     {
       "file": "matryoshka-factory.bin",
       "version": 19,
-      "set": "fd4917",
+      "set": "1072eb",
       "layout": 1,
       "format": 64,
-      "bytes": 58371
+      "bytes": 58367
     },
     {
       "file": "factory/matryoshka-factory-v19.bin",
