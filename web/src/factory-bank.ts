@@ -10,6 +10,7 @@ import { sharedAlgoContours } from './factory-algo-sharing';
 import { sharedArticulationFactory } from './factory-shared-articulation';
 import { fitCanvasFactory } from './factory-canvas-fit';
 import { FACTORY_KITS, withKitPatterns } from './factory-kit-patterns';
+import { DEMO_SET_PATCHES, withoutDemoSet } from './demo-sets';
 import { DEFS } from './modules';
 import { devicesOf } from './pages';
 import { addModule, connect, disconnect, removeModule, type Patch } from './patch';
@@ -72,8 +73,9 @@ export const selectedFactoryProfile: Readonly<Record<string, SelectedFactoryOpti
 /** Selected names in source order, without building the patch graphs. */
 export const selectedFactoryNames = SOURCE.map(({ name }) => selectedFactoryProfile[name]?.bankName ?? name);
 
-/** The approved bank shared by browser defaults, numeric exports and firmware. */
-export function buildSelectedFactoryBank(): FactoryCandidate[] {
+/** The approved bank shared by browser defaults, numeric exports and firmware. The patches with a demo set ship without
+ *  their patterns and songs (demo-sets.ts, #1179); `full` keeps them, as bank.json holds them: the demo sets come from it */
+export function buildSelectedFactoryBank(opts: { full?: boolean } = {}): FactoryCandidate[] {
   const measurements = Object.fromEntries(Object.entries(selectedFactoryProfile).map(([name, { configurationId: _id, outputLevel: _level, ...options }]) => [name, options]));
   const bank = buildFactoryBank(measurements);
   for (const [sourceName, options] of Object.entries(selectedFactoryProfile)) {
@@ -84,7 +86,13 @@ export function buildSelectedFactoryBank(): FactoryCandidate[] {
     const patch = bank.find(entry => entry.name === (options.bankName ?? sourceName))!.patch;
     patch.modules.find(module => module.type === 'output')!.params.level = options.outputLevel;
   }
-  return bank;
+  return opts.full ? bank : shippedFactoryBank(bank);
+}
+
+/** the bank as it ships, from the bank in full: each patch with a demo set without its patterns and songs */
+export function shippedFactoryBank(full: readonly FactoryCandidate[]): FactoryCandidate[] {
+  for (const name of DEMO_SET_PATCHES) if (!full.some((c) => c.name === name)) throw new Error(`demo set of ${name}: no such factory patch`);
+  return full.map((c) => (DEMO_SET_PATCHES.includes(c.name) ? { name: c.name, patch: withoutDemoSet(c.patch) } : c));
 }
 
 /** Explicit measurement reductions only; the unselected bank retains every original allocation and interface. */
