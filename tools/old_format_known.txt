@@ -34,3 +34,20 @@ v1.4.1 steps-arp
 v1.4.1 steps-notes
 v1.4.1 steps-tie
 v1.4.1 sync-glide-shape
+
+# v1.24.1: 1.25.0 changed the engine on purpose, and the change reaches these 13 golden kits.
+#   #1182 (D-834, D-543 amended): a song entry, or a pattern turned to at a pass's end, starts on its first step. Each kit
+#   switches to a longer pattern at a pass's end, which started part-way in before.
+v1.24.1 play-once-song
+v1.24.1 play-once-song-counted
+v1.24.1 play-once-song-slim
+v1.24.1 steps-conds
+v1.24.1 steps-links
+v1.24.1 steps-locks
+v1.24.1 steps-patterns
+v1.24.1 steps-patterns-dir
+v1.24.1 steps-ratchets
+v1.24.1 steps-ratchets-trig
+v1.24.1 steps-song
+v1.24.1 steps-song-counted
+v1.24.1 steps-song-slim

@@ -5124,8 +5124,20 @@ int main(void)
         ct_seq(0, 0, 1);
         ui_dirty = 2;
         loop();
-        check("an empty pattern of a patch with a demo set: the hint line says so (EMPTY  SEQ+SEL demo set  SEL+PRESET pat)",
+        check("an empty drum kit with a demo set: the hint line says so (EMPTY  SEQ+SEL demo set  SEL+PRESET pat)",
               ct_shows(pt_on ? HINT_EMPTY : HINT_EMPTY_NO_STORE));
+        {   /* the rule is the whole patch's (D-836): notes in P03 only, P01 shown, is not empty */
+            const uint32_t one = NW(0, 1, 36, STEP_VEL, 0);
+            check("(a note in the kit's P03 only)", eng_pattern_set_notes((uint32_t)seq_module(), 2, &one, 1) != 0);
+            ui_dirty = 2;
+            loop();
+            check("  P01 shown, notes only in P03: no EMPTY hint", eng_pattern() == 0 && !ct_shows(HINT_EMPTY)
+                  && !ct_shows(HINT_EMPTY_NO_STORE));
+            eng_pattern_drop((uint32_t)seq_module(), 2);
+            ui_dirty = 2;
+            loop();
+            check("  P03 dropped again: EMPTY again", ct_shows(pt_on ? HINT_EMPTY : HINT_EMPTY_NO_STORE));
+        }
         panel_held |= 1u << BTN_SEQ;
         panel_edges(1u << BTN_SEQ, 0);
         tap(BTN_SEL);
@@ -5152,6 +5164,29 @@ int main(void)
         ui_dirty = 2;
         loop();
         check("  SEQ let go: the SEQ page stays, the hint line no longer says EMPTY", page == PAGE_SEQ && !ct_shows(HINT_EMPTY));
+    }
+    {   /* Silver Box (D-836): its keys play, but an empty patch shows EMPTY before the roll's hint; its demo set leaves P01
+         * empty and the hint goes */
+        check("(the factory Silver Box, empty, on its SEQ page)", ct_load_factory("SILVER BOX") == 0);
+        ct_seq(0, 0, 1);
+        ui_dirty = 2;
+        loop();
+        check("Silver Box empty: the keys play, and the hint line says EMPTY, not the roll's", seq_play_keys()
+              && ct_shows(pt_on ? HINT_EMPTY : HINT_EMPTY_NO_STORE) && strcmp(seq_grid_text[2], HINT_ROLL) != 0);
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        tap(BTN_SEL);
+        loop();
+        tap(BTN_SEL);
+        loop();
+        check("  SEQ held + SEL, SEL: its demo set loaded, P01 selected (empty)", strstr(msg_text, MSG_DEMO_LOADED) != 0
+              && eng_pattern() == 0);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        ui_dirty = 2;
+        loop();
+        check("  on P01 after its demo set: no EMPTY hint, the roll's", !ct_shows(HINT_EMPTY) && !ct_shows(HINT_EMPTY_NO_STORE)
+              && !strcmp(seq_grid_text[2], HINT_ROLL));
     }
     {   /* The SEQ page drawn whole: once when SEQ opens it from a Steps track's device page (seq_select drew it a second
          * time after page_show, and the device page's header before it), and its ground cleared around the cells only

@@ -1589,6 +1589,18 @@ static int seq_demo_has(void)
     }
     return seq_demo_found;
 }
+/* the EMPTY hint's patch (#1179, D-836): it has a demo set and no pattern of any track has a note (Silver Box's set leaves
+ * pattern 1 empty, so the pattern shown alone would not do) */
+static int seq_patch_empty(void)
+{
+    uint32_t p;
+    if (!seq_demo_has())
+        return 0;
+    for (p = 0; p < ENG_PATTERNS; p++)
+        if (pl_has_notes(p))
+            return 0;
+    return 1;
+}
 /* SEQ held + SAVE (#1177): the selected pattern of every track copied to the first empty number after it (round from
  * P02), which is then selected (running: at the end of each track's pass, as PRESET). A key handler: state only, the bar
  * is the loop's (D-228) */
@@ -2301,11 +2313,12 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
     else
         seq_grid_line(1, 202, line, C_DIM, 224);
     /* the hint line (FONT_S, at most 228 px: export-defs checks it), in the controls table's words (controls.ts HINTS,
-     * #553): a step held, its knobs; a pattern with no notes on any track of a patch with a demo set, how to fill it
-     * (#1179); a track of more than 16 steps, OCT's pages (#490); else SEL's SONG page */
+     * #553): a step held, its knobs; a patch with a demo set and no notes in any pattern, how to fill it (#1179: before the
+     * roll's, not before step record's, a live take's or a held step's); a track of more than 16 steps, OCT's pages (#490);
+     * else SEL's SONG page */
     if (sr_on)
         hint = map < 0 && !sr_preview ? HINT_STEP_SILENT : HINT_STEP_RECORD;
-    else if (seq_play_keys())
+    else if (seq_play_keys() && (seq_kbd() || seq_held >= 0 || !seq_patch_empty()))
         hint = seq_kbd() ? HINT_LIVE : HINT_ROLL;
     else if (seq_held >= 0 && seq_lock_page())
         hint = HINT_HELD_LOCK;
@@ -2313,7 +2326,7 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
         hint = HINT_HELD_DRUM;
     else if (map >= 0 && seq_rec && seq_mod_armed(mod))
         hint = len > 16 ? HINT_DRUM_REC_LONG : HINT_DRUM_REC;
-    else if (eng_pattern() >= 0 && !pl_has_notes((uint32_t)eng_pattern()) && seq_demo_has())
+    else if (seq_patch_empty())
         hint = pt_on ? HINT_EMPTY : HINT_EMPTY_NO_STORE;
     else if (map >= 0)
         hint = len > 16 ? HINT_DRUM_LONG : HINT_DRUM;
