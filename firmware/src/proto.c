@@ -730,12 +730,12 @@ static int m1_track_fit(uint32_t mod, int npar)
 {
     const uint32_t *w;
     int32_t v = eng_get_param(mod, STEPS_P_LEN);
-    int n = eng_pattern_notes(mod, 0, &w), i, bad;
+    int n = eng_pattern_notes(mod, 0, &w), i;
     uint32_t at, sec, cnt, k;
     m1_patch_track(mod);
     m1_patch_param(mod, STEPS_P_LEN, v);
     at = m1_record(mod);
-    if (npar >= 0 && at && m1_cur[1] >= ENG_COUNTED && (k = eng_rec_npar(m1_cur, at)) > (uint32_t)npar && !eng_b_at(m1_cur, m1_cur_len, mod, &bad) && !bad) {
+    if (npar >= 0 && at && m1_cur[1] >= ENG_COUNTED && !(m1_cur[6] & 1u) && (k = eng_rec_npar(m1_cur, at)) > (uint32_t)npar) {   /* (no morph B set) */
         m1_splice(at + 2u + 4u * (uint32_t)npar, 4u * (k - (uint32_t)npar), 0);
         m1_cur[at + 1u] = (uint8_t)((m1_cur[at + 1u] & ~ENG_REC_COUNT) | (uint32_t)npar);
         return 1;
