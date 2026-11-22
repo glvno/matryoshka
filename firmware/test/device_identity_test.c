@@ -34,6 +34,8 @@ static void meq_pack(uint8_t *d) { memcpy(d, meq, 4); }
 static void meq_unpack(const uint8_t *d) { memcpy(meq, d, 4); }
 static void meq_defaults(void) { static const uint8_t flat[4] = {0, 0, 0, 20}; memcpy(meq, flat, 4); }
 #include "../src/pad_map.h"
+static struct { uint8_t clock_delay; } cfg;    /* (ui.c's: CLOCK IN DELAY, #870) */
+#define CIN_DELAY_MAX 200u
 #include "../src/settings_ext.h"
 /* #1107: the settings extension lives beside the settings record, written with it; older firmware sees only the record */
 static void settings_ext_test(void)
@@ -53,6 +55,33 @@ static void settings_ext_test(void)
     assert(sl_write_ext(SL_SETTINGS, 0, payload, 16, ext, SET_EXT_LEN) == 0);
     pad_defaults(); sl_scan(); settings_ext_load();
     assert(pad_note[0] == 36 && pad_note[23] == 51 && pad_count() == 2 && !pad_on && !memcmp(meq, mine, 4));
+    cfg.clock_delay = 70; settings_ext_pack(ext);               /* #870: CLOCK IN DELAY, after the pad map */
+    assert(ext[1] == MEQ_BYTES + PAD_BYTES + 1u && ext[2 + MEQ_BYTES + PAD_BYTES] == 70);
+    assert(sl_write_ext(SL_SETTINGS, 0, payload, 16, ext, SET_EXT_LEN) == 0);
+    cfg.clock_delay = 0; pad_defaults(); sl_scan(); settings_ext_load();
+    assert(cfg.clock_delay == 70 && pad_note[23] == 51 && pad_count() == 2 && !memcmp(meq, mine, 4));
+    {   /* what the firmware before it (the pad map's) reads of this extension: the CRC over the length byte's bytes holds,
+         * and the EQ and the pad map sit where they did */
+        uint32_t m = 2u + ext[1];
+        assert(m1_crc16(ext, m) == (uint32_t)(ext[m] | ext[m + 1u] << 8) && ext[2 + MEQ_BYTES] == pad_on);
+    }
+    {   /* an extension from before CLOCK IN DELAY (the pad map's, 29 bytes): its EQ and pad map, the delay at 0 ms; a value
+         * past 200 reads as 200 */
+        uint8_t old[SET_EXT_LEN];
+        uint32_t crc;
+        settings_ext_pack(old);
+        old[1] = MEQ_BYTES + PAD_BYTES;
+        crc = m1_crc16(old, 2u + old[1]);
+        old[2u + old[1]] = (uint8_t)crc;
+        old[3u + old[1]] = (uint8_t)(crc >> 8);
+        assert(sl_write_ext(SL_SETTINGS, 0, payload, 16, old, SET_EXT_LEN - 1u) == 0);
+        sl_scan(); settings_ext_load();
+        assert(cfg.clock_delay == 0 && pad_note[23] == 51 && !memcmp(meq, mine, 4));
+        cfg.clock_delay = 250; settings_ext_pack(old);
+        assert(sl_write_ext(SL_SETTINGS, 0, payload, 16, old, SET_EXT_LEN) == 0);
+        sl_scan(); settings_ext_load();
+        assert(cfg.clock_delay == CIN_DELAY_MAX);
+    }
     {                                                           /* an extension from before the pad map (4 bytes): its EQ, the map empty */
         uint8_t old[8] = {SET_EXT_VERSION, MEQ_BYTES};
         uint32_t crc;
@@ -62,7 +91,7 @@ static void settings_ext_test(void)
         old[7] = (uint8_t)(crc >> 8);
         assert(sl_write_ext(SL_SETTINGS, 0, payload, 16, old, 8) == 0);
         meq_defaults(); sl_scan(); settings_ext_load();
-        assert(!memcmp(meq, mine, 4) && !pad_count() && pad_on);
+        assert(!memcmp(meq, mine, 4) && !pad_count() && pad_on && !cfg.clock_delay);
     }
     assert(!sl_head(SL_SETTINGS, &h, 1) && h.len == 16);        /* what an older firmware reads: the 16 bytes, their CRC */
     assert(!sl_read(SL_SETTINGS, read, &n, 0) && n == 16 && !memcmp(read, payload, 16));

@@ -1314,15 +1314,36 @@ int main(void)
         presets_stepped = stepped;
         check("  the header says MIDI 1/4 (#596, #1067)", on_screen("MIDI 1/4"));
         enc(1, 1);
-        check("ALGO: MIDI's second page, TRANSPORT IN on K1, TRANSPORT OUT on K2, both ON as made (#596)", menu_tab == MT_MIDI
-              && menu_page2 && menu_page() && pages_now()->nrows == 2u && pages_now()->par[0] == MR_TIN && pages_now()->par[1] == MR_TOUT
-              && on_screen("MIDI 2/4") && on_screen("TRANSPORT IN") && on_screen("TRANSPORT OUT") && cfg.transport_in && cfg.transport_out);
+        check("ALGO: MIDI's second page, TRANSPORT IN on K1, TRANSPORT OUT on K2, both ON as made (#596), CLOCK IN DELAY on K3 at 0 MS "
+              "(#870)", menu_tab == MT_MIDI && menu_page2 && menu_page() && pages_now()->nrows == 3u && pages_now()->par[0] == MR_TIN
+              && pages_now()->par[1] == MR_TOUT && pages_now()->par[2] == MR_CLK_DELAY && on_screen("MIDI 2/4") && on_screen("TRANSPORT IN")
+              && on_screen("TRANSPORT OUT") && on_screen("CLOCK IN DELAY") && on_screen("0 MS") && cfg.transport_in && cfg.transport_out
+              && cfg.clock_delay == 0u);
         enc(2, -1);
         check("  K1 left: TRANSPORT IN OFF", cfg.transport_in == 0u && on_screen("OFF"));
         enc(3, -1);
         check("  K2 left: TRANSPORT OUT OFF", cfg.transport_out == 0u);
+        fm1_ms += 200;
+        enc(4, 1);
+        check("  K3 right: CLOCK IN DELAY 1 MS, a millisecond a click", cfg.clock_delay == 1u && on_screen("1 MS"));
+        fm1_ms += 200;
+        enc(4, -3);
+        check("  K3 left past 0: held at 0 MS", cfg.clock_delay == 0u && on_screen("0 MS"));
+        fm1_ms += 200;
+        enc(4, 70);
+        check("  70 clicks right: 70 MS (Reel's offset, #870)", cfg.clock_delay == 70u && on_screen("70 MS"));
+        enc(4, 2);
+        check("  turned fast (within 80 ms, KNOB ACCEL on): five a click, 80 MS", cfg.clock_delay == 80u && on_screen("80 MS"));
+        cfg.accel = 0;
+        enc(4, 2);
+        check("  KNOB ACCEL off: one a click however fast, 82 MS", cfg.clock_delay == 82u);
+        cfg.accel = 1;
+        fm1_ms += 200;
+        enc(4, 500);
+        check("  far right: held at 200 MS", cfg.clock_delay == CIN_DELAY_MAX && on_screen("200 MS"));
         cfg_defaults();
-        check("  FACTORY RESET's defaults: both ON", cfg.transport_in == 1u && cfg.transport_out == 1u);
+        check("  FACTORY RESET's defaults: both ON, CLOCK IN DELAY 0 MS", cfg.transport_in == 1u && cfg.transport_out == 1u
+              && cfg.clock_delay == 0u);
         enc(1, -1);
         check("ALGO back: MIDI 1/4", menu_tab == MT_MIDI && !menu_page2 && pages_now()->par[3] == MR_CLKOUT);
         enc(1, 1);

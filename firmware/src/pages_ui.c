@@ -555,7 +555,7 @@ static void pages_patch_ask(void)
 
 /* The menu's settings tabs (#395; GLO's own page of #199 became them): each a page of up to four of the FM-1's settings
  * on K1..K4, drawn as a device page. MIDI: the MIDI channel, clock in, MIDI out (K3: sandbox mode's hint names it), clock
- * out (#473); its second page (ALGO again, #596): TRANSPORT IN, TRANSPORT OUT; PANEL:
+ * out (#473); its second page (ALGO again, #596): TRANSPORT IN, TRANSPORT OUT, CLOCK IN DELAY (#870, clock_in.h); PANEL:
  * the LEDs, knob acceleration; SYSTEM: update mode, factory reset (a turn arms the row, GLO held 2 s does it: menu.c
  * menu_fire), the quick start after power-on (D-247), OUTPUT (D-919); its second page (ALGO again, #702): EDITOR, 3.5MM OUT (#631); EQ:
  * the master EQ's LOW, MID, HIGH and MID FREQ (master_eq.h, #1107). The settings live in the state (SAVE), never in a patch (menu.c setting_step). A row of them is a setting,
@@ -573,13 +573,13 @@ static const ppage_t *menu_tab_page(void)
 {
     static const char *const LAB[9][PG_ROWS] = {{"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", "CLOCK OUT"}, {"LEDS", "KNOB ACCEL", "COUNT-IN", "TEMPO"}, {"UPDATE MODE", "FACTORY RESET", "QUICK START", "OUTPUT"},
                                                 {"LOW", "MID", "HIGH", "MID FREQ"}, {"TIME SIG", "", "", ""}, {"EDITOR", "3.5MM OUT", "USB RETURN", ""},
-                                                {"TRANSPORT IN", "TRANSPORT OUT", "", ""}, {"", "CLEAR", "LEARN", ""}, {"PAD MAP", "", "CLEAR", "CLEAR ALL"}};
+                                                {"TRANSPORT IN", "TRANSPORT OUT", "CLOCK IN DELAY", ""}, {"", "CLEAR", "LEARN", ""}, {"PAD MAP", "", "CLEAR", "CLEAR ALL"}};
     static const uint8_t ROW[9][PG_ROWS] = {{MR_CH, MR_CLOCK, MR_MOUT, MR_CLKOUT}, {MR_LEDS, MR_ACCEL, MR_CIN, MR_TEMPO}, {MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_OUTPUT},
                                             {MR_EQ_LOW, MR_EQ_MID, MR_EQ_HIGH, MR_EQ_FREQ}, {MR_METER, MR_METER, MR_METER, MR_METER}, {MR_EDITOR, MR_OUT35, MR_USB_RETURN, MR_OUT35},
-                                            {MR_TIN, MR_TOUT, MR_TOUT, MR_TOUT}, {MR_MAPS, MR_MAP_CLEAR, MR_LEARN, MR_LEARN},
+                                            {MR_TIN, MR_TOUT, MR_CLK_DELAY, MR_TOUT}, {MR_MAPS, MR_MAP_CLEAR, MR_LEARN, MR_LEARN},
                                             {MR_PADS_ON, MR_PAD_ROW, MR_PAD_CLEAR, MR_PADS_CLEAR}};
-    static const uint8_t N[9] = {4, 4, 4, 4, 1, 3, 2, 3, 4};   /* (the tabs, then the later pages: PANEL's, #1011, SYSTEM's, #702,
-                                                         * MIDI's 2/4, #596, 3/4, MIDI learn, and 4/4, the pad map, #1067) */
+    static const uint8_t N[9] = {4, 4, 4, 4, 1, 3, 3, 3, 4};   /* (the tabs, then the later pages: PANEL's, #1011, SYSTEM's, #702,
+                                                         * MIDI's 2/4, #596, #870, 3/4, MIDI learn, and 4/4, the pad map, #1067) */
     uint32_t tab = menu_tab > MT_EQ ? MT_MIDI : menu_tab, t = tab, k;
     if (menu_page2 && menu_two(tab))
         t = tab == MT_PANEL ? 4u : tab == MT_SYSTEM ? 5u : 5u + menu_page2;
@@ -607,6 +607,7 @@ static uint32_t setting_bar(uint32_t row, uint32_t width)
          : row == MR_EQ_LOW || row == MR_EQ_MID || row == MR_EQ_HIGH   /* (a gain from -12 dB at the left to +12 at the right) */
          ? (uint32_t)((int8_t)(row == MR_EQ_LOW ? meq_low : row == MR_EQ_MID ? meq_mid : meq_high) + MEQ_GAIN_MAX) * width / (2u * MEQ_GAIN_MAX)
          : row == MR_EQ_FREQ ? meq_freq * width / (MEQ_FREQS - 1u)
+         : row == MR_CLK_DELAY ? cfg.clock_delay * width / CIN_DELAY_MAX
          : row == MR_UPDATE || row == MR_DEFAULTS || row == MR_PADS_CLEAR ? (menu_armed == row ? width : 0u)
          : row == MR_LEARN || row == MR_MAPS || row == MR_MAP_CLEAR || row == MR_PAD_ROW || row == MR_PAD_CLEAR ? map_bar(row, width)
          : row == MR_PADS_ON ? pad_on * width
@@ -695,8 +696,9 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, int fine, uint32_t *
     toast_end();
     *mod = m;
     *par = j;
-    if (m == SETTING_ROW) {                             /* GLO: an FM-1 setting, one step a click, applied here */
-        setting_step(j, clicks);
+    if (m == SETTING_ROW) {                             /* GLO: an FM-1 setting, one step a click, applied here (CLOCK IN
+                                                         * DELAY's 200 steps: turned fast, five, as a device page's row) */
+        setting_step(j, j == MR_CLK_DELAY && fast ? clicks * 5 : clicks);
         *v = 0;
         return 2;
     }

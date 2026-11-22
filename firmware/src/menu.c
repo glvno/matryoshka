@@ -2,7 +2,7 @@
  * Copyright (C) 2026 morgulbrut */
 /* The settings menu, after ui.c, pages_ui.c and sandbox_ui.c, before main.c:
  *
- * MENU (GLO; GLO again or HOME closes it; #395; its controls: web/src/controls.ts, #553): the FM-1's settings in tabs (MIDI: MIDI CHANNEL, CLOCK IN, MIDI OUT, CLOCK OUT; its second page: TRANSPORT IN, TRANSPORT OUT, #596; its third: MIDI learn's LEARN, MAPPING, CLEAR, midi_learn.c, #1067). ALGO steps the tabs: MIDI, PANEL and SYSTEM
+ * MENU (GLO; GLO again or HOME closes it; #395; its controls: web/src/controls.ts, #553): the FM-1's settings in tabs (MIDI: MIDI CHANNEL, CLOCK IN, MIDI OUT, CLOCK OUT; its second page: TRANSPORT IN, TRANSPORT OUT, #596, CLOCK IN DELAY, #870; its third: MIDI learn's LEARN, MAPPING, CLEAR, midi_learn.c, #1067). ALGO steps the tabs: MIDI, PANEL and SYSTEM
  * are pages of settings on K1..K4 (SYSTEM: UPDATE MODE, FACTORY RESET, QUICK START, OUTPUT; its second page: EDITOR, 3.5MM OUT, USB RETURN), drawn as a device page (pages_ui.c menu_tab_page; the knobs go through panel.c as on
  * a device page); INFO lists readings (drawn here) and GUIDE is a text SELECT scrolls (the ideas, D-248). The values are applied at once
  * and saved with the state (SAVE: main.c save bits; SAVE in the menu closes it). UPDATE MODE and FACTORY RESET (SYSTEM)
@@ -99,6 +99,11 @@ static void menu_value(uint32_t row, char *out)
     case MR_CLKOUT: p = put(p, ONOFF[cfg.clock_out]); break;
     case MR_TIN: p = put(p, ONOFF[cfg.transport_in]); break;
     case MR_TOUT: p = put(p, ONOFF[cfg.transport_out]); break;
+    case MR_CLK_DELAY:                           /* CLOCK IN DELAY (#870): 0 MS .. 200 MS */
+        fmt_int(p, cfg.clock_delay);
+        p += str_len(p);
+        p = put(p, " MS");
+        break;
     case MR_QUICK: p = put(p, ONOFF[cfg.quick]); break;
     case MR_OUTPUT: p = put(p, out_mono == 2u ? "MONO L" : out_mono ? "MONO" : "STEREO"); break;
     case MR_EDITOR: p = put(p, cfg.editor_ignore ? "IGNORE" : "ALLOW"); break;
@@ -323,6 +328,11 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
     case MR_CLKOUT: cfg.clock_out = (uint8_t)up; break;  /* MIDI clock out (#473; without MIDI OUT too, #596) */
     case MR_TIN: cfg.transport_in = (uint8_t)up; break;  /* MIDI Start / Continue / Stop / Song Position in (#596) */
     case MR_TOUT: cfg.transport_out = (uint8_t)up; break;   /* PLAY's Start / Continue / Stop / Song Position out (#596) */
+    case MR_CLK_DELAY: {                                /* CLOCK IN DELAY (#870, clock_in.h): a millisecond a click */
+        int32_t v = (int32_t)cfg.clock_delay + s;
+        cfg.clock_delay = (uint8_t)(v < 0 ? 0 : v > (int32_t)CIN_DELAY_MAX ? (int32_t)CIN_DELAY_MAX : v);
+        break;
+    }
     case MR_QUICK: cfg.quick = (uint8_t)up; break;  /* the quick start after power-on (D-240, D-247) */
     case MR_OUTPUT: {                                   /* STEREO, MONO (the sum on both sides), MONO L (on the left only), #612 */
         int32_t v = (int32_t)out_mono + d;

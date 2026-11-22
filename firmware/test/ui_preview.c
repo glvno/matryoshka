@@ -126,9 +126,12 @@ int main(int argc, char **argv)
     if (argc > 7) {                                         /* page 5: the menu's tab (3 = EQ, 5 = GUIDE) */
         int t = atoi(argv[7]);
         menu_tab = (uint8_t)(t < 0 ? 0 : t >= MT_COUNT ? MT_COUNT - 1 : t);
-        if (t == 12 || t == 13) {                           /* 12: SYSTEM's second page (#702), 13: PANEL's (#1011) */
-            menu_tab = t == 12 ? MT_SYSTEM : MT_PANEL;
+        if (t >= 12 && t <= 14) {                           /* 12: SYSTEM's second page (#702), 13: PANEL's (#1011), 14: MIDI's
+                                                             * (#596; CLKDELAY=ms sets CLOCK IN DELAY, #870) */
+            menu_tab = t == 12 ? MT_SYSTEM : t == 13 ? MT_PANEL : MT_MIDI;
             menu_page2 = 1;
+            if (getenv("CLKDELAY"))
+                cfg.clock_delay = (uint8_t)atoi(getenv("CLKDELAY"));
         }
     }
     if (argc > 8) {                                         /* .. and the first line of the manual */
