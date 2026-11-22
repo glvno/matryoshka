@@ -7,6 +7,30 @@ int host_default_pattern(uint8_t *, uint32_t *, uint32_t, uint32_t, const uint32
 #define main unused_panel_main
 #include "panel_test.c"
 #undef main
+#include "pattern_cases.h"
+
+/* factory patch i running, the 808 and 909 Kits with their demo sets loaded as the editor loads them (pattern_cases.h
+ * DEMO_CASES; #1179: they ship without pattern 1's notes and origin) */
+static int load_kit(uint32_t i)
+{
+    const char *demo = !strcmp(PRESET_LIST[i].name, "808 KIT") ? "808 Kit" : !strcmp(PRESET_LIST[i].name, "909 KIT") ? "909 Kit" : 0;
+    static int32_t l[128], r[128];
+    uint32_t k;
+    if (!demo)
+        return load_at(i);
+    for (k = 0; k < N_DEMO_CASES && strcmp(DEMO_CASES[k].name, demo); k++)
+        ;
+    if (k == N_DEMO_CASES || !DEMO_CASES[k].loaded || DEMO_CASES[k].loaded_len > sizeof pv_bin)
+        return -1;
+    memcpy(pv_bin, DEMO_CASES[k].loaded, DEMO_CASES[k].loaded_len);
+    pv_len = DEMO_CASES[k].loaded_len;
+    if (eng_load(pv_bin, pv_len))
+        return -1;
+    m1_pat_load();
+    patch_label = PRESET_LIST[i].name;
+    eng_render(l, r, 128);
+    return 0;
+}
 
 /* Expose only binary walkers to the separately compiled real protocol writer. */
 uint32_t host_eng_rec_head(uint32_t ver) { return eng_rec_head(ver); }
@@ -40,7 +64,7 @@ int main(void)
     }
     for (i = 0; i < N_PRESETS; i++) {
         if (strcmp(PRESET_LIST[i].name, "808 KIT") && strcmp(PRESET_LIST[i].name, "909 KIT") && strcmp(PRESET_LIST[i].name, "<7PH")) continue;
-        check("load actual kit", !load_at(i)); pv_gen++; pages_ensure();
+        check("load actual kit", !load_kit(i)); pv_gen++; pages_ensure();
         for (d = 0; d < pg_ndev; d++) {
             int mod = dp_pattern_module(d), n;
             const uint32_t *words;

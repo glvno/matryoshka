@@ -1168,7 +1168,8 @@ async function main() {
       await emu.tap(B.glo);
       await check('clock: GLO again: the device page', await emu.waitOwnPage(3000));
     },
-    async patterns() {   // #375: a pattern or song chosen on the FM-1 reaches the editor, the editor's reaches the FM-1
+    async patterns() {   // #375: a pattern or song chosen on the FM-1 reaches the editor, the editor's reaches the FM-1;
+                         // Silver Box ships without them, its demo set brings them (#1179: SEQ held + SEL, SEL again)
       const n = (await T()).loads;
       await open('Silver Box');
       await sentAfter(n);
@@ -1176,6 +1177,16 @@ async function main() {
       const seqOf = async () => JSON.parse(await patchJson()).modules.find((m) => m.type === 'fm1')?.seq ?? {};
       await emu.tap(B.seq);
       await check('patterns: the SEQ bar shows P01', await emu.waitText('P01', 3000));
+      await emu.key(B.seq, true);
+      await emu.elapse(150);
+      await emu.tap(B.scl);
+      await check('patterns: SEQ held + SEL asks to load the demo set', await emu.waitText('LOAD DEMO SET? SEL AGAIN', 2000));
+      await emu.tap(B.scl);
+      await check('patterns: SEL again loads it', await emu.waitText('DEMO SET LOADED', 2000));
+      await emu.key(B.seq, false);
+      await emu.elapse(300);
+      const tracksOf = async () => JSON.parse(await patchJson()).modules.filter((m) => m.type === 'steps');
+      await check('patterns: the editor loads the demo set too (PATTERN_OP)', !!(await until(async () => (await tracksOf()).some((t) => t.patterns?.length), 3000)), JSON.stringify(await seqOf()));
       await emu.turn(ENC.preset, 1);
       await check('patterns: PRESET on the SEQ page: the editor follows (pattern 2)', !!(await until(async () => (await seqOf()).pattern === 1, 3000)), JSON.stringify(await seqOf()));
       await page.keyboard.press(']');

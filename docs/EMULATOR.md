@@ -384,7 +384,8 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
     end.
   - `checkOldPattern` (step 6.5): Silver Box's bytes as release 1.9.1 wrote them into the bank (format 48, kept in
     `web/scripts/check-old-patch.json`) go into an empty slot. Loaded with PRESET, its pattern 2 plays as today's Silver
-    Box does. That an older binary renders the same as on its own release is proven on the host by
+    Box does with its demo set loaded (SEQ held + SEL, SEL again: it ships without its patterns, #1179). That an older
+    binary renders the same as on its own release is proven on the host by
     `tools/old_format.sh`.
   - `checkTeach` (steps 7.1 to 7.3, [D-247](ledger/device-ui.md#D-247), [D-917](ledger/device-ui.md#D-917)), with Live
     off: PRESET to <7PH says 2 SOUNDS: ENV THEN SEL. REC held shows the ARM: hint, and REC held + a black key arms a

@@ -3,9 +3,9 @@
 import { expect, it } from 'vitest';
 import './factory-presets';
 import { levelsPart, offRule } from './levels';
-import { PRESETS } from './presets';
+import { MEASURED_PRESETS } from './measured-presets';
 
 it('every factory patch and factory engine preset is on the loudness rule (part 2 of 6)', () => {
-  const all = Object.entries(PRESETS);
+  const all = MEASURED_PRESETS;
   expect(offRule(all, levelsPart(all, 2, 6))).toEqual([]);
 }, 960_000);

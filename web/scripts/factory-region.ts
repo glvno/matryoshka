@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The factory content's images (#915, D-1020), in the layout firmware/src/factory.c reads: the factory patches, the
-// factory engines' presets, the factory drum patterns, the released factory sets, the released copies and the preset
-// migrations. export-defs.ts writes two: the firmware tier (firmware/src/factory_tier.h FC_TIER, compiled in: the patches
-// of FIRMWARE_TIER in
+// factory engines' presets, the factory drum patterns, the released factory sets, the released copies, the preset
+// migrations and the demo sets. export-defs.ts writes two: the firmware tier (firmware/src/factory_tier.h FC_TIER, compiled
+// in: the patches of FIRMWARE_TIER in
 // web/src/factory-bank.ts and the preset migrations) and the factory region's image (web/public/firmware/matryoshka-factory.bin,
 // which the editor's Flash tab and tools/fm1_install.py install into the FM-1's 18 sectors at 0xEA000: the other factory
-// patches, every factory engine preset, the drum patterns, and any firmware-tier patch fixed since, which replaces the
-// built-in copy when its revision is newer).
+// patches, every factory engine preset, the drum patterns, the demo sets (web/src/demo-sets.ts, #1179), and any
+// firmware-tier patch fixed since, which replaces the built-in copy when its revision is newer). Layout 2 adds the demo
+// sets at the body's end (header bytes 60..61: their length); a firmware that reads only layout 1 (1.24.x) keeps the
+// layout-1 image in web/public/firmware/factory/.
 import { lzPack, lzUnpack } from './factory-lz';
 
 export const REGION_SIZE = 18 * 0x1000;
 export const HEADER = 64;
 export const MAGIC = 0x3143464d;            // "MFC1"
-export const LAYOUT = 1;
+export const LAYOUT = 2;
 export const TIER_SET = 0xffffff;           // the factory set of a bank written from the firmware tier alone (factory.c FC_TIER_SET)
 export const UNPACK_CAP = 3840;             // the buffer the FM-1 unpacks a patch into in place (proto.c M1_PATCH_MAX)
 export const PATCH_REC = 36;                // a patch record's bytes
@@ -42,6 +44,8 @@ export interface RegionInput {
   released: { set: number; has: bigint }[];
   copies: ImageCopy[];
   migrations: Uint8Array;
+  /** the demo sets section (demo-sets.ts demoSetsSection), empty: none */
+  demoSets: Uint8Array;
 }
 
 /** CRC-16/CCITT-FALSE, from `c` (proto.c m1_crc16 starts at 0xFFFF) */
@@ -270,6 +274,8 @@ function layout(input: RegionInput, pad: number): Uint8Array {
   const mig = w.at;
   w.raw(input.migrations);
   w.raw(new Array(PNAME).fill(0));          // (so a name read whole, 16 bytes, never runs past the image)
+  if (input.demoSets.length > 0xffff) throw new Error(`the demo sets take ${input.demoSets.length} bytes, over 65,535`);
+  w.raw(input.demoSets);                    // (the body's last bytes: header bytes 60..61 count them)
   const out = Uint8Array.from(w.bytes);
   const len = out.length - HEADER;
   const h = new DataView(out.buffer);
@@ -286,8 +292,8 @@ function layout(input: RegionInput, pad: number): Uint8Array {
   [patchDir, preset, dict, pattern, released, mig].forEach((o, i) => h.setUint32(32 + 4 * i, o, true));
   out[56] = ps.bits;
   out[57] = input.kind;
-  out.fill(0, 58, 62);
   h.setUint16(58, input.copies.length, true);
+  h.setUint16(60, input.demoSets.length, true);
   h.setUint16(62, crc16(out.subarray(4, 62)), true);
   return out;
 }
@@ -305,14 +311,21 @@ export function buildRegion(input: RegionInput): Uint8Array {
 }
 
 /** the header's fields, for the tools and tests (undefined: not an image) */
-export function readHeader(img: Uint8Array): { layout: number; format: number; version: number; set: number; len: number; crc: number; patches: number; presets: number; patterns: number; kind: number; copies: number } | undefined {
+export function readHeader(img: Uint8Array): { layout: number; format: number; version: number; set: number; len: number; crc: number; patches: number; presets: number; patterns: number; kind: number; copies: number; demoSets: number } | undefined {
   if (img.length < HEADER) return undefined;
   const h = new DataView(img.buffer, img.byteOffset, HEADER);
   if (h.getUint32(0, true) !== MAGIC || h.getUint16(62, true) !== crc16(img.subarray(4, 62))) return undefined;
   return {
     layout: img[4], format: img[5], version: h.getUint16(6, true), set: h.getUint32(8, true), len: h.getUint32(12, true), crc: h.getUint32(16, true),
     patches: h.getUint16(20, true), presets: h.getUint16(22, true), patterns: h.getUint16(24, true), kind: img[57], copies: h.getUint16(58, true),
+    demoSets: img[4] >= 2 ? h.getUint16(60, true) : 0,
   };
+}
+
+/** the demo sets section (demo-sets.ts demoSetsSection; empty: none), for the tools and tests */
+export function readDemoSets(img: Uint8Array): Uint8Array {
+  const h = readHeader(img);
+  return h ? img.subarray(HEADER + h.len - h.demoSets, HEADER + h.len) : new Uint8Array(0);
 }
 
 /** the released copies (the image's patch, length, FNV-1a, CRC-32), for the tools and tests */

@@ -25,9 +25,11 @@ export const DEMO_SET_PATCHES: readonly string[] = ['808 Kit', '909 Kit', 'Veron
 /** one Steps track's part of a demo set (by the patch's Steps track order) */
 export interface DemoTrack { notes?: StepNote[]; patterns?: (Pattern | null)[]; locks?: StepLock[]; factoryPatterns?: { version: 1; ids: (string | null)[] } }
 export interface DemoSet {
-  /** the factory patch it comes from, and its module layout (the key) */
+  /** the factory patch it comes from, its module layout (the key), and its region record's hash (what PATTERN_OP's op 3
+   *  names: the editor loads the set only when the FM-1's is this one) */
   name: string;
   layout: number;
+  hash: number;
   tracks: DemoTrack[];
   songs?: SongEntry[][];
   links?: Record<number, PatternLink>;
@@ -45,6 +47,7 @@ export function demoSetOf(full: Patch): DemoSet {
   return structuredClone({
     name: full.name,
     layout: demoLayout(full),
+    hash: demoSetHash(demoSetRecord(full)),
     tracks: tracks(full).map((m): DemoTrack => ({
       ...(m.notes ? { notes: m.notes } : {}), ...(m.patterns ? { patterns: m.patterns } : {}), ...(m.locks ? { locks: m.locks } : {}),
       ...(m.factoryPatterns ? { factoryPatterns: m.factoryPatterns } : {}),

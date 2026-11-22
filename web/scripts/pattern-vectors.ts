@@ -3,11 +3,13 @@
 // of each, the payload the editor writes and the patch's layout fingerprint. export-defs.ts writes them to
 // firmware/test/pattern_cases.h; the firmware's host test loads each patch in the C engine, writes the payload for that
 // pattern and compares bytes and layout, then loads the payload back into a fresh load and writes it again.
+import { DEMO_SET_PATCHES, applyDemoSet, demoSetHash, demoSetRecord } from '../src/demo-sets';
 import { DEFS } from '../src/modules';
-import { addModule, connect, emptyPatch, type ModuleInst, type Patch } from '../src/patch';
+import { addModule, connect, emptyPatch, removeModule, type ModuleInst, type Patch } from '../src/patch';
 import { encodePatch } from '../src/patchbin';
 import { encodePayload, layoutOf } from '../src/pattern-store';
 import { clearAllPatterns, copyPattern, nextEmptyPattern } from '../src/pattern-ops';
+import { demoSetFor, factoryWithDemoSet, FM1_PRESETS } from '../src/presets';
 import { deviceView } from '../src/poly';
 import type { StepNote } from '../src/track';
 
@@ -94,6 +96,42 @@ export function patternOps(c: PatternCase): { to: number; copied: Patch; cleared
   return { to, copied, cleared };
 }
 
+/** a patch as the FM-1 gets it (export-defs.ts's factory binaries) */
+const fm1Bin = (p: Patch): Uint8Array => encodePatch(p, true, 0, 1);
+/** the demo set loaded as the editor loads it (#1179), its binary; undefined when the patch has none */
+function editorDemo(p: Patch): Uint8Array | undefined {
+  const set = demoSetFor(p);
+  if (!set) return undefined;
+  const q = structuredClone(p);
+  applyDemoSet(q, set);
+  return fm1Bin(q);
+}
+
+/** the demo-set cases (#1179): each patch with a demo set as it ships, then copies of the 808 Kit renamed, with a parameter
+ *  changed (both find the set), with a module more and with one less (neither does); for each the binary after the editor
+ *  loads its demo set (none: no set), and the set's hash */
+export function demoCases(): { name: string; patch: Uint8Array; loaded?: Uint8Array; hash: number }[] {
+  const hash = new Map(DEMO_SET_PATCHES.map((n) => [n, demoSetHash(demoSetRecord(factoryWithDemoSet(n)))]));
+  const kit = (): Patch => FM1_PRESETS['808 Kit']();
+  const renamed = kit(), edited = kit(), more = kit(), less = kit();
+  renamed.name = 'MY KIT';
+  const out = edited.modules.find((m) => m.type === 'output')!;
+  out.params.level = out.params.level === 0.5 ? 0.25 : 0.5;
+  {   // (a Bitcrusher before the Output: a module the FM-1 runs; one with no cables it leaves out)
+    const output = more.modules.find((m) => m.type === 'output')!, into = more.cables.find((c) => c.to.module === output.id)!;
+    const crush = addModule(more, DEFS.crush, 0, 0);
+    more.cables = more.cables.filter((c) => c !== into);
+    connect(more, DEFS, into.from, { module: crush.id, port: 'in' });
+    connect(more, DEFS, { module: crush.id, port: 'out' }, into.to);
+  }
+  removeModule(less, less.modules.find((m) => m.type === 'steps')!.id);
+  return [...DEMO_SET_PATCHES.map((n) => ({ name: n, p: FM1_PRESETS[n]() })), { name: 'MY KIT', p: renamed }, { name: '808 PARAM', p: edited },
+    { name: '808 MODULE MORE', p: more }, { name: '808 MODULE LESS', p: less }].map(({ name, p }) => {
+    const set = demoSetFor(p);
+    return { name, patch: fm1Bin(p), loaded: editorDemo(p), hash: set ? hash.get(set.name)! : 0 };
+  });
+}
+
 /** the cases as a C header for the firmware's host test (the layout is the patch's fingerprint, whether or not the
  * payload carries it) */
 export function patternCasesHeader(cases: PatternCase[] = patternCases()): string {
@@ -119,5 +157,15 @@ export function patternCasesHeader(cases: PatternCase[] = patternCases()): strin
   });
   L.push('static const struct { uint32_t from, to; const uint8_t *copied; uint32_t copied_len; const uint8_t *cleared; uint32_t cleared_len; } PATTERN_OPS[N_PATTERN_CASES] = {');
   L.push(...ops, '};', '');
+  // the demo sets (#1179): the FM-1 loading one (patlink.c pl_demo_set, from the factory region) must give the binary the
+  // editor gives (firmware/test/patlink_test.c demo_sets)
+  const demo = demoCases().map((c, i) => {
+    L.push(`static const uint8_t PTC_DEMO_${i}[${c.patch.length}] = {${c.patch.join(',')}};`);
+    if (c.loaded) L.push(`static const uint8_t PTC_DEMO_LOADED_${i}[${c.loaded.length}] = {${c.loaded.join(',')}};`);
+    return `    {"${c.name}", PTC_DEMO_${i}, ${c.patch.length}, ${c.loaded ? `PTC_DEMO_LOADED_${i}` : '0'}, ${c.loaded?.length ?? 0}, 0x${c.hash.toString(16).padStart(8, '0')}u},`;
+  });
+  L.push(`#define N_DEMO_CASES ${demo.length}`);
+  L.push('static const struct { const char *name; const uint8_t *patch; uint32_t patch_len; const uint8_t *loaded; uint32_t loaded_len; uint32_t hash; } DEMO_CASES[N_DEMO_CASES] = {');
+  L.push(...demo, '};', '');
   return L.join('\n');
 }

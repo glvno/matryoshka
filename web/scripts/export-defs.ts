@@ -15,7 +15,8 @@ import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK
 import { ACCENT_VEL, MICRO_MAX, MICRO_STEPS, RATCHET_MAX, TRACK_NOTES_MAX } from '../src/track';
 import { DRUM_MAP_DEFAULT, DRUM_ROWS, STEPS_HITS } from '../src/modules';
 import { MAX_POLY } from '../src/poly';
-import { FM1_PRESETS } from '../src/presets';
+import { factoryWithDemoSet, FM1_PRESETS } from '../src/presets';
+import { DEMO_SET_PATCHES, demoSetRecord, demoSetsSection } from '../src/demo-sets';
 import { FALLBACK_NAME, fallbackPatch } from '../src/fallback';
 import { factoryPresets, factoryRackPresets } from '../src/factory-presets';
 import { controlsHeader, readmeWithControls } from './controls-h';
@@ -31,6 +32,7 @@ import { releasedFactoryHas } from './released-factory-names';
 import { lzPack, packedListC } from './factory-lz';
 import { patternCasesHeader } from './pattern-vectors';
 import FACTORY_STORE from '../src/factory-store.json';
+import DEMO_ROOM from '../src/demo-set-room.json';
 import { fromHex, storedName } from '../src/pattern-store';
 const FACTORY_PRESETS = [...factoryPresets(), ...factoryRackPresets()];
 
@@ -462,11 +464,21 @@ const imagePatches = (indexes: number[]): { name: string; binary: Uint8Array; sl
 const tierPatches = imagePatches(tierIndexes), regionPatches = imagePatches(regionIndexes);
 const tier = buildRegion({
   kind: KIND_TIER, set: setId, version, migrations, released: imageReleased(tierIndexes), copies: imageCopies(tierPatches, releasedCopies),
-  patches: tierPatches, presets: [], patterns: [],
+  patches: tierPatches, presets: [], patterns: [], demoSets: new Uint8Array(0),
 });
+// the demo sets (demo-sets.ts, #1179): only the region carries them (an FM-1 without one says NO DEMO SET). A set's links
+// name the factory patches' patterns the firmware compiles in (KIT_GROUPS above)
+const demoRecords = DEMO_SET_PATCHES.map((name) => demoSetRecord(factoryWithDemoSet(name)));
+for (const name of DEMO_SET_PATCHES) for (const link of Object.values(factoryWithDemoSet(name).modules.find((m) => m.type === 'fm1')?.seq?.links ?? {}))
+  if (!FACTORY_STORE.some((e) => e.id === link.id)) throw new Error(`the demo set of ${name} links ${link.id}, which the firmware does not compile in`);
+for (const r of demoRecords) {   // (the room the editor keeps for each set, patchbin.ts: gen-presets.ts writes it)
+  const layout = String((r[0] | r[1] << 8 | r[2] << 16 | r[3] << 24) >>> 0);
+  if ((DEMO_ROOM as Record<string, number>)[layout] !== (r[24] | r[25] << 8)) throw new Error('src/demo-set-room.json is stale: run scripts/gen-presets.ts');
+}
 const region = buildRegion({
   kind: KIND_REGION, set: setId, version, migrations: new Uint8Array(0), released: imageReleased(regionIndexes),
   copies: imageCopies(regionPatches, releasedCopies), patches: regionPatches, presets: regionPresets, patterns: regionPatterns,
+  demoSets: demoSetsSection(demoRecords),
 });
 writeFileSync(new URL('../public/firmware/matryoshka-factory.bin', import.meta.url), region);
 { // the factory sets the editor can install (factory-content.ts): today's, and the older ones kept for older firmwares

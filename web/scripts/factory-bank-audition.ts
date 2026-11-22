@@ -6,6 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import SOURCE from '../factory/bank.json';
 import { buildSelectedFactoryBank, factoryFile, factoryFxAudit, selectedFactoryProfile } from '../src/factory-bank';
+import { DEMO_SET_PATCHES, withoutDemoSet } from '../src/demo-sets';
 import { withKitPatterns } from '../src/factory-kit-patterns';
 import type { Patch } from '../src/patch';
 import {
@@ -201,8 +202,10 @@ export function exportSelectedFactoryAudition(options: AuditionExportOptions) {
     const audit = factoryFxAudit.find(entry => entry.name === sourceName);
     const selected = selectedFactoryProfile[sourceName];
     // (a drum kit with a pattern set is its source plus those patterns, links and songs: D-829; a kit with a drum rack
-    // keeps every module of that as it was, Main's panel aside, D-1053)
-    const source = withKitPatterns(structuredClone(SOURCE[index].patch) as unknown as Patch);
+    // keeps every module of that as it was, Main's panel aside, D-1053; a patch with a demo set ships without its
+    // patterns and songs, #1179)
+    const full = withKitPatterns(structuredClone(SOURCE[index].patch) as unknown as Patch);
+    const source = DEMO_SET_PATCHES.includes(sourceName) ? withoutDemoSet(full) : full;
     const kept = selected?.drumRack
       ? source.modules.every(m => JSON.stringify({ ...patch.modules.find(x => x.id === m.id), panel: undefined }) === JSON.stringify({ ...m, panel: undefined }))
       : JSON.stringify(patch) === JSON.stringify(source);

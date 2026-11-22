@@ -211,8 +211,8 @@ export type DeviceEvent =
   /** the running patch's link of pattern `pattern` changed on the FM-1 (PAT_LINK_NOW, #901): the stored id (0 none) and its
    *  payload hash */
   | { kind: 'link'; pattern: number; id: number; hash: number }
-  /** the FM-1's SEQ page ran a pattern command (PATTERN_OP, #1177, #1178): op 1 pattern `from` copied to `to`, op 2
-   *  everything cleared; the editor runs it on its patch too */
+  /** the FM-1's SEQ page ran a pattern command (PATTERN_OP, #1177, #1178, #1179): op 1 pattern `from` copied to `to`, op 2
+   *  everything cleared, op 3 the patch's demo set loaded (`hash`: its record's); the editor runs it on its patch too */
   | { kind: 'patternOp'; op: number; from: number; to: number; hash: number }
   /** the running patch's MIDI learn mappings after a learn or a clear on the FM-1 (MAP_NOW, #1067; device-form indices),
    *  with the "also sent" warning of a learn there (null none) */

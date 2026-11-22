@@ -2,7 +2,7 @@
 import { expect, it } from 'vitest';
 import { around, plugIn, seedFactoryPatterns, wire } from '../scripts/factory-build';
 import { factoryPresets } from './factory-presets';
-import { FM1_PRESETS } from './presets';
+import { factoryWithDemoSet } from './presets';
 import { cases, measure } from './levels';
 import { addModule } from './patch';
 import { DEFS } from './modules';
@@ -13,7 +13,8 @@ factoryPresets();
 // (the 909 Kit's card was shared with <7PH's until the 909 Kit became the whole TR-909, D-1055: <7PH keeps its lean card,
 // which ships no presets)
 it('the 909 Kit and each of its card\'s presets land on the loudness rule', () => {
-  const standalone = seedFactoryPatterns(FM1_PRESETS['909 Kit']());
+  // (with its demo set loaded: pattern 1 plays, and each preset swaps it for its own, #1179)
+  const standalone = seedFactoryPatterns(factoryWithDemoSet('909 Kit'));
   for (const c of cases(standalone)) {
     const m = measure(c.patch);
     expect(m.chord).toBeNull();

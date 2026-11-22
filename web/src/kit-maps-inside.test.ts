@@ -16,7 +16,7 @@ import { DEFS } from './modules';
 import { devicesOf } from './pages';
 import { layout } from './patchbin';
 import { encodePayload } from './pattern-store';
-import { FM1_PRESETS } from './presets';
+import { factoryWithDemoSet } from './presets';
 import type { Patch } from './patch';
 
 const SR = 48000;
@@ -61,7 +61,7 @@ const identical = (a: Float32Array, b: Float32Array): boolean => a.length === b.
 const loud = (x: Float32Array): boolean => x.some((v) => Math.abs(v) > 0.01);
 
 describe.each(FACTORY_KITS.map((k) => k.patch))('%s: its Drum maps inside its card (D-1059)', (name) => {
-  const kit = (): Patch => FM1_PRESETS[name]();
+  const kit = (): Patch => factoryWithDemoSet(name);   // (with its demo set: its patterns and song, #1179)
   const kitDef = FACTORY_KITS.find((k) => k.patch === name)!;
   const secs = kitDef.patterns.length * 2 + 1;
 

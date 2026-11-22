@@ -25,9 +25,11 @@ export async function loadFactorySets(base = './firmware/'): Promise<FactorySet[
   return Array.isArray(j.sets) ? j.sets : [];
 }
 
-/** the newest set this firmware reads: its layout, and a patch format it plays (FACT_INFO), else null */
+/** the newest set this firmware reads: its layout, and a patch format it plays (FACT_INFO), else null. Of two sets of the
+ *  same version, the one for the newer patch format (a later build of that content: the layout-1 images kept for 1.24.x) */
 export function pickSet(sets: readonly FactorySet[], info: FactoryInfo): FactorySet | null {
-  return sets.filter((s) => s.layout === info.reads && s.format <= info.plays).reduce<FactorySet | null>((best, s) => (!best || s.version > best.version ? s : best), null);
+  return sets.filter((s) => s.layout === info.reads && s.format <= info.plays)
+    .reduce<FactorySet | null>((best, s) => (!best || s.version > best.version || (s.version === best.version && s.format > best.format) ? s : best), null);
 }
 
 export interface FactoryOffer { text: string; action: string; set: FactorySet }

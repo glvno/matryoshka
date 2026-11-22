@@ -1575,6 +1575,19 @@ static void seq_clear_cancel(void)
 /* the pattern commands of the SEQ page (#1177, #1178), as the editor's: what the device link's PATTERN_OP says ran */
 #define PATTERN_OP_COPY 1u
 #define PATTERN_OP_CLEAR_ALL 2u
+#define PATTERN_OP_DEMO_SET 3u
+/* the running patch has a demo set (#1179: factory.c fc_demo by its layout, looked up once a patch) */
+static uint32_t seq_demo_seen;          /* pages_gen() + 1 of the lookup, 0 none yet */
+static uint8_t seq_demo_found;
+static int seq_demo_has(void)
+{
+    uint32_t at, len, cost, hash;
+    if (seq_demo_seen != pages_gen() + 1u) {
+        seq_demo_seen = pages_gen() + 1u;
+        seq_demo_found = !fc_demo(pl_demo_layout(), &at, &len, &cost, &hash);
+    }
+    return seq_demo_found;
+}
 /* SEQ held + SAVE (#1177): the selected pattern of every track copied to the first empty number after it (round from
  * P02), which is then selected (running: at the end of each track's pass, as PRESET). A key handler: state only, the bar
  * is the loop's (D-228) */
@@ -1652,6 +1665,55 @@ static void seq_all_cancel(void)
         return;
     seq_all_at = 0;
     seq_msg_due = MSG_NOT_CLEARED;
+    seq_msg_ms = 0;
+}
+/* SEQ held + SEL (#1179): the patch's demo set loaded (patlink.c pl_demo_set: every pattern and song replaced by the
+ * set's), asked first as clear all asks: SEL again within 3 s, SEQ still held and nothing else pressed or turned meanwhile
+ * (seq_demo_cancel). No question for a patch without a demo set, or one that has no room for it */
+static uint32_t seq_demo_at;            /* fm1_ms | 1 of the press that asked, 0 none */
+static uint32_t seq_demo_gen;           /* ... the patch then */
+static void seq_demo_press(void)
+{
+    uint32_t hash;
+    int rc;
+    if (!eng_steps_count()) {
+        seq_msg_due = MSG_NO_STEPS;
+        return;
+    }
+    seq_msg_ms = 1500;
+    if (!seq_demo_has()) {
+        seq_demo_at = 0;
+        seq_msg_due = MSG_NO_DEMO_SET;
+        return;
+    }
+    if (!(seq_demo_at && seq_demo_gen == pages_gen() && fm1_ms - (seq_demo_at & ~1u) < SEQ_CLEAR_MS)) {
+        seq_demo_at = fm1_ms | 1u;
+        seq_demo_gen = pages_gen();
+        seq_msg_due = MSG_DEMO_ASK;
+        seq_msg_ms = SEQ_CLEAR_MS;
+        return;
+    }
+    seq_demo_at = 0;
+    sr_stop();                                   /* (the pattern it wrote is gone) */
+    seq_held = -1;
+    rc = pl_demo_set(&hash);
+    if (rc) {
+        seq_msg_due = rc == -2 ? MSG_FULL_NOT_LOADED : MSG_NO_DEMO_SET;
+        return;
+    }
+    m1_pattern_op_now(PATTERN_OP_DEMO_SET, 0, 0, hash);
+    m1_pattern_now();
+    seq_msg_due = MSG_DEMO_LOADED;
+    seq_msg_ms = 1200;
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+/* anything but SEL pressed, anything turned, or SEQ let go, while the demo set asks: not loaded */
+static void seq_demo_cancel(void)
+{
+    if (!seq_demo_at)
+        return;
+    seq_demo_at = 0;
+    seq_msg_due = MSG_NOT_LOADED;
     seq_msg_ms = 0;
 }
 
@@ -2238,7 +2300,8 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
     else
         seq_grid_line(1, 202, line, C_DIM, 224);
     /* the hint line (FONT_S, at most 228 px: export-defs checks it), in the controls table's words (controls.ts HINTS,
-     * #553): a step held, its knobs; a track of more than 16 steps, OCT's pages (#490); else SEL's SONG page */
+     * #553): a step held, its knobs; a pattern with no notes on any track of a patch with a demo set, how to fill it
+     * (#1179); a track of more than 16 steps, OCT's pages (#490); else SEL's SONG page */
     if (sr_on)
         hint = map < 0 && !sr_preview ? HINT_STEP_SILENT : HINT_STEP_RECORD;
     else if (seq_play_keys())
@@ -2249,6 +2312,8 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
         hint = HINT_HELD_DRUM;
     else if (map >= 0 && seq_rec && seq_mod_armed(mod))
         hint = len > 16 ? HINT_DRUM_REC_LONG : HINT_DRUM_REC;
+    else if (eng_pattern() >= 0 && !pl_has_notes((uint32_t)eng_pattern()) && seq_demo_has())
+        hint = pt_on ? HINT_EMPTY : HINT_EMPTY_NO_STORE;
     else if (map >= 0)
         hint = len > 16 ? HINT_DRUM_LONG : HINT_DRUM;
     else
@@ -2369,7 +2434,7 @@ static void song_sync(void)
  * SEL's release then opens nothing (as after the pen) */
 static uint16_t seq_pl_at;              /* the stored entry the last load took (pl_step goes on from it), 0 none */
 static const char *const SEQ_PL_SAVED[] = { "PATTERN STORE FULL", "PATTERN NOT SAVED", "PATTERN SAVED: ", "SAVED AS NEW: " };
-static const char *const SEQ_PL_LOADED[] = { "PATCH FULL", "NOT LOADED", "", "LOCKS LEFT OUT: OTHER LAYOUT" };   /* (pl_load_entry + 2) */
+static const char *const SEQ_PL_LOADED[] = { "PATCH FULL", MSG_NOT_LOADED, "", "LOCKS LEFT OUT: OTHER LAYOUT" };   /* (pl_load_entry + 2) */
 static int seq_pl_pattern(void)
 {
     seq_pen_ms = fm1_ms | 1u;
@@ -2681,6 +2746,8 @@ static void seq_poll(void)
         seq_clear_at = 0;                        /* (the clear asked in vain: its message ends with it) */
     if (seq_all_at && fm1_ms - (seq_all_at & ~1u) >= SEQ_CLEAR_MS)
         seq_all_at = 0;                          /* (clear all asked in vain) */
+    if (seq_demo_at && fm1_ms - (seq_demo_at & ~1u) >= SEQ_CLEAR_MS)
+        seq_demo_at = 0;                         /* (the demo set asked in vain) */
     song_poll();
     if (page == PAGE_SEQ && eng_steps_count() && (seq_pat_state() != seq_shown_pat || seq_bar_mark() != seq_shown_mark
         || seq_shown_sr != (uint8_t)(sr_on ? sr_k + 1u : 0u) || seq_shown_lo != seq_bar_lo()) && !ui_yielding

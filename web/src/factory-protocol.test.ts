@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { FACT, FACT_SIZE, factCommitFrame, factReadFrame, factWriteFrame, parse, parseFactoryInfo, frame } from './protocol';
-import { buildRegion, contentVersion, copyFingerprint, crc32, KIND_REGION, KIND_TIER, looksLikeRecord, readCopies, readHeader, readPatches, REGION_SIZE, STRUCT_PRESETS, type ReleasedCopy } from '../scripts/factory-region';
+import { buildRegion, contentVersion, copyFingerprint, crc32, KIND_REGION, KIND_TIER, LAYOUT, looksLikeRecord, readCopies, readDemoSets, readHeader, readPatches, REGION_SIZE, STRUCT_PRESETS, type ReleasedCopy } from '../scripts/factory-region';
 import { presetsHPatches } from '../scripts/factory-lz';
 import { FIRMWARE_TIER, FIRMWARE_TIER_OVERRIDES } from './factory-tiers';
 import { FM1_PRESETS } from './presets';
@@ -45,7 +45,9 @@ describe('factory region link frames (#915)', () => {
 describe('the factory region image and the firmware tier', () => {
   it('the region image fits the region, its header and CRC-32 check, no sector looks like an update record', () => {
     const h = readHeader(image)!;
-    expect(h.layout).toBe(1);
+    expect(h.layout).toBe(LAYOUT);
+    expect(LAYOUT).toBe(2);   // (the demo sets' section at the body's end, #1179)
+    expect(readDemoSets(image)[0]).toBe(5);   // (one demo set each: 808 Kit, 909 Kit, Verona Drum 1, Scrounge, Silver Box)
     expect(h.kind).toBe(KIND_REGION);
     expect(image.length).toBeLessThanOrEqual(REGION_SIZE);
     expect(h.len + 64).toBe(image.length);
@@ -104,7 +106,7 @@ describe('the factory region image and the firmware tier', () => {
     let x = 0x2545f491;
     const noise = (): number => { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; return x & 0xff; };
     const big = Array.from({ length: 30 }, (_, i) => ({ name: `P${i}`, binary: Uint8Array.from({ length: 3800 }, noise), slot: i }));
-    expect(() => buildRegion({ kind: KIND_REGION, set: 1, version: 1, patches: big, presets: [], patterns: [], released: [], copies: [], migrations: new Uint8Array(0) })).toThrow();
+    expect(() => buildRegion({ kind: KIND_REGION, set: 1, version: 1, patches: big, presets: [], patterns: [], released: [], copies: [], migrations: new Uint8Array(0), demoSets: new Uint8Array(0) })).toThrow();
   });
   it('one structure has at most the factory presets the firmware lists (factory.c FC_STRUCT_PRESETS, pages_ui.c pr_list)', () => {
     const c = readFileSync(new URL('../../firmware/src/factory.c', import.meta.url), 'utf8');
@@ -113,6 +115,6 @@ describe('the factory region image and the firmware tier', () => {
     for (const p of [...factoryPresets(), ...factoryRackPresets()]) per.set(p.structure, (per.get(p.structure) ?? 0) + 1);
     expect(Math.max(...per.values())).toBeLessThanOrEqual(STRUCT_PRESETS);
     const over = Array.from({ length: STRUCT_PRESETS + 1 }, (_, i) => ({ structure: '0000abcd', name: `P${i}`, values: [i] }));
-    expect(() => buildRegion({ kind: KIND_REGION, set: 1, version: 1, patches: [], presets: over, patterns: [], released: [], copies: [], migrations: new Uint8Array(0) })).toThrow();
+    expect(() => buildRegion({ kind: KIND_REGION, set: 1, version: 1, patches: [], presets: over, patterns: [], released: [], copies: [], migrations: new Uint8Array(0), demoSets: new Uint8Array(0) })).toThrow();
   });
 });

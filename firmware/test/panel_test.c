@@ -5085,12 +5085,52 @@ int main(void)
         tap(BTN_HOME);
         loop();
         check("  SEQ held + HOME on an empty patch: NOTHING TO CLEAR, no question", !seq_all_at && strstr(msg_text, MSG_NOTHING_TO_CLEAR) != 0);
+        tap(BTN_SEL);
+        loop();
+        check("  SEQ held + SEL on a patch without a demo set: NO DEMO SET, no question, no SONG page (#1179)", !seq_demo_at
+              && strstr(msg_text, MSG_NO_DEMO_SET) != 0 && page == PAGE_SEQ);
         panel_held &= ~(1u << BTN_SEQ);
         panel_edges(0, 1u << BTN_SEQ);
         loop();
         check("  SEQ let go: the SEQ page stays", page == PAGE_SEQ);
         check("patterns fixture loads again", load_fixture("build/panel-fixtures/steps-patterns.m1p") == 0);
         pv_gen++;
+    }
+    {   /* the demo set (#1179): the factory 808 Kit ships empty; SEQ held + SEL asks, SEL again loads its set */
+        uint32_t told;
+        const uint32_t *w;
+        check("(the factory 808 Kit, empty, on its SEQ page)", ct_load_factory("808 KIT") == 0);
+        ct_seq(0, 0, 1);
+        ui_dirty = 2;
+        loop();
+        check("an empty pattern of a patch with a demo set: the hint line says so (EMPTY  SEQ+SEL demo set  SEL+PRESET pat)",
+              ct_shows(pt_on ? HINT_EMPTY : HINT_EMPTY_NO_STORE));
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        tap(BTN_SEL);
+        loop();
+        check("SEQ held + SEL: it asks first (LOAD DEMO SET? SEL AGAIN), nothing loaded, no SONG page", seq_demo_at != 0u
+              && strstr(msg_text, MSG_DEMO_ASK) != 0 && eng_pattern_notes((uint32_t)seq_module(), 0, &w) == 0 && page == PAGE_SEQ);
+        panel_keys(1u << 3);
+        panel_keys(0);
+        loop();
+        check("  a key meanwhile: NOT LOADED", !seq_demo_at && strstr(msg_text, MSG_NOT_LOADED) != 0);
+        tap(BTN_SEL);
+        later(3100);
+        tap(BTN_SEL);
+        loop();
+        check("  SEL again after 3 s: only asks again", seq_demo_at != 0u && strstr(msg_text, MSG_DEMO_ASK) != 0);
+        told = host_op_told;
+        tap(BTN_SEL);
+        loop();
+        check("  SEL again within 3 s: the demo set loaded, pattern 1 selected, its song there; the editor told (PATTERN_OP 3)",
+              !seq_demo_at && strstr(msg_text, MSG_DEMO_LOADED) != 0 && eng_pattern() == 0 && !eng_song() && eng_song_len(0) > 0
+              && eng_pattern_notes((uint32_t)seq_module(), 0, &w) > 0 && host_op_told == told + 1u && host_op_last[0] == 3u);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        ui_dirty = 2;
+        loop();
+        check("  SEQ let go: the SEQ page stays, the hint line no longer says EMPTY", page == PAGE_SEQ && !ct_shows(HINT_EMPTY));
     }
     {   /* The SEQ page drawn whole: once when SEQ opens it from a Steps track's device page (seq_select drew it a second
          * time after page_show, and the device page's header before it), and its ground cleared around the cells only
