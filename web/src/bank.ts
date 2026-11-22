@@ -456,7 +456,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
         const copy = knownCopy(s, known, lengthIn);
         return el('div', { class: 'bank-row' },
           el('span', { class: 'slot', textContent: slotLabel(s.slot) }),
-          dragName(el('span', { class: 'grow', textContent: s.name }), { name: copy?.name ?? s.name, patch: () => copy?.patch ?? null, slot: s.slot }),
+          dragName(el('span', { class: 'grow', textContent: s.name }), { name: copy?.name ?? s.name, patch: () => copy?.patch ?? null, slot: { slot: s.slot, name: s.name } }),
           el('button', { class: 'delete', textContent: '×', title: 'Erase this slot on the FM-1 (asks first)', ariaLabel: `erase slot ${slotLabel(s.slot)} on the FM-1`, disabled: busy, onclick: () => {
             if (!window.confirm(`Erase FM-1 slot ${slotLabel(s.slot)} ("${s.name}")? ${copy ? 'This browser keeps its copy.' : 'This browser has no copy of it, so it is gone for good.'}`)) return;
             void run('Erasing', async () => {

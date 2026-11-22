@@ -44,9 +44,10 @@ export function paletteDevices(patch: Patch): PaletteDevice[] {
 /** the selected pattern of `patch` (0-based) */
 export const patchPattern = (patch: Patch): number => patch.modules.find((m) => m.type === 'fm1')?.seq?.pattern ?? 0;
 
-/** the entry of `patch` in slot `slot`, named as the FM-1 names the slot */
-export const entryOf = (patch: Patch, slot: number, name = patch.name): PaletteEntry =>
-  ({ slot, pattern: patchPattern(patch), name: deviceName(name.trim() || 'PATCH'), devices: paletteDevices(patch) });
+/** the entry of `patch` in slot `slot` under `name`, the slot's own name (default: the patch's, as the editor names the
+ *  slots it stores) */
+export const entryOf = (patch: Patch, slot: number, name = deviceName(patch.name.trim() || 'PATCH')): PaletteEntry =>
+  ({ slot, pattern: patchPattern(patch), name, devices: paletteDevices(patch) });
 
 /**
  * The entry applied to `patch` (a copy of its slot's patch) as the FM-1 applies it before its load: each device whose
@@ -266,26 +267,30 @@ export class Palette {
 
   /**
    * Put a sound into the palette: at `pos` (a drop on a chip: it replaces what is there), or the first empty position
-   * (Add to palette). A sound already in one of the FM-1's slots (`slot`, or one with its name and binary length) is
-   * pointed at; another is stored into the first free slot first, named after it. `patch` null: an FM-1 slot this
-   * browser has no copy of (its entry keeps no presets, pattern 1). False when nothing was added.
+   * (Add to palette). A sound already in one of the FM-1's slots (`slot`, or one with its name, case aside, and binary
+   * length) is pointed at under that slot's own name, which the FM-1 checks case and all (a factory slot is `808 Kit`);
+   * another is stored into the first free slot first, named after it. `patch` null: an FM-1 slot this browser has no copy
+   * of (its entry keeps no presets, pattern 1). False when nothing was added.
    */
-  async add(name: string, patch: Patch | null, o: { pos?: number; slot?: number } = {}): Promise<boolean> {
+  async add(name: string, patch: Patch | null, o: { pos?: number; slot?: { slot: number; name: string } } = {}): Promise<boolean> {
     const why = this.blocked();
     if (why) return this.ports.say(why), false;
     const pos = o.pos ?? this.firstEmpty();
     if (pos === null) return this.ports.say('Palette full: drag onto a chip to replace'), false;
     const d = this.ports.device;
-    const label = deviceName(name.trim() || 'PATCH');
+    let label = deviceName(name.trim() || 'PATCH');
     try {
-      let slot = o.slot;
-      if (slot === undefined) {
+      let slot: number;
+      if (o.slot) ({ slot, name: label } = o.slot);
+      else {
         if (!patch) return false;
         const bank = await d.readBank();
         const length = binLength(patch);
-        const on = bank.find((s) => s.used && s.name === label && s.length === length);
-        if (on) slot = on.slot;
-        else {
+        const on = bank.find((s) => s.used && deviceName(s.name) === label && s.length === length);
+        if (on) {
+          slot = on.slot;
+          label = on.name;
+        } else {
           const free = bank.find((s) => !s.used);
           if (!free) return this.ports.say(`The FM-1's bank is full: "${name}" was not added to the palette`), false;
           this.ports.say(`Storing "${name}" into FM-1 slot ${free.slot + 1}…`);

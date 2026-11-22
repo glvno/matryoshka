@@ -124,17 +124,17 @@ describe('the palette over the link (#1196)', () => {
     expect(said.at(-1)).toBe('"My Pad" is palette 1');
     expect(fm1.ops.filter((op) => op === PALETTE.entryGet)).toEqual([]);   // (its hash was known: no ENTRY_GET)
   });
-  it('points at a sound the FM-1 holds already (its name and length), and at a dragged FM-1 slot', async () => {
+  it('points at a sound the FM-1 holds already (its name, case aside, and length) under the slot\'s own name, and at a dragged FM-1 slot', async () => {
     const { fm1, palette } = await linked();
     const { p } = padPatch();
-    fm1.slots[5] = { slot: 5, used: true, length: binLength(p), name: 'MY PAD' };
+    fm1.slots[5] = { slot: 5, used: true, length: binLength(p), name: 'My Pad' };   // (a factory slot keeps its case)
     await palette.add('My Pad', p, { pos: 2 });
-    fm1.slots[9] = { slot: 9, used: true, length: 50, name: 'OTHER' };
-    await palette.add('OTHER', null, { pos: 3, slot: 9 });
+    fm1.slots[9] = { slot: 9, used: true, length: 50, name: '808 Kit' };
+    await palette.add('808 Kit', null, { pos: 3, slot: { slot: 9, name: '808 Kit' } });
     await settle();
     expect(fm1.o.sent.some((f) => f[4] === 0x13)).toBe(false);   // (no SLOT: nothing stored)
-    expect(fm1.entries[2]).toMatchObject({ slot: 5 });
-    expect(fm1.entries[3]).toEqual({ slot: 9, pattern: 0, name: 'OTHER', devices: [] });
+    expect(fm1.entries[2]).toMatchObject({ slot: 5, name: 'My Pad' });
+    expect(fm1.entries[3]).toEqual({ slot: 9, pattern: 0, name: '808 Kit', devices: [] });
   });
   it('says so when the bank or the palette is full, and adds nothing', async () => {
     const { fm1, palette, said } = await linked();
@@ -150,7 +150,7 @@ describe('the palette over the link (#1196)', () => {
   it('reorders with one ORDER, removes with an empty PUT, and reads a newer entry by its hash', async () => {
     const { fm1, palette } = await linked();
     fm1.slots[0] = { slot: 0, used: true, length: 10, name: 'A' };
-    await palette.add('A', null, { pos: 0, slot: 0 });
+    await palette.add('A', null, { pos: 0, slot: { slot: 0, name: 'A' } });
     await palette.move(0, 5);
     await settle();
     expect(fm1.entries[5]).toMatchObject({ name: 'A' });
@@ -167,7 +167,7 @@ describe('the palette over the link (#1196)', () => {
   it('refuses to write while a switch waits for the bar line', async () => {
     const { fm1, palette, said } = await linked();
     fm1.slots[0] = { slot: 0, used: true, length: 10, name: 'A' };
-    await palette.add('A', null, { pos: 0, slot: 0 });
+    await palette.add('A', null, { pos: 0, slot: { slot: 0, name: 'A' } });
     await settle();
     fm1.running = true;
     await palette.click(0);
@@ -215,13 +215,13 @@ describe('the palette over the link (#1196)', () => {
   it('keeps the last palette read for when no FM-1 is linked, and with firmware without it sends nothing', async () => {
     const { fm1, palette } = await linked();
     fm1.slots[0] = { slot: 0, used: true, length: 10, name: 'A' };
-    await palette.add('A', null, { pos: 0, slot: 0 });
+    await palette.add('A', null, { pos: 0, slot: { slot: 0, name: 'A' } });
     await settle();
     expect(JSON.parse(mem.get(PALETTE_STORE)!).now.positions[0].name).toBe('A');
     const old = await linked({ features: 0 });
     expect(old.palette.linked).toBe(false);
     expect(old.palette.chips()[0].name).toBe('A');   // (the last read)
-    expect(await old.palette.add('B', null, { slot: 0 })).toBe(false);
+    expect(await old.palette.add('B', null, { slot: { slot: 0, name: 'B' } })).toBe(false);
     expect(old.said.at(-1)).toMatch(/firmware 1\.26/);
     expect(old.fm1.ops).toEqual([]);
   });

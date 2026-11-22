@@ -6,9 +6,9 @@
 import type { Patch } from './patch';
 
 /** what a drag carries: the patch's name, the patch itself (made on drop: a factory or community patch is built then;
- *  null when this browser has no copy of an FM-1 slot's patch), and the FM-1 slot it already sits in when it came from
- *  the FM-1 column */
-export interface PatchDragItem { name: string; patch: () => Patch | null; slot?: number }
+ *  null when this browser has no copy of an FM-1 slot's patch), and the FM-1 slot it already sits in with that slot's own
+ *  name (the FM-1 checks an entry by it, case and all: a factory slot is `808 Kit`) when it came from the FM-1 column */
+export interface PatchDragItem { name: string; patch: () => Patch | null; slot?: { slot: number; name: string } }
 
 /** an element that takes a dropped patch */
 type Drop = (item: PatchDragItem) => void;
