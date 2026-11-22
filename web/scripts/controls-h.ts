@@ -30,7 +30,7 @@ export function lineWidth(spec: string, adv: number[]): { parts: number; right: 
   return { parts: x, right: desc === undefined ? x : (x > 124 ? x + 2 : 124) + tw(desc) };
 }
 
-const C_ROWS = 24;          // help_ui.c HC_ROWS: the most lines a tab holds
+const C_ROWS = 28;          // help_ui.c HC_ROWS: the most lines a tab holds
 const RIGHT = 222;          // a line's last pixel column (the card's inside, help_row's text field)
 const PATCH_ROWS = 4;       // help_patch_rows: at most four
 const PAGE_BUTTONS = ['FX', 'LFO', 'EDIT', 'ARP'];   // the buttons a Page button's list can be on (help_ui.c help_fill names one)

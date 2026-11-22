@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Copy a pattern on the FM-1: hold SEQ and press SAVE on the SEQ page.** The selected pattern of every track goes to the first empty pattern number after it, with its notes, P-locks and its own length and rate, and the copy is selected, so you can edit it straight away. The bar says e.g. `P03 COPIED TO P04`. A copy of a pattern linked to a stored or factory pattern is a plain pattern of its own: editing it changes nothing else. When all 64 numbers are used the bar says `ALL 64 PATTERNS USED` and nothing changes. The editor's copy button on a Steps card now copies to the same number (the first empty one after the pattern, where it used to take the lowest empty one); Alt-click still asks for a number (#1177).
+- **Clear every pattern and song at once: hold SEQ and press HOME, then HOME again within 3 seconds.** The first press only asks (`CLEAR ALL? HOME AGAIN`); anything else, or letting go of SEQ, leaves the patch as it was. Pattern 1 stays, empty, on every track. Stored and factory patterns stay in the pattern store, so you can load them again. The editor's Steps card has the same as `clear all`, which asks first; undo brings everything back (#1178).
+- With the editor's Live on, a copy or a clear all made on the FM-1 shows up in the editor as one step you can undo. Needs the next firmware.
+
 ## 1.24.1 — 2026-11-21
 
 - **A renamed FM-1 now shows its new name in MIDI apps on a computer or an iPad.** A Mac remembers each FM-1 by its USB serial number and keeps showing the name it first saw, often just `Matryoshka`; an iPad seems to do the same. So two FM-1s with different names could look like the same device in a MIDI routing app. Now an FM-1 with a name gives a serial made from that name, and the host sees it as a new device called `Matryoshka` and your name. Give it its name in the editor, then reconnect it. The host may keep the old entry as an offline device; you can delete it (on a Mac, in Audio MIDI Setup). An FM-1 without a name is unchanged. Needs this firmware.

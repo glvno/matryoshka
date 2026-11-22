@@ -78,10 +78,12 @@ enum { C_PADS = 0x1D, R_PADS_NOW = 0x64 };                  /* the global pad ma
                                                              * + note u8 (0xFF: none) to set a row, 0xFE to clear every row, 0xFD
                                                              * + on u8 for PAD MAP; -> PADS_NOW on u8, then the 24 rows' notes,
                                                              * also unasked after a change on the FM-1 */
+enum { R_PATTERN_OP = 0x65 };                               /* unasked (#1177, #1178): the SEQ page copied a pattern or cleared every
+                                                             * pattern and song; op u8, from u8, to u8, hash u32 LE (m1_pattern_op_now) */
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
 #define M1_FEATURES3 255u                                      /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549), bit 19 = INFO's flags bit 3 says GLO > SYSTEM > EDITOR (#702), bit 20 = ARMS, the editor's armed set (#191), bit 21 = ARMS and ARMS_NOW carry ENG_MSET_WORDS words, modules 0..127 (#721; INFO byte 1 says 128), bit 22 = device settings, bit 23 = explicit factory pattern origins / snapshots */
-#define M1_FEATURES4 61u                                      /* INFO byte 14, feature bits 24..31: bit 24 = complete FX-scoped preset recall; bit 25 = the pattern store is on (#901: PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW, format 59's links; m1_pat_info sets it); bit 26 = the factory region (#915, D-490: FACT_INFO, FACT_BEGIN, FACT_WRITE, FACT_SUM, FACT_READ, FACT_COMMIT); bit 27 = MASTER_EQ (#1107); bit 28 = MIDI learn (#1067: MAP, MAP_NOW, the mapping section after the macro ranges); bit 29 = the global pad map (#1067: PADS, PADS_NOW) */
+#define M1_FEATURES4 125u                                     /* INFO byte 14, feature bits 24..31: bit 24 = complete FX-scoped preset recall; bit 25 = the pattern store is on (#901: PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW, format 59's links; m1_pat_info sets it); bit 26 = the factory region (#915, D-490: FACT_INFO, FACT_BEGIN, FACT_WRITE, FACT_SUM, FACT_READ, FACT_COMMIT); bit 27 = MASTER_EQ (#1107); bit 28 = MIDI learn (#1067: MAP, MAP_NOW, the mapping section after the macro ranges); bit 29 = the global pad map (#1067: PADS, PADS_NOW); bit 30 = PATTERN_OP (#1177, #1178: the SEQ page's copy and clear all) */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_INFO_EDITOR_IGNORE 8u                             /* INFO byte 3 (flags) bit 3: GLO > SYSTEM > EDITOR is at IGNORE, the
                                                               * editor leaves this FM-1 alone (with feature bit 19, #702) */
@@ -707,6 +709,12 @@ static void m1_patch_patterns(void)
     if (m1_cur[7] & ENG_FLAG_LINKS)
         (void)m1_steps_sec(ENG_SEC_LOCKS);
 }
+/* the patterns, songs and P-locks into the binary, saying whether they went in (#1177): 0 when it could not hold them
+ * (it keeps its old sections then, and the caller undoes the engine's change) */
+static int m1_patterns_fit(void)
+{
+    return m1_steps_sec(ENG_SEC_PATTERNS) && (m1_cur[1] < 49u ? !eng_locks_count() : m1_steps_sec(ENG_SEC_LOCKS));
+}
 
 /* Origin event (0x5A): six bytes, module/pattern/u32 LE identity. Module 255 with
  * pattern 0/1 begins/ends a snapshot. The u32 field is its record count in both frames. */
@@ -738,6 +746,17 @@ static void m1_clear_origin(uint32_t mod, uint32_t pattern)
     uint32_t at = eng_origin_record(m1_cur, m1_cur_len, mod, pattern), k;
     if (at) { for (k = 0; k < 4u; k++) m1_cur[at + 2u + k] = 0; m1_edited = 1; }
     m1_origin_now(mod, pattern, 0);
+}
+/* every pattern origin out of the binary (#1178: clear all): the section goes, and the editor hears an empty snapshot */
+static void m1_origins_drop(void)
+{
+    uint32_t at = eng_origins_at(m1_cur, m1_cur_len);
+    if (at) {
+        m1_splice(at, eng_origins_end(m1_cur, m1_cur_len, at) - at, 0);
+        m1_cur[7] &= (uint8_t)~ENG_FLAG_ORIGINS;
+        m1_edited = 1;
+    }
+    m1_origin_snapshot();
 }
 /* Only called for two known, nonempty factory defaults whose notes fit compact words. No other track or
  * pattern moves. Refuse growth before the engine changes, so SAVE and the live track always agree. */
@@ -806,6 +825,19 @@ static void m1_pat_link_now(uint32_t p, uint32_t id, uint32_t hash)
     for (k = 0; k < 4u; k++)
         b[3u + k] = (uint8_t)(hash >> (8u * k));
     m1_reply(R_PAT_LINK_NOW, b, sizeof b);
+}
+/* unasked (#1177, #1178): the SEQ page ran a pattern command the editor runs on its copy too, as one undo step there:
+ * op u8 (seq_ui.c PATTERN_OP_*), from u8, to u8, hash u32 LE (0 unless the op names a set) */
+static void m1_pattern_op_now(uint32_t op, uint32_t from, uint32_t to, uint32_t hash)
+{
+    uint8_t b[7];
+    uint32_t k;
+    b[0] = (uint8_t)op;
+    b[1] = (uint8_t)from;
+    b[2] = (uint8_t)to;
+    for (k = 0; k < 4u; k++)
+        b[3u + k] = (uint8_t)(hash >> (8u * k));
+    m1_reply(R_PATTERN_OP, b, sizeof b);
 }
 /* the answer to PAT_PUT and PAT_DEL (#901): u16 id, u8 status, u8 count (PAT_DEL's S_USED: the slots that link it) */
 static void m1_pat_stored(uint32_t id, uint32_t status, uint32_t count)

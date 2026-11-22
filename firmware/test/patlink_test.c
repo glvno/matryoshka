@@ -179,6 +179,76 @@ static void vectors(void)
     printf("patlink: %u payload vectors as the editor writes them, and back\n", (unsigned)N_PATTERN_CASES);
 }
 
+/* what the editor and the FM-1 must agree on after a pattern command (#1177, #1178): binary b loaded alone (links not
+ * resolved), every track's pattern 1, the patterns and songs record (the selected pattern and song in it), the P-locks
+ * record, then the links and the pattern origins as the binary holds them */
+static uint32_t content(const uint8_t *b, uint32_t len, uint8_t *out)
+{
+    static uint8_t tmp[M1_PATCH_MAX];
+    const uint32_t *w;
+    uint32_t n = 0, t, at, end;
+    int c;
+    memcpy(tmp, b, len);
+    if (eng_load(tmp, len))
+        return 0;
+    eng_patterns_omit(0);
+    for (t = 0; (int)t < eng_steps_count(); t++) {
+        c = eng_pattern_notes((uint32_t)eng_steps_module(t), 0, &w);
+        out[n++] = (uint8_t)c;
+        memcpy(out + n, w, 4u * (uint32_t)c);
+        n += 4u * (uint32_t)c;
+    }
+    c = eng_patterns_record(out + n, 8192u);
+    n += c > 0 ? (uint32_t)c : 0u;
+    out[n++] = 0xEE;
+    c = eng_locks_record(out + n, 8192u);
+    n += c > 0 ? (uint32_t)c : 0u;
+    out[n++] = 0xEE;
+    if ((tmp[7] & ENG_FLAG_LINKS) && (at = eng_links_at(tmp, len)) != 0u) {
+        end = eng_links_end(tmp, len, at);
+        memcpy(out + n, tmp + at, end - at);
+        n += end - at;
+    }
+    out[n++] = 0xEE;
+    if ((at = eng_origins_at(tmp, len)) != 0u) {
+        end = eng_origins_end(tmp, len, at);
+        memcpy(out + n, tmp + at, end - at);
+        n += end - at;
+    }
+    return n;
+}
+/* each case's pattern copied (SEQ held + SAVE: pl_copy, the copy selected) and everything cleared (SEQ held + HOME:
+ * pl_clear_all) on the running patch: what the FM-1's binary then holds is what the editor's copy of the patch holds
+ * after the same command (pattern_cases.h PATTERN_OPS, web/src/pattern-ops.ts) */
+static void ops(void)
+{
+    static uint8_t a[24576], b[24576];
+    uint32_t c, na, nb;
+    for (c = 0; c < N_PATTERN_CASES; c++) {
+        uint32_t from = PATTERN_OPS[c].from, to = PATTERN_OPS[c].to;
+        OK(!load_patch(PATTERN_CASES[c].patch, PATTERN_CASES[c].patch_len));
+        OK(to > 0u && to < ENG_PATTERNS && pl_free(to) && pl_has_notes(from));
+        OK(pl_copy(from, to) == 0);
+        eng_pattern_set(to);
+        m1_patch_patterns();
+        na = content(m1_cur, m1_cur_len, a);
+        nb = content(PATTERN_OPS[c].copied, PATTERN_OPS[c].copied_len, b);
+        if (!na || na != nb || memcmp(a, b, na))
+            fprintf(stderr, "case %s: the copy of P%02u to P%02u differs from the editor's\n", PATTERN_CASES[c].name, (unsigned)from + 1u, (unsigned)to + 1u);
+        OK(na && na == nb && !memcmp(a, b, na));
+        OK(!load_patch(PATTERN_CASES[c].patch, PATTERN_CASES[c].patch_len));
+        OK(!pl_all_empty());
+        pl_clear_all();
+        OK(pl_all_empty());
+        na = content(m1_cur, m1_cur_len, a);
+        nb = content(PATTERN_OPS[c].cleared, PATTERN_OPS[c].cleared_len, b);
+        if (!na || na != nb || memcmp(a, b, na))
+            fprintf(stderr, "case %s: clear all differs from the editor's\n", PATTERN_CASES[c].name);
+        OK(na && na == nb && !memcmp(a, b, na));
+    }
+    printf("patlink: %u patches copied and cleared on the FM-1 as the editor does it (#1177, #1178)\n", (unsigned)N_PATTERN_CASES);
+}
+
 /* one note, for an edit */
 static const uint32_t *notes_one(void)
 {
@@ -461,6 +531,21 @@ static void kits(void)
         pt_on = 0;                                      /* (a factory link needs no store) */
         OK(!load_patch(bin, len) && links_ok(&clean) == n);
         pt_on = 1;
+        if (!i) {                                       /* (#1177) a copy of a linked factory pattern is a plain one, inline:
+                                                         * P02 (27 hits with its fill-in) does not fit the 808 Kit's bytes, so
+                                                         * nothing changes; P21 (16) does: to P25, linked to nothing */
+            static uint8_t before[M1_PATCH_MAX];
+            const uint32_t *w, *x;
+            uint32_t m = (uint32_t)eng_steps_module(0), q = 24u, blen;
+            int nw;
+            OK(!load_patch(bin, len) && pl_free(q) && pl_link(1) != 0u && pl_link(20) != 0u);
+            blen = m1_cur_len;
+            memcpy(before, m1_cur, blen);
+            OK(pl_copy(1, q) == -2 && pl_free(q) && m1_cur_len == blen && !memcmp(before, m1_cur, blen));
+            OK(pl_copy(20, q) == 0 && !pl_link(q) && pl_link(20) != 0u);
+            nw = eng_pattern_notes(m, 20, &w);
+            OK(nw > 0 && nw == eng_pattern_notes(m, q, &x) && !memcmp(w, x, 4u * (uint32_t)nw) && inline_has(q) == 1);
+        }
         printf("patlink: %s: %u linked patterns from the factory entries, its song over them\n", names[i], (unsigned)n);
     }
     /* SAVE of an edited one (the 909 Kit's last): a new stored entry under the factory entry's name, linked, so the binary
@@ -583,6 +668,7 @@ int main(void)
         return 1;
     }
     vectors();
+    ops();
     links();
     seq_page();
     link_frames();

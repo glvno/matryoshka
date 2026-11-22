@@ -36,6 +36,9 @@ export interface Fm1Events {
   pattern?(pattern: number, song: number): void;
   /** the SONG page edited song s (0-based): its entries */
   song?(s: number, entries: SongEntry[]): void;
+  /** the SEQ page ran a pattern command (#1177, #1178, as the device link's PATTERN_OP): op 1 pattern `from` (0-based)
+   *  copied to `to`, op 2 every pattern and song cleared */
+  patternOp?(op: number, from: number, to: number, hash: number): void;
   mute?(module: number, on: boolean): void;
   /** the FM-1 armed or disarmed (#139, #191, #395: REC held + a black key, SEL, the SEQ page): the armed modules, by
    * their index in the binary, as a mask in ARM_WORDS words (#721) */
@@ -111,6 +114,7 @@ export class Fm1Ui {
         return { pat: b[0], shift: (b[1] << 24) >> 24 };
       }) : []),
       mute: (m: number, on: number) => ev.mute?.(m, on !== 0),
+      pattern_op: (op: number, from: number, to: number, hash: number) => ev.patternOp?.(op, from, to, hash >>> 0),
       arms: (w0: number, w1: number, w2: number, w3: number) => ev.arms?.([w0 >>> 0, w1 >>> 0, w2 >>> 0, w3 >>> 0]),
       tempo: (patch: number, bpm: number, meter: number) => ev.tempo?.(patch === 0, bpm, meter),
     };

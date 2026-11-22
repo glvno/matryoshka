@@ -518,11 +518,11 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     return;
   }
   // (by module or device index, while the FM-1 still holds the patch from before an upload: see linkBusy)
-  if (from === 'device' && linkBusy() && ['track', 'mute', 'locks', 'param', 'arms', 'focus'].includes(e.kind)) return;
+  if (from === 'device' && linkBusy() && ['track', 'mute', 'locks', 'param', 'arms', 'focus', 'patternOp'].includes(e.kind)) return;
   // the copy's own edits while it replays an FM-1 that reports its panel (#549): the FM-1 sends its own (TRACK_NOW,
-  // LOCKS_NOW, PATTERN_NOW, SONG_NOW, MUTE), under Live; the copy's would be the same edit twice, or one the FM-1's patch
-  // did not take
-  if (from === 'emu' && fromDevice && panelReported() && ['track', 'locks', 'pattern', 'song', 'mute'].includes(e.kind)) return;
+  // LOCKS_NOW, PATTERN_NOW, SONG_NOW, MUTE, PATTERN_OP), under Live; the copy's would be the same edit twice, or one the
+  // FM-1's patch did not take
+  if (from === 'emu' && fromDevice && panelReported() && ['track', 'locks', 'pattern', 'song', 'mute', 'patternOp'].includes(e.kind)) return;
   if (e.kind === 'track' || e.kind === 'mute') {   // the FM-1's SEQ page (#83, #133): a track edited or recorded, a track muted
     const id = deviceView(editor.patch, true).patch.modules[e.module]?.id;   // (the compiled form the FM-1 got, as deviceIndex)
     if (id === undefined) return;
@@ -562,6 +562,11 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
       if (e.kind === 'pattern') editor.patternFromDevice(e.pattern, e.song);
       else editor.songFromDevice(e.song, e.entries);
     } finally { mark(false); }
+    return;
+  }
+  if (e.kind === 'patternOp') {   // SEQ held + SAVE / HOME on the SEQ page (#1177, #1178): the same command here, an undo step
+    mark(true);
+    try { editor.patternOpFromDevice(e.op, e.from, e.to); } finally { mark(false); }
     return;
   }
   if (e.kind === 'param') {   // K1..K4 turned on a device page of the FM-1 tab's emulator
@@ -939,6 +944,7 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
   pattern: (p, song) => fm1Event({ kind: 'pattern', pattern: p, song }, 'emu'),
   song: (k, entries) => fm1Event({ kind: 'song', song: k, entries }, 'emu'),
   mute: (m, on) => fm1Event({ kind: 'mute', module: m, on }, 'emu'),
+  patternOp: (op, a, b, hash) => fm1Event({ kind: 'patternOp', op, from: a, to: b, hash }, 'emu'),
   tempo: (global, bpm, meter) => {           // the FM-1 tab's GLO > PANEL > TEMPO and TIME SIG, PLAY held + PRESET (D-907, #1011)
     fromEmu = true;
     try { tempo.set({ mode: global ? 'global' : 'patch', ...(bpm ? { bpm } : {}), ...(meter !== undefined ? { meter } : {}) }, 'emu'); } finally { fromEmu = false; }

@@ -1572,6 +1572,89 @@ static void seq_clear_cancel(void)
     seq_msg_ms = 0;
 }
 
+/* the pattern commands of the SEQ page (#1177, #1178), as the editor's: what the device link's PATTERN_OP says ran */
+#define PATTERN_OP_COPY 1u
+#define PATTERN_OP_CLEAR_ALL 2u
+/* SEQ held + SAVE (#1177): the selected pattern of every track copied to the first empty number after it (round from
+ * P02), which is then selected (running: at the end of each track's pass, as PRESET). A key handler: state only, the bar
+ * is the loop's (D-228) */
+static void seq_copy_press(void)
+{
+    int p = eng_pattern();
+    uint32_t q = 0, k;
+    char *m = seq_msg_buf;
+    if (p < 0 || !eng_steps_count()) {
+        seq_msg_due = MSG_NO_STEPS;
+        return;
+    }
+    seq_msg_ms = 1500;
+    if (!pl_has_notes((uint32_t)p)) {
+        put(put2(put(m, "P"), p + 1), MSG_NOT_COPIED)[0] = 0;
+        seq_msg_due = m;
+        return;
+    }
+    for (k = 1; k < ENG_PATTERNS; k++)
+        if ((q = ((uint32_t)p + k) % ENG_PATTERNS) != 0u && pl_free(q))
+            break;
+    if (k == ENG_PATTERNS) {
+        seq_msg_due = MSG_ALL_USED;
+        return;
+    }
+    seq_held = -1;
+    if (pl_copy((uint32_t)p, q)) {
+        seq_msg_due = MSG_FULL_NOT_COPIED;
+        return;
+    }
+    eng_pattern_set(q);
+    m1_patch_patterns();
+    m1_pattern_op_now(PATTERN_OP_COPY, (uint32_t)p, q, 0);
+    m1_pattern_now();
+    put2(put(put(put2(put(m, "P"), p + 1), MSG_COPIED_TO), "P"), (int32_t)q + 1);
+    seq_msg_due = m;
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+/* SEQ held + HOME (#1178): every pattern and song cleared, asked first as the track's clear asks (D-534): HOME again
+ * within 3 s, SEQ still held and nothing else pressed or turned meanwhile (seq_all_cancel) */
+static uint32_t seq_all_at;             /* fm1_ms | 1 of the press that asked, 0 none */
+static uint32_t seq_all_gen;            /* ... the patch then */
+static void seq_clear_all_press(void)
+{
+    if (!eng_steps_count()) {
+        seq_msg_due = MSG_NO_STEPS;
+        return;
+    }
+    if (seq_all_at && seq_all_gen == pages_gen() && fm1_ms - (seq_all_at & ~1u) < SEQ_CLEAR_MS) {
+        seq_all_at = 0;
+        sr_stop();                               /* (the pattern it wrote is gone) */
+        seq_held = -1;
+        pl_clear_all();
+        m1_pattern_op_now(PATTERN_OP_CLEAR_ALL, 0, 0, 0);
+        m1_pattern_now();
+        seq_msg_due = MSG_ALL_CLEARED;
+        seq_msg_ms = 1200;
+        ui_dirty = ui_dirty ? ui_dirty : 1;
+        return;
+    }
+    if (pl_all_empty()) {
+        seq_msg_due = MSG_NOTHING_TO_CLEAR;
+        seq_msg_ms = 0;
+        return;
+    }
+    seq_all_at = fm1_ms | 1u;
+    seq_all_gen = pages_gen();
+    seq_msg_due = MSG_CLEAR_ALL;
+    seq_msg_ms = SEQ_CLEAR_MS;
+}
+/* anything but HOME pressed, anything turned, or SEQ let go, while clear all asks: not cleared */
+static void seq_all_cancel(void)
+{
+    if (!seq_all_at)
+        return;
+    seq_all_at = 0;
+    seq_msg_due = MSG_NOT_CLEARED;
+    seq_msg_ms = 0;
+}
+
 /* the page is left: the roll's keyboard forgets its keys (REC goes on: it is global, #395); step record ends */
 static void seq_leave(void)
 {
@@ -2596,6 +2679,8 @@ static void seq_poll(void)
     }
     if (seq_clear_at && fm1_ms - (seq_clear_at & ~1u) >= SEQ_CLEAR_MS)
         seq_clear_at = 0;                        /* (the clear asked in vain: its message ends with it) */
+    if (seq_all_at && fm1_ms - (seq_all_at & ~1u) >= SEQ_CLEAR_MS)
+        seq_all_at = 0;                          /* (clear all asked in vain) */
     song_poll();
     if (page == PAGE_SEQ && eng_steps_count() && (seq_pat_state() != seq_shown_pat || seq_bar_mark() != seq_shown_mark
         || seq_shown_sr != (uint8_t)(sr_on ? sr_k + 1u : 0u) || seq_shown_lo != seq_bar_lo()) && !ui_yielding

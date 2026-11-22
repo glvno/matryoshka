@@ -369,6 +369,26 @@ static void m1_song_now(uint32_t s) { (void)s; host_song_told++; }
 static uint32_t host_locks_told;                     /* (panel_test.c: LOCKS_NOW sent) */
 static void m1_locks_now(uint32_t mod, uint32_t pat) { (void)mod; (void)pat; host_locks_told++; }
 #endif
+#ifndef HOST_STEP_HOOKS                     /* (the wasm build tells the page instead) */
+static uint32_t host_op_told, host_op_last[3];       /* (panel_test.c: PATTERN_OP sent, and its op, from, to) */
+static void m1_pattern_op_now(uint32_t op, uint32_t from, uint32_t to, uint32_t hash)
+{
+    (void)hash;
+    host_op_told++;
+    host_op_last[0] = op;
+    host_op_last[1] = from;
+    host_op_last[2] = to;
+}
+#endif
+static int host_patterns_room = 1;                   /* (panel_test.c: 0, the binary has no room: a copy is refused) */
+static int m1_patterns_fit(void) { return host_patterns_room; }   /* (the preview keeps no patch) */
+static void m1_origins_drop(void)                    /* (clear all, #1178: every origin of the previewed binary cleared) */
+{
+    uint32_t at = eng_origins_at(pv_bin, pv_len), end = at ? eng_origins_end(pv_bin, pv_len, at) : 0;
+    if (at)
+        for (at += 2u; at < end; at += 6u)
+            host_set_origin(pv_bin[at], pv_bin[at + 1u], 0);
+}
 static int m1_patch_locks(void) { return 1; }      /* (the preview keeps no patch: the engine has the locks) */
 /* the pattern store's glue (patlink.c, #901) on the previewed binary: what proto.c sends stood in (its status codes above) */
 static uint8_t m1_up[M1_PATCH_MAX];        /* (proto.c's upload buffer, the payloads' scratch) */

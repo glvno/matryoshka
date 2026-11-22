@@ -7,6 +7,7 @@ import { DEFS } from '../src/modules';
 import { addModule, connect, emptyPatch, type ModuleInst, type Patch } from '../src/patch';
 import { encodePatch } from '../src/patchbin';
 import { encodePayload, layoutOf } from '../src/pattern-store';
+import { clearAllPatterns, copyPattern, nextEmptyPattern } from '../src/pattern-ops';
 import { deviceView } from '../src/poly';
 import type { StepNote } from '../src/track';
 
@@ -69,7 +70,28 @@ export function patternCases(): PatternCase[] {
     st[0].patterns = [{ notes: [n(2, 1, 61)], locks: [{ at: 2, module: k.id, param: 'value', value: 0.125 }] }];
     out.push({ name: pattern ? 'LOCKS P2' : 'LOCKS P1', patch: p, pattern });
   }
+  {   // (for the pattern commands: songs, a link, a pattern origin and the selected pattern, which clear all clears)
+    const { p, st, k } = rig('SONGS LINKS', 2);
+    st[0].notes = [n(0, 1, 36), n(8, 1, 38)];
+    st[0].factoryPatterns = { version: 1, ids: ['0000abcd'] };
+    st[0].patterns = [{ notes: [n(4, 1, 40)], locks: [{ at: 4, module: k.id, param: 'value', value: 0.5 }] }, null, { notes: [n(1, 1, 43)], len: 7 }];
+    st[1].patterns = [{ notes: [n(0, 1, 50), n(3, 1, 52, 127)], rate: 3 }];
+    p.modules.find((m) => m.type === 'fm1')!.seq = { pattern: 1, songs: [[{ pat: 0, shift: 0 }, { pat: 1, shift: 2 }], [], [{ pat: 3, shift: -1 }]], links: { 3: { id: 7, hash: 1 } } };
+    out.push({ name: 'SONGS LINKS', patch: p, pattern: 1 });
+  }
   return out;
+}
+
+/** the pattern commands (#1177, #1178) on a case's patch as the editor runs them: its pattern copied to the first empty
+ *  number after it and selected, and everything cleared */
+export function patternOps(c: PatternCase): { to: number; copied: Patch; cleared: Patch } {
+  const copied = structuredClone(c.patch), cleared = structuredClone(c.patch);
+  const to = nextEmptyPattern(copied, c.pattern);
+  copyPattern(copied, c.pattern, to);
+  const main = copied.modules.find((m) => m.type === 'fm1')!;
+  main.seq = { ...(main.seq ?? {}), pattern: to };
+  clearAllPatterns(cleared);
+  return { to, copied, cleared };
 }
 
 /** the cases as a C header for the firmware's host test (the layout is the patch's fingerprint, whether or not the
@@ -86,5 +108,16 @@ export function patternCasesHeader(cases: PatternCase[] = patternCases()): strin
   L.push(`#define N_PATTERN_CASES ${cases.length}`);
   L.push('static const struct { const char *name; const uint8_t *patch; uint32_t patch_len; uint32_t pattern; const uint8_t *payload; uint32_t payload_len; uint32_t layout; } PATTERN_CASES[N_PATTERN_CASES] = {');
   L.push(...rows, '};', '');
+  // the pattern commands as the editor runs them (pattern-ops.ts): the FM-1 running them on the same patch must hold the
+  // same patterns, songs, P-locks, links and origins (firmware/test/patlink_test.c ops)
+  const ops = cases.map((c, i) => {
+    const { to, copied, cleared } = patternOps(c);
+    const a = encodePatch(copied, true), b = encodePatch(cleared, true);
+    L.push(`static const uint8_t PTC_COPIED_${i}[${a.length}] = {${a.join(',')}};`);
+    L.push(`static const uint8_t PTC_CLEARED_${i}[${b.length}] = {${b.join(',')}};`);
+    return `    {${c.pattern}, ${to}, PTC_COPIED_${i}, ${a.length}, PTC_CLEARED_${i}, ${b.length}},`;
+  });
+  L.push('static const struct { uint32_t from, to; const uint8_t *copied; uint32_t copied_len; const uint8_t *cleared; uint32_t cleared_len; } PATTERN_OPS[N_PATTERN_CASES] = {');
+  L.push(...ops, '};', '');
   return L.join('\n');
 }

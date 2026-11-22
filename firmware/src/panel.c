@@ -489,9 +489,11 @@ static void panel_encoders(int32_t *st)
     if (sb_on && page == 0u && !cfg.midi_out && (st[0] | st[1] | st[2] | st[3] | st[4] | st[5]))
         sb_mout_nudge();                            /* sandbox mode: SELECT, ALGO and K1..K4 drive the editor only over MIDI out
                                                      * (D-232, D-249) */
-    for (k = 0; k < 7u; k++)                        /* a turn while the track's clear asks: not cleared (#231) */
-        if (st[k])
+    for (k = 0; k < 7u; k++)                        /* a turn while a clear asks: not cleared (#231, #1178) */
+        if (st[k]) {
             seq_clear_cancel();
+            seq_all_cancel();
+        }
     learn_knob(st);
     if (page == PAGE_SEQ && seq_held >= 0 && (st[0] | st[1] | st[2] | st[3] | st[4] | st[5] | st[6]))
         seq_held_tap = 0;                           /* any knob turned with a step held: the step used, its release switches
@@ -740,8 +742,10 @@ static int panel_key(uint32_t n, int down, int quick)
         return 0;
     keys_now ^= bit;
     m1_keys_now(n, down);
-    if (down)                                       /* a key while the track's clear asks: not cleared (#231) */
+    if (down) {                                     /* a key while a clear asks: not cleared (#231, #1178) */
         seq_clear_cancel();
+        seq_all_cancel();
+    }
     if (down && sb_on && !cfg.midi_out && !help_on)
         sb_mout_due = 1;                            /* (sandbox mode: the note reaches nothing; panel_status nudges, D-228) */
     eng_midi_channel(cfg.ch);
@@ -1112,6 +1116,8 @@ static void panel_edges(uint32_t p, uint32_t rel)
     }
     if ((p & ~(1u << BTN_REC)) || (rel & (1u << BTN_SEQ)))   /* the track's clear asks: another button, or SEQ let go, */
         seq_clear_cancel();                                   /* and it is not cleared (#231) */
+    if ((p & ~(1u << BTN_HOME)) || (rel & (1u << BTN_SEQ)))   /* ... and clear all's (#1178): HOME again confirms it */
+        seq_all_cancel();
     if ((page == PAGE_SEQ || page == PAGE_SONG) && (p & (1u << BTN_REC)) && (panel_held >> BTN_SEQ & 1u)) {   /* SEQ held + REC:
                                                      * clear the track (the SONG page: delete the entry), asked first (#231);
                                                      * neither SEQ's nor REC's release does its own */
@@ -1231,6 +1237,12 @@ static void panel_edges(uint32_t p, uint32_t rel)
         p &= ~(1u << BTN_SAVE);
         preset_store_focused();
     }
+    if ((p & (1u << BTN_SAVE)) && page == PAGE_SEQ && (panel_held >> BTN_SEQ & 1u)) {   /* SEQ held + SAVE (#1177): the
+                                                     * pattern copied to the next empty number; SEQ's release does nothing */
+        p &= ~(1u << BTN_SAVE);
+        seq_held_used = 1;
+        seq_copy_press();
+    }
     if ((p & (1u << BTN_SAVE)) && page == PAGE_SEQ && !sr_on && pt_on && (panel_held & (1u << BTN_SEL | 1u << BTN_ACC))) {
         p &= ~(1u << BTN_SAVE);                     /* SEL / FX held + SAVE on the SEQ page: the pattern into the store (#901) */
         seq_pattern_save((int)(panel_held >> BTN_ACC & 1u));
@@ -1267,6 +1279,12 @@ static void panel_edges(uint32_t p, uint32_t rel)
                                                      * out of a dive back), unless PRESET turned the patch meanwhile; held
                                                      * alone it is nothing (#395) */
         home_turned = 0;
+    if ((p & (1u << BTN_HOME)) && page == PAGE_SEQ && (panel_held >> BTN_SEQ & 1u)) {   /* SEQ held + HOME (#1178): clear
+                                                     * all, asked first; neither release does its own job */
+        home_turned = 1;
+        seq_held_used = 1;
+        seq_clear_all_press();
+    }
     if ((p & (1u << BTN_SEL)) && (panel_held >> BTN_HOME & 1u)) {   /* HOME held + SEL (D-939): MIDI learn mode on or off;
                                                      * neither release does its own job then */
         learn_mode(!learn_live());

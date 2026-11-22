@@ -37,7 +37,7 @@ static uint32_t help_msg_ms;
 #define HC_X0 (HC_M + 8u)                           /* a row's first part */
 #define HC_AC 124u                                  /* the sheet's description column */
 #define HC_VIS ((HC_BOT - HC_TOP) / HC_ROW)         /* rows that fit: 8 */
-#define HC_ROWS 24u
+#define HC_ROWS 28u
 
 /* the state (D-245; controls.h HS_*): the sheet's first tab is named after it */
 static uint32_t help_state(void)

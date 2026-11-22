@@ -214,6 +214,9 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_LEARN_ROW: return b->learn == 1u && a->learn == 2u && a->params == b->params;   /* (a knob in learn mode: its row waits for a control, unmoved) */
     case CE_LEARN_MODE: return !b->learn && a->learn == 1u && a->page == b->page;   /* (HOME + SEL: learn mode, the page stays) */
     case CE_LEARN_END: return b->learn == 1u && !a->learn && a->page == b->page && a->devpage == b->devpage;   /* (HOME: learn mode ends, nowhere else) */
+    case CE_PATTERN_COPY: return a->pattern != b->pattern && a->pat_sum == b->pat_sum && a->page == b->page;   /* (the copy
+                                                         * selected: the same notes on every track; the page stays) */
+    case CE_CLEAR_ALL: return b->notes_n > 0 && a->notes_n == 0 && !a->pattern && !a->song_len && !a->song && a->page == b->page;
     case CE_DRUM_BANK: return a->bank != b->bank && a->octave == b->octave && a->seq_pg == b->seq_pg && a->page == b->page;
     case CE_FILL: return a->msg_sum != b->msg_sum && a->page == b->page && a->notes_sum == b->notes_sum && a->mutes == b->mutes
                          && a->params == b->params && !eng_fill_on();   /* (FILL said, and let go with FX; FX's own job not done) */
@@ -642,7 +645,7 @@ static void ct_drive(const ctl_row_t *r, uint32_t alt, int dir)
     } else if (r->hold != CH_NONE) {
         ct_down(r->hold);
         ct_part(&r->alt[alt], r->how, dir, r->hold);
-        if (r->effect == CE_CLEAR || r->effect == CE_DELETE_ENTRY)
+        if (r->effect == CE_CLEAR || r->effect == CE_DELETE_ENTRY || r->effect == CE_CLEAR_ALL)
             ct_part(&r->alt[alt], r->how, dir, r->hold);
         ct_up(r->hold);
     } else

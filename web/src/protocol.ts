@@ -158,6 +158,10 @@
 //                                                    of the outside pad that plays it (feature bit 29). The answer to every
 //                                                    PADS (the editor reads it after connect), and unasked when the map
 //                                                    changes on the FM-1 (a learn, a clear, PAD MAP turned)
+//   65 PATTERN_OP  op u8, from u8, to u8, hash u32   unasked (feature bit 30, #1177, #1178): the FM-1's SEQ page ran a
+//                                                    pattern command, which the editor runs on its patch too (pattern-ops.ts):
+//                                                    op 1 pattern `from` of every track copied to `to` (SEQ held + SAVE), op 2
+//                                                    every pattern and song cleared (SEQ held + HOME); hash 0 for both
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
 //               feature bit 8, bit3 GLO > SYSTEM > EDITOR at IGNORE: with feature bit 19, #702), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
@@ -167,7 +171,7 @@
 //               [features 16..23: bit16 TEMPO / TEMPO_NOW, bit17 a preset carries up to 176 values, bit18 KEYS_NOW /
 //               GUIDE_NOW, bit19 flags bit3 says EDITOR, bit20 ARMS, bit21 ARMS wide, bit22 DEVICE_SETTINGS, bit23 PATTERN_ORIGIN],
 //               [byte13 allocation rule: 0 separate signal buffers, 1 physical lifetime buffers; unknown/missing means 0],
-//               [features 24..31: bit24 FX presets, bit25 the pattern store is on, bit28 MAP / MAP_NOW, bit29 PADS / PADS_NOW],
+//               [features 24..31: bit24 FX presets, bit25 the pattern store is on, bit28 MAP / MAP_NOW, bit29 PADS / PADS_NOW, bit30 PATTERN_OP],
 //               [byte15 the bank's slots (absent: 64)],
 //               [bytes16..19 the pattern store's bytes free and in all, u16 LE each]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8), and when EDITOR changed after
@@ -497,6 +501,15 @@ export interface PadMap { on: boolean; notes: (number | null)[] }
 export function parsePadsNow(payload: number[]): PadMap | null {
   if (payload.length < 1 + PAD_ROWS) return null;
   return { on: payload[0] !== 0, notes: payload.slice(1, 1 + PAD_ROWS).map((n) => (n > 127 ? null : n)) };
+}
+/** INFO feature bit 30 (byte 14 bit 6, #1177, #1178): the FM-1 reports the SEQ page's pattern commands (PATTERN_OP) */
+export const FEATURE_PATTERN_OP = 1 << 30;
+/** PATTERN_OP's id and ops */
+export const PATTERN_OP = { report: 0x65, copy: 1, clearAll: 2 } as const;
+/** a PATTERN_OP payload, null when short */
+export function parsePatternOp(payload: number[]): { op: number; from: number; to: number; hash: number } | null {
+  if (payload.length < 7) return null;
+  return { op: payload[0], from: payload[1], to: payload[2], hash: (payload[3] | (payload[4] << 8) | (payload[5] << 16) | (payload[6] << 24)) >>> 0 };
 }
 /** the notes once row `row` takes `note` (null clears it), as the FM-1 does it: a row that held that note lets go of it */
 export function withPad(notes: readonly (number | null)[], row: number, note: number | null): (number | null)[] {

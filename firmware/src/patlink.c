@@ -489,6 +489,91 @@ static int pl_load_entry(uint32_t p, uint32_t id, char *got)
     return rc;
 }
 
+/* ---- the SEQ page's pattern commands (#1177, #1178): what the editor's copy and clear all do, on the running patch */
+
+/* pattern p is empty: no track holds it and it has no link (a link whose stored entry this FM-1 lacks holds the number) */
+static int pl_free(uint32_t p)
+{
+    uint32_t t;
+    for (t = 0; t < (uint32_t)eng_steps_count(); t++)
+        if (eng_pattern_has((uint32_t)eng_steps_module(t), p))
+            return 0;
+    return !pl_link(p);
+}
+/* pattern p has a note on some track */
+static int pl_has_notes(uint32_t p)
+{
+    const uint32_t *w;
+    uint32_t t, m;
+    for (t = 0; t < (uint32_t)eng_steps_count(); t++) {
+        m = (uint32_t)eng_steps_module(t);
+        if ((!p || eng_pattern_has(m, p)) && eng_pattern_notes(m, p, &w) > 0)
+            return 1;
+    }
+    return 0;
+}
+/* pattern p of every track copied into pattern q, which is empty (pl_free): notes, P-locks, its own length and rate; a
+ * track without p gets no q. A plain pattern, linked to nothing, whatever p links (the payload the store would get, applied
+ * as a load applies it). 0 done, -2 no room (the patch's bytes or the engine's notes: q is left empty) */
+static int pl_copy(uint32_t p, uint32_t q)
+{
+    pl_out_t s = { m1_up, sizeof m1_up, 0, PT_FNV0 };
+    uint32_t t;
+    int rc;
+    pl_encode(p, &s);
+    rc = s.n > s.cap ? -2 : pl_apply(q, m1_up, s.n);
+    if (rc >= 0 && m1_patterns_fit())
+        return 0;
+    for (t = 0; t < (uint32_t)eng_steps_count(); t++)
+        eng_pattern_drop((uint32_t)eng_steps_module(t), q);
+    eng_locks_clear(q);
+    (void)m1_patterns_fit();
+    return -2;
+}
+/* the patch has nothing clear all would clear: no notes in pattern 1, no other pattern, no link, no P-lock, no song */
+static int pl_all_empty(void)
+{
+    uint32_t p, n;
+    (void)pl_links(&n);
+    if (n || eng_locks_count() || pl_has_notes(0))
+        return 0;
+    for (p = 1; p < ENG_PATTERNS; p++)
+        if (!pl_free(p))
+            return 0;
+    for (p = 0; p < ENG_SONGS; p++)
+        if (eng_song_len(p))
+            return 0;
+    return 1;
+}
+/* every pattern of every track and every song cleared (#1178): pattern 1 empty and selected, no other pattern, no link,
+ * no P-lock, no pattern origin, no song entry and none playing. The stored and factory patterns stay in the store */
+static void pl_clear_all(void)
+{
+    static const uint32_t none[1];
+    uint32_t t, p, m;
+    for (t = 0; t < (uint32_t)eng_steps_count(); t++) {
+        m = (uint32_t)eng_steps_module(t);
+        (void)eng_pattern_set_notes(m, 0, none, 0);
+        for (p = 1; p < ENG_PATTERNS; p++)
+            eng_pattern_drop(m, p);
+    }
+    for (p = 0; p < ENG_PATTERNS; p++) {
+        eng_locks_clear(p);
+        pl_hash[p] = 0;
+    }
+    for (p = 0; p < ENG_SONGS; p++)
+        while (eng_song_len(p))
+            (void)eng_song_delete(p, 0);
+    eng_song_set(0);
+    eng_pattern_set(0);
+    (void)m1_patch_links(0, 0);
+    for (t = 0; t < (uint32_t)eng_steps_count(); t++)
+        m1_patch_notes((uint32_t)eng_steps_module(t));
+    (void)m1_patterns_fit();
+    m1_origins_drop();
+    m1_edited = 1;
+}
+
 /* the entry is a factory one (factory_tier.h KIT_GROUPS, factory.c's patterns) */
 static int pl_is_factory(uint32_t id) { return pl_kit(id) < N_KIT_GROUPS || id - PL_FACTORY < fc_npatterns(); }
 
