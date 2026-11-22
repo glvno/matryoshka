@@ -45,10 +45,10 @@
  *                                                               the patterns 2..64 it holds; they go into the store, linked
  *                                                               (1: some went, the sections rewritten without them)
  *   static void m1_patch_full(void);                            main.c: an edit the patch had no room for was refused (#1199)
- *   static void m1_pat_info(uint8_t *p);                        INFO bytes 14..20: bit 1 of byte 14 (the store is on), byte 15 the
- *                                                               bank's slots, 16..19 the store's bytes free and total (u16 each),
- *                                                               byte 20 bit 0 every saved patch keeps its patterns 2..64 in the
- *                                                               store (#1202)
+ *   static void m1_pat_info(uint8_t *p);                        INFO bytes 14..19 and 25: bit 1 of byte 14 (the store is on),
+ *                                                               byte 15 the bank's slots, 16..19 the store's bytes free and total
+ *                                                               (u16 each), byte 25 bit 1 every saved patch keeps its patterns
+ *                                                               2..64 in the store (#1202)
  *   static uint32_t m1_pat_list(uint32_t after, uint8_t *e);    the stored patterns: e 0, how many; else the one after cursor
  *                                                               `after` (0: the first) as PAT's 30 bytes from its id on into e,
  *                                                               the next cursor (0 none)
@@ -186,10 +186,11 @@ static void m1_slot_now(uint32_t slot, const char *name)
  * Byte 14: feature bits 24..31 (bit 24: complete FX-scoped preset recall; bit 25: the pattern store is on, #901; bit 26:
  * the factory region's commands, #915). Byte 15:
  * the bank's slots (48 with the store, 60 in the layout of 1.25, else 64); bytes 16..19: the store's bytes free and total
- * (u16 LE each, capped); byte 20 bit 0: every saved patch keeps its patterns 2..64 in the store (#1202). */
+ * (u16 LE each, capped); bytes 20..24: the screen font's area (#1203; 0 here: none); byte 25: feature bits 32..39 (bit 1:
+ * every saved patch keeps its patterns 2..64 in the store, #1202). */
 static void m1_info(void)
 {
-    uint8_t p[21];
+    uint8_t p[26] = { 0 };
     p[0] = M1_VERSION;
     p[1] = ENG_MAX_MODULES;
     p[2] = ENG_MAX_CABLES;

@@ -374,7 +374,7 @@ static void link_frames(void)
         return;
     frame(C_HELLO, 0, 0);
     n = reply(0, R_INFO, b, sizeof b);
-    OK(n == 21u && (b[14] & 2u) && b[15] == 48u && rd16(b + 16) > 0u && rd16(b + 18) == pt_total_bytes() && b[20] == 1u);
+    OK(n == 26u && (b[14] & 2u) && b[15] == 48u && rd16(b + 16) > 0u && rd16(b + 18) == pt_total_bytes() && (b[25] & 2u) && !b[20]);
     /* PUT in two chunks */
     memset(b, 0, sizeof b);
     b[2] = (uint8_t)PATTERN_CASES[c].payload_len;
