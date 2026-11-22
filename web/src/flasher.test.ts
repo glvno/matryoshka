@@ -7,9 +7,10 @@ import { isMatryoshkaProduct, OPEN_HEAD_SHA256, MVAVE_LOADER_SHA256, OPEN_RELEAS
 // @ts-ignore untyped JS module
 import { Updater, bootMismatch, headProblem, loaderFits, pack7, readHead, unpack7 } from './flasher/fm1ota.js';
 import { BOOT_CODE_IS_OPEN, INSTALL_SHARE, MVAVE_WORKBENCH, guardUnload, ignoresEditor, installMeter, surveyFm1s, type InstallMeter } from './flasher';
-import { CMD, FACT, frame, parse } from './protocol';
+import { CMD, FACT, FONT, frame, parse } from './protocol';
 import { CHOOSE_FIRST, installPlan, LOADER_AMONG_SEVERAL, OTHER_CHANGED } from './fm1-choice';
-import { installFactory } from './factory-content';
+import { installFactory, type Ask } from './factory-content';
+import { installFont } from './font-content';
 import { commands, fakeAccess, fakeFactoryRegion, fakeFm1 } from './test-fm1s';
 
 const stock = (): Uint8Array => new Uint8Array(readFileSync(new URL('../public/firmware/FM-1_015.fwsc', import.meta.url)));
@@ -439,8 +440,9 @@ describe('several FM-1s: an install goes to the chosen one only (D-965)', () => 
   });
 });
 
-describe("the Install panel's one bar with the factory sounds", () => {
+describe("the Install panel's one bar: firmware, screen font, factory sounds", () => {
   const factoryImage = new Uint8Array(readFileSync(new URL('../public/firmware/matryoshka-factory.bin', import.meta.url)));
+  const fontImage = new Uint8Array(readFileSync(new URL('../public/firmware/matryoshka-font.bin', import.meta.url)));
   /** an install's bar as the panel's step() drives it: the write's request counts, the restart, the FM-1 back */
   const firmware = (meter: InstallMeter): void => {
     for (let n = 1; n <= 2400; n += 7) meter.write(n);
@@ -448,33 +450,84 @@ describe("the Install panel's one bar with the factory sounds", () => {
     meter.back();
   };
   const monotonic = (values: number[]): boolean => values.every((v, k) => !k || v >= values[k - 1]);
+  /** an FM-1's font area that takes every page and answers the commit with `commit` (each sector's SUM differs) */
+  const fakeFontArea = (commit = 0): { ask: Ask; sent: number[] } => {
+    const sent: number[] = [];
+    const ask: Ask = async (f, match) => {
+      const [op, s] = parse(f)!.payload;
+      sent.push(op);
+      const r = op === FONT.sum ? { cmd: FONT.sumReply, payload: [s, 0, 0, 0] } : { cmd: 0x40, payload: [FONT.cmd, op, op === FONT.commit ? commit : 0, 0] };
+      if (!match(r)) throw new Error('the answer does not match');
+      return r;
+    };
+    return { ask, sent };
+  };
 
-  it('ticked: the bar reaches 100 % only after FACT_COMMIT is acknowledged, never going back, each step named', async () => {
-    const region = fakeFactoryRegion();
+  it('ticked: three steps; 100 % only after FACT_COMMIT is acknowledged, never going back, each step named', async () => {
+    const font = fakeFontArea(), region = fakeFactoryRegion();
     const seen: { value: number; step: string; committed: boolean }[] = [];
-    const meter = installMeter((value, step) => seen.push({ value, step, committed: region.sent.includes(FACT.commit) }), true);
+    const meter = installMeter((value, step) => seen.push({ value, step, committed: region.sent.includes(FACT.commit) }), 3);
     firmware(meter);
-    expect(Math.max(...seen.map((s) => s.value))).toBe(INSTALL_SHARE.back);
+    expect(Math.max(...seen.map((s) => s.value))).toBe(INSTALL_SHARE.factory.back);
+    await installFont(font.ask, fontImage, meter.font);
+    expect(font.sent.at(-1)).toBe(FONT.commit);
+    expect(seen.at(-1)?.value).toBe(INSTALL_SHARE.factory.font);
     await installFactory(region.ask, factoryImage, meter.factory);
     expect(region.sent.at(-1)).toBe(FACT.commit);
     expect(seen.every((s) => s.value < 100)).toBe(true);   // (the last page's progress comes before the commit)
     meter.done();
     expect(seen.at(-1)).toEqual({ value: 100, step: 'Done', committed: true });
     expect(monotonic(seen.map((s) => s.value))).toBe(true);
-    expect(seen.find((s) => s.value > INSTALL_SHARE.write)?.step).toMatch(/^Step 2 of 2/);
-    expect(seen[0].step).toMatch(/^Step 1 of 2/);
+    expect(seen[0].step).toMatch(/^Step 1 of 3: installing the firmware/);
+    expect(seen.find((s) => s.value > INSTALL_SHARE.factory.write)?.step).toBe('Step 2 of 3: installing the screen font');
+    expect(seen.find((s) => s.value > INSTALL_SHARE.factory.font)?.step).toBe('Step 3 of 3: installing the factory instruments and presets');
   });
-  it('ticked: a refused commit leaves the bar short of complete', async () => {
+  it('ticked: a refused factory commit leaves the bar short of complete', async () => {
     const region = fakeFactoryRegion(2);
     const values: number[] = [];
-    const meter = installMeter((value) => values.push(value), true);
+    const meter = installMeter((value) => values.push(value), 3);
     firmware(meter);
+    await installFont(fakeFontArea().ask, fontImage, meter.font);
     await expect(installFactory(region.ask, factoryImage, meter.factory)).rejects.toThrow();
     expect(Math.max(...values)).toBeLessThan(100);
   });
-  it('unticked: the firmware alone fills the bar, 100 % once the write is done', () => {
+  it('ticked, the font already there: the factory sounds go on from where the font would end', async () => {
     const values: number[] = [];
-    const meter = installMeter((value) => values.push(value), false);
+    const meter = installMeter((value) => values.push(value), 3);
+    firmware(meter);
+    await installFactory(fakeFactoryRegion().ask, factoryImage, meter.factory);
+    expect(values.find((v) => v > INSTALL_SHARE.factory.back)).toBe(INSTALL_SHARE.factory.font);
+    meter.done();
+    expect(values.at(-1)).toBe(100);
+    expect(monotonic(values)).toBe(true);
+  });
+  it('unticked: two steps, the font fills the rest; 100 % only after FONT COMMIT is acknowledged', async () => {
+    const font = fakeFontArea();
+    const seen: { value: number; step: string }[] = [];
+    const meter = installMeter((value, step) => seen.push({ value, step }), 2);
+    firmware(meter);
+    expect(Math.max(...seen.map((s) => s.value))).toBe(INSTALL_SHARE.firmware.back);
+    await installFont(font.ask, fontImage, meter.font);
+    expect(font.sent.at(-1)).toBe(FONT.commit);
+    expect(seen.every((s) => s.value < 100)).toBe(true);
+    meter.factory(1, 1);   // (no factory step: ignored)
+    expect(seen.at(-1)?.value).toBe(99);
+    meter.done();
+    expect(seen.at(-1)).toEqual({ value: 100, step: 'Done' });
+    expect(monotonic(seen.map((s) => s.value))).toBe(true);
+    expect(seen[0].step).toMatch(/^Step 1 of 2: installing the firmware/);
+    expect(seen.find((s) => s.value > INSTALL_SHARE.firmware.write)?.step).toBe('Step 2 of 2: installing the screen font');
+  });
+  it('unticked: a refused font commit leaves the bar short of complete', async () => {
+    const values: number[] = [];
+    const meter = installMeter((value) => values.push(value), 2);
+    firmware(meter);
+    await expect(installFont(fakeFontArea(3).ask, fontImage, meter.font)).rejects.toThrow(/FONT COMMIT/);
+    expect(Math.max(...values)).toBeLessThan(100);
+  });
+  it('another firmware: the write alone fills the bar, 100 % once the write is done', () => {
+    const values: number[] = [];
+    const meter = installMeter((value) => values.push(value), 1);
     for (let n = 1; n <= 2400; n += 7) meter.write(n);
     expect(values.at(-1)).toBe(99);
     meter.restart();
