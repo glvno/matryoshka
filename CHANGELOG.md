@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **A row that a cable sets now says so on the FM-1.** When a cable into a module's parameter input has a range on a row, the cable decides that row's value, so turning its knob did nothing you could hear while the number still moved. Now the knob leaves the value alone and the screen says `SET BY` and the cable's source, such as `SET BY PRE-SCALE`. In the editor, that row's slider is faded with a dashed outline, and its tooltip names the source. Needs the next firmware for the FM-1 part (#1202).
+
 ## 1.25.0 — 2026-11-22
 
 - **New: GLO › MIDI › CLOCK IN DELAY, for an app whose MIDI clock runs ahead of its own sound, such as Reel.** Reel's clock reaches the FM-1 about 70 ms before Reel's audio, so the FM-1 played that much early. CLOCK IN DELAY (MIDI's second page, K3) makes the FM-1 follow the incoming clock, Start, Stop and song position that much later: 0 to 200 ms, 1 ms a click, 5 when you turn fast. For Reel, start at about 70 ms and adjust by ear. At 0 ms, the default, the FM-1 works exactly as before. Notes and controls are never delayed, and SAVE keeps the setting (#870).

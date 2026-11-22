@@ -630,6 +630,9 @@ int32_t eng_att(uint32_t module, uint32_t input);
 int eng_set_range(uint32_t module, uint32_t input, uint32_t param, int on, uint32_t lo, uint32_t hi);
 /* the range of input 0 / 1 on a parameter, 1 if there is one (lo / hi as above) */
 int eng_range(uint32_t module, uint32_t input, uint32_t param, uint32_t *lo, uint32_t *hi);
+/* the module whose cable sets a parameter (#1202 K1: a p1 / p2 input with a cable, the parameter in its matrix and a macro
+ * range on it, which replaces the row's value), -1 none */
+int eng_set_by(uint32_t module, uint32_t param);
 void eng_set_bypass(uint32_t module, int on);                        /* bypass: the outputs carry the through input (defs.h thru) or silence; the state is kept */
 int eng_bypass(uint32_t module);
 /* the patch has a morph B set (the Main module's MORPH parameter fades every parameter from A to B) */

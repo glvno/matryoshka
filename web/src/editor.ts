@@ -10,7 +10,7 @@ import { lockOf } from './relevance';
 import { clearAround, isPile, tidy, tidyAssembly } from './tidy';
 import { breedPatch, cardScope, ENVELOPES, isLocked, MUTATE_DEFAULT, MUTATE_SKIP, mutatePatch, setParamLock, type Category, type MutateMode, type MutateOptions, type MutateScope } from './mutate';
 import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS, rowRange } from './modules';
-import { FIXED_BUTTONS, type Range } from './patch';
+import { FIXED_BUTTONS, setBy, type Range } from './patch';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
 import { litWhileEnabled, buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
 import { buttonEditor } from './button-editor';
@@ -2350,6 +2350,11 @@ export class Editor {
       mark.setAttribute('aria-label', mark.title);
       name.append(mark);
     }
+    // set by a cable's macro range (#1202 K1): the range replaces the row's value, so its slider is marked and names the
+    // source (the FM-1 says SET BY when the row is turned)
+    const by = setBy(this.patch, m, pd.name);
+    const byTip = by ? `Set by ${this.nameOf(by)}: its macro range sets this row, so moving the slider changes nothing while that cable is in` : '';
+    row.classList.toggle('set-by', !!by);
     const waiting = this.learn.waitingRow;
     if (waiting?.module === m.id && waiting.param === pd.name) row.classList.add('learning');
     // a Selector's position: over the positions in use (1..count, #358), by the names its card row gives them
@@ -2638,7 +2643,7 @@ export class Editor {
       const why = lockOf(this.patch, m, def.params, pd.name);
       row.classList.toggle('locked', !!why);
       input.disabled = !!why;
-      if (why) row.title = why;
+      if (why || byTip) row.title = why || byTip;
       else row.removeAttribute('title');
     };
     relock();

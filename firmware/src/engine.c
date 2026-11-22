@@ -3412,6 +3412,21 @@ int eng_range(uint32_t module, uint32_t input, uint32_t param, uint32_t *lo, uin
     return 1;
 }
 
+int eng_set_by(uint32_t module, uint32_t param)
+{
+    uint32_t s, c;
+    const node_t *nd;
+    if (module >= E.nmod || param >= 32u)
+        return -1;
+    nd = &E.node[module];
+    for (s = 0; s < 2u; s++)
+        if ((nd->cvp >> s & 1u) && (nd->map[s] >> param & 1u) && (nd->ranged[s] >> param & 1u) && range_find(module, s, param))
+            for (c = 0; c < E.ncab; c++)
+                if (E.to_m[c] == module && E.to_p[c] == (uint32_t)DEFS[nd->type].cvbase + s)
+                    return E.from_m[c];
+    return -1;
+}
+
 int eng_set_range(uint32_t module, uint32_t input, uint32_t param, int on, uint32_t lo, uint32_t hi)
 {
     int bi = (on & 2) != 0;                       /* (bit 1: bipolar, #526) */
