@@ -164,6 +164,36 @@ static int row_fixed(uint32_t m, uint32_t j)
     return 1;
 }
 
+/* a row a cable's macro range sets (#1202 K1, eng_set_by) does not turn here: SET BY and the source's name, the bar's 26
+ * characters: its device's name when it is a device, else the label of a row of its own (an assembly's PRE-SCALE), else the
+ * name of the device it is part of, else its type's */
+static int row_set_by(uint32_t m, uint32_t j)
+{
+    static char t[27];
+    const char *s = 0;
+    uint32_t d, k, n = 0;
+    int src = eng_set_by(m, j);
+    if (src < 0)
+        return 0;
+    for (d = 0; d < pg_ndev && !s; d++)
+        if (pg_dev[d].module == src)
+            s = pg_dev[d].name, n = pg_dev[d].nlen;
+    for (d = 0; d < pg_npage && !s; d++)
+        for (k = 0; k < pg_page[d].nrows && !s; k++)
+            if (pg_page[d].mod[k] == (uint32_t)src && !(pg_page[d].par[k] & POLY_ROW) && pg_page[d].llen[k])
+                s = pg_page[d].lab[k], n = pg_page[d].llen[k];
+    for (d = 0; d < pg_ndev && !s; d++)
+        for (k = 0; k < pg_dev[d].nmem && !s; k++)
+            if (pg_mem(d, k) == (uint32_t)src)
+                s = pg_dev[d].name, n = pg_dev[d].nlen;
+    if (!s || !n)
+        s = DEFS[eng_type((uint32_t)src)].name, n = str_len(s);
+    put(t, "SET BY ");
+    caps(t + 7, s, n, sizeof t - 8u);
+    ui_msg(t, 1200);
+    return 1;
+}
+
 /* row k's extras in the running binary (ENG_ROW_MORE), 0 when it has none: u8 n, n (module, parameter), u8 k, k texts */
 static const uint8_t *row_more(const ppage_t *pg, uint32_t k)
 {
@@ -706,7 +736,7 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, int fine, uint32_t *
         *v = clampi(poly_value(m, j & 0x7Fu) + (clicks > 0 ? 1 : -1), (j & 0x7Fu) == 0u ? 1 : 0, poly_top(pg, k));
         return 1;
     }
-    if (row_fixed(m, j))
+    if (row_fixed(m, j) || row_set_by(m, j))
         return -1;
     d = &DEFS[eng_type(m)];
     lag_note(k, m, j);                                  /* (the engine runs with it from its next block) */

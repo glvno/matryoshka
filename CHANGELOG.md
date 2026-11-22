@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **The screen font is now installed separately from the firmware, which frees about 36 KB for new features (#602).** The Install panel and `tools/fm1_install.py` write it right after the firmware, and the editor offers it whenever an FM-1 connects without it. Until it is there, every screen still works but shows only the small type, and the bar says `SCREEN FONT MISSING:` then `CONNECT TO MATRYOSHKA.LOL`. Going back to 1.25 or earlier, or to the official V15, is unaffected: those firmwares have their type built in.
+- **A row that a cable sets now says so on the FM-1.** When a cable into a module's parameter input has a range on a row, the cable decides that row's value, so turning its knob did nothing you could hear while the number still moved. Now the knob leaves the value alone and the screen says `SET BY` and the cable's source, such as `SET BY PRE-SCALE`. In the editor, that row's slider is faded with a dashed outline, and its tooltip names the source. Needs the next firmware for the FM-1 part (#1202).
 
 ## 1.25.0 — 2026-11-22
 
