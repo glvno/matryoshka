@@ -8,6 +8,7 @@
 - **The editor follows the FM-1's bank size: 48 slots on 1.26** (60 on older firmware). The bank in your browser takes up to 48 patches; if it already holds more, the Library shows how many do not fit (#1202).
 - **Installing 1.26 checks your bank first.** If slots 49–60 hold patches and there is room below, the Install panel says which ones the FM-1 moves at its first start. If you have more than 48 patches, it never installs straight away: it lets you save the ones this browser has a copy of and pick which 48 to keep, or cancel. `tools/fm1_install.py` refuses with the same explanation (#1202).
 - On an FM-1 with 1.26, Library › Patterns has no Save or Save as new (sending the patch stores its patterns), and Upload file becomes Load file, which loads a pattern file into the selected pattern (#1202).
+- **A row that a cable sets now says so on the FM-1.** When a cable into a module's parameter input has a range on a row, the cable decides that row's value, so turning its knob did nothing you could hear while the number still moved. Now the knob leaves the value alone and the screen says `SET BY` and the cable's source, such as `SET BY PRE-SCALE`. In the editor, that row's slider is faded with a dashed outline, and its tooltip names the source. Needs the next firmware for the FM-1 part (#1202).
 
 ## 1.25.0 — 2026-11-22
 

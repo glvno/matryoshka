@@ -3897,6 +3897,24 @@ if (import.meta.env.DEV) {
       loadNamed(p, { from: o.from });
       return true;
     },
+    /** a patch opened as `open` opens it, its first plain `type` module named `ranged` (its device's name) with an LFO named
+     *  `wobble` into its p1 and a macro range of p1 on `param`: the row a cable sets (#1202 K1, D-944) */
+    openRanged: (name: string, type: string, param: string): boolean => {
+      const o = openableGroups(device.bufferAllocation).flatMap((g) => g.items).find((x) => x.name === name);
+      if (!o) return false;
+      const p = o.load();
+      const m = p.modules.find((x) => x.type === type && x.map);
+      if (!m) return false;
+      const lfo = addModule(p, DEFS.lfo, m.x, m.y - 300);
+      lfo.name = 'wobble';
+      m.name = 'ranged';
+      m.map = { p1: [...m.map!.p1.filter((x) => x !== param), param], p2: m.map!.p2.filter((x) => x !== param) };
+      m.range = { ...m.range, p1: { ...m.range?.p1, [param]: [0.2, 0.8] } };
+      p.cables = p.cables.filter((c) => !(c.to.module === m.id && c.to.port === 'p1'));
+      p.cables.push({ from: { module: lfo.id, port: 'out' }, to: { module: m.id, port: 'p1' } });
+      loadNamed(p, { from: o.from });
+      return true;
+    },
     /** the patch's module count as the FM-1 gets it (the device form) */
     deviceModules: (): number => deviceView(editor.patch, true).patch.modules.length,
     state: () => ({
