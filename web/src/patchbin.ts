@@ -194,12 +194,12 @@ export const FLAG_LINKS = 1 << 15;
  * The pattern store a binary is written for (the links section): `assume` (the budget, and a binary meant for no FM-1 in
  * particular) holds every link's pattern as the link last saw it; `unknown` (an FM-1 with a store whose list has not been
  * read) holds every linked id, contents unknown; `none` (an FM-1 without a store) holds nothing and takes no links section;
- * `every` (an FM-1 that stores every pattern 2..64, protocol.ts FEATURE_PATTERNS_STORED, #1202) holds every pattern of the
+ * `every` (an FM-1 that stores every pattern 2..64, protocol.ts FEATURE25_PATTERNS_STORED, #1202) holds every pattern of the
  * patch that has content, each a clean link (to a stand-in id where the patch links none: for the budget and a binary's
  * length only, never sent; device.ts sends the real ids); else what the FM-1 holds: each stored id's payload hash.
  */
 export type LinkStore = 'assume' | 'unknown' | 'none' | 'every' | ReadonlyMap<number, number>;
-/** the patterns (1..63, 0-based) some Steps track of `dev` (a device form) has: the ones a FEATURE_PATTERNS_STORED FM-1
+/** the patterns (1..63, 0-based) some Steps track of `dev` (a device form) has: the ones a FEATURE25_PATTERNS_STORED FM-1
  *  stores and links */
 export const patternsWithContent = (dev: Patch): number[] =>
   [...new Set(dev.modules.flatMap((m) => (m.type === 'steps' ? (m.patterns ?? []).flatMap((x, i) => (x ? [i + 1] : [])) : [])))].sort((a, b) => a - b);

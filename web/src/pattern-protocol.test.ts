@@ -7,7 +7,7 @@ import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
 import { deviceBudget, encodePatch, FLAG_LINKS, FLAG_PATTERNS } from './patchbin';
 import { encodePayload, fnv, FNV0, payloadHash } from './pattern-store';
-import { CMD, FEATURE_PATTERN_STORE, FEATURE_PATTERNS_STORED, frame, parse, parseInfo, parseLinkNow, parsePatData, parsePatEntry, parsePatStored, PAT_CHUNK, PAT_FULL, PAT_MISSING, PAT_OK, PAT_RANGE, PAT_USED, patDelFrame, patGetFrame, patPutFrames, patsFrame, slotCount, SLOTS_MAX } from './protocol';
+import { CMD, FEATURE_PATTERN_STORE, FEATURE25_PATTERNS_STORED, frame, parse, parseInfo, parseLinkNow, parsePatData, parsePatEntry, parsePatStored, PAT_CHUNK, PAT_FULL, PAT_MISSING, PAT_OK, PAT_RANGE, PAT_USED, patDelFrame, patGetFrame, patPutFrames, patsFrame, slotCount, SLOTS_MAX } from './protocol';
 
 const u16 = (v: number): number[] => [v & 0xff, (v >> 8) & 0xff];
 const u32 = (v: number): number[] => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, v >>> 24];
@@ -57,9 +57,9 @@ describe('pattern store frames', () => {
     expect(old.slots).toBeUndefined();
     expect(slotCount(old)).toBe(SLOTS_MAX);
     expect(slotCount(null)).toBe(64);
-    expect(old.moreFeatures).toBeUndefined();
-    const stored = parseInfo({ cmd: CMD.info, payload: [...base, 2, 48, ...u16(9000), ...u16(60000), 1] })!;
-    expect(stored.moreFeatures! & FEATURE_PATTERNS_STORED).toBe(FEATURE_PATTERNS_STORED);
+    expect(old.features25).toBeUndefined();
+    const stored = parseInfo({ cmd: CMD.info, payload: [...base, 2, 48, ...u16(9000), ...u16(60000), 0, 0, 0, 0, 0, 2] })!;
+    expect(stored.features25! & FEATURE25_PATTERNS_STORED).toBe(FEATURE25_PATTERNS_STORED);
     expect(slotCount(stored)).toBe(48);
   });
 });
@@ -69,7 +69,7 @@ describe('pattern store frames', () => {
 type Port = { id: string; name: string; manufacturer: string; state: string; onmidimessage: ((ev: { data: Uint8Array }) => void) | null; send: (d: Uint8Array) => void };
 
 /** an FM-1 whose store holds `entries` (payloads by id); `store`: feature bit 25 on, 60 slots; `every`: firmware 1.26, which
- *  stores every pattern (INFO byte 20 bit 0), 48 slots, `room` payload bytes for new entries */
+ *  stores every pattern (INFO byte 25 bit 1), 48 slots, `room` payload bytes for new entries */
 function standIn(store: boolean | 'every', room = Infinity) {
   const entries = new Map<number, { name: string; payload: number[] }>();
   const used = new Map<number, number>();
@@ -81,7 +81,7 @@ function standIn(store: boolean | 'every', room = Infinity) {
     const p = parse(d)!;
     sent.push(p);
     const x = p.payload, id = x[0] | (x[1] << 8);
-    if (p.cmd === CMD.hello) reply(CMD.info, [1, 128, 255, 3, 1, 0, 1, 31, 59, 0, 0, 0, 0, 0, store ? 2 : 0, store === 'every' ? 48 : store ? 60 : 0, ...u16(8000), ...u16(12000), ...(store === 'every' ? [1] : [])]);
+    if (p.cmd === CMD.hello) reply(CMD.info, [1, 128, 255, 3, 1, 0, 1, 31, 59, 0, 0, 0, 0, 0, store ? 2 : 0, store === 'every' ? 48 : store ? 60 : 0, ...u16(8000), ...u16(12000), ...(store === 'every' ? [0, 0, 0, 0, 0, 2] : [])]);
     else if (p.cmd === CMD.chunk || p.cmd === CMD.commit || p.cmd === CMD.slot) reply(CMD.ack, [p.cmd, p.cmd === CMD.chunk ? x[0] : p.cmd === CMD.slot ? x[0] : 0, 0, 0]);
     else if (p.cmd === CMD.pats) {
       const list = [...entries].map(([k, e]) => [...u16(k), ...u16(e.payload.length), ...u32(fnv(FNV0, e.payload)), 0, 0, 0, 0, 1, 0, ...name16(e.name)]);

@@ -308,7 +308,7 @@ class Identities(unittest.TestCase):
 
 
 class EditorLink(Link):
-    """a running Matryoshka that answers the editor's HELLO (its bank's slots, INFO byte 20) and SLOT_INFO (`used`: slot ->
+    """a running Matryoshka that answers the editor's HELLO (its bank's slots, INFO byte 25) and SLOT_INFO (`used`: slot ->
     name); silent when `silent`"""
     def __init__(self, slots=60, more=None, used=None, silent=False):
         super().__init__()
@@ -322,7 +322,7 @@ class EditorLink(Link):
         if self.silent:
             return True
         if cmd == fi.C_HELLO:
-            info = [1, 128, 255, 3, 1, 0, 0, 31, 59, 1, 25, 0, 0, 0, 2, self.slots, 0, 0, 0, 0] + ([] if self.more is None else [self.more])
+            info = [1, 128, 255, 3, 1, 0, 0, 31, 59, 1, 25, 0, 0, 0, 2, self.slots, 0, 0, 0, 0] + ([] if self.more is None else [0, 0, 0, 0, 0, self.more])
             self.q.append(fi.editor_frame(fi.R_INFO, info))
         elif cmd == fi.C_SLOT_INFO:
             s, name = d[0], self.used.get(d[0], "")
@@ -371,8 +371,8 @@ class Bank(unittest.TestCase):
 
     def test_no_check_where_it_is_not_needed(self):
         for link, product, text in ((EditorLink(used={50: "X"}), "FM-1_7012500", "FM-1_7012500"),   # a 1.25 package
-                                    (EditorLink(slots=48, more=1), "FM-1_7012600", "FM-1_7012600"),   # 1.26 already
-                                    (EditorLink(slots=60, more=1), "FM-1_7012600", "FM-1_7012600"),   # 1.26 that kept 60
+                                    (EditorLink(slots=48, more=2), "FM-1_7012600", "FM-1_7012600"),   # 1.26 already
+                                    (EditorLink(slots=60, more=2), "FM-1_7012600", "FM-1_7012600"),   # 1.26 that kept 60
                                     (EditorLink(used={50: "X"}), "FM-1_7012600", "FM-1_015")):        # stock firmware
             self.assertEqual(self.check(link, product, text), "")
             self.assertNotIn(fi.C_SLOT_INFO, link.asked)

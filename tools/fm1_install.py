@@ -412,7 +412,7 @@ def remember_target(target, path=None):
 # ---------------------------------------------- the bank of 1.26 (#1202) ---
 
 BANK_SLOTS = 48                         # the bank of firmware 1.26 (web/src/protocol.ts BANK_SLOTS)
-FEATURE_PATTERNS_STORED = 1             # INFO byte 20 bit 0: the firmware keeps patterns 2..64 in the pattern store (1.26)
+FEATURE_PATTERNS_STORED = 2             # INFO byte 25 bit 1: the firmware keeps patterns 2..64 in the pattern store (1.26)
 EDITOR_PREFIX = bytes([0x7D, 0x4D, 0x31])
 C_HELLO, R_INFO, C_SLOT_INFO, R_SLOT = 0x01, 0x41, 0x15, 0x42
 
@@ -485,7 +485,7 @@ def bank_check(dev, product, out):
         print("warning: the bank could not be checked (the FM-1 did not answer the editor's HELLO)", file=out)
         return
     slots = info[15] if len(info) >= 16 and info[15] else 64
-    if slots <= BANK_SLOTS or (len(info) >= 21 and info[20] & FEATURE_PATTERNS_STORED):
+    if slots <= BANK_SLOTS or (len(info) >= 26 and info[25] & FEATURE_PATTERNS_STORED):
         return
     used = []
     for slot in range(slots):

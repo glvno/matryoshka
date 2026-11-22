@@ -25,8 +25,8 @@ describe('the bank before firmware 1.26', () => {
     const info = (rest: number[]) => parseInfo({ cmd: CMD.info, payload: [...base, ...rest] })!;
     expect(needsBankCheck(info([60, 0, 0, 0, 0]))).toBe(true);           // 1.25: 60 slots
     expect(needsBankCheck(parseInfo({ cmd: CMD.info, payload: base.slice(0, 12) })!)).toBe(true);   // before the store: 64
-    expect(needsBankCheck(info([48, 0, 0, 0, 0, 1]))).toBe(false);       // 1.26
-    expect(needsBankCheck(info([60, 0, 0, 0, 0, 1]))).toBe(false);       // 1.26 that kept 60 slots: it says so itself
+    expect(needsBankCheck(info([48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2]))).toBe(false);       // 1.26
+    expect(needsBankCheck(info([60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2]))).toBe(false);       // 1.26 that kept 60 slots: it says so itself
   });
 
   it('installs over empty slots 49..60, says which move when 48 or fewer are used, and asks above 48', () => {

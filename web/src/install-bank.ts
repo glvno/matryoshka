@@ -8,7 +8,7 @@
 // erased (SLOT_ERASE) before the install; Cancel leaves everything as it was. tools/fm1_install.py refuses the same bank
 // with the same explanation. These are the pure parts; flasher.ts asks and acts.
 import { runningVersion } from './fm1-version';
-import { BANK_SLOTS, FEATURE_PATTERNS_STORED, slotCount, slotLabel, type Info, type SlotInfo } from './protocol';
+import { BANK_SLOTS, FEATURE25_PATTERNS_STORED, slotCount, slotLabel, type Info, type SlotInfo } from './protocol';
 
 /** a firmware package (its product, FM-1_7MMmmpp) whose bank has BANK_SLOTS slots: Matryoshka 1.26 or later, or a dev or CI
  *  build (built from the current source) */
@@ -19,7 +19,7 @@ export function packageHasSmallBank(product: string): boolean {
 
 /** the running FM-1 (its INFO) has slots past BANK_SLOTS and firmware that does not keep its patterns in the pattern store
  *  (before 1.26): its bank must be looked at before the install. A 1.26 FM-1 that kept 60 slots handles them itself */
-export const needsBankCheck = (info: Info): boolean => slotCount(info) > BANK_SLOTS && !((info.moreFeatures ?? 0) & FEATURE_PATTERNS_STORED);
+export const needsBankCheck = (info: Info): boolean => slotCount(info) > BANK_SLOTS && !((info.features25 ?? 0) & FEATURE25_PATTERNS_STORED);
 
 /** what the install does with the bank: go on (`install`), go on once the user was told which slots move (`moves`), or
  *  wait until the user chose which patches to keep (`choose`: `over` of the `used` ones must go) */

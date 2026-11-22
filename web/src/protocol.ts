@@ -406,8 +406,9 @@ export interface Info {
   slots?: number;
   /** the pattern store's payload bytes free and in all (INFO bytes 16..19, #901); absent before it */
   store?: { free: number; total: number };
-  /** INFO byte 20, the features past bit 31 (FEATURE_PATTERNS_STORED); absent from firmware before 1.26 */
-  moreFeatures?: number;
+  /** INFO byte 25, the feature bits from 1.26 on (bytes 20..24 are the font area's, #1203; bit 0 folded kits, bit 1
+   *  FEATURE25_PATTERNS_STORED); absent from firmware that sends fewer bytes */
+  features25?: number;
 }
 export interface Ack {
   cmd: number;
@@ -436,10 +437,10 @@ export const FEATURE_FX_PRESETS = 1 << 24;
 /** INFO feature bit 25 (byte 14 bit 1, #901): the pattern store is on (PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW and
  *  format 59's links section) */
 export const FEATURE_PATTERN_STORE = 1 << 25;
-/** INFO byte 20 bit 0 (Info.moreFeatures; 1.26, #1202): every pattern 2..64 lives in the pattern store. SAVE on the FM-1
+/** INFO byte 25 bit 1 (Info.features25; 1.26, #1202): every pattern 2..64 lives in the pattern store. SAVE on the FM-1
  *  stores and links each one with content, the editor sends each as a stored entry (device.ts) and counts only pattern 1,
  *  the songs and the links against the patch's bytes (patchbin.ts LinkStore 'every') */
-export const FEATURE_PATTERNS_STORED = 1;
+export const FEATURE25_PATTERNS_STORED = 2;
 /** INFO feature bit 26 (byte 14 bit 2, #915, D-490): the factory region's commands (firmware/src/factory.c) */
 export const FEATURE_FACTORY = 1 << 26;
 /** INFO feature bit 27 (byte 14 bit 3, #1107): MASTER_EQ, the FM-1's master EQ (GLO › EQ) over the link */
@@ -576,7 +577,7 @@ export function parseInfo(p: Parsed): Info | null {
     ...(p.payload.length >= 12 ? { firmware: { major: p.payload[9], minor: p.payload[10], patch: p.payload[11] } } : {}),
     ...(p.payload.length >= 16 && p.payload[15] ? { slots: p.payload[15] } : {}),
     ...(p.payload.length >= 20 ? { store: { free: p.payload[16] | (p.payload[17] << 8), total: p.payload[18] | (p.payload[19] << 8) } } : {}),
-    ...(p.payload.length >= 21 ? { moreFeatures: p.payload[20] } : {}) };
+    ...(p.payload.length >= 26 ? { features25: p.payload[25] } : {}) };
 }
 /** the test tools drive the editor's own page against the test rig, which is set to IGNORE so the site leaves it alone
  *  (#702): their page (scripts/emu-scenarios.mjs --device) sets this before it loads. Nothing else does */

@@ -19,7 +19,7 @@ export function deviceLayoutKey(patch: Patch): string {
   return JSON.stringify([view.patch.modules.map((m) => [m.id, m.type]), view.groups.map((g) => [g.key, [...g.modules], g.src])]);
 }
 import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type DeviceSettings, FEATURE_MASTER_EQ, MASTER_EQ, masterEqFrame, parseMasterEq, type MasterEq, armsFrame, parseArmsNow, FEATURE_WIDE_ARMS, editorSkips, FEATURE_ARMS, FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, slotCount, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
-import { FEATURE_PATTERN_STORE, FEATURE_PATTERNS_STORED, parseLinkNow, parsePatData, parsePatEntry, parsePatStored, PAT_FULL, PAT_OK, PAT_RANGE, PAT_STATUS, PAT_USED, patDelFrame, patGetFrame, patPutFrames, patsFrame, type PatListItem, type StoredPatternEntry } from './protocol';
+import { FEATURE_PATTERN_STORE, FEATURE25_PATTERNS_STORED, parseLinkNow, parsePatData, parsePatEntry, parsePatStored, PAT_FULL, PAT_OK, PAT_RANGE, PAT_STATUS, PAT_USED, patDelFrame, patGetFrame, patPutFrames, patsFrame, type PatListItem, type StoredPatternEntry } from './protocol';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 import { FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo, type MapEntry } from './protocol';
 import { FEATURE_PADS, PADS_CMD, padsClearAllFrame, padsOnFrame, padsReadFrame, padsSetFrame, parsePadsNow, parsePatternOp, PATTERN_OP, type PadMap } from './protocol';
@@ -711,10 +711,10 @@ export class DeviceLink {
     return !this.hasPatternStore ? 'none' : this.stored ?? 'unknown';
   }
 
-  /** every pattern 2..64 lives in this FM-1's pattern store (INFO byte 20 bit 0, 1.26, #1202): sends store them first, and
+  /** every pattern 2..64 lives in this FM-1's pattern store (INFO byte 25 bit 1, 1.26, #1202): sends store them first, and
    *  only pattern 1, the songs and the links count against the patch's bytes */
   get patternsStored(): boolean {
-    return this.connected && this.hasPatternStore && !!((this.info?.moreFeatures ?? 0) & FEATURE_PATTERNS_STORED);
+    return this.connected && this.hasPatternStore && !!((this.info?.features25 ?? 0) & FEATURE25_PATTERNS_STORED);
   }
 
   /** the pattern store the budget counts with (patchbin.ts deviceBudget): `every` for an FM-1 that stores every pattern,
