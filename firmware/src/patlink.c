@@ -993,7 +993,7 @@ static void m1_pat_info(uint8_t *p)
     p[3] = (uint8_t)(f >> 8);
     p[4] = (uint8_t)t;
     p[5] = (uint8_t)(t >> 8);
-    p[11] = (uint8_t)(p[11] | (pt_on ? 2u : 0u));      /* (byte 25 bit 1: SAVE puts every pattern 2..64 into the store, #1202) */
+    p[11] = (uint8_t)(p[11] | (pt_on ? 2u : 0u));    /* (byte 25 bit 1: SAVE puts every pattern 2..64 into the store, #1202) */
 }
 
 /* the entries (e 0: how many); else the one after cursor `after` (0: the first) as PAT's bytes from its id on, and the

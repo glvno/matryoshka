@@ -217,7 +217,7 @@ static void m1_arms(eng_mset_t mask) { arms_calls++; arms_last = mask; eng_arm_m
 static void m1_pat_load(void) {}
 static uint64_t m1_pat_clean(void) { return 0; }
 static int m1_pat_spill(void) { return 0; }
-static void m1_pat_info(uint8_t *p) { p[1] = 64; p[2] = p[3] = p[4] = p[5] = p[6] = 0; }
+static void m1_pat_info(uint8_t *p) { p[1] = 64; p[2] = p[3] = p[4] = p[5] = 0; }
 static uint32_t m1_pat_list(uint32_t after, uint8_t *e) { (void)after; (void)e; return 0; }
 static const uint8_t *m1_pat_get(uint32_t id, uint32_t *len) { (void)id; (void)len; return 0; }
 static uint32_t m1_pat_put(uint32_t *id, const char *name, const uint8_t *p, uint32_t len) { (void)id; (void)name; (void)p; (void)len; return 4u; }
