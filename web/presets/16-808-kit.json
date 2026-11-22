@@ -37,7 +37,7 @@
    "id": 2,
    "type": "steps",
    "x": 380,
-   "y": 20,
+   "y": 600,
    "params": {
     "len": 16,
     "rate": 4,
@@ -5841,7 +5841,8 @@
     138,
     139,
     140,
-    141
+    141,
+    2
    ],
    "inputs": [
     {
@@ -5897,15 +5898,9 @@
      "label": "cow bell vel"
     },
     {
-     "module": 3,
+     "module": 2,
      "port": "keys",
-     "label": "keys",
-     "also": [
-      {
-       "module": 64,
-       "port": "keys"
-      }
-     ]
+     "label": "keys"
     }
    ],
    "outputs": [
@@ -5913,14 +5908,15 @@
      "module": 4,
      "port": "out",
      "label": "out"
-    },
-    {
-     "module": 65,
-     "port": "out",
-     "label": "out 2"
     }
    ],
    "params": [
+    {
+     "module": 2,
+     "param": "grid",
+     "label": "DRUMS",
+     "span": 4
+    },
     {
      "module": 66,
      "param": "value",
@@ -6089,22 +6085,27 @@
      "head": "closed hihat"
     },
     {
+     "module": 138,
+     "param": "value",
+     "label": "velocity",
+     "head": "velocity"
+    },
+    {
+     "module": 2,
+     "param": "len",
+     "label": "last step",
+     "head": "pattern"
+    },
+    {
      "module": 65,
      "param": "pos",
      "label": "pre-scale",
-     "head": "pre-scale",
      "names": [
       "1/8T",
       "1/16",
       "1/16T",
       "1/32"
      ]
-    },
-    {
-     "module": 138,
-     "param": "value",
-     "label": "velocity",
-     "head": "velocity"
     }
    ],
    "preset": "Init",

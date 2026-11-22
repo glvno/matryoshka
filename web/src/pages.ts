@@ -5,8 +5,9 @@ import { keyReach } from './key-routing';
 // Every top-level thing on the canvas, a module or an assembly, is a device (docs/ledger/vocabulary.md "Device"), unless it is editor-only
 // (a Scope) or a Part; one with no rows is left out too. Devices come in the environment's grouped order (#196): Main
 // first; then each Steps track (its page: LEN RATE SWING GATE) followed by the devices it drives (a cable from it, or from
-// an Arpeggiator it plays through, into them); then the others (an Arpeggiator among them, never where a patch opens); the
-// Output last. Tracks and the rest go in the canvas's reading order (columns from the left,
+// an Arpeggiator it plays through, into them); an assembly with a Steps track inside (the kits' DRUMS) is that track's
+// device: it stands where a track does, driven by its own track, and its card's rows are its pages. Then the others (an
+// Arpeggiator among them, never where a patch opens); the Output last. Tracks and the rest go in the canvas's reading order (columns from the left,
 // as Tidy reads them, each from the top). A device's rows are the rows
 // of its collapsed card: an assembly's promoted parameters, a plain module's every parameter. A heading starts a section;
 // a section holds groups of at most PAGE_ROWS rows (`groupStarts`), and each group is one page ("Filter 2/2" = the
@@ -59,7 +60,8 @@ export interface Device {
   pages: Page[];
   /** Main, a Steps track, an Arpeggiator or the Output (else an instrument, an effect, ...) */
   kind?: 'main' | 'steps' | 'arp' | 'output';
-  /** the Steps track (module id) that drives it: it follows the track in the environment (#196) */
+  /** the Steps track (module id) that drives it: it follows the track in the environment (#196). On a card with a track
+   * inside, that track: the card drives itself (the binary's track byte is the card's own index) */
   track?: number;
 }
 
@@ -252,7 +254,9 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   for (const a of assembliesOf(p)) {
     if (parentOf(p, a.id)) continue;
     const pages = assemblyPages(p, a, defs);
-    if (pages.length) items.push({ ...placeOf(p, a), dev: { key: `a${a.id}`, name: a.label, asm: a.id, pages } });
+    // (a card with a Steps track inside is that track's device and is driven by it: the kits' DRUMS, #1202 K2)
+    const inner = allModules(p, a).find((id) => p.modules.find((m) => m.id === id)?.type === 'steps');
+    if (pages.length) items.push({ ...placeOf(p, a), dev: { key: `a${a.id}`, name: a.label, asm: a.id, pages, ...(inner !== undefined ? { track: inner } : {}) } });
   }
   // columns from the left; a card joins the column of the first card in it while it starts within half a card of it
   const cols: (typeof items)[] = [];
@@ -269,18 +273,21 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
     [d, drumDrivers(p, new Set(allModules(p, assembliesOf(p).find((a) => a.id === d.asm)!)), defs)]));
   const out: Device[] = reading.filter((d) => d.kind === 'main');
   const placed = new Set<Device>(out);
-  for (const t of reading.filter((d) => d.kind === 'steps')) {
+  // (a card with its own track is its track's device, never driven by another track)
+  const tracks = reading.filter((d) => d.kind === 'steps' || (d.asm !== undefined && d.track !== undefined));
+  for (const t of tracks) {
     out.push(t);
     placed.add(t);
+    const track = t.module ?? t.track!;
     // (a cable from it, or from an Arpeggiator it plays through)
-    const from = new Set([...keyReach(p, t.module!)].filter(id => ['steps', 'harm', 'arp'].includes(p.modules.find(m => m.id === id)?.type ?? '')));
+    const from = new Set([...keyReach(p, track)].filter(id => ['steps', 'harm', 'arp'].includes(p.modules.find(m => m.id === id)?.type ?? '')));
     const direct = (d: Device): boolean => p.cables.some((c) => from.has(c.from.module) && deviceOf.get(c.to.module) === d);
-    const driven = reading.filter((d) => !placed.has(d) && !d.kind && (direct(d) ||
-      (drums.get(d)?.length === 1 && drums.get(d)![0] === t.module)));
+    const driven = reading.filter((d) => !placed.has(d) && !d.kind && !tracks.includes(d) && (direct(d) ||
+      (drums.get(d)?.length === 1 && drums.get(d)![0] === track)));
     // Keep directly connected pages (the external Drum map) before the kit reached through that map.
     driven.sort((a, b) => Number(!direct(a)) - Number(!direct(b)));
     for (const d of driven) {
-      d.track = t.module;
+      d.track = track;
       out.push(d);
       placed.add(d);
     }

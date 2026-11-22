@@ -1109,9 +1109,9 @@ int main(void)
     booting = 0;
     page = 0;
     screen_idle();
-    /* the 808 Kit's devices (#196): Main, DRUMS (the track), the 808 kit card with its Drum maps inside (no Drum map pages,
-     * D-1059), Output */
-    check("the device page: the home device in focus (not Main or the track)", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0 && pg_ndev == 4);
+    /* the 808 Kit's devices (#196): Main, the 808 kit card with DRUMS and its Drum maps inside (no Drum map or track pages,
+     * D-1059, #1202 K2), Output */
+    check("the device page: the home device in focus (not Main)", page == 0 && pg_cur_dev == 1 && pg_cur_page == 0 && pg_ndev == 3);
     {                                                       /* the header (the owner's design, 2026-10-24) */
         uint32_t x, gold = 0;
         for (x = 0; x < 120u; x++)
@@ -1161,7 +1161,7 @@ int main(void)
         lcd_px = 0;
         fb_watch_reset();
         enc(1, 1);                                          /* ALGO */
-        check("ALGO: the device's next page, the editor told", pg_cur_dev == 2 && pg_cur_page == 1 && focus_pg == 1);
+        check("ALGO: the device's next page, the editor told", pg_cur_dev == 1 && pg_cur_page == 1 && focus_pg == 1);
         printf("      LCD pixels for one ALGO click: the header %u, the rows' type %u, the page %u (a whole page %u)\n",
                stop_px[0], stop_px[5], lcd_px, page_px);
         check("ALGO: the header's sections and the bars, nothing below them, no pixel twice", stop_n >= 6u
@@ -1194,11 +1194,11 @@ int main(void)
         lcd_px = 0;
         stop_n = 0;
         enc(0, 1);                                          /* SELECT: the Output, and back */
-        check("SELECT: the next device, the editor told, its name in the header", pg_cur_dev == 3 && focus_dev == 3
+        check("SELECT: the next device, the editor told, its name in the header", pg_cur_dev == 2 && focus_dev == 2
               && on_screen("OUTPUT"));
         printf("      LCD pixels for one SELECT click: the header %u, the page %u\n", stop_px[0], lcd_px);
         enc(0, -1);
-        check("SELECT back: the device before", pg_cur_dev == 2 && focus_dev == 2 && pg_cur_page == 0 && !on_screen("OUTPUT"));
+        check("SELECT back: the device before", pg_cur_dev == 1 && focus_dev == 1 && pg_cur_page == 0 && !on_screen("OUTPUT"));
         enc(4, 1);
         enc(4, -1);
         later(1100);
@@ -1265,16 +1265,16 @@ int main(void)
     }
 
     tap(BTN_HOME);                                          /* HOME on the device pages (#391, D-243) */
-    check("HOME on a device's second page: its first page, the editor told, no step", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0
-          && focus_dev == 2 && focus_pg == 0 && trail_n == 0);
+    check("HOME on a device's second page: its first page, the editor told, no step", page == 0 && pg_cur_dev == 1 && pg_cur_page == 0
+          && focus_dev == 1 && focus_pg == 0 && trail_n == 0);
     enc(0, 1);
-    check("SELECT: the next device's first page", pg_cur_dev == 3 && pg_cur_page == 0);
+    check("SELECT: the next device's first page", pg_cur_dev == 2 && pg_cur_page == 0);
     tap(BTN_HOME);
-    check("HOME on a device's first page: the patch's home page", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0 && focus_dev == 2);
+    check("HOME on a device's first page: the patch's home page", page == 0 && pg_cur_dev == 1 && pg_cur_page == 0 && focus_dev == 1);
     loop();
     memcpy(before, fb, sizeof before);
     tap(BTN_HOME);
-    check("HOME on the patch's home page: nothing", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0
+    check("HOME on the patch's home page: nothing", page == 0 && pg_cur_dev == 1 && pg_cur_page == 0
           && trail_n == 0 && memcmp(before, fb, sizeof before) == 0);
     enc(1, 1);
 
@@ -1284,9 +1284,9 @@ int main(void)
     panel_held &= ~(1u << BTN_HOME);
     panel_edges(0, 1u << BTN_HOME);
     loop();
-    check("HOME held 1.2 s: no menu (its release is a tap: the device's first page)", page == 0 && trail_n == 0 && pg_cur_dev == 2 && pg_cur_page == 0);
+    check("HOME held 1.2 s: no menu (its release is a tap: the device's first page)", page == 0 && trail_n == 0 && pg_cur_dev == 1 && pg_cur_page == 0);
     enc(1, 1);                                              /* (the second page again: the checks below expect it) */
-    check("ALGO: the second page again", pg_cur_dev == 2 && pg_cur_page == 1);
+    check("ALGO: the second page again", pg_cur_dev == 1 && pg_cur_page == 1);
     mlen = 0;                                               /* (the MIDI log holds 256 messages; the menu's steps below would fill it) */
     tap(BTN_GLO);
     check("GLO: the menu on its MIDI tab, a step on the trail", page == PAGE_MENU && menu_tab == MT_MIDI && trail_n == 1 && menu_page());
@@ -2993,15 +2993,27 @@ int main(void)
                 check("<7PH, nothing armed: every key plays its own note, white and black", ok);
                 continue;
             }
-            if (kit < 2u) {                                 /* its Drum maps inside the kit card (D-1059): no Drum map pages;
-                                                             * Main, DRUMS, the kit card that DRUMS drives, the Output */
-                uint32_t d, maps = 0;
+            if (kit < 2u) {                                 /* DRUMS and its Drum maps inside the kit card (D-1059, #1202 K2): no
+                                                             * Drum map or track pages; Main, the kit card (DRUMS' device, driven
+                                                             * by its own track, where the patch opens), the Output. The card has
+                                                             * DRUMS' LAST STEP and none of its own RATE / SWING rows, which the
+                                                             * kit's rate (and shuffle) selectors set through their ranges */
+                uint32_t d, g, k, maps = 0, len = 0, held = 0;
+                int drums = eng_steps_module(0);
                 pages_ensure();
                 for (d = 0; d < pg_ndev; d++)
-                    maps += pg_dev[d].module >= 0 && E.node[pg_dev[d].module].type == T_DRUMMAP;
-                snprintf(what, sizeof what, "%s: no Drum map device; the kit card follows DRUMS, which drives it", KIT[kit]);
-                check(what, maps == 0u && pg_ndev == 4u && pg_dev[1].module == eng_steps_module(0) && pg_dev[2].module < 0
-                      && pg_dev[2].track == 1u && pg_dev[2].nmem > 0u);
+                    maps += pg_dev[d].module >= 0 && (E.node[pg_dev[d].module].type == T_DRUMMAP || E.node[pg_dev[d].module].type == T_STEPS);
+                for (g = 0; g < pg_dev[1].npg; g++)
+                    for (k = 0; k < pg_page[pg_dev[1].pg0 + g].nrows; k++) {
+                        const ppage_t *pg = &pg_page[pg_dev[1].pg0 + g];
+                        len += pg->mod[k] == (uint32_t)drums && pg->par[k] == STEPS_P_LEN;
+                        held += pg->mod[k] == (uint32_t)drums && (pg->par[k] == STEPS_P_RATE || pg->par[k] == STEPS_P_SWING);
+                    }
+                snprintf(what, sizeof what, "%s: one device, the kit card with DRUMS inside, driven by its own track", KIT[kit]);
+                check(what, maps == 0u && pg_ndev == 3u && pg_dev[1].module < 0 && pg_dev[1].track == 1u && pg_dev[1].nmem > 0u
+                      && pg_track_mod(1) == drums && env_track_no(1) == 0 && pages_home() == 1u);
+                snprintf(what, sizeof what, "%s: the card has DRUMS' LAST STEP, not its RATE or SWING", KIT[kit]);
+                check(what, len == 1u && held == 0u);
             }
             snprintf(what, sizeof what, "%s: the keys reach the drum track's Drum map", KIT[kit]);
             check(what, map >= 0 && map == eng_steps_drummap((uint32_t)eng_steps_module(0)) && (kit < 3u || eng_armed() == eng_steps_module(0)));

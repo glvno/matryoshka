@@ -150,9 +150,10 @@ describe('909 Kit (the FM-1 version: the whole TR-909, D-1055)', () => {
     const was = (target: string): number => old[before.rows.findIndex((r) => r[0] === target)];
     const at = (target: string): number => values[now.rows.findIndex((r) => r[0] === target)];
     const atInit = (target: string): number => init.values[now.rows.findIndex((r) => r[0] === target)];
-    for (const [to, from] of [['osc#50.coarse', 'osc#2.coarse'], ['mixer#58.l2', 'mixer#11.l2'], ['env#53.r3', 'env#5.r3'],
-      ['osc#64.coarse', 'osc#17.coarse'], ['mixer#67.l1', 'mixer#20.l1'], ['env#104.r3', 'env#25.r3']]) expect(at(to), to).toBe(was(from));
-    for (const t of ['filter#61.cutoff', 'vca#59.gain', 'env#109.r3']) expect(at(t), t).toBe(atInit(t));
+    // (local ids from DRUMS on are one higher since DRUMS joined the card, #1202 K2)
+    for (const [to, from] of [['osc#51.coarse', 'osc#2.coarse'], ['mixer#59.l2', 'mixer#11.l2'], ['env#54.r3', 'env#5.r3'],
+      ['osc#65.coarse', 'osc#17.coarse'], ['mixer#68.l1', 'mixer#20.l1'], ['env#105.r3', 'env#25.r3']]) expect(at(to), to).toBe(was(from));
+    for (const t of ['filter#62.cutoff', 'vca#60.gain', 'env#110.r3', 'steps#9.len']) expect(at(t), t).toBe(atInit(t));
     expect(migration.rows.filter((r) => typeof r === 'number' && r >= 0)).toHaveLength(6);
   });
 
@@ -181,9 +182,14 @@ describe('909 Kit (the FM-1 version: the whole TR-909, D-1055)', () => {
     expect(migration.to).toBe(now.structure);
     const old = before.rows.map((_, i) => (i + 1) / 100);
     const values = migrateValues(migration, old, now.rows.map(() => 0));
-    for (const [k, [target, , pos]] of now.rows.entries()) {
-      // (by card position: the local ids moved with VELOCITY's modules, D-1055; VELOCITY itself, the last row, at Init)
-      const from = before.rows.findIndex((r) => r[2] === pos);
+    // (by card position: the local ids moved with VELOCITY's modules, D-1055, and with DRUMS, #1202 K2. The rows keep their
+    // order on the card but for SHUFFLE and SCALE, which moved to the pattern section with LAST STEP; the grid, LAST STEP
+    // and VELOCITY, the rows the old card had not, at Init)
+    const moved = (label: string): boolean => label === 'shuffle' || label === 'scale';
+    const inOrder = (rows: typeof now.rows): number[] => [...rows.keys()].filter((k) => !moved(rows[k][1]) && !rows[k][0].startsWith('steps#')).sort((a, b) => rows[a][2] - rows[b][2]);
+    const oldOrder = inOrder(before.rows), newOrder = inOrder(now.rows);
+    for (const [k, [target, label]] of now.rows.entries()) {
+      const from = moved(label) ? before.rows.findIndex((r) => r[1] === label) : newOrder.indexOf(k) >= 0 ? oldOrder[newOrder.indexOf(k)] ?? -1 : -1;
       expect(values[k], target).toBe(from < 0 ? 0 : old[from]);
     }
   });

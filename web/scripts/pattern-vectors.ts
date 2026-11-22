@@ -3,6 +3,7 @@
 // of each, the payload the editor writes and the patch's layout fingerprint. export-defs.ts writes them to
 // firmware/test/pattern_cases.h; the firmware's host test loads each patch in the C engine, writes the payload for that
 // pattern and compares bytes and layout, then loads the payload back into a fresh load and writes it again.
+import { reconcileAll } from '../src/assembly';
 import { DEMO_SET_PATCHES, applyDemoSet, demoSetHash, demoSetRecord } from '../src/demo-sets';
 import { DEFS } from '../src/modules';
 import { addModule, connect, emptyPatch, removeModule, type ModuleInst, type Patch } from '../src/patch';
@@ -125,6 +126,7 @@ export function demoCases(): { name: string; patch: Uint8Array; loaded?: Uint8Ar
     connect(more, DEFS, { module: crush.id, port: 'out' }, into.to);
   }
   removeModule(less, less.modules.find((m) => m.type === 'steps')!.id);
+  reconcileAll(less, DEFS);   // (DRUMS is a member of the kit card, K2)
   return [...DEMO_SET_PATCHES.map((n) => ({ name: n, p: FM1_PRESETS[n]() })), { name: 'MY KIT', p: renamed }, { name: '808 PARAM', p: edited },
     { name: '808 MODULE MORE', p: more }, { name: '808 MODULE LESS', p: less }].map(({ name, p }) => {
     const set = demoSetFor(p);

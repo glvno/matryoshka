@@ -66,6 +66,19 @@ typedef struct {
 static pdev_t pg_dev[PG_DEVS] UI_POOL;
 /* the k-th module device d is made of (k < nmem) */
 static uint32_t pg_mem(uint32_t d, uint32_t k) { return pg_dev[d].mrun ? pg_dev[d].mem[0] + k : pg_dev[d].mem[k]; }
+/* the Steps track device d is (#196), -1 none: a track's own device, or a card with the track inside, which the device
+ * extras name as its own driver (#1202 K2: the kits' DRUMS) */
+static int pg_track_mod(uint32_t d)
+{
+    uint32_t k;
+    if (pg_dev[d].module >= 0)
+        return eng_type((uint32_t)pg_dev[d].module) == T_STEPS ? pg_dev[d].module : -1;
+    if (pg_dev[d].track == d)
+        for (k = 0; k < pg_dev[d].nmem; k++)
+            if (eng_type(pg_mem(d, k)) == T_STEPS)
+                return (int)pg_mem(d, k);
+    return -1;
+}
 static char pg_tname[PG_DEVS][9] UI_POOL;              /* a Steps track's name, for its device (m1_track_name: 8 characters) */
 static char pg_pname[PG_DEVS][17] UI_POOL;             /* the preset each device was set to (#194; read from the extras for a new patch) */
 static uint32_t pg_pstructure[PG_DEVS] UI_POOL;        /* remembered namespace; 0: infer a saved name from its values */
@@ -457,10 +470,7 @@ static uint32_t pages_home(void)
 static int pages_focus_track(void)
 {
     int m, t;
-    if (pg_cur_dev >= pg_ndev || pg_dev[pg_cur_dev].module < 0)
-        return -1;
-    m = pg_dev[pg_cur_dev].module;
-    if (eng_type((uint32_t)m) != T_STEPS)
+    if (pg_cur_dev >= pg_ndev || (m = pg_track_mod(pg_cur_dev)) < 0)
         return -1;
     for (t = 0; t < eng_steps_count(); t++)
         if (eng_steps_module((uint32_t)t) == m)
@@ -2242,8 +2252,7 @@ static int env_track_no(uint32_t d)
     uint32_t i;
     int n = 0;
     for (i = 0; i < pg_ndev; i++) {
-        int m = pg_dev[i].module;
-        if (m >= 0 && eng_type((uint32_t)m) == T_STEPS) {
+        if (pg_track_mod(i) >= 0) {
             if (i == d)
                 return n;
             n++;
@@ -2372,7 +2381,7 @@ static void env_status(uint32_t d, char *out)
     } else if (t == T_FM1) {
         fmt_int(num, (eng_get_param((uint32_t)m, FM1_P_TEMPO) + 32768) >> 16);
         put(put(out, num), " BPM")[0] = 0;
-    } else if (t == T_STEPS) {
+    } else if ((m = pg_track_mod(d)) >= 0) {           /* (a track, or a card with its track inside: #1202 K2) */
         fmt_int(num, (eng_get_param((uint32_t)m, STEPS_P_LEN) + 32768) >> 16);
         put(put(out, num), " STEPS")[0] = 0;
     }

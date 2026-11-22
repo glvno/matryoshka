@@ -4,7 +4,7 @@ import { DEFS } from './modules';
 import { addModule, connect, defaultMap, emptyPatch, validatePatch, type Patch } from './patch';
 import { connectParameter, setInputRoute } from './parameter-routing';
 import { devicesOf, NAME_MAX } from './pages';
-import { assemblyById, makeAssembly } from './assembly';
+import { assembliesOf, assemblyById, makeAssembly, removeMember } from './assembly';
 import { instIsEngine } from './engines';
 import { engineBytes } from './test-bin';
 import { deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR, COUNTED, SLIM, layout, MAP_BEND, MAP_NOTE, mapSource, mapSourceByte } from './patchbin';
@@ -198,16 +198,23 @@ describe('binary patch format', () => {
     expect(new TextDecoder().decode(named)).toContain('Warm');
   });
 
-  it('the device extras say which Steps track drives a device (format 34)', () => {
+  it('the device extras say which Steps track drives a device (format 34); a card with its track inside names itself (#1202 K2)', () => {
     const p = PRESETS['808 Kit']();
-    const devs = devicesOf(p, DEFS);
+    const entry = (rec: number[], i: number): number => { let at = 1; for (let k = 0; k < i; k++) { at += 6 + rec[at + 5]; at += 1 + 2 * rec[at]; at += 1 + rec[at]; } return at; };
+    let devs = devicesOf(p, DEFS);
+    let kit = devs.findIndex((d) => d.asm !== undefined && d.name === '808 kit');   // (DRUMS and the Drum maps inside)
+    expect(devs.some((d) => d.kind === 'steps')).toBe(false);
+    expect(extrasRecord(devs, p)[entry(extrasRecord(devs, p), kit)]).toBe(kit);
+    // (DRUMS outside, as before #1202: the kit names the track's device)
+    const card = assembliesOf(p).find((a) => a.name === '808 kit')!;
+    removeMember(p, card, p.modules.find((m) => m.type === 'steps')!.id);
+    devs = devicesOf(p, DEFS);
     const rec = extrasRecord(devs, p);
     const track = devs.findIndex((d) => d.kind === 'steps');
-    const kit = devs.findIndex((d) => d.asm !== undefined && d.name === '808 kit');   // (its Drum maps inside, D-1059)
+    kit = devs.findIndex((d) => d.asm !== undefined && d.name === '808 kit');
     expect(track).toBeGreaterThanOrEqual(0);
-    const entry = (i: number): number => { let at = 1; for (let k = 0; k < i; k++) { at += 6 + rec[at + 5]; at += 1 + 2 * rec[at]; at += 1 + rec[at]; } return at; };
-    expect(rec[entry(kit)]).toBe(track);
-    expect(rec[entry(track)]).toBe(0xff);
+    expect(rec[entry(rec, kit)]).toBe(track);
+    expect(rec[entry(rec, track)]).toBe(0xff);
   });
 
   it('carries the Drum maps\' row names for the FM-1 (format 33, flag bit 7): their own, else the defaults', () => {

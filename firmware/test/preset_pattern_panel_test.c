@@ -47,7 +47,7 @@ int main(void)
     const char *paths[] = {"build/panel-fixtures/pattern-control-only.m1p", "build/panel-fixtures/pattern-direct-trig.m1p", "build/panel-fixtures/pattern-ambiguous-gate.m1p"};
     for (i = 0; i < 3; i++) {
         const uint32_t *words; uint32_t saved[128]; int n, mod;
-        check("load actual 808 routing fixture", !load_fixture(paths[i])); pv_gen++; pages_ensure();
+        check("load the drum routing fixture (Verona Drum 1, its track outside its card)", !load_fixture(paths[i])); pv_gen++; pages_ensure();
         mod = eng_steps_module(0);
         for (d = 0; d < pg_ndev; d++) {
             static fc_pattern_t origin;
@@ -60,7 +60,7 @@ int main(void)
             else check("control-only and ambiguous notes survive selection and reload", eng_pattern_notes((uint32_t)mod, 0, &words) == n && !memcmp(saved, words, (size_t)n * 4));
             break;
         }
-        check("routing fixture found the real 808 card", d < pg_ndev);
+        check("routing fixture found the real drum card", d < pg_ndev);
     }
     for (i = 0; i < N_PRESETS; i++) {
         if (strcmp(PRESET_LIST[i].name, "808 KIT") && strcmp(PRESET_LIST[i].name, "909 KIT") && strcmp(PRESET_LIST[i].name, "<7PH")) continue;
@@ -74,14 +74,16 @@ int main(void)
             for (k = 0; k < dp_list(d); k++) if (!(pr_list[k] & PR_USER) && k) { target = k; break; }
             check("kit has a second factory sound", target > 0);
             if (strcmp(PRESET_LIST[i].name, "808 KIT")) {
-                uint32_t g, rows = 0;
+                uint32_t g, rows = 0, own = 0;
                 booting = 0; page = 0;
                 for (g = 0; g < pg_dev[d].npg; g++) {
                     pages_focus(d, g);
                     check("909 wrapper navigation reaches each child-control page", pg_cur_dev == d && pg_cur_page == g && pages_now()->nrows > 0);
                     rows += pages_now()->nrows;
                 }
-                check("909 wrapper navigation includes every promoted row", rows == pg_dev[d].nrows);
+                for (g = 0; g < pg_dev[d].nrows; g++)   /* (a card row the FM-1 has not got, the DRUMS grid: 0xFF 0xFF) */
+                    own += pg_dev[d].rows[2u * g] != 0xFFu;
+                check("909 wrapper navigation includes every promoted row", rows == own);
             }
             n = eng_pattern_notes((uint32_t)mod, 0, &words); memcpy(saved, words, (size_t)n * 4);
             for (tr = 0; tr < (uint32_t)eng_steps_count(); tr++) {

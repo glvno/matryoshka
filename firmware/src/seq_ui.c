@@ -1868,7 +1868,7 @@ static uint32_t seq_lock_pages(uint16_t *out, uint32_t max)
     if (mod < 0)
         return 0;
     pages_ensure();
-    for (e = 0; e < pg_ndev && pg_dev[e].module != mod; e++)
+    for (e = 0; e < pg_ndev && pg_track_mod(e) != mod; e++)   /* (its device: itself, or the card it is inside, #1202 K2) */
         ;
     if (e == pg_ndev)
         return 0;

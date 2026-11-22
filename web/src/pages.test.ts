@@ -21,13 +21,19 @@ describe('device pages', () => {
     expect(devicesOf(p, DEFS).find((d) => d.asm === a.id)!.track).toBe(track.id);
     expect(patternDriver(p, a, DEFS)).toBeUndefined();
   });
-  it('808: DRUMS, then the kit card with its Drum maps inside (D-1059); a Drum map outside comes before the kit it triggers', () => {
+  it('808: the kit card with DRUMS and its Drum maps inside is DRUMS\' device (#1202 K2); a Drum map outside follows it, and DRUMS outside comes first', () => {
     const p = PRESETS['808 Kit']();
     const kinds = (): string[] => devicesOf(p, DEFS).slice(0, 5).map((d) => d.asm !== undefined ? 'kit' : p.modules.find((m) => m.id === d.module)!.type);
-    expect(kinds()).toEqual(['fm1', 'steps', 'kit', 'kit', 'output']);   // (the kit card, then the master FX bus)
     const card = assembliesOf(p).find((a) => a.name === '808 kit')!;
+    const drums = p.modules.find((m) => m.type === 'steps')!;
+    expect(kinds()).toEqual(['fm1', 'kit', 'kit', 'output']);   // (the kit card, then the master FX bus)
+    expect(devicesOf(p, DEFS)[1].track).toBe(drums.id);
+    expect(homeDevice(devicesOf(p, DEFS))).toBe(1);   // (where a patch opens: the kit)
     for (const m of p.modules.filter((x) => x.type === 'drummap')) removeMember(p, card, m.id);
+    expect(kinds()).toEqual(['fm1', 'kit', 'drummap', 'drummap', 'kit']);
+    removeMember(p, card, drums.id);
     expect(kinds()).toEqual(['fm1', 'steps', 'drummap', 'drummap', 'kit']);
+    expect(devicesOf(p, DEFS).find((d) => d.asm === card.id)!.track).toBe(drums.id);   // (driven by DRUMS through the maps, as before #1202)
   });
 
   it('a plain module is a device of its parameters, four to a page; scopes are none', () => {

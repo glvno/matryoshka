@@ -57712,7 +57712,7 @@
      "id": 2,
      "type": "steps",
      "x": 380,
-     "y": 20,
+     "y": 600,
      "params": {
       "len": 16,
       "rate": 4,
@@ -57896,7 +57896,7 @@
      "factoryPatterns": {
       "version": 1,
       "ids": [
-       "d1e2b3d5"
+       "1f4818bb"
       ]
      }
     },
@@ -63369,7 +63369,8 @@
       138,
       139,
       140,
-      141
+      141,
+      2
      ],
      "inputs": [
       {
@@ -63425,15 +63426,9 @@
        "label": "cow bell vel"
       },
       {
-       "module": 3,
+       "module": 2,
        "port": "keys",
-       "label": "keys",
-       "also": [
-        {
-         "module": 64,
-         "port": "keys"
-        }
-       ]
+       "label": "keys"
       }
      ],
      "outputs": [
@@ -63441,14 +63436,15 @@
        "module": 4,
        "port": "out",
        "label": "out"
-      },
-      {
-       "module": 65,
-       "port": "out",
-       "label": "out 2"
       }
      ],
      "params": [
+      {
+       "module": 2,
+       "param": "grid",
+       "label": "DRUMS",
+       "span": 4
+      },
       {
        "module": 66,
        "param": "value",
@@ -63617,22 +63613,27 @@
        "head": "closed hihat"
       },
       {
+       "module": 138,
+       "param": "value",
+       "label": "velocity",
+       "head": "velocity"
+      },
+      {
+       "module": 2,
+       "param": "len",
+       "label": "last step",
+       "head": "pattern"
+      },
+      {
        "module": 65,
        "param": "pos",
        "label": "pre-scale",
-       "head": "pre-scale",
        "names": [
         "1/8T",
         "1/16",
         "1/16T",
         "1/32"
        ]
-      },
-      {
-       "module": 138,
-       "param": "value",
-       "label": "velocity",
-       "head": "velocity"
       }
      ],
      "preset": "Init",
@@ -64593,8 +64594,8 @@
     {
      "id": 35,
      "type": "steps",
-     "x": 280,
-     "y": 560,
+     "x": 380,
+     "y": 26,
      "params": {
       "len": 16,
       "rate": 4,
@@ -64736,7 +64737,7 @@
      "factoryPatterns": {
       "version": 1,
       "ids": [
-       "8904423a"
+       "04b55b0d"
       ]
      }
     },
@@ -70814,23 +70815,14 @@
       12,
       106,
       140,
-      148
+      148,
+      35
      ],
      "inputs": [
       {
-       "module": 34,
+       "module": 35,
        "port": "keys",
-       "label": "keys",
-       "also": [
-        {
-         "module": 40,
-         "port": "keys"
-        },
-        {
-         "module": 42,
-         "port": "keys"
-        }
-       ]
+       "label": "keys"
       }
      ],
      "outputs": [
@@ -70880,19 +70872,15 @@
          "port": "out"
         }
        ]
-      },
-      {
-       "module": 45,
-       "port": "out",
-       "label": "shuffle"
-      },
-      {
-       "module": 46,
-       "port": "out",
-       "label": "scale"
       }
      ],
      "params": [
+      {
+       "module": 35,
+       "param": "grid",
+       "label": "DRUMS",
+       "span": 4
+      },
       {
        "module": 43,
        "param": "ka",
@@ -70912,31 +70900,6 @@
         "6",
         "7",
         "8"
-       ]
-      },
-      {
-       "module": 45,
-       "param": "pos",
-       "label": "shuffle",
-       "names": [
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "7"
-       ]
-      },
-      {
-       "module": 46,
-       "param": "pos",
-       "label": "scale",
-       "names": [
-        "1/16",
-        "1/8T",
-        "1/32",
-        "1/16T"
        ]
       },
       {
@@ -71091,6 +71054,37 @@
        "param": "value",
        "label": "velocity",
        "head": "velocity"
+      },
+      {
+       "module": 35,
+       "param": "len",
+       "label": "last step",
+       "head": "pattern"
+      },
+      {
+       "module": 45,
+       "param": "pos",
+       "label": "shuffle",
+       "names": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+       ]
+      },
+      {
+       "module": 46,
+       "param": "pos",
+       "label": "scale",
+       "names": [
+        "1/16",
+        "1/8T",
+        "1/32",
+        "1/16T"
+       ]
       }
      ],
      "preset": "Init",

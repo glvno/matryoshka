@@ -619,8 +619,8 @@
   {
    "id": 35,
    "type": "steps",
-   "x": 280,
-   "y": 560,
+   "x": 380,
+   "y": 26,
    "params": {
     "len": 16,
     "rate": 4,
@@ -6730,23 +6730,14 @@
     12,
     106,
     140,
-    148
+    148,
+    35
    ],
    "inputs": [
     {
-     "module": 34,
+     "module": 35,
      "port": "keys",
-     "label": "keys",
-     "also": [
-      {
-       "module": 40,
-       "port": "keys"
-      },
-      {
-       "module": 42,
-       "port": "keys"
-      }
-     ]
+     "label": "keys"
     }
    ],
    "outputs": [
@@ -6796,19 +6787,15 @@
        "port": "out"
       }
      ]
-    },
-    {
-     "module": 45,
-     "port": "out",
-     "label": "shuffle"
-    },
-    {
-     "module": 46,
-     "port": "out",
-     "label": "scale"
     }
    ],
    "params": [
+    {
+     "module": 35,
+     "param": "grid",
+     "label": "DRUMS",
+     "span": 4
+    },
     {
      "module": 43,
      "param": "ka",
@@ -6828,31 +6815,6 @@
       "6",
       "7",
       "8"
-     ]
-    },
-    {
-     "module": 45,
-     "param": "pos",
-     "label": "shuffle",
-     "names": [
-      "1",
-      "2",
-      "3",
-      "4",
-      "5",
-      "6",
-      "7"
-     ]
-    },
-    {
-     "module": 46,
-     "param": "pos",
-     "label": "scale",
-     "names": [
-      "1/16",
-      "1/8T",
-      "1/32",
-      "1/16T"
      ]
     },
     {
@@ -7007,6 +6969,37 @@
      "param": "value",
      "label": "velocity",
      "head": "velocity"
+    },
+    {
+     "module": 35,
+     "param": "len",
+     "label": "last step",
+     "head": "pattern"
+    },
+    {
+     "module": 45,
+     "param": "pos",
+     "label": "shuffle",
+     "names": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7"
+     ]
+    },
+    {
+     "module": 46,
+     "param": "pos",
+     "label": "scale",
+     "names": [
+      "1/16",
+      "1/8T",
+      "1/32",
+      "1/16T"
+     ]
     }
    ],
    "preset": "Init",
