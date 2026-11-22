@@ -374,7 +374,7 @@ static void link_frames(void)
         return;
     frame(C_HELLO, 0, 0);
     n = reply(0, R_INFO, b, sizeof b);
-    OK(n == 20u && (b[14] & 2u) && b[15] == 60u && rd16(b + 16) > 0u && rd16(b + 18) == pt_total_bytes());
+    OK(n == 26u && (b[14] & 2u) && b[15] == 60u && rd16(b + 16) > 0u && rd16(b + 18) == pt_total_bytes());
     /* PUT in two chunks */
     memset(b, 0, sizeof b);
     b[2] = (uint8_t)PATTERN_CASES[c].payload_len;
@@ -539,16 +539,16 @@ static void kits(void)
         OK(!load_patch(bin, len) && links_ok(&clean) == n);
         pt_on = 1;
         if (!i) {                                       /* (#1177) a copy of a linked factory pattern is a plain one, inline:
-                                                         * P02 (27 hits with its fill-in) does not fit the 808 Kit's bytes, so
-                                                         * nothing changes; P21 (16) does: to P25, linked to nothing */
+                                                         * P04 does not fit the 808 Kit's bytes, so nothing changes; P21
+                                                         * (16 hits) does: to P25, linked to nothing */
             static uint8_t before[M1_PATCH_MAX];
             const uint32_t *w, *x;
             uint32_t m = (uint32_t)eng_steps_module(0), q = 24u, blen;
             int nw;
-            OK(!load_patch(bin, len) && pl_free(q) && pl_link(1) != 0u && pl_link(20) != 0u);
+            OK(!load_patch(bin, len) && pl_free(q) && pl_link(3) != 0u && pl_link(20) != 0u);
             blen = m1_cur_len;
             memcpy(before, m1_cur, blen);
-            OK(pl_copy(1, q) == -2 && pl_free(q) && m1_cur_len == blen && !memcmp(before, m1_cur, blen));
+            OK(pl_copy(3, q) == -2 && pl_free(q) && m1_cur_len == blen && !memcmp(before, m1_cur, blen));
             OK(pl_copy(20, q) == 0 && !pl_link(q) && pl_link(20) != 0u);
             nw = eng_pattern_notes(m, 20, &w);
             OK(nw > 0 && nw == eng_pattern_notes(m, q, &x) && !memcmp(w, x, 4u * (uint32_t)nw) && inline_has(q) == 1);
