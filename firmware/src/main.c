@@ -1037,17 +1037,17 @@ static void fallback_boot(void);
 /* a slot's patch as read (preset_load), a factory patch unpacked (factory_write) */
 static uint8_t bank_buf[M1_PATCH_MAX] ENG_POOL;
 
-/* slot n into the engine; an empty slot or one that does not load: the fallback patch. 0 = the slot's patch runs */
+/* slot n into the engine; an empty slot or one that does not load (or past M1_PATCH_MAX: m1_set_current, #1134): the
+ * fallback patch. 0 = the slot's patch runs */
 static int preset_load(uint32_t n)
 {
     uint32_t len = 0;
     char slot_name[M1_NAME + 1];
-    if (!slot_used(n) || sl_read(n, bank_buf, &len, slot_name) || m1_apply(bank_buf, len)) {
+    if (!slot_used(n) || sl_read(n, bank_buf, &len, slot_name) || m1_apply(bank_buf, len) || m1_set_current(bank_buf, len)) {
         fallback_boot();
         cur_preset = n < bank_slots ? n : 0u;
         return -1;
     }
-    m1_set_current(bank_buf, len);
     cur_preset = n;
     put(label_buf, slot_name)[0] = 0;
     patch_label = label_buf;
@@ -1304,13 +1304,14 @@ static void factory_installed(void)
 /* safe mode: SAVE held while the loading screen is up, or the previous boot did not get through (bootguard): nothing is
  * read from the flash (the bank stays: a normal boot opens it again) */
 
+_Static_assert(sizeof FALLBACK_PATCH <= M1_PATCH_MAX, "m1_set_current takes the fallback patch (#1134)");
 /* safe mode's patch, and the last resort when a slot does not load: the fallback compiled into the firmware
  * (factory_tier.h FALLBACK_PATCH, web/src/fallback.ts) */
 static void fallback_boot(void)
 {
     boot_step("PATCH");
     if (m1_apply(FALLBACK_PATCH, sizeof FALLBACK_PATCH) == 0)
-        m1_set_current(FALLBACK_PATCH, sizeof FALLBACK_PATCH);
+        (void)m1_set_current(FALLBACK_PATCH, sizeof FALLBACK_PATCH);   /* (it fits: the assert above) */
     cur_preset = 0;
     patch_label = FALLBACK_NAME;
     screen_idle();
@@ -1857,9 +1858,7 @@ static void host_poll(void)
             ota_session();                          /* returns only if nothing was committed */
         midi_in_resume();
         if (patches_up) {                           /* (before patch_boot: it loads them next) */
-            if (m1_apply(m1_cur, m1_cur_len) == 0)
-                m1_set_current(m1_cur, m1_cur_len);
-            else
+            if (m1_apply(m1_cur, m1_cur_len) || m1_set_current(m1_cur, m1_cur_len))
                 preset_load(cur_preset);
         }
     }

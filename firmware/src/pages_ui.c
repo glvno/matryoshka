@@ -1065,7 +1065,7 @@ static void text_onto(uint16_t *row, uint32_t w, const font_t *f, uint32_t r, co
     if (r == 0u)
         scr_pend(x, text_w(f, s, -1), f->h, s, -1);
     for (k = 0; s[k]; k++) {
-        uint32_t c = (uint8_t)s[k], gw, rb, j;
+        uint32_t c = (uint8_t)s[k], gw, j;
         const fglyph_t *g;
         const uint8_t *bits;
         uint8_t gi = c >= 0x20u && c < 0x7Fu ? f->map[c - 0x20u] : 255u;
@@ -1073,9 +1073,8 @@ static void text_onto(uint16_t *row, uint32_t w, const font_t *f, uint32_t r, co
             continue;
         g = &f->g[gi];
         gw = g->w;
-        rb = (gw + 1u) / 2u;
-        bits = f->bits + g->off + r * rb;
-        for (j = 0; j < gw; j++) {
+        bits = glyph_row(f, g, r);
+        for (j = 0; bits && j < gw; j++) {
             uint32_t a = (j & 1u) ? bits[j >> 1] & 15u : bits[j >> 1] >> 4, at = px + (uint32_t)((int32_t)j + g->x);
             if (a && at < w)
                 row[at] = mix565(fg, row[at], a + (a > 7u ? 1u : 0u));

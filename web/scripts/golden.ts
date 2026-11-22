@@ -4402,7 +4402,7 @@ if (process.argv.includes('--panel-fixtures')) {
       p.cables.push({ from: { module: other.id, port: 'trig' }, to: { module: another.id, port: 'gate' } });
     }
     // (pattern 1 alone, no linked patterns or songs: only pattern 1 is under test, and the ambiguous one's second track then
-    // fits the FM-1's 3,840 bytes; a binary past them is one the FM-1 never runs, and m1_set_current keeps the patch it had)
+    // fits the FM-1's 3,840 bytes; a binary past them is one the FM-1 never runs, and m1_set_current refuses it, #1134)
     delete p.modules.find((m) => m.type === 'fm1')!.seq;
     delete track.patterns;
     if (!deviceBudget(p).fits) throw new Error(`pattern-${mode}: past the FM-1's limits`);

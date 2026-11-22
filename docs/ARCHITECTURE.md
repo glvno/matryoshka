@@ -1168,8 +1168,9 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   dim, mid, breathing), `Fm1Ui.lights()`, and the panel colours buttons and keys from them (PLAY red stopped, green
   breathing running; SEQ steps lit, the playhead mid, tracks dim on the black keys).
 - LCD restyle: the dark brand palette in RGB565 (ui.c `C_*`, pages_ui.c `P_*`) and Barlow Condensed SemiBold as
-  4-bit anti-aliased bitmaps at four sizes (`tools/gen_font.py`, stdlib TrueType reader + the splash's scanline fill →
-  `firmware/src/font_bc.h`, ~36 KB of flash; `font_bc.c` `text_bc` blends per channel). The device page, legend, menu,
+  4-bit anti-aliased bitmaps at eight sizes (`tools/gen_font.py`, stdlib TrueType reader + the splash's scanline fill →
+  `firmware/src/font_bc.h`, about 41 KB of flash: each glyph keeps only its rows with ink, read through `font_bc.c`
+  `glyph_row`, [D-940](ledger/device-ui.md#D-940); `font_bc.c` `text_bc` blends per channel). The device page, legend, menu,
   manual, SEQ page and the top bar use it; the update / crash screens keep the 5x7 font. Host preview:
   `tools/ui_preview.sh OUT.png PRESET DEVICE:PAGE OCTAVE 0` (env `TOAST=k`, `DEVTOAST=1`).
 - Emulator: `tools/emu/src/font.rs` also reads font_bc.h and matches its fully covered / empty pixels (the blended edge is

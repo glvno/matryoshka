@@ -19,6 +19,14 @@ static uint32_t text_w(const font_t *f, const char *s, int32_t n)
     return w;
 }
 
+/* the coverage of glyph g's row r of the line box (two pixels a byte, high nibble first), or 0 for an empty row: font_bc.h
+ * keeps only a glyph's ink rows, from g->y until the next glyph's begin */
+static const uint8_t *glyph_row(const font_t *f, const fglyph_t *g, uint32_t r)
+{
+    uint32_t o = g->off + (r - g->y) * ((g->w + 1u) / 2u);
+    return r >= g->y && o < g[1].off ? f->bits + o : 0;
+}
+
 /* the ink -> paper ramp of one text (16 coverage steps) */
 static void text_ramp(uint16_t *lut, uint16_t fg, uint16_t bg)
 {
@@ -52,7 +60,7 @@ static uint32_t text_bcn(const font_t *f, uint32_t x, uint32_t y, const char *s,
         for (i = 0; i < w; i++)
             row[i] = bg;
         for (k = 0; s[k] && (n < 0 || k < n); k++) {
-            uint32_t c = (uint8_t)s[k], gw, rb, j;
+            uint32_t c = (uint8_t)s[k], gw, j;
             const fglyph_t *g;
             const uint8_t *bits;
             uint8_t gi = c >= 0x20u && c < 0x7Fu ? f->map[c - 0x20u] : 255u;
@@ -60,9 +68,8 @@ static uint32_t text_bcn(const font_t *f, uint32_t x, uint32_t y, const char *s,
                 continue;
             g = &f->g[gi];
             gw = g->w;
-            rb = (gw + 1u) / 2u;
-            bits = f->bits + g->off + r * rb;
-            for (j = 0; j < gw; j++) {
+            bits = glyph_row(f, g, r);
+            for (j = 0; bits && j < gw; j++) {
                 uint32_t a = (j & 1u) ? bits[j >> 1] & 15u : bits[j >> 1] >> 4, at = px + (uint32_t)((int32_t)j + g->x);
                 if (a && at < w)
                     row[at] = lut[a];
