@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **A row that a cable sets now says so on the FM-1.** When a cable into a module's parameter input has a range on a row, the cable decides that row's value, so turning its knob did nothing you could hear while the number still moved. Now the knob leaves the value alone and the screen says `SET BY` and the cable's source, such as `SET BY PRE-SCALE`. In the editor, that row's slider is faded with a dashed outline, and its tooltip names the source. Needs the next firmware for the FM-1 part (#1202).
+- **Double a pattern: hold SEQ and press OCT+ on the FM-1's SEQ page, or press `×2` on a Steps card.** The shown pattern of every track becomes twice as long (16 steps become 32, up to 64), its steps repeated in the new half with their notes, ties, velocities, chance, conditions, ratchets, micro timing and P-locks, so it plays the same twice. Double again to repeat that. Pattern 1 doubles the track's length; the track's other patterns keep theirs. While playing it goes on in the first half. The bar says `DOUBLED: 32 STEPS`; when something would not fit (64 steps, notes, P-locks or the patch's room) nothing changes and the bar says why. With Live on, a double on the FM-1 is one undo step in the editor. Needs the next firmware for the FM-1 part ([D-838](docs/ledger/steps.md#D-838)).
 
 ## 1.25.0 — 2026-11-22
 

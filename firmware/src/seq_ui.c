@@ -1576,6 +1576,7 @@ static void seq_clear_cancel(void)
 #define PATTERN_OP_COPY 1u
 #define PATTERN_OP_CLEAR_ALL 2u
 #define PATTERN_OP_DEMO_SET 3u
+#define PATTERN_OP_DOUBLE 4u
 /* the running patch has a demo set (#1179: factory.c fc_demo by its layout, looked up once a patch) */
 static uint32_t seq_demo_seen;          /* (pages_gen() << 8 | factory.c fc_scans) + 1 of the lookup, 0 none yet: another patch
                                          * or new factory content looks again */
@@ -1638,6 +1639,31 @@ static void seq_copy_press(void)
     put2(put(put(put2(put(m, "P"), p + 1), MSG_COPIED_TO), "P"), (int32_t)q + 1);
     seq_msg_due = m;
     ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+/* SEQ held + OCT+ (D-838): the selected pattern of every track doubled (pl_double): twice as long, its steps repeated in
+ * the new half. Running, it goes on playing (the playhead in the first half). The bar says DOUBLED: 32 STEPS (the longest
+ * track), or why nothing changed. A key handler: state only, the bar is the loop's (D-228) */
+static void seq_double_press(void)
+{
+    int p = eng_pattern(), rc;
+    uint32_t most = 0;
+    char num[8];
+    if (p < 0 || !eng_steps_count()) {
+        seq_msg_due = MSG_NO_STEPS;
+        return;
+    }
+    seq_msg_ms = 1500;
+    rc = pl_double((uint32_t)p, &most);
+    if (rc) {
+        seq_msg_due = rc == -1 ? MSG_DOUBLE_STEPS : rc == -2 ? MSG_DOUBLE_NOTES : rc == -3 ? MSG_DOUBLE_LOCKS : MSG_DOUBLE_FULL;
+        return;
+    }
+    seq_held = -1;
+    m1_pattern_op_now(PATTERN_OP_DOUBLE, (uint32_t)p, 0, 0);
+    fmt_int(num, (int32_t)most);
+    put(put(put(seq_msg_buf, MSG_DOUBLED), num), MSG_STEPS_AFTER)[0] = 0;
+    seq_msg_due = seq_msg_buf;
+    ui_dirty = 2;                                /* (the grid has more pages of steps now) */
 }
 /* SEQ held + HOME (#1178): every pattern and song cleared, asked first as the track's clear asks (D-534): HOME again
  * within 3 s, SEQ still held and nothing else pressed or turned meanwhile (seq_all_cancel) */
