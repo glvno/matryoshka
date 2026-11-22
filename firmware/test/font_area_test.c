@@ -28,7 +28,7 @@ static int ldr_erase(uint32_t off) { memset(flash + off, 0xFF, 0x1000u); return 
 /* proto.c's and storage_hw.c's parts factory.c needs */
 #define M1_NAME 20u
 #define M1_PATCH_MAX 3840u
-enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE, S_FULL, S_MISSING, S_USED };
+enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE, S_FULL, S_MISSING, S_USED, S_BANK };
 static uint8_t flash_ok = 1;
 static uint16_t m1_crc16(const uint8_t *p, uint32_t n)
 {
@@ -85,6 +85,9 @@ static int st_prog(uint32_t off, const void *src, uint32_t n)
 static uint8_t font_ok;
 static uint32_t font_changes;
 static void m1_font_changed(void) { font_changes++; }
+/* slotstore.c's: the bank's claim left the font area's second run alone (0: a bank of more than 48 patches keeps it) */
+static int font_room = 1;
+static int sl_font_room(void) { return font_room; }
 #include "../src/font_bc.h"
 #define FA_PTR(off) ((const uint8_t *)flash + (off))
 #include "../src/font_area.c"
@@ -238,6 +241,16 @@ int main(int argc, char **argv)
     fa_scan();
     check("another font's header: no font", !font_ok);
     place();
+    font_room = 0;                                         /* (a bank of more than 48 patches: its sectors are the bank's) */
+    fa_scan();
+    {
+        uint8_t p[5];
+        m1_font_info(p);
+        check("no room (the bank keeps the second run): no font though the image is whole; INFO bit 3", !font_ok && (p[0] & 8u));
+        check("no room: FONT BEGIN refused (S_BANK), nothing erased", m1_font_begin() == S_BANK && !memcmp(at(0), img, FA_HDR));
+    }
+    font_room = 1;
+    fa_scan();
 
     /* the update loader's sweep: the image's sectors stay; the image never has a record where it looks */
     ldr_records_clear();

@@ -98,7 +98,11 @@ except ImportError:
 
 PREFIX = [0x7D, 0x4D, 0x31]
 STATUS = ["ok", "bad offset or size", "checksum mismatch", "the firmware refused the patch", "flash error",
-          "unknown command", "nothing to store"]
+          "unknown command", "nothing to store", "the preset store is full", "no such preset", "still in use",
+          "the bank holds more than 48 patches"]
+FONT_BLOCKED = ("the FM-1's bank holds more than 48 patches, so there is no room for the screen font yet (it needs three "
+                "of the bank's old sectors, #602): delete patches until 48 or fewer are left, restart the FM-1, then "
+                "install the font")
 
 
 def pack7(b):
@@ -433,18 +437,20 @@ def font_id(img):
 
 def font_info(link):
     """INFO byte 20 and bytes 21..24 (proto.c m1_info): None for a firmware with its type compiled in (before #602), else
-    {"valid": the FM-1 has the font it needs, "writing": an install began and did not commit, "id": that font's id}"""
+    {"valid": the FM-1 has the font it needs, "writing": an install began and did not commit, "blocked": no room for it
+    yet (a bank of more than 48 patches keeps its sectors), "id": that font's id}"""
     p = link.ask(frame(0x01), (0x41,))
     if len(p) < 25 or not p[20] & 1:
         return None
-    return {"valid": bool(p[20] & 2), "writing": bool(p[20] & 4), "id": p[21] | p[22] << 8 | p[23] << 16 | p[24] << 24}
+    return {"valid": bool(p[20] & 2), "writing": bool(p[20] & 4), "blocked": bool(p[20] & 8),
+            "id": p[21] | p[22] << 8 | p[23] << 16 | p[24] << 24}
 
 
 def font_info_text(i):
     if i is None:
         return "screen font: built into this firmware (no font area)"
     return (f"screen font: {'installed' if i['valid'] else 'missing (every size draws the small type)'}, font {i['id']:08x}"
-            + ("; an install was begun" if i["writing"] else ""))
+            + ("; an install was begun" if i["writing"] else "") + (f"; {FONT_BLOCKED}" if i.get("blocked") else ""))
 
 
 def font_sum(link, s):

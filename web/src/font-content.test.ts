@@ -77,19 +77,24 @@ describe('INFO bytes 20..24: the font area', () => {
   it('a firmware with its type compiled in says nothing; one with the area names its font and whether it is there', () => {
     expect(info([])?.font).toBeUndefined();
     expect(info([0, 0, 0, 0, 0])?.font).toBeUndefined();
-    expect(info([1, 0x53, 0x8a, 0x11, 0xe6])?.font).toEqual({ valid: false, writing: false, id: 0xe6118a53 });
-    expect(info([7, 1, 0, 0, 0])?.font).toEqual({ valid: true, writing: true, id: 1 });
+    expect(info([1, 0x53, 0x8a, 0x11, 0xe6])?.font).toEqual({ valid: false, writing: false, blocked: false, id: 0xe6118a53 });
+    expect(info([7, 1, 0, 0, 0])?.font).toEqual({ valid: true, writing: true, blocked: false, id: 1 });
+    expect(info([9, 1, 0, 0, 0])?.font).toEqual({ valid: false, writing: false, blocked: true, id: 1 });
   });
 });
 
 describe('what the editor offers on connect', () => {
+  const font = (o: Partial<NonNullable<Info['font']>>): Info['font'] => ({ valid: false, writing: false, blocked: false, id: FA_ID, ...o });
   it('nothing for a firmware without the area or with its font; an install when it lacks the font this site has', () => {
     expect(fontOffer(undefined, image)).toBeNull();
-    expect(fontOffer({ valid: true, writing: false, id: FA_ID }, image)).toBeNull();
-    expect(fontOffer({ valid: false, writing: false, id: FA_ID }, image)).toMatchObject({ install: true, text: expect.stringMatching(/no screen font/) });
-    expect(fontOffer({ valid: false, writing: true, id: FA_ID }, image)).toMatchObject({ install: true, text: expect.stringMatching(/cut off/) });
-    expect(fontOffer({ valid: false, writing: false, id: FA_ID ^ 1 }, image)).toMatchObject({ install: false });
-    expect(fontOffer({ valid: false, writing: false, id: FA_ID }, null)).toMatchObject({ install: false });
+    expect(fontOffer(font({ valid: true }), image)).toBeNull();
+    expect(fontOffer(font({}), image)).toMatchObject({ install: true, text: expect.stringMatching(/no screen font/) });
+    expect(fontOffer(font({ writing: true }), image)).toMatchObject({ install: true, text: expect.stringMatching(/cut off/) });
+    expect(fontOffer(font({ id: FA_ID ^ 1 }), image)).toMatchObject({ install: false });
+    expect(fontOffer(font({}), null)).toMatchObject({ install: false });
+  });
+  it('no install while the bank holds more than 48 patches: how to make room', () => {
+    expect(fontOffer(font({ blocked: true }), image)).toMatchObject({ install: false, text: expect.stringMatching(/more than 48 patches/) });
   });
 });
 

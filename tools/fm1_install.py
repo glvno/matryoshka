@@ -916,6 +916,9 @@ def install_font(a, out, font):
     if i["valid"] and not i["writing"]:
         print(f"screen font: current (font {i['id']:08x})", file=out)
         return
+    if i.get("blocked"):                                  # (a bank of more than 48 patches keeps the font's sectors)
+        print(f"screen font: not installed: {m1_link.FONT_BLOCKED}", file=out)
+        return
     if font is None or font_image_id(font[1]) != i["id"]:
         raise InstallError("nofont", f"the firmware needs screen font {i['id']:08x}, which is not here"
                                      f"{f' ({font[0]} is font {font_image_id(font[1]):08x})' if font else ''}: the FM-1 "

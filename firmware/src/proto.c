@@ -90,7 +90,9 @@ enum { R_PATTERN_OP = 0x65 };                               /* unasked (#1177, #
 enum { C_FONT = 0x1F, R_FONT_SUM = 0x68 };                  /* the font area (#602, font_area.c): op u8 then 1 BEGIN; 2 WRITE
                                                              * sector u8, offset u16, 1..256 bytes inside one page; 3 SUM sector
                                                              * u8 -> FONT_SUM sector, ok u8, CRC-16 u16; 4 COMMIT the 64-byte
-                                                             * header. BEGIN, WRITE and COMMIT -> ACK FONT, op, status, sector */
+                                                             * header. BEGIN, WRITE and COMMIT -> ACK FONT, op, status, sector
+                                                             * (BEGIN S_BANK: the bank holds more than 48 patches and keeps the
+                                                             * font area's second run, font_area.c) */
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
 #define M1_FEATURES3 255u                                      /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549), bit 19 = INFO's flags bit 3 says GLO > SYSTEM > EDITOR (#702), bit 20 = ARMS, the editor's armed set (#191), bit 21 = ARMS and ARMS_NOW carry ENG_MSET_WORDS words, modules 0..127 (#721; INFO byte 1 says 128), bit 22 = device settings, bit 23 = explicit factory pattern origins / snapshots */
@@ -103,7 +105,7 @@ enum { C_FONT = 0x1F, R_FONT_SUM = 0x68 };                  /* the font area (#6
 #define M1_SLOTS 64u                                         /* the bank's ids (slotstore.c) */
 static uint32_t bank_slots = M1_SLOTS;                       /* the slots there are (slotstore.c pt_claim: 60 once the pattern store is on) */
 #define M1_NAME 20u
-enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE, S_FULL, S_MISSING, S_USED };
+enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE, S_FULL, S_MISSING, S_USED, S_BANK };
 
 static uint8_t m1_up[M1_PATCH_MAX] ENG_POOL, m1_cur[M1_PATCH_MAX] ENG_POOL;     /* the patch as it runs (parameter edits included) */
 static uint32_t m1_up_got, m1_up_total, m1_cur_len;

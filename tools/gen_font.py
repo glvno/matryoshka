@@ -39,10 +39,15 @@ SS = 4
 # The font area (#602): the sizes whose tables a device build reads from flash outside the firmware. FONT_S stays in the
 # firmware: the menu, the lists and the messages use it, and without the font area every size draws its letters.
 AREA = ["FONT_M", "FONT_L", "FONT_F", "FONT_H", "FONT_N", "FONT_V", "FONT_T"]
-# its flash sectors (offset / 4096, run length): sectors no Matryoshka firmware wrote before. 0x93..0x96 lie between the
-# firmware's area and the bank, 0xE7..0xE9 between the palette (0xE5, 0xE6) and the factory region, 0xFC..0xFE between
-# the factory region and the flash chip's key sector (0xFF). A table stays inside one run.
-AREA_RUNS = [(0x93, 4), (0xE7, 3), (0xFC, 3)]
+# its flash sectors (offset / 4096, run length; D-180): 0x93..0x96 between the firmware's area and the bank, never written
+# before; 0xD0..0xD2, the three lowest sectors of the bank's old range that the pattern store's 1.26 layout leaves out
+# (slotstore.c: the font area's only once the bank fits 48 slots); 0xFC..0xFE between the factory region and the flash
+# chip's key sector (0xFF), Felucca's globals. Never 0xE7..0xE9: the stock firmware's VM (the radio's calibration) and
+# Bluetooth address are there. A table stays inside one run.
+AREA_RUNS = [(0x93, 4), (0xD0, 3), (0xFC, 3)]
+# the magics the bank's and the pattern store's scans take at a sector's start (slotstore.c "M1S2", "M1SL"; patstore.c
+# "PTS1"): an image sector in their sectors must not begin with one
+STORE_MAGICS = (b"M1S2", b"M1SL", b"PTS1")
 AREA_MAGIC = 0x314E464D                  # "MFN1", programmed last (the commit)
 AREA_LAYOUT = 1
 AREA_HDR = 64
@@ -344,6 +349,8 @@ def pack_area(tables):
         rec = bytes(img[s * SECTOR + 0xF00:s * SECTOR + 0xF00 + 80]).ljust(80, b"\xFF")
         if is_record(rec):
             raise SystemExit(f"gen_font: the font area's sector {s} holds bytes the update loader takes for an update record")
+        if bytes(img[s * SECTOR:s * SECTOR + 4]) in STORE_MAGICS:
+            raise SystemExit(f"gen_font: the font area's sector {s} begins with a magic the bank's or the store's scan takes")
     hdr = struct.pack("<IBBHII", AREA_MAGIC, AREA_LAYOUT, len(secs), 0xFFFF, len(img), 0) + struct.pack(f"<{len(secs)}H", *secs)
     img[:len(hdr)] = hdr
     crc = zlib.crc32(bytes(img[16:]))

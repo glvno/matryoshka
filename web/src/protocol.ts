@@ -185,7 +185,8 @@
 //               [byte15 the bank's slots (absent: 64)],
 //               [bytes16..19 the pattern store's bytes free and in all, u16 LE each],
 //               [byte20 the font area (#602): bit0 the firmware reads its type's larger sizes from it (FONT), bit1 the FM-1
-//               has that font, bit2 an install began and did not commit; bytes21..24 the font's id, u32 LE]. Also unasked
+//               has that font, bit2 an install began and did not commit, bit3 no room for it yet (the bank holds more than
+//               48 patches: FONT BEGIN answers status 10); bytes21..24 the font's id, u32 LE]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8), and when EDITOR changed after
 //               a HELLO (feature bit 19)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
@@ -199,7 +200,7 @@ export const PREFIX = [0x7d, 0x4d, 0x31];
 export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51, pattern: 0x36, song: 0x37, patternNow: 0x52, songNow: 0x53, armsNow: 0x54, arms: 0x39, tempo: 0x38, tempoNow: 0x55, locksNow: 0x56, keysNow: 0x57, guideNow: 0x58, deviceSettings: 0x3a, deviceSettingsReply: 0x59, originNow: 0x5a, pats: 0x3b, pat: 0x5b, patGet: 0x3c, patData: 0x5c, patPut: 0x3d, patStored: 0x5d, patDel: 0x3e, patLinkNow: 0x5e } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
-export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store', 'the preset store is full', 'no such preset'];
+export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store', 'the preset store is full', 'no such preset', 'still in use', 'the bank holds more than 48 patches'];
 
 export function pack7(bytes: ArrayLike<number>): number[] {
   const out: number[] = [];
@@ -412,9 +413,10 @@ export interface Info {
   /** the pattern store's payload bytes free and in all (INFO bytes 16..19, #901); absent before it */
   store?: { free: number; total: number };
   /** the font area (INFO bytes 20..24, #602): the font this firmware needs (`id`, the image's CRC-32), whether the FM-1
-   *  has it, and whether an install began and did not commit; absent from firmware with its type compiled in (1.25 and
+   *  has it, whether an install began and did not commit, and whether it has no room for it yet (`blocked`: the bank
+   *  holds more than 48 patches, whose sectors the font needs); absent from firmware with its type compiled in (1.25 and
    *  older) */
-  font?: { valid: boolean; writing: boolean; id: number };
+  font?: { valid: boolean; writing: boolean; blocked: boolean; id: number };
 }
 export interface Ack {
   cmd: number;
@@ -588,7 +590,7 @@ export function parseInfo(p: Parsed): Info | null {
     ...(p.payload.length >= 16 && p.payload[15] ? { slots: p.payload[15] } : {}),
     ...(p.payload.length >= 20 ? { store: { free: p.payload[16] | (p.payload[17] << 8), total: p.payload[18] | (p.payload[19] << 8) } } : {}),
     ...(p.payload.length >= 25 && p.payload[20] & 1 ? { font: { valid: !!(p.payload[20] & 2), writing: !!(p.payload[20] & 4),
-      id: (p.payload[21] | p.payload[22] << 8 | p.payload[23] << 16 | p.payload[24] << 24) >>> 0 } } : {}) };
+      blocked: !!(p.payload[20] & 8), id: (p.payload[21] | p.payload[22] << 8 | p.payload[23] << 16 | p.payload[24] << 24) >>> 0 } } : {}) };
 }
 /** the test tools drive the editor's own page against the test rig, which is set to IGNORE so the site leaves it alone
  *  (#702): their page (scripts/emu-scenarios.mjs --device) sets this before it loads. Nothing else does */

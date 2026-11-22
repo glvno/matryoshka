@@ -14,10 +14,10 @@ typedef struct { uint8_t h, base; const uint8_t *map; const fglyph_t *g; const u
  * installer puts on the FM-1 next to the firmware (firmware/src/font_area.c checks it at boot). FA_ID, the CRC-32 of the
  * image's bytes 16 .. its end, names the font this firmware needs; FA_SECTOR_LIST is the flash sector (offset / 4096) of
  * each of the image's sectors. Without that image every size draws FONT_S's letters (font_bc.c font_use). */
-#define FA_ID 0xE6118A53u
+#define FA_ID 0x528F1926u
 #define FA_LEN 40946u
 #define FA_SECTORS 10u
-#define FA_SECTOR_LIST {0x93u, 0x94u, 0x95u, 0x96u, 0xE7u, 0xE8u, 0xE9u, 0xFCu, 0xFDu, 0xFEu}
+#define FA_SECTOR_LIST {0x93u, 0x94u, 0x95u, 0x96u, 0xD0u, 0xD1u, 0xD2u, 0xFCu, 0xFDu, 0xFEu}
 #if FONT_AREA
 #include "fm1_xip.h"
 #endif
@@ -319,7 +319,7 @@ static const uint8_t font_m_bits[3840] = {
     251,0,143,248,0,36,64,0,1,66,0,0,29,255,149,213,94,137,255,227,1,0,36,32,
 };
 #else                                           /* the same tables in the font area */
-#define font_m_map ((const uint8_t *)FM1_XIP(0xE9F6Bu))
+#define font_m_map ((const uint8_t *)FM1_XIP(0xD2F6Bu))
 #define font_m_g ((const fglyph_t *)FM1_XIP(0xFEAB4u))
 #define font_m_bits ((const uint8_t *)FM1_XIP(0xFDBB4u))
 #endif
@@ -1058,7 +1058,7 @@ static const uint8_t font_n_bits[3552] = {
 #else                                           /* the same tables in the font area */
 #define font_n_map ((const uint8_t *)FM1_XIP(0x960EDu))
 #define font_n_g ((const fglyph_t *)FM1_XIP(0x95BFCu))
-#define font_n_bits ((const uint8_t *)FM1_XIP(0xE918Bu))
+#define font_n_bits ((const uint8_t *)FM1_XIP(0xD218Bu))
 #endif
 static const font_t FONT_N = {19, 16, font_n_map, font_n_g, font_n_bits};
 
@@ -1705,6 +1705,6 @@ static const uint8_t font_t_bits[8587] = {
 #else                                           /* the same tables in the font area */
 #define font_t_map ((const uint8_t *)FM1_XIP(0x961ABu))
 #define font_t_g ((const fglyph_t *)FM1_XIP(0x95F08u))
-#define font_t_bits ((const uint8_t *)FM1_XIP(0xE7000u))
+#define font_t_bits ((const uint8_t *)FM1_XIP(0xD0000u))
 #endif
 static const font_t FONT_T = {31, 26, font_t_map, font_t_g, font_t_bits};

@@ -1333,6 +1333,7 @@ static void patch_boot(void)                    /* the slot the settings record 
     boot_step("BANK");
     sl_scan();
     pt_claim();                                  /* (the pattern store's sectors, before any factory patch is placed: #901) */
+    fa_scan();                                   /* (the font area, once the claim says whose its bank-range sectors are, #602) */
     boot_step("FACTORY");
     fc_scan();                                   /* (the firmware tier, and the factory region when valid, #915) */
     if (!bank_mask && sl_sec[SL_SETTINGS] == SL_NONE) {          /* an empty store: the first boot (or after a reset) */
@@ -1909,8 +1910,8 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         update_only("TWO BOOTS IN A ROW FAILED");
     if ((fm1_in.buttons & 3u) == 3u)                    /* OCT- + OCT+ held at power-on */
         update_only("OCT- + OCT+ HELD AT POWER-ON");
-    fl_plain_window_init();                             /* the flash's data area reads plain through the read window, and */
-    fa_scan();                                          /* the font area is checked there, as the type reads it (#602) */
+    fl_plain_window_init();                             /* the flash's data area reads plain through the read window, where
+                                                         * patch_boot's fa_scan checks the font area (#602) */
     boot_step("HOST");
     {                                                   /* a second for a flasher before any patch loads (#70) */
         uint32_t t0 = fm1_ms;

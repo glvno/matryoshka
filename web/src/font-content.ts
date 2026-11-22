@@ -28,10 +28,17 @@ export async function fetchFont(base = './firmware/'): Promise<Uint8Array | null
   return fontId(img) === null ? null : img;
 }
 
+/** what the editor says on connect about the screen font when the FM-1 has no room for it yet (INFO's font area bit 3):
+ *  its bank holds more than 48 patches, and the font needs three of the bank's old sectors (#602, D-180) */
+export const FONT_BLOCKED =
+  "This FM-1 has more than 48 patches, so there isn't room for the screen font yet, and it shows only its small type. " +
+  'Delete patches until 48 or fewer are left, restart the FM-1, then install the screen font.';
+
 /** what the editor says on connect about the screen font (null: nothing to do): an install when the FM-1 lacks the
  *  font its firmware needs and this site has that font, else how to get it */
 export function fontOffer(font: Info['font'], have: Uint8Array | null): { text: string; install: boolean } | null {
   if (!font || (font.valid && !font.writing)) return null;
+  if (font.blocked) return { text: FONT_BLOCKED, install: false };
   if (have && fontId(have) === font.id)
     return { text: font.writing ? 'An install of the screen font on this FM-1 was cut off: install it again.'
       : 'This FM-1 has no screen font yet: it shows only its small type. Install the screen font.', install: true };
