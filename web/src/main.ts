@@ -39,7 +39,10 @@ import { candidateTitle, renderList, renderProgress, renderRail, SnapSidebar, ty
 import { OutputLoudness } from './loudness-view';
 import { LimiterMeters } from './limit-view';
 import { EnvScreens } from './env-view';
-import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
+import { addToBank, bankCandidates, bankPatches, buildPatchesSection, deviceName, type LibrarySection as LibraryPane } from './bank';
+import { Palette } from './palette';
+import { PaletteView, renderPaletteRail, type PaletteActions, type PaletteMode } from './palette-view';
+import { patchDragSource } from './patch-drag';
 import { buildPresetsSection } from './library-presets';
 import { buildPatternsSection } from './pattern-library';
 import { factoryEntries, payloadHash, portablePatch } from './pattern-store';
@@ -368,6 +371,8 @@ let fromEmu = false;
  *  replayed turn just after it puts the FM-1 tab's copy of the panel back there */
 let focusNow: { device: number; page: number; at: number } | null = null;
 let deviceSlot: { slot: number; name: string } | null = null;
+/** the palette (#1196): made with the Sound design sidebar; null until then */
+let palette: Palette | null = null;
 /** the FM-1's panel state as it last reported it (GUIDE_NOW, #549; the controls strip follows it, #554), null: not reported */
 let fm1Panel: PanelState | null = null;
 /** the reports are ignored, as from older firmware (the emulator scenarios' check of the old path) */
@@ -473,6 +478,8 @@ device.onEvent = (e) => {
     }).catch(() => {});
     return;
   }
+  if (e.kind === 'palette') return palette?.received(e.now);   // (a switch, a hold-save, a write on the FM-1: the chips follow)
+  if (e.kind === 'paletteEntry') return;
   if (e.kind === 'link') {   // the FM-1's SEQ page loaded, saved or linked a stored pattern, or its SAVE wrote one (#901)
     patternsPane?.deviceChanged(currentView === 'library' && librarySection === 'patterns');
     if (live() && !linkBusy() && e.pattern > 0 && e.pattern < PATTERNS_MAX) void linkFromDevice(e.pattern, e.id ? { id: e.id, hash: e.hash } : null);
@@ -630,6 +637,7 @@ async function sendPatch(): Promise<boolean> {
       baseline = JSON.stringify(editor.patch);
       uploadedLoad = load;
       devStatus(sent.inline.length ? `patch on the FM-1. ${storeFullText(editor.patch.name, sent.inline)}` : 'patch on the FM-1');
+      device.sendLiveName(deviceName(editor.patch.name.trim() || 'PATCH'));   // (a hold-save of it on the FM-1 names its slot so)
       if (dirty) continue;   // the next upload must finish before sending indices from the changed patch
       const at = editor.focus && binaryPage(editor.patch, editor.focus.device, editor.focus.page);
       if (at) device.focus(at[0], at[1]);   // the FM-1 opens on the page the knobs edit here
@@ -840,7 +848,7 @@ function showArmed(): void {
 if (import.meta.env.DEV) (window as unknown as { __notes?: typeof sink }).__notes = sink;
 
 let refreshAssemblies: () => void = () => {};
-/** the factory patches and the Patches page's own copies (the morph picker keeps those of the same structure; the palette loads any) */
+/** the factory patches and the Patches page's own copies (the morph picker keeps those of the same structure; Commands loads any) */
 let snapshotCandidates: () => { name: string; patch: Patch }[] = () => [];
 /** (`like`: only a factory patch of its shape is built, presets.ts shapeOf; the others could not be of its structure) */
 const patchCandidates = (like?: Patch): { name: string; patch: Patch }[] => {
@@ -1387,7 +1395,7 @@ const saveCurrent = (): void => {
 saveBtn.onclick = saveCurrent;
 $('share-patch-btn').onclick = () => shareSheet.open();
 // the patch menu (#152): the PATCH panel's ⋯ (beside New patch) and the mobile bar's Patch ⋯ reach what moves a patch in or out of the
-// browser without the palette. Its results also show in a toast: the status line is narrow on a phone, and the FM-1
+// browser without Commands. Its results also show in a toast: the status line is narrow on a phone, and the FM-1
 // answers in the FM-1 & MIDI dialog (#dev-status), which is closed.
 const toastResult = (run: () => unknown) => async (): Promise<void> => {
   const records: MutationRecord[] = [];
@@ -1416,6 +1424,7 @@ const patchMenu = (): MenuItem[] => {
     { text: 'Save as .json', run: () => savePatch() },
     { text: 'Load .json\u2026', run: () => $('load-file').click() },
     { text: 'Store to an FM-1 slot\u2026', run: toastResult(() => storeToSlot()) },
+    { text: 'Add to palette', run: addCurrentToPalette },
     { text: 'FM-1 & MIDI settings\u2026', run: () => $<HTMLDialogElement>('device-bar').showModal(), rule: true },
   ];
   if (capabilityExperiment) items.push({ text: 'Inspect assembly capabilities…', run: () => void openCapabilityInspector(), rule: true });
@@ -1639,6 +1648,70 @@ const snapSide = new SnapSidebar(snapColumn, (b) => popMenu(sideMenu(b), b));
 // the sidebar runs the window's whole height at its right edge; the workspace (the canvas, the deck, Connect FM-1, ?) gives
 // up its width (style.css .snap-column)
 new ResizeObserver(() => document.documentElement.style.setProperty('--snap-col-w', `${snapColumn.offsetWidth}px`)).observe(snapColumn);
+// ---- the palette (#1196, palette.ts): 8 chips at the bottom of the Sound design sidebar, a copy in the Library (its rows
+// are dragged onto it), a dot per position on the folded rail
+const paletteActs: PaletteActions = {
+  click: (pos) => void palette?.click(pos),
+  remove: (pos) => void palette?.remove(pos),
+  move: (from, to) => void palette?.move(from, to),
+  drop: (pos, item) => void palette?.add(item.name, item.patch(), { pos, slot: item.slot }),
+};
+const paletteSide = new PaletteView(paletteActs);
+snapColumn.querySelector('.snap-foot')!.after(paletteSide.el);
+const paletteLib = new PaletteView(paletteActs, 'lib-dock');
+paletteLib.el.hidden = true;
+$('tab-library').append(paletteLib.el);
+const paletteRail = document.createElement('div');
+paletteRail.className = 'pal-rail';
+snapSide.rail.after(paletteRail);
+/** how the chips work now: live with an FM-1 that keeps a palette, disabled with one whose firmware has none, read-only
+ *  (the last palette read) with none */
+const paletteMode = (): PaletteMode => (palette?.linked ? 'live' : device.connected && device.info ? 'old' : 'offline');
+function renderPalette(): void {
+  if (!palette) return;
+  const chips = palette.chips(), mode = paletteMode();
+  paletteSide.render(chips, mode);
+  paletteLib.render(chips, mode);
+  renderPaletteRail(paletteRail, chips, mode, paletteActs.click);
+}
+palette = new Palette({
+  device,
+  candidates: () => bankCandidates(),
+  live: () => live() && onEditorPatch,
+  open(p, o) {
+    if (!o.adopt) return loadNamed(p, { from: o.from });
+    // the FM-1 switched under Live: it plays this patch already, so the editor takes it as the FM-1's (nothing is sent
+    // back: a second upload would cost a second gap and make the FM-1's patch FROM EDITOR), and Live edits go to it
+    fromDevice = true;
+    try { loadNamed(p, { from: o.from }); } finally { fromDevice = false; }
+    uploadGate.forget();
+    onEditorPatch = true;
+    installedLayout = deviceLayoutKey(editor.patch);
+  },
+  liveOff(why) {
+    setLive(false);
+    devStatus(why);
+    showToast(why);
+  },
+  say: (text) => { status.textContent = text; },
+  changed: renderPalette,
+  banked: () => libraryPanes.patches?.deviceChanged(currentView === 'library' && librarySection === 'patches'),
+});
+renderPalette();
+/** Add to palette (the patch menu, Commands): the current patch into the first empty position */
+const addCurrentToPalette = (): void => {
+  const p = structuredClone(editor.currentPatch());
+  void palette?.add(p.name.trim() || 'Untitled', p);
+};
+// the grip beside the patch name: the canvas's patch dragged onto a chip
+const patchGrip = document.createElement('button');
+patchGrip.type = 'button';
+patchGrip.className = 'patch-grip';
+patchGrip.textContent = '⠿';
+patchGrip.title = 'Drag the patch onto a palette chip (the Sound design sidebar)';
+patchGrip.setAttribute('aria-label', 'Drag the patch onto a palette chip');
+patchDragSource(patchGrip, () => ({ name: editor.patch.name.trim() || 'Untitled', patch: () => structuredClone(editor.currentPatch()) }));
+$('patch-name').after(patchGrip);
 /** the Listen block's phrase plays (the rail's play button); its Audition is made further down */
 let listenPlaying = (): boolean => false;
 // Generate's count per round (#996): kept per browser, like Mutate's amount
@@ -1947,10 +2020,10 @@ if (firstPatch === editor.patch && savedText !== null) {
 renderSnapshots();
 outScope.update(true);
 
-// ---- the command palette: modules, assemblies, patches
-const palette = $<HTMLDialogElement>('palette');
-const palInput = $<HTMLInputElement>('palette-input');
-const palList = $('palette-list');
+// ---- Commands (Ctrl/Cmd+K): modules, assemblies, patches, actions
+const cmdDialog = $<HTMLDialogElement>('commands');
+const cmdInput = $<HTMLInputElement>('commands-input');
+const cmdList = $('commands-list');
 const inPatch = (run: () => void): (() => void) => () => { toPatch(); run(); };
 const keepBlueprint = (): void => {
   if (!quick.hasChain) return void (status.textContent = 'Build a chain in Quick patch (Tab) first, then keep it as a blueprint');
@@ -1997,7 +2070,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Add comment', detail: 'right-click the canvas', keywords: 'note text label annotate max box', run: inPatch(() => editor.addComment()) },
     { kind: 'command', label: 'Copy selection', detail: 'Ctrl/Cmd+C', keywords: 'clipboard', run: inPatch(() => copySelection()) },
     { kind: 'command', label: 'Cut selection', detail: 'Ctrl/Cmd+X', keywords: 'clipboard', run: inPatch(() => copySelection() && editor.removeSelected()) },
-    { kind: 'command', label: 'Paste', detail: 'Ctrl/Cmd+V', keywords: 'clipboard', run: inPatch(() => void pasteFromPalette()) },
+    { kind: 'command', label: 'Paste', detail: 'Ctrl/Cmd+V', keywords: 'clipboard', run: inPatch(() => void pasteFromCommands()) },
     { kind: 'command', label: 'Delete selection', detail: 'Delete', run: inPatch(() => editor.removeSelected()) },
     { kind: 'command', label: 'Bypass selection', detail: 'B', run: inPatch(() => editor.bypassSelected()) },
     { kind: 'command', label: 'Show changes since last load / upload', keywords: 'diff', run: inPatch(showDiff) },
@@ -2069,6 +2142,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Zoom out', detail: 'Ctrl/Cmd+−', keywords: 'zoom smaller', run: inPatch(() => editor.zoomStep(-1)) },
     ...WHEEL_SETTINGS.filter((m) => m !== editor.wheelMode).map((m) => ({ kind: 'command' as const, label: `Scroll wheel: ${m}`, keywords: 'mouse trackpad wheel zoom pan scroll setting', run: () => setWheelMode(m) })),
     { kind: 'command', label: 'Store to an FM-1 slot\u2026', keywords: 'bank flash save device', run: () => void storeToSlot() },
+    { kind: 'command', label: 'Add to palette', detail: 'the FM-1’s palette: the first empty position', keywords: 'palette collect project black key home switch fm-1 chip', run: addCurrentToPalette },
     { kind: 'command', label: 'Reset canvas scale', detail: 'Ctrl/Cmd+0', keywords: 'zoom 100%', run: inPatch(() => editor.zoomAround(1)) },
     // the patch's modules with their own names (#518): picking one selects it
     ...editor.patch.modules.filter((m) => m.name && m.type !== 'steps' && DEFS[m.type]).map((m) => ({ kind: 'module in patch', tags: ['module'], label: m.name!, detail: moduleName(m.type, DEFS[m.type].label), keywords: 'select find named', run: inPatch(() => editor.reveal(m.id)) })),
@@ -2119,20 +2193,20 @@ let lastLoad: { patch: string; reopen: boolean } | null = null;
 const asLoaded = (p: Patch): string => JSON.stringify({ ...p, view: undefined, octave: undefined });
 /** a load over `p` would lose work: it has unsaved changes, and is not an unedited patch that can be opened again */
 const losesWork = (p: Patch): boolean => unsavedChanges(p, savedPatches()) && !(lastLoad?.reopen && lastLoad.patch === asLoaded(p));
-let palSel = 0;
-let palItems: Command[] = [];
-const palRender = (): void => {
-  const q = palInput.value.trim().toLowerCase();
-  palItems = q ? searchCommands(commands(), q) : commands().filter((c) => c.kind === 'command');
+let cmdSel = 0;
+let cmdItems: Command[] = [];
+const cmdRender = (): void => {
+  const q = cmdInput.value.trim().toLowerCase();
+  cmdItems = q ? searchCommands(commands(), q) : commands().filter((c) => c.kind === 'command');
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-query]')) button.setAttribute('aria-pressed', String(button.dataset.query === q));
-  palSel = Math.min(palSel, Math.max(0, palItems.length - 1));
-  palList.replaceChildren(
-    ...palItems.map((c, i) => {
+  cmdSel = Math.min(cmdSel, Math.max(0, cmdItems.length - 1));
+  cmdList.replaceChildren(
+    ...cmdItems.map((c, i) => {
       const li = document.createElement('li');
-      li.className = i === palSel ? 'sel' : '';
+      li.className = i === cmdSel ? 'sel' : '';
       li.id = `command-${i}`;
       li.setAttribute('role', 'option');
-      li.setAttribute('aria-selected', String(i === palSel));
+      li.setAttribute('aria-selected', String(i === cmdSel));
       const k = document.createElement('span');
       k.className = 'k';
       k.textContent = c.kind;
@@ -2144,54 +2218,54 @@ const palRender = (): void => {
         detail.textContent = c.detail;
         li.append(detail);
       }
-      li.onclick = () => palRun(c);
+      li.onclick = () => cmdRun(c);
       return li;
     }),
   );
-  if (!palItems.length) {
+  if (!cmdItems.length) {
     const empty = document.createElement('li');
     empty.className = 'muted';
     empty.textContent = 'No matches. Try a module name or an action like “save”.';
-    palList.append(empty);
+    cmdList.append(empty);
   }
-  if (palItems.length) palInput.setAttribute('aria-activedescendant', `command-${palSel}`);
-  else palInput.removeAttribute('aria-activedescendant');
-  palList.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
+  if (cmdItems.length) cmdInput.setAttribute('aria-activedescendant', `command-${cmdSel}`);
+  else cmdInput.removeAttribute('aria-activedescendant');
+  cmdList.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
 };
-const palRun = (c: Command): void => {
-  palette.close();
+const cmdRun = (c: Command): void => {
+  cmdDialog.close();
   if (c.kind !== 'command') toPatch();
   c.run();
 };
 /** a prefilled query ends in a space, the caret after it, so typing straight away narrows it instead of extending its last word */
 const prefill = (query: string): void => {
-  palInput.value = query ? `${query} ` : '';
-  palSel = 0;
-  palRender();
-  palInput.focus();
-  palInput.setSelectionRange(palInput.value.length, palInput.value.length);
+  cmdInput.value = query ? `${query} ` : '';
+  cmdSel = 0;
+  cmdRender();
+  cmdInput.focus();
+  cmdInput.setSelectionRange(cmdInput.value.length, cmdInput.value.length);
 };
-const openPalette = (query = ''): void => {
+const openCommands = (query = ''): void => {
   closeSidebar();
-  palette.showModal();
+  cmdDialog.showModal();
   prefill(query);
 };
-palInput.oninput = () => {
-  palSel = 0;
-  palRender();
+cmdInput.oninput = () => {
+  cmdSel = 0;
+  cmdRender();
 };
-palInput.onkeydown = (e) => {
+cmdInput.onkeydown = (e) => {
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    palSel = (palSel + (e.key === 'ArrowDown' ? 1 : palItems.length - 1)) % Math.max(1, palItems.length);
-    palRender();
+    cmdSel = (cmdSel + (e.key === 'ArrowDown' ? 1 : cmdItems.length - 1)) % Math.max(1, cmdItems.length);
+    cmdRender();
     e.preventDefault();
   } else if (e.key === 'Enter') {
     e.preventDefault();
-    if (palItems[palSel]) palRun(palItems[palSel]);
+    if (cmdItems[cmdSel]) cmdRun(cmdItems[cmdSel]);
   }
   e.stopPropagation();
 };
-$('palette-btn').onclick = () => openPalette();
+$('commands-btn').onclick = () => openCommands();
 // New patch: outside the tutorial, "Start with an engine" first (#160; the tutorial's steps expect a bare Main + Output)
 const emptyNew = (): void => { loadNamed(newPatch(DEFS)); tutorial.newPatchPressed(); };
 const engineStart = new EngineStart($<HTMLDialogElement>('engine-start'), {
@@ -2212,8 +2286,8 @@ const onCanvas = (run: () => void) => (): void => {
   if (currentView !== 'patch') setView('patch');
   run();
 };
-$('add-btn').onclick = onCanvas(() => openPalette('module'));
-$('add-assembly-btn').onclick = onCanvas(() => openPalette('assembly'));
+$('add-btn').onclick = onCanvas(() => openCommands('module'));
+$('add-assembly-btn').onclick = onCanvas(() => openCommands('assembly'));
 $('tidy-btn').onclick = onCanvas(() => editor.tidyUp());
 $('fit-btn').onclick = onCanvas(() => editor.zoomToFit());
 $('expand-all-btn').onclick = onCanvas(() => editor.setAllOpen(true));
@@ -2226,8 +2300,8 @@ $('install-btn').onclick = () => openInstall();
  * and the drone's pump are Steps tracks, which play while the transport runs) */
 const openDemo = (): void => { loadNamed(demoPatch()); closeSidebar(); void startAudio().then(() => setPlaying(true)); };
 $('demo-btn').onclick = openDemo;
-$('mobile-commands').onclick = () => openPalette();
-$('palette-close').onclick = () => palette.close();
+$('mobile-commands').onclick = () => openCommands();
+$('commands-close').onclick = () => cmdDialog.close();
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-query]')) button.onclick = () => prefill(button.dataset.query!);
 const help = $<HTMLDialogElement>('help');
 renderFm1Help($('help-fm1'));   // (the FM-1's controls, from the controls table: controls.ts, #553)
@@ -2241,7 +2315,7 @@ window.addEventListener('keydown', (e) => {
     closeSidebar(); e.preventDefault(); e.stopImmediatePropagation(); return;
   }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !document.querySelector('dialog[open]')) {
-    e.preventDefault(); e.stopImmediatePropagation(); openPalette(); return;
+    e.preventDefault(); e.stopImmediatePropagation(); openCommands(); return;
   }
   if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b' && !compactWorkspace.matches && !document.querySelector('dialog[open]')) {
     e.preventDefault(); e.stopImmediatePropagation(); toggleSidebarCollapsed(); return;
@@ -2285,7 +2359,7 @@ window.addEventListener('keydown', (e) => {
     e.stopImmediatePropagation();
     return;
   }
-  if (k === '/' || (mod && k.toLowerCase() === 'k')) (openPalette(), (done = true));
+  if (k === '/' || (mod && k.toLowerCase() === 'k')) (openCommands(), (done = true));
   else if (k === '?') (help.showModal(), (done = true));
   // Quick patch (#1091): Tab while the canvas has the keys (no control focused; Shift+Tab and Tab in a control stay the
   // browser's), C copies the card under the pointer and opens its ring
@@ -2383,7 +2457,7 @@ window.addEventListener('wheel', (e) => {
 }, { capture: true, passive: false });
 // Copy / cut / paste of the selection (clipboard.ts, #92): through the browser's copy / paste events, which reach the system
 // clipboard without a permission prompt; a clip is JSON, so it survives switching patches or tabs. `lastClip` is the in-app
-// fallback when the system clipboard is out of reach (the palette's Paste, a browser that refuses). Text fields, an open
+// fallback when the system clipboard is out of reach (Commands' Paste, a browser that refuses). Text fields, an open
 // dialog, a text selection on the page and the other tabs keep the browser's own copy and paste.
 let lastClip: Clip | null = null;
 const clipboardIsOurs = (e: Event): boolean => {
@@ -2428,8 +2502,8 @@ document.addEventListener('paste', (e) => {
   e.preventDefault();
   pasteText(e.clipboardData?.getData('text/plain') ?? null);
 });
-/** the palette's Paste: no paste event there, so ask the clipboard (the browser may ask the user), else the in-app copy */
-async function pasteFromPalette(): Promise<void> {
+/** Commands' Paste: no paste event there, so ask the clipboard (the browser may ask the user), else the in-app copy */
+async function pasteFromCommands(): Promise<void> {
   let text: string | null = null;
   try {
     text = (await navigator.clipboard?.readText()) ?? null;
@@ -2663,7 +2737,7 @@ try {
 }
 // Mutate's category (#1033): kept per browser, like the amount
 const MUTATE_CATEGORY = 'matryoshka.mutate-category';
-/** each category's name in the palette and what it aims at */
+/** each category's name in Commands and what it aims at */
 const CATEGORY_TEXT: Record<Category, readonly [string, string]> = {
   any: ['Any', 'no aim: Mutate as without a category'],
   lead: ['Lead', 'quick attack, held, a little brighter'],
@@ -2826,6 +2900,8 @@ function setView(v: View): void {
   $('canvas').hidden = v !== 'patch';
   $('help-btn').hidden = v !== 'patch';
   snapColumn.hidden = v !== 'patch';
+  paletteLib.el.hidden = v !== 'library';
+  if (v !== 'emu') { palette?.findCopies(); renderPalette(); }   // (Your patches or the bank may have changed meanwhile)
   outScope.update(v === 'patch');
   // the sidebar is the same in every view; LIBRARY's sections are tabs under the switch
   $('library-tabs').hidden = v !== 'library';
@@ -2896,6 +2972,7 @@ function showLibrarySection(): void {
 /** an FM-1 connected or went away: the Library's FM-1 columns follow (the one on screen reads the FM-1 now) */
 function libraryDeviceChanged(): void {
   for (const [k, pane] of Object.entries(libraryPanes)) pane.deviceChanged(currentView === 'library' && k === librarySection);
+  void palette?.connected();
 }
 function setLibrarySection(section: LibrarySection): void {
   librarySection = section;
@@ -2913,7 +2990,7 @@ function setLibrarySection(section: LibrarySection): void {
 for (const b of sectionBtns) b.onclick = () => setLibrarySection(b.dataset.section as LibrarySection);
 
 // the Install panel (#218): the firmware install page over the main area, not a view. Get started > Install firmware,
-// the palette, #flash and Connect FM-1 (an FM-1 on other firmware) open it; Close hides it, and an install keeps running
+// Commands, #flash and Connect FM-1 (an FM-1 on other firmware) open it; Close hides it, and an install keeps running
 // (the flasher's keep-this-tab-open guard stays armed until it ends)
 const installPanel = $('flash-view');
 function installOpen(): boolean { return !$('flash-view').hidden; }
@@ -3222,7 +3299,7 @@ const loadFromHash = (): void => {
 loadFromHash();
 window.addEventListener('hashchange', loadFromHash);
 
-// the share sheet (#165): the PATCH panel's Share (beside New patch), the ⋯ menu's Share… and the palette
+// the share sheet (#165): the PATCH panel's Share (beside New patch), the ⋯ menu's Share… and Commands
 const shareSheet = new ShareSheet($<HTMLDialogElement>('share-sheet'), {
   patch: () => editor.patch,
   rename: (name) => { editor.patch.name = name; nameInput.value = name; queueSave(editor.patch); },
@@ -3354,7 +3431,7 @@ host.onPhraseEnd = () => audition.ended();
 host.onRecording = (chunk, last) => void audition.recorded(chunk, last);
 audioBtn.onclick = () => (host.running && !host.muted ? panic() : void startAudio());
 // the engine heard (#941): the browser engine, or the FM-1 engine (the firmware's engine.c as WebAssembly, fm1-engine.ts).
-// A visit starts on the browser engine; the switch works while playing (the deck's FM-1 engine, Alt+E, the palette)
+// A visit starts on the browser engine; the switch works while playing (the deck's FM-1 engine, Alt+E, Commands)
 const engineBtn = $('engine-btn');
 const showEngine = (): void => {
   const fm1 = host.engine === 'fm1';
@@ -3782,9 +3859,9 @@ try {
 }
 
 // LIBRARY's sections (#218): it manages what is stored and opens nothing. Community is opt-in: its patches are decoded
-// when Library > Community first shows, or now when some were added to Your patches (the Open picker, the palette and
+// when Library > Community first shows, or now when some were added to Your patches (the Open picker, Commands and
 // Library > Patches list those, once decoded)
-libraryPanes.patches = buildPatchesSection($('lib-patches'), device, { remove: deleteSaved });
+libraryPanes.patches = buildPatchesSection($('lib-patches'), device, { remove: deleteSaved, slotsMoved: (moves) => void palette?.repoint(moves) });
 if (addedTitles().length) void loadCommunity().then(() => { fillPicker(); libraryPanes.patches?.refresh(); });
 libraryPanes.community = buildCommunitySection($('lib-community'), { status: (msg) => { status.textContent = msg; } }, () => device.bufferAllocation, () => device.budgetStore);
 libraryPanes.presets = buildPresetsSection($('lib-presets'), device, { changed: () => editor.rebuild() });
@@ -3947,6 +4024,8 @@ if (import.meta.env.DEV) {
       syncAsk: syncAsk.open, status: $('dev-status').textContent, armed: [...editor.armedSet],
       loads: loadsSeen, uploadedLoad, selected: [...editor.selected], slot: deviceSlot?.slot ?? -1,
       uploadPending: linkBusy(),
+      // the palette's chips as drawn and whether they are live (#1196, the scenario paletteEditor)
+      palette: palette ? { linked: palette.linked, chips: palette.chips(), cur: palette.now?.cur ?? null, next: palette.now?.next ?? null } : null,
     }),
     patchJson: (): string => JSON.stringify(editor.patch),
     /** the editor's armed set, as its ARM buttons set it (device keys, editor.armedSet) (#191) */

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import type { BufferAllocation } from './signal-buffers';
-// What the editor offers to add or open, in one place: the command palette, the assembly browser and the Open picker all
+// What the editor offers to add or open, in one place: Commands, the assembly browser and the Open picker all
 // read these lists, so anything hidden or retired in one is gone from the others too (glvno/matryoshka#84).
 import type { AssemblyDef } from './assembly';
 import { addedCommunity, chipOfEntry, openCommunity } from './community';
@@ -16,7 +16,7 @@ import { savedPatches } from './saved';
  *  voice allocator's output */
 const NOT_ADDABLE = new Set(['fm1', 'part']);
 
-/** the modules + Add module offers (the palette filtered to "module"), with the names it shows */
+/** the modules + Add module offers (Commands filtered to "module"), with the names it shows */
 export const addableModules = (defs: Record<string, ModuleDef>): { type: string; name: string; def: ModuleDef }[] =>
   Object.values(defs)
     .filter((d) => !NOT_ADDABLE.has(d.type))

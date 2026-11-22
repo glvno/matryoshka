@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The share sheet (glvno/matryoshka#165; design board "Sharing + community", option A): the PATCH panel's Share button, the ⋯ menu's Share… and the
-// palette open it. The title (the patch's name) and "What's going on" (Patch.notes) write back to the patch; the facts
+// Commands open it. The title (the patch's name) and "What's going on" (Patch.notes) write back to the patch; the facts
 // (modules, engines, the FM-1 fit) and the card preview (patch-card.ts) follow them. "Keep my layout and assemblies in
 // the link" with the link's length live; a patch too big for a link even without its layout gets Save file instead, and
 // no over-long link is ever copied. Post to Reddit copies the link, opens r/MVaveFM1's submit page with the title and

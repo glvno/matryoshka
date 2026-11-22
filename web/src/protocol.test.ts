@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { editorSkips, parsePeak, parseScreen, testKeyFrame, testScreenFrame, testTurnFrame, fm1Ascii, parseInfo, parseSandbox, SANDBOX_BYTES, SANDBOX_EXT_BYTES, sandboxFrame, sandboxPayload, type SandboxPage, chunkFrames, CMD, commitFrame, crc16, devicePresetName, frame, LIVE_MS, liveFrame, MAP_CMD, pack7, paramFrame, parse, parseMapNow, parsePresetData, parsePresetEntry, parsePresetStored, parseSlot, presetPutFrame, slotEraseFrame, slotFrame, slotInfoFrame, unpack7 } from './protocol';
 import { FEATURE_PADS, PADS_CMD, padsClearAllFrame, padsOnFrame, padsReadFrame, padsSetFrame, parsePadsNow, withPad } from './protocol';
+import { decodePaletteEntry, encodePaletteEntry, FEATURE_PALETTE, hasPaletteFeature, PALETTE, PALETTE_DEVS, paletteEntryGetFrame, paletteGetFrame, paletteGoFrame, paletteHash, paletteNameFrame, paletteOrderFrame, palettePutFrame, parsePaletteEntry, parsePaletteNow, type PaletteEntry } from './protocol';
 
 /** sandbox_msg.h's SB_* sizes, its #define expressions evaluated in order */
 const SB: Record<string, number> = {};
@@ -303,5 +304,70 @@ describe('the global pad map on the wire (PADS, PADS_NOW)', () => {
   it('one pad per row and one row per pad: a note another row holds leaves that row', () => {
     expect(withPad([36, 38, null], 2, 36)).toEqual([null, 38, 36]);
     expect(withPad([36, 38, null], 1, null)).toEqual([36, null, null]);
+  });
+});
+
+// the palette's link (#1196): build/palette/spec.md §5's shared vectors, which the firmware's tests assert too
+describe('the palette on the wire (#1196)', () => {
+  const hex = (s: string): number[] => s.split(' ').map((h) => parseInt(h, 16));
+  const MONOLITH: PaletteEntry = { slot: 0, pattern: 2, name: 'MONOLITH D', devices: [{ dev: 0, structure: 0x12345678, pstructure: 0x12345678, name: 'WARM1' }] };
+  const MONOLITH_BYTES = hex('00 02 4D 4F 4E 4F 4C 49 54 48 20 44 00 00 00 00 00 00 00 00 00 00 01 00 78 56 34 12 78 56 34 12 05 57 41 52 4D 31');
+  const KIT: PaletteEntry = { slot: 16, pattern: 0, name: '808 KIT', devices: [] };
+  const KIT_BYTES = hex('10 00 38 30 38 20 4B 49 54 00 00 00 00 00 00 00 00 00 00 00 00 00 00');
+  it('encodes and decodes the shared entries byte for byte, with their hashes', () => {
+    expect(crc16(Array.from('123456789', (c) => c.charCodeAt(0)))).toBe(0x29b1);
+    expect(encodePaletteEntry(MONOLITH)).toEqual(MONOLITH_BYTES);
+    expect(MONOLITH_BYTES).toHaveLength(38);
+    expect(paletteHash(MONOLITH)).toBe(0x9b74);
+    expect(decodePaletteEntry(MONOLITH_BYTES)).toEqual(MONOLITH);
+    expect(encodePaletteEntry(KIT)).toEqual(KIT_BYTES);
+    expect(KIT_BYTES).toHaveLength(23);
+    expect(paletteHash(KIT)).toBe(0x3659);
+    expect(decodePaletteEntry(KIT_BYTES)).toEqual(KIT);
+  });
+  it('refuses a malformed entry, and cuts a long preset name and too many devices', () => {
+    expect(decodePaletteEntry(KIT_BYTES.slice(0, 22))).toBeNull();
+    expect(decodePaletteEntry([...MONOLITH_BYTES.slice(0, 32), 0])).toBeNull();   // (a name of no characters)
+    expect(decodePaletteEntry(MONOLITH_BYTES.slice(0, 37))).toBeNull();
+    const many = { ...KIT, devices: Array.from({ length: 14 }, (_, dev) => ({ dev, structure: 1, pstructure: 0, name: 'A VERY LONG PRESET NAME' })) };
+    const e = decodePaletteEntry(encodePaletteEntry(many))!;
+    expect(e.devices).toHaveLength(PALETTE_DEVS);
+    expect(e.devices[0].name).toBe('A VERY LONG PRES');
+  });
+  it('builds the six ops as the contract has them', () => {
+    expect(parse(paletteGetFrame())).toEqual({ cmd: 0x1e, payload: [0] });
+    expect(parse(paletteEntryGetFrame(3))).toEqual({ cmd: 0x1e, payload: [1, 3] });
+    expect(parse(palettePutFrame(4, KIT))).toEqual({ cmd: 0x1e, payload: [2, 4, ...KIT_BYTES] });
+    expect(parse(palettePutFrame(4, null))).toEqual({ cmd: 0x1e, payload: [2, 4] });
+    expect(parse(paletteOrderFrame([1, 0, 2, null, 4, 5, 6, 7]))).toEqual({ cmd: 0x1e, payload: [3, 1, 0, 2, 0xff, 4, 5, 6, 7] });
+    expect(() => paletteOrderFrame([0, 1])).toThrow();
+    expect(parse(paletteGoFrame(2))).toEqual({ cmd: 0x1e, payload: [4, 2] });
+    expect(parse(paletteGoFrame(null))).toEqual({ cmd: 0x1e, payload: [4, 0xff] });
+    const n = parse(paletteNameFrame('MY PAD'))!;
+    expect(n.payload).toEqual([5, ...Array.from('MY PAD', (c) => c.charCodeAt(0)), ...new Array(14).fill(0)]);
+    expect(PALETTE).toMatchObject({ cmd: 0x1e, now: 0x66, entry: 0x67 });
+  });
+  it('reads PALETTE_NOW: 222 bytes, none as 0xFF, and PALETTE_ENTRY', () => {
+    const pos = (state: number, slot: number, hash: number, len: number, name: string): number[] =>
+      [state, slot, 1, hash & 0xff, hash >> 8, len & 0xff, len >> 8, ...Array.from({ length: 20 }, (_, i) => name.charCodeAt(i) || 0)];
+    const payload = [1, 2, 0xff, 1, 0x34, 0x12, pos(1, 0, 0x9b74, 2758, 'MONOLITH D'), pos(2, 16, 0x3659, 0, '808 KIT'), ...Array.from({ length: 6 }, () => pos(0, 0, 0, 0, ''))].flat();
+    expect(payload).toHaveLength(222);
+    const now = parsePaletteNow(payload)!;
+    expect(now).toMatchObject({ version: 1, cur: 2, next: null, edited: true, seq: 0x1234 });
+    expect(now.positions[0]).toEqual({ state: 1, slot: 0, pattern: 1, hash: 0x9b74, len: 2758, name: 'MONOLITH D' });
+    expect(now.positions[1].state).toBe(2);
+    expect(now.positions[7].state).toBe(0);
+    expect(parsePaletteNow(payload.slice(0, 221))).toBeNull();
+    expect(parsePaletteNow([2, ...payload.slice(1)])).toBeNull();
+    expect(parsePaletteEntry([5, ...KIT_BYTES])).toEqual({ pos: 5, entry: KIT });
+    expect(parsePaletteEntry([5])).toEqual({ pos: 5, entry: null });
+    expect(parsePaletteEntry([8])).toBeNull();
+  });
+  it('reads feature bit 31 though it makes the feature word negative', () => {
+    const info = parseInfo({ cmd: CMD.info, payload: [1, 64, 255, 3, 1, 0, 0, 48, 60, 1, 26, 0, 0, 1, 0x80] })!;
+    expect(info.features).toBeLessThan(0);
+    expect(hasPaletteFeature(info.features)).toBe(true);
+    expect(info.features & FEATURE_PALETTE).not.toBe(0);
+    expect(hasPaletteFeature(parseInfo({ cmd: CMD.info, payload: [1, 64, 255, 3, 1, 0, 0, 48, 60, 1, 25, 0, 0, 1, 0x40] })!.features)).toBe(false);
   });
 });

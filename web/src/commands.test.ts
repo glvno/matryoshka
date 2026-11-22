@@ -4,7 +4,7 @@ import { searchCommands, type Command } from './commands';
 
 const command = (label: string, kind = 'assembly', detail = 'Drums'): Command => ({ label, kind, detail, run() {} });
 
-describe('command palette search', () => {
+describe('Commands search', () => {
   it('lists modules or assembly prefabs and assembly actions by their type tags', () => {
     const module = command('Oscillator', 'add module', '');
     const prefab = command('kick');

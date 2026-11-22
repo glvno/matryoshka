@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The assembly library: the factory set shipped with the editor (src/assemblies/*.json) and the user's own, kept in
 // localStorage, each one in the file format of assembly.ts. Library > Assemblies lists the user's own: rename, export,
-// import, delete (at once, with Undo); the factory set is in the assembly browser and the palette (#218).
+// import, delete (at once, with Undo); the factory set is in the assembly browser and Commands (#218).
 import { validateAssemblyDef, type AssemblyDef } from './assembly';
 import { renamedKey } from './storage-key';
 import { DEFS } from './modules';
@@ -10,7 +10,7 @@ import { showUndo } from './toast';
 
 const STORE = renamedKey('matryoshka.assemblies', 'modular-1.assemblies');
 
-/** the shelves of the assembly browser and the palette, in display order; the user's own come first under their own shelf */
+/** the shelves of the assembly browser and Commands, in display order; the user's own come first under their own shelf */
 export const CATEGORIES = ['Drums', 'Voices', 'Effects', 'Textures', 'Utilities'] as const;
 export const USER_SHELF = 'Your library';
 /** a factory definition's shelf (an unknown or missing one lands on the last shelf) */
@@ -156,7 +156,7 @@ export function download(def: AssemblyDef): void {
 
 export interface LibraryEvents {
   status(msg: string): void;
-  /** the library changed here (the palette, the assembly browser and the tutorial reread it) */
+  /** the library changed here (Commands, the assembly browser and the tutorial reread it) */
   changed(): void;
 }
 
@@ -222,7 +222,7 @@ export function buildAssembliesSection(root: HTMLElement, ev: LibraryEvents): ()
       'section',
       { class: 'card lib-single', ariaLabel: 'Your assemblies' },
       el('h2', {}, el('span', { class: 'mtag asm', textContent: 'ASM' }), 'Your assemblies', count),
-      el('p', { class: 'muted', textContent: 'An assembly is a building block: prewired modules that appear as one card with the ports and parameters it exposes. Make one from a selection in the patch and "save" it on its card; + Assembly and the palette insert it.' }),
+      el('p', { class: 'muted', textContent: 'An assembly is a building block: prewired modules that appear as one card with the ports and parameters it exposes. Make one from a selection in the patch and "save" it on its card; + Assembly and Commands insert it.' }),
       userEl,
       el('div', { class: 'row' }, el('label', { class: 'btn', textContent: 'Import .json' }, file)),
       el('p', { class: 'muted lib-note', textContent: 'The FM-1 stores no assemblies: they travel inside patches.' }),

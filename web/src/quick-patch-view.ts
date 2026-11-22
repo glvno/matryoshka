@@ -26,7 +26,7 @@ export interface QuickHost {
   say: (text: string) => void;
   /** what a search offers besides the patch's cards: modules, assemblies, blueprints */
   catalog: () => Catalog;
-  /** the saved blueprints changed (the palette lists them) */
+  /** the saved blueprints changed (Commands lists them) */
   onBlueprints?: () => void;
 }
 
@@ -153,7 +153,7 @@ export class QuickPatch {
   private get ed(): Editor { return this.host.editor; }
   private get patch(): Patch { return this.ed.patch; }
 
-  /** open at the pointer, on the selected card when exactly one is selected (Tab, the palette) */
+  /** open at the pointer, on the selected card when exactly one is selected (Tab, Commands) */
   show(card: Card | null = null): void {
     const ed = this.ed;
     const selected: Card | null = card
@@ -204,7 +204,7 @@ export class QuickPatch {
     return true;
   }
 
-  /** stamp a saved blueprint (the palette's entries) */
+  /** stamp a saved blueprint (Commands' entries) */
   stamp(name: string): void {
     this.build([{ kind: 'blueprint', name }], `bp ${name}`);
   }

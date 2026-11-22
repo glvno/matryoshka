@@ -23,6 +23,7 @@ import { FEATURE_PATTERN_STORE, FEATURE25_PATTERNS_STORED, parseLinkNow, parsePa
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 import { FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo, type MapEntry } from './protocol';
 import { FEATURE_PADS, PADS_CMD, padsClearAllFrame, padsOnFrame, padsReadFrame, padsSetFrame, parsePadsNow, parsePatternOp, PATTERN_OP, type PadMap } from './protocol';
+import { hasPaletteFeature, PAL_STATUS, PALETTE, paletteEntryGetFrame, paletteGetFrame, paletteGoFrame, paletteNameFrame, paletteOrderFrame, palettePutFrame, parsePaletteEntry, parsePaletteNow, type PaletteEntry, type PaletteNow } from './protocol';
 import { factoryInfo, installFactory } from './factory-content';
 import { installFont } from './font-content';
 import { fxPresetInfo } from './fx-preset-format';
@@ -229,7 +230,12 @@ export type DeviceEvent =
   | { kind: 'maps'; maps: MapEntry[]; also: { src: number; ccs: number[] } | null }
   /** the global pad map as the FM-1 has it (PADS_NOW, feature bit 29): the answer to every PADS (connect reads it), and
    *  after a change on the FM-1 (a learn, a clear, PAD MAP turned) */
-  | ({ kind: 'pads' } & PadMap);
+  | ({ kind: 'pads' } & PadMap)
+  /** the FM-1's palette (PALETTE_NOW, #1196, feature bit 31): the answer to GET, and unasked after every change there
+   *  once the editor sent GET (a switch queued or done, a hold-save, PUT / ORDER, a slot gone MISSING) */
+  | { kind: 'palette'; now: PaletteNow }
+  /** a PALETTE_ENTRY nobody waited for (the answer to an ENTRY_GET that timed out) */
+  | { kind: 'paletteEntry'; pos: number; entry: PaletteEntry | null };
 
 /** what the editor says when older firmware cannot store a preset whole (more than 88 values, D-476) */
 export const PRESET_NEEDS_UPDATE = 'Update the FM-1 to store this preset on it';
@@ -451,6 +457,18 @@ export class DeviceLink {
       if (mn) return this.onEvent({ kind: 'maps', ...mn });
       const pd = p?.cmd === PADS_CMD.padsNow ? parsePadsNow(p.payload) : null;
       if (pd) return this.onEvent({ kind: 'pads', ...pd });
+      if (p?.cmd === PALETTE.now) {
+        const now = parsePaletteNow(p.payload);
+        if (!now) return;
+        if (this.waiter?.match(p)) {   // (the answer to GET: the reader has it, and so does the event's handler)
+          const w = this.waiter;
+          this.waiter = null;
+          w.done(p);
+        }
+        return this.onEvent({ kind: 'palette', now });
+      }
+      const pe = p?.cmd === PALETTE.entry && !this.waiter?.match(p) ? parsePaletteEntry(p.payload) : null;
+      if (pe) return this.onEvent({ kind: 'paletteEntry', ...pe });
       const po = p?.cmd === PATTERN_OP.report ? parsePatternOp(p.payload) : null;
       if (po) return this.onEvent({ kind: 'patternOp', ...po });
       if (p?.cmd === CMD.focusNow && p.payload.length >= 2) return this.onEvent({ kind: 'focus', device: p.payload[0], page: p.payload[1] });
@@ -518,10 +536,10 @@ export class DeviceLink {
     return this.info;
   }
 
-  private async ackFor(frame: Uint8Array, cmd: number, seq?: number, timeout = ACK_TIMEOUT): Promise<Ack> {
-    const p = await this.request(frame, (x) => x?.cmd === CMD.ack && x.payload[0] === cmd && (seq === undefined || x.payload[1] === seq), timeout);
+  private async ackFor(frame: Uint8Array, cmd: number, seq?: number, timeout = ACK_TIMEOUT, texts: Readonly<Record<number, string>> = STATUS_TEXT, most = TRIES): Promise<Ack> {
+    const p = await this.request(frame, (x) => x?.cmd === CMD.ack && x.payload[0] === cmd && (seq === undefined || x.payload[1] === seq), timeout, most);
     const a = parseAck(p)!;
-    if (a.status) throw new Error(`FM-1: ${STATUS_TEXT[a.status] ?? `error ${a.status}`}${a.aux ? ` (${a.aux})` : ''}`);
+    if (a.status) throw new Error(`FM-1: ${texts[a.status] ?? `error ${a.status}`}${a.aux ? ` (${a.aux})` : ''}`);
     return a;
   }
 
@@ -1012,6 +1030,52 @@ export class DeviceLink {
   live(paused = false): void {
     if (!this.connected || !this.hasLive) return;
     this.out!.send(liveFrame(paused));
+  }
+
+  /** the FM-1 keeps a palette (#1196, INFO feature bit 31: PALETTE, PALETTE_NOW, PALETTE_ENTRY) */
+  get hasPalette(): boolean {
+    return !!this.info && hasPaletteFeature(this.info.features);
+  }
+
+  /** the palette's 8 positions (GET); from now on the FM-1 also sends them unasked after every change (`palette` events) */
+  readPalette(): Promise<PaletteNow> {
+    return this.serial(async () => parsePaletteNow((await this.request(paletteGetFrame(), (x) => x?.cmd === PALETTE.now && !!parsePaletteNow(x.payload))).payload)!);
+  }
+
+  /** position `pos`'s entry with its devices' presets (ENTRY_GET), null when empty */
+  readPaletteEntry(pos: number): Promise<PaletteEntry | null> {
+    return this.serial(async () => {
+      const p = await this.request(paletteEntryGetFrame(pos), (x) => x?.cmd === PALETTE.entry && x.payload[0] === pos);
+      const r = parsePaletteEntry(p.payload);
+      if (!r) throw new Error('unexpected answer to PALETTE ENTRY_GET');
+      return r.entry;
+    });
+  }
+
+  /** position `pos` takes `entry`, or empties (null): one flash write. The FM-1 refuses an entry whose slot does not hold
+   *  its name now (PAL_MISSING) */
+  putPaletteEntry(pos: number, entry: PaletteEntry | null): Promise<void> {
+    return this.serial(async () => { await this.ackFor(palettePutFrame(pos, entry), PALETTE.cmd, pos, FLASH_TIMEOUT, PAL_STATUS); });
+  }
+
+  /** reorder and remove in one write: new position i takes old position from[i] (null empty). Sent once, never again on
+   *  a lost answer (a second ORDER would move the entries again) */
+  orderPalette(from: readonly (number | null)[]): Promise<void> {
+    return this.serial(async () => { await this.ackFor(paletteOrderFrame(from), PALETTE.cmd, 0, FLASH_TIMEOUT, PAL_STATUS, 1); });
+  }
+
+  /** switch to position `pos` (null: cancel a waiting switch), stopped at once, playing at the next bar line. The ACK's
+   *  status says why it was refused (PAL_EMPTY, PAL_MISSING, PAL_REFUSED) and its aux when it switches (PAL_GO_*).
+   *  Sent once: a second GO to the same position would cancel it */
+  goPalette(pos: number | null): Promise<Ack> {
+    const seq = pos === null ? 0xff : pos;
+    return this.serial(async () => parseAck(await this.request(paletteGoFrame(pos), (x) => x?.cmd === CMD.ack && x.payload[0] === PALETTE.cmd && x.payload[1] === seq, FLASH_TIMEOUT, 1))!);
+  }
+
+  /** the name of the patch the editor runs under Live (NAME, after each Live upload; `name` as deviceName gives it): a
+   *  hold-save of it on the FM-1 names the slot it stores it into */
+  sendLiveName(name: string): void {
+    if (this.connected && this.hasPalette) this.out!.send(paletteNameFrame(name));
   }
 
   /** the firmware has sandbox mode (INFO feature bit 8): LIVE paused mutes it, and it draws SANDBOX pages */

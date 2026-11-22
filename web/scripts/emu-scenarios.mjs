@@ -2476,16 +2476,16 @@ async function main() {
       }, on);
       await tempoPatch(true);
       await check('a/b: Init opens, synced', await openSynced('Init'));
-      const palette = async (label) => {
+      const commands = async (label) => {
         await page.keyboard.press('/');
-        await page.waitForSelector('#palette[open]', { timeout: 2000 });
-        await page.fill('#palette-input', label);
+        await page.waitForSelector('#commands[open]', { timeout: 2000 });
+        await page.fill('#commands-input', label);
         await page.keyboard.press('Enter');
-        await page.waitForFunction(() => !document.querySelector('#palette[open]'), null, { timeout: 2000 * SLACK }).catch(() => {});
+        await page.waitForFunction(() => !document.querySelector('#commands[open]'), null, { timeout: 2000 * SLACK }).catch(() => {});
         await sleep(300);   // (the page's own settle after the dialog closes: an Alt+B at once was lost, 2026-11-04)
       };
       const values = async () => JSON.stringify(JSON.parse(await patchJson()).modules.map((m) => [m.id, m.params, m.att ?? null, !!m.bypass]));
-      await palette('Take a snapshot');
+      await commands('Take a snapshot');
       const a = await values();
       const pA = await emu.notePeak();
       for (const k of [ENC.k1, ENC.k1 + 1, ENC.k1 + 2, ENC.k4]) await emu.turn(k, -40);

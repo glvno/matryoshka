@@ -437,7 +437,7 @@ describe('rank and cut (#996)', () => {
     expect(editor.makeCandidates(1).map((s) => [s.letter, s.from])).toEqual([['F', 'D']]);
   });
 
-  it('the keep mark: set and taken off from the row, its menu or the palette, kept with the candidate', () => {
+  it('the keep mark: set and taken off from the row, its menu or Commands, kept with the candidate', () => {
     const { editor } = rig(relocatedPatches['Oracle V']());
     editor.makeCandidates(2); // on B
     editor.setKeep('C', true);

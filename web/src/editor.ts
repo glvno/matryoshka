@@ -436,7 +436,7 @@ export class Editor {
       this.popMenu([{ text: 'Add comment', run: () => this.addComment(at) }], at);
     });
     canvas.addEventListener('pointermove', (e) => { this.hover = e.pointerType === 'mouse' ? { x: e.clientX, y: e.clientY } : null; });
-    // the mouse leaving the canvas forgets it, except for a dialog opened over it (the palette, by Ctrl/Cmd+K) or a click elsewhere
+    // the mouse leaving the canvas forgets it, except for a dialog opened over it (Commands, by Ctrl/Cmd+K) or a click elsewhere
     canvas.addEventListener('pointerleave', (e) => {
       const to = e.relatedTarget instanceof Element ? e.relatedTarget : null;
       if (!(to ? to.closest('dialog[open]') : document.querySelector('dialog[open]'))) this.hover = null;
@@ -2329,7 +2329,7 @@ export class Editor {
     row.addEventListener('pointerdown', (e) => {
       if (e.altKey && this.addRowToList(m.id, pd.name)) { e.stopPropagation(); e.preventDefault(); return; }
       this.focusRow(m.id, pd.name);
-      this.lastRow = { module: m.id, param: pd.name };   // (the palette's MIDI learn… acts on it, #1067)
+      this.lastRow = { module: m.id, param: pd.name };   // (Commands' MIDI learn… acts on it, #1067)
     }, true);
     const name = document.createElement('span');
     name.textContent = o.label ?? longName(def.type, pd.name);
@@ -3878,7 +3878,7 @@ export class Editor {
     return true;
   }
 
-  /** listen to the one selected card's first audio output (the palette); whether it listens now */
+  /** listen to the one selected card's first audio output (Commands); whether it listens now */
   listenSelected(): boolean {
     const m = this.selected.size === 1 ? this.patch.modules.find((x) => this.selected.has(x.id)) : undefined;
     const p = m && DEFS[m.type].outputs.find((q) => listenable(q.kind));
@@ -6895,7 +6895,7 @@ export class Editor {
       this.ev.onLearn?.(row && this.rowName(row));
     },
   });
-  /** the row last pressed: the palette's MIDI learn… acts on it */
+  /** the row last pressed: Commands' MIDI learn… acts on it */
   private lastRow: LearnRow | null = null;
   /** the "also sent" warnings of this session's learns (#1067; not saved), by source: the row learned and the fixed-job
    *  CCs its input also sent (midi-learn.ts alsoSentText). Shown beside the binding while that source still moves that row */
@@ -6909,14 +6909,14 @@ export class Editor {
     return m ? `${m.name || moduleName(m.type, DEFS[m.type].label)} › ${longName(m.type, r.param)}` : r.param;
   }
 
-  /** the row the palette's MIDI learn… acts on: the one row selected in pick or Arrange mode, else the row last pressed */
+  /** the row Commands' MIDI learn… acts on: the one row selected in pick or Arrange mode, else the row last pressed */
   learnTarget(): LearnRow | null {
     const sel = this.selectedRows();
     const r = sel.length === 1 ? sel[0] : this.lastRow;
     return r && this.patch.modules.some((m) => m.id === r.module) ? r : null;
   }
 
-  /** wait for the MIDI source of a row (its ⋮ menu, the palette). A switch or a two-way choice may take a button */
+  /** wait for the MIDI source of a row (its ⋮ menu, Commands). A switch or a two-way choice may take a button */
   startLearn(r: LearnRow): void {
     const m = this.patch.modules.find((x) => x.id === r.module);
     const pd = m && DEFS[m.type].params.find((q) => q.name === r.param);
@@ -6941,7 +6941,7 @@ export class Editor {
     this.ev.onError(`${sourceName(b.src)} now moves ${this.rowName(b)}.${meanwhile}${warn ? ` ${warn}.` : ''} Unlearn it from the row’s ⋮ menu or in FM-1 & MIDI.`);
   }
 
-  /** forget a row's MIDI source (its ⋮ menu, the palette): an undo step */
+  /** forget a row's MIDI source (its ⋮ menu, Commands): an undo step */
   unlearn(r: LearnRow): void {
     this.editBindings((p) => unbindRow(p, r));
   }

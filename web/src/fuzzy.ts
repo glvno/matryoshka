@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-/** fuzzy match for the palette and the assembly browser: every character of the query in order; a run of adjacent matches and a match at a word start score higher; -1 = no match */
+/** fuzzy match for Commands and the assembly browser: every character of the query in order; a run of adjacent matches and a match at a word start score higher; -1 = no match */
 export const score = (q: string, s: string): number => {
   s = s.toLowerCase();
   let i = 0,

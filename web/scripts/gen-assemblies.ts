@@ -5469,7 +5469,7 @@ for (const [name, rows] of Object.entries(LEVELS)) {
   }
 }
 // the one-line description of each engine (the Engines shelf, engines.ts) on the "Start with an engine" tiles, the
-// assembly browser, the palette and the patch card. The owner's wording (2026-10-21): an engine that emulates an
+// assembly browser, Commands and the patch card. The owner's wording (2026-10-21): an engine that emulates an
 // instrument is "<that instrument> type shit", verbatim; the others say plainly what they are.
 const BLURBS: Record<string, string> = {
   'Oracle V': 'Prophet-5 type shit',

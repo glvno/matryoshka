@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The Output scope (#1029, D-992): a Scope module's screen and toolbar (scope-view.ts) whose input is what is heard, so
 // comparing candidates needs no Scope card and no cable. It sits at the top of the Sound design sidebar at the canvas's
-// right edge (snap-side.ts, #1040, #1048), over the candidates, whenever the patch view shows; its collapse button (and the
-// palette's "Output scope") folds it to its title and opens it again. Its screen is as wide as the sidebar; the divider
+// right edge (snap-side.ts, #1040, #1048), over the candidates, whenever the patch view shows; its collapse button (and
+// Commands' "Output scope") folds it to its title and opens it again. Its screen is as wide as the sidebar; the divider
 // under it sets its height. Its Scope belongs to no patch: nothing about it is saved in the patch or sent to the FM-1; this
 // browser remembers its height, its mode, window and scale, and whether it is folded. It streams only while its screen is
 // on show (scope-view.ts), so not while the sidebar is folded.
@@ -96,7 +96,7 @@ export class OutputScope {
     this.show();
   }
 
-  /** the palette's Output scope: open it, or fold it to its title when it is open */
+  /** Commands' Output scope: open it, or fold it to its title when it is open */
   toggle(): void {
     this.setCollapsed(this.open);
   }
