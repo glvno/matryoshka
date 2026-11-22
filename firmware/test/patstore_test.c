@@ -75,6 +75,7 @@ static uint16_t m1_crc16(const uint8_t *p, uint32_t n)
 
 #include "../src/slotstore.c"
 #include "../src/patstore.c"
+#define NS ((uint32_t)SL_L48.pt_nsec)            /* the store's sectors in the 48-slot layout */
 
 static int fails;
 #define CHECK(c, ...) do { if (!(c)) { if (fails++ < 40) { printf("FAIL  "); printf(__VA_ARGS__); printf("\n"); } } } while (0)
@@ -194,9 +195,9 @@ static void api_tests(void)
     uint32_t k, id, prev;
     rec_t *r;
     fresh();
-    CHECK(pt_on && bank_slots == 48u && pt_nsec == 16u, "an empty bank: the store is claimed, 48 slots, 16 sectors");
+    CHECK(pt_on && bank_slots == 48u && pt_nsec == NS, "an empty bank: the store is claimed, 48 slots, %u sectors", NS);
     CHECK(pt_count() == 0u && pt_next(0, &in) == -1 && pt_prev(0xFFFFu, &in) == -1, "an empty store");
-    CHECK(pt_total_bytes() == 15u * 4080u && pt_free_bytes() == PT_MAX, "room: 61200 bytes, a record of PT_MAX fits");
+    CHECK(pt_total_bytes() == (NS - 1u) * 4080u && pt_free_bytes() == PT_MAX, "room: all sectors but one, a record of PT_MAX fits");
     nmodel = 0;
     for (k = 0; k < sizeof lens / sizeof lens[0]; k++) {
         r = add(lens[k], 10u + k);
@@ -272,17 +273,17 @@ static void full_tests(void)
     nmodel = 0;
     for (n = 0; add(4, n); n++)
         ;
-    CHECK(n == 1530u && pt_free_bytes() == 0u, "records of 4 bytes: full at 1530 (102 in each sector but the clean one)");
+    CHECK(n == 102u * (NS - 1u) && pt_free_bytes() == 0u, "records of 4 bytes: full at 102 in each sector but the clean one");
     boot();
-    CHECK(model_ok(0), "all 1530 there after a power cycle");
+    CHECK(model_ok(0), "all there after a power cycle");
     fresh();
     nmodel = 0;
     for (n = 0; add(PT_MAX, n); n++)
         ;
-    CHECK(n == 15u && pt_free_bytes() == 1960u, "records of PT_MAX: 15 (one a sector), a record of 1960 bytes still fits");
-    for (k = 0; k < 15u; k++)
+    CHECK(n == NS - 1u && pt_free_bytes() == 1960u, "records of PT_MAX: one a sector, a record of 1960 bytes still fits");
+    for (k = 0; k < NS - 1u; k++)
         CHECK(add(1960, 50u + k) != 0, "1960 bytes in sector %u's tail", k);
-    CHECK(pt_free_bytes() == 0u && !add(4, 70), "15 of them (one in each sector's tail); then nothing fits");
+    CHECK(pt_free_bytes() == 0u && !add(4, 70), "one in each sector's tail; then nothing fits");
     fresh();
     nmodel = 0;
     for (k = 0; k < 4000u; k++) {                       /* random puts, replaces and deletes: what pt_free_bytes says fits fits */
@@ -452,9 +453,9 @@ static void state_compact(void)
     uint32_t k;
     fresh();
     nmodel = 0;
-    for (k = 0; k < 255u; k++)
+    for (k = 0; k < 17u * (NS - 1u); k++)
         add(200, 40u + k);
-    CHECK(!add(200, 999) && pt_count() == 255u, "255 records of 200 bytes fill the store");
+    CHECK(!add(200, 999) && pt_count() == 17u * (NS - 1u), "records of 200 bytes fill the store");
     for (k = 20; k <= 30u; k += 5u) {
         pt_del(k);
         drop(k);
@@ -486,12 +487,12 @@ static void cut_tests(void)
      * formatted again first (it carries the next id) and the deleted id is not taken again after any cut */
     fresh();
     nmodel = 0;
-    for (k = 0; k < 15u; k++)
+    for (k = 0; k < NS - 1u; k++)
         add(PT_MAX, 60u + k);
-    pt_del(15);
-    drop(15);
+    pt_del(NS - 1u);
+    drop(NS - 1u);
     target(pt_nextid, PT_MAX, 505, 0);
-    CHECK(sw_target == 16u, "the next id is 16");
+    CHECK(sw_target == NS, "the next id is %u", NS);
     sweep("a new record that compacts a sector of deleted records only", op_put, 1);
 }
 
@@ -501,13 +502,13 @@ static void foreign_tests(void)
 {
     uint32_t a, k;
     pt_hdr_t h;
-    for (a = 0xD0000u; a < 0xE0000u; a++)               /* another firmware's data where the store goes */
+    for (a = 0xE0000u - NS * 0x1000u; a < 0xE0000u; a++)   /* another firmware's data where the store goes */
         flash[a] = (uint8_t)(a * 37u + 11u);
-    memset(flash + FLASH_LO, 0xFF, 0xD0000u - FLASH_LO);
+    memset(flash + FLASH_LO, 0xFF, 0xE0000u - NS * 0x1000u - FLASH_LO);
     boot();
-    for (k = 0; k < 16u && pt_sec_ok(k); k++)
+    for (k = 0; k < NS && pt_sec_ok(k); k++)
         ;
-    CHECK(pt_on && k == 16u && pt_count() == 0u, "foreign bytes in the store's sectors before the claim: formatted, an empty store");
+    CHECK(pt_on && k == NS && pt_count() == 0u, "foreign bytes in the store's sectors before the claim: formatted, an empty store");
     nmodel = 0;
     CHECK(add(100, 1) && add(200, 2) && model_ok(0), "and it works");
     a = PT_BASE + pt_tail[0] + 64u;                     /* bytes programmed into sector 0's free tail */
@@ -695,7 +696,7 @@ static void claim_tests(void)
     save();
     boot();
     CHECK(ok_125(), "the bank of 1.25: slots 51..58 move into 41..48, the records out of sectors 50..61, the patterns stay");
-    CHECK(pt_total_bytes() == 15u * 4080u, "the store has its 16 sectors");
+    CHECK(pt_total_bytes() == (NS - 1u) * 4080u && sl_font_room(), "the store has its sectors; the font's are free");
     r = add(1500, 4);
     CHECK(r && r->id == 4u && model_ok(0), "and takes new patterns, the ids going on");
     for (k = 0; k < 200u; k++)
@@ -734,8 +735,8 @@ static void claim_tests(void)
     for (k = 40; k < 52u; k++)
         CHECK(sl_erase(k) == 0, "slot %u freed", k);
     boot();
-    CHECK(pt_on && bank_slots == 48u && pt_nsec == 16u && bank_mask >> 48 == 0 && model_ok(0),
-          "48 patches at the next boot: 48 slots, the store of 16 sectors with its patterns");
+    CHECK(pt_on && bank_slots == 48u && pt_nsec == NS && bank_mask >> 48 == 0 && model_ok(0),
+          "48 patches at the next boot: 48 slots, the store with its patterns");
 
     memset(flash, 0xFF, sizeof flash);                  /* FACTORY RESET from a bank of 61 (the store off) */
     sl_layout(0);
@@ -747,7 +748,7 @@ static void claim_tests(void)
     CHECK(!pt_on, "61 patches: off");
     sl_clear_all();
     pt_clear_all();
-    CHECK(pt_on && bank_slots == 48u && pt_nsec == 16u && !bank_mask && pt_count() == 0u,
+    CHECK(pt_on && bank_slots == 48u && pt_nsec == NS && !bank_mask && pt_count() == 0u,
           "FACTORY RESET with the store off: the bank empty, 48 slots, the store on and empty");
     boot();
     CHECK(pt_on && !bank_mask && sl_sec[SL_SETTINGS] == SL_NONE && pt_count() == 0u, "after a power cycle too");

@@ -9,7 +9,9 @@
  * higher sequence number wins at the next scan, the other is erased). Records of the 32-slot bank before (magic "M1SL",
  * slot = id) are read as they are.
  * The pattern store (patstore.c, #901, #1202) takes the bank's last sectors, and the bank keeps its first ones: in the
- * layout of 1.26 (SL_L48) 48 slots in sectors 0..49 and the store in the last 16 (50..65, 0xD0000 .. 0xDFFFF); in the
+ * layout of 1.26 (SL_L48) 48 slots in sectors 0..49 and the store in the last 13 (53..65, 0xD3000 .. 0xDFFFF), sectors
+ * 50..52 (0xD0000 .. 0xD2FFF) the screen font's (#602, #1203: neither the bank's nor the store's; the claim moves the
+ * bank's records out of them, and only then does INFO say 48 slots); in the
  * layout of 1.16 .. 1.25 (SL_L60) 60 slots in sectors 0..61 and the store in the last 4 (62..65, 0xDC000 .. 0xDFFFF). At
  * boot pt_claim takes the 48-slot layout when the bank holds 48 patches or fewer, else the 60-slot one when it holds 60
  * or fewer: the patches of the ids at and above the layout's slots move into the first empty slots below, and the
@@ -21,7 +23,7 @@
 #define SL_NSEC 66u
 typedef struct { uint8_t slots, nsec, pt_nsec; } sl_layout_t;   /* the slots, the bank's sectors (from 0), the store's
                                                                   * sectors (the last of the 66) */
-static const sl_layout_t SL_L48 = { 48u, 50u, 16u };            /* 1.26 (#1202): about 60 KB of patterns */
+static const sl_layout_t SL_L48 = { 48u, 50u, 13u };            /* 1.26 (#1202): about 49 KB of patterns */
 static const sl_layout_t SL_L60 = { 60u, 62u, 4u };             /* 1.16 .. 1.25 (#901): 16 KB of patterns */
 #define SL_MAGIC 0x3253314Du            /* "M1S2" */
 #define SL_MAGIC_V1 0x4C53314Du         /* "M1SL": the 32-slot bank (slot n at 0xA0000 + n x 4 KiB) */
@@ -68,6 +70,23 @@ static void sl_layout(const sl_layout_t *l)
 }
 
 static uint32_t sl_sector_addr(uint32_t i) { return i < 2u ? 0x97000u + i * 0x1000u : 0xA0000u + (i - 2u) * 0x1000u; }
+
+/* the screen font's sectors (#602, #1203) in the 48-slot layout: between the bank's and the store's, neither's */
+#define SL_FONT_LO 0xD0000u
+#define SL_FONT_N 3u
+_Static_assert(SL_FONT_LO == 0xA0000u + (50u - 2u) * 0x1000u && 50u + SL_FONT_N + 13u == SL_NSEC, "the font area: sectors 50..52");
+/* the font may live in its sectors: the claim of the 48-slot layout got through (the store on), and no bank record is
+ * left there. 0 in the 60- and 64-slot layouts, whose bank may write there */
+static int sl_font_room(void)
+{
+    uint32_t s;
+    if (!pt_on || bank_slots != SL_L48.slots)
+        return 0;
+    for (s = SL_L48.nsec; s < SL_L48.nsec + SL_FONT_N; s++)
+        if (sl_live[s])
+            return 0;
+    return 1;
+}
 
 /* the header of sector i as a record of this store (a 32-slot bank record converted), with check != 0 also its data's
  * CRC (the data go to sl_buf); 0 = a valid record */
