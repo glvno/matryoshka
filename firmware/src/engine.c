@@ -10688,17 +10688,16 @@ ENG_RARE int32_t steps_ff(inst_t *it, uint32_t t, int32_t dir, int32_t *len, int
         }
         {                                        /* the pass's end, or the start's first step (m_steps's step there) */
             uint32_t was = E.trk_pat[t];
-            step_visit_t next;
+            uint32_t loop = it->s.stp.loop + 1u;
             steps_turn(t);
             it->s.stp.pass = it->s.stp.pos < 0 || E.trk_pat[t] != was ? 0u : it->s.stp.pass + 1u;
             if (it->s.stp.pos < 0)
                 E.trk_pre[t] = 0;
             *len = steps_len(it, t);
             *ht = steps_ht(it, t);
-            next = steps_next(it, *len, dir);
-            it->s.stp.pos = (int8_t)next.pos;
-            it->s.stp.visit = (uint8_t)next.visit;
-            it->s.stp.loop = next.loop;
+            it->s.stp.pos = (int8_t)steps_pos_at(it, *len, dir, 0, loop);   /* (the next pass from its first step, #1132) */
+            it->s.stp.visit = 0;
+            it->s.stp.loop = loop;
         }
         last = h;
         h += (uint32_t)*ht + (!(*ht & 1) && (last & 1u));
@@ -10729,7 +10728,10 @@ ENG_RARE int32_t steps_ff(inst_t *it, uint32_t t, int32_t dir, int32_t *len, int
     return 0;
 }
 /* PLAY from a SONG page entry (#596): the clock ticks from song s's top to the start of its entry k on the Steps track
- * `module`, each entry before it one pass of that track (its pattern's own length and rate, else the track's) */
+ * `module`, each entry before it one pass of that track from its first step (its pattern's own length and rate, else the
+ * track's). A step comes a step's half ticks after the one before; an entry of whole ticks a step that starts half a tick
+ * after a tick (after a step of 1/64) takes its second step on a tick, half a tick later (m_steps, steps_ff). The tick
+ * holds the entry's first step, or comes half a tick before it */
 int eng_song_ticks(uint32_t module, uint32_t s, uint32_t k)
 {
     const inst_t *it = steps_inst(module);
@@ -10743,7 +10745,7 @@ int eng_song_ticks(uint32_t module, uint32_t s, uint32_t k)
         uint32_t p = E.song_pat[s][j], q = (E.pat_has[t] >> p & 1u) ? p : 0u;
         int32_t len = q && E.pat_len[t][q] ? E.pat_len[t][q] : clampi(round_q16(EF(it, STEPS_P_LEN)), 1, TRACK_STEPS);
         int32_t rate = q && E.pat_rate[t][q] != 0xFFu ? E.pat_rate[t][q] : clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8);
-        h += (uint32_t)(steps_cycle(len, dir) * RATE_HT[rate]);
+        h += (uint32_t)(steps_cycle(len, dir) * RATE_HT[rate]) + (!(RATE_HT[rate] & 1u) && (h & 1u));
     }
     return (int32_t)(h / 2u);
 }
@@ -10929,7 +10931,7 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
                 ht = RATE_HT[TRK_P(t) && E.pat_rate[t][TRK_P(t)] != 0xFFu ? E.pat_rate[t][TRK_P(t)] : clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8)];
                 step = (ht * E.tick_len) >> 1;
                 sl = ext && it->s.stp.period > 0 ? it->s.stp.period : ext ? 6 * E.tick_len : step;
-                next = steps_next(it, len, dir);
+                next.pos = steps_pos_at(it, len, dir, 0, next.loop);   /* (the next pass from its first step, #1132) */
             }
             sw = ext ? it->s.stp.period : step;
             /* In the new play modes a live length edit may end the pass before an old note's countdown: such a

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **A song entry, or a pattern chosen while playing, now starts on its first step.** When it was longer than the pattern before it, it started part-way in and played only its last few steps. PLAY on a SONG page entry now starts exactly where that entry begins (#1132).
+
 ## 1.24.1 — 2026-11-21
 
 - **A renamed FM-1 now shows its new name in MIDI apps on a computer or an iPad.** A Mac remembers each FM-1 by its USB serial number and keeps showing the name it first saw, often just `Matryoshka`; an iPad seems to do the same. So two FM-1s with different names could look like the same device in a MIDI routing app. Now an FM-1 with a name gives a serial made from that name, and the host sees it as a new device called `Matryoshka` and your name. Give it its name in the editor, then reconnect it. The host may keep the old entry as an offline device; you can delete it (on a Mac, in Audio MIDI Setup). An FM-1 without a name is unchanged. Needs this firmware.

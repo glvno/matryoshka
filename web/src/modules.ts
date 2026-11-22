@@ -3794,15 +3794,14 @@ export function stepsFf(s: StepsState, p: Readonly<Record<string, number>>, tick
       h = last + ht;
       continue;
     }
-    const was = s.pat, fresh = s.pos < 0; // the pass's end, or the start's first step (process's step there)
+    const was = s.pat, fresh = s.pos < 0, loop = (s.loop + 1) >>> 0; // the pass's end, or the start's first step (process's step there)
     stepsTurn(s);
     ({ len, ht } = stepsShape(s, p));
-    const next = nextStep(s, len, dir);
     s.pass = fresh || s.pat !== was ? 0 : s.pass + 1;
     if (fresh) s.pre = false;
-    s.pos = next.pos;
-    s.visit = next.visit;
-    s.loop = next.loop;
+    s.pos = stepPos(s, len, dir, 0, loop); // (the next pass from its first step, #1132)
+    s.visit = 0;
+    s.loop = loop;
     last = h;
     h += ht + (!(ht & 1) && last & 1 ? 1 : 0);
     if (!song || s.songPos === 0) { // a repeat begins: its second and third beginnings measure it
@@ -4109,12 +4108,12 @@ const steps: ModuleImpl<StepsState> = {
       if (s.pend > 0 && --s.pend === 0 && (dir === 0 || s.pstep < len)) fire(s.pstep, i);
       s.ago++;
       for (; adv > 0; adv--) {
-        let next = nextStep(s, len, dir);
+        const next = nextStep(s, len, dir);
         if (next.visit === 0) { // the end of a pass: a song's next entry, a queued pattern
           const was = s.pat, fresh = s.pos < 0;
           stepsTurn(s);
           shape();
-          next = nextStep(s, len, dir);
+          next.pos = stepPos(s, len, dir, 0, next.loop); // (the next pass from its first step, #1132)
           s.pass = fresh || s.pat !== was ? 0 : s.pass + 1; // (trig conditions: its passes of the pattern, #674)
           if (fresh) s.pre = false;
         }
