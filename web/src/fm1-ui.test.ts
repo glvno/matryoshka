@@ -270,6 +270,27 @@ describe('the FM-1 UI as WebAssembly', () => {
     expect(got!.locks.length).toBe(1);
     expect(got!.locks[0].at).toBe(2);
   }, 30_000);
+  it('#1177, #1178: SEQ held + SAVE copies the pattern, SEQ held + HOME twice clears all; the page hears each as PATTERN_OP', async () => {
+    const ops: number[][] = [];
+    const pats: number[] = [];
+    const ui = await Fm1Ui.create(bytes, { patternOp: (op, from, to) => ops.push([op, from, to]), pattern: (p) => pats.push(p) });
+    expect(ui.load(encodePatch(FM1_PRESETS['Meridian 8']()), 'MERIDIAN 8')).toBe(0);
+    let t = 1000;
+    const tap = (id: number): void => { ui.tick(t += 50); ui.button(id, true); ui.tick(t += 50); ui.button(id, false); ui.tick(t += 50); };
+    tap(BUTTONS.seq);                             // the SEQ page
+    ui.button(BUTTONS.seq, true);
+    tap(BUTTONS.save);                            // pattern 1 to the first empty number after it: pattern 2
+    expect(ops).toEqual([[1, 0, 1]]);
+    expect(pats.at(-1)).toBe(1);
+    tap(BUTTONS.home);                            // asks
+    expect(ops.length).toBe(1);
+    tap(BUTTONS.home);                            // again within 3 s: cleared
+    expect(ops.at(-1)).toEqual([2, 0, 0]);
+    expect(pats.at(-1)).toBe(0);
+    ui.button(BUTTONS.seq, false);
+    ui.tick(t += 50);
+    expect(ui.page).toBe(8);                      // (SEQ's release: the SEQ page stays)
+  }, 30_000);
   it('the panel drives it: SELECT / ALGO move the focus (and say so), K1 sets a parameter, HOME goes to the device\'s first page, then back along the trail', async () => {
     const focus: [number, number][] = [];
     const params: number[][] = [];

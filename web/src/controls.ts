@@ -57,6 +57,7 @@ export const EFFECTS = [
   'tab', 'scroll', 'set', 'save_close', 'run_row',
   'editor', 'analog_out', 'chord_button', 'fx_page', 'fx_toggle', 'fx_row',
   'pattern_save', 'pattern_new', 'pattern_load', 'condition', 'fill', 'ratchet', 'micro', 'drum_bank', 'learn_row', 'learn_mode', 'learn_end',
+  'pattern_copy', 'clear_all',
 ] as const;
 export type Effect = (typeof EFFECTS)[number];
 
@@ -256,8 +257,13 @@ export const CONTROLS: ControlRow[] = [
     help: 'the selected pattern into the pattern store as a new one (a copy), which it is then linked to instead (pattern 1 is only copied)' },
   { id: 'pattern-load', gesture: { hold: 'SEL', do: [E('PRESET')] }, does: 'load stored pattern', when: 'pattern_store', sheet: { drum: 76, roll: 66 }, effect: 'pattern_load',
     help: 'steps through the pattern store, your patterns first, then the factory ones, each click loading one into the selected pattern: one of yours is linked (pattern 1 and the factory ones are copied). The bar names it (P3: SCROUNGE P3); its P-locks load only into a patch of the layout they were saved in, else the bar says LOCKS LEFT OUT: OTHER LAYOUT' },
+  // (the pattern commands, #1177 and #1178: the editor's copy and clear all, D-544)
+  { id: 'pattern-copy', gesture: { hold: 'SEQ', do: [B('SAVE')] }, does: 'copy pattern', sheet: { drum: 78, roll: 68 }, effect: 'pattern_copy',
+    help: 'the selected pattern of every track (notes, P-locks, its own length and rate) to the first empty number after it, round from P02 when there is none after it; the copy is selected and linked to nothing. The bar says P03 COPIED TO P04, ALL 64 PATTERNS USED when no number is empty, P03 EMPTY: NOT COPIED when it has no notes, PATCH FULL: NOT COPIED when the patch has no room' },
   { id: 'clear', gesture: { hold: 'SEQ', do: [B('REC')] }, does: 'clear track', sheet: { drum: 80, roll: 200 }, effect: 'clear', hint: 'SEQ+REC clear',
     help: 'the bar asks first; REC again within 3 s, SEQ still held, clears the selected track' },
+  { id: 'clear-all', gesture: { hold: 'SEQ', do: [B('HOME')] }, does: 'clear all patterns', sheet: { drum: 82, roll: 202 }, effect: 'clear_all',
+    help: 'the bar asks first (CLEAR ALL? HOME AGAIN); HOME again within 3 s, SEQ still held, clears every pattern of every track (1 to 64, their links and P-locks) and every song: pattern 1 stays, empty and selected (PATTERNS + SONGS CLEARED). The pattern store keeps its patterns' },
 
   // ---- STEP RECORD (#532, D-804)
   { id: 'sr-keys', gesture: { do: [{ key: 'keys' }] }, does: 'play, let go: write', sheet: { step: 20 }, effect: 'write', hint: 'KEYS note',
@@ -357,6 +363,7 @@ const STRIP: Record<string, string | ({ _: string } & Partial<Record<HelpState, 
   'pattern-save': 'save this pattern to the pattern store (over its link)', 'pattern-new': 'save this pattern to the store as a new copy',
   'pattern-load': 'load stored patterns into this pattern as you turn',
   clear: 'clear the whole track (press REC again to confirm)', 'steps-page': 'show the next or previous 16 steps',
+  'pattern-copy': 'copy this pattern to the next empty number', 'clear-all': 'clear every pattern and song (press HOME again to confirm)',
   'drum-bank': 'play the next or previous 8 drum sounds from the black keys', 'drum-bank-seq': 'show the next or previous 8 drum sounds',
   tie: 'tie the note on through that step (on its own step: a drone)', 'row-drone': 'make the selected row one long held note (a drone)', 'held-pitch': "change this step's pitch", 'held-velocity': "change this step's velocity",
   'held-chance': 'change the chance this step plays', 'held-chance-select': 'change the chance this step plays', 'held-cond': 'choose when this step plays: FILL, 1ST, every Nth pass',

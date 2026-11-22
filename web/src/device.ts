@@ -22,7 +22,7 @@ import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type
 import { FEATURE_PATTERN_STORE, parseLinkNow, parsePatData, parsePatEntry, parsePatStored, PAT_OK, PAT_STATUS, PAT_USED, patDelFrame, patGetFrame, patPutFrames, patsFrame, type PatListItem, type StoredPatternEntry } from './protocol';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 import { FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo, type MapEntry } from './protocol';
-import { FEATURE_PADS, PADS_CMD, padsClearAllFrame, padsOnFrame, padsReadFrame, padsSetFrame, parsePadsNow, type PadMap } from './protocol';
+import { FEATURE_PADS, PADS_CMD, padsClearAllFrame, padsOnFrame, padsReadFrame, padsSetFrame, parsePadsNow, parsePatternOp, PATTERN_OP, type PadMap } from './protocol';
 import { factoryInfo, installFactory } from './factory-content';
 import { fxPresetInfo } from './fx-preset-format';
 import { autoPick, fm1Label, NOT_CHOSEN, readFm1Id, rememberedFm1, rememberFm1, suggested, type Fm1Choice, type Fm1Id } from './fm1-choice';
@@ -211,6 +211,9 @@ export type DeviceEvent =
   /** the running patch's link of pattern `pattern` changed on the FM-1 (PAT_LINK_NOW, #901): the stored id (0 none) and its
    *  payload hash */
   | { kind: 'link'; pattern: number; id: number; hash: number }
+  /** the FM-1's SEQ page ran a pattern command (PATTERN_OP, #1177, #1178): op 1 pattern `from` copied to `to`, op 2
+   *  everything cleared; the editor runs it on its patch too */
+  | { kind: 'patternOp'; op: number; from: number; to: number; hash: number }
   /** the running patch's MIDI learn mappings after a learn or a clear on the FM-1 (MAP_NOW, #1067; device-form indices),
    *  with the "also sent" warning of a learn there (null none) */
   | { kind: 'maps'; maps: MapEntry[]; also: { src: number; ccs: number[] } | null }
@@ -435,6 +438,8 @@ export class DeviceLink {
       if (mn) return this.onEvent({ kind: 'maps', ...mn });
       const pd = p?.cmd === PADS_CMD.padsNow ? parsePadsNow(p.payload) : null;
       if (pd) return this.onEvent({ kind: 'pads', ...pd });
+      const po = p?.cmd === PATTERN_OP.report ? parsePatternOp(p.payload) : null;
+      if (po) return this.onEvent({ kind: 'patternOp', ...po });
       if (p?.cmd === CMD.focusNow && p.payload.length >= 2) return this.onEvent({ kind: 'focus', device: p.payload[0], page: p.payload[1] });
       const stored = p ? parsePresetStored(p) : null;
       if (stored) return this.onEvent({ kind: 'presetStored', ...stored });

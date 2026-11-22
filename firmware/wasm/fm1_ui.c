@@ -78,6 +78,10 @@ static void m1_locks_now(uint32_t mod, uint32_t pat)
         js_locks(mod, pat, l, (uint32_t)(n > 64 ? 64 : n));
 }
 static void m1_arms_now(eng_mset_t s) { js_arms(s.w[0], s.w[1], s.w[2], s.w[3]); }
+/* the SEQ page copied a pattern or cleared every pattern and song (#1177, #1178): the page runs the same command on its
+ * patch, as the device link's PATTERN_OP (op, from, to, the set's hash) */
+WASM_IMPORT("pattern_op") void js_pattern_op(uint32_t op, uint32_t from, uint32_t to, uint32_t hash);
+static void m1_pattern_op_now(uint32_t op, uint32_t from, uint32_t to, uint32_t hash) { js_pattern_op(op, from, to, hash); }
 /* GLO > PANEL > TEMPO, the global tempo or TIME SIG changed here (the menu, PLAY held + PRESET, Main's tempo row while
  * GLOBAL): the page's setting follows (D-907, #1011; as the device link's TEMPO_NOW). patch: 0 GLOBAL, 1 PATCH; meter
  * the index into METER_NAME */

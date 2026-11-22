@@ -100,6 +100,13 @@
 #define MSG_REC_AGAIN "? REC AGAIN"
 #define MSG_CLEARED " CLEARED"                          /* after the track's name */
 #define MSG_NOT_CLEARED "NOT CLEARED"
+#define MSG_COPIED_TO " COPIED TO "                     /* P03 COPIED TO P04 (SEQ held + SAVE, #1177) */
+#define MSG_ALL_USED "ALL 64 PATTERNS USED"
+#define MSG_NOT_COPIED " EMPTY: NOT COPIED"             /* after the pattern: P03 EMPTY: NOT COPIED */
+#define MSG_FULL_NOT_COPIED "PATCH FULL: NOT COPIED"
+#define MSG_CLEAR_ALL "CLEAR ALL? HOME AGAIN"           /* SEQ held + HOME (#1178) */
+#define MSG_ALL_CLEARED "PATTERNS + SONGS CLEARED"
+#define MSG_NOTHING_TO_CLEAR "NOTHING TO CLEAR"
 #define MSG_BAR_STEP "STEP "                            /* the SEQ bar in step record: STEP n/len, two spaces, the track */
 #define MSG_BAR_ARM " ARM"                              /* the SEQ bar: after the track's name */
 #define MSG_BAR_REC " REC"

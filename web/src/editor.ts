@@ -81,6 +81,7 @@ import { SongView } from './song';
 import type { PatternView } from './engine';
 import { fixLocks, fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternLocks as patternLocksOf, patternOf, SONGS_MAX, type Pattern, type PatternLink, type SeqState, type SongEntry, type StepLock, type StepNote } from './track';
 import { applyPayload, type LocksLoaded } from './pattern-store';
+import { clearAllPatterns as clearAllPatternsIn, copyPattern as copyPatternIn, nextEmptyPattern as nextEmptyAfter, patternsEmpty } from './pattern-ops';
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
 import { addPresetOf, applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, rememberedPreset, replaceUserPresets, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset, type Preset } from './device-presets';
 import { snapshotPreset } from './snapshot-presets';
@@ -1405,7 +1406,9 @@ export class Editor {
         this.refreshStrips();
       },
       copy: (from, to) => this.copyPattern(from, to),
-      nextEmpty: () => this.nextEmptyPattern(),
+      nextEmpty: (from) => this.nextEmptyPattern(from),
+      clearAll: () => this.clearAllPatterns(),
+      empty: () => patternsEmpty(this.patch),
       song: () => (this.songView ? this.closeSong() : this.openSong()),
       playing: () => this.song,
     });
@@ -1681,38 +1684,36 @@ export class Editor {
     this.stepGrids.get(id)?.refresh();
     this.roll?.view.render();
   }
-  /** copy pattern `from` of every track to pattern `to` (a track without `from` loses `to` too): an undo step */
+  /** copy pattern `from` of every track to pattern `to` (pattern-ops.ts copyPattern): an undo step */
   copyPattern(from: number, to: number): void {
     if (from === to || to < 0 || to >= PATTERNS_MAX) return;
     this.touch();
-    for (const m of this.patch.modules) {
-      if (m.type !== 'steps') continue;
-      const src: Pattern | null = from <= 0 ? { ...(m.notes ? { notes: m.notes } : {}), ...(m.locks ? { locks: m.locks } : {}) } : m.patterns?.[from - 1] ?? null;
-      if (to <= 0) {
-        if (src) {
-          if (src.notes?.length) m.notes = structuredClone(src.notes);
-          else delete m.notes;
-          if (src.locks?.length) m.locks = structuredClone(src.locks);
-          else delete m.locks;
-        }
-        continue;
-      }
-      const pats: (Pattern | null)[] = [...(m.patterns ?? [])];
-      while (pats.length < to) pats.push(null);
-      pats[to - 1] = src ? structuredClone(src) : null;
-      const fixed = fixPatterns(pats);
-      if (fixed) m.patterns = fixed;
-      else delete m.patterns;
-    }
+    copyPatternIn(this.patch, from, to);
     this.ev.onStructure(this.patch);
     for (const g of this.stepGrids.values()) g.refresh();
     this.roll?.view.render();
   }
-  /** the first pattern no track has (for Copy to the next empty one), -1 when all 64 are used */
-  nextEmptyPattern(): number {
-    const used = this.usedPatterns();
-    for (let p = 1; p < PATTERNS_MAX; p++) if (!used.has(p)) return p;
-    return -1;
+  /** the first empty pattern after `from`, round from pattern 2 (pattern-ops.ts): where Copy copies to; -1 when all 64 are
+   *  used */
+  nextEmptyPattern(from = this.pattern): number {
+    return nextEmptyAfter(this.patch, from);
+  }
+  /** every pattern of every track and every song cleared, pattern 1 selected (pattern-ops.ts clearAllPatterns): an undo
+   *  step; nothing when there is nothing to clear */
+  clearAllPatterns(): void {
+    if (patternsEmpty(this.patch)) return;
+    this.touch();
+    clearAllPatternsIn(this.patch);
+    this.ev.onStructure(this.patch);
+    this.patternShown();
+  }
+  /** the FM-1's SEQ page ran a pattern command (PATTERN_OP, #1177, #1178): the same here, an undo step, not sent back
+   *  (main.ts marks it). op 1: pattern `from` copied to `to`, which is selected; op 2: everything cleared */
+  patternOpFromDevice(op: number, from: number, to: number): void {
+    if (op === 1 && from >= 0 && from < PATTERNS_MAX && to > 0 && to < PATTERNS_MAX) {
+      this.copyPattern(from, to);
+      this.selectPattern(to);
+    } else if (op === 2) this.clearAllPatterns();
   }
   /** the open song drawer (song.ts), if any */
   songView: SongView | null = null;

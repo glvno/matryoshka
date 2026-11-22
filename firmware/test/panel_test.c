@@ -4999,6 +4999,99 @@ int main(void)
         eng_render(l, r, 128);
         check("PRESET back to pattern 1", eng_pattern() == 0 && eng_pattern_playing((uint32_t)mod) == 0);
     }
+    /* the pattern commands (#1177, #1178, D-544): SEQ held + SAVE copies the selected pattern of every track to the first
+     * empty number after it (round from P02) and selects it; SEQ held + HOME clears every pattern and song, asked first.
+     * The fixture holds patterns 1 to 4 (pattern 4 only an empty one on the second track) and the song made above */
+    {
+        uint32_t told = host_op_told, t, k, ok;
+        int m0 = eng_steps_module(0), m1 = eng_steps_module(1);
+        const uint32_t *w, *x;
+        enc(6, 1);                                      /* (pattern 2: on both tracks) */
+        later(1100);
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        tap(BTN_SAVE);
+        loop();
+        ok = eng_pattern() == 4 && eng_pattern_has((uint32_t)m0, 4) && eng_pattern_has((uint32_t)m1, 4);
+        for (t = 0; ok && t < 2u; t++) {
+            int mm = eng_steps_module(t), n = eng_pattern_notes((uint32_t)mm, 1, &w);
+            ok = n == eng_pattern_notes((uint32_t)mm, 4, &x) && !memcmp(w, x, 4u * (uint32_t)n)
+                 && eng_pattern_len((uint32_t)mm, 1) == eng_pattern_len((uint32_t)mm, 4);
+        }
+        check("SEQ held + SAVE on pattern 2: every track's pattern 2 copied to pattern 5 (3 and 4 are used), its notes and "
+              "length, and selected; the editor told (PATTERN_OP copy 2 to 5)", ok && host_op_told == told + 1u
+              && host_op_last[0] == 1u && host_op_last[1] == 1u && host_op_last[2] == 4u);
+        check("  the bar: P02 COPIED TO P05", strstr(msg_text, "P02" MSG_COPIED_TO "P05") != 0);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        loop();
+        check("  SEQ let go: the SEQ page stays, the patch not saved", page == PAGE_SEQ);
+        enc(6, -1);
+        later(1100);
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        tap(BTN_SAVE);
+        loop();
+        check("pattern 4 (no notes on any track): P04 EMPTY: NOT COPIED, nothing copied", eng_pattern() == 3
+              && strstr(msg_text, "P04" MSG_NOT_COPIED) != 0 && host_op_told == told + 1u && !eng_pattern_has((uint32_t)m0, 5));
+        enc(6, 1);                                      /* (pattern 5: copies to 6, 7, .. 64) */
+        later(1100);
+        for (k = 5; k < 64u; k++)
+            tap(BTN_SAVE);
+        loop();
+        check("copies on to pattern 64, each the next empty number after the last", eng_pattern() == 63 && eng_pattern_has((uint32_t)m1, 63));
+        tap(BTN_SAVE);
+        loop();
+        check("  all 64 used: ALL 64 PATTERNS USED, nothing changes", eng_pattern() == 63 && strstr(msg_text, MSG_ALL_USED) != 0);
+        eng_pattern_drop((uint32_t)m0, 5);
+        eng_pattern_drop((uint32_t)m1, 5);
+        tap(BTN_SAVE);
+        loop();
+        check("  pattern 6 emptied: a copy of pattern 64 goes round to it (none empty after 64)", eng_pattern() == 5
+              && eng_pattern_has((uint32_t)m0, 5) && strstr(msg_text, "P64" MSG_COPIED_TO "P06") != 0);
+        eng_pattern_drop((uint32_t)m0, 6);
+        eng_pattern_drop((uint32_t)m1, 6);
+        host_patterns_room = 0;
+        told = host_op_told;
+        tap(BTN_SAVE);
+        loop();
+        host_patterns_room = 1;
+        check("  the patch has no room: PATCH FULL: NOT COPIED, pattern 7 stays empty, the editor not told", eng_pattern() == 5
+              && !eng_pattern_has((uint32_t)m0, 6) && !eng_pattern_has((uint32_t)m1, 6) && strstr(msg_text, MSG_FULL_NOT_COPIED) != 0
+              && host_op_told == told);
+        tap(BTN_HOME);
+        loop();
+        check("SEQ held + HOME: it asks first (CLEAR ALL? HOME AGAIN), nothing cleared, the page stays", seq_all_at != 0u
+              && strstr(msg_text, MSG_CLEAR_ALL) != 0 && eng_pattern_has((uint32_t)m0, 1) && page == PAGE_SEQ);
+        panel_keys(1u << 3);
+        panel_keys(0);
+        loop();
+        check("  a key meanwhile: NOT CLEARED", !seq_all_at && strstr(msg_text, MSG_NOT_CLEARED) != 0 && eng_pattern_has((uint32_t)m0, 1));
+        tap(BTN_HOME);
+        later(3100);
+        tap(BTN_HOME);
+        loop();
+        check("  HOME again after 3 s: only asks again", seq_all_at != 0u && eng_pattern_has((uint32_t)m0, 1));
+        told = host_op_told;
+        tap(BTN_HOME);
+        loop();
+        ok = eng_pattern() == 0 && !eng_song() && eng_pattern_notes((uint32_t)m0, 0, &w) == 0 && eng_pattern_notes((uint32_t)m1, 0, &w) == 0;
+        for (k = 1; ok && k < 64u; k++)
+            ok = !eng_pattern_has((uint32_t)m0, k) && !eng_pattern_has((uint32_t)m1, k);
+        for (k = 0; ok && k < ENG_SONGS; k++)
+            ok = !eng_song_len(k);
+        check("  HOME again within 3 s: every pattern and song cleared, pattern 1 empty and selected; the editor told", ok
+              && !eng_locks_count() && strstr(msg_text, MSG_ALL_CLEARED) != 0 && host_op_told == told + 1u && host_op_last[0] == 2u);
+        tap(BTN_HOME);
+        loop();
+        check("  SEQ held + HOME on an empty patch: NOTHING TO CLEAR, no question", !seq_all_at && strstr(msg_text, MSG_NOTHING_TO_CLEAR) != 0);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        loop();
+        check("  SEQ let go: the SEQ page stays", page == PAGE_SEQ);
+        check("patterns fixture loads again", load_fixture("build/panel-fixtures/steps-patterns.m1p") == 0);
+        pv_gen++;
+    }
     {   /* The SEQ page drawn whole: once when SEQ opens it from a Steps track's device page (seq_select drew it a second
          * time after page_show, and the device page's header before it), and its ground cleared around the cells only
          * (seq_grid_ground): pixel for pixel the page drawn over a ground cleared whole first, from any screen */

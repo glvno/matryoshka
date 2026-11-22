@@ -5,13 +5,13 @@ import { patternStrip } from './pattern-strip';
 import { SongView } from './song';
 import { patternName, type SongEntry } from './track';
 
-it('the strip steps the pattern, shows the one a track waits for, and copies to the next empty one', () => {
-  let p = 0;
+it('the strip steps the pattern, shows the one a track waits for, copies to the next empty one and clears all (asked first)', () => {
+  let p = 0, cleared = 0;
   const copies: [number, number][] = [];
   const s = patternStrip({
     pattern: () => p, names: () => undefined, select: (x) => { p = x; s.refresh(); }, used: () => new Set([0]),
-    shape: (x) => ({ own: x === 0 }), setShape: () => {}, clear: () => {}, copy: (a, b) => copies.push([a, b]), nextEmpty: () => 1,
-    song: () => {}, playing: () => 0,
+    shape: (x) => ({ own: x === 0 }), setShape: () => {}, clear: () => {}, copy: (a, b) => copies.push([a, b]), nextEmpty: (from) => from + 1,
+    clearAll: () => { cleared++; }, empty: () => cleared > 0, song: () => {}, playing: () => 0,
   });
   const name = (): string => s.el.querySelector('.pat-name')!.textContent!;
   expect(name()).toBe('P01');
@@ -23,7 +23,21 @@ it('the strip steps the pattern, shows the one a track waits for, and copies to 
   expect(name()).toBe('P02 → P03');
   expect(s.el.querySelector('.pat-name')!.classList.contains('waiting')).toBe(true);
   (s.el.querySelector('.pat-act') as HTMLButtonElement).click();
-  expect(copies).toEqual([[1, 1]]);
+  expect(copies).toEqual([[1, 2]]);
+  const clearAll = [...s.el.querySelectorAll('.pat-act')].find((b) => b.textContent === 'clear all') as HTMLButtonElement;
+  const was = window.confirm;
+  window.confirm = () => false;
+  clearAll.click();
+  expect(cleared).toBe(0);
+  window.confirm = () => true;
+  clearAll.click();
+  window.confirm = was;
+  s.refresh();
+  expect(cleared).toBe(1);
+  expect(clearAll.disabled).toBe(true);
+  expect(patternStrip({ pattern: () => 0, names: () => undefined, select: () => {}, used: () => new Set(), shape: () => ({ own: true }), setShape: () => {},
+    clear: () => {}, copy: () => {}, nextEmpty: () => 1, clearAll: () => {}, empty: () => true, song: () => {}, playing: () => 0 }, { compact: true })
+    .el.textContent).not.toContain('clear all');
 });
 
 it('the song drawer adds, inserts and deletes entries, and plays the song shown', () => {
