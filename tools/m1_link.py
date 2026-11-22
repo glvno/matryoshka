@@ -512,9 +512,9 @@ def palette_command(link, a, out=print):
         return
     if op == "put":
         pos, slot = int(a[2]) - 1, int(a[3]) - 1
-        name = [ord(c) for c in a[4].upper()[:20]]
+        name = [ord(c) for c in a[4][:20]]           # (the slot's own name, case and all: the FM-1 compares it exactly)
         acked([2, pos, slot, int(a[5]) - 1 if len(a) > 5 else 0, *name, *[0] * (20 - len(name)), 0], pos)
-        out(f"palette {pos + 1}: slot {slot + 1:02d} {a[4].upper()}")
+        out(f"palette {pos + 1}: slot {slot + 1:02d} {a[4]}")
         return
     if op == "clear":
         pos = int(a[2]) - 1
