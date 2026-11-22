@@ -1064,6 +1064,55 @@ int main(void)
             check(SAYS[t], found && ok);
         }
     }
+    {                                                   /* #1202 K1: a row a cable's macro range sets does not turn; the bar
+                                                         * says SET BY and the source (D-944). A factory patch whose row has
+                                                         * a ranged pin, else one with a pin mapped there and a range added */
+        uint32_t p, d, g, k, s, pass, rm = 0, rj = 0, rs = 0;
+        int found = 0, added = 0;
+        for (pass = 0; pass < 2u && !found; pass++)
+            for (p = 0; p < N_PRESETS && !found; p++) {
+                if (load_at(p))
+                    continue;
+                pages_ensure();
+                for (d = 0; d < pg_ndev && !found; d++)
+                    for (g = pg_dev[d].pg0; g < (uint32_t)pg_dev[d].pg0 + pg_dev[d].npg && !found; g++)
+                        for (k = 0; k < pg_page[g].nrows && !found; k++) {
+                            uint32_t m = pg_page[g].mod[k], j = pg_page[g].par[k], lo, hi;
+                            if (m == SETTING_ROW || (j & POLY_ROW) || !row_ok(m, j) || DEF_FIXED((uint32_t)eng_type(m), j))
+                                continue;
+                            for (s = 0; s < 2u && !found && pass; s++)
+                                if (!eng_range(m, s, j, &lo, &hi) && eng_set_range(m, s, j, 1, 40, 200)) {
+                                    if (eng_set_by(m, j) >= 0)
+                                        found = added = 1, rs = s;
+                                    else
+                                        eng_set_range(m, s, j, 0, 0, 0);
+                                }
+                            if (!pass && eng_set_by(m, j) >= 0)
+                                found = 1;
+                            if (found) {
+                                pg_cur_dev = d;
+                                pg_cur_page = g - pg_dev[d].pg0;
+                                rm = k;
+                                rj = j;
+                            }
+                        }
+            }
+        check("a factory patch has a row a ranged p1 / p2 sets (or one a range is added to)", found);
+        if (found) {
+            const ppage_t *pg = pages_now();
+            uint32_t m = pg->mod[rm], mo, par;
+            int32_t was = eng_get_param(m, rj), v = was;
+            msg_text[0] = 0;
+            check("  turning it: no change, the bar says SET BY and the source (26 characters at most)",
+                  pages_turn(rm, 3, 0, 0, &mo, &par, &v) == -1 && eng_get_param(m, rj) == was
+                  && !strncmp(msg_text, "SET BY ", 7) && msg_text[7] && str_len(msg_text) <= 26u);
+            printf("      (%s, row %u%s; the bar: %s)\n", patch_label, (unsigned)rm, added ? ", a range added" : "", msg_text);
+            if (added) {
+                eng_set_range(m, rs, rj, 0, 0, 0);
+                check("  without the range the row turns again", eng_set_by(m, rj) < 0 && pages_turn(rm, 3, 0, 0, &mo, &par, &v) == 0);
+            }
+        }
+    }
     fm1_ms = 10000;
     host_ps_init();
     if (load("CASSIA 1") == 0) {                        /* #485: Cassia 1's 153 rows stored whole; one of 88 loads what it has */

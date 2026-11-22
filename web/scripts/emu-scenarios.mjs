@@ -2306,6 +2306,26 @@ async function main() {
       await check('909 hats: the next card preset from the FM-1 sets both levels back to 1', !!back, `${await gains()}`);
       await emu.elapse(1200);
     },
+    // #1202 K1 (D-944): a row a cable's macro range sets does not turn on the FM-1; the bar says SET BY and the source.
+    // Init, its filter `ranged` with an LFO `wobble` into p1 and a range of p1 on the cutoff (__m1test.openRanged)
+    async setBy() {
+      const opened = await openSynced('Init', (n) => page.evaluate((x) => window.__m1test.openRanged(x, 'filter', 'cutoff'), n));
+      await check('set by: Init opens with its filter\'s cutoff set by a ranged LFO, synced', opened);
+      const cutoff = async () => JSON.parse(await patchJson()).modules.find((m) => m.name === 'ranged')?.params.cutoff;
+      const was = await cutoff();
+      let found = await emu.text('RANGED');         // (SELECT a device at a time, its name in the header)
+      for (let n = 0; n < 12 && !found; n++) {
+        await emu.turn(ENC.select, 1);
+        found = await emu.waitText('RANGED', 1000);
+      }
+      await check('set by: SELECT reaches the filter `ranged`, its CUTOFF row on K1', found && (await emu.waitText('CUTOFF', 2000)));
+      await emu.turn(ENC.k1, 5);
+      await check('set by: K1 on the cutoff row: the bar says SET BY WOBBLE', await emu.waitText('SET BY WOBBLE', 1500));
+      await emu.snap('set-by');
+      await emu.elapse(600);
+      await check('set by: the cutoff stays where it was, in the editor too', (await cutoff()) === was, `cutoff ${was} -> ${await cutoff()}`);
+      await emu.elapse(1200);
+    },
     // D-1053 amended (Q11): the 808 Kit's VELOCITY row, turned up on the FM-1, plays a key at the default velocity (100, an
     // armed track's) at 100 / 127 of what it played at 0
     async velocity808() {

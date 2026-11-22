@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **New: the palette, up to 8 sounds to switch between on the FM-1.** Hold HOME and hold a black key (F#3 to A#4, positions 1 to 8) for a second to save the sound playing there: the patch, every device's preset and the selected pattern (`SAVED TO PALETTE 3`). An edited patch is saved into its slot too; a patch from the editor is first stored into a free slot (`SAVED: SLOT 31, PALETTE 3`). Hold HOME and tap a black key to switch to that sound: at once when stopped, or on the next bar line while playing, with a short fade out and in, and its pattern starts on beat 1. The top bar shows what comes next (`NEXT: 3 MONOLITH D`); the same key again cancels. Hold HOME on its own to see all 8 positions. While HOME is held the keys play nothing. The palette starts empty, and FACTORY RESET empties it. A position whose slot no longer holds that patch reads `MISSING`. Needs the next firmware (#1196).
+- **A row that a cable sets now says so on the FM-1.** When a cable into a module's parameter input has a range on a row, the cable decides that row's value, so turning its knob did nothing you could hear while the number still moved. Now the knob leaves the value alone and the screen says `SET BY` and the cable's source, such as `SET BY PRE-SCALE`. In the editor, that row's slider is faded with a dashed outline, and its tooltip names the source. Needs the next firmware for the FM-1 part (#1202).
 
 ## 1.25.0 — 2026-11-22
 

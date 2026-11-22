@@ -128,6 +128,16 @@ export const isBipolar = (r: Range | undefined): boolean => !!r && r[2] === 1;
 /** where a pin's value (times its depth) lands in a macro range, 0..1 between its ends (engine.c apply_cv the same) */
 export const rangeShare = (r: Range, v: number): number => (r[2] === 1 ? (v + 1) / 2 : v);
 export const rangeOf = (m: ModuleInst, s: 'p1' | 'p2', name: string): Range | undefined => m.range?.[s]?.[name];
+/** the module whose cable sets parameter `name` of m (#1202 K1): a cable into p1 / p2, the parameter in that pin's matrix
+ * and a macro range on it, which replaces the row's value (engine.ts applyCv; engine.c eng_set_by the same) */
+export function setBy(p: Patch, m: ModuleInst, name: string): ModuleInst | undefined {
+  for (const s of ['p1', 'p2'] as const) {
+    if (!m.map?.[s]?.includes(name) || !rangeOf(m, s, name)) continue;
+    const c = p.cables.find((c) => c.to.module === m.id && c.to.port === s);
+    if (c) return p.modules.find((x) => x.id === c.from.module);
+  }
+  return undefined;
+}
 
 export interface ModuleDef {
   type: string;
