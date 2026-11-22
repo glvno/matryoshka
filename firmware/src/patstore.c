@@ -61,7 +61,7 @@ typedef struct {
 } pt_shdr_t;
 _Static_assert(sizeof(pt_shdr_t) == PT_SHDR, "pattern sector header");
 _Static_assert(2u * PT_TAB <= M1_PATCH_MAX, "the scan's table fits in sl_buf and m1_up");
-_Static_assert(PT_NSEC_MAX * PT_SEC <= 0x10000u, "a record's place in the store fits 16 bits");
+_Static_assert(PT_NSEC_MAX * PT_SEC <= 1u << 16, "a record's place in the store fits 16 bits");
 
 typedef struct { uint16_t id, len; uint32_t hash; char name[PT_NAME + 1]; } pt_info_t;
 
