@@ -54,8 +54,9 @@ export async function findBuild() {
 }
 
 /** a firmware CI run's matryoshka-firmware artifact in build/flash/<run> (downloaded once); its folder. A run of release.yml
- *  has the release package instead (matryoshka-release-X.Y.Z, #783): its package, sidecar and app are copied to the names a
- *  CI build has (matryoshka.fwsc, .json, .bin), so the gates and the installer take release bytes as they take a CI build */
+ *  has the release package instead (matryoshka-release-X.Y.Z, #783): its package, sidecar, app and screen font (#602, from
+ *  1.26) are copied to the names a CI build has (matryoshka.fwsc, .json, .bin, matryoshka-font.bin), so the gates and the
+ *  installer take release bytes as they take a CI build */
 export async function download(id) {
   const dir = join(ROOT, 'build/flash', String(id));
   if (existsSync(join(dir, 'matryoshka.fwsc')) && existsSync(join(dir, 'matryoshka.json'))) return dir;
@@ -70,11 +71,12 @@ export async function download(id) {
     mkdirSync(dir, { recursive: true });
     const v = rel.slice('matryoshka-release-'.length);
     const got = await run('gh', ['run', 'download', String(id), '-R', REPO, '-n', rel, '-D', dir]);
-    const [pkg, side, app] = [`matryoshka-${v}.fwsc`, `matryoshka-${v}.json`, `matryoshka-${v}-app.bin`].map((f) => join(dir, f));
+    const [pkg, side, app, font] = [`matryoshka-${v}.fwsc`, `matryoshka-${v}.json`, `matryoshka-${v}-app.bin`, `matryoshka-${v}-font.bin`].map((f) => join(dir, f));
     if (got.code === 0 && existsSync(pkg) && existsSync(side)) {
       copyFileSync(pkg, join(dir, 'matryoshka.fwsc'));
       copyFileSync(side, join(dir, 'matryoshka.json'));
       if (existsSync(app)) copyFileSync(app, join(dir, 'matryoshka.bin'));
+      if (existsSync(font)) copyFileSync(font, join(dir, 'matryoshka-font.bin'));
       console.log(`run ${id} is release ${v}: its package, as built (${rel})`);
       return dir;
     }

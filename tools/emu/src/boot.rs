@@ -22,13 +22,19 @@
 //!    a firmware-tier patch's and a factory-region patch's released copies in their own slots, an edited and a renamed
 //!    copy beside them, the release's factory set in the settings record) boots without a factory region and keeps every
 //!    slot; the editor installs today's region: the two untouched copies get today's patches in place, the others stay,
-//!    the bar says FACTORY PATCHES UPDATED, and the next boot rewrites nothing. Without --link these checks are not made,
-//!    and the summary says so.
+//!    the bar says FACTORY PATCHES UPDATED, and the next boot rewrites nothing. Then the screen font (#602): an FM-1 with
+//!    the factory region but no font says SCREEN FONT MISSING:, then CONNECT TO MATRYOSHKA.LOL, INFO names the font it
+//!    lacks, the editor's install (FONT BEGIN, WRITE, COMMIT) is taken, INFO says the font is there, its sectors hold the
+//!    image and the screen is drawn as after a boot with the font. Without --link these checks are not made, and the
+//!    summary says so.
+//!
+//! Every machine but the font check's has the screen font in its flash (machine.rs installed_flash, font_only_flash):
+//! the part without the factory region is an FM-1 whose font install went through.
 //!
 //! Snapshots go to OUT. The last line is the summary: `boot check: PASS ..` or `boot check: FAIL ..`.
 
 use crate::font;
-use crate::machine::{Machine, FACTORY_REGION, FLASH_SIZE};
+use crate::machine::{factory_only_flash, font_only_flash, Machine, FACTORY_REGION, FONT_IMAGE};
 use crate::serve::{Mailbox, ToBytes, ToPackets};
 use crate::smoke::{bank_name, bank_record, factory, note_peak, quick_start, record, released_cases, run_parts, wait_text, Part, Run, C4, DEVICE_PAGE, LOUD, OCT_DOWN, OCT_UP, QUIET};
 use std::collections::VecDeque;
@@ -44,6 +50,11 @@ const C_FACT_BEGIN: u8 = 0x16;
 const C_FACT_WRITE: u8 = 0x17;
 const C_FACT_COMMIT: u8 = 0x1A;
 const C_FACT_INFO: u8 = 0x3F;
+/// The font area's command, its ops (protocol.ts FONT, #602)
+const C_FONT: u8 = 0x1F;
+const FONT_BEGIN: u8 = 1;
+const FONT_WRITE: u8 = 2;
+const FONT_COMMIT: u8 = 4;
 const R_ACK: u8 = 0x40;
 const R_FACT_INFO: u8 = 0x5F;
 /// What the firmware compiles in of the factory content (#915): the firmware tier's image FC_TIER
@@ -92,6 +103,7 @@ pub fn run(app: &[u8], link: Option<&[u8]>, out: &str) -> ExitCode {
         parts.push(("link", Box::new(move |t: &mut Run, e: &mut u64| linked(l, t, e))));
         parts.push(("factory-install", Box::new(move |t: &mut Run, e: &mut u64| factory_install(l, t, e))));
         parts.push(("slot-upgrade", Box::new(move |t: &mut Run, e: &mut u64| slot_upgrade(l, t, e))));
+        parts.push(("font-install", Box::new(move |t: &mut Run, e: &mut u64| font_install(l, t, e))));
     }
     run_parts(&mut t, &mut emulated, parts);
     let wall = t0.elapsed().as_secs_f64();
@@ -153,10 +165,10 @@ fn plain(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     Ok(())
 }
 
-/// A blank flash (no factory region, #915): the firmware tier alone in the bank, in its slots; the bar says where to get
-/// the rest
+/// A flash without the factory region (#915) but with the screen font (#602): the firmware tier alone in the bank, in its
+/// slots; the bar says where to get the rest
 fn blank_region(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
-    let mut m = Machine::boot(app, Some(&vec![0xffu8; FLASH_SIZE]));
+    let mut m = Machine::boot(app, Some(&font_only_flash()));
     quick_start(&mut m, 9000)?;
     let missing = wait_text(&mut m, "FACTORY SOUNDS MISSING", 4000)?;
     t.snap(&m, "blank-region");
@@ -289,6 +301,13 @@ fn info(msg: &[u8]) -> Option<(u8, u8, u32, Option<[u8; 3]>)> {
     Some((p[0], p[3], features, (p.len() >= 12).then(|| [p[9], p[10], p[11]])))
 }
 
+/// INFO's font area (#602, bytes 20..24): its flags (bit 0 the firmware reads it, bit 1 it holds that font, bit 2 an
+/// install began) and the id of the font the firmware needs
+fn font_info(msg: &[u8]) -> Option<(u8, u32)> {
+    let p = reply(msg, INFO)?;
+    (p.len() >= 25).then(|| (p[20], u32::from_le_bytes(p[21..25].try_into().unwrap())))
+}
+
 /// An editor frame: F0, the prefix, the command, the payload packed into 7-bit bytes, F7 (protocol.ts frame)
 fn frame(cmd: u8, payload: &[u8]) -> Vec<u8> {
     let mut f = vec![0xF0, PREFIX[0], PREFIX[1], PREFIX[2], cmd];
@@ -306,6 +325,11 @@ fn reply(msg: &[u8], cmd: u8) -> Option<Vec<u8>> {
 /// The status of an ACK of `cmd` (proto.c m1_ack: cmd, seq, status, ..)
 fn ack(msg: &[u8], cmd: u8) -> Option<u8> {
     reply(msg, R_ACK).filter(|p| p.len() >= 3 && p[0] == cmd).map(|p| p[2])
+}
+
+/// The status of an ACK of FONT op `op` (proto.c: FONT, op, status, sector)
+fn font_ack(msg: &[u8], op: u8) -> Option<u8> {
+    reply(msg, R_ACK).filter(|p| p.len() >= 3 && p[0] == C_FONT && p[1] == op).map(|p| p[2])
 }
 
 /// M-UPGRADE's handshake (ota.c: F0 pack7(00 59 cmd len24 body chk) F7, cmd 0x11, no body)
@@ -386,12 +410,17 @@ fn linked(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     Ok(())
 }
 
-/// The editor's install of `img` over the link (FACT_BEGIN, every page by FACT_WRITE, FACT_COMMIT), as protocol.ts and
-/// tools/fm1_install.py write it: pages inside one 256-byte page each, sector 0 after the header's 64 bytes, a record page
-/// at 0xF00 written whole. FACT_BEGIN's status, the pages written (or the first refusal), FACT_COMMIT's status
-fn install(m: &mut Machine, l: &mut Link, img: &[u8]) -> Result<(Option<u8>, Result<usize, String>, Option<u8>), String> {
-    l.send(&frame(C_FACT_BEGIN, &[]));
-    let begin = l.wait(m, 3000, |x| ack(x, C_FACT_BEGIN))?;
+/// The editor's install of `img` over the link, as protocol.ts and tools/fm1_install.py write it: the factory region's
+/// (FACT_BEGIN, every page by FACT_WRITE, FACT_COMMIT) or, with `font`, the screen font's (FONT BEGIN, WRITE, COMMIT,
+/// #602): pages inside one 256-byte page each, sector 0 after the header's 64 bytes, a record page at 0xF00 written
+/// whole. BEGIN's status, the pages written (or the first refusal), COMMIT's status
+fn install(m: &mut Machine, l: &mut Link, img: &[u8], font: bool) -> Result<(Option<u8>, Result<usize, String>, Option<u8>), String> {
+    let send = |l: &mut Link, fact: u8, op: u8, body: &[u8]| {
+        l.send(&if font { frame(C_FONT, &[&[op], body].concat()) } else { frame(fact, body) });
+    };
+    let acked = move |fact: u8, op: u8| move |x: &[u8]| if font { font_ack(x, op) } else { ack(x, fact) };
+    send(l, C_FACT_BEGIN, FONT_BEGIN, &[]);
+    let begin = l.wait(m, 3000, acked(C_FACT_BEGIN, FONT_BEGIN))?;
     let mut pages = 0;
     for s in 0..img.len().div_ceil(0x1000) {
         let mut off = if s == 0 { 64 } else { 0 };
@@ -403,8 +432,8 @@ fn install(m: &mut Machine, l: &mut Link, img: &[u8]) -> Result<(Option<u8>, Res
             }
             let mut p = vec![s as u8, off as u8, (off >> 8) as u8];
             p.extend_from_slice(&page);
-            l.send(&frame(C_FACT_WRITE, &p));
-            let st = l.wait(m, 3000, |x| ack(x, C_FACT_WRITE))?;
+            send(l, C_FACT_WRITE, FONT_WRITE, &p);
+            let st = l.wait(m, 3000, acked(C_FACT_WRITE, FONT_WRITE))?;
             if st != Some(0) {
                 return Ok((begin, Err(format!("sector {s} offset {off:#x}: {st:?}")), None));
             }
@@ -412,15 +441,61 @@ fn install(m: &mut Machine, l: &mut Link, img: &[u8]) -> Result<(Option<u8>, Res
             off = (off | 0xFF) + 1;
         }
     }
-    l.send(&frame(C_FACT_COMMIT, &img[..64]));
-    let commit = l.wait(m, 5000, |x| ack(x, C_FACT_COMMIT))?;
+    send(l, C_FACT_COMMIT, FONT_COMMIT, &img[..64]);
+    let commit = l.wait(m, 5000, acked(C_FACT_COMMIT, FONT_COMMIT))?;
     Ok((begin, Ok(pages), commit))
+}
+
+/// The screen font over the link on the M1_EMU_MIDI build (#602): an FM-1 with the factory region but no font draws every
+/// size in its small type and says SCREEN FONT MISSING; INFO says the font area lacks the font this firmware needs (the
+/// image's id); the editor's install is taken, INFO says it holds the font, its sectors hold the image byte for byte, and
+/// the screen is drawn again in the full type: the same frame as an FM-1 booted with the font
+fn font_install(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
+    let id = u32::from_le_bytes(FONT_IMAGE[12..16].try_into().unwrap());
+    let mut m = Machine::boot(app, Some(&factory_only_flash()));
+    let mut l = Link::new();
+    l.run(&mut m, 1500)?;
+    quick_start(&mut m, 9000)?;
+    let missing = wait_text(&mut m, "SCREEN FONT MISSING", 4000)?;
+    t.snap(&m, "font-missing");
+    t.check("font link: without the font the bar says SCREEN FONT MISSING:", missing, format!("at {} ms", m.ms()));
+    let connect = wait_text(&mut m, "CONNECT TO MATRYOSHKA.LOL", 6000)?;
+    t.check("font link: then CONNECT TO MATRYOSHKA.LOL", connect, format!("at {} ms", m.ms()));
+    l.run(&mut m, 500)?;
+    l.send(&[0xF0, PREFIX[0], PREFIX[1], PREFIX[2], HELLO, 0xF7]);
+    let before = l.wait(&mut m, 1500, font_info)?;
+    t.check("font link: INFO says the firmware reads the font area, which lacks its font, and names the image's id",
+        before == Some((1, id)), format!("{before:x?}, the image's id {id:#x}"));
+    let (begin, pages, commit) = install(&mut m, &mut l, FONT_IMAGE, true)?;
+    t.check("font link: FONT BEGIN is acknowledged S_OK", begin == Some(0), format!("{begin:?}"));
+    t.check("font link: FONT WRITE takes every page of the image", pages.is_ok(), pages.map_or_else(|e| e, |n| format!("{n} pages")));
+    t.check("font link: FONT COMMIT is acknowledged S_OK", commit == Some(0), format!("{commit:?}"));
+    l.send(&[0xF0, PREFIX[0], PREFIX[1], PREFIX[2], HELLO, 0xF7]);
+    let after = l.wait(&mut m, 1500, font_info)?;
+    t.check("font link: INFO says the font area holds the font", after == Some((3, id)), format!("{after:x?}"));
+    let f = m.flash();
+    let placed = crate::machine::font_sectors(FONT_IMAGE).into_iter().enumerate().all(|(s, at)| {
+        let part = &FONT_IMAGE[s * 0x1000..((s + 1) * 0x1000).min(FONT_IMAGE.len())];
+        &f[at..at + part.len()] == part
+    });
+    t.check("font link: the font area holds the image byte for byte", placed, String::new());
+    // the home page again in the full type: the same frame as an FM-1 that booted with the font, at the same moment
+    let mut done = Machine::boot(app, Some(&f));
+    quick_start(&mut done, 9000)?;
+    wait_text(&mut done, DEVICE_PAGE, 9000)?;
+    done.run_for(6000)?;
+    m.run_for(6000)?;
+    t.snap(&m, "font-installed");
+    t.check("font link: after the install the screen is drawn in the full type (as after a boot with the font)",
+        m.lcd() == done.lcd(), String::new());
+    *emulated += m.ms() + done.ms();
+    Ok(())
 }
 
 /// The factory content over the link on the M1_EMU_MIDI build (#915, D-490): a blank flash, the image installed as the
 /// editor and tools/fm1_install.py write it, then FACT_INFO and the bank
 fn factory_install(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
-    let mut m = Machine::boot(app, Some(&vec![0xffu8; FLASH_SIZE]));
+    let mut m = Machine::boot(app, Some(&font_only_flash()));
     let mut l = Link::new();
     l.run(&mut m, 1500)?;
     quick_start(&mut m, 8000)?;
@@ -432,7 +507,7 @@ fn factory_install(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), St
     t.check("factory link: FACT_INFO on a blank flash: no region, the firmware tier alone plays",
         before.as_ref().is_some_and(|p| p.len() >= 26 && p[0] == 0 && p[16] & 2 != 0), format!("{before:?}"));
     let img = FACTORY_REGION;
-    let (begin, pages, commit) = install(&mut m, &mut l, img)?;
+    let (begin, pages, commit) = install(&mut m, &mut l, img, false)?;
     t.check("factory link: FACT_BEGIN is acknowledged S_OK", begin == Some(0), format!("{begin:?}"));
     t.check("factory link: FACT_WRITE takes every page of the image", pages.is_ok(), pages.map_or_else(|e| e, |n| format!("{n} pages")));
     t.check("factory link: FACT_COMMIT is acknowledged S_OK", commit == Some(0), format!("{commit:?}"));
@@ -474,7 +549,7 @@ fn slot_upgrade(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     let mut edited = own[0].2.clone();
     let last = edited.len() - 1;
     edited[last] ^= 1;
-    let mut flash = vec![0xffu8; FLASH_SIZE];
+    let mut flash = font_only_flash();
     let put = |f: &mut Vec<u8>, sec: usize, s: Vec<u8>| f[0xA0000 + sec * 0x1000..0xA1000 + sec * 0x1000].copy_from_slice(&s);
     for (k, (name, slot, old, _)) in own.iter().enumerate() {
         put(&mut flash, k, record(*slot, 1 + k as u32, name, old, false));
@@ -495,7 +570,7 @@ fn slot_upgrade(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     l.run(&mut m, 500)?;
     t.check("slot upgrade: a bank an earlier release left, no factory region: every slot as it was, the bar says FACTORY SOUNDS MISSING:",
         missing && unchanged(&m.flash()), String::new());
-    let (begin, pages, commit) = install(&mut m, &mut l, FACTORY_REGION)?;
+    let (begin, pages, commit) = install(&mut m, &mut l, FACTORY_REGION, false)?;
     t.check("slot upgrade: the editor installs today's region while it runs", begin == Some(0) && pages.is_ok() && commit == Some(0),
         format!("{begin:?} {pages:?} {commit:?}"));
     let said = wait_text(&mut m, "FACTORY PATCHES UPDATED", 8000)?;
