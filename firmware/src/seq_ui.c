@@ -2497,7 +2497,7 @@ static void song_line(uint32_t n, uint32_t y, const char *s, uint16_t fg, int cu
         if (r == 0u)
             scr_pend(SONG_TX, text_w(&FONT_S, s, -1), FONT_S.h, s, -1);
         for (k = 0; s[k]; k++) {
-            uint32_t c = (uint8_t)s[k], j, rb;
+            uint32_t c = (uint8_t)s[k], j;
             const fglyph_t *g;
             const uint8_t *bits;
             uint8_t gi = c >= 0x20u && c < 0x7Fu ? FONT_S.map[c - 0x20u] : 255u;
@@ -2507,9 +2507,8 @@ static void song_line(uint32_t n, uint32_t y, const char *s, uint16_t fg, int cu
             num += c >= '0' && c <= '9' && num == (uint32_t)k;   /* (the leading digits: the entry's number) */
             col = mark > 0 && (uint32_t)k < num ? acc : ink;
             g = &FONT_S.g[gi];
-            rb = (g->w + 1u) / 2u;
-            bits = FONT_S.bits + g->off + r * rb;
-            for (j = 0; j < g->w; j++) {
+            bits = glyph_row(&FONT_S, g, r);
+            for (j = 0; bits && j < g->w; j++) {
                 uint32_t a = (j & 1u) ? bits[j >> 1] & 15u : bits[j >> 1] >> 4, at = px + (uint32_t)((int32_t)j + g->x);
                 if (a && at < field)
                     row[at] = mix565(col, bg, a + (a > 7u ? 1u : 0u));
