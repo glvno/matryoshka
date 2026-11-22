@@ -655,6 +655,27 @@ describe('Song Position (#596; firmware/test/clock_in_test.c the same)', () => {
       }
     });
 
+  it('every track starts each song entry on its first step, whatever the length of the entry before it (#1132, D-543)', () => {
+    const { e, tracks } = rigSpp();
+    e.setSong(1);
+    const l = new Float32Array(128), r = new Float32Array(128);
+    e.clockExternal(true);
+    e.transportTop();
+    const seen = tracks().map(() => 0), off: object[] = [];
+    for (let t = 0; t < 6000 && seen.some((k) => k < 7); t++) {
+      e.clockTick();
+      e.render(l, r);
+      tracks().forEach((s, k) => {
+        if (seen[k] < 7 && s.songPos === seen[k]) {
+          if (s.visit !== 0) off.push({ track: k, entry: s.songPos, visit: s.visit });
+          seen[k]++;
+        }
+      });
+    }
+    expect(seen).toEqual([7, 7, 7, 7]);
+    expect(off).toEqual([]);
+  });
+
   it('with no MIDI clock (CLOCK IN off) the start lands there at once, on the tempo', () => {
     const { e, tracks } = rigSpp();
     const l = new Float32Array(128), r = new Float32Array(128);
