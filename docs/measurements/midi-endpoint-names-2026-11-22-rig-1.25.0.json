@@ -1,0 +1,818 @@
+{
+ "method": "build/release-1.25.0/prep/endpoint_names.py: ioreg gives the USB product string and serial at location 0x01140000; CoreMIDI (midinames.swift) lists the device online there, its entity, sources and destinations; then tools/fm1_install.py --info --location and tools/m1_link.py info --location. 1.25.0 against 1.24.1: the same serial and CoreMIDI record. rename_cycle.py: DEVICE_SETTINGS sets the name, the same package installed again restarts the FM-1 (a fresh USB enumeration)",
+ "runs": {
+  "1.24.1": {
+   "location": "0x01140000",
+   "usb_product_name": "Matryoshka TEST RIG",
+   "usb_serial": "415035443333360F105D4C5C0720DA78-F0821BA7",
+   "coremidi_uid": "0x8644a493",
+   "names": {
+    "device": "Matryoshka TEST RIG",
+    "entities": [
+     "Matryoshka TEST RIG"
+    ],
+    "sources": [
+     "Matryoshka TEST RIG"
+    ],
+    "destinations": [
+     "Matryoshka TEST RIG"
+    ],
+    "displays": [
+     "Matryoshka TEST RIG",
+     "Matryoshka TEST RIG"
+    ]
+   },
+   "expect": "named",
+   "same": false,
+   "coremidi_devices_at_location": [
+    {
+     "name": "Matryoshka",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0xa76daedb",
+     "entities": [
+      "Matryoshka"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka",
+       "display": "Matryoshka"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka",
+       "display": "Matryoshka"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka TEST RIG",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0x57813527",
+     "entities": [
+      "Matryoshka TEST RIG"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka TEST RIG",
+       "display": "Matryoshka TEST RIG"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka TEST RIG",
+       "display": "Matryoshka TEST RIG"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka TEST RIG",
+     "offline": 0,
+     "loc": "0x01140000",
+     "uid": "0x8644a493",
+     "entities": [
+      "Matryoshka TEST RIG"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka TEST RIG",
+       "display": "Matryoshka TEST RIG"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka TEST RIG",
+       "display": "Matryoshka TEST RIG"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka ALPHA",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0x6715838d",
+     "entities": [
+      "Matryoshka ALPHA"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka ALPHA",
+       "display": "Matryoshka ALPHA"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka ALPHA",
+       "display": "Matryoshka ALPHA"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka BRAVO",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0x5a45ca91",
+     "entities": [
+      "Matryoshka BRAVO"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka BRAVO",
+       "display": "Matryoshka BRAVO"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka BRAVO",
+       "display": "Matryoshka BRAVO"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka QUAL TMP",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0x0a8f0141",
+     "entities": [
+      "Matryoshka QUAL TMP"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka QUAL TMP",
+       "display": "Matryoshka QUAL TMP"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka QUAL TMP",
+       "display": "Matryoshka QUAL TMP"
+      }
+     ]
+    }
+   ],
+   "checks": [
+    {
+     "name": "the rig is on USB at 0x01140000 with a product string and a serial",
+     "ok": true,
+     "detail": "'Matryoshka TEST RIG', serial 415035443333360F105D4C5C0720DA78-F0821BA7"
+    },
+    {
+     "name": "one CoreMIDI device online at that location",
+     "ok": true,
+     "detail": "1 online"
+    },
+    {
+     "name": "its USB name is \"Matryoshka TEST RIG\"",
+     "ok": true,
+     "detail": "'Matryoshka TEST RIG'"
+    },
+    {
+     "name": "its CoreMIDI device, entity, sources and destinations all show \"Matryoshka TEST RIG\"",
+     "ok": true,
+     "detail": "{\"device\": \"Matryoshka TEST RIG\", \"entities\": [\"Matryoshka TEST RIG\"], \"sources\": [\"Matryoshka TEST RIG\"], \"destinations\": [\"Matryoshka TEST RIG\"], \"displays\": [\"Matryoshka TEST RIG\", \"Matryoshka TEST RIG\"]}"
+    },
+    {
+     "name": "a named serial: 32 hex digits of the flash UID, \"-\", a name suffix",
+     "ok": true,
+     "detail": "'415035443333360F105D4C5C0720DA78-F0821BA7'"
+    },
+    {
+     "name": "fm1_install.py --info --location 0x01140000 finds it",
+     "ok": true,
+     "detail": "FM-1_7012401  [running]  port: Matryoshka TEST RIG  (Matryoshka 1.24.1) | boot code: V15's"
+    },
+    {
+     "name": "m1_link.py info --location 0x01140000 finds it",
+     "ok": true,
+     "detail": "protocol 1, max modules 128, max cables 255, flash ok, patch loaded, delays 255, firmware 1.24.1"
+    }
+   ],
+   "all_ok": true
+  },
+  "1.25.0": {
+   "location": "0x01140000",
+   "usb_product_name": "Matryoshka TEST RIG",
+   "usb_serial": "415035443333360F105D4C5C0720DA78-F0821BA7",
+   "coremidi_uid": "0x8644a493",
+   "names": {
+    "device": "Matryoshka TEST RIG",
+    "entities": [
+     "Matryoshka TEST RIG"
+    ],
+    "sources": [
+     "Matryoshka TEST RIG"
+    ],
+    "destinations": [
+     "Matryoshka TEST RIG"
+    ],
+    "displays": [
+     "Matryoshka TEST RIG",
+     "Matryoshka TEST RIG"
+    ]
+   },
+   "expect": "named",
+   "same": true,
+   "coremidi_devices_at_location": [
+    {
+     "name": "Matryoshka",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0xa76daedb",
+     "entities": [
+      "Matryoshka"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka",
+       "display": "Matryoshka"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka",
+       "display": "Matryoshka"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka TEST RIG",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0x57813527",
+     "entities": [
+      "Matryoshka TEST RIG"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka TEST RIG",
+       "display": "Matryoshka TEST RIG"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka TEST RIG",
+       "display": "Matryoshka TEST RIG"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka TEST RIG",
+     "offline": 0,
+     "loc": "0x01140000",
+     "uid": "0x8644a493",
+     "entities": [
+      "Matryoshka TEST RIG"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka TEST RIG",
+       "display": "Matryoshka TEST RIG"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka TEST RIG",
+       "display": "Matryoshka TEST RIG"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka ALPHA",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0x6715838d",
+     "entities": [
+      "Matryoshka ALPHA"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka ALPHA",
+       "display": "Matryoshka ALPHA"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka ALPHA",
+       "display": "Matryoshka ALPHA"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka BRAVO",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0x5a45ca91",
+     "entities": [
+      "Matryoshka BRAVO"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka BRAVO",
+       "display": "Matryoshka BRAVO"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka BRAVO",
+       "display": "Matryoshka BRAVO"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka QUAL TMP",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0x0a8f0141",
+     "entities": [
+      "Matryoshka QUAL TMP"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka QUAL TMP",
+       "display": "Matryoshka QUAL TMP"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka QUAL TMP",
+       "display": "Matryoshka QUAL TMP"
+      }
+     ]
+    }
+   ],
+   "checks": [
+    {
+     "name": "the rig is on USB at 0x01140000 with a product string and a serial",
+     "ok": true,
+     "detail": "'Matryoshka TEST RIG', serial 415035443333360F105D4C5C0720DA78-F0821BA7"
+    },
+    {
+     "name": "one CoreMIDI device online at that location",
+     "ok": true,
+     "detail": "1 online"
+    },
+    {
+     "name": "its USB name is \"Matryoshka TEST RIG\"",
+     "ok": true,
+     "detail": "'Matryoshka TEST RIG'"
+    },
+    {
+     "name": "its CoreMIDI device, entity, sources and destinations all show \"Matryoshka TEST RIG\"",
+     "ok": true,
+     "detail": "{\"device\": \"Matryoshka TEST RIG\", \"entities\": [\"Matryoshka TEST RIG\"], \"sources\": [\"Matryoshka TEST RIG\"], \"destinations\": [\"Matryoshka TEST RIG\"], \"displays\": [\"Matryoshka TEST RIG\", \"Matryoshka TEST RIG\"]}"
+    },
+    {
+     "name": "a named serial: 32 hex digits of the flash UID, \"-\", a name suffix",
+     "ok": true,
+     "detail": "'415035443333360F105D4C5C0720DA78-F0821BA7'"
+    },
+    {
+     "name": "the same serial as the earlier run (the same name)",
+     "ok": true,
+     "detail": "earlier 415035443333360F105D4C5C0720DA78-F0821BA7, now 415035443333360F105D4C5C0720DA78-F0821BA7"
+    },
+    {
+     "name": "so the Mac keeps the same CoreMIDI device record",
+     "ok": true,
+     "detail": "earlier 0x8644a493, now 0x8644a493"
+    },
+    {
+     "name": "fm1_install.py --info --location 0x01140000 finds it",
+     "ok": true,
+     "detail": "FM-1_7012500  [running]  port: Matryoshka TEST RIG  (Matryoshka 1.25.0) | boot code: V15's"
+    },
+    {
+     "name": "m1_link.py info --location 0x01140000 finds it",
+     "ok": true,
+     "detail": "protocol 1, max modules 128, max cables 255, flash ok, patch loaded, delays 255, firmware 1.25.0"
+    }
+   ],
+   "all_ok": true
+  },
+  "renamed QUAL TMP": {
+   "location": "0x01140000",
+   "usb_product_name": "Matryoshka QUAL TMP",
+   "usb_serial": "415035443333360F105D4C5C0720DA78-1FBCAA37",
+   "coremidi_uid": "0x0a8f0141",
+   "names": {
+    "device": "Matryoshka QUAL TMP",
+    "entities": [
+     "Matryoshka QUAL TMP"
+    ],
+    "sources": [
+     "Matryoshka QUAL TMP"
+    ],
+    "destinations": [
+     "Matryoshka QUAL TMP"
+    ],
+    "displays": [
+     "Matryoshka QUAL TMP",
+     "Matryoshka QUAL TMP"
+    ]
+   },
+   "expect": "named",
+   "same": false,
+   "coremidi_devices_at_location": [
+    {
+     "name": "Matryoshka",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0xa76daedb",
+     "entities": [
+      "Matryoshka"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka",
+       "display": "Matryoshka"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka",
+       "display": "Matryoshka"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka TEST RIG",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0x57813527",
+     "entities": [
+      "Matryoshka TEST RIG"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka TEST RIG",
+       "display": "Matryoshka TEST RIG"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka TEST RIG",
+       "display": "Matryoshka TEST RIG"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka TEST RIG",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0x8644a493",
+     "entities": [
+      "Matryoshka TEST RIG"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka TEST RIG",
+       "display": "Matryoshka TEST RIG"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka TEST RIG",
+       "display": "Matryoshka TEST RIG"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka ALPHA",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0x6715838d",
+     "entities": [
+      "Matryoshka ALPHA"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka ALPHA",
+       "display": "Matryoshka ALPHA"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka ALPHA",
+       "display": "Matryoshka ALPHA"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka BRAVO",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0x5a45ca91",
+     "entities": [
+      "Matryoshka BRAVO"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka BRAVO",
+       "display": "Matryoshka BRAVO"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka BRAVO",
+       "display": "Matryoshka BRAVO"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka QUAL TMP",
+     "offline": 0,
+     "loc": "0x01140000",
+     "uid": "0x0a8f0141",
+     "entities": [
+      "Matryoshka QUAL TMP"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka QUAL TMP",
+       "display": "Matryoshka QUAL TMP"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka QUAL TMP",
+       "display": "Matryoshka QUAL TMP"
+      }
+     ]
+    }
+   ],
+   "checks": [
+    {
+     "name": "the rig is on USB at 0x01140000 with a product string and a serial",
+     "ok": true,
+     "detail": "'Matryoshka QUAL TMP', serial 415035443333360F105D4C5C0720DA78-1FBCAA37"
+    },
+    {
+     "name": "one CoreMIDI device online at that location",
+     "ok": true,
+     "detail": "1 online"
+    },
+    {
+     "name": "its USB name is \"Matryoshka QUAL TMP\"",
+     "ok": true,
+     "detail": "'Matryoshka QUAL TMP'"
+    },
+    {
+     "name": "its CoreMIDI device, entity, sources and destinations all show \"Matryoshka QUAL TMP\"",
+     "ok": true,
+     "detail": "{\"device\": \"Matryoshka QUAL TMP\", \"entities\": [\"Matryoshka QUAL TMP\"], \"sources\": [\"Matryoshka QUAL TMP\"], \"destinations\": [\"Matryoshka QUAL TMP\"], \"displays\": [\"Matryoshka QUAL TMP\", \"Matryoshka QUAL TMP\"]}"
+    },
+    {
+     "name": "a named serial: 32 hex digits of the flash UID, \"-\", a name suffix",
+     "ok": true,
+     "detail": "'415035443333360F105D4C5C0720DA78-1FBCAA37'"
+    },
+    {
+     "name": "the same flash UID with another suffix than the earlier serial (another name)",
+     "ok": true,
+     "detail": "earlier 415035443333360F105D4C5C0720DA78-F0821BA7, now 415035443333360F105D4C5C0720DA78-1FBCAA37"
+    },
+    {
+     "name": "so CoreMIDI made another device record (another uid than the earlier run's)",
+     "ok": true,
+     "detail": "earlier 0x8644a493, now 0x0a8f0141"
+    },
+    {
+     "name": "fm1_install.py --info --location 0x01140000 finds it",
+     "ok": true,
+     "detail": "FM-1_7012500  [running]  port: Matryoshka QUAL TMP  (Matryoshka 1.25.0) | boot code: V15's"
+    },
+    {
+     "name": "m1_link.py info --location 0x01140000 finds it",
+     "ok": true,
+     "detail": "protocol 1, max modules 128, max cables 255, flash ok, patch loaded, delays 255, firmware 1.25.0"
+    }
+   ],
+   "all_ok": true
+  },
+  "back to TEST RIG": {
+   "location": "0x01140000",
+   "usb_product_name": "Matryoshka TEST RIG",
+   "usb_serial": "415035443333360F105D4C5C0720DA78-F0821BA7",
+   "coremidi_uid": "0x8644a493",
+   "names": {
+    "device": "Matryoshka TEST RIG",
+    "entities": [
+     "Matryoshka TEST RIG"
+    ],
+    "sources": [
+     "Matryoshka TEST RIG"
+    ],
+    "destinations": [
+     "Matryoshka TEST RIG"
+    ],
+    "displays": [
+     "Matryoshka TEST RIG",
+     "Matryoshka TEST RIG"
+    ]
+   },
+   "expect": "named",
+   "same": false,
+   "coremidi_devices_at_location": [
+    {
+     "name": "Matryoshka",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0xa76daedb",
+     "entities": [
+      "Matryoshka"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka",
+       "display": "Matryoshka"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka",
+       "display": "Matryoshka"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka TEST RIG",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0x57813527",
+     "entities": [
+      "Matryoshka TEST RIG"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka TEST RIG",
+       "display": "Matryoshka TEST RIG"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka TEST RIG",
+       "display": "Matryoshka TEST RIG"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka TEST RIG",
+     "offline": 0,
+     "loc": "0x01140000",
+     "uid": "0x8644a493",
+     "entities": [
+      "Matryoshka TEST RIG"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka TEST RIG",
+       "display": "Matryoshka TEST RIG"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka TEST RIG",
+       "display": "Matryoshka TEST RIG"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka ALPHA",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0x6715838d",
+     "entities": [
+      "Matryoshka ALPHA"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka ALPHA",
+       "display": "Matryoshka ALPHA"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka ALPHA",
+       "display": "Matryoshka ALPHA"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka BRAVO",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0x5a45ca91",
+     "entities": [
+      "Matryoshka BRAVO"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka BRAVO",
+       "display": "Matryoshka BRAVO"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka BRAVO",
+       "display": "Matryoshka BRAVO"
+      }
+     ]
+    },
+    {
+     "name": "Matryoshka QUAL TMP",
+     "offline": 1,
+     "loc": "0x01140000",
+     "uid": "0x0a8f0141",
+     "entities": [
+      "Matryoshka QUAL TMP"
+     ],
+     "sources": [
+      {
+       "name": "Matryoshka QUAL TMP",
+       "display": "Matryoshka QUAL TMP"
+      }
+     ],
+     "destinations": [
+      {
+       "name": "Matryoshka QUAL TMP",
+       "display": "Matryoshka QUAL TMP"
+      }
+     ]
+    }
+   ],
+   "checks": [
+    {
+     "name": "the rig is on USB at 0x01140000 with a product string and a serial",
+     "ok": true,
+     "detail": "'Matryoshka TEST RIG', serial 415035443333360F105D4C5C0720DA78-F0821BA7"
+    },
+    {
+     "name": "one CoreMIDI device online at that location",
+     "ok": true,
+     "detail": "1 online"
+    },
+    {
+     "name": "its USB name is \"Matryoshka TEST RIG\"",
+     "ok": true,
+     "detail": "'Matryoshka TEST RIG'"
+    },
+    {
+     "name": "its CoreMIDI device, entity, sources and destinations all show \"Matryoshka TEST RIG\"",
+     "ok": true,
+     "detail": "{\"device\": \"Matryoshka TEST RIG\", \"entities\": [\"Matryoshka TEST RIG\"], \"sources\": [\"Matryoshka TEST RIG\"], \"destinations\": [\"Matryoshka TEST RIG\"], \"displays\": [\"Matryoshka TEST RIG\", \"Matryoshka TEST RIG\"]}"
+    },
+    {
+     "name": "a named serial: 32 hex digits of the flash UID, \"-\", a name suffix",
+     "ok": true,
+     "detail": "'415035443333360F105D4C5C0720DA78-F0821BA7'"
+    },
+    {
+     "name": "the same flash UID with another suffix than the earlier serial (another name)",
+     "ok": true,
+     "detail": "earlier 415035443333360F105D4C5C0720DA78-1FBCAA37, now 415035443333360F105D4C5C0720DA78-F0821BA7"
+    },
+    {
+     "name": "so CoreMIDI made another device record (another uid than the earlier run's)",
+     "ok": true,
+     "detail": "earlier 0x0a8f0141, now 0x8644a493"
+    },
+    {
+     "name": "fm1_install.py --info --location 0x01140000 finds it",
+     "ok": true,
+     "detail": "FM-1_7012500  [running]  port: Matryoshka TEST RIG  (Matryoshka 1.25.0) | boot code: V15's"
+    },
+    {
+     "name": "m1_link.py info --location 0x01140000 finds it",
+     "ok": true,
+     "detail": "protocol 1, max modules 128, max cables 255, flash ok, patch loaded, delays 255, firmware 1.25.0"
+    }
+   ],
+   "all_ok": true
+  }
+ },
+ "rename_cycle": {
+  "steps": [
+   {
+    "set": "QUAL TMP",
+    "status": 0
+   },
+   {
+    "set": "TEST RIG",
+    "status": 0
+   }
+  ],
+  "before": {
+   "name": "TEST RIG",
+   "return_level": 50,
+   "serial": "415035443333360F105D4C5C0720DA78"
+  },
+  "after": {
+   "name": "TEST RIG",
+   "serial": "415035443333360F105D4C5C0720DA78"
+  },
+  "home_serial_as_before": true,
+  "all_ok": true
+ }
+}

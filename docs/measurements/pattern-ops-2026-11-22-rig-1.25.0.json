@@ -1,0 +1,107 @@
+{
+ "expect": {
+  "patch": "808 Kit with its demo set",
+  "used_before": 24,
+  "first": 24,
+  "second": 25,
+  "used_after": 26
+ },
+ "checks": [
+  {
+   "name": "MY 808 KIT: the SEQ page shows P01",
+   "ok": true,
+   "detail": "DRUMS ARM P01 | 1-16 OF 16  RATE 1/16 | BD | SD | CP/MA | CH | OH | LT/LC | RS/CL | CB | TRACK 1/1  ARMED  ALGO track  S | BLACK row  WHITE step  FX acc  "
+  },
+  {
+   "name": "SEQ held + SAVE: P01 COPIED TO P25 (the first empty number after P01)",
+   "ok": true,
+   "detail": "P01 COPIED TO P25 | 1-16 OF 16  RATE 1/16 | BD | SD | CP/MA | CH | OH | LT/LC | RS/CL | CB | TRACK 1/1  ARMED  ALGO track  S | BLACK row  WHITE step  FX acc  "
+  },
+  {
+   "name": "the copy P25 is selected",
+   "ok": true,
+   "detail": "DRUMS ARM P25 | 1-16 OF 16  RATE 1/16 | BD | SD | CP/MA | CH | OH | LT/LC | RS/CL | CB | TRACK 1/1  ARMED  ALGO track  S | BLACK row  WHITE step  FX acc  "
+  },
+  {
+   "name": "PATTERN_OP copy 1 -> 25",
+   "ok": true,
+   "detail": [
+    [
+     1,
+     0,
+     24,
+     0,
+     0,
+     0,
+     0
+    ]
+   ]
+  },
+  {
+   "name": "again: P25 COPIED TO P26 (patterns in use 24 -> 26)",
+   "ok": true,
+   "detail": "P25 COPIED TO P26 | 1-16 OF 16  RATE 1/16 | BD | SD | CP/MA | CH | OH | LT/LC | RS/CL | CB | TRACK 1/1  ARMED  ALGO track  S | BLACK row  WHITE step  FX acc  "
+  },
+  {
+   "name": "PATTERN_OP copy 25 -> 26",
+   "ok": true,
+   "detail": [
+    [
+     1,
+     24,
+     25,
+     0,
+     0,
+     0,
+     0
+    ]
+   ]
+  },
+  {
+   "name": "SEQ held + HOME asks: CLEAR ALL? HOME AGAIN",
+   "ok": true,
+   "detail": "CLEAR ALL? HOME AGAIN | 1-16 OF 16  RATE 1/16 | BD | SD | CP/MA | CH | OH | LT/LC | RS/CL | CB | TRACK 1/1  ARMED  ALGO track  S | BLACK row  WHITE step  FX acc  "
+  },
+  {
+   "name": "letting go of SEQ leaves it: NOT CLEARED, no PATTERN_OP, the copy still selected",
+   "ok": true,
+   "detail": "NOT CLEARED | 1-16 OF 16  RATE 1/16 | BD | SD | CP/MA | CH | OH | LT/LC | RS/CL | CB | TRACK 1/1  ARMED  ALGO track  S | BLACK row  WHITE step  FX acc  "
+  },
+  {
+   "name": "SEQ held + HOME, HOME again: PATTERNS + SONGS CLEARED",
+   "ok": true,
+   "detail": "PATTERNS + SONGS CLEARED | 1-16 OF 16  RATE 1/16 | BD | SD | CP/MA | CH | OH | LT/LC | RS/CL | CB | TRACK 1/1  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "PATTERN_OP clear all",
+   "ok": true,
+   "detail": [
+    [
+     2,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   ]
+  },
+  {
+   "name": "after it: P01, with the EMPTY hint",
+   "ok": true,
+   "detail": "DRUMS ARM P01 | 1-16 OF 16  RATE 1/16 | BD | SD | CP/MA | CH | OH | LT/LC | RS/CL | CB | TRACK 1/1  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "a copy now: P01 EMPTY: NOT COPIED (no pattern with a note left), no PATTERN_OP",
+   "ok": true,
+   "detail": "P01 EMPTY: NOT COPIED | 1-16 OF 16  RATE 1/16 | BD | SD | CP/MA | CH | OH | LT/LC | RS/CL | CB | TRACK 1/1  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "nothing saved: slot 22 as before (MY 808 KIT, 3659 B)",
+   "ok": true,
+   "detail": "('MY 808 KIT', 3659)"
+  }
+ ],
+ "all_ok": true
+}
