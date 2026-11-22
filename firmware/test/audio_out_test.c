@@ -6,8 +6,11 @@
  *     mono fold);
  *   - 3.5MM OUT OFF: the analog half silent, with every MASTER and OUTPUT; USB audio the same words as with ON, at
  *     MASTER's level, stereo;
- *   - the engine stopped: both silent.
- * The emulator has no USB audio, so this is where USB audio's side of the setting is checked.
+ *   - the engine stopped: both silent;
+ *   - the device test mode's fixed USB level (#1170): taken only in the test mode, off when it ends; USB audio at
+ *     MASTER's default with every knob while it is on, at MASTER's level while it is off (D-927), the analog half as
+ *     without it.
+ * The emulator has no USB audio, so this is where USB audio's side of these is checked.
  *   tools/audio_out_test.sh */
 #include <stdint.h>
 #include <stdio.h>
@@ -196,6 +199,78 @@ static void meq_test(void)
     CHECK(bad == 0u && !meq_fade, "master EQ back to 0 dB: after one half's fade the analog half bit for bit as without it");
 }
 
+/* ---- the device test mode's fixed USB level (#1170): DIAG pages 100 / 101 (usb_fixed_diag) and the test mode's end
+ * (usb_fixed_poll). Off, USB audio follows MASTER (D-927); on, USB audio at MASTER's default with every knob, and the
+ * analog half bit for bit what it is without it */
+static void usb_fixed_test(void)
+{
+    static const uint32_t KNOBS[4] = {0, 300, 2048, 4088};
+    int32_t want[HALF_WORDS], wusb[HALF_WORDS];
+    uint8_t out[2];
+    uint32_t i, k, mono, n = 0, bad_a = 0, bad_u = 0, bad_off = 0, bad_eq = 0;
+    for (i = 0; i < 128u; i++) {
+        sig_l[i] = (int32_t)((i * 977u) % 131072u) - 65536;
+        sig_r[i] = (int32_t)((i * 613u + 4000u) % 131072u) - 65536;
+    }
+    meq_defaults(); out_mono = 0; out_off = 0; click_on = 0; return_on = 0; snd_muted = 0; eng_run = 1; usb_fixed = 0;
+    CHECK(usb_fixed_diag(100, 0, out) == 2u && !usb_fixed && out[0] == 0u && out[1] == 0u,
+          "fixed USB level: DIAG 100 refused outside the device test mode");
+    for (k = 0; k < 4u; k++) {
+        master_q12 = KNOBS[k];
+        fm1_alnk0_irq();
+        usb_words(wusb, KNOBS[k]);
+        bad_u += memcmp(usb, wusb, sizeof wusb) != 0;
+    }
+    CHECK(bad_u == 0u, "fixed USB level off (normal use): USB audio at MASTER's level, every knob (D-927)");
+    CHECK(usb_fixed_diag(100, 1, out) == 2u && usb_fixed == 1u && out[0] == 1u && out[1] == 1u,
+          "fixed USB level: DIAG 100 taken in the device test mode");
+    for (k = bad_u = 0; k < 4u; k++)
+        for (mono = 0; mono < 3u; mono++) {
+            master_q12 = KNOBS[k];
+            out_mono = (uint8_t)mono;
+            out_off = 0;
+            fm1_alnk0_irq();
+            usb_words(wusb, USB_FIXED_Q12);
+            before(want, KNOBS[k], mono);
+            bad_u += memcmp(usb, wusb, sizeof wusb) != 0;
+            bad_a += memcmp(abuf, want, sizeof want) != 0;
+            out_off = 1;
+            fm1_alnk0_irq();
+            bad_u += memcmp(usb, wusb, sizeof wusb) != 0;
+            bad_off += !silent(abuf);
+            n++;
+        }
+    out_mono = 0;
+    out_off = 0;
+    CHECK(bad_u == 0u, "fixed USB level on: USB audio at MASTER's default with every knob, OUTPUT and 3.5MM OUT (%u of %u differ)", bad_u, 2u * n);
+    CHECK(bad_a == 0u, "fixed USB level on: the analog half bit for bit at the knob's level (%u of %u settings differ)", bad_a, n);
+    CHECK(bad_off == 0u, "fixed USB level on: 3.5MM OUT OFF still silences the analog half (%u of %u not)", bad_off, n);
+    master_q12 = 300;
+    meq_low = 0xF4u;                                    /* (LOW -6 dB, HIGH +6 dB) */
+    meq_high = 12;
+    for (k = 0; k < 4u; k++) {
+        fm1_alnk0_irq();
+        usb_words(wusb, USB_FIXED_Q12);
+        before(want, 300, 0);
+        bad_eq += memcmp(usb, wusb, sizeof wusb) != 0 || !memcmp(abuf, want, sizeof want);
+    }
+    CHECK(bad_eq == 0u, "fixed USB level on with the master EQ: USB audio at the fixed level, the analog half equalized");
+    meq_defaults();
+    fm1_alnk0_irq();                                    /* (the bands fade to 0 dB over this half) */
+    snd_muted = 1;
+    fm1_alnk0_irq();
+    CHECK(silent(abuf) && silent(usb), "fixed USB level on: sandbox mode's mute still silences both");
+    snd_muted = 0;
+    usb_fixed_poll(1);
+    CHECK(usb_fixed == 1u, "fixed USB level: kept while the device test mode lasts");
+    usb_fixed_poll(0);
+    fm1_alnk0_irq();
+    usb_words(wusb, 300);
+    CHECK(!usb_fixed && !memcmp(usb, wusb, sizeof wusb), "fixed USB level: off when the device test mode ends, USB audio at MASTER's again");
+    usb_fixed_diag(100, 1, out);
+    CHECK(usb_fixed_diag(101, 1, out) == 2u && !usb_fixed && out[0] == 0u, "fixed USB level: DIAG 101 turns it off");
+}
+
 int main(void)
 {
     static const uint32_t KNOBS[3] = {300, 2048, 4088};
@@ -254,6 +329,7 @@ int main(void)
     CHECK(silent(abuf), "analog OFF silences USB return too");
     eng_run=0; out_off=0; out_mono=2; fm1_alnk0_irq();
     CHECK(abuf[0]==-512 && abuf[1]==0 && silent(usb), "return works with engine stopped, and follows analog MONO L");
+    usb_fixed_test();
     meq_test();
     printf(fails ? "audio out test FAILED\n" : "audio out test passed\n");
     return fails != 0;

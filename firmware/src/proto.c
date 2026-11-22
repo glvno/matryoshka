@@ -1423,7 +1423,9 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         }
         break;
     }
-    case C_TEST_PEAK: {                                      /* #291: -> PEAK peak u16, flags u8 */
+    case C_TEST_PEAK: {                                      /* #291: -> PEAK peak u16, flags u8 (main.c m1_test_peak: bit 0 the
+                                                              * engine runs, 1 muted, 2 MASTER down, 3 USB audio at the test
+                                                              * mode's fixed level, #1170) */
         uint32_t v = m1_test_peak();
         uint8_t p[3];
         p[0] = (uint8_t)v;

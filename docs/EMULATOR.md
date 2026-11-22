@@ -411,12 +411,23 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
 - **What the rig's recording cannot show.** The FM-1 takes its USB audio before GLO > SYSTEM > OUTPUT mixes the sides
   and after MASTER (`firmware/src/audio.c`). GLO > SYSTEM > 3.5MM OUT
   silences the analog output only, so the rig's recording must stay as it was when it is OFF. So the MONO and MONO L checks hear the emulator only, and on the rig they
-  are skipped. A check that needs the recording is also skipped, not failed, when there is none: the recorder cannot be built,
-  MASTER is all the way down, or a second FM-1 is connected and the FM-1 at the rig's USB location does not carry the
+  are skipped.
+- **The rig's knob does not matter (issue #1170).** For each recording the scenarios hold the rig's USB audio at
+  MASTER's default level, whatever the knob, and let it go after the recording
+  ([D-1169](ledger/releases.md#D-1169), Decided). They send an encoder turn of no clicks, which starts the device test
+  mode and changes nothing else, then DIAG page 100; page 101 ends it. The firmware takes page 100 only in the test
+  mode, and drops the fixed level when the test mode ends 10 s after the last test key or turn. The analog output still
+  follows the knob, and outside the test mode so does USB audio ([D-927](ledger/device-ui.md#D-927)). The run says once
+  whether the level was fixed. A firmware from before #1170 answers page 100 with no bytes, and its recordings follow
+  the knob as below.
+- **When a check that needs the recording is skipped.** A check that needs the recording is skipped, not failed, when
+  there is none: the recorder cannot be built, MASTER is all the way down on a firmware without the fixed level, or a
+  second FM-1 is connected and the FM-1 at the rig's USB location does not carry the
   mark (or no location is kept), so which audio input is the rig's is not known. It is also
   skipped when MASTER is so far down that the recording's loudest sample is more than 26 dB under what TEST_PEAK heard.
-  TEST_PEAK reads as if MASTER sat at its default, so such a recording is lost in the USB audio's own noise. Skips are
-  counted apart, as for MASTER down ([D-125](ledger/releases.md#D-125)).
+  TEST_PEAK reads as if MASTER sat at its default, so such a recording is lost in the USB audio's own noise. With the
+  level fixed the recording is at TEST_PEAK's level, but the guard stays. Skips are counted apart, as for MASTER down
+  ([D-125](ledger/releases.md#D-125)).
 - **The USB audio stream itself.** USB audio is a feature the FM-1 ships, so a stream it opens and then stops feeding is
   a failure, not a skip. The check "USB audio streams" fails when no audio comes within 8 s, or when less than 80 % of
   the expected audio arrives. Its message carries the FM-1's USB audio counters (DIAG pages 125 and 126). The checks that

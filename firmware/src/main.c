@@ -463,6 +463,9 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
 {
     const uint8_t *b = (const uint8_t *)&diag_prev;
     uint32_t i, off = page * 32u, n = sizeof diag_prev > off ? sizeof diag_prev - off : 0u;
+    if (page == 100u || page == 101u)           /* #1170: USB audio at a fixed level (100) or at MASTER's (101), taken only
+                                                 * in the device test mode (audio.c usb_fixed) */
+        return usb_fixed_diag(page, test_input_recent(), out);
     if (page >= 145u && page <= 147u)           /* #870: the MIDI clock-in log (clock_in.h, tools/m1_link.py midilog) */
         return cin_log_diag(page, out);
 #if M1_BENCH
@@ -1452,6 +1455,7 @@ static void master_poll(void)
         master_q12 = (k * k) >> 8;
         panel_master(k);
     }
+    usb_fixed_poll(test_input_recent());        /* (#1170: the test mode's fixed USB level ends with the test mode) */
 }
 
 /* The battery (#240; ui.c ui_battery keeps the level): SARADC ch 3, the divider on PB1, every 2 s. The conversion is
@@ -1761,7 +1765,8 @@ static uint32_t m1_test_screen(uint32_t k, uint8_t *out)
 static uint32_t m1_test_peak(void)
 {
     uint32_t p = tp_take();                         /* (test_peak.h: no half lost between two reads, #385) */
-    return (p > 0xFFFFu ? 0xFFFFu : p) | (eng_run ? 1u << 16 : 0u) | (snd_muted ? 1u << 17 : 0u) | (master_q12 < 64u ? 1u << 18 : 0u);
+    return (p > 0xFFFFu ? 0xFFFFu : p) | (eng_run ? 1u << 16 : 0u) | (snd_muted ? 1u << 17 : 0u) | (master_q12 < 64u ? 1u << 18 : 0u) |
+           (usb_fixed ? 1u << 19 : 0u);
 }
 
 /* The chip's mask-ROM download mode (USB "WL80UBOOT", 4C4A:8057): only the explicit SysEx F0 22 24 35 7D F7 gets here. No

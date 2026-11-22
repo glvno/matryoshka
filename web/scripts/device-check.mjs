@@ -48,30 +48,51 @@ export function checkScenarios(h) {
   /** a module's parameters in the editor, by its name */
   const paramsOf = async (name) => JSON.parse(await patchJson()).modules.find((m) => m.name === name)?.params ?? {};
 
+  /** #1170: on the rig, USB audio at a fixed level (MASTER's default, as TEST_PEAK reads) whatever the knob, or (`on`
+   *  false) back at MASTER's. DIAG page 100 is taken only in the device test mode, so a turn of no clicks starts it first
+   *  (it changes nothing else); page 101 ends it, as does the test mode's end 10 s after the last key or turn. A firmware
+   *  before it answers with no bytes: its recordings follow the knob, and recorded's "MASTER is low" guard stays */
+  let fixedSaid = false;
+  async function usbFixed(on) {
+    if (!REAL) return;
+    if (on) await emu.turn(ENC.k1, 0);
+    const d = await emu.diag(on ? 100 : 101).catch(() => []);
+    if (on && !fixedSaid) {
+      fixedSaid = true;
+      console.log(d[0] === 1 ? '  note: USB audio at a fixed level for each recording (#1170): where MASTER is does not matter'
+        : `  note: no fixed USB level (${d.length ? 'refused: not in the device test mode' : 'a firmware before #1170'}): the recordings follow MASTER`);
+    }
+  }
   /** what the FM-1 played while `during` ran: { rate, l, r } or { why } (no recording on this target, or one that cannot
-   *  prove anything: D-140). The rig's USB audio comes after MASTER, TEST_PEAK before it (as at its default): with the knob
-   *  far down the recording is more than 26 dB under what TEST_PEAK heard, below the USB audio's own noise, and is not used */
+   *  prove anything: D-140). The rig's USB audio is held at a fixed level while it records (usbFixed); a firmware without
+   *  that has it after MASTER, TEST_PEAK before it (as at its default): with the knob far down the recording is more than
+   *  26 dB under what TEST_PEAK heard, below the USB audio's own noise, and is not used */
   async function recorded(name, during) {
-    const m = await emu.mark();
-    const r = await emu.record(name);
-    if (r.why) {
-      await during();
-      await streams(r);
-      return { why: r.why };
-    }
+    await usbFixed(true);
     try {
-      await during();
-    } catch (e) {
-      await r.stop().catch(() => {});
-      throw e;
+      const m = await emu.mark();
+      const r = await emu.record(name);
+      if (r.why) {
+        await during();
+        await streams(r);
+        return { why: r.why };
+      }
+      try {
+        await during();
+      } catch (e) {
+        await r.stop().catch(() => {});
+        throw e;
+      }
+      const a = await r.stop();
+      await streams(a);
+      if (a.why) return a;
+      const p = await emu.peak(m), got = top2(a) * 32768;
+      if (REAL && p > LOUD && got < p / 20)
+        return { why: `MASTER is low: the USB audio's loudest is ${db(got / p)} dB under TEST_PEAK's (at MASTER's default), too far into its noise (D-140)` };
+      return a;
+    } finally {
+      await usbFixed(false);
     }
-    const a = await r.stop();
-    await streams(a);
-    if (a.why) return a;
-    const p = await emu.peak(m), got = top2(a) * 32768;
-    if (REAL && p > LOUD && got < p / 20)
-      return { why: `MASTER is low: the USB audio's loudest is ${db(got / p)} dB under TEST_PEAK's (at MASTER's default), too far into its noise (D-140)` };
-    return a;
   }
   /** the rig's USB audio is a shipped feature: a stream the FM-1 opened and then stopped feeding (or never fed) is a failure,
    *  with its USB audio counters (DIAG 125: on, starts, packets, frames, rate sets, bus resets, lowest fill, USB frame; 126:
