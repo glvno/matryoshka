@@ -194,16 +194,27 @@ export const FLAG_LINKS = 1 << 15;
  * The pattern store a binary is written for (the links section): `assume` (the budget, and a binary meant for no FM-1 in
  * particular) holds every link's pattern as the link last saw it; `unknown` (an FM-1 with a store whose list has not been
  * read) holds every linked id, contents unknown; `none` (an FM-1 without a store) holds nothing and takes no links section;
- * else what the FM-1 holds: each stored id's payload hash.
+ * `every` (an FM-1 that stores every pattern 2..64, protocol.ts FEATURE_PATTERNS_STORED, #1202) holds every pattern of the
+ * patch that has content, each a clean link (to a stand-in id where the patch links none: for the budget and a binary's
+ * length only, never sent; device.ts sends the real ids); else what the FM-1 holds: each stored id's payload hash.
  */
-export type LinkStore = 'assume' | 'unknown' | 'none' | ReadonlyMap<number, number>;
+export type LinkStore = 'assume' | 'unknown' | 'none' | 'every' | ReadonlyMap<number, number>;
+/** the patterns (1..63, 0-based) some Steps track of `dev` (a device form) has: the ones a FEATURE_PATTERNS_STORED FM-1
+ *  stores and links */
+export const patternsWithContent = (dev: Patch): number[] =>
+  [...new Set(dev.modules.flatMap((m) => (m.type === 'steps' ? (m.patterns ?? []).flatMap((x, i) => (x ? [i + 1] : [])) : [])))].sort((a, b) => a - b);
 /**
  * The links a binary for `store` carries (`dev`: the device form): every link to an id the store holds, ascending; and the
  * linked patterns it leaves out (`refs`): those whose payload the store holds as it is (its hash is the link's and the
- * store's). A link to an id the store has not got is left out, its pattern written as any other.
+ * store's). A link to an id the store has not got is left out, its pattern written as any other. With `every` each
+ * pattern with content is a link and a reference, and no other pattern is linked.
  */
 export function linkPlan(source: Patch, dev: Patch, store: LinkStore): { entries: [number, number][]; refs: number[] } {
   const links = source.modules.find((m) => m.type === 'fm1')?.seq?.links;
+  if (store === 'every') {
+    const refs = patternsWithContent(dev);
+    return { entries: refs.map((p) => [p, links?.[p]?.id ?? 1]), refs };
+  }
   const plan: { entries: [number, number][]; refs: number[] } = { entries: [], refs: [] };
   if (!links || store === 'none') return plan;
   for (const [k, l] of Object.entries(links)) {
@@ -1067,11 +1078,12 @@ export const drumMaps = (p: Patch): number[] => p.modules.flatMap((m, i) => (m.t
 /** the binary patch; refused when it is over the FM-1 budget, unless `anyway` (tools that count the engine's work on patches the
  * estimate has not seen yet: scripts/cpu-costs.ts). `force`: in the layout of this format whatever its size (COUNTED or
  * SLIM: tests, golden kits; layout). `store`: the pattern store of the FM-1 it goes to (LinkStore; the budget assumes it
- * holds every link's pattern, so a store that does not can make the binary bigger than the budget said: refused too) */
+ * holds every link's pattern, so a store that does not can make the binary bigger than the budget said: refused too;
+ * `every` counts as it writes, with stand-in ids: a binary's length, never one to send) */
 export function encodePatch(source: Patch, anyway = false, force = 0, allocation: BufferAllocation = 0, store: LinkStore = 'assume'): Uint8Array {
   const routingError = keyRouteError(source);
   if (routingError) throw new Error(routingError);
-  const budget = deviceBudget(source, allocation);
+  const budget = deviceBudget(source, allocation, store === 'every' ? store : 'assume');
   if (!budget.fits && !anyway) throw new Error(`over the FM-1 budget: ${budget.over.map((i) => (i.key === 'browser' ? i.label : `${i.label} ${i.used} of ${i.max}`)).join(', ')}`);
   const { p, groups, devs, kinds, keep, names, size, need, links, v: ver } = layout(source, undefined, force, store);
   if (!anyway && need > DEVICE.bytes) throw new Error(`over the FM-1 budget: ${LABELS.bytes} ${need} of ${DEVICE.bytes} (its linked patterns go whole: the FM-1's pattern store has not got them)`);
@@ -1546,9 +1558,15 @@ export interface Budget {
 }
 
 /** the patch bytes the budget counts: the binary's, plus the room kept for the engine devices' preset names (presetNames) */
-const bytesOf = (source: Patch, view: ReturnType<typeof deviceView>): number => layout(source, view).need;
+const bytesOf = (source: Patch, view: ReturnType<typeof deviceView>, store: LinkStore): number => layout(source, view, 0, store).need;
 
-export function deviceBudget(source: Patch, allocation: BufferAllocation = 0): Budget {
+/** the pattern store the budget counts with: `every` for an FM-1 that stores every pattern 2..64 (#1202, #1199: only
+ *  pattern 1, the songs and the links count against its bytes), else `assume` (each linked pattern counts as the reference
+ *  its link makes, every other one inside the patch) */
+export type BudgetStore = 'assume' | 'every';
+
+/** what the patch takes of the FM-1's limits, counted with `store` (BudgetStore) */
+export function deviceBudget(source: Patch, allocation: BufferAllocation = 0, store: BudgetStore = 'assume'): Budget {
   const view = deviceView(source, true);
   const { patch: p, groups } = view;
   const ninst = copiesOf(groups);
@@ -1559,7 +1577,7 @@ export function deviceBudget(source: Patch, allocation: BufferAllocation = 0): B
   const used: Record<BudgetKey, number> = {
     modules: p.modules.length, cables: p.cables.length, poly: groups.length, parts: Math.max(1, ...groups.map((g) => g.cfg.parts)),
     instances, buffers, memory: lines.used, arps: count('arp'), harms: count('harm'), tracks: count('steps'), notes: p.modules.reduce((n, m) => n + (m.type === 'steps' ? wordCount(m.notes) + (m.patterns ?? []).reduce((k, x) => k + wordCount(x?.notes), 0) : 0), 0),
-    locks: p.modules.reduce((n, m) => n + (m.type === 'steps' ? (m.locks?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.locks?.length ?? 0), 0) : 0), 0), bytes: bytesOf(source, view),
+    locks: p.modules.reduce((n, m) => n + (m.type === 'steps' ? (m.locks?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.locks?.length ?? 0), 0) : 0), 0), bytes: bytesOf(source, view, store),
   };
   const items = (Object.keys(DEVICE) as BudgetKey[]).map((key) => ({ key, label: LABELS[key], used: used[key], max: DEVICE[key] }));
   const over: BudgetItem[] = items.filter((i) => (i.key === 'memory' ? !lines.fits : i.used > i.max));

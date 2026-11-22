@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type ModuleInst, type Patch } from './patch';
 import { deviceBudget, encodePatch, FLAG_LINKS, FLAG_PATTERNS, FORMAT_LINKS, layout, linkPlan, linkRecord, lockRecord, patternRecord, SECTION_FORMATS, VERSION, type LinkStore } from './patchbin';
-import { applyPayload, autoName, decodePayload, encodePayload, FACTORY_ID, factoryEntries, fnv, FNV0, layoutOf, patternFile, payloadHash, readPatternFile, storedName } from './pattern-store';
+import { applyPayload, autoName, decodePayload, encodePayload, entryName, FACTORY_ID, factoryEntries, fnv, FNV0, layoutOf, patternFile, payloadHash, portablePatch, readPatternFile, storedName, storePlan, withLinks } from './pattern-store';
 import { deviceView } from './poly';
 import { PRESET_PATTERNS } from './preset-pattern-data';
 import { inflate, encodeShare } from './share';
@@ -239,8 +239,8 @@ describe('format 59: stored pattern links', () => {
     expect(deviceBudget(link(structuredClone(p), 1, 5)).items.find((i) => i.key === 'notes')!.used).toBe(deviceBudget(p).items.find((i) => i.key === 'notes')!.used);
   });
 
-  it('share links and files leave the links to user entries out, and keep a factory patch\'s', async () => {
-    const { p } = rig();
+  it('what leaves the editor carries every pattern inside and no link; a factory link gets its entry\'s pattern (G2, #1202)', async () => {
+    const { p, a } = rig();
     link(p, 1, 9);
     expect(main(withoutLinks(p)).seq).toBeUndefined();
     main(p).seq!.pattern = 1;
@@ -249,8 +249,53 @@ describe('format 59: stored pattern links', () => {
     const s = await encodeShare(p);
     const shared = JSON.parse(await inflate(s.full)) as Patch;
     expect(main(shared).seq).toEqual({ pattern: 1 });
-    expect(withoutLinks(rig().p)).toBeTruthy();
-    main(p).seq!.links![2] = { id: READ_ONLY_ID + 1, hash: 7 };
-    expect(main(withoutLinks(p)).seq).toEqual({ pattern: 1, links: { 2: { id: READ_ONLY_ID + 1, hash: 7 } } });
+    expect(shared.modules.find((m) => m.id === a.id)!.patterns).toEqual(a.patterns);   // (the linked pattern's own notes)
+    const plain = rig().p;
+    expect(portablePatch(plain)).toBe(plain);
+    // a factory link whose pattern the patch does not hold: the entry's payload comes in, the link goes
+    const kit = factoryEntries().find((e) => e.kit)!;
+    const q = rig().p;
+    q.modules.filter((m) => m.type === 'steps').forEach((m) => delete m.patterns);
+    link(q, 2, kit.id, kit.hash);
+    const out = portablePatch(q);
+    expect(main(out).seq?.links).toBeUndefined();
+    expect(fnv(FNV0, encodePayload(out, 2))).toBe(kit.hash);
+    expect(main(q).seq?.links?.[2]).toEqual({ id: kit.id, hash: kit.hash });   // (the editor's own copy keeps it)
+    expect(main(JSON.parse(await inflate((await encodeShare(q)).full)) as Patch).seq?.links).toBeUndefined();
+  });
+
+  it('for an FM-1 that stores every pattern (#1202), each pattern with content is a link and a reference, and only pattern 1 counts', () => {
+    const { p, a, b } = rig();
+    a.patterns = [{ notes: Array.from({ length: 16 }, (_, at) => n(at, 1, 40 + at, 100, 50)) }];
+    b.patterns = [null, null, { notes: [n(0, 1, 40)] }];
+    const dev = deviceView(p, true).patch;
+    expect(linkPlan(p, dev, 'every')).toEqual({ entries: [[1, 1], [3, 1]], refs: [1, 3] });
+    link(p, 3, 77);
+    expect(linkPlan(p, dev, 'every').entries).toEqual([[1, 1], [3, 77]]);
+    const bytes = (store: 'assume' | 'every'): number => deviceBudget(p, 0, store).items.find((i) => i.key === 'bytes')!.used;
+    expect(bytes('every')).toBeLessThan(bytes('assume'));
+    const bin = encodePatch(p, false, 0, 0, 'every');
+    expect(flags(bin) & FLAG_PATTERNS).toBe(0);
+    expect(flags(bin) & FLAG_LINKS).toBe(FLAG_LINKS);
+    // (the stand-in ids are as long as real ones: the binary a send makes has the same length)
+    expect(encodePatch(withLinks(p, { 1: { id: 300, hash: payloadHash(p, 1) }, 3: { id: 301, hash: payloadHash(p, 3) } })).length).toBe(bin.length);
+  });
+
+  it('a send reuses an entry of the same payload (hash and length), else makes one named after the patch', () => {
+    const { p, a, b } = rig();
+    b.patterns = [null, { notes: [n(0, 1, 40)] }, null, { notes: [n(0, 1, 40)] }];
+    a.patterns = [{ notes: [n(0, 2, 36)] }];
+    const pay = (k: number): Uint8Array => encodePayload(p, k);
+    expect(fnv(FNV0, pay(2))).toBe(fnv(FNV0, pay(4)));
+    const entry = (id: number, payload: Uint8Array, len = payload.length) => ({ id, len, hash: fnv(FNV0, payload), layout: 0, tracks: 2, readOnly: false, name: 'X' });
+    const plan = storePlan(p, [entry(5, pay(1)), entry(3, pay(1)), entry(9, pay(2), 1)], 'A long patch name');
+    expect(plan.links).toEqual({ 1: { id: 3, hash: fnv(FNV0, pay(1)) } });   // (the lowest id; 9 has another length)
+    expect(plan.put.map((e) => [e.ps, e.name])).toEqual([[[2, 4], 'A LONG PATCH P03']]);
+    link(p, 1, 5);
+    expect(storePlan(p, [entry(3, pay(1)), entry(5, pay(1))]).links[1].id).toBe(5);   // (the one it links already)
+    expect(storePlan(p, [{ ...entry(FACTORY_ID, pay(1)), readOnly: true }]).links[1]).toBeUndefined();   // (never a demonstration pattern)
+    expect(entryName('909 Kit', 2)).toBe('909 KIT P03');
+    expect(entryName('909 Kit', 63)).toBe('909 KIT P64');
+    expect(entryName('Twelve chars and more', 9).length).toBeLessThanOrEqual(16);
   });
 });

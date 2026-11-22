@@ -307,6 +307,81 @@ class Identities(unittest.TestCase):
         self.assertEqual(fi.parse_identity(pkt).text, "FM-1_7010800")
 
 
+class EditorLink(Link):
+    """a running Matryoshka that answers the editor's HELLO (its bank's slots, INFO byte 20) and SLOT_INFO (`used`: slot ->
+    name); silent when `silent`"""
+    def __init__(self, slots=60, more=None, used=None, silent=False):
+        super().__init__()
+        self.slots, self.more, self.used, self.silent, self.asked = slots, more, used or {}, silent, []
+
+    def send(self, pkt):
+        if pkt[1:4] != fi.EDITOR_PREFIX:
+            return super().send(pkt)
+        cmd, d = pkt[4], fi.unpack7(pkt[5:-1])
+        self.asked.append(cmd)
+        if self.silent:
+            return True
+        if cmd == fi.C_HELLO:
+            info = [1, 128, 255, 3, 1, 0, 0, 31, 59, 1, 25, 0, 0, 0, 2, self.slots, 0, 0, 0, 0] + ([] if self.more is None else [self.more])
+            self.q.append(fi.editor_frame(fi.R_INFO, info))
+        elif cmd == fi.C_SLOT_INFO:
+            s, name = d[0], self.used.get(d[0], "")
+            self.q.append(fi.editor_frame(fi.R_SLOT, [s, 1 if s in self.used else 0, 0x84, 3, *name.encode().ljust(20, b"\0")]))
+        return True
+
+
+class Bank(unittest.TestCase):
+    """#1202, G9: before a 1.26 package goes onto an FM-1 with an older bank of 60 slots, its bank is read: more than 48
+    patches refuse, slots 49 and up used say they move, an FM-1 in update mode cannot be asked"""
+    def setUp(self):
+        self.old = dict(fi.DELAY)
+        fi.DELAY.update(editor=0.01)
+
+    def tearDown(self):
+        fi.DELAY.update(self.old)
+
+    def check(self, link, product="FM-1_7012600", text="FM-1_7012500"):
+        import io
+        buf = io.StringIO()
+        fi.bank_check(fi.Device(link, fi.Identity(text, text.split("_")[0], 0), "FM-1"), product, buf)
+        return buf.getvalue()
+
+    def test_which_packages(self):
+        self.assertTrue(fi.small_bank_package("FM-1_7012600"))
+        self.assertTrue(fi.small_bank_package("FM-1_7020000"))
+        self.assertTrue(fi.small_bank_package("FM-1_7000000"))
+        self.assertFalse(fi.small_bank_package("FM-1_7012500"))
+        self.assertFalse(fi.small_bank_package("FM-1_015"))
+
+    def test_more_than_48_is_refused_naming_the_slots(self):
+        link = EditorLink(used={**{s: f"P{s + 1}" for s in range(48)}, 50: "VERONA 1", 59: "BASS"})
+        with self.assertRaises(fi.InstallError) as e:
+            self.check(link)
+        self.assertEqual(e.exception.code, "bank")
+        self.assertEqual(fi.EXIT["bank"], 10)
+        for part in ("50 patches", "51 VERONA 1, 60 BASS", "Free 2 slots", "Library > Patches"):
+            self.assertIn(part, str(e.exception))
+        self.assertTrue(link.closed)
+
+    def test_48_or_fewer_say_which_move(self):
+        out = self.check(EditorLink(used={0: "A", 51: "VERONA 1"}))
+        self.assertIn("52 VERONA 1", out)
+        self.assertIn("first start", out)
+        self.assertEqual(self.check(EditorLink(used={0: "A", 47: "B"})), "")
+
+    def test_no_check_where_it_is_not_needed(self):
+        for link, product, text in ((EditorLink(used={50: "X"}), "FM-1_7012500", "FM-1_7012500"),   # a 1.25 package
+                                    (EditorLink(slots=48, more=1), "FM-1_7012600", "FM-1_7012600"),   # 1.26 already
+                                    (EditorLink(slots=60, more=1), "FM-1_7012600", "FM-1_7012600"),   # 1.26 that kept 60
+                                    (EditorLink(used={50: "X"}), "FM-1_7012600", "FM-1_015")):        # stock firmware
+            self.assertEqual(self.check(link, product, text), "")
+            self.assertNotIn(fi.C_SLOT_INFO, link.asked)
+
+    def test_update_mode_or_silence_warns(self):
+        self.assertIn("could not be checked", self.check(Link(), text="ota-FM-1_700"))
+        self.assertIn("could not be checked", self.check(EditorLink(silent=True)))
+
+
 class BuildIdentity(unittest.TestCase):
     """tools/build.py --release X.Y.Z: the identity FM-1_7MMmmpp (#216), checked against the marker and the handshake"""
     def test_release_identity(self):
@@ -404,7 +479,7 @@ class RigFakes:
 
     def setUp(self):
         self.old = dict(fi.DELAY)
-        fi.DELAY.update(hs=0.05)
+        fi.DELAY.update(hs=0.05, editor=0.05)
         self.rig_file = os.path.join(tempfile.mkdtemp(), "rig.json")
         with open(self.rig_file, "w") as f:
             json.dump({"values": MARK, "usbLocation": "0x01130000"}, f)
@@ -511,7 +586,7 @@ class RigPin(RigFakes, unittest.TestCase):
     def test_dry_run_checks_everything_and_sends_only_reads(self):
         """--rig --dry-run: the right rig is named and nothing is installed; the wrong FM-1 in the rig's socket is refused
         as without it; either way only the identity handshake and the mark's read went out"""
-        reads = lambda usb: all(p == fi.HS_QUERY or p[4] == fm1_usb.C_PRESET_GET for _, p in usb.sent)
+        reads = lambda usb: all(p == fi.HS_QUERY or p[4] in (fm1_usb.C_PRESET_GET, fi.C_HELLO, fi.C_SLOT_INFO) for _, p in usb.sent)
         usb = self.usb((OWNER, "FM-1_7011000", None), (RIG, "FM-1_7000000", MARK))
         code, out = self.run_rig(usb, "--dry-run")
         self.assertEqual(code, 0, out)

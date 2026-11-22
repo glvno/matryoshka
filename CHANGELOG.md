@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Patterns 2–64 no longer fill up the patch on an FM-1 with 1.26.** When the editor sends a patch to it (Live, Send, Store to an FM-1 slot…, the Library), it first puts each pattern into the FM-1's pattern store, reusing one that is already there, and the patch only points to them. So only pattern 1 and the songs count against the patch's space, and the editor's budget counts the same way while that FM-1 is connected. If the pattern store is full, the editor says so and sends that pattern inside the patch if it still fits; if it does not, that patch is not sent, and the editor says why (#1202, #1199).
+- **A step edit that would make the patch too big for the FM-1 now says PATCH FULL** in the editor instead of going out and being dropped. It still plays in the browser, and Live waits until the patch fits again (#1199).
+- **Patch files, share links and Community submissions now carry every pattern inside the patch,** with no links to one FM-1's pattern store, so whoever opens them gets all the patterns. Sending one to an FM-1 with 1.26 puts its patterns back into the store (#1202).
+- **The editor follows the FM-1's bank size: 48 slots on 1.26** (60 on older firmware). The bank in your browser takes up to 48 patches; if it already holds more, the Library shows how many do not fit (#1202).
+- **Installing 1.26 checks your bank first.** If slots 49–60 hold patches and there is room below, the Install panel says which ones the FM-1 moves at its first start. If you have more than 48 patches, it never installs straight away: it lets you save the ones this browser has a copy of and pick which 48 to keep, or cancel. `tools/fm1_install.py` refuses with the same explanation (#1202).
+- On an FM-1 with 1.26, Library › Patterns has no Save or Save as new (sending the patch stores its patterns), and Upload file becomes Load file, which loads a pattern file into the selected pattern (#1202).
+
 ## 1.25.0 — 2026-11-22
 
 - **New: GLO › MIDI › CLOCK IN DELAY, for an app whose MIDI clock runs ahead of its own sound, such as Reel.** Reel's clock reaches the FM-1 about 70 ms before Reel's audio, so the FM-1 played that much early. CLOCK IN DELAY (MIDI's second page, K3) makes the FM-1 follow the incoming clock, Start, Stop and song position that much later: 0 to 200 ms, 1 ms a click, 5 when you turn fast. For Reel, start at about 70 ms and adjust by ear. At 0 ms, the default, the FM-1 works exactly as before. Notes and controls are never delayed, and SAVE keeps the setting (#870).

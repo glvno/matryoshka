@@ -7,6 +7,10 @@
 // pattern (a user entry into pattern 2..64 is linked, as the FM-1's SEQ page links it), Rename, Delete (asks; one the
 // bank's patches link asks again with how many slots), Download (a pattern file). A loaded pattern whose locks were
 // written for another layout keeps its notes only.
+// On an FM-1 that stores every pattern 2..64 (1.26, #1202) sending the patch stores its patterns and SAVE on the FM-1 does
+// the same, and the FM-1 frees an entry no patch links at its next slot write: Save and Save as new are not offered (an
+// entry of their own would be freed, or a shared one written over), and Upload becomes Load file, which loads the file
+// into the selected pattern; the patch's next send stores it.
 import type { DeviceLink } from './device';
 import type { LibrarySection } from './bank';
 import type { Patch } from './patch';
@@ -53,6 +57,8 @@ export function buildPatternsSection(root: HTMLElement, device: DeviceLink, ev: 
   const save = el('button', { class: 'primary', textContent: 'Save to FM-1' });
   const saveNew = el('button', { textContent: 'Save as new', title: 'Store a copy of the selected pattern on the FM-1 and link the pattern to the copy' });
   const upload = el('button', { textContent: 'Upload file…', title: 'Put a pattern file into the FM-1’s pattern store' });
+  /** the FM-1 stores every pattern 2..64 (#1202): a pattern is stored by sending the patch, not by itself */
+  const everyStored = (): boolean => device.patternsStored;
   const readBtn = el('button', { textContent: 'Read again', title: 'Read the FM-1’s pattern store again' });
   const file = el('input', { type: 'file', accept: 'application/json,.json', hidden: true });
 
@@ -160,7 +166,11 @@ export function buildPatternsSection(root: HTMLElement, device: DeviceLink, ev: 
       el('span', { class: 'grow', textContent: patternName(Number(k)) }),
       el('span', { class: 'muted', textContent: `linked to ${named(l.id)?.name ?? `stored pattern ${l.id}`}` }),
     )));
-    save.disabled = saveNew.disabled = upload.disabled = !ready();
+    save.disabled = saveNew.disabled = !ready();
+    upload.disabled = everyStored() ? busy : !ready();
+    save.hidden = saveNew.hidden = everyStored();
+    upload.textContent = everyStored() ? 'Load file…' : 'Upload file…';
+    upload.title = everyStored() ? `Load a pattern file into ${patternName(p)} of this patch: sending the patch stores it on the FM-1` : 'Put a pattern file into the FM-1’s pattern store';
     save.title = !store() ? 'Connect an FM-1 whose pattern store is on' : entry ? `Write the selected pattern over "${entry.name}" on the FM-1 (every patch that links it changes; asks first)` : 'Store the selected pattern on the FM-1 (pattern 2..64 is then linked to it)';
     readBtn.hidden = !device.connected;
     readBtn.disabled = busy || !device.hasPatternStore;
@@ -200,6 +210,12 @@ export function buildPatternsSection(root: HTMLElement, device: DeviceLink, ev: 
     if (!f) return;
     void run('Uploading', async () => {
       const { name, payload } = readPatternFile(await f.text());
+      if (everyStored()) {
+        const p = ev.pattern();
+        const locks = ev.load(p, payload, null);
+        status.textContent = `${patternName(p)} is "${name}": sending the patch stores it on the FM-1${locks === 'dropped' ? `; ${LOCKS_LEFT_OUT}` : ''}`;
+        return;
+      }
       await device.putPattern(0, name, payload);
       onFm1 = await device.listPatterns();
       status.textContent = `"${name}" is on the FM-1`;
@@ -211,7 +227,7 @@ export function buildPatternsSection(root: HTMLElement, device: DeviceLink, ev: 
     el('div', { class: 'lib-cols' },
       el('section', { class: 'card lib-col', ariaLabel: 'This patch' },
         el('h2', {}, el('span', { class: 'mtag src', textContent: 'PATCH' }), 'This patch'),
-        el('p', { class: 'muted', textContent: 'The selected pattern and the stored patterns this patch links. A linked pattern is shared: saving it changes every patch that links it, so Save as new makes a copy.' }),
+        el('p', { class: 'muted', textContent: 'The selected pattern and the stored patterns this patch links. A linked pattern is shared: saving it changes every patch that links it, so Save as new makes a copy. On firmware 1.26 sending the patch stores its patterns 2–64, each linked to the patch.' }),
         hereEl,
         el('div', { class: 'toolbar lib-foot' }, save, saveNew, upload, file),
       ),

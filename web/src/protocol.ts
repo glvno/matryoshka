@@ -174,8 +174,11 @@
 //               GUIDE_NOW, bit19 flags bit3 says EDITOR, bit20 ARMS, bit21 ARMS wide, bit22 DEVICE_SETTINGS, bit23 PATTERN_ORIGIN],
 //               [byte13 allocation rule: 0 separate signal buffers, 1 physical lifetime buffers; unknown/missing means 0],
 //               [features 24..31: bit24 FX presets, bit25 the pattern store is on, bit28 MAP / MAP_NOW, bit29 PADS / PADS_NOW, bit30 PATTERN_OP],
-//               [byte15 the bank's slots (absent: 64)],
-//               [bytes16..19 the pattern store's bytes free and in all, u16 LE each]. Also unasked
+//               [byte15 the bank's slots (absent: 64; 60 with the pattern store before 1.26; 48 from 1.26, or 60 on a 1.26
+//               FM-1 that kept the older layout because it holds more than 48 patches)],
+//               [bytes16..19 the pattern store's bytes free and in all, u16 LE each],
+//               [byte20 more features (bits 0..31 are all taken): bit0 every pattern 2..64 lives in the pattern store
+//               (1.26, #1202: SAVE stores and links them, the editor sends them as stored entries)]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8), and when EDITOR changed after
 //               a HELLO (feature bit 19)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
@@ -272,8 +275,10 @@ export const paramFrame = (module: number, param: number, q16: number): Uint8Arr
 
 /** the most slots a bank has: an FM-1 whose pattern store is on has fewer (INFO byte 15, slotCount) */
 export const SLOTS_MAX = 64;
-/** the slots of the FM-1's bank (INFO byte 15: 60 with the pattern store on, #901); firmware that does not say, and the
- *  offline copy of the bank, have SLOTS_MAX */
+/** the bank of firmware 1.26 (#1202, G3): 48 slots. The offline copy of the bank takes no more new entries than this */
+export const BANK_SLOTS = 48;
+/** the slots of the FM-1's bank (INFO byte 15: 48 from 1.26, 60 with the pattern store before it or on a 1.26 FM-1 that
+ *  kept that layout, #901, #1202); firmware that does not say has SLOTS_MAX */
 export const slotCount = (info: Info | null): number => info?.slots ?? SLOTS_MAX;
 /** a slot as people see it: internal slot 0..63 shows as 01..64 (the protocol, the firmware and program change count from 0) */
 export const slotLabel = (slot: number): string => String(slot + 1).padStart(2, '0');
@@ -401,6 +406,8 @@ export interface Info {
   slots?: number;
   /** the pattern store's payload bytes free and in all (INFO bytes 16..19, #901); absent before it */
   store?: { free: number; total: number };
+  /** INFO byte 20, the features past bit 31 (FEATURE_PATTERNS_STORED); absent from firmware before 1.26 */
+  moreFeatures?: number;
 }
 export interface Ack {
   cmd: number;
@@ -429,6 +436,10 @@ export const FEATURE_FX_PRESETS = 1 << 24;
 /** INFO feature bit 25 (byte 14 bit 1, #901): the pattern store is on (PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW and
  *  format 59's links section) */
 export const FEATURE_PATTERN_STORE = 1 << 25;
+/** INFO byte 20 bit 0 (Info.moreFeatures; 1.26, #1202): every pattern 2..64 lives in the pattern store. SAVE on the FM-1
+ *  stores and links each one with content, the editor sends each as a stored entry (device.ts) and counts only pattern 1,
+ *  the songs and the links against the patch's bytes (patchbin.ts LinkStore 'every') */
+export const FEATURE_PATTERNS_STORED = 1;
 /** INFO feature bit 26 (byte 14 bit 2, #915, D-490): the factory region's commands (firmware/src/factory.c) */
 export const FEATURE_FACTORY = 1 << 26;
 /** INFO feature bit 27 (byte 14 bit 3, #1107): MASTER_EQ, the FM-1's master EQ (GLO › EQ) over the link */
@@ -564,7 +575,8 @@ export function parseInfo(p: Parsed): Info | null {
     ...(p.payload.length >= 9 ? { patchFormats: { min: p.payload[7], max: p.payload[8] } } : {}),
     ...(p.payload.length >= 12 ? { firmware: { major: p.payload[9], minor: p.payload[10], patch: p.payload[11] } } : {}),
     ...(p.payload.length >= 16 && p.payload[15] ? { slots: p.payload[15] } : {}),
-    ...(p.payload.length >= 20 ? { store: { free: p.payload[16] | (p.payload[17] << 8), total: p.payload[18] | (p.payload[19] << 8) } } : {}) };
+    ...(p.payload.length >= 20 ? { store: { free: p.payload[16] | (p.payload[17] << 8), total: p.payload[18] | (p.payload[19] << 8) } } : {}),
+    ...(p.payload.length >= 21 ? { moreFeatures: p.payload[20] } : {}) };
 }
 /** the test tools drive the editor's own page against the test rig, which is set to IGNORE so the site leaves it alone
  *  (#702): their page (scripts/emu-scenarios.mjs --device) sets this before it loads. Nothing else does */

@@ -5,6 +5,7 @@
 // until the user saves it as their own; Added ✓ takes it out again. Filters: ALL, FM-1, SANDBOX, ADDED. Like the rest of
 // the Library it opens nothing: an added patch opens from the Open picker or the palette.
 import type { BufferAllocation } from './signal-buffers';
+import type { BudgetStore } from './patchbin';
 import type { LibrarySection } from './bank';
 import ARCHIVED from '../community/factory.json';
 import {
@@ -27,11 +28,11 @@ export type CommunityFilter = 'all' | 'fm1' | 'sandbox' | 'added';
 const FILTERS: [CommunityFilter, string][] = [['all', 'ALL'], ['fm1', 'FM-1'], ['sandbox', 'SANDBOX'], ['added', 'ADDED']];
 const archivedTitles = new Set(ARCHIVED.map(entry => entry.title));
 
-/** whether a version row shows under a filter */
-export function passes(c: CommunityPatch, f: CommunityFilter, added: string[] = addedTitles(), allocation: BufferAllocation = 0): boolean {
+/** whether a version row shows under a filter (its chip counted for the open FM-1: `allocation`, `store`) */
+export function passes(c: CommunityPatch, f: CommunityFilter, added: string[] = addedTitles(), allocation: BufferAllocation = 0, store: BudgetStore = 'assume'): boolean {
   if (f === 'added') return added.includes(c.entry.title);
   if (f === 'all') return true;
-  return chipOfEntry(c, allocation).fits === (f === 'fm1');
+  return chipOfEntry(c, allocation, store).fits === (f === 'fm1');
 }
 
 export interface CommunityEvents {
@@ -39,8 +40,9 @@ export interface CommunityEvents {
   status(msg: string): void;
 }
 
-/** Library > Community, built into `root` (it reads nothing from the FM-1) */
-export function buildCommunitySection(root: HTMLElement, ev: CommunityEvents, allocation: () => BufferAllocation = () => 0): LibrarySection {
+/** Library > Community, built into `root` (it reads nothing from the FM-1; the chips count for the open one: `allocation`,
+ *  `store`) */
+export function buildCommunitySection(root: HTMLElement, ev: CommunityEvents, allocation: () => BufferAllocation = () => 0, store: () => BudgetStore = () => 'assume'): LibrarySection {
   let list: CommunityPatch[] | null = null;
   let filter: CommunityFilter = 'all';
   const grid = el('div', { class: 'comm-grid' });
@@ -67,7 +69,7 @@ export function buildCommunitySection(root: HTMLElement, ev: CommunityEvents, al
       ...(c.entry.author !== base.entry.author ? [el('span', { class: 'muted', textContent: c.entry.author })] : []),
       ...(c.entry.source !== base.entry.source ? [el('a', { href: c.entry.source, target: '_blank', rel: 'noopener', textContent: 'Source ↗' })] : []),
       ...(c.entry.licence !== base.entry.licence ? [el('a', { href: LICENCES[c.entry.licence].url, target: '_blank', rel: 'noopener', textContent: LICENCES[c.entry.licence].name })] : []),
-      chipEl(chipOfEntry(c, allocation())),
+      chipEl(chipOfEntry(c, allocation(), store())),
       el('button', {
         type: 'button',
         class: added ? 'comm-add added' : 'comm-add',
@@ -104,7 +106,7 @@ export function buildCommunitySection(root: HTMLElement, ev: CommunityEvents, al
     }
     const added = addedTitles();
     const cards = familiesOf(list)
-      .map((f) => ({ name: f.name, members: f.members.filter((c) => passes(c, filter, added, allocation())) }))
+      .map((f) => ({ name: f.name, members: f.members.filter((c) => passes(c, filter, added, allocation(), store())) }))
       .filter((f) => f.members.length)
       .map((f) => card(f.members, f.name));
     grid.replaceChildren(...(cards.length ? cards : [el('p', { class: 'muted', textContent: filter === 'added' ? 'None added yet. Add puts a patch into Your patches.' : filter === 'all' ? 'No community patch here yet.' : 'None of the community patches is one of these.' })]));

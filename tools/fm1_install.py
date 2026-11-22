@@ -27,7 +27,8 @@ the FM-1 restarts and the installed identity is checked.
                                       ~/.config/matryoshka/rig.json; installs only when the FM-1 at that location runs
                                       and carries the mark. A rig left in update mode is finished by hand with --location)
   fm1_install.py PACKAGE.fwsc --dry-run [--rig | --location HEX]   (every check, then what would be installed where;
-                                      only the identity handshake and, with --rig, the mark's read go to the FM-1)
+                                      only the identity handshake, with --rig the mark's read, and before a 1.26
+                                      package the bank's read go to the FM-1)
 
 If the FM-1 is still in update mode (an earlier install was cut off), the
 install finishes the write, when that loader may write this package. Needs mido with python-rtmidi.
@@ -38,7 +39,14 @@ loader / no restart), 6 wrong model, or another identity after the install,
 7 the FM-1 waits in an update loader that must not write this package (an
 M-VAVE loader only gets M-VAVE's packages, and only the one it was writing; a
 Felucca-type one everything else), 8 the FM-1's boot code is not the one in this M-VAVE package (nothing was sent),
-9 --rig: the FM-1 at the rig's USB location is not the rig (no mark, another mark, or in update mode; nothing was sent).
+9 --rig: the FM-1 at the rig's USB location is not the rig (no mark, another mark, or in update mode; nothing was sent),
+10 a package of Matryoshka 1.26 or later (48 slots) and a running FM-1 whose bank holds more than 48 patches (nothing
+was sent: free slots in the editor's Library > Patches first, #1202).
+
+Before a package of Matryoshka 1.26 or later goes onto a running Matryoshka FM-1 whose older firmware has more than 48
+slots, the tool reads the bank (SLOT_INFO, as the editor's Install panel does): slots 49 and up empty, it installs; used,
+with 48 patches or fewer, it says that they move to free lower slots at the first start and installs; more than 48, it
+refuses. An FM-1 already in update mode cannot be asked: the tool says the check did not run.
 
 M-VAVE's loader also writes the small piece of software at the start of the FM-1's memory
 that starts it when switched on (its boot code, flash 0x0000-0x3FFF), from its package, and
@@ -83,11 +91,11 @@ PORT_RE = re.compile(r"fm-1|felucca|matryoshka|modular|ota|composite|sinco|usb-m
 # seconds; the tests shorten them
 DELAY = {"open": 0.3, "start": 2.0, "reply": 0.01, "loader": 3.0, "reboot": 3.0, "retry": 1.0,
          "poll": 1.0, "hs": 1.0, "idle_check": 8.0, "idle_write": 180.0,
-         "wait_loader": 30.0, "wait_reboot": 40.0, "settle": 0.6, "head": 1.0}
+         "wait_loader": 30.0, "wait_reboot": 40.0, "settle": 0.6, "head": 1.0, "editor": 0.8}
 
 EXIT = {"usage": 2, "badpkg": 2, "notfound": 3, "model": 6, "lost": 4, "stopped": 4, "badreq": 4,
         "phase": 4, "noloader": 5, "noreturn": 5, "mismatch": 6, "otherloader": 7, "wrongtarget": 7, "whichtarget": 7,
-        "bootcode": 8, "notrig": 9}
+        "bootcode": 8, "notrig": 9, "bank": 10}
 
 
 class InstallError(Exception):
@@ -399,6 +407,100 @@ def remember_target(target, path=None):
             os.remove(path)
     except OSError:
         pass
+
+
+# ---------------------------------------------- the bank of 1.26 (#1202) ---
+
+BANK_SLOTS = 48                         # the bank of firmware 1.26 (web/src/protocol.ts BANK_SLOTS)
+FEATURE_PATTERNS_STORED = 1             # INFO byte 20 bit 0: the firmware keeps patterns 2..64 in the pattern store (1.26)
+EDITOR_PREFIX = bytes([0x7D, 0x4D, 0x31])
+C_HELLO, R_INFO, C_SLOT_INFO, R_SLOT = 0x01, 0x41, 0x15, 0x42
+
+
+def editor_frame(cmd, payload=()):
+    """a frame of the editor protocol (web/src/protocol.ts frame): F0 7D 4D 31 cmd, the payload packed to 7 bits, F7"""
+    return b"\xF0" + EDITOR_PREFIX + bytes([cmd]) + pack7(bytes(payload)) + b"\xF7"
+
+
+def editor_ask(link, cmd, payload, want, first=None, tries=3):
+    """the editor protocol over an open link: the payload of the first answer `want` (with `first` its first byte), None
+    when none comes (an update loader, firmware that is not Matryoshka)"""
+    link.drain()
+    for _ in range(tries):
+        if not link.send(editor_frame(cmd, payload)):
+            return None
+        end = time.monotonic() + DELAY["editor"]
+        while (left := end - time.monotonic()) > 0:
+            p = link.read(left)
+            if p is None:
+                break
+            if len(p) > 6 and p[1:4] == EDITOR_PREFIX and p[4] == want:
+                d = unpack7(p[5:-1])
+                if first is None or (d and d[0] == first):
+                    return d
+    return None
+
+
+def small_bank_package(product):
+    """a package whose bank has 48 slots: Matryoshka 1.26 or later, or a dev or CI build (made from the current source)"""
+    v = matryoshka_version(product)
+    return v == "dev" or (v is not None and v[:2] >= (1, 26))
+
+
+def slot_list(used):
+    """slots as a list: "52 VERONA 1, 57 BASS" (used: (slot, name) pairs, slot from 0)"""
+    return ", ".join(f"{s + 1:02d} {n or '(no name)'}" for s, n in used)
+
+
+def too_many_text(used):
+    """the explanation for a bank of more than 48 patches, as the editor's Install panel gives it (install-bank.ts
+    tooManyText)"""
+    past = [u for u in used if u[0] >= BANK_SLOTS]
+    free = len(used) - BANK_SLOTS
+    return (f"This FM-1 holds {len(used)} patches, and firmware 1.26 has {BANK_SLOTS} slots. "
+            + (f"Slots {BANK_SLOTS + 1} and up hold {slot_list(past)}. " if past else "")
+            + f"Free {free} slot{'' if free == 1 else 's'} first (the editor's Library > Patches erases a slot), then install.")
+
+
+def moves_text(moving):
+    """what moves at the first start (install-bank.ts movesText)"""
+    one = len(moving) == 1
+    return (f"Firmware 1.26 has {BANK_SLOTS} slots. At its first start the FM-1 moves the patch{'' if one else 'es'} in "
+            f"slot{'' if one else 's'} {slot_list(moving)} to free slots below {BANK_SLOTS + 1}.")
+
+
+def bank_check(dev, product, out):
+    """#1202, G9: before a 1.26 or later package goes onto a running Matryoshka whose older firmware has more than 48
+    slots, its bank: refused (InstallError "bank") with more than 48 patches; told which move with slots 49 and up used"""
+    if not small_bank_package(product):
+        return
+    if dev.id.loader:
+        print(f"warning: the bank could not be checked (the FM-1 waits in update mode). Firmware 1.26 has {BANK_SLOTS} "
+              "slots: an FM-1 that holds more patches keeps its old bank until slots are freed", file=out)
+        return
+    if matryoshka_version(dev.id.text) is None:
+        return                          # (stock, Felucca, Official Open: no Matryoshka bank)
+    info = editor_ask(dev.link, C_HELLO, (), R_INFO)
+    if info is None:
+        print("warning: the bank could not be checked (the FM-1 did not answer the editor's HELLO)", file=out)
+        return
+    slots = info[15] if len(info) >= 16 and info[15] else 64
+    if slots <= BANK_SLOTS or (len(info) >= 21 and info[20] & FEATURE_PATTERNS_STORED):
+        return
+    used = []
+    for slot in range(slots):
+        p = editor_ask(dev.link, C_SLOT_INFO, [slot], R_SLOT, slot)
+        if p is None or len(p) < 24:
+            print(f"warning: the bank could not be checked (no answer for slot {slot + 1:02d})", file=out)
+            return
+        if p[1]:
+            used.append((slot, printable(p[4:24].rstrip(b"\0"))))
+    if len(used) > BANK_SLOTS:
+        dev.link.close()
+        raise InstallError("bank", f"nothing was sent. {too_many_text(used)}")
+    moving = [u for u in used if u[0] >= BANK_SLOTS]
+    if moving:
+        print(moves_text(moving), file=out)
 
 
 # ------------------------------------------------------------------ MIDI ---
@@ -906,6 +1008,7 @@ def run(a, backend, out, ask, factory=None):
         import fm1_usb
         check_rig(dev, rig, fm1_usb.read_mark, a.location)
         print(f"the test rig: its mark reads back at USB location {a.location}", file=out)
+    bank_check(dev, product, out)
     if a.dry_run:
         dev.link.close()
         where = f" at USB location {a.location}" if a.location else ""
