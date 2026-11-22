@@ -2303,7 +2303,7 @@ async function main() {
       await check('909 hats: the next card preset from the FM-1 sets both levels back to 1', !!back, `${await gains()}`);
       await emu.elapse(1200);
     },
-    // #1202 K1 (D-942): a row a cable's macro range sets does not turn on the FM-1; the bar says SET BY and the source.
+    // #1202 K1 (D-944): a row a cable's macro range sets does not turn on the FM-1; the bar says SET BY and the source.
     // Init, its filter `ranged` with an LFO `wobble` into p1 and a range of p1 on the cutoff (__m1test.openRanged)
     async setBy() {
       const opened = await openSynced('Init', (n) => page.evaluate((x) => window.__m1test.openRanged(x, 'filter', 'cutoff'), n));

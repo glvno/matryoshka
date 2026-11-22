@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // @vitest-environment jsdom
-// A row a cable's macro range sets (#1202 K1, D-942): setBy finds the source, and the editor marks the row's slider and
+// A row a cable's macro range sets (#1202 K1, D-944): setBy finds the source, and the editor marks the row's slider and
 // names the source in its tooltip.
 import { describe, expect, it, vi } from 'vitest';
 import { Editor, type EditorEvents } from './editor';

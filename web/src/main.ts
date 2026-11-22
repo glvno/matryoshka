@@ -3882,7 +3882,7 @@ if (import.meta.env.DEV) {
       return true;
     },
     /** a patch opened as `open` opens it, its first plain `type` module named `ranged` (its device's name) with an LFO named
-     *  `wobble` into its p1 and a macro range of p1 on `param`: the row a cable sets (#1202 K1, D-942) */
+     *  `wobble` into its p1 and a macro range of p1 on `param`: the row a cable sets (#1202 K1, D-944) */
     openRanged: (name: string, type: string, param: string): boolean => {
       const o = openableGroups(device.bufferAllocation).flatMap((g) => g.items).find((x) => x.name === name);
       if (!o) return false;

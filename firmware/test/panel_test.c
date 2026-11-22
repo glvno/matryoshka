@@ -1047,7 +1047,7 @@ int main(void)
         }
     }
     {                                                   /* #1202 K1: a row a cable's macro range sets does not turn; the bar
-                                                         * says SET BY and the source (D-942). A factory patch whose row has
+                                                         * says SET BY and the source (D-944). A factory patch whose row has
                                                          * a ranged pin, else one with a pin mapped there and a range added */
         uint32_t p, d, g, k, s, pass, rm = 0, rj = 0, rs = 0;
         int found = 0, added = 0;
