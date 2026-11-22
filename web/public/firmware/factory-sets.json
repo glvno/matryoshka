@@ -4,7 +4,7 @@
       "file": "matryoshka-factory.bin",
       "version": 21,
       "set": "8dd166",
-      "layout": 2,
+      "layout": 3,
       "format": 64,
       "bytes": 59285
     },
@@ -23,6 +23,14 @@
       "layout": 1,
       "format": 55,
       "bytes": 58188
+    },
+    {
+      "file": "factory/matryoshka-factory-v20-665d4c.bin",
+      "version": 20,
+      "set": "665d4c",
+      "layout": 2,
+      "format": 64,
+      "bytes": 59274
     }
   ]
 }
