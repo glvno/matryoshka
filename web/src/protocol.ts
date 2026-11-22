@@ -25,6 +25,12 @@
 //               FE                                   clear every row
 //               FD, on u8                            PAD MAP off (0) or on (1)
 //                                                    every form answers PADS_NOW
+//   1F FONT     op u8, then                          the font area (#602, INFO byte 20 bit 0; firmware/src/font_area.c):
+//               1                                    BEGIN: its header erased (the FM-1 draws the small type until COMMIT)
+//               2, sector u8, offset u16, 1..256 bytes   WRITE inside one page (offset 0 of sectors 1.. erases it first)
+//               3, sector u8                         SUM: answers FONT_SUM
+//               4, the image's 64-byte header        COMMIT: only this firmware's font, its CRC-32 checked first
+//                                                    BEGIN, WRITE, COMMIT answer ACK (command 1F, op, status, sector)
 //   20 PARAM    module u8, param u8, value i32       live parameter change (Q16.16), no reply
 //   21 ATT      module u8, input u8 (0 p1, 1 p2), value i32   live attenuverter change (Q16.16, -2..2), no reply
 //   22 BYPASS   module u8, on u8 (0/1)               bypass a module (its outputs carry its through input or silence), no reply
@@ -164,6 +170,8 @@
 //                                                    every pattern and song cleared (SEQ held + HOME); hash 0 for both; op 3
 //                                                    the patch's demo set loaded (SEQ held + SEL, then SEL, #1179,
 //                                                    demo-sets.ts): hash = the set's region record hash, from 0 and to 0
+//   68 FONT_SUM  sector u8, ok u8, CRC-16 u16          the CRC-16 of a sector of the font area (#602): the install skips one
+//                                                    that holds its bytes already
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
 //               feature bit 8, bit3 GLO > SYSTEM > EDITOR at IGNORE: with feature bit 19, #702), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
@@ -175,7 +183,9 @@
 //               [byte13 allocation rule: 0 separate signal buffers, 1 physical lifetime buffers; unknown/missing means 0],
 //               [features 24..31: bit24 FX presets, bit25 the pattern store is on, bit28 MAP / MAP_NOW, bit29 PADS / PADS_NOW, bit30 PATTERN_OP],
 //               [byte15 the bank's slots (absent: 64)],
-//               [bytes16..19 the pattern store's bytes free and in all, u16 LE each]. Also unasked
+//               [bytes16..19 the pattern store's bytes free and in all, u16 LE each],
+//               [byte20 the font area (#602): bit0 the firmware reads its type's larger sizes from it (FONT), bit1 the FM-1
+//               has that font, bit2 an install began and did not commit; bytes21..24 the font's id, u32 LE]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8), and when EDITOR changed after
 //               a HELLO (feature bit 19)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
@@ -401,6 +411,10 @@ export interface Info {
   slots?: number;
   /** the pattern store's payload bytes free and in all (INFO bytes 16..19, #901); absent before it */
   store?: { free: number; total: number };
+  /** the font area (INFO bytes 20..24, #602): the font this firmware needs (`id`, the image's CRC-32), whether the FM-1
+   *  has it, and whether an install began and did not commit; absent from firmware with its type compiled in (1.25 and
+   *  older) */
+  font?: { valid: boolean; writing: boolean; id: number };
 }
 export interface Ack {
   cmd: number;
@@ -546,6 +560,14 @@ export const factWriteFrame = (sector: number, off: number, bytes: ArrayLike<num
   frame(FACT.write, [sector, off & 0xff, off >> 8, ...Array.from(bytes)]);
 export const factReadFrame = (off: number, n: number): Uint8Array => frame(FACT.read, [off & 0xff, off >> 8 & 0xff, off >> 16 & 0xff, off >>> 24, n]);
 export const factCommitFrame = (image: Uint8Array): Uint8Array => frame(FACT.commit, image.subarray(0, FACT_HEADER));
+/** the font area's command, its ops and its SUM answer (#602, firmware/src/font_area.c); the image's header is 64 bytes */
+export const FONT = { cmd: 0x1f, sumReply: 0x68, begin: 1, write: 2, sum: 3, commit: 4 } as const;
+export const fontBeginFrame = (): Uint8Array => frame(FONT.cmd, [FONT.begin]);
+export const fontSumFrame = (sector: number): Uint8Array => frame(FONT.cmd, [FONT.sum, sector]);
+/** n bytes (1..256) at offset `off` of the image's sector `sector`, inside one page: offset 0 erases the sector first */
+export const fontWriteFrame = (sector: number, off: number, bytes: ArrayLike<number>): Uint8Array =>
+  frame(FONT.cmd, [FONT.write, sector, off & 0xff, off >> 8, ...Array.from(bytes)]);
+export const fontCommitFrame = (image: Uint8Array): Uint8Array => frame(FONT.cmd, [FONT.commit, ...image.subarray(0, FACT_HEADER)]);
 /** PARAM_NOW's parameter sentinel: logical FX kernel bypass, value 0/1 in Q16. */
 export const FX_BYPASS_PARAM = 0xff;
 
@@ -564,7 +586,9 @@ export function parseInfo(p: Parsed): Info | null {
     ...(p.payload.length >= 9 ? { patchFormats: { min: p.payload[7], max: p.payload[8] } } : {}),
     ...(p.payload.length >= 12 ? { firmware: { major: p.payload[9], minor: p.payload[10], patch: p.payload[11] } } : {}),
     ...(p.payload.length >= 16 && p.payload[15] ? { slots: p.payload[15] } : {}),
-    ...(p.payload.length >= 20 ? { store: { free: p.payload[16] | (p.payload[17] << 8), total: p.payload[18] | (p.payload[19] << 8) } } : {}) };
+    ...(p.payload.length >= 20 ? { store: { free: p.payload[16] | (p.payload[17] << 8), total: p.payload[18] | (p.payload[19] << 8) } } : {}),
+    ...(p.payload.length >= 25 && p.payload[20] & 1 ? { font: { valid: !!(p.payload[20] & 2), writing: !!(p.payload[20] & 4),
+      id: (p.payload[21] | p.payload[22] << 8 | p.payload[23] << 16 | p.payload[24] << 24) >>> 0 } } : {}) };
 }
 /** the test tools drive the editor's own page against the test rig, which is set to IGNORE so the site leaves it alone
  *  (#702): their page (scripts/emu-scenarios.mjs --device) sets this before it loads. Nothing else does */
