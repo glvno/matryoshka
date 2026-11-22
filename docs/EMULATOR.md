@@ -7,7 +7,7 @@ on fm1-emu's `fm1-core` / `fm1-soc`, pinned to commit `7ca5b96` in `tools/emu/Ca
 of fm1-emu is copied into this repository). Two changes are applied to it at build time: `tools/emu/isa_fix.sh` copies
 fm1-emu's `fm1-isa` crate from cargo's checkout into `tools/emu/target/fm1-isa` and corrects its decoder entries, and
 copies `fm1-core` into `tools/emu/target/fm1-core` with the hook the timing model needs (`tools/emu/core_timing_patch.py`,
-below) and the semantics of the fourth fix's shifts (`tools/emu/core_isa_patch.py`). It writes a cargo config file that patches both in and prints its path for `--config` (`emu_smoke.sh` and `npm run emu` do this for m1emu). fm1-live cannot take that patch (inside fm1-emu's workspace fm1-isa is a path dependency: cargo says "patch was not used"), so `tools/emu/live_build.sh` builds it from a copy of the pinned checkout with the fixed fm1-isa swapped in and `core_isa_patch.py` applied (`tools/emu/target/fm1-emu-src`); fm1-live builds without all five fixes (markers `.isa-fixed` to `.isa-fixed-5`, not `.isa-fixed-6`) are rebuilt. The first entry: the
+below) and the semantics of the fourth fix's shifts and the sixth fix (`tools/emu/core_isa_patch.py`). It writes a cargo config file that patches both in and prints its path for `--config` (`emu_smoke.sh` and `npm run emu` do this for m1emu). fm1-live cannot take that patch (inside fm1-emu's workspace fm1-isa is a path dependency: cargo says "patch was not used"), so `tools/emu/live_build.sh` builds it from a copy of the pinned checkout with the fixed fm1-isa swapped in and `core_isa_patch.py` applied (`tools/emu/target/fm1-emu-src`); fm1-live builds without all six fixes (markers `.isa-fixed` to `.isa-fixed-6`, not `.isa-fixed-7`) are rebuilt. The first entry: the
 forward `if ((R & #h) == #i) goto #i` (6 bytes, `..ff60`) had a 13-bit offset field (bits 32..44, learned from
 samples with short jumps) while its `!=` sibling has 15 (bits 32..46). A JieLi build that jumps 8 KB or more forward
 with it stopped the emulator at boot with UnknownInstruction (every build from the cpu-opt work on, 2026-10-18: pc
@@ -32,8 +32,18 @@ seeing the old registers. The fifth (2026-11-17): the read-modify-write `[R+#i] 
 register slot (bits 24..26: its corpus samples cleared with r0..r7 only) and a mask that pins bit 27, so `[r13+4] &= ~r14`
 (`64 e8 07 de` in `panel_key`, a Harmonizer's chord button let go on the FM-1's keys, #1053) stopped the emulator at pc
 0x020496e8: no check had ever let go of a chord button. It takes the register from bits 24..27 now, as its siblings
-`[R+#i] |= R`, `^= R` and `&= R` do; fm1-core already ran it. The firmware CI keeps the ELF and
-its disassembly (artifact `matryoshka-elf`) for tracing such faults to a function.
+`[R+#i] |= R`, `^= R` and `&= R` do; fm1-core already ran it. The sixth (2026-11-22, #1196) is in fm1-core, not the
+decoder: a `goto` out of the then-part of a predicated `if (..) { .. } else { .. }` ends that construct. fm1-core kept
+the else-part's skip pending while the program counter stayed below the then-part's end, and a pending skip holds every
+interrupt back. `pal_changed` (palette.c) compiles to `if (r2 == 0) { goto pal_now_send } else { .. }`, a tail call to
+a lower address, so all of `pal_now_send` ran with the interrupts held: TIMER5 stopped, `fm1_ms` stood still and the
+SysEx ring was never emptied. A `PALETTE_NOW` (87 USB-MIDI packets, the ring holds 64) then waited in `usb.c` `sx_room`
+for ever, and the emulated FM-1 stopped answering after its first palette change once an editor had asked for the
+palette. Each pending skip now keeps the start of its then-part, and a jump from inside the then-part to outside it
+drops the skip; a call keeps it, since it returns into the then-part. The firmware has two such tail calls (`eng_maps`
+is the other) and no call inside a then-part that has an else (`cargo test` in `tools/emu`:
+`goto_out_of_if_else_ends_it`). The firmware CI keeps the ELF and its disassembly (artifact `matryoshka-elf`) for
+tracing such faults to a function.
 
 ## Choosing checks
 

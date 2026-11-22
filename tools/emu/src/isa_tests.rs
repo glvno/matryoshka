@@ -151,3 +151,72 @@ fn far_branches_between_flash_and_noinit() {
     assert_eq!(branch(&mut cpu, &mut ram, 0x100, [0x9f, 0xea, 0xff, 0xff]), 0x104 + 0x3f_fffe);
     assert_eq!(branch(&mut cpu, &mut ram, 0x40_0000, [0xe0, 0xea, 0x00, 0x00]), 0x40_0004 - 0x40_0000);
 }
+
+/// Steps `cpu` once from where it is.
+fn step(cpu: &mut Cpu, ram: &mut Ram) {
+    let at = cpu.pc;
+    cpu.step(ram).unwrap_or_else(|e| panic!("at {at:#x}: {e:?}"));
+}
+
+/// A goto out of an if-else's then-part ends the construct (tools/emu/core_isa_patch.py, #1196): pal_changed in
+/// firmware/src/palette.c is `if (r2 == 0) { goto pal_now_send } else { b[r0+228] = r1 }`, a tail call to a lower
+/// address. fm1-core kept the else-part's skip pending below the then-part's end, which held every interrupt back for
+/// the whole of pal_now_send: its PALETTE_NOW waited for room in the SysEx ring that only TIMER5 empties, for ever.
+#[test]
+fn goto_out_of_if_else_ends_it() {
+    let mut ram = Ram(vec![0; 0x1000]);
+    let mut cpu = Cpu::new(0);
+    cpu.ie = true;
+    cpu.sreg_store[0] |= 0x100;                          // (icfg bit 8, the second gate)
+    // pal_changed's bytes (objdump of the #1201 build): the block at 0x400, its then-part's goto to 0x31c
+    ram.0[0x400..0x40e].copy_from_slice(&[0x32, 0xe8, 0x00, 0x10, 0xff, 0xea, 0x8a, 0xff, 0x52, 0xee, 0x04, 0x1e, 0x80, 0x00]);
+    ram.0[0x31c..0x31e].copy_from_slice(&[0x40, 0x20]);  // r0 = 0 (pal_now_send's place)
+    cpu.regs[0] = 0x800;
+    cpu.regs[1] = 1;
+    cpu.regs[2] = 0;                                     // (pal_defer 0: the then-part)
+    cpu.pc = 0x400;
+    step(&mut cpu, &mut ram);
+    assert_eq!((cpu.pc, cpu.pred_skips.len()), (0x404, 1), "if (r2 == 0) {{ taken: the else-part's skip pending");
+    assert!(!cpu.irq_ready(4), "inside the then-part the interrupts wait");
+    step(&mut cpu, &mut ram);
+    assert_eq!(cpu.pc, 0x31c, "goto -236");
+    assert!(cpu.pred_skips.is_empty(), "the goto left the construct: no skip pending");
+    assert!(cpu.irq_ready(4), "the tail-called function runs with the interrupts on");
+    // r2 != 0: the else-part runs and the construct ends after it
+    cpu.regs[2] = 1;
+    cpu.pc = 0x400;
+    step(&mut cpu, &mut ram);
+    assert_eq!(cpu.pc, 0x408, "not taken: to the else-part");
+    step(&mut cpu, &mut ram);
+    assert_eq!((cpu.pc, ram.read8(0x800 + 228)), (0x40c, 1), "b[r0+228] = r1");
+}
+
+/// What the fix keeps: a then-part that ends skips its else-part, also after a call from it returns there.
+#[test]
+fn if_else_then_part_skips_else() {
+    let mut ram = Ram(vec![0; 0x1000]);
+    let mut cpu = Cpu::new(0);
+    // `b1 e8 00 10` if (r1 != 0) { r1 = b[r14+2] (u) } else { r1 = 0 }, then r2 = r1 + r0 (0x02000682)
+    ram.0[0x400..0x40c].copy_from_slice(&[0xb1, 0xe8, 0x00, 0x10, 0x50, 0xee, 0xe2, 0x10, 0x41, 0x20, 0x12, 0x1c]);
+    ram.0[0x802] = 7;
+    cpu.regs[14] = 0x800;
+    cpu.regs[1] = 5;
+    cpu.regs[0] = 100;
+    cpu.pc = 0x400;
+    for _ in 0..3 {
+        step(&mut cpu, &mut ram);
+    }
+    assert_eq!((cpu.pc, cpu.regs[1], cpu.regs[2]), (0x40c, 7, 107), "the then-part, the else-part skipped");
+    assert!(cpu.pred_skips.is_empty());
+    // the then-part a call to a lower address (`bf ea 7c ff` call -264) whose rts comes back to the then-part's end
+    ram.0[0x400..0x40a].copy_from_slice(&[0xb1, 0xe8, 0x00, 0x10, 0xbf, 0xea, 0x7c, 0xff, 0x41, 0x20]);
+    ram.0[0x300..0x302].copy_from_slice(&[0x80, 0x00]);
+    cpu.regs[1] = 5;
+    cpu.pc = 0x400;
+    step(&mut cpu, &mut ram);
+    step(&mut cpu, &mut ram);
+    assert_eq!((cpu.pc, cpu.pred_skips.len()), (0x300, 1), "the call keeps the skip");
+    step(&mut cpu, &mut ram);
+    assert_eq!((cpu.pc, cpu.regs[1]), (0x40a, 5), "back at the then-part's end: the else-part skipped");
+    assert!(cpu.pred_skips.is_empty());
+}
