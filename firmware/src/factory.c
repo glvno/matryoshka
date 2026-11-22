@@ -24,7 +24,7 @@
  *   its CRC-32, u16 counts of patches, presets, patterns, released sets, dictionary values and migrations, u32 the offsets
  *   (from the image's start) of the patch directory, the presets, the dictionary, the patterns, the released sets and the
  *   migrations, u8 the bits of a dictionary index, u8 kind (FC_KIND_REGION, FC_KIND_TIER), u16 the count of released
- *   copies, 2 spare bytes, u16 CRC-16 (m1_crc16) of bytes 4..61;
+ *   copies, u16 the demo sets' length (layout 2; layout 1: spare), u16 CRC-16 (m1_crc16) of bytes 4..61;
  *   patches: 36 bytes each: name[20], u32 offset of the packed bytes (lz_unpack.h), u16 packed length, u16 length,
  *     u16 CRC-16 of the packed bytes, u16 the slot FACTORY RESET puts it in, u16 revision, u16 spare;
  *   presets: u32 structure each (one column, for the scans), then 16 bytes each: u16 offset of its values (dictionary
@@ -43,7 +43,13 @@
  *   migrations: u16 counts of the list, tables, lines, ops, table values and line values, then the list (16 bytes each:
  *     u32 from, u32 to, u16 ops, u16 table, u16 line, u8 earlier rows, u8 today's), the tables (8 each: u8 a, b, na, nb,
  *     i8 la, lb, u16 v), the lines (6 each: u8 x, key, n, i8 lo, u16 v), the line values (i32), the table values (i8)
- *     and the ops (u8): presetmig.c reads them.
+ *     and the ops (u8): presetmig.c reads them;
+ *   demo sets (layout 2, the body's last bytes, header bytes 60..61 their length; web/src/demo-sets.ts, #1179): u8 count,
+ *     then each: u32 the layout of the factory patch it comes from (patlink.c pl_layout), name[20], u16 the bytes its
+ *     notes, patterns and songs, P-locks and links sections and its pattern origins take in a patch, u32 its FNV-1a hash,
+ *     u16 the body's length, the body (patlink.c pl_demo_set reads it). The tier never has any.
+ * This firmware reads layouts FC_LAYOUT_MIN..FC_LAYOUT (a layout-1 image: no demo sets); 1.24.x reads layout 1 alone,
+ * and the editor keeps a layout-1 image for it (web/public/firmware/factory/).
  * The update loader erases a sector of this region whose last 256 bytes look like an update record
  * (firmware/loader/ldr_record.h); the image's writer keeps every sector clear of that, and FACT_WRITE refuses such a page.
  *
@@ -62,7 +68,9 @@
 #define FC_SECTORS 18u
 #define FC_SIZE (FC_SECTORS * 0x1000u)
 #define FC_MAGIC 0x3143464Du            /* "MFC1" */
-#define FC_LAYOUT 1u
+#define FC_LAYOUT 2u
+#define FC_LAYOUT_MIN 1u                /* the oldest layout this firmware reads (1: no demo sets) */
+#define FC_DEMO_REC 32u                 /* a demo set's record before its body */
 #define FC_HDR 64u
 #define FC_REC 36u                      /* a patch record */
 #define FC_KIND_REGION 0u               /* header byte 57: an image for the region */
@@ -86,6 +94,7 @@ typedef struct {
     uint8_t bits;                       /* a dictionary index's bits (1..16) */
     uint8_t kind;                       /* FC_KIND_REGION, FC_KIND_TIER */
     uint16_t ncopy;                     /* released copies (in the struct's padding: no larger than before) */
+    uint16_t demo;                      /* the demo sets' bytes (layout 2), at the body's end */
 } fc_hdr_t;
 
 typedef struct {                        /* a factory pattern (fc_pattern) */
@@ -176,9 +185,10 @@ static int fc_parse(const uint8_t *b, fc_hdr_t *h)
     h->bits = b[56];
     h->kind = b[57];
     h->ncopy = (uint16_t)fc_u16(b + 58);
+    h->demo = h->layout >= 2u ? (uint16_t)fc_u16(b + 60) : 0u;
     if (h->magic != FC_MAGIC || fc_u16(b + 62) != m1_crc16(b + 4, 58u) || h->len > FC_SIZE - FC_HDR)
         return -1;
-    if (h->npatch > FC_PATCHES || !h->bits || h->bits > 16u)
+    if (h->npatch > FC_PATCHES || !h->bits || h->bits > 16u || h->demo > h->len)
         return -1;
     return 0;
 }
@@ -191,7 +201,7 @@ static uint32_t fc_check(fc_hdr_t *h)
     uint32_t off, c = 0xFFFFFFFFu;
     if (st_read(FC_BASE, b, FC_HDR) || fc_parse(b, h) || h->kind != FC_KIND_REGION)
         return FC_NONE;
-    if (h->layout != FC_LAYOUT || h->format > ENG_PATCH_VERSION)
+    if (h->layout < FC_LAYOUT_MIN || h->layout > FC_LAYOUT || h->format > ENG_PATCH_VERSION)
         return FC_NEWER;
     for (off = 0; off < h->len; off += sizeof b) {
         uint32_t n = h->len - off < sizeof b ? h->len - off : sizeof b;
@@ -236,12 +246,14 @@ static void fc_merge(void)
 
 /* boot, and after a commit: the tier, and the region's content when valid */
 static uint8_t fc_scanned;
+static uint8_t fc_scans;                /* scans since boot (mod 256): the region's content may have changed (seq_ui.c's demo set) */
 static void fc_scan(void)
 {
     fc_hdr_t h;
     fc_scanned = 1;
+    fc_scans++;
     if (fc_parse(FC_TIER, &ft))                         /* (export-defs writes a whole one: never) */
-        ft.npatch = ft.npreset = ft.npattern = ft.nreleased = ft.nmig = ft.ncopy = 0;
+        ft.npatch = ft.npreset = ft.npattern = ft.nreleased = ft.nmig = ft.ncopy = ft.demo = 0;
     fc_state = flash_ok ? (uint8_t)fc_check(&h) : (uint8_t)FC_NONE;
     fc_region = fc_state == FC_OK;
     if (fc_region)
@@ -529,6 +541,38 @@ static uint32_t fc_nmig(void) { fc_ready(); return ft.nmig; }
 /* bytes of the migrations' section from offset `at` on */
 static int fc_mig_rd(uint32_t at, void *dst, uint32_t n) { fc_ready(); return fc_rd(0, ft.mig + at, dst, n); }
 
+/* ---- the demo sets (#1179): the region's */
+
+/* the demo set of the patch layout `layout` (patlink.c pl_layout): its body's offset in the region in *at, its length in
+ * *len, the bytes it takes in a patch in *cost, its hash in *hash. 0 found, -1 none (no region, or no set of that layout) */
+static int fc_demo(uint32_t layout, uint32_t *at, uint32_t *len, uint32_t *cost, uint32_t *hash)
+{
+    uint8_t e[FC_DEMO_REC];
+    uint32_t off, end, k, n;
+    fc_ready();
+    if (!fc_region || !fr.demo)
+        return -1;
+    end = FC_HDR + fr.len;
+    off = end - fr.demo;
+    if (fc_rd(1, off++, e, 1u))
+        return -1;
+    for (n = e[0], k = 0; k < n && off + FC_DEMO_REC <= end; k++) {
+        if (fc_rd(1, off, e, FC_DEMO_REC))
+            return -1;
+        if (off + FC_DEMO_REC + fc_u16(e + 30) > end)
+            return -1;
+        if (fc_u32(e) == layout) {
+            *at = off + FC_DEMO_REC;
+            *len = fc_u16(e + 30);
+            *cost = fc_u16(e + 24);
+            *hash = fc_u32(e + 26);
+            return 0;
+        }
+        off += FC_DEMO_REC + fc_u16(e + 30);
+    }
+    return -1;
+}
+
 /* ---- the editor link (proto.c): the region written, read and checked */
 
 /* FACT_INFO's bytes into out (FC_INFO_LEN): the region's state, the layout this firmware reads, the region header's
@@ -639,7 +683,7 @@ static uint32_t m1_fact_commit(const uint8_t *h)
         return S_FLASH;
     if (!fc_writing || fc_parse(h, &x) || x.kind != FC_KIND_REGION)
         return S_RANGE;
-    if (x.layout != FC_LAYOUT || x.format > ENG_PATCH_VERSION)
+    if (x.layout < FC_LAYOUT_MIN || x.layout > FC_LAYOUT || x.format > ENG_PATCH_VERSION)
         return S_LOAD;
     if (st_read(FC_BASE, b, FC_HDR))
         return S_FLASH;

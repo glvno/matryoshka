@@ -4,7 +4,7 @@
  * clock, Start, Continue, Stop and Song Position at a tempo other than the FM-1's, as a looper does (Reel at a loop's
  * record-to-playback turn: the clock stalls, sends the missed ticks in a burst or not, then Stop / Start or Song Position
  * + Continue). The messages reach clock_in.h at the half buffer they arrive in, the engine renders half buffers as the
- * audio ISR does, and the test checks that the 808 Kit's first Steps track steps on the host's ticks: step k on the host's
+ * audio ISR does, and the test checks that the 808 Kit's first Steps track (its demo set loaded, #1179) steps on the host's
  * tick 6k after its Start, tick 0 being the first clock after it (the FM-1's own clock out counts the same,
  * clock_out.h), and after a Song Position n step n on the first clock after its Continue. A Song Position + Continue
  * must land every Steps track (its step, its song entry, its passes) where playing from the top puts it, in a pattern,
@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../src/engine.c"
-#include "../src/presets.h"
+#include "pattern_cases.h"
 
 #define HALF 128u
 static struct {
@@ -162,15 +162,18 @@ static void reset(void)
     check("  (stopped, MIDI clock let go)", !eng_transport_running() && !eng_clock_is_external());
 }
 
+/* factory patch `name` with its demo set loaded (#1179: it ships without its patterns and songs), as the editor loads
+ * it (pattern_cases.h DEMO_CASES) */
 static int factory_load(const char *name)
 {
     static uint8_t bin[4096];
     uint32_t k;
-    for (k = 0; k < N_PRESETS && strcmp(PRESET_LIST[k].name, name); k++)
+    for (k = 0; k < N_DEMO_CASES && (strcmp(DEMO_CASES[k].name, name) || !DEMO_CASES[k].loaded); k++)
         ;
-    if (k == N_PRESETS || lz_unpack(PRESET_LIST[k].lz, PRESET_LIST[k].lz_len, bin, sizeof bin) != (int32_t)PRESET_LIST[k].len)
+    if (k == N_DEMO_CASES || DEMO_CASES[k].loaded_len > sizeof bin)
         return -1;
-    return eng_load(bin, PRESET_LIST[k].len) ? -1 : 0;
+    memcpy(bin, DEMO_CASES[k].loaded, DEMO_CASES[k].loaded_len);
+    return eng_load(bin, DEMO_CASES[k].loaded_len) ? -1 : 0;
 }
 
 /* the host plays: some clock first (Reel's Send clock), Start with the first tick, `ticks` ticks */
@@ -322,7 +325,7 @@ static void song_starts(const char *name, uint32_t s)
 int main(void)
 {
     int from, mid, k;
-    check("the 808 Kit loads", factory_load("808 KIT") == 0);
+    check("the 808 Kit loads", factory_load("808 Kit") == 0);
     eng_set_param((uint32_t)eng_find(T_FM1), FM1_P_TEMPO, 120 << 16);
     trk_mod = eng_steps_module(0);
     check("  it has a Steps track", trk_mod >= 0);
@@ -541,7 +544,7 @@ int main(void)
         song_starts("song 3 (1, 2, 3, 3, 1, 4, 3), pattern 2 of 5 steps at 1/64, forward, the track 16 steps at 1/16", 2);
         ff_suite("song 3 (1, 2, 3, 3, 1, 4, 3), pattern 2 of 5 steps at 1/64, forward, the track 16 steps at 1/16", 21);
         eng_song_set(0);
-        check("the 808 Kit loads again", factory_load("808 KIT") == 0);
+        check("the 808 Kit loads again", factory_load("808 Kit") == 0);
         eng_set_param((uint32_t)eng_find(T_FM1), FM1_P_TEMPO, 120 << 16);
         trk_mod = eng_steps_module(0);
         last_pos = -1;

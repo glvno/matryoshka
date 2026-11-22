@@ -9,7 +9,7 @@ import { COUNTED, deviceBudget, encodePatch, FLAG_INPUTS, FLAG_LINKS, FORMAT_LIN
 import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
-import { make, FM1_PRESETS, PRESETS, type Build } from '../src/presets';
+import { make, factoryWithDemoSet, FM1_PRESETS, PRESETS, type Build } from '../src/presets';
 import { relocatedPatches } from '../src/community-factory';
 import { oracleMorph } from '../src/test-morph';
 import { addModule, connect, defaultParams, emptyPatch, fixMatrix, newPatch, paramUnit, setMorphTarget, SOURCES, stepByte, type Patch, type PolyCfg } from '../src/patch';
@@ -4386,7 +4386,8 @@ if (process.argv.includes('--panel-fixtures')) {
     writeFileSync(new URL('engine-tracked.m1p', out), encodePatch(p, true));
   }
   for (const mode of ['control-only', 'direct-trig', 'ambiguous-gate']) {
-    const p = FM1_PRESETS['808 Kit']();
+    // (the 808 Kit with its demo set loaded: pattern 1 the Init demo notes and their origin, which it ships without, #1179)
+    const p = factoryWithDemoSet('808 Kit');
     // (the kit reached only through the route under test: DRUMS' keys into its Drum maps go, the 808 Kit has two inside its
     // card, D-1053, D-1059; the maps stay cabled, so the card's structure and its pattern origin stay those of the factory)
     const maps = new Set(p.modules.filter((m) => m.type === 'drummap').map((m) => m.id));

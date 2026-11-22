@@ -36,8 +36,8 @@ export interface Fm1Events {
   pattern?(pattern: number, song: number): void;
   /** the SONG page edited song s (0-based): its entries */
   song?(s: number, entries: SongEntry[]): void;
-  /** the SEQ page ran a pattern command (#1177, #1178, as the device link's PATTERN_OP): op 1 pattern `from` (0-based)
-   *  copied to `to`, op 2 every pattern and song cleared */
+  /** the SEQ page ran a pattern command (#1177, #1178, #1179, as the device link's PATTERN_OP): op 1 pattern `from`
+   *  (0-based) copied to `to`, op 2 every pattern and song cleared, op 3 the patch's demo set loaded (`hash`: its record's) */
   patternOp?(op: number, from: number, to: number, hash: number): void;
   mute?(module: number, on: boolean): void;
   /** the FM-1 armed or disarmed (#139, #191, #395: REC held + a black key, SEL, the SEQ page): the armed modules, by

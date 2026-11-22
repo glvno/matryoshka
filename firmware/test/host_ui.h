@@ -393,6 +393,18 @@ static int m1_patch_locks(void) { return 1; }      /* (the preview keeps no patc
 /* the pattern store's glue (patlink.c, #901) on the previewed binary: what proto.c sends stood in (its status codes above) */
 static uint8_t m1_up[M1_PATCH_MAX];        /* (proto.c's upload buffer, the payloads' scratch) */
 static int m1_patch_links(const uint8_t *s, uint32_t n) { (void)s; (void)n; return 1; }   /* (no links in the preview) */
+static uint32_t m1_sec_at(uint32_t sec)               /* (proto.c's, on the previewed binary: the demo set's room, #1179) */
+{
+    uint32_t at = eng_section_at(pv_bin, pv_len, sec);
+    return at <= pv_len ? at : 0;
+}
+static int m1_origins_put(const uint8_t *s, uint32_t n)   /* (a demo set's origins, #1179: those the previewed binary has) */
+{
+    uint32_t k;
+    for (k = 0; k < n; k++, s += 6)
+        host_set_origin(s[0], s[1], (uint32_t)s[2] | (uint32_t)s[3] << 8 | (uint32_t)s[4] << 16 | (uint32_t)s[5] << 24);
+    return 1;
+}
 static uint32_t host_link_told;             /* (panel_test.c: PAT_LINK_NOW sent) */
 static void m1_pat_link_now(uint32_t p, uint32_t id, uint32_t hash) { (void)p; (void)id; (void)hash; host_link_told++; }
 static void m1_track_pattern_now(uint32_t mod, uint32_t pattern) { (void)pattern; m1_track_now(mod); }

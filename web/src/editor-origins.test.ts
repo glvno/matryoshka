@@ -8,7 +8,7 @@ import { BUTTONS, ENCODERS, Fm1Ui } from './fm1-ui';
 import { DEFS } from './modules';
 import { encodePatch } from './patchbin';
 import { deviceView } from './poly';
-import { FM1_PRESETS } from './presets';
+import { factoryWithDemoSet } from './presets';
 import { presetPattern } from './preset-patterns';
 import { presetsOf } from './device-presets';
 import { noteWord } from './track';
@@ -36,7 +36,8 @@ async function rig() {
     onStructure() { for (let i = 0; i < 2; i++) if (i !== source) pending.add(i); },
     onParam() {}, onAtt() {}, onBypass() {}, onRange() {}, onTrack() {}, onTransport() {}, onLayout() {}, onError() {}, onSaveAssembly() {},
   };
-  const editor = new Editor(document.getElementById('canvas')!, FM1_PRESETS['808 Kit'](), ev);
+  // (the 808 Kit with its demo set loaded: pattern 1 the Init demo notes with their origin, #1179)
+  const editor = new Editor(document.getElementById('canvas')!, factoryWithDemoSet('808 Kit'), ev);
   const track = editor.patch.modules.find((m) => m.type === 'steps')!;
   const card = editor.patch.assemblies!.find((a) => a.name === '808 kit')!;
   const sounds = presetsOf(editor.patch, card);

@@ -564,9 +564,9 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     } finally { mark(false); }
     return;
   }
-  if (e.kind === 'patternOp') {   // SEQ held + SAVE / HOME on the SEQ page (#1177, #1178): the same command here, an undo step
+  if (e.kind === 'patternOp') {   // SEQ held + SAVE / HOME / SEL on the SEQ page (#1177, #1178, #1179): the same command here, an undo step
     mark(true);
-    try { editor.patternOpFromDevice(e.op, e.from, e.to); } finally { mark(false); }
+    try { editor.patternOpFromDevice(e.op, e.from, e.to, e.hash); } finally { mark(false); }
     return;
   }
   if (e.kind === 'param') {   // K1..K4 turned on a device page of the FM-1 tab's emulator

@@ -9,7 +9,7 @@ import { currentValues, importPresets, PRESETS_FORMAT, presetsOf, setFactoryPres
 import { allFactoryPresets } from './factory-presets';
 import { DEFS } from './modules';
 import { devicesOf, homeDevice } from './pages';
-import { PRESETS } from './presets';
+import { factoryWithDemoSet, PRESETS } from './presets';
 import { relocatedPatches } from './community-factory';
 import { presetPattern } from './preset-patterns';
 
@@ -79,7 +79,8 @@ describe('USER presets with a factory sound’s name', () => {
   });
 
   it.each(['menu', 'previous', 'next'] as const)('%s loads the USER values and preserves notes without factory origin', (action) => {
-    const patch = PRESETS['808 Kit']();
+    // (the 808 Kit with its demo set loaded: pattern 1 the Init demo notes with their origin, #1179)
+    const patch = factoryWithDemoSet('808 Kit');
     const assembly = patch.assemblies!.find((a) => a.name === '808 kit')!;
     const sounds = presetsOf(patch, assembly);
     const init = sounds.find((p) => p.factory && p.name === 'Init')!;
@@ -89,7 +90,7 @@ describe('USER presets with a factory sound’s name', () => {
     const values = [...init.values];
     expect(values).not.toEqual(electro.values);
     expect(importPresets({ format: PRESETS_FORMAT, presets: [{ structure: electro.structure, name: electro.name, values }] })).toBe(1);
-    const { editor } = editorOn('808 Kit');
+    const { editor } = editorOn('808 Kit', () => factoryWithDemoSet('808 Kit'));
     const card = editor.patch.assemblies!.find((a) => a.name === '808 kit')!;
     const track = editor.patch.modules.find((m) => m.type === 'steps')!;
     const chipSelector = `[data-asm="${card.id}"] .preset-chip`;

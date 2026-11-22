@@ -107,6 +107,11 @@
 #define MSG_CLEAR_ALL "CLEAR ALL? HOME AGAIN"           /* SEQ held + HOME (#1178) */
 #define MSG_ALL_CLEARED "PATTERNS + SONGS CLEARED"
 #define MSG_NOTHING_TO_CLEAR "NOTHING TO CLEAR"
+#define MSG_DEMO_ASK "LOAD DEMO SET? SEL AGAIN"        /* SEQ held + SEL (#1179) */
+#define MSG_DEMO_LOADED "DEMO SET LOADED"
+#define MSG_NOT_LOADED "NOT LOADED"
+#define MSG_NO_DEMO_SET "NO DEMO SET"
+#define MSG_FULL_NOT_LOADED "PATCH FULL: NOT LOADED"
 #define MSG_BAR_STEP "STEP "                            /* the SEQ bar in step record: STEP n/len, two spaces, the track */
 #define MSG_BAR_ARM " ARM"                              /* the SEQ bar: after the track's name */
 #define MSG_BAR_REC " REC"

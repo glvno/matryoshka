@@ -126,7 +126,8 @@ import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DRUM_MAP_DEFAULT, DRUM_ROWS, dru
 import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } from './buttons';
 import { defaultMap, EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, MODULES_1_10, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef, type Patch } from './patch';
 import { hasTiming, noteWords, patternWords, wordCount } from './track';
-import { payloadHash } from './pattern-store';
+import { layoutOf as storeLayout, payloadHash } from './pattern-store';
+import DEMO_ROOM from './demo-set-room.json';
 import { lockPlan, PATCH_LOCKS_MAX } from './locks';
 import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS } from './poly';
 import { devicesOf, NAME_MAX, type Device, type PageRow } from './pages';
@@ -995,12 +996,15 @@ export const encodedSize = (source: Patch): number => layout(source).size;
 /**
  * How a patch is written (`view`: its device form): its format `v`, the lowest of these that fits the FM-1's bytes with
  * the room kept (#667, D-1025): the lowest that holds it (baseFormat), then COUNTED (counted records), then SLIM (also the
- * shorter panel labels, cables and row names); when none fits, the smallest. Also the preset names the device extras
- * carry and the room kept for them (presetNames), the binary's `size` and the device pages and button kinds it holds.
- * `need`: the bytes the budget counts, the smallest of the forms with the room kept, so the room the newer forms free
- * shows in every patch while a patch that fits an older format is still written in it. `force`: the layout of this
- * format whatever the size (COUNTED or SLIM: tests and golden kits; 0 none). `store`: the pattern store it is written for
- * (linkPlan): `p` leaves out the linked patterns the store holds as they are, and `links` is the links section.
+ * shorter panel labels, cables and row names); when none fits, the smallest. A patch of a layout with a demo set
+ * (demo-sets.ts, #1179) keeps the bytes its set takes too (demo-set-room.json, gen-presets.ts): the FM-1 loads the set
+ * into the binary it has, in its format (firmware/src/patlink.c pl_demo_set), and only the smaller forms hold both. Also
+ * the preset names the device extras carry and the room kept for them (presetNames), the binary's `size` and the device
+ * pages and button kinds it holds. `need`: the bytes the budget counts, the smallest of the forms with the room kept, so
+ * the room the newer forms free shows in every patch while a patch that fits an older format is still written in it.
+ * `force`: the layout of this format whatever the size (COUNTED or SLIM: tests and golden kits; 0 none). `store`: the
+ * pattern store it is written for (linkPlan): `p` leaves out the linked patterns the store holds as they are, and
+ * `links` is the links section.
  */
 export function layout(source: Patch, view: ReturnType<typeof deviceView> = deviceView(source, true), force = 0, store: LinkStore = 'assume') {
   if (rowsMemo) return layoutOf(source, view, force, store);
@@ -1030,8 +1034,9 @@ function layoutOf(source: Patch, view: ReturnType<typeof deviceView>, force: num
   const counted = base.v < COUNTED ? at(COUNTED) : base;
   const slim = base.v < SLIM ? at(SLIM) : base;
   const need = Math.min(base.bytes, counted.bytes, slim.bytes);
+  const demo = (DEMO_ROOM as Record<string, number>)[storeLayout(p)] ?? 0;
   const w = force >= SLIM ? slim : force ? counted
-    : [base, counted, slim].find((f) => f.bytes <= DEVICE.bytes) ?? [base, counted, slim].find((f) => f.bytes === need)!;
+    : [base, counted, slim].find((f) => f.bytes + demo <= DEVICE.bytes) ?? [base, counted, slim].find((f) => f.bytes === need)!;
   return { p, groups, devs, kinds, keep, links, ...w, need, base: { v: base.v, bytes: base.bytes }, counted: counted.bytes, slim: slim.bytes };
 }
 

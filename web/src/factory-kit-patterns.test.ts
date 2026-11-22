@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The factory drum kits' pattern sets (#923, D-829): patterns 2.. of the 808 and 909 Kits linked to read-only entries of
 // the pattern store, factory-store.json current, the patches' binaries carrying the links instead of the notes, and the
-// songs over them. firmware/test/patlink_test.c loads the same binaries from presets.h.
+// songs over them. The kits ship without them and load them as their demo sets (#1179): this checks the bank in full, as
+// the demo sets hold it. firmware/test/patlink_test.c loads the same binaries.
 import { describe, expect, it } from 'vitest';
 import STORE from './factory-store.json';
 import { buildSelectedFactoryBank } from './factory-bank';
@@ -12,7 +13,7 @@ import { deviceView } from './poly';
 import { COND_FILL, LINK_ID_MAX, PATTERNS_MAX, READ_ONLY_ID, SONG_LEN_MAX, type StepNote } from './track';
 import SOURCE from '../factory/bank.json';
 
-const bank = buildSelectedFactoryBank();
+const bank = buildSelectedFactoryBank({ full: true });
 const patchOf = (name: string) => bank.find((x) => x.name === name)!.patch;
 
 describe('the factory kits\' linked patterns', () => {

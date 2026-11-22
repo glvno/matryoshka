@@ -1493,12 +1493,22 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.tap(SEQ, 120, 400)?;
     piano_roll(&mut m, gb, t)?;
     if let Some(sb) = presets.iter().position(|(n, _)| n == "SILVER BOX") {
-        // patterns and songs (#375): PRESET on the SEQ page picks the pattern (stopped: at once; the bar shows it), SEL
+        // patterns and songs (#375): Silver Box ships without them, its demo set loads them (#1179: SEQ held + SEL asks,
+        // SEL again within 3 s loads). PRESET on the SEQ page picks the pattern (stopped: at once; the bar shows it), SEL
         // tapped opens the SONG page, K4 right plays song 1 (Silver Box's demo), PLAY sounds it, K4 left the pattern again
         m.midi(&[0xC0, sb as u8], 500)?;
         t.screen(&m, "song: Silver Box loads", "SILVER BOX");
         m.tap(SEQ, 120, 400)?;
         t.screen(&m, "song: the SEQ bar shows pattern 1", "P01");
+        m.key(SEQ, true);
+        m.run_for(200)?;
+        m.tap(SEL, 120, 300)?;
+        t.screen(&m, "demo set: SEQ held + SEL asks first", "LOAD DEMO SET? SEL AGAIN");
+        m.tap(SEL, 120, 300)?;
+        t.screen(&m, "demo set: SEL again loads Silver Box's", "DEMO SET LOADED");
+        m.key(SEQ, false);
+        m.run_for(1500)?;
+        t.screen(&m, "demo set: the SEQ page stays, on pattern 1", "P01");
         m.turn(PRESET, 1, 600)?;
         m.run_for(1200)?;
         t.screen(&m, "song: PRESET on the SEQ page picks pattern 2, at once while stopped", "P02");

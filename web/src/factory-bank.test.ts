@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { buildFactoryBank, buildSelectedFactoryBank, factoryFile, factoryFxAudit, selectedFactoryNames, selectedFactoryProfile } from './factory-bank';
+import { buildFactoryBank, buildSelectedFactoryBank, factoryFile, factoryFxAudit, selectedFactoryNames, selectedFactoryProfile, shippedFactoryBank } from './factory-bank';
 import { FACTORY_KITS, withKitPatterns } from './factory-kit-patterns';
 import SOURCE from '../factory/bank.json';
 import { fxBusOf, type FxStageKind } from './fx-bus';
@@ -85,18 +85,22 @@ describe('owner-selected factory defaults', () => {
     const protectedEntries = SOURCE.filter(entry => !factoryFxAudit.some(audit => audit.name === entry.name));
     expect(bank).toHaveLength(SOURCE.length);
     expect(bank.map(entry => entry.name)).toEqual(SOURCE.map(entry => selectedFactoryProfile[entry.name]?.bankName ?? entry.name));
+    // (the patches with a demo set ship without it, #1179: the shipped bank is the full one without them, and the full
+    // one holds the protected patches to their source)
+    const full = buildSelectedFactoryBank({ full: true });
+    expect(bank).toEqual(shippedFactoryBank(full));
     for (const source of protectedEntries) {
       // (a drum kit with a pattern set, D-829: its source plus those patterns, links and songs, nothing else; D-1053, D-1055)
       const kit = FACTORY_KITS.some(k => k.patch === source.name);
       const original = kit ? withKitPatterns(structuredClone(source.patch) as unknown as Patch) : source.patch as unknown as Patch;
       if (!selectedFactoryProfile[source.name]) {
-        expect(patchOf(source.name, bank)).toEqual(original);
+        expect(patchOf(source.name, full)).toEqual(original);
         continue;
       }
       // (a drum kit with the master FX bus: every module and cable of the kit as it was, but the Output's, which the bus
       // now feeds; every stage bypassed; FX opens the bus's pages, the other buttons as they were; owner 2026-11-19, D-1200)
       expect(selectedFactoryProfile[source.name].drumRack).toBe(true);
-      const p = patchOf(source.name, bank);
+      const p = patchOf(source.name, full);
       const output = original.modules.find(m => m.type === 'output')!.id;
       for (const m of original.modules) expect(p.modules.find(x => x.id === m.id), `${source.name} ${m.id}`).toEqual(m.type === 'fm1' ? { ...m, panel: p.modules.find(x => x.id === m.id)!.panel } : m);
       for (const c of original.cables.filter(c => c.to.module !== output)) expect(p.cables).toContainEqual(c);

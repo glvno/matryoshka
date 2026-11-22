@@ -126,6 +126,10 @@ The person whose call a ruling is. Named in a `Proposed` status, in a subject fi
 
 An input a parameter is permanently wired to (a VCA's `cv`, a filter's cutoff `cv`); it cannot be disconnected.
 
+### Demo set
+
+A factory patch's patterns, pattern links, songs and pattern-1 origins as the patch shipped up to 1.24.1, kept in the factory region and loaded back into the patch in one step: SEQ held + SEL on the FM-1, or `demo set` on a Steps card in the editor ([D-836](steps.md#D-836)). The patch itself ships without them. Not the factory set, which is the list of factory patches a release installs ([D-887](patches-and-presets.md#D-887), [D-1020](patch-format.md#D-1020)).
+
 ### Derivative artifact
 
 A document generated from this repository for someone: a PDF, a deck, a summary. Named by date and topic, bannered as generated and stale after a day, never committed.

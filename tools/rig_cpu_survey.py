@@ -6,7 +6,10 @@
 # 1 / 4 / 8 notes held over USB MIDI, 2 s each, sampled every 0.5 s; on firmware with DIAG page 119 (#458) also the
 # overload guard's mean ISR time at each sample and the late halves of the phase. Reload for EACH phase so a voice shed in an earlier
 # phase cannot make the next one look cheaper. Peaks include the first block; a sample need not precede shedding.
-import sys, time, json, argparse
+# With --run, a factory patch with a demo set (#1179: it ships without its patterns) is uploaded with it loaded, as the
+# editor loads it (firmware/test/pattern_cases.h DEMO_CASES, cd web && npm run export-defs), so each phase measures its
+# pattern 1 playing.
+import sys, time, json, argparse, re
 import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import m1_link as M
 import mido
@@ -16,6 +19,18 @@ def presets(path):
     if os.path.isdir(path):                      # a directory of patch binaries (NAME.bin): a factory preset's patch, say
         return [(f[:-4], open(os.path.join(path, f), 'rb').read()) for f in sorted(os.listdir(path)) if f.endswith('.bin')]
     return M.factory_presets(path)               # (presets.h stores them packed: m1_link unpacks)
+
+
+DEMO_CASES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "firmware", "test", "pattern_cases.h")
+
+
+def demo_sets(path=DEMO_CASES):
+    """{name: bytes} of each factory patch with its demo set loaded, by its name (presets.h's)"""
+    src = open(path).read()
+    arrays = {m.group(1): bytes(int(x) for x in m.group(2).split(","))
+              for m in re.finditer(r"static const uint8_t (PTC_DEMO_LOADED_\d+)\[\d+\] = \{([\d,]*)\};", src)}
+    return {m.group(1): arrays[m.group(2)]
+            for m in re.finditer(r'\{"([^"]+)", PTC_DEMO_\d+, \d+, (PTC_DEMO_LOADED_\d+), ', src)}
 
 
 def page(link, n):
@@ -73,6 +88,9 @@ args = parser.parse_args()
 if not 1 <= args.hold <= 60:
     parser.error("--hold must be between 1 and 60 seconds per phase")
 ps = presets(args.presets)
+if args.run and not os.path.isdir(args.presets):    # (a patch with a demo set: with it loaded, its pattern 1 playing, #1179)
+    demo = demo_sets()
+    ps = [(name, demo.get(name, data)) for name, data in ps]
 filt = args.names.split(',') if args.names else None
 unknown = set(filt or []) - {name for name, _ in ps}
 if not ps or unknown:
@@ -82,7 +100,8 @@ res = []
 for slot, (name, data) in enumerate(ps):
     if filt and name not in filt:
         continue
-    r = {"slot": slot, "name": name, "transport": args.run, "hold_seconds": args.hold}
+    r = {"slot": slot, "name": name, "transport": args.run, "hold_seconds": args.hold,
+         "demo_set": bool(args.run and not os.path.isdir(args.presets) and name in demo)}
     for n in (0, 1, 4, 8):
         pk, s, ovl, shed, means, late = phase(link, n, data, args.hold, args.run)
         r[f"n{n}_us"] = pk

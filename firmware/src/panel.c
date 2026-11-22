@@ -489,10 +489,11 @@ static void panel_encoders(int32_t *st)
     if (sb_on && page == 0u && !cfg.midi_out && (st[0] | st[1] | st[2] | st[3] | st[4] | st[5]))
         sb_mout_nudge();                            /* sandbox mode: SELECT, ALGO and K1..K4 drive the editor only over MIDI out
                                                      * (D-232, D-249) */
-    for (k = 0; k < 7u; k++)                        /* a turn while a clear asks: not cleared (#231, #1178) */
+    for (k = 0; k < 7u; k++)                        /* a turn while a clear or the demo set asks: not done (#231, #1178, #1179) */
         if (st[k]) {
             seq_clear_cancel();
             seq_all_cancel();
+            seq_demo_cancel();
         }
     learn_knob(st);
     if (page == PAGE_SEQ && seq_held >= 0 && (st[0] | st[1] | st[2] | st[3] | st[4] | st[5] | st[6]))
@@ -742,9 +743,10 @@ static int panel_key(uint32_t n, int down, int quick)
         return 0;
     keys_now ^= bit;
     m1_keys_now(n, down);
-    if (down) {                                     /* a key while a clear asks: not cleared (#231, #1178) */
+    if (down) {                                     /* a key while a clear or the demo set asks: not done (#231, #1178, #1179) */
         seq_clear_cancel();
         seq_all_cancel();
+        seq_demo_cancel();
     }
     if (down && sb_on && !cfg.midi_out && !help_on)
         sb_mout_due = 1;                            /* (sandbox mode: the note reaches nothing; panel_status nudges, D-228) */
@@ -1118,6 +1120,8 @@ static void panel_edges(uint32_t p, uint32_t rel)
         seq_clear_cancel();                                   /* and it is not cleared (#231) */
     if ((p & ~(1u << BTN_HOME)) || (rel & (1u << BTN_SEQ)))   /* ... and clear all's (#1178): HOME again confirms it */
         seq_all_cancel();
+    if ((p & ~(1u << BTN_SEL)) || (rel & (1u << BTN_SEQ)))    /* ... and the demo set's (#1179): SEL again loads it */
+        seq_demo_cancel();
     if ((page == PAGE_SEQ || page == PAGE_SONG) && (p & (1u << BTN_REC)) && (panel_held >> BTN_SEQ & 1u)) {   /* SEQ held + REC:
                                                      * clear the track (the SONG page: delete the entry), asked first (#231);
                                                      * neither SEQ's nor REC's release does its own */
@@ -1181,6 +1185,14 @@ static void panel_edges(uint32_t p, uint32_t rel)
     if (p & (1u << BTN_SEL)) {
         sel_down_ms = fm1_ms;
         sel_used = 0;
+    }
+    if ((p & (1u << BTN_SEL)) && page == PAGE_SEQ && (panel_held >> BTN_SEQ & 1u)) {   /* SEQ held + SEL (#1179): the demo
+                                                     * set, asked first; SEL's release does not open the SONG page, SEQ's
+                                                     * does nothing */
+        seq_held_used = 1;
+        sel_used = 1;
+        seq_pen_ms = fm1_ms | 1u;
+        seq_demo_press();
     }
     if ((rel & (1u << BTN_SEL)) && page == PAGE_SEQ) {   /* SEL tapped on the SEQ page (no key as the pen since its press,
                                                      * a key in the same pass counting): the SONG page (#375, D-541) */

@@ -12,7 +12,7 @@ import { PRESET_MIGRATIONS, migrateValues } from './preset-migrate';
 import { structureOf } from './structure';
 import { readLineage } from '../scripts/lineage-lib';
 import { presetsHPatches } from '../scripts/factory-lz';
-import { FM1_PRESETS } from './presets';
+import { factoryWithDemoSet, FM1_PRESETS } from './presets';
 import { assembliesOf } from './assembly';
 import { patternNotes, type StepNote } from './track';
 import type { ModuleInst, Patch } from './patch';
@@ -22,6 +22,8 @@ const SR = 48000;
 const KEYS = [53, 55, 57, 59, 60, 62, 64];
 const SCROUNGE_TRACKS = ['VOICE 1', 'VOICE 2', 'VOICE 3', 'VOICE 4', 'VOICE 5', 'MOD X', 'MOD Y', 'LEN GLB'];
 const scrounge = (): Patch => FM1_PRESETS.Scrounge();
+/** Scrounge with its demo set loaded (#1179): its grooves, songs and LEN GLB's resets, as it shipped up to 1.24.1 */
+const scroungeSet = (): Patch => factoryWithDemoSet('Scrounge');
 const track = (p: Patch, name: string): ModuleInst => p.modules.find((m) => m.type === 'steps' && m.name === name)!;
 /** every track empty but LEN GLB, so a test plays only what it puts there */
 const silence = (p: Patch): Patch => {
@@ -110,7 +112,7 @@ describe('Scrounge (the FM-1 version: the whole Scrooge, D-1056)', () => {
 
   it('LEN GLB brings every track back to its first step after its length', () => {
     const at = (glb: number): number[] => {
-      const p = silence(scrounge());
+      const p = silence(scroungeSet());
       const v = track(p, 'VOICE 1');
       v.notes = lane('x', 53);
       v.params.len = 12;
@@ -167,7 +169,7 @@ describe('Scrounge (the FM-1 version: the whole Scrooge, D-1056)', () => {
   });
 
   it('holds its grooves as patterns 1 to 10, song 1 (CHAIN) playing the first six in turn', () => {
-    const p = scrounge();
+    const p = scroungeSet();
     expect(p.modules.find((m) => m.type === 'fm1')!.seq!.songs![0]).toEqual([0, 1, 2, 3, 4, 5].map((pat) => ({ pat, shift: 0 })));
     // (Dusty Boom Bap first: the grooves after it share most of its rows, so a track whose row is the same keeps no copy)
     expect(track(p, 'VOICE 1').notes).toEqual(lane('X..x......x.....', 53));
@@ -184,7 +186,7 @@ describe('Scrounge (the FM-1 version: the whole Scrooge, D-1056)', () => {
   });
 
   it('plays per-step CHOP (ratchets) and TIME (micro timing) only in patterns 7 to 10, which song 2 chains', () => {
-    const p = scrounge();
+    const p = scroungeSet();
     const timed = (j: number): StepNote[] => SCROUNGE_TRACKS.flatMap((n) => {
       const t = track(p, n);
       return ((j ? t.patterns?.[j - 1]?.notes ?? t.notes : t.notes) ?? []).filter((x) => x.ratchet || x.micro);
@@ -203,7 +205,7 @@ describe('Scrounge (the FM-1 version: the whole Scrooge, D-1056)', () => {
       e.render(l, r);
       return l.map((v, i) => v + r[i]);
     };
-    const plain = scrounge();
+    const plain = scroungeSet();
     for (const m of plain.modules) for (const x of m.patterns?.[5]?.notes ?? []) { delete x.ratchet; delete x.micro; }
     const a = play(p), b = play(plain);
     expect(rms(a.map((v, i) => v - b[i]), 0, a.length)).toBeGreaterThan(1e-3);

@@ -758,6 +758,29 @@ static void m1_origins_drop(void)
     }
     m1_origin_snapshot();
 }
+/* pattern origins into a binary that has none (#1179: a demo set's pattern 1 origins, after clear all dropped the
+ * section): s holds n records of 6 bytes (u8 Steps module, u8 pattern, u32 LE identity), sorted. A binary older than
+ * ENG_COUNTED keeps none (too old to upgrade); one older than the origins' format is written as ENG_UPGRADED (the formats
+ * since ENG_COUNTED read the same as it otherwise, as m1_patch_links). 1 done, 0 not (no room, or the binary has some) */
+static int m1_origins_put(const uint8_t *s, uint32_t n)
+{
+    uint32_t at, k;
+    if (!n)
+        return 1;
+    if ((m1_cur[7] & ENG_FLAG_ORIGINS) || m1_cur[1] < ENG_COUNTED || !(at = m1_sec_at(ENG_SEC_ORIGINS))
+        || m1_cur_len + 2u + 6u * n > M1_PATCH_MAX)
+        return 0;
+    m1_splice(at, 0, 2u + 6u * n);
+    m1_cur[at] = (uint8_t)n;
+    m1_cur[at + 1u] = (uint8_t)(n >> 8);
+    for (k = 0; k < 6u * n; k++)
+        m1_cur[at + 2u + k] = s[k];
+    m1_cur[7] |= ENG_FLAG_ORIGINS;
+    if (m1_cur[1] < ENG_UPGRADED)
+        m1_cur[1] = ENG_UPGRADED;
+    m1_edited = 1;
+    return 1;
+}
 /* Only called for two known, nonempty factory defaults whose notes fit compact words. No other track or
  * pattern moves. Refuse growth before the engine changes, so SAVE and the live track always agree. */
 static int m1_default_pattern(uint32_t mod, uint32_t pattern, const uint32_t *words, uint32_t n, uint32_t identity)

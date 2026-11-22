@@ -32,6 +32,7 @@
 #define PL_KIT (PT_ID_MAX + 1u)            /* the first factory patch pattern's id: 0xE000 */
 #define PL_FACTORY 0xFF00u                 /* the first factory demonstration pattern's id */
 #define PL_END (PL_FACTORY + 256u)         /* one above every 16-bit id */
+#define PL_DEMO_TRACKS 16u                 /* a demo set's origins at most: a patch's Steps tracks (engine.c ENG_MAX_TRACKS) */
 
 static uint32_t pl_hash[ENG_PATTERNS];     /* each link's payload hash as the store gave it to this patch */
 
@@ -572,6 +573,105 @@ static void pl_clear_all(void)
     (void)m1_patterns_fit();
     m1_origins_drop();
     m1_edited = 1;
+}
+
+/* ---- the demo sets (#1179): a factory patch's patterns, links, songs and pattern 1 origins as it shipped up to 1.24.1,
+ * kept in the factory region (factory.c fc_demo, web/src/demo-sets.ts) and found by the running patch's layout. A set's
+ * body: u8 items, each u8 pattern, u8 kind (0: u16 length and a stored pattern's payload; 1: u16 the factory entry it
+ * links), u8 origins, each u8 track and u32 its pattern 1's origin, u8 songs, each u8 entries and per entry u8 pattern,
+ * i8 shift */
+
+/* the running patch's layout as its binary has it (web/src/pattern-store.ts layoutOf: FNV-1a over its module count and
+ * each module's type, 0 made 1), which finds its demo set: every module of the binary, whether the engine runs it or
+ * not. 0: a malformed binary */
+static uint32_t pl_demo_layout(void)
+{
+    pl_out_t s = { 0, 0, 0, PT_FNV0 };
+    uint32_t m, n = m1_cur_len >= 8u ? m1_cur[2] : 0u, at = eng_records_at(m1_cur, m1_cur_len);
+    pl_b(&s, n);
+    for (m = 0; m < n && at && eng_rec_ok(m1_cur, m1_cur_len, at); m++, at += eng_rec_size(m1_cur, at))
+        pl_b(&s, m1_cur[at] & 0x7Fu);
+    return m < n ? 0u : s.h ? s.h : 1u;
+}
+/* the running patch's demo set at region offset at (len bytes) walked: checked (apply 0), or loaded into the patch, which
+ * clear all has just emptied (apply 1). 0 done (well formed), -1 malformed or (loading) not all of it went in */
+static int pl_demo_walk(uint32_t at, uint32_t len, int apply)
+{
+    uint8_t b[5], lk[1u + 3u * (ENG_PATTERNS - 1u)], og[6u * PL_DEMO_TRACKS];
+    uint32_t end = at + len, n, k, j, c, l, nl = 0, no = 0, nt = (uint32_t)eng_steps_count();
+    if (fc_rd(1, at++, b, 1u))
+        return -1;
+    for (n = b[0], k = 0; k < n; k++) {             /* the patterns */
+        if (at + 4u > end || fc_rd(1, at, b, 4u) || b[0] >= ENG_PATTERNS || b[1] > 1u || nl == ENG_PATTERNS - 1u)
+            return -1;
+        l = (uint32_t)b[2] | (uint32_t)b[3] << 8;
+        at += 4u;
+        if (b[1]) {                                  /* a link: its content comes from the factory entry (m1_pat_load) */
+            lk[1u + 3u * nl] = b[0];
+            lk[2u + 3u * nl] = b[2];
+            lk[3u + 3u * nl++] = b[3];
+            continue;
+        }
+        if (l > sizeof m1_up || at + l > end)
+            return -1;
+        if (apply && (fc_rd(1, at, m1_up, l) || pl_apply(b[0], m1_up, l) < 0))
+            return -1;
+        at += l;
+    }
+    lk[0] = (uint8_t)nl;
+    if (at + 1u > end || fc_rd(1, at++, b, 1u) || b[0] > PL_DEMO_TRACKS)
+        return -1;
+    for (n = b[0], k = 0; k < n; k++, at += 5u) {   /* pattern 1's origins (D-882) */
+        if (at + 5u > end || fc_rd(1, at, b, 5u))
+            return -1;
+        if (b[0] >= nt)
+            continue;
+        og[6u * no] = (uint8_t)eng_steps_module(b[0]);
+        og[6u * no + 1u] = 0;
+        for (j = 0; j < 4u; j++)
+            og[6u * no + 2u + j] = b[1u + j];
+        no++;
+    }
+    if (at + 1u > end || fc_rd(1, at++, b, 1u) || b[0] > ENG_SONGS)
+        return -1;
+    for (n = b[0], k = 0; k < n; k++) {             /* the songs */
+        if (at + 1u > end || fc_rd(1, at++, b, 1u) || at + 2u * b[0] > end)
+            return -1;
+        for (c = b[0], j = 0; j < c; j++, at += 2u)
+            if (fc_rd(1, at, b, 2u) || b[0] >= ENG_PATTERNS || (apply && eng_song_put(k, j, b[0], (int8_t)b[1])))
+                return -1;
+    }
+    if (at != end)
+        return -1;
+    if (!apply)
+        return 0;
+    if (!m1_patch_links(lk, nl ? 1u + 3u * nl : 0u) || !m1_origins_put(og, no))
+        return -1;
+    m1_pat_load();                                   /* (the links' patterns from their entries, clean: as a patch load) */
+    for (k = 0; k < nt; k++)
+        m1_patch_notes((uint32_t)eng_steps_module(k));
+    return m1_patterns_fit() ? 0 : -1;
+}
+/* the running patch's demo set loaded (seq_ui.c: SEQ held + SEL, then SEL): clear all (pl_clear_all), then the set's
+ * patterns (a payload loaded as the store's are, or a link to a factory patch's pattern), its pattern 1 origins and its
+ * songs; pattern 1 selected, no song playing. The patch as the factory patch shipped up to 1.24.1, but for its sound. All
+ * or nothing: the room (the bytes the patch's notes, patterns and songs, P-locks, links and origins take now, against
+ * the set's) and the set are checked before anything changes. *hash: the set's (PATTERN_OP). 0 done, -1 no demo set
+ * (none of this layout, no region, a malformed one), -2 the patch has no room */
+static int pl_demo_set(uint32_t *hash)
+{
+    uint32_t at, len, cost, notes = m1_sec_at(ENG_SEC_NOTES), links = m1_sec_at(ENG_SEC_DEVICES);
+    uint32_t og = eng_origins_at(m1_cur, m1_cur_len), used;
+    if (fc_demo(pl_demo_layout(), &at, &len, &cost, hash) || pl_demo_walk(at, len, 0))
+        return -1;
+    used = (notes && links >= notes ? links - notes : 0u) + (og ? eng_origins_end(m1_cur, m1_cur_len, og) - og : 0u);
+    if (!notes || !links || m1_cur_len - used + cost > M1_PATCH_MAX)
+        return -2;
+    pl_clear_all();
+    if (!pl_demo_walk(at, len, 1))
+        return 0;
+    pl_clear_all();                                  /* (never: the room was checked; not half a set) */
+    return -2;
 }
 
 /* the entry is a factory one (factory_tier.h KIT_GROUPS, factory.c's patterns) */

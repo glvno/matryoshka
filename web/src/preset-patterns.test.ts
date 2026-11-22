@@ -8,7 +8,7 @@ import { devicesOf, patternDriver } from './pages';
 import { DEFS } from './modules';
 import { addModule, validatePatch, type Patch } from './patch';
 import { buildFactoryBank } from './factory-bank';
-import { noteWord } from './track';
+import { noteWord, wordsNotes } from './track';
 import { invalidatePresetPatterns, presetPattern, seedPresetPattern } from './preset-patterns';
 import { PRESET_PATTERNS, patternRevision, setPresetPatterns } from './preset-pattern-data';
 factoryPresets();
@@ -19,7 +19,11 @@ function fixture(name = 'Spokes 6', patch?: Patch) {
   const t = p.modules.find((m) => m.id === d.track)!;
   const presets = presetsOf(p, a);
   a.preset = 'Init';
-  seedPresetPattern(p, a, presetPattern(presets[0].structure, 'Init')!.id);
+  // (pattern 1 as a demo set leaves it, the Init demo notes and their origin: the factory patches with a demo set ship
+  // without them, #1179)
+  const init = presetPattern(presets[0].structure, 'Init')!;
+  t.notes = wordsNotes(init.notes);
+  seedPresetPattern(p, a, init.id);
   return { p, a, t, presets };
 }
 it('switches only the untouched drum default, including after save/reload', () => {

@@ -7,8 +7,12 @@
  *     kept when the entry is gone, SAVE's write-back of an edited linked pattern (and the link dropped when its entry is
  *     gone), a patch without links rewritten byte for byte as it was;
  *   - the factory patches' linked patterns (#923, factory_tier.h KIT_GROUPS): every entry read back and well formed, the 808
- *     and 909 Kits loaded with all their patterns and their song, with the store off too, rewritten byte for byte, and
- *     SAVE of an edited one keeping it inline without its link;
+ *     and 909 Kits with their demo sets loaded holding all their patterns and their song, with the store off too,
+ *     rewritten byte for byte, and SAVE of an edited one keeping it inline without its link;
+ *   - the demo sets (#1179, pl_demo_set from the factory region): each patch with one, a renamed copy and one with a
+ *     parameter changed get the binary the editor gets (pattern_cases.h DEMO_CASES) and the engine the patterns that
+ *     binary loads, the hash the editor checks; one with a module more or less, or without the region: NO DEMO SET and
+ *     nothing changed; a patch without room for it: nothing changed;
  *   - SAVE with a power cut at every byte it programs (a user link's write-back, then the slot; a factory link's slot):
  *     after the next boot the slot plays the pattern as it was or as edited, never neither;
  *   - the SEQ page's save, save as new and load (a factory entry, another layout's locks left out);
@@ -456,13 +460,16 @@ static void link_frames(void)
     printf("patlink: INFO, PATS, PAT_GET, PAT_PUT and PAT_DEL\n");
 }
 
-/* factory patch `name` (presets.h PRESET_LIST) unpacked into out: its length, 0 none */
-static uint32_t factory_bin(const char *name, uint8_t *out)
+/* the binary of demo case `name` with its demo set loaded (pattern_cases.h DEMO_CASES, as the editor loads it) into out:
+ * its length, 0 none */
+static uint32_t demo_bin(const char *name, uint8_t *out)
 {
     uint32_t i;
-    for (i = 0; i < N_PRESETS; i++)
-        if (!strcmp(PRESET_LIST[i].name, name))
-            return lz_unpack(PRESET_LIST[i].lz, PRESET_LIST[i].lz_len, out, M1_PATCH_MAX) == (int32_t)PRESET_LIST[i].len ? PRESET_LIST[i].len : 0u;
+    for (i = 0; i < N_DEMO_CASES; i++)
+        if (!strcmp(DEMO_CASES[i].name, name) && DEMO_CASES[i].loaded) {
+            memcpy(out, DEMO_CASES[i].loaded, DEMO_CASES[i].loaded_len);
+            return DEMO_CASES[i].loaded_len;
+        }
     return 0;
 }
 /* the running patch's links whose pattern plays and is its entry's payload, clean (bit p each in *clean) */
@@ -503,7 +510,7 @@ static void edit(uint32_t p)
 static void kits(void)
 {
     static uint8_t bin[M1_PATCH_MAX];
-    static const char *const names[] = { "808 KIT", "909 KIT" };
+    static const char *const names[] = { "808 Kit", "909 Kit" };
     pt_info_t in;
     uint64_t clean;
     uint32_t g, k, i, id, len = 0, n = 0, total = 0, p = 0;
@@ -516,7 +523,7 @@ static void kits(void)
     /* (a kit may take several groups, #852: the id before the last group's first is a hole between the kits' blocks) */
     OK(total == N_KIT_PATTERNS && pl_read(KIT_GROUPS[N_KIT_GROUPS - 1].first - 1u, m1_up, sizeof m1_up, &in) == -1);
     for (i = 0; i < 2u; i++) {
-        OK((len = factory_bin(names[i], bin)) != 0);
+        OK((len = demo_bin(names[i], bin)) != 0);
         if (!len || load_patch(bin, len)) {
             OK(!"the kit loads");
             continue;
@@ -564,6 +571,68 @@ static void kits(void)
         OK(links_ok(&clean) == n && m1_pat_clean() == clean && inline_has(p) == 0 && m1_cur_len == len);
     }
     printf("patlink: the factory entries read back; SAVE stores an edited factory pattern as a new entry\n");
+}
+
+/* every pattern's payload of the running patch, one after another, into out: their bytes */
+static uint32_t all_payloads(uint8_t *out, uint32_t cap)
+{
+    uint32_t p, n = 0;
+    for (p = 0; p < ENG_PATTERNS; p++) {
+        pl_out_t s = { out + n, cap - n, 0, PT_FNV0 };
+        pl_encode(p, &s);
+        n += s.n < cap - n ? s.n : cap - n;
+    }
+    return n;
+}
+/* the demo sets (#1179): loaded on the FM-1 from the factory region as the editor loads them */
+static void demo_sets(void)
+{
+    static uint8_t keep[M1_PATCH_MAX], got[ENG_PATTERNS * 400u], want[ENG_PATTERNS * 400u];
+    uint32_t i, len, hash, ng, nw, at = 0, dlen, cost, h;
+    int rc;
+    for (i = 0; i < N_DEMO_CASES; i++) {
+        if (load_patch(DEMO_CASES[i].patch, DEMO_CASES[i].patch_len)) {
+            OK(!"the demo case loads");
+            continue;
+        }
+        len = m1_cur_len;
+        memcpy(keep, m1_cur, len);
+        hash = 0;
+        rc = pl_demo_set(&hash);
+        if (!DEMO_CASES[i].loaded) {                    /* (a module more or less: no set, nothing changed) */
+            OK(rc == -1 && m1_cur_len == len && !memcmp(m1_cur, keep, len));
+            printf("patlink: %s: NO DEMO SET\n", DEMO_CASES[i].name);
+            continue;
+        }
+        OK(rc == 0 && hash == DEMO_CASES[i].hash && !eng_pattern() && !eng_song());
+        if (m1_cur_len != DEMO_CASES[i].loaded_len || memcmp(m1_cur, DEMO_CASES[i].loaded, m1_cur_len))
+            fprintf(stderr, "  %s: the FM-1's binary (%u bytes) is not the editor's (%u)\n", DEMO_CASES[i].name, (unsigned)m1_cur_len, (unsigned)DEMO_CASES[i].loaded_len);
+        OK(m1_cur_len == DEMO_CASES[i].loaded_len && !memcmp(m1_cur, DEMO_CASES[i].loaded, m1_cur_len));
+        ng = all_payloads(got, sizeof got);             /* (the engine plays what the binary loads) */
+        OK(!load_patch(DEMO_CASES[i].loaded, DEMO_CASES[i].loaded_len));
+        nw = all_payloads(want, sizeof want);
+        OK(ng == nw && !memcmp(got, want, ng));
+        OK(pl_demo_set(&h) == 0 && m1_cur_len == DEMO_CASES[i].loaded_len && !memcmp(m1_cur, DEMO_CASES[i].loaded, m1_cur_len));   /* (again: the same) */
+        printf("patlink: %s: its demo set loaded, %u bytes as the editor's\n", DEMO_CASES[i].name, (unsigned)m1_cur_len);
+    }
+    /* no room: the set's bytes made larger than any patch holds, nothing changes */
+    OK(!load_patch(DEMO_CASES[0].patch, DEMO_CASES[0].patch_len) && !fc_demo(pl_demo_layout(), &at, &dlen, &cost, &h));
+    {
+        uint8_t *c = host_fr(FC_BASE + at - FC_DEMO_REC + 24u, 2u), was[2];
+        len = m1_cur_len;
+        memcpy(keep, m1_cur, len);
+        memcpy(was, c, 2u);
+        c[0] = c[1] = 0xFFu;
+        OK(pl_demo_set(&h) == -2 && m1_cur_len == len && !memcmp(m1_cur, keep, len));
+        memcpy(c, was, 2u);
+    }
+    /* no factory region: NO DEMO SET */
+    host_fr_blank();
+    fc_scan();
+    OK(pl_demo_set(&h) == -1 && m1_cur_len == len && !memcmp(m1_cur, keep, len));
+    host_fr_load();
+    fc_scan();
+    printf("patlink: no room, no factory region: nothing changes\n");
 }
 
 /* a power-on: the RAM state as after a reset, then the boot's sl_scan and pt_claim (patstore_test.c's) */
@@ -654,7 +723,7 @@ static void cuts(void)
     /* a factory link: SAVE keeps the edited pattern inline and writes the slot */
     memset(nor, 0xFF, sizeof nor);
     boot();
-    OK((len = factory_bin("808 KIT", bin)) != 0 && !sl_write(5, "808 KIT", bin, len));
+    OK((len = demo_bin("808 Kit", bin)) != 0 && !sl_write(5, "808 KIT", bin, len));
     cut_save("a factory link", 2u);
 }
 
@@ -673,6 +742,7 @@ int main(void)
     seq_page();
     link_frames();
     kits();
+    demo_sets();
     cuts();
     if (fails) {
         fprintf(stderr, "patlink: %d checks failed\n", fails);

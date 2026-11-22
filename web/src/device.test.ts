@@ -8,7 +8,7 @@ import { factoryEntries } from './pattern-store';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
 import { deviceBudget, encodePatch, FLAG_PATTERN_ORIGINS, VERSION } from './patchbin';
-import { FM1_PRESETS } from './presets';
+import { factoryWithDemoSet, FM1_PRESETS } from './presets';
 import { CMD, frame, liveFrame, PADS_CMD, parse } from './protocol';
 import { subtractiveSaw } from './test-patches';
 import { withFxBus } from './fx-bus';
@@ -19,7 +19,7 @@ const b = encodePatch(FM1_PRESETS[names[1]]());
 
 describe('factory pattern links (#923)', () => {
   it('sends a kit only to an FM-1 whose pattern list has its factory entries, else asks for the update', () => {
-    const kit = FM1_PRESETS['808 Kit']();
+    const kit = factoryWithDemoSet('808 Kit');   // (its demo set links patterns 2.., #1179)
     const all = new Map(factoryEntries().map((e) => [e.id, e.hash]));
     expect(holdsFactoryLinks(kit, all)).toBe(true);
     expect(holdsFactoryLinks(kit, 'assume')).toBe(true);

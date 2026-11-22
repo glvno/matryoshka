@@ -7,7 +7,9 @@ import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type ModuleInst, type Patch } from './patch';
 import { DEVICE, deviceBudget, encodedSize, encodePatch, FLAG_NOTES, FLAG_PATTERNS, formatOf, FORMAT_PRIORITY_CABLE, fxRecord, harmonyLfo, layout, patternRecord, VERSION } from './patchbin';
 import { deviceView, VOICING_CABLE_INPUTS } from './poly';
-import { PRESETS } from './presets';
+import { demoLayout } from './demo-sets';
+import DEMO_ROOM from './demo-set-room.json';
+import { factoryWithDemoSet, PRESETS } from './presets';
 import { fixPatterns, fixSeq, isShortNote, noteWord, patternOf, shortWord, wordShort, type StepNote } from './track';
 
 const SR = 48000; // 120 bpm: a 1/16 step every 6000 samples
@@ -104,10 +106,13 @@ describe('patterns and songs: the binary (format 48)', () => {
       const many = dev.modules.length > 64;   // (more than 64 modules: 51, #721; 8 Lire's Lyra-8 controls, #658)
       // a cable into a Part's priority input needs format 61 (#976, D-1021: Shush 101's ENV TRIGGER)
       const priority = dev.cables.some((c) => c.to.port === 'priority' && dev.modules.find((m) => m.id === c.to.module)?.type === 'part');
-      // a master FX bus or a Harmony on LFO needs format 55 (D-888, D-1010): its stage record or the Harmony light
+      // a master FX bus or a Harmony on LFO needs format 55 (D-888, D-1010): its stage record or the Harmony light. Each
+      // when its old format fits with the room its demo set takes, if it has one (#1179: the FM-1 loads the set into the
+      // binary in its format)
+      const fits = layout(p).base.bytes + ((DEMO_ROOM as Record<string, number>)[demoLayout(p)] ?? 0) <= DEVICE.bytes;
       if (priority) expect(b[1], name).toBe(FORMAT_PRIORITY_CABLE);
-      else if (fxRecord(p, dev).length || harmonyLfo(p, dev)) expect(b[1], name).toBe(appended || 55);
-      else if (layout(p).base.bytes <= DEVICE.bytes && !cabled && !top && !appended && !many) expect(b[1], name).toBeLessThan(VERSION);
+      else if (fxRecord(p, dev).length || harmonyLfo(p, dev)) { if (fits) expect(b[1], name).toBe(appended || 55); }
+      else if (fits && !cabled && !top && !appended && !many) expect(b[1], name).toBeLessThan(VERSION);
       expect(b[7] & (FLAG_PATTERNS >> 8), name).toBe(0);
     }
   });
@@ -250,9 +255,9 @@ describe('patterns and songs: playing', () => {
   });
 });
 
-describe('Silver Box: demo patterns and a song (#375)', () => {
+describe('Silver Box: demo patterns and a song (#375), its demo set (#1179)', () => {
   it('holds four TB-303-style patterns in short words and a song, named as on the TB-303, within the FM-1 budget', () => {
-    const p = PRESETS['Silver Box']();
+    const p = factoryWithDemoSet('Silver Box');
     const t = p.modules.find((m) => m.type === 'steps')!;
     const main = p.modules.find((m) => m.type === 'fm1')!;
     expect(t.notes).toBeUndefined(); // (pattern 1 stays empty: the keys play it as a synth)
@@ -267,7 +272,7 @@ describe('Silver Box: demo patterns and a song (#375)', () => {
     expect(deviceBudget(p).fits).toBe(true);
   });
   it('its song plays: the voice sounds once song 1 is chosen and the transport runs', () => {
-    const p = PRESETS['Silver Box']();
+    const p = factoryWithDemoSet('Silver Box');
     const e = new Engine(SR);
     e.load(p);
     e.setSong(1);

@@ -217,6 +217,8 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_PATTERN_COPY: return a->pattern != b->pattern && a->pat_sum == b->pat_sum && a->page == b->page;   /* (the copy
                                                          * selected: the same notes on every track; the page stays) */
     case CE_CLEAR_ALL: return b->notes_n > 0 && a->notes_n == 0 && !a->pattern && !a->song_len && !a->song && a->page == b->page;
+    case CE_DEMO_SET: return (a->notes_n > 0 || a->song_len > 0) && !a->pattern && !a->song && a->page == b->page && a->msg_sum != b->msg_sum;
+                                                        /* (the set's pattern 1 selected, its notes or songs there, no song playing; the page stays) */
     case CE_DRUM_BANK: return a->bank != b->bank && a->octave == b->octave && a->seq_pg == b->seq_pg && a->page == b->page;
     case CE_FILL: return a->msg_sum != b->msg_sum && a->page == b->page && a->notes_sum == b->notes_sum && a->mutes == b->mutes
                          && a->params == b->params && !eng_fill_on();   /* (FILL said, and let go with FX; FX's own job not done) */
@@ -300,6 +302,31 @@ static int ct_load(const char *name)
     pages_focus(pages_home(), 0);
     later(2000);
     return 0;
+}
+/* factory patch `name` as the FM-1 has it (factory.c: the firmware tier and the region), not the panel's fixture graphs:
+ * the layout its demo set is found by (#1179) */
+static int ct_load_factory(const char *name)
+{
+    char n[M1_NAME + 1u];
+    uint32_t i;
+    int32_t len;
+    ct_reset();
+    for (i = 0; i < fc_npatches(); i++) {
+        if (fc_patch_info(i, n, 0, 0) || strcmp(n, name) || (len = fc_patch(i, pv_bin, sizeof pv_bin)) <= 0)
+            continue;
+        pv_len = (uint32_t)len;
+        if (eng_load(pv_bin, pv_len))
+            return -1;
+        m1_pat_load();
+        pv_gen++;
+        page_show(0);
+        screen_patch();
+        pages_ensure();
+        pages_focus(pages_home(), 0);
+        later(2000);
+        return 0;
+    }
+    return -1;
 }
 static int ct_fx_load(void)
 {
@@ -473,12 +500,26 @@ static int ct_enter(uint32_t s, uint32_t v)
         tap(BTN_ENV);
         later(500);
         return page == PAGE_ENV;
-    case HS_DRUM:                                       /* the 808 Kit's DRUMS, 16 and 32 steps; <7PH's drums (two tracks) */
+    case HS_DRUM:                                       /* the 808 Kit's DRUMS, 16 and 32 steps; <7PH's drums (two tracks); the
+                                                         * factory 808 Kit (a demo set, #1179) */
+        if (v == 3u) {
+            if (ct_load_factory("808 KIT"))
+                return 0;
+            ct_seq(0, 0, 0);
+            return seq_map() >= 0;
+        }
         if (v > 2 || ct_load(v == 2 ? "<7PH" : "808 KIT"))
             return 0;
         ct_seq(0, v == 1, 0);
         return 1;
-    case HS_ROLL:
+    case HS_ROLL:                                       /* <7PH's melodic track, 16 and 32 steps; the factory Silver Box (a demo
+                                                         * set, #1179) */
+        if (v == 3u) {
+            if (ct_load_factory("SILVER BOX"))
+                return 0;
+            ct_seq(0, 0, 0);
+            return seq_map() < 0;
+        }
         if (v > 1 || ct_load("<7PH"))
             return 0;
         ct_seq(1, (int)v, 0);
@@ -645,7 +686,7 @@ static void ct_drive(const ctl_row_t *r, uint32_t alt, int dir)
     } else if (r->hold != CH_NONE) {
         ct_down(r->hold);
         ct_part(&r->alt[alt], r->how, dir, r->hold);
-        if (r->effect == CE_CLEAR || r->effect == CE_DELETE_ENTRY || r->effect == CE_CLEAR_ALL)
+        if (r->effect == CE_CLEAR || r->effect == CE_DELETE_ENTRY || r->effect == CE_CLEAR_ALL || r->effect == CE_DEMO_SET)
             ct_part(&r->alt[alt], r->how, dir, r->hold);
         ct_up(r->hold);
     } else

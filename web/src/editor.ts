@@ -25,7 +25,9 @@ import { cableRole } from './cable-role';
 import { addBreak, fm1Name, layoutOf, moveRows, moveSection, pagesOf, removeBreak, removeHeading, removeRows, renameHeading, rowKey, setLayout, type KnobOf, type Layout, type RowSpot, type Sec } from './arrange';
 import type { ParameterValues } from './engine';
 import { delayRoom, deviceBudget, deviceSection, DEVICE, LINE_TYPES, lineBudget, linesAdvice, mapRecord, mapSource } from './patchbin';
-import type { MapEntry } from './protocol';
+import { PATTERN_OP, type MapEntry } from './protocol';
+import { applyDemoSet } from './demo-sets';
+import { demoSetFor } from './presets';
 import { cardCostText, cardCostTitle, type CardCost, type CardCosts } from './cpu';
 import { choiceName, formatValue, longName, moduleName, moduleTag, moduleTitle, paramHint } from './labels';
 import { outputRange } from './ranges';
@@ -320,6 +322,9 @@ const LONG_PRESS_MS = 500;
 
 /** Main's jack captions on the dock that are shortened */
 const DOCK_SHORT: Record<string, string> = { vel: 'vel', at: 'aft' };
+
+/** the status line when the FM-1 loaded a demo set other than the one this editor has for the patch (PATTERN_OP op 3, #1179) */
+export const DEMO_SET_OUTDATED = "The FM-1's factory content needs updating for its demo set: install the factory sounds from the Flash tab.";
 
 export class Editor {
   /** Refreshed from the active device; offline editing uses conservative memory admission. */
@@ -1409,6 +1414,8 @@ export class Editor {
       nextEmpty: (from) => this.nextEmptyPattern(from),
       clearAll: () => this.clearAllPatterns(),
       empty: () => patternsEmpty(this.patch),
+      demoSet: () => demoSetFor(this.patch)?.name,
+      loadDemoSet: () => this.loadDemoSet(),
       song: () => (this.songView ? this.closeSong() : this.openSong()),
       playing: () => this.song,
     });
@@ -1707,13 +1714,29 @@ export class Editor {
     this.ev.onStructure(this.patch);
     this.patternShown();
   }
-  /** the FM-1's SEQ page ran a pattern command (PATTERN_OP, #1177, #1178): the same here, an undo step, not sent back
-   *  (main.ts marks it). op 1: pattern `from` copied to `to`, which is selected; op 2: everything cleared */
-  patternOpFromDevice(op: number, from: number, to: number): void {
-    if (op === 1 && from >= 0 && from < PATTERNS_MAX && to > 0 && to < PATTERNS_MAX) {
+  /** the patch's demo set loaded (demo-sets.ts, #1179): every pattern and song replaced by the set's, pattern 1 selected,
+   *  no song playing; an undo step; nothing when the patch has none */
+  loadDemoSet(): void {
+    const set = demoSetFor(this.patch);
+    if (!set) return;
+    this.touch();
+    applyDemoSet(this.patch, set);
+    this.ev.onStructure(this.patch);
+    this.patternShown();
+  }
+  /** the FM-1's SEQ page ran a pattern command (PATTERN_OP, #1177, #1178, #1179): the same here, an undo step, not sent
+   *  back (main.ts marks it). op 1: pattern `from` copied to `to`, which is selected; op 2: everything cleared; op 3: the
+   *  patch's demo set loaded when the FM-1's (`hash`) is the one this editor has, else the status line says to update the
+   *  FM-1's factory sounds */
+  patternOpFromDevice(op: number, from: number, to: number, hash = 0): void {
+    if (op === PATTERN_OP.copy && from >= 0 && from < PATTERNS_MAX && to > 0 && to < PATTERNS_MAX) {
       this.copyPattern(from, to);
       this.selectPattern(to);
-    } else if (op === 2) this.clearAllPatterns();
+    } else if (op === PATTERN_OP.clearAll) this.clearAllPatterns();
+    else if (op === PATTERN_OP.demoSet) {
+      if (demoSetFor(this.patch)?.hash === hash) this.loadDemoSet();
+      else this.ev.onError(DEMO_SET_OUTDATED);
+    }
   }
   /** the open song drawer (song.ts), if any */
   songView: SongView | null = null;
