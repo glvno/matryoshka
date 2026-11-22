@@ -162,7 +162,7 @@ const rig = {
     rigCount.sent++;
   },
   /** the output's peak (16 bit) since the last call */
-  async peak(): Promise<{ peak: number; running: boolean; muted: boolean; masterDown: boolean }> {
+  async peak(): Promise<{ peak: number; running: boolean; muted: boolean; masterDown: boolean; usbFixed: boolean }> {
     return parsePeak(await retry(() => ask(testPeakFrame(), (p) => p.cmd === CMD.peak, 2000)))!;
   },
 };

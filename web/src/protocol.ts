@@ -741,9 +741,11 @@ export function parseScreen(p: Parsed): { head: ScreenHead } | { k: number; text
   if (d.length < 6 || d.length < 6 + d[5]) return null;
   return { k: d[0], text: { x: d[1], y: d[2], w: d[3], h: d[4], s: String.fromCharCode(...d.slice(6, 6 + d[5])) } };
 }
-export const parsePeak = (p: Parsed): { peak: number; running: boolean; muted: boolean; masterDown: boolean } | null =>
+/** PEAK: the loudest sample since the last read and its flags; `usbFixed`: USB audio at the device test mode's fixed
+ *  level, not MASTER's (#1170, DIAG page 100; false from a firmware before it) */
+export const parsePeak = (p: Parsed): { peak: number; running: boolean; muted: boolean; masterDown: boolean; usbFixed: boolean } | null =>
   p.cmd === CMD.peak && p.payload.length >= 3
-    ? { peak: p.payload[0] | (p.payload[1] << 8), running: !!(p.payload[2] & 1), muted: !!(p.payload[2] & 2), masterDown: !!(p.payload[2] & 4) }
+    ? { peak: p.payload[0] | (p.payload[1] << 8), running: !!(p.payload[2] & 1), muted: !!(p.payload[2] & 2), masterDown: !!(p.payload[2] & 4), usbFixed: !!(p.payload[2] & 8) }
     : null;
 /** the test rig's mark (#291): a user preset of no structure the editor makes (scripts/rig.mjs registers it); the
  *  Library hides it */

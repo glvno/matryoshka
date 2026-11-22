@@ -292,8 +292,10 @@ class RigTarget extends Target {
    *  { stop() } or { why } */
   async record(name) {
     if (this.audioWhy) return { why: this.audioWhy };
-    // (USB audio is taken after MASTER: with the knob all the way down it is silent, and the volume never fails a check, D-125)
-    if ((await this.page.evaluate(() => window.__rig.peak())).masterDown) return { why: 'MASTER down (the USB audio comes after it)' };
+    // (USB audio is taken after MASTER: with the knob all the way down it is silent, and the volume never fails a check, D-125;
+    // not while the device test mode holds it at a fixed level, #1170: device-check.mjs recorded)
+    const pk = await this.page.evaluate(() => window.__rig.peak());
+    if (pk.masterDown && !pk.usbFixed) return { why: 'MASTER down (the USB audio comes after it)' };
     return startCapture(join(OUT, `${name}.wav`), this.audioInput);
   }
   press(id, hold) { return this.page.evaluate(([i, h]) => window.__rig.tap(i, h), [id, hold]); }

@@ -24,6 +24,27 @@ static volatile uint8_t out_off;                   /* GLO > SYSTEM > 3.5MM OUT (
                                                     * headphone jack silent while USB audio plays on at MASTER's level; 0 ON,
                                                     * as before. Saved with the settings (main.c); HOME + OCT- + OCT+ held
                                                     * 2 s turns it over too (panel.c out_combo) */
+/* the device test mode's fixed USB level (#1170): 1 while a script asked for it (DIAG page 100, main.c m1_diag), USB
+ * audio at MASTER's default level whatever the knob, the level TEST_PEAK reads at; the analog output still follows the
+ * knob. Taken only in the device test mode (ui.c test_input_recent); off with DIAG page 101, when the test mode ends
+ * (usb_fixed_poll) and at a restart (.bss). Normal use never sets it: USB audio follows MASTER (D-927) */
+static volatile uint8_t usb_fixed;
+#define USB_FIXED_Q12 2048u                        /* MASTER's default (master_q12's start, test_peak.h's level) */
+/* DIAG page 100 (on) or 101 (off); `test_on`: the device test mode is on (refused, 100 turns it off too). out: the
+ * setting now, the test mode */
+static uint32_t usb_fixed_diag(uint32_t page, int test_on, uint8_t *out)
+{
+    usb_fixed = (uint8_t)(page == 100u && test_on);
+    out[0] = usb_fixed;
+    out[1] = (uint8_t)(test_on != 0);
+    return 2;
+}
+/* main loop: off once the device test mode has ended */
+static void usb_fixed_poll(int test_on)
+{
+    if (!test_on)
+        usb_fixed = 0;
+}
 /* the device test mode's meter (TEST_PEAK, #291): before the MASTER pot (as at its default, so a script does not depend
  * on where the knob is), after mute */
 #include "test_peak.h"
@@ -39,12 +60,13 @@ static int32_t eng_l[HALF_FRAMES], eng_r[HALF_FRAMES];
 #include "master_eq.h"                             /* GLO > EQ (#1107): on the analog output, after USB audio took the half */
 
 /* the analog half (o, after USB audio took it) again from the equalized engine half, at MASTER's level; left as it is
- * while every band is at 0 dB. Out of line: the audio interrupt runs from RAM (build.py FAST_TEXT), this from the flash */
-static __attribute__((noinline)) void meq_analog(int32_t *o)
+ * while every band is at 0 dB, unless USB audio took it at the test mode's fixed level (`fixed`, usb_fixed). Out of line:
+ * the audio interrupt runs from RAM (build.py FAST_TEXT), this from the flash */
+static __attribute__((noinline)) void meq_analog(int32_t *o, int fixed)
 {
     uint32_t i;
     int32_t m;
-    if (!meq_run(eng_l, eng_r, HALF_FRAMES))
+    if (!meq_run(eng_l, eng_r, HALF_FRAMES) && !fixed)
         return;
     m = snd_muted ? 0 : (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
     for (i = 0; i < HALF_FRAMES; i++) {
@@ -102,6 +124,7 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
     if (p & FM1_AUDIO_HALF) {
         uint32_t half = fm1_audio_free_half(), i, t0 = fm1_ticks(), all, late;
         int32_t *o = &abuf[half * HALF_WORDS];
+        uint8_t fx = usb_fixed;                     /* (read once: the main loop may clear it during the half) */
         bt_in_audio = 1;
         bt_m[BT_M_IN] = t_in;
         bt_m[BT_M_T0] = t0;
@@ -122,7 +145,8 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
             uint32_t loud = 0;
             eng_render(eng_l, eng_r, HALF_FRAMES);
             bt_m[BT_M_REND1] = fm1_ticks();
-            int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
+            /* (the test mode's fixed USB level, fx: USB audio takes the half at it; the analog half is made again below) */
+            int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)(fx ? USB_FIXED_Q12 : master_q12) * patch_gain) >> 16);
             UNROLL4                                     /* (engine.c, #803) */
             for (i = 0; i < HALF_FRAMES; i++) {         /* Q16 (+-1.0) * MASTER -> 24 bit in the low bits, -6 dBFS ceiling */
                 o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
@@ -132,7 +156,7 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
             if (loud)
                 snd_heard_ms = fm1_ms;
             if (tp_on) {                                /* (only once a script asked: no cost otherwise) */
-                int32_t mr = snd_muted ? 0 : (int32_t)(((int64_t)2048 * patch_gain) >> 16);   /* MASTER at its default */
+                int32_t mr = snd_muted ? 0 : (int32_t)(((int64_t)USB_FIXED_Q12 * patch_gain) >> 16);   /* MASTER at its default */
                 tp_block(eng_l, eng_r, HALF_FRAMES, mr);
             }
         } else {
@@ -145,8 +169,9 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
 #if FELUCCA_UAC
         uac_tap(o, HALF_FRAMES);
 #endif
-        if (eng_run && (meq_low | meq_mid | meq_high | meq_fade))
-            meq_analog(o);                          /* the master EQ (master_eq.h): the analog half only; flat, no call */
+        if (eng_run && (meq_low | meq_mid | meq_high | meq_fade | fx))
+            meq_analog(o, fx);                      /* the master EQ (master_eq.h), or USB audio at the test mode's fixed
+                                                     * level: the analog half again at MASTER's; flat and not fixed, no call */
         bt_m[BT_M_TAP1] = fm1_ticks();
         {
             int clk = eng_run && eng_click_mix(eng_l, eng_r, HALF_FRAMES);   /* a count-in's click (play once's, REC's):
