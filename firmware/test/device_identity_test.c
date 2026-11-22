@@ -7,6 +7,7 @@
 #define M1_NAME 20u
 #define M1_SLOTS 64u
 static uint32_t bank_slots = M1_SLOTS;  /* (proto.c's) */
+static uint8_t m1_up[3840];             /* (proto.c's: the store's scan keeps half its table there) */
 #define M1_PATCH_MAX 3840u
 #define ENG_POOL
 #include "../src/device_identity.h"

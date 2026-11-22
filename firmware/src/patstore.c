@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 glvno */
-/* The pattern store (#901, option D): the user's stored patterns on the FM-1, which any patch whose tracks they fit can
- * load or link (proto.c, seq_ui.c). It takes the bank's last 4 sectors, 0xDC000 .. 0xDFFFF (slotstore.c sl_sector_addr(62
- * .. 65), inside Felucca's data region, which the update loader never erases); slotstore.c pt_claim hands them over at
- * boot (the bank then has 60 slots) and sets pt_on. While pt_on is 0 every call here refuses (-1, or 0).
+/* The pattern store (#901, option D; #1202): the user's stored patterns on the FM-1, which any patch whose tracks they fit
+ * can load or link (proto.c, seq_ui.c), and where every saved patch keeps its patterns 2..64 (patlink.c). It takes the
+ * bank's last pt_nsec sectors (slotstore.c: 16, 0xD0000 .. 0xDFFFF, sl_sector_addr(50 .. 65); 4, 0xDC000 .. 0xDFFFF, in
+ * the layout of 1.25), inside Felucca's data region, which the update loader never erases; slotstore.c pt_claim hands
+ * them over at boot and sets pt_on. While pt_on is 0 every call here refuses (-1, or 0).
  *
- * The store is a log over the 4 sectors. A formatted sector starts with a 16-byte header (the next free id when it was
+ * The store is a log over its sectors. A formatted sector starts with a 16-byte header (the next free id when it was
  * formatted, then the magic PT_SMAGIC, programmed last); records follow, 4-byte aligned: a 36-byte header (magic, a
  * store-wide sequence number, id, length, FNV-1a hash of the payload, CRC-16 of name and payload, the next free id when it
  * was written, the name) and the payload. A record is written at its sector's free tail: the header fields first, then
@@ -16,8 +17,8 @@
  *
  * One sector is always kept clean (formatted, no records). When no free tail takes a record, the sector with the fewest
  * live bytes is compacted: its live records are copied into the clean sector (new sequence numbers), then it is erased
- * and formatted, and is the clean one. A cut leaves the old record or the new one; the scan (on the first use after
- * power-on, like the preset store's) finishes what a cut left before anything is written: sectors without a valid header
+ * and formatted, and is the clean one. A cut leaves the old record or the new one; the scan (at boot, main.c, right after
+ * the claim) finishes what a cut left before anything is written: sectors without a valid header
  * hold no records and are formatted; if no sector is clean (a cut compaction), the sector whose still needed records fit
  * in another sector's free tail has them copied there and is erased and formatted (a record is still needed when it is
  * the newest of its id and no record of the same contents sits in another sector: after a cut during the copies that
@@ -25,10 +26,13 @@
  * killed. Foreign bytes fail the magic, the CRC (such a record is killed) or the blank check of the free tail (the rest
  * of that sector is dead until it is compacted).
  *
- * The scan, pt_put and pt_read work in slotstore.c's sl_buf (pt_put's payload and pt_read's dst must be other buffers).
- * Needs st_read / st_erase / st_prog (storage_hw.c), m1_crc16 (proto.c), fm1_wdt_feed. Host tests: tools/patstore_test.sh. */
-#define PT_BASE 0xDC000u
-#define PT_NSEC 4u
+ * The scan keeps its table in slotstore.c's sl_buf (the ids) and proto.c's m1_up (where each is): it runs at boot,
+ * before either holds anything. pt_put and pt_read work in sl_buf (pt_put's payload and pt_read's dst must be other
+ * buffers). Needs st_read / st_erase / st_prog (storage_hw.c), m1_crc16 and m1_up (proto.c), fm1_wdt_feed. Host tests:
+ * tools/patstore_test.sh. */
+#define PT_NSEC_MAX 16u                 /* the store's sectors at most (slotstore.c SL_L48) */
+#define PT_NSEC pt_nsec                 /* its sectors now (slotstore.c pt_claim) */
+#define PT_BASE (0xE0000u - PT_NSEC * PT_SEC)
 #define PT_NAME 16u
 #define PT_MAX 2048u                    /* payload bytes at most */
 #define PT_ID_MAX 0xDFFFu               /* user ids 1..PT_ID_MAX; 0xE000.. are read-only factory entries (patlink.c) */
@@ -38,7 +42,7 @@
 #define PT_SEC 0x1000u
 #define PT_SHDR 16u                     /* the sector header */
 #define PT_HDR 36u                      /* the record header */
-#define PT_TAB (PT_NSEC * (PT_SEC - PT_SHDR) / (PT_HDR + 4u))   /* records the 4 sectors hold at most: 408 */
+#define PT_TAB (PT_NSEC_MAX * (PT_SEC - PT_SHDR) / (PT_HDR + 4u))   /* records the store holds at most: 1,632 */
 
 typedef struct {
     uint32_t magic;          /* PT_MAGIC: committed; 0: killed; 0xFFFFFFFF: never committed */
@@ -56,13 +60,14 @@ typedef struct {
     uint32_t rsv2[2];        /* 0xFFFFFFFF */
 } pt_shdr_t;
 _Static_assert(sizeof(pt_shdr_t) == PT_SHDR, "pattern sector header");
-_Static_assert(4u * PT_TAB + PT_NAME + PT_MAX <= M1_PATCH_MAX, "the scan's table and one record fit in sl_buf");
+_Static_assert(2u * PT_TAB <= M1_PATCH_MAX, "the scan's table fits in sl_buf and m1_up");
+_Static_assert(PT_NSEC_MAX * PT_SEC <= 0x10000u, "a record's place in the store fits 16 bits");
 
 typedef struct { uint16_t id, len; uint32_t hash; char name[PT_NAME + 1]; } pt_info_t;
 
 static uint8_t pt_on;                   /* the store is claimed (slotstore.c pt_claim) */
-static uint8_t pt_scanned;              /* pt_scan ran (it runs on the first use) */
-static uint16_t pt_tail[PT_NSEC];       /* where each sector's next record goes: PT_SHDR clean, PT_SEC no room (full, or
+static uint8_t pt_scanned;              /* pt_scan ran (main.c runs it at boot) */
+static uint16_t pt_tail[PT_NSEC_MAX];   /* where each sector's next record goes: PT_SHDR clean, PT_SEC no room (full, or
                                          * bytes past its records that are not 0xFF), 0 not formatted */
 static uint32_t pt_seq;                 /* the next sequence number */
 static uint32_t pt_nextid;              /* the next free id (above PT_ID_MAX: the ids are used up) */
@@ -178,6 +183,25 @@ static int pt_load(uint32_t loc, const pt_hdr_t *h, uint8_t *buf)
         ? -1 : 0;
 }
 
+/* the record at loc checked against its CRC from the flash, without a buffer (the scan: sl_buf and m1_up hold its table);
+ * 0 = ok. m1_crc16's CRC-16/CCITT-FALSE, a piece at a time */
+static int pt_crc_ok(uint32_t loc, const pt_hdr_t *h)
+{
+    uint8_t b[64];
+    uint32_t a = PT_BASE + loc + PT_HDR - PT_NAME, n = PT_NAME + h->len, c = 0xFFFFu, i, k, j;
+    for (; n; n -= k, a += k) {
+        k = n < sizeof b ? n : (uint32_t)sizeof b;
+        if (st_read(a, b, k))
+            return -1;
+        for (i = 0; i < k; i++) {
+            c ^= (uint32_t)b[i] << 8;
+            for (j = 0; j < 8u; j++)
+                c = c & 0x8000u ? ((c << 1) ^ 0x1021u) & 0xFFFFu : (c << 1) & 0xFFFFu;
+        }
+    }
+    return c == h->crc ? 0 : -1;
+}
+
 static int pt_kill(uint32_t loc)
 {
     static const uint32_t zero = 0;
@@ -289,10 +313,10 @@ static int pt_compact(uint32_t r)
     return pt_format(v);
 }
 
-/* the scan's table (in sl_buf): entry k's id and store offset */
+/* the scan's table: entry k's id (in sl_buf) and store offset (in m1_up) */
 static uint32_t pt_get16(const uint8_t *b) { return (uint32_t)b[0] | (uint32_t)b[1] << 8; }
-static uint32_t pt_tab_id(uint32_t k) { return pt_get16(sl_buf + 4u * k); }
-static uint32_t pt_tab_loc(uint32_t k) { return pt_get16(sl_buf + 4u * k + 2u); }
+static uint32_t pt_tab_id(uint32_t k) { return pt_get16(sl_buf + 2u * k); }
+static uint32_t pt_tab_loc(uint32_t k) { return pt_get16(m1_up + 2u * k); }
 
 static int pt_head(uint32_t loc, pt_hdr_t *h) { return st_read(PT_BASE + loc, h, PT_HDR); }
 
@@ -361,12 +385,12 @@ static void pt_see_id(uint32_t v)
         pt_nextid = v;
 }
 
-/* find the records and finish what a cut left (the file's header): on the first use after power-on, not at boot */
+/* find the records and finish what a cut left (the file's header): at boot (main.c, after the claim) */
 static void pt_scan(void)
 {
     pt_shdr_t s;
     pt_hdr_t h;
-    uint32_t end[PT_NSEC], sec, loc, n, pass;
+    uint32_t end[PT_NSEC_MAX], sec, loc, n, pass;
     pt_scanned = 1;
     for (pass = 0;; pass++) {
         pt_seq = pt_nextid = 1;
@@ -387,14 +411,14 @@ static void pt_scan(void)
                 pt_seq = h.seq + 1u;
             if (h.magic != PT_MAGIC)
                 continue;
-            if (h.id < 1u || h.id > PT_ID_MAX || n >= PT_TAB || pt_load(loc, &h, sl_buf + 4u * PT_TAB)) {
+            if (h.id < 1u || h.id > PT_ID_MAX || n >= PT_TAB || pt_crc_ok(loc, &h)) {
                 (void)pt_kill(loc);                         /* (foreign bytes) */
                 continue;
             }
-            sl_buf[4u * n] = (uint8_t)h.id;
-            sl_buf[4u * n + 1u] = (uint8_t)(h.id >> 8);
-            sl_buf[4u * n + 2u] = (uint8_t)loc;
-            sl_buf[4u * n + 3u] = (uint8_t)(loc >> 8);
+            sl_buf[2u * n] = (uint8_t)h.id;
+            sl_buf[2u * n + 1u] = (uint8_t)(h.id >> 8);
+            m1_up[2u * n] = (uint8_t)loc;
+            m1_up[2u * n + 1u] = (uint8_t)(loc >> 8);
             n++;
         }
         for (sec = 0; sec < PT_NSEC; sec++) {
@@ -423,26 +447,57 @@ static int pt_stat(uint32_t id, pt_info_t *out)
     return 0;
 }
 
+/* the payload of the record at store offset at into dst (cap bytes), its record in *out; 0 ok, -1 not readable (or a CRC
+ * that fails), -3 longer than cap (out is filled) */
+static int pt_read_at(uint32_t at, uint8_t *dst, uint32_t cap, pt_info_t *out)
+{
+    pt_hdr_t h;
+    uint32_t i;
+    if (pt_head(at, &h) || h.magic != PT_MAGIC || h.len < 1u || h.len > PT_MAX)
+        return -1;
+    pt_fill(&h, out);
+    if (h.len > cap)
+        return -3;
+    if (pt_load(at, &h, sl_buf))
+        return -1;
+    for (i = 0; i < h.len; i++)
+        dst[i] = sl_buf[PT_NAME + i];
+    return 0;
+}
+
 /* the payload of id into dst (cap bytes); 0 ok, -1 none (or a CRC that fails), -3 longer than cap (out is filled) */
 static int pt_read(uint32_t id, uint8_t *dst, uint32_t cap, pt_info_t *out)
 {
     pt_hdr_t h;
-    uint32_t i;
     int at;
     if (!pt_on)
         return -1;
     pt_ensure();
     at = pt_find(id, &h);
-    if (at < 0)
-        return -1;
-    pt_fill(&h, out);
-    if (h.len > cap)
-        return -3;
-    if (pt_load((uint32_t)at, &h, sl_buf))
-        return -1;
-    for (i = 0; i < h.len; i++)
-        dst[i] = sl_buf[PT_NAME + i];
-    return 0;
+    return at < 0 ? -1 : pt_read_at((uint32_t)at, dst, cap, out);
+}
+
+/* the live records of n ids (n at most PT_MANY) found in one walk over the store, as pt_find finds each: at[k] the store
+ * offset of ids[k]'s record (its payload's hash in hash[k] when hash is not 0), -1 none (or no store). A patch's links
+ * resolve in one walk, not one each (a full store holds some 700 records) */
+#define PT_MANY 64u
+static void pt_find_many(const uint16_t *ids, uint32_t n, int32_t *at, uint32_t *hash)
+{
+    uint32_t seq[PT_MANY], loc, k;
+    pt_hdr_t h;
+    for (k = 0; k < n; k++)
+        at[k] = -1;
+    if (!pt_on || n > PT_MANY)
+        return;
+    pt_ensure();
+    for (loc = 0; !pt_iter(&loc, &h); loc += pt_size(h.len))
+        for (k = 0; h.magic == PT_MAGIC && k < n; k++)
+            if (ids[k] == h.id && (at[k] < 0 || h.seq > seq[k])) {
+                at[k] = (int32_t)loc;
+                seq[k] = h.seq;
+                if (hash)
+                    hash[k] = h.hash;
+            }
 }
 
 /* store a pattern: *id 0 a new one (its id assigned into *id), else over that live id (the old record is killed once
