@@ -1577,13 +1577,14 @@ static void seq_clear_cancel(void)
 #define PATTERN_OP_CLEAR_ALL 2u
 #define PATTERN_OP_DEMO_SET 3u
 /* the running patch has a demo set (#1179: factory.c fc_demo by its layout, looked up once a patch) */
-static uint32_t seq_demo_seen;          /* pages_gen() + 1 of the lookup, 0 none yet */
+static uint32_t seq_demo_seen;          /* (pages_gen() << 8 | factory.c fc_scans) + 1 of the lookup, 0 none yet: another patch
+                                         * or new factory content looks again */
 static uint8_t seq_demo_found;
 static int seq_demo_has(void)
 {
     uint32_t at, len, cost, hash;
-    if (seq_demo_seen != pages_gen() + 1u) {
-        seq_demo_seen = pages_gen() + 1u;
+    if (seq_demo_seen != (pages_gen() << 8 | fc_scans) + 1u) {
+        seq_demo_seen = (pages_gen() << 8 | fc_scans) + 1u;
         seq_demo_found = !fc_demo(pl_demo_layout(), &at, &len, &cost, &hash);
     }
     return seq_demo_found;

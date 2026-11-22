@@ -246,10 +246,12 @@ static void fc_merge(void)
 
 /* boot, and after a commit: the tier, and the region's content when valid */
 static uint8_t fc_scanned;
+static uint8_t fc_scans;                /* scans since boot (mod 256): the region's content may have changed (seq_ui.c's demo set) */
 static void fc_scan(void)
 {
     fc_hdr_t h;
     fc_scanned = 1;
+    fc_scans++;
     if (fc_parse(FC_TIER, &ft))                         /* (export-defs writes a whole one: never) */
         ft.npatch = ft.npreset = ft.npattern = ft.nreleased = ft.nmig = ft.ncopy = ft.demo = 0;
     fc_state = flash_ok ? (uint8_t)fc_check(&h) : (uint8_t)FC_NONE;

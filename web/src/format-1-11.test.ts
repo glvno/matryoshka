@@ -12,6 +12,8 @@ import { relocatedPatches } from './community-factory';
 import { communityEntries } from './community';
 import { decodeShare } from './share';
 import { oracleMorph, ORACLE_B } from './test-morph';
+import DEMO_ROOM from './demo-set-room.json';
+import { demoLayout } from './demo-sets';
 
 /** an LFO into the Output */
 function lfoPatch(): Patch {
@@ -118,10 +120,11 @@ describe('counted records (#667, format 51)', () => {
   it('writes a patch that fits in an older format as before (else counted, else format 64), and counts the smallest form in the budget', () => {
     for (const [name, make] of Object.entries(PRESETS)) {
       const p = make();
-      const l = layout(p);
-      // in its old format when that holds it; counted (Wanderer and Vernon 100, with their PATTERN track) when not; format
-      // 64's shorter layout when neither does (Scrounge with its ten grooves, D-1056, the 808 and 909 Kits with their VELOCITY rows, Verona Drum 1 since #866, D-1026)
-      expect(formatOf(p), name).toBe(l.base.bytes <= DEVICE.bytes ? l.base.v : l.counted <= DEVICE.bytes ? COUNTED : SLIM);
+      const l = layout(p), room = (DEMO_ROOM as Record<string, number>)[demoLayout(p)] ?? 0;
+      // in its old format when that holds it (with the room for its demo set, D-1026 amendment proposed); counted (Wanderer
+      // and Vernon 100, with their PATTERN track) when not; format 64's shorter layout when neither does (Scrounge with its
+      // ten grooves, D-1056, the 808 and 909 Kits with their VELOCITY rows, Verona Drum 1 since #866, D-1026)
+      expect(formatOf(p), name).toBe(l.base.bytes + room <= DEVICE.bytes ? l.base.v : l.counted + room <= DEVICE.bytes ? COUNTED : SLIM);
       expect(deviceBudget(p).items.find((i) => i.key === 'bytes')!.used, name).toBe(Math.min(l.base.bytes, l.counted, l.slim));   // (and format 64's, D-1026)
     }
   });
