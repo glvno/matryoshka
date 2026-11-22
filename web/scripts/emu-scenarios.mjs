@@ -2310,8 +2310,12 @@ async function main() {
       await check('set by: Init opens with its filter\'s cutoff set by a ranged LFO, synced', opened);
       const cutoff = async () => JSON.parse(await patchJson()).modules.find((m) => m.name === 'ranged')?.params.cutoff;
       const was = await cutoff();
-      const focused = await page.evaluate(() => window.__m1test.focus('ranged'));
-      await check('set by: the editor\'s focus on the filter, the FM-1 follows it there', focused && (await emu.waitText('RANGED', 3000)) && (await emu.waitText('CUTOFF', 2000)));
+      let found = await emu.text('RANGED');         // (SELECT a device at a time, its name in the header)
+      for (let n = 0; n < 12 && !found; n++) {
+        await emu.turn(ENC.select, 1);
+        found = await emu.waitText('RANGED', 1000);
+      }
+      await check('set by: SELECT reaches the filter `ranged`, its CUTOFF row on K1', found && (await emu.waitText('CUTOFF', 2000)));
       await emu.turn(ENC.k1, 5);
       await check('set by: K1 on the cutoff row: the bar says SET BY WOBBLE', await emu.waitText('SET BY WOBBLE', 1500));
       await emu.snap('set-by');
