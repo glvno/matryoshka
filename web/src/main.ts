@@ -963,6 +963,18 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
     fromEmu = true;
     try { tempo.set({ mode: global ? 'global' : 'patch', ...(bpm ? { bpm } : {}), ...(meter !== undefined ? { meter } : {}) }, 'emu'); } finally { fromEmu = false; }
   },
+  // HOME + black key on the FM-1 tab (#1196): while it replays a connected FM-1's panel, the FM-1 switched or saved itself
+  // (its PALETTE_NOW tells the editor), so the copy's result is dropped; alone, a tap opens the entry (and switches a
+  // linked FM-1), and a hold saves the current patch there when an FM-1 keeps the palette
+  paletteGo: (pos) => {
+    if (!mirror.following) void palette?.click(pos);
+  },
+  paletteSave: (pos) => {
+    if (mirror.following) return;
+    if (!palette?.linked) return void (status.textContent = 'Connect an FM-1 with firmware 1.26 to save to its palette');
+    const p = structuredClone(editor.currentPatch());
+    void palette.add(p.name.trim() || 'Untitled', p, { pos });
+  },
   // REC held + a black key on the emulated FM-1 (#139): the editor arms the same track, so the keys the page plays (the
   // emulator's MIDI out) go through it as they do on the device
   arms: (words) => {
@@ -1673,6 +1685,8 @@ function renderPalette(): void {
   paletteSide.render(chips, mode);
   paletteLib.render(chips, mode);
   renderPaletteRail(paletteRail, chips, mode, paletteActs.click);
+  // (the FM-1 tab's HOME-held overview shows the same palette, as the FM-1 has it or as last read)
+  emu.ui?.palette(palette.now?.positions ?? [], palette.now?.cur ?? null, palette.now?.next ?? null);
 }
 palette = new Palette({
   device,
@@ -2910,7 +2924,7 @@ function setView(v: View): void {
   workspace.classList.toggle('fm1-mode', v === 'emu');
   workspace.classList.toggle('library-mode', v === 'library');
   host.setMaster(v === 'emu' ? emuLevel : 1);
-  if (v === 'emu') void emu.show();
+  if (v === 'emu') void emu.show().then(renderPalette);   // (the copy, loaded now, shows the palette when HOME is held)
   else emu.hide();
   editor.positionSideCables();
   if (v === 'patch') requestAnimationFrame(() => editor.drawCables());

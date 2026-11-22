@@ -2529,19 +2529,20 @@ async function main() {
         await emu.waitText(`PALETTE ${pos}`, 2000);
         return (await emu.texts()).find((t) => t.startsWith('SAVED: SLOT ') && t.endsWith(`, PALETTE ${pos}`));
       };
-      // the editor's patch runs (Live): a hold-save stores it into a free slot first (PATCH nn: this editor sends no name)
+      // the editor's patch runs (Live): a hold-save stores it into a free slot first, named as the editor named it (PALETTE
+      // NAME after each Live upload, D-1321)
       await check('palette: the 808 Kit opens, synced', await openSynced('808 Kit'));
       await homeKey(2, 1300);
       const s3 = await savedTo(3);
       const slot3 = Number(s3?.match(/SLOT (\d+)/)?.[1] ?? 0);
       await check('palette: HOME + black key 3 held 1 s: the editor\'s patch into a free slot and palette 3', !!s3 && slot3 > 0, s3 ?? (await emu.texts()).join(' | '));
-      const name3 = `PATCH ${String(slot3).padStart(2, '0')}`;
-      await check('palette: the stored slot is named PATCH nn and plays on', await emu.waitText(name3, 2000));
+      const name3 = '808 KIT';
+      await check('palette: the stored slot is named as the editor\'s patch and plays on', await emu.waitText(name3, 2000));
       await check('palette: a second sound opens, synced', await openSynced('8 Lire'));
       await homeKey(0, 1300);
       const s1 = await savedTo(1);
       const slot1 = Number(s1?.match(/SLOT (\d+)/)?.[1] ?? 0);
-      const name1 = `PATCH ${String(slot1).padStart(2, '0')}`;
+      const name1 = '8 LIRE';
       await check('palette: palette 1 saved the same way, another slot', !!s1 && slot1 > 0 && slot1 !== slot3, s1 ?? '');
       // HOME held alone: the overview of the 8 positions
       await emu.key(B.home, true);
@@ -2582,6 +2583,70 @@ async function main() {
       await check('palette: the cancelled switch never loaded', d2[2] === d1[2] && (await emu.text(name1)), `switches ${d2[2]}`);
       await emu.tap(B.play);
       await emu.snap('palette');
+    },
+    async paletteEditor() {   // #1196: the editor's palette chips against the FM-1: collect, reorder, a click that switches at the bar line, Live follow
+      const pal = async () => (await T()).palette;
+      const chip = (pos) => pal().then((p) => p?.chips[pos]);
+      const sentSince = (t) => page.evaluate((t0) => window.__sent.filter((s) => s[0] >= t0).map((s) => [s[1], s[3][0]]), t);
+      const now = () => page.evaluate(() => Math.round(performance.now()));
+      /** a pointer drag from the centre of `from` to the centre of `to` (CSS selectors), in steps, as a hand does it */
+      const drag = async (from, to) => {
+        const box = (s) => page.evaluate((sel) => { const b = document.querySelector(sel)?.getBoundingClientRect(); return b ? [b.x + b.width / 2, b.y + b.height / 2] : null; }, s);
+        const a = await box(from), b = await box(to);
+        if (!a || !b) return false;
+        await page.mouse.move(a[0], a[1]);
+        await page.mouse.down();
+        for (let i = 1; i <= 8; i++) await page.mouse.move(a[0] + ((b[0] - a[0]) * i) / 8, a[1] + ((b[1] - a[1]) * i) / 8);
+        await page.mouse.up();
+        return true;
+      };
+      await check('palette editor: Silver Box opens, synced', await openSynced('Silver Box'));
+      await check('palette editor: the chips are live with an FM-1 that keeps a palette (feature bit 31)', !!(await until(async () => (await pal())?.linked, 4000)));
+      // a clean palette: each full chip's × (one empty PUT each)
+      await page.evaluate(() => { for (const x of document.querySelectorAll('#snap-column .pal-x')) x.click(); });
+      await check('palette editor: × empties every position', !!(await until(async () => (await pal()).chips.every((c) => c.state === 'empty'), 6000)), JSON.stringify((await pal()).chips.map((c) => c.state)));
+      // Add to palette in Commands: the current patch into position 1
+      await page.keyboard.down('Control'); await page.keyboard.press('k'); await page.keyboard.up('Control');
+      await page.waitForSelector('#commands[open]', { timeout: 3000 }).catch(() => {});
+      await page.type('#commands-input', 'add to palette');
+      await page.keyboard.press('Enter');
+      await check('palette editor: Commands > Add to palette puts the patch into palette 1', !!(await until(async () => (await chip(0))?.name === 'SILVER BOX', 6000)), JSON.stringify(await chip(0)));
+      // a patch this FM-1 has not got, dragged from Library > Patches onto chip 4: stored into a free slot (SLOT), then PUT
+      await page.evaluate(async () => {
+        const { savePatch } = await import('/src/saved.ts');
+        savePatch({ ...JSON.parse(window.__m1test.patchJson()), name: 'Pal Test' });
+      });
+      await page.click('#view-switch [data-view="library"]');
+      await page.waitForSelector('#lib-patches .patch-drag-source', { timeout: 5000 });
+      const sel = await page.evaluate(() => {
+        const s = [...document.querySelectorAll('#lib-patches .patch-drag-source')].find((e) => e.textContent === 'Pal Test');
+        if (s) s.id = 'pal-test-row';
+        return !!s;
+      });
+      const t0 = await now();
+      await check('palette editor: Pal Test dragged from Your patches onto chip 4', sel && (await drag('#pal-test-row', '.lib-dock .pal-chip[data-pos="3"]')));
+      await check('palette editor: chip 4 holds PAL TEST', !!(await until(async () => (await chip(3))?.name === 'PAL TEST', 15000)), JSON.stringify(await chip(3)));
+      const sent = await sentSince(t0);
+      const slotAt = sent.findIndex((s) => s[0] === 0x13), putAt = sent.findIndex((s) => s[0] === 0x1e && s[1] === 2);
+      await check('palette editor: the drop stored it into a slot (SLOT), then put it (PALETTE PUT)', slotAt >= 0 && putAt > slotAt, JSON.stringify(sent.map((s) => s[0].toString(16))));
+      await page.click('#view-switch [data-view="patch"]');
+      // a chip dragged onto an empty one: one ORDER
+      const t1 = await now();
+      await drag('#snap-column .pal-chip[data-pos="0"]', '#snap-column .pal-chip[data-pos="5"]');
+      await check('palette editor: chip 1 dragged onto chip 6 moves it there', !!(await until(async () => (await chip(5))?.name === 'SILVER BOX' && (await chip(0))?.state === 'empty', 6000)));
+      await check('palette editor: the move was one ORDER', (await sentSince(t1)).filter((s) => s[0] === 0x1e && s[1] === 3).length === 1);
+      // playing: a click on chip 4 waits for the bar line (NEXT), then the FM-1 plays it and the editor, under Live, opens its
+      // copy without sending it back (no COMMIT)
+      await emu.tap(B.play);
+      await emu.elapse(600);
+      const t2 = await now();
+      await page.click('#snap-column .pal-chip[data-pos="3"]');
+      await check('palette editor: a click while playing: the FM-1 waits for the bar line (NEXT on chip 4)', !!(await until(async () => (await pal()).next === 3, 3000)) || (await pal()).cur === 3);
+      await check('palette editor: then palette 4 plays on the FM-1', !!(await until(async () => (await pal()).cur === 3, 6000)) && (await emu.waitText('PAL TEST', 3000)));
+      await check('palette editor: under Live the editor follows to its copy, Pal Test', !!(await until(async () => (await T()).patch === 'Pal Test', 4000)), (await T()).patch);
+      await check('palette editor: following sent the patch nowhere (no COMMIT)', !(await sentSince(t2)).some((s) => s[0] === 0x11));
+      await emu.tap(B.play);
+      await page.screenshot({ path: join(OUT, 'palette-editor-page.png') }).catch(() => {});
     },
     async editorIgnore() {   // #702: GLO > SYSTEM > EDITOR at IGNORE: the editor lets go, Connect skips the FM-1 and says why
       // (the rig tools' page connects to an FM-1 at IGNORE all the same: the test rig is set so, D-123)
