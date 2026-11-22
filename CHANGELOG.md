@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The screen font is now installed separately from the firmware, which frees about 36 KB for new features (#602).** The Install panel and `tools/fm1_install.py` write it right after the firmware, and the editor offers it whenever an FM-1 connects without it. Until it is there, every screen still works but shows only the small type, and the bar says `SCREEN FONT MISSING:` then `CONNECT TO MATRYOSHKA.LOL`. Going back to 1.25 or earlier, or to the official V15, is unaffected: those firmwares have their type built in.
+
 ## 1.25.0 — 2026-11-22
 
 - **New: GLO › MIDI › CLOCK IN DELAY, for an app whose MIDI clock runs ahead of its own sound, such as Reel.** Reel's clock reaches the FM-1 about 70 ms before Reel's audio, so the FM-1 played that much early. CLOCK IN DELAY (MIDI's second page, K3) makes the FM-1 follow the incoming clock, Start, Stop and song position that much later: 0 to 200 ms, 1 ms a click, 5 when you turn fast. For Reel, start at about 70 ms and adjust by ear. At 0 ms, the default, the FM-1 works exactly as before. Notes and controls are never delayed, and SAVE keeps the setting (#870).

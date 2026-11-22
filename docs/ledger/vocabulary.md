@@ -222,6 +222,10 @@ Per-part offsets of a poly assembly (detune, drift, brightness, envelope times, 
 
 The status-line indicator that shows the editor's link to the FM-1 (not connected, synced, not synced, patch too big to sync) and opens FM-1 & MIDI.
 
+### Font area
+
+The 10 flash sectors outside the firmware that hold the screen type's larger sizes, from 1.26. The installer writes them after the firmware, and without them the FM-1 shows only its small type ([D-180](firmware-install.md#D-180)).
+
 ### Format 35
 
 The binary patch format that added the PD Osc, Env 8 and Selector modules, the parameters appended to existing modules, and the device page row extras ([D-266](patch-format.md#D-266), [D-267](patch-format.md#D-267)). The current format is `VERSION` in `web/src/patchbin.ts` and `ENG_PATCH_VERSION` in `firmware/src/engine.h`.
