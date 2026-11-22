@@ -84,6 +84,7 @@ enum { R_PATTERN_OP = 0x65 };                               /* unasked (#1177, #
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
 #define M1_FEATURES3 255u                                      /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549), bit 19 = INFO's flags bit 3 says GLO > SYSTEM > EDITOR (#702), bit 20 = ARMS, the editor's armed set (#191), bit 21 = ARMS and ARMS_NOW carry ENG_MSET_WORDS words, modules 0..127 (#721; INFO byte 1 says 128), bit 22 = device settings, bit 23 = explicit factory pattern origins / snapshots */
 #define M1_FEATURES4 125u                                     /* INFO byte 14, feature bits 24..31: bit 24 = complete FX-scoped preset recall; bit 25 = the pattern store is on (#901: PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW, format 59's links; m1_pat_info sets it); bit 26 = the factory region (#915, D-490: FACT_INFO, FACT_BEGIN, FACT_WRITE, FACT_SUM, FACT_READ, FACT_COMMIT); bit 27 = MASTER_EQ (#1107); bit 28 = MIDI learn (#1067: MAP, MAP_NOW, the mapping section after the macro ranges); bit 29 = the global pad map (#1067: PADS, PADS_NOW); bit 30 = PATTERN_OP (#1177, #1178: the SEQ page's copy and clear all) */
+#define M1_FEATURES5 1u                                       /* INFO byte 25, the feature bits from 1.26 on (bytes 20..24 are the font area's, #1203): bit 0 = a top-level card with a Steps track inside is that track's device (the device extras name the card itself: SEQ, the environment, P-locks and SEL treat it as the track, pages_ui.c pg_track_mod; #1202 K2, D-1062); bit 1 is kept for the pattern store model (#1206) */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_INFO_EDITOR_IGNORE 8u                             /* INFO byte 3 (flags) bit 3: GLO > SYSTEM > EDITOR is at IGNORE, the
                                                               * editor leaves this FM-1 alone (with feature bit 19, #702) */
@@ -179,10 +180,14 @@ static void m1_slot_now(uint32_t slot, const char *name)
  * bits 16..23 (bit 16 TEMPO / TEMPO_NOW, D-907). Byte 13: signal-buffer allocation rule (#824).
  * Byte 14: feature bits 24..31 (bit 24: complete FX-scoped preset recall; bit 25: the pattern store is on, #901; bit 26:
  * the factory region's commands, #915). Byte 15:
- * the bank's slots (60 with the store, else 64); bytes 16..19: the store's bytes free and total (u16 LE each, capped). */
+ * the bank's slots (60 with the store, else 64); bytes 16..19: the store's bytes free and total (u16 LE each, capped).
+ * Bytes 20..24: the font area's (#1203), 0 here (no font area); byte 25: feature bits from 1.26 on (M1_FEATURES5). */
 static void m1_info(void)
 {
-    uint8_t p[20];
+    uint8_t p[26];
+    uint32_t k;
+    for (k = 20; k < 25u; k++)
+        p[k] = 0;
     p[0] = M1_VERSION;
     p[1] = ENG_MAX_MODULES;
     p[2] = ENG_MAX_CABLES;
@@ -200,6 +205,7 @@ static void m1_info(void)
     p[13] = ENG_BUFFER_ALLOCATION;
     p[14] = M1_FEATURES4;
     m1_pat_info(p + 14);
+    p[25] = M1_FEATURES5;
     m1_reply(R_INFO, p, sizeof p);
 }
 

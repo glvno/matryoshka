@@ -7,14 +7,15 @@
 // which the editor's Flash tab and tools/fm1_install.py install into the FM-1's 18 sectors at 0xEA000: the other factory
 // patches, every factory engine preset, the drum patterns, the demo sets (web/src/demo-sets.ts, #1179), and any
 // firmware-tier patch fixed since, which replaces the built-in copy when its revision is newer). Layout 2 adds the demo
-// sets at the body's end (header bytes 60..61: their length); a firmware that reads only layout 1 (1.24.x) keeps the
-// layout-1 image in web/public/firmware/factory/.
+// sets at the body's end (header bytes 60..61: their length). Layout 3 has layout 2's bytes, for firmware whose kit cards
+// hold their DRUMS track (#1202 K2, D-1062): the kits' presets, preset patterns and demo sets are made for those cards. A
+// firmware that reads only layout 2 (1.25) or 1 (1.24.x) keeps its image in web/public/firmware/factory/ (D-1020).
 import { lzPack, lzUnpack } from './factory-lz';
 
 export const REGION_SIZE = 18 * 0x1000;
 export const HEADER = 64;
 export const MAGIC = 0x3143464d;            // "MFC1"
-export const LAYOUT = 2;
+export const LAYOUT = 3;
 export const TIER_SET = 0xffffff;           // the factory set of a bank written from the firmware tier alone (factory.c FC_TIER_SET)
 export const UNPACK_CAP = 3840;             // the buffer the FM-1 unpacks a patch into in place (proto.c M1_PATCH_MAX)
 export const PATCH_REC = 36;                // a patch record's bytes

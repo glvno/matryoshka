@@ -240,6 +240,15 @@ export function patternDriver(p: Patch, a: AssemblyInst, defs: Record<string, Mo
   return tracks.length === 1 ? tracks[0].id : undefined;
 }
 
+/** the Steps track inside top-level card `a`, which makes the card that track's device, driven by it (the kits' DRUMS,
+ *  #1202 K2, D-1062); undefined: none */
+export const cardTrack = (p: Patch, a: AssemblyInst): number | undefined =>
+  allModules(p, a).find((id) => p.modules.find((m) => m.id === id)?.type === 'steps');
+/** the patch has a card that is its own track's device: firmware without INFO byte 25 bit 0 (1.25) does not treat it as
+ *  the track (no P-lock pages for it), so the editor does not send it there (D-1062) */
+export const holdsTrackCard = (p: Patch, defs: Record<string, ModuleDef>): boolean =>
+  assembliesOf(p).some((a) => !parentOf(p, a.id) && cardTrack(p, a) !== undefined && assemblyPages(p, a, defs).length > 0);
+
 /** the patch's devices in the environment's grouped order (see the top of this file) */
 export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   const inAsm = new Set(assembliesOf(p).flatMap((a) => a.modules));
@@ -254,8 +263,7 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   for (const a of assembliesOf(p)) {
     if (parentOf(p, a.id)) continue;
     const pages = assemblyPages(p, a, defs);
-    // (a card with a Steps track inside is that track's device and is driven by it: the kits' DRUMS, #1202 K2)
-    const inner = allModules(p, a).find((id) => p.modules.find((m) => m.id === id)?.type === 'steps');
+    const inner = cardTrack(p, a);
     if (pages.length) items.push({ ...placeOf(p, a), dev: { key: `a${a.id}`, name: a.label, asm: a.id, pages, ...(inner !== undefined ? { track: inner } : {}) } });
   }
   // columns from the left; a card joins the column of the first card in it while it starts within half a card of it

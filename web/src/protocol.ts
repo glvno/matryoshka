@@ -175,7 +175,10 @@
 //               [byte13 allocation rule: 0 separate signal buffers, 1 physical lifetime buffers; unknown/missing means 0],
 //               [features 24..31: bit24 FX presets, bit25 the pattern store is on, bit28 MAP / MAP_NOW, bit29 PADS / PADS_NOW, bit30 PATTERN_OP],
 //               [byte15 the bank's slots (absent: 64)],
-//               [bytes16..19 the pattern store's bytes free and in all, u16 LE each]. Also unasked
+//               [bytes16..19 the pattern store's bytes free and in all, u16 LE each],
+//               [bytes20..24 the font area (#1203); 0 from firmware without one],
+//               [byte25 features from 1.26 on: bit0 a card holding its Steps track is that track's device (#1202 K2),
+//               bit1 kept for the pattern store model (#1206)]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8), and when EDITOR changed after
 //               a HELLO (feature bit 19)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
@@ -401,7 +404,13 @@ export interface Info {
   slots?: number;
   /** the pattern store's payload bytes free and in all (INFO bytes 16..19, #901); absent before it */
   store?: { free: number; total: number };
+  /** INFO byte 25, the feature bits from 1.26 on (bytes 20..24 are the font area's, #1203): FEATURE25_TRACK_CARD, bit 1
+   *  kept for the pattern store model (#1206); 0 from firmware that sends fewer bytes */
+  features25: number;
 }
+/** INFO byte 25 bit 0 (#1202 K2, D-1062): a top-level card with a Steps track inside is that track's device (SEQ, the
+ *  environment, P-locks, SEL); the editor sends a patch with such a card only to firmware with it (pages.ts holdsTrackCard) */
+export const FEATURE25_TRACK_CARD = 1;
 export interface Ack {
   cmd: number;
   seq: number;
@@ -558,6 +567,7 @@ export function parseInfo(p: Parsed): Info | null {
   if (p.cmd !== CMD.info || p.payload.length < 5) return null;
   const features = (p.payload[5] ?? 0) | ((p.payload[6] ?? 0) << 8) | ((p.payload[12] ?? 0) << 16) | ((p.payload[14] ?? 0) << 24);
   return { version: p.payload[0], maxModules: p.payload[1], maxCables: p.payload[2], flashOk: !!(p.payload[3] & 1), patchLoaded: !!(p.payload[3] & 2), delays: p.payload[4], features,
+    features25: p.payload[25] ?? 0,
     ...(p.payload.length >= 14 ? { bufferAllocation: p.payload[13] } : {}),
     midiOut: features & FEATURE_SANDBOX ? !!(p.payload[3] & 4) : null,
     editorIgnored: !!(features & FEATURE_EDITOR_SETTING) && !!(p.payload[3] & INFO_EDITOR_IGNORE),

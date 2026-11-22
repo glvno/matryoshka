@@ -44,12 +44,14 @@
  *     u32 from, u32 to, u16 ops, u16 table, u16 line, u8 earlier rows, u8 today's), the tables (8 each: u8 a, b, na, nb,
  *     i8 la, lb, u16 v), the lines (6 each: u8 x, key, n, i8 lo, u16 v), the line values (i32), the table values (i8)
  *     and the ops (u8): presetmig.c reads them;
- *   demo sets (layout 2, the body's last bytes, header bytes 60..61 their length; web/src/demo-sets.ts, #1179): u8 count,
+ *   demo sets (layout 2 and 3, the body's last bytes, header bytes 60..61 their length; web/src/demo-sets.ts, #1179): u8 count,
  *     then each: u32 the layout of the factory patch it comes from (patlink.c pl_layout), name[20], u16 the bytes its
  *     notes, patterns and songs, P-locks and links sections and its pattern origins take in a patch, u32 its FNV-1a hash,
  *     u16 the body's length, the body (patlink.c pl_demo_set reads it). The tier never has any.
- * This firmware reads layouts FC_LAYOUT_MIN..FC_LAYOUT (a layout-1 image: no demo sets); 1.24.x reads layout 1 alone,
- * and the editor keeps a layout-1 image for it (web/public/firmware/factory/).
+ * This firmware reads layouts FC_LAYOUT_MIN..FC_LAYOUT (a layout-1 image: no demo sets). Layout 3 has layout 2's bytes; its
+ * content is for firmware whose kit cards hold their DRUMS track (#1202 K2, D-1062: the kits' presets, preset patterns and
+ * demo sets are made for those cards). 1.25 reads layouts 1 and 2 and 1.24.x layout 1 alone; the editor keeps an image of
+ * each for them (web/public/firmware/factory/, D-1020).
  * The update loader erases a sector of this region whose last 256 bytes look like an update record
  * (firmware/loader/ldr_record.h); the image's writer keeps every sector clear of that, and FACT_WRITE refuses such a page.
  *
@@ -68,7 +70,7 @@
 #define FC_SECTORS 18u
 #define FC_SIZE (FC_SECTORS * 0x1000u)
 #define FC_MAGIC 0x3143464Du            /* "MFC1" */
-#define FC_LAYOUT 2u
+#define FC_LAYOUT 3u
 #define FC_LAYOUT_MIN 1u                /* the oldest layout this firmware reads (1: no demo sets) */
 #define FC_DEMO_REC 32u                 /* a demo set's record before its body */
 #define FC_HDR 64u

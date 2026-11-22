@@ -19,7 +19,8 @@ export function deviceLayoutKey(patch: Patch): string {
   return JSON.stringify([view.patch.modules.map((m) => [m.id, m.type]), view.groups.map((g) => [g.key, [...g.modules], g.src])]);
 }
 import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type DeviceSettings, FEATURE_MASTER_EQ, MASTER_EQ, masterEqFrame, parseMasterEq, type MasterEq, armsFrame, parseArmsNow, FEATURE_WIDE_ARMS, editorSkips, FEATURE_ARMS, FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, slotCount, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
-import { FEATURE_PATTERN_STORE, parseLinkNow, parsePatData, parsePatEntry, parsePatStored, PAT_OK, PAT_STATUS, PAT_USED, patDelFrame, patGetFrame, patPutFrames, patsFrame, type PatListItem, type StoredPatternEntry } from './protocol';
+import { FEATURE25_TRACK_CARD, FEATURE_PATTERN_STORE, parseLinkNow, parsePatData, parsePatEntry, parsePatStored, PAT_OK, PAT_STATUS, PAT_USED, patDelFrame, patGetFrame, patPutFrames, patsFrame, type PatListItem, type StoredPatternEntry } from './protocol';
+import { holdsTrackCard } from './pages';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 import { FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo, type MapEntry } from './protocol';
 import { FEATURE_PADS, PADS_CMD, padsClearAllFrame, padsOnFrame, padsReadFrame, padsSetFrame, parsePadsNow, parsePatternOp, PATTERN_OP, type PadMap } from './protocol';
@@ -89,6 +90,12 @@ export function holdsFactoryLinks(patch: Patch, store: LinkStore): boolean {
   const links = Object.values(patch.modules.find((m) => m.type === 'fm1')?.seq?.links ?? {}).filter((l) => l.id >= READ_ONLY_ID);
   return store === 'assume' || links.every((l) => typeof store === 'object' && store.get(l.id) === l.hash);
 }
+/** the FM-1 plays this patch's devices as the editor shows them: a card that holds its own Steps track (the 808 and 909
+ *  Kits, D-1062) needs firmware with INFO byte 25 bit 0, else its P-lock pages and environment row miss the track, so the
+ *  editor refuses with UPDATE_FOR_TRACK_CARD; every other patch goes to any firmware it syncs with */
+export const takesTrackCards = (info: Info | null, patch: Patch): boolean =>
+  !!info && (info.features25 & FEATURE25_TRACK_CARD) !== 0 || !holdsTrackCard(patch, DEFS);
+export const UPDATE_FOR_TRACK_CARD = 'This patch has a card that holds its own sequencer track (as the 808 and 909 Kits do), which this FM-1\'s firmware does not show as the track: update the FM-1 to send it.';
 /** The remedy for an incompatible peer: a writer below the readable range needs a newer editor. */
 export const syncUpdateNotice = (info: Info | null): { message: string; label: string; target: 'editor' | 'firmware' } =>
   info?.patchFormats && VERSION < info.patchFormats.min
@@ -517,6 +524,7 @@ export class DeviceLink {
     const run = async (): Promise<void> => {
       // Recheck inside the serial queue: the device may have changed after a caller encoded it.
       if (!holdsFactoryLinks(submitted, store)) throw new Error(UPDATE_TO_SYNC);
+      if (!takesTrackCards(this.info, submitted)) throw new Error(UPDATE_FOR_TRACK_CARD);
       const checked = encodePatch(submitted, false, 0, this.bufferAllocation, store);
       if (bytes && !sameBinary(bytes, checked)) throw new Error('Patch changed before upload: send it again');
       const bin = bytes ?? checked;
@@ -583,6 +591,7 @@ export class DeviceLink {
     const submitted = structuredClone(patch);
     return this.serial(async () => {
       if (!holdsFactoryLinks(submitted, this.linkStore)) throw new Error(UPDATE_TO_SYNC);
+      if (!takesTrackCards(this.info, submitted)) throw new Error(UPDATE_FOR_TRACK_CARD);
       const bin = encodePatch(submitted, false, 0, this.bufferAllocation, this.linkStore);
       await this.sendChunks(bin);
       await this.ackFor(slotFrame(slot, name, bin), CMD.slot, slot, FLASH_TIMEOUT);

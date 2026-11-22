@@ -5,6 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { FACT, FACT_SIZE, factCommitFrame, factReadFrame, factWriteFrame, parse, parseFactoryInfo, frame } from './protocol';
+import { pickSet, type FactorySet } from './factory-content';
 import { buildRegion, contentVersion, copyFingerprint, crc32, KIND_REGION, KIND_TIER, LAYOUT, looksLikeRecord, readCopies, readDemoSets, readHeader, readPatches, REGION_SIZE, STRUCT_PRESETS, type ReleasedCopy } from '../scripts/factory-region';
 import { presetsHPatches } from '../scripts/factory-lz';
 import { FIRMWARE_TIER, FIRMWARE_TIER_OVERRIDES } from './factory-tiers';
@@ -46,7 +47,7 @@ describe('the factory region image and the firmware tier', () => {
   it('the region image fits the region, its header and CRC-32 check, no sector looks like an update record', () => {
     const h = readHeader(image)!;
     expect(h.layout).toBe(LAYOUT);
-    expect(LAYOUT).toBe(2);   // (the demo sets' section at the body's end, #1179)
+    expect(LAYOUT).toBe(3);   // (layout 2's bytes, the demo sets at the body's end, #1179; 3: kit cards that hold DRUMS, #1202 K2)
     expect(readDemoSets(image)[0]).toBe(5);   // (one demo set each: 808 Kit, 909 Kit, Verona Drum 1, Scrounge, Silver Box)
     expect(h.kind).toBe(KIND_REGION);
     expect(image.length).toBeLessThanOrEqual(REGION_SIZE);
@@ -59,6 +60,15 @@ describe('the factory region image and the firmware tier', () => {
     expect(t.kind).toBe(KIND_TIER);
     expect(crc32(tier.subarray(64))).toBe(t.crc);
     expect([t.layout, t.set, t.version]).toEqual([r.layout, r.set, r.version]);
+  });
+  it('offers each released firmware the newest image made for its kits: 1.25 (layout 2) the frozen 1.25 image, 1.24.x layout 1, today\'s firmware today\'s (D-1020, #1202 K2)', () => {
+    const sets = (JSON.parse(readFileSync(new URL('../public/firmware/factory-sets.json', import.meta.url), 'utf8')) as { sets: FactorySet[] }).sets;
+    const offered = (reads: number): FactorySet | null => pickSet(sets, { state: 1, reads, plays: 65, layout: 0, format: 0, version: 0, set: 0, len: 0, patches: 0,
+      writing: false, tierOnly: false, size: 0, tierVersion: 0, tierPatches: 0, merged: 0 });
+    expect(offered(3)?.file).toBe('matryoshka-factory.bin');
+    expect(offered(2)?.file).toBe('factory/matryoshka-factory-v20-665d4c.bin');
+    expect(offered(2)?.set).toBe('665d4c');
+    expect(offered(1)?.file).toBe('factory/matryoshka-factory-v19-1072eb.bin');
   });
   it('the tier holds FIRMWARE_TIER, the region every other factory patch: each factory patch once, in its own slot', () => {
     const bank = Object.keys(FM1_PRESETS).map(up);
