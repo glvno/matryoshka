@@ -374,7 +374,7 @@ static void ct_seq(uint32_t t, int longer, int empty)
 /* a Page button: LFO on the 808 Kit (as the Page buttons' test above), its list on */
 static int ct_page_button(void)
 {
-    static const uint8_t sec[] = {0, 0, 0, 3, 0, 0, 0, 2, 2, 0, 2, 1};
+    static const uint8_t sec[] = {0, 0, 0, 3, 0, 0, 0, 2, 1, 0, 1, 1};
     uint32_t at;
     if (ct_load("808 KIT"))
         return 0;
@@ -388,7 +388,7 @@ static int ct_page_button(void)
         return 0;
     page_show(0);
     trail_n = 0;
-    pages_focus(4, 0);                                  /* (the Output: not on the list, so HOME's way back shows) */
+    pages_focus(pg_ndev - 1u, 0);                       /* (the Output: not on the list, so HOME's way back shows) */
     ct_pre_dev = pg_cur_dev;
     ct_pre_pg = pg_cur_page;
     loop();
