@@ -103,6 +103,7 @@ static int boot_safe, flash_ok = 1, boot_msg_ms, migrations, factories, fallback
 static uint8_t sl_sec[5];
 static const char *boot_msg;
 static uint8_t font_ok = 1;              /* (font_area.c: the screen font is there, #602) */
+static void fa_scan(void) {}
 static uint32_t bank_slots = M1_SLOTS;   /* (slotstore.c's: the slots there are, #901) */
 static int slot_used(uint32_t s) { return s < bank_slots && (bank_mask & ((uint64_t)1 << s)); }
 static int sl_head(uint32_t s, sl_hdr_t *h, int check) {
