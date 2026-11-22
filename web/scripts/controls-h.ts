@@ -5,13 +5,14 @@
 // condition is a function in help_ui.c, no tab holds more lines than the sheet takes (HC_ROWS).
 import { BUTTON_ID, CONDITIONS, CONTROLS, EFFECTS, ENCODER_ID, HELP_STATES, HELP_STATE_NAME, HINT_ROWS, HINTS, hintText, LIST_MARK, PATCH_BUTTONS, README_END, README_START, readmeControls, rowSpec, sheetRows, type ControlRow, type HelpState, type Part } from '../src/controls';
 
-/** FONT_S's advance per ASCII character (firmware/src/font_bc.h font_s_g, map 0x20.. in order) */
+/** FONT_S's advance per ASCII character (firmware/src/font_bc.h font_s_g, map 0x20.. in order, then the entry that ends
+ * the last glyph's rows) */
 export function fontAdvances(fontH: string): number[] {
-  const body = /font_s_g\[95\] = \{([\s\S]*?)\n\};/.exec(fontH)?.[1];
+  const body = /font_s_g\[96\] = \{([\s\S]*?)\n\};/.exec(fontH)?.[1];
   if (!body) throw new Error('controls: font_s_g not found in font_bc.h');
-  const adv = [...body.matchAll(/\{(-?\d+), (-?\d+), (-?\d+), (\d+)\}/g)].map((m) => Number(m[2]));
-  if (adv.length !== 95) throw new Error(`controls: font_s_g has ${adv.length} glyphs, not 95`);
-  return adv;
+  const adv = [...body.matchAll(/\{(-?\d+), (-?\d+), (-?\d+), (\d+), (\d+)\}/g)].map((m) => Number(m[2]));
+  if (adv.length !== 96) throw new Error(`controls: font_s_g has ${adv.length} entries, not 95 glyphs and the end`);
+  return adv.slice(0, 95);
 }
 
 /** help_ui.c help_row's layout: where a line's parts end, and its right edge with the description (HC_X0 24, the
