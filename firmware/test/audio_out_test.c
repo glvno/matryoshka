@@ -74,6 +74,12 @@ static inline float exp2_f(float x)                     /* (engine.c's, the same
            * (1.0f + f * (1.0f / 6.0f) * (1.0f + f * (1.0f / 7.0f) * (1.0f + f * (1.0f / 8.0f) * (1.0f + f * (1.0f / 9.0f))))))))));
 }
 #include "../src/eq_design.h"
+/* what pal_fade.h takes from engine.c: a stopped transport (the palette's switch at once, NOW), no tick marked */
+static int32_t eng_run_ticks(void) { return -1; }
+static int eng_clock_is_external(void) { return 0; }
+static uint32_t eng_samples_to(int32_t t) { (void)t; return 0; }
+static void eng_tick_mark(int32_t t) { (void)t; }
+static int32_t eng_tick_fell(int32_t t) { (void)t; return -1; }
 #include "../src/audio.c"
 static int32_t usb[256];
 static int return_on;
@@ -83,7 +89,8 @@ static int uac_play_mix(int32_t *out, uint32_t n) {
 }
 static void uac_render_start(void) {}
 static void uac_tap(const int32_t *out, uint32_t n) { memcpy(usb, out, n * 2u * 4u); }
-static void clk_out_block(uint32_t t0, int rendered) { (void)t0; (void)rendered; }
+static int clk_rendered = -1;                           /* clk_out_block's `rendered` of the last half */
+static void clk_out_block(uint32_t t0, int rendered) { (void)t0; clk_rendered = rendered; }
 
 static int fails;
 #define CHECK(c, ...) do { if (!(c)) { fails++; printf("FAIL "); printf(__VA_ARGS__); printf("\n"); } else { printf("ok   "); printf(__VA_ARGS__); printf("\n"); } } while (0)
@@ -329,6 +336,38 @@ int main(void)
     CHECK(silent(abuf), "analog OFF silences USB return too");
     eng_run=0; out_off=0; out_mono=2; fm1_alnk0_irq();
     CHECK(abuf[0]==-512 && abuf[1]==0 && silent(usb), "return works with engine stopped, and follows analog MONO L");
+    {                                                   /* the palette's switch at once (pal_fade.h NOW, #1196) */
+        uint32_t i, h, down = 1, zero = 1, ones;
+        int32_t prev = 1 << 30, at = -1;
+        return_on = 0; out_mono = 0; out_off = 0; click_on = 0; snd_muted = 0; eng_run = 1; master_q12 = 4096; usb_fixed = 0;
+        for (i = 0; i < HALF_FRAMES; i++)
+            sig_l[i] = sig_r[i] = 65536;
+        pal_fade_arm(-1);
+        for (h = 0; h < 2u; h++) {                      /* 220 samples: the half, then 92 of the next */
+            fm1_alnk0_irq();
+            for (i = 0; i < HALF_FRAMES; i++) {
+                down &= usb[2u * i] <= prev;
+                prev = usb[2u * i];
+                if (!usb[2u * i] && at < 0)
+                    at = (int32_t)(h * HALF_FRAMES + i);
+            }
+            CHECK(clk_rendered == 1, "palette NOW: half %u rendered whole, its clock ticks go out (clk_out_block rendered 1)", h);
+        }
+        for (i = 92u; i < HALF_FRAMES; i++)
+            zero &= !usb[2u * i] && !usb[2u * i + 1u] && !abuf[2u * i];
+        CHECK(down && zero && at == (int32_t)PAL_FADE_NOW_N && pal_fade_stopped() && !eng_run,
+              "palette NOW: USB audio and the analog half fall to 0 at sample %d (want %u), then the engine stops", at, PAL_FADE_NOW_N);
+        fm1_alnk0_irq();
+        CHECK(clk_rendered == 0 && silent(abuf) && silent(usb), "palette NOW: stopped, the next half silent with no clock");
+        pal_fade_resume();
+        fm1_alnk0_irq();
+        for (i = 1, ones = usb[0] == 0; i < HALF_FRAMES; i++)
+            ones &= usb[2u * i] >= usb[2u * i - 2u];
+        CHECK(ones && eng_run && pal_fade_st == PAL_FADE_IDLE, "palette resume: the first half fades in from 0, then idle");
+        fm1_alnk0_irq();
+        CHECK(memcmp(abuf, usb, sizeof usb) == 0 && usb[0] == usb[2u * 127u] && usb[0] > 0, "palette resume: then the half as before");
+        master_q12 = 2048;
+    }
     usb_fixed_test();
     meq_test();
     printf(fails ? "audio out test FAILED\n" : "audio out test passed\n");

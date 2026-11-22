@@ -33,7 +33,7 @@ export type Part =
                                                         // key, the keys played, keys pressed together
 /** what is done: `do` while `hold` is held. Several parts in `do` are alternatives (either one), or with `join: 'list'`
  * a list of buttons that all do the same, or with `join: 'together'` buttons all pressed together. `how`: tap (a short
- * press), held (kept down while the keys play), hold 2 s.
+ * press), held (kept down while the keys play), hold 1 s, hold 2 s.
  * `where`: where on the screen it applies ("on END"). `first`: a button pressed and let go before (ENV then SEL: SEL on
  * the page ENV opens) */
 export interface Gesture {
@@ -41,7 +41,7 @@ export interface Gesture {
   hold?: Button | 'step';
   do: Part[];
   join?: 'or' | 'list' | 'together';
-  how?: 'tap' | 'held' | 'hold 2 s';
+  how?: 'tap' | 'held' | 'hold 1 s' | 'hold 2 s';
   where?: string;
 }
 
@@ -57,7 +57,7 @@ export const EFFECTS = [
   'tab', 'scroll', 'set', 'save_close', 'run_row',
   'editor', 'analog_out', 'chord_button', 'fx_page', 'fx_toggle', 'fx_row',
   'pattern_save', 'pattern_new', 'pattern_load', 'condition', 'fill', 'ratchet', 'micro', 'drum_bank', 'learn_row', 'learn_mode', 'learn_end',
-  'pattern_copy', 'clear_all', 'demo_set',
+  'pattern_copy', 'clear_all', 'demo_set', 'palette_go', 'palette_save',
 ] as const;
 export type Effect = (typeof EFFECTS)[number];
 
@@ -126,7 +126,7 @@ export const CONTROLS: ControlRow[] = [
   { id: 'save', gesture: { do: [B('SAVE')] }, does: 'save patch', everywhere: at(30, but('menu', 'sandbox')), effect: 'save',
     help: 'the patch into its slot, with the panel settings' },
   { id: 'home', gesture: { do: [B('HOME')] }, does: 'back', everywhere: at(5, but('sandbox')), effect: 'back',
-    help: 'back one step, on release: on a device page to its device’s first page, then to the patch’s home page (its first device); out of the SEQ, SONG, environment and master FX pages, back where you were. Held alone it does nothing' },
+    help: 'back one step, on release: on a device page to its device’s first page, then to the patch’s home page (its first device); out of the SEQ, SONG, environment and master FX pages, back where you were. Held alone a moment it shows the palette’s eight positions until it is let go, and its release then goes nowhere' },
   { id: 'glo', gesture: { do: [B('GLO')] }, does: 'settings', everywhere: at(50, but('menu')), effect: 'menu',
     help: 'the settings menu, in tabs: MIDI (MIDI channel, clock in, MIDI out: the panel’s controls, clock out; ALGO again for its second page, TRANSPORT IN: Start, Continue, Stop and Song Position followed, and TRANSPORT OUT: PLAY’s sent, each ON as made, and CLOCK IN DELAY: 0 to 200 ms, 0 as made, the FM-1 follows the clock and transport it receives that much later, for a host whose clock runs ahead of its own audio, such as Reel at about 70 ms), PANEL (LEDs, knob acceleration, count-in with a click on each beat, TEMPO: GLOBAL or PATCH, with the tempo playing, or EXT while MIDI clock sets it; ALGO again for its second page, TIME SIG: 2/4 .. 12/8, 4/4 as made, the bar that play once and REC count in and the arpeggiator’s bar rates fill), SYSTEM (update mode, factory reset, quick start, OUTPUT: STEREO, MONO, the sum of both sides on both, for headphones or a stereo input, or MONO L, the sum on the left only and the right silent, for one mono cable into a recorder; ALGO again for its second page, EDITOR: ALLOW, or IGNORE, so the editor and its Install panel leave this FM-1 alone, and 3.5MM OUT: ON, or OFF, the speaker and the headphone jack silent while USB audio plays on, and USB RETURN: the level of playback from a phone or computer in your headphones, separate from MASTER; SAVE keeps it), EQ (the master EQ on the speaker and the headphone jack, for every patch: LOW, a shelf at 120 Hz, MID, a bell at MID FREQ, and HIGH, a shelf at 8 kHz, each ±12 dB in half decibels, and MID FREQ, 100 Hz to 8 kHz; flat as made, kept without SAVE, USB audio left as it is; a band off 0 dB costs CPU on every patch, about 3.5 % for the first and 1.3 % for each one after it, so the heaviest patches with every effect on may drop a voice with all three bands in use), INFO (version, CPU, bank slots, battery, device name) and GUIDE (the ideas behind the FM-1)' },
   { id: 'env', gesture: { do: [B('ENV')] }, does: 'environment', everywhere: at(60, but('env', 'sandbox')), effect: 'env',
@@ -143,6 +143,10 @@ export const CONTROLS: ControlRow[] = [
     help: 'the tempo, 1 bpm a click (the global one while TEMPO is GLOBAL; in sandbox mode the browser’s); PLAY’s release then neither starts nor stops' },
   { id: 'patch', gesture: { hold: 'HOME', do: [E('PRESET')] }, does: 'patches', everywhere: at(100, but('menu', 'sandbox')), effect: 'patch',
     help: 'the patches in the bank (an empty bank says BANK EMPTY; while the editor’s Live is on the patch stays, EDITOR LIVE: PATCH STAYS); HOME’s release then goes nowhere' },
+  { id: 'palette', gesture: { hold: 'HOME', do: [BLACK], how: 'tap' }, does: 'palette 1-8', plain: 'switch to palette entry 1..8', everywhere: at(102, but('sandbox')), effect: 'palette_go',
+    help: 'black key n: the palette’s entry n, its patch with every device’s preset and its pattern; stopped at once, while playing at the next bar line (the bar says NEXT: 3 and the name until then; the same key again cancels). An empty position says PALETTE 3 EMPTY: HOLD KEY, a missing patch PALETTE 3: MISSING. While HOME is held the keys play nothing, and HOME held alone a moment shows the palette. In sandbox mode the editor’s patch stays (SANDBOX: PATCH STAYS)' },
+  { id: 'palette-save', gesture: { hold: 'HOME', do: [BLACK], how: 'hold 1 s' }, does: 'save to palette', plain: 'save the sound to palette position 1..8', everywhere: at(103, but('sandbox')), effect: 'palette_save',
+    help: 'black key n held 1 s: the sound playing into palette position n (its patch, every device’s preset, the pattern), over what was there; an edited patch is saved into its slot first, a patch from the editor into the first empty slot. The bar says SAVED TO PALETTE 3; the key’s release then does nothing' },
   { id: 'store', gesture: { hold: 'ENV', do: [B('SAVE')] }, does: 'save device preset', doesIn: { env: "save row's preset" }, when: 'dev_store', sheet: { device: 90, env: 60 }, everywhere: at(110, but('device', 'env', 'sandbox')), effect: 'store',
     help: 'the device in focus’s values as its preset (an assembly)' },
   { id: 'arm', gesture: { hold: 'REC', do: [BLACK] }, does: 'arm / disarm track', when: 'tracks', everywhere: at(120, but('sandbox')), effect: 'arm',
@@ -346,6 +350,7 @@ const STRIP: Record<string, string | ({ _: string } & Partial<Record<HelpState, 
   arm: 'arm or disarm track n for the keys', mute: 'mute or unmute track n',
   'play-once': 'count in a bar, play the pattern or song once, stop', fill: 'hold FX with SEQ to play the fill notes',
   'out-35mm': 'turn the speaker and headphone jack off or on (USB audio plays on)',
+  palette: 'switch to palette entry n (at the next bar while playing)', 'palette-save': 'save the sound to palette position n',
   // a device page
   'list-home': "leave {list}'s pages, back where you were", 'list-pages': "flip through {list}'s pages",
   adjust: 'turn the four values on this page', fine: 'turn a value in its smallest steps',
@@ -473,6 +478,7 @@ export function gestureSpec(g: Gesture): string {
   out.push(g.do.map(part).join(g.join === 'list' ? '|' : g.join === 'together' ? '|t:+|' : '|t:/|'));
   if (g.how === 'tap') out.push('t:tap');
   if (g.how === 'held') out.push('t:held');
+  if (g.how === 'hold 1 s') out.push('t:1 s');
   if (g.how === 'hold 2 s') out.push('t:2 s');
   if (g.where) out.push(`t:${g.where}`);
   return out.join('|');
@@ -545,6 +551,7 @@ export function gestureText(g: Gesture): string {
   let t = g.do.map(part).join(g.join === 'list' ? ', ' : g.join === 'together' ? ' + ' : ' / ');
   if (g.how === 'tap') t += ' tapped';
   if (g.how === 'held') t += ' held + the keys';
+  if (g.how === 'hold 1 s') t += ' held 1 s';
   if (g.how === 'hold 2 s') t += ' held 2 s';
   if (g.hold) t = `${g.hold === 'step' ? 'a held step' : `${g.hold} held`} + ${t}`;
   if (g.where) t += ` ${g.where}`;

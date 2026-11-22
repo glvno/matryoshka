@@ -46,6 +46,10 @@ export interface Fm1Events {
   /** GLO > PANEL > TEMPO, the global tempo or TIME SIG changed on the emulated FM-1 (its menu, PLAY held + PRESET, Main's
    * tempo row while global; D-907, #1011): global, the global tempo (0: not known yet) and the time signature (a METERS index) */
   tempo?(global: boolean, bpm: number, meter: number): void;
+  /** the palette (#1196): HOME + black key `pos + 1` tapped (switch to palette position pos, 0..7) / held 1 s (save the
+   * running sound there); the page answers with the copy's palette state (fm1w_palette) */
+  paletteGo?(pos: number): void;
+  paletteSave?(pos: number): void;
 }
 
 /** a note the panel's keys started or let go in the engine (panel.c panel_key): a key's own note at the octave, or a row
@@ -83,6 +87,9 @@ interface Exports {
   fm1w_focus_dev(): number; fm1w_focus_page(): number; fm1w_octave(): number;
   /** (absent from a wasm built before #549) */
   fm1w_held?(): number; fm1w_guide?(): number; fm1w_align_buf?(): number; fm1w_align?(): void;
+  /** (absent from a wasm built before #1196) the palette the copy shows: 8 x 24 bytes {state, slot, pattern, pad,
+   * name[20]} at fm1w_palette_buf, taken with the position playing and the one waiting (0xFF none) */
+  fm1w_palette_buf?(): number; fm1w_palette?(cur: number, next: number): void;
 }
 
 export class Fm1Ui {
@@ -117,6 +124,8 @@ export class Fm1Ui {
       pattern_op: (op: number, from: number, to: number, hash: number) => ev.patternOp?.(op, from, to, hash >>> 0),
       arms: (w0: number, w1: number, w2: number, w3: number) => ev.arms?.([w0 >>> 0, w1 >>> 0, w2 >>> 0, w3 >>> 0]),
       tempo: (patch: number, bpm: number, meter: number) => ev.tempo?.(patch === 0, bpm, meter),
+      pal_go: (pos: number) => ev.paletteGo?.(pos),
+      pal_save: (pos: number) => ev.paletteSave?.(pos),
     };
     const { instance } = await WebAssembly.instantiate(bytes, { fm1: env });
     memory = (instance.exports as unknown as Exports).memory;

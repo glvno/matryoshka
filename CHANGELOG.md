@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **New: the palette, up to 8 sounds to switch between on the FM-1.** Hold HOME and hold a black key (F#3 to A#4, positions 1 to 8) for a second to save the sound playing there: the patch, every device's preset and the selected pattern (`SAVED TO PALETTE 3`). An edited patch is saved into its slot too; a patch from the editor is first stored into a free slot (`SAVED: SLOT 31, PALETTE 3`). Hold HOME and tap a black key to switch to that sound: at once when stopped, or on the next bar line while playing, with a short fade out and in, and its pattern starts on beat 1. The top bar shows what comes next (`NEXT: 3 MONOLITH D`); the same key again cancels. Hold HOME on its own to see all 8 positions. While HOME is held the keys play nothing. The palette starts empty, and FACTORY RESET empties it. A position whose slot no longer holds that patch reads `MISSING`. Needs the next firmware (#1196).
+
 ## 1.25.0 — 2026-11-22
 
 - **New: GLO › MIDI › CLOCK IN DELAY, for an app whose MIDI clock runs ahead of its own sound, such as Reel.** Reel's clock reaches the FM-1 about 70 ms before Reel's audio, so the FM-1 played that much early. CLOCK IN DELAY (MIDI's second page, K3) makes the FM-1 follow the incoming clock, Start, Stop and song position that much later: 0 to 200 ms, 1 ms a click, 5 when you turn fast. For Reel, start at about 70 ms and adjust by ear. At 0 ms, the default, the FM-1 works exactly as before. Notes and controls are never delayed, and SAVE keeps the setting (#870).

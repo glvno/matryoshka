@@ -331,7 +331,14 @@ static int m1_flash_ok(void) { return flash_ok; }
 static int m1_editor_ignore(void) { return cfg.editor_ignore; }   /* proto.c INFO: GLO > SYSTEM > EDITOR at IGNORE (#702) */
 static int m1_midi_out(void) { return cfg.midi_out; }   /* proto.c INFO: MENU > MIDI OUT (sandbox mode needs it) */
 static void m1_send(const uint8_t *f, uint32_t n) { (void)ota_wire_send(f, n); }
-static int m1_apply(const uint8_t *patch, uint32_t len)
+static void pal_cancel(void);                   /* palette.c (#1196): a waiting switch dropped, no entry playing */
+static void pal_bank_changed(void);             /* palette.c: the bank changed, the entries' MISSING states again */
+static uint32_t pal_diag(uint8_t *out);         /* palette.c: DIAG page 202, the last switch */
+static uint8_t cur_from_editor;                 /* the running patch came from the editor (COMMIT, Live): in no slot; a
+                                                 * palette hold-save stores it into a free slot first (palette.c pal_save) */
+/* a patch into the engine, the audio stopped (eng_run 0) and left stopped: m1_apply's, and the palette's switch, whose
+ * audio interrupt stopped the engine at the bar and fades the new patch in (palette.c pal_switch_poll) */
+static int m1_engine_load(const uint8_t *patch, uint32_t len)
 {
     int rc;
     eng_run = 0;                                /* the ISR renders silence while the patch is replaced */
@@ -341,9 +348,17 @@ static int m1_apply(const uint8_t *patch, uint32_t len)
     eng_us_max = 0;
     eng_overload_clear();                       /* a new patch: an overload is forgotten */
     __asm__ volatile("" ::: "memory");
+    return rc;
+}
+static int m1_apply(const uint8_t *patch, uint32_t len)
+{
+    int rc;
+    pal_cancel();                               /* (bank_buf may be the caller's; a palette switch waits no more) */
+    rc = m1_engine_load(patch, len);
     eng_run = 1;                                /* a voice that did not load renders silence by itself */
     sel = 0;
     patch_label = "FROM EDITOR";
+    cur_from_editor = 1;
     leds_avail();                               /* the patch buttons it uses */
     ui_full = 1;                                /* not drawn here: the pages come from m1_cur, which the caller sets after this
                                                  * (m1_set_current); drawn now, the old patch's rows met the new engine (#140) */
@@ -463,6 +478,16 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
 {
     const uint8_t *b = (const uint8_t *)&diag_prev;
     uint32_t i, off = page * 32u, n = sizeof diag_prev > off ? sizeof diag_prev - off : 0u;
+    if (page == 200u || page == 201u) {         /* #1196: the palette switch's fades off (200: the hard cut, for measuring)
+                                                 * or on (201), taken only in the device test mode (audio.c pal_fade.h);
+                                                 * out: the fades off now, the test mode */
+        pal_fade_off = (uint8_t)(page == 200u && test_input_recent());
+        out[0] = pal_fade_off;
+        out[1] = (uint8_t)(test_input_recent() != 0);
+        return 2;
+    }
+    if (page == 202u)                           /* #1196: the last palette switch (palette.c pal_diag) */
+        return pal_diag(out);
     if (page == 100u || page == 101u)           /* #1170: USB audio at a fixed level (100) or at MASTER's (101), taken only
                                                  * in the device test mode (audio.c usb_fixed) */
         return usb_fixed_diag(page, test_input_recent(), out);
@@ -1028,7 +1053,9 @@ static int m1_store(const uint8_t *patch, uint32_t len)        /* SAVE, the edit
     label_buf[M1_NAME] = 0;
     patch_label = label_buf;
     m1_edited = 0;
+    cur_from_editor = 0;                         /* (in a slot now) */
     m1_slot_now(cur_preset, label_buf);
+    pal_bank_changed();                          /* (the palette's entries of this slot: its length, its name) */
     return 0;
 }
 
@@ -1049,6 +1076,7 @@ static int preset_load(uint32_t n)
         return -1;
     }
     cur_preset = n;
+    cur_from_editor = 0;
     put(label_buf, slot_name)[0] = 0;
     patch_label = label_buf;
     screen_patch();                             /* (while PRESET's last name shows: in place, #170) */
@@ -1060,6 +1088,7 @@ static int preset_load(uint32_t n)
 }
 
 #include "live.c"                                   /* the editor's Live: PRESET and program change wait (#185); sandbox mode */
+#include "palette.c"                                /* the palette (#1196): switch at the bar line, save to a position */
 
 static void preset_step(int32_t d)                  /* the PRESET knob: the next / previous occupied slot */
 {
@@ -1119,7 +1148,9 @@ static int m1_preset_del(uint32_t structure, const char *name)
 
 static int m1_slot_write(uint32_t slot, const char *name, const uint8_t *p, uint32_t len)
 {
-    return store_write(slot, name, p, len);
+    int rc = store_write(slot, name, p, len);
+    pal_bank_changed();
+    return rc;
 }
 static int m1_slot_erase(uint32_t slot)
 {
@@ -1127,6 +1158,7 @@ static int m1_slot_erase(uint32_t slot)
     if (!flash_ok)
         return -1;
     rc = sl_erase(slot);
+    pal_bank_changed();
     return rc;
 }
 static int m1_slot_info(uint32_t slot, char *name, uint32_t *len)
@@ -1293,6 +1325,7 @@ static void factory_installed(void)
     if ((up >> cur_preset & 1u) && !m1_edited && !editor_live())
         (void)preset_load(cur_preset);
     leds_avail();
+    pal_bank_changed();                          /* (the slots rewritten or placed: the palette's entries again) */
     ui_full = 1;                                /* (a device's preset list reads the new content) */
     ui_msg(msg ? msg : "FACTORY SOUNDS INSTALLED", 3000);
     if (then) {
@@ -1313,6 +1346,7 @@ static void fallback_boot(void)
     if (m1_apply(FALLBACK_PATCH, sizeof FALLBACK_PATCH) == 0)
         (void)m1_set_current(FALLBACK_PATCH, sizeof FALLBACK_PATCH);   /* (it fits: the assert above) */
     cur_preset = 0;
+    cur_from_editor = 0;
     patch_label = FALLBACK_NAME;
     screen_idle();
 }
@@ -1390,6 +1424,7 @@ static void defaults_now(void)
         eng_run = 0;
         sl_clear_all();
         pt_clear_all();                          /* (the pattern store's sectors erased and formatted) */
+        pal_clear_all();                         /* (the palette empty, #1196) */
         eng_resume();
         factory_bank();
     }
@@ -1398,6 +1433,7 @@ static void defaults_now(void)
     leds_octave();
     leds_play();
     ui_msg("FACTORY RESET", 1500);
+    pal_changed();
 }
 
 /* each pass of the main loop: a global tempo moved here goes to the editor, and to the settings record once it has
@@ -1915,6 +1951,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     boot_step("STATE");
     boot_safe = (uint8_t)((fm1_in.buttons >> BTN_SAVE & 1u) || bootguard.failed >= 1u);   /* SAVE held, or the last boot failed */
     patch_boot();
+    pal_boot();                                         /* (the palette's record and its entries' states, #1196) */
     patches_up = 1;
     if (!flash_ok) {                                    /* a flash chip the firmware does not know: say so (#72) */
         boot_msg = "NO FLASH ID: NO UPDATES";
@@ -1964,6 +2001,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
             bootguard.failed = 0;
         }
         panel_status();
+        pal_switch_poll();                              /* (a palette switch whose bar line came: the load, #1196) */
         midi_drain();
         keys_poll();
         keys_report();
@@ -1972,7 +2010,8 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         batt_poll();
         master_poll();
         seq_poll();
-        panel_draw();
+        if (!pal_draw_held())                           /* (a palette switch's stop is near: the loop comes round at once) */
+            panel_draw();
         keys_report();                                  /* (the edges taken during the redraw: keys_yield) */
         guide_poll();
         editor_poll();

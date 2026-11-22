@@ -5118,6 +5118,58 @@ uint32_t eng_buttons_lit(void)
 uint32_t eng_ticks(void) { return E.ticks; }
 int32_t eng_run_ticks(void) { return E.running ? (int32_t)(E.ticks - E.run_ticks) : -1; }
 int eng_clock_is_external(void) { return clk_ext; }
+/* the clock's tempo in whole bpm, as render_voice ticks it: the global tempo, else the Main module's, else the default */
+static uint32_t clock_bpm(void)
+{
+    return tempo_glo > ENG_TEMPO_ADOPT ? tempo_glo
+         : E.main >= 0 ? (uint32_t)clampi((E.node[E.main].par[FM1_P_TEMPO] + 32768) >> 16, 20, 300) : TEMPO_DEFAULT;
+}
+/* the palette's bar line (#1196, pal_fade.h): read between renders. Run tick t falls on the sample the render's clock
+ * completes it on: on the internal clock the r-th tick ahead completes on sample ceil((r whole - tick_acc) / inc) - 1
+ * of the next render; on MIDI clock a tick is taken on the first sample of the block after it came, estimated here
+ * from the measured tick length (tick_len is ext_len once measured) less the samples since the last one */
+uint32_t eng_samples_to(int32_t run_tick)
+{
+    int32_t r = run_tick - (int32_t)(E.ticks - E.run_ticks);
+    if (!E.running || r <= 0)
+        return 0;
+    if (clk_ext) {
+        int64_t s = (int64_t)r * E.tick_len - (int64_t)E.ext_since;
+        return s > 0 ? (uint32_t)s : 0u;
+    } else {
+        uint64_t whole = 60u * ENG_SR, inc = clock_bpm() * 24u;
+        return (uint32_t)(((uint64_t)r * whole - E.tick_acc + inc - 1u) / inc - 1u);
+    }
+}
+int32_t eng_next_bar(uint32_t lead_samples)
+{
+    int32_t bar = METER_BAR[meter], rt = (int32_t)(E.ticks - E.run_ticks), b;
+    if (!E.running)
+        return -1;
+    b = rt < 0 ? 0 : (rt / bar + 1) * bar;
+    while (eng_samples_to(b) < lead_samples)
+        b += bar;
+    return b;
+}
+/* the marked run tick (eng_tick_mark, -1 none) and the sample of the last render it fell on (-1 none): render_voice
+ * looks for it once a block only while one is marked */
+static volatile int32_t tick_mark = -1;
+static int32_t tick_fell = -1;
+void eng_tick_mark(int32_t run_tick)
+{
+    tick_fell = -1;
+    tick_mark = run_tick;
+}
+int32_t eng_tick_fell(int32_t run_tick) { return run_tick >= 0 && run_tick == tick_mark ? tick_fell : -1; }
+/* (render_voice, a block's clock done while a tick is marked: the block at `off` of the render) */
+static __attribute__((noinline)) void tick_mark_block(uint32_t off)
+{
+    int32_t rt = (int32_t)(E.ticks - E.run_ticks);
+    if (!off)
+        tick_fell = -1;
+    if (E.tick_off >= 0 && rt >= tick_mark && rt - E.tick_n < tick_mark)
+        tick_fell = (int32_t)off + E.tick_off;
+}
 uint32_t eng_clock_out(uint32_t *off, uint32_t max, int32_t *edge)
 {
     uint32_t k, n = cko.n < max ? cko.n : max;
@@ -13219,8 +13271,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         E.morph = ENG_RARELY(E.has_b) ? morph_position(n) : 0;
         {   /* the clock: MIDI ticks while external, else the global tempo (D-907) or the Main module's (whole bpm x 24 ticks a
              * minute) */
-            uint32_t bpm = tempo_glo > ENG_TEMPO_ADOPT ? tempo_glo
-                         : E.main >= 0 ? (uint32_t)clampi((E.node[E.main].par[FM1_P_TEMPO] + 32768) >> 16, 20, 300) : TEMPO_DEFAULT, seen = 0, t;
+            uint32_t bpm = clock_bpm(), seen = 0, t;
             uint8_t run = transport_on | once_run;
             uint32_t was = E.ticks;              /* (the ticks before this block's: REC's count-in) */
             int start;
@@ -13346,6 +13397,8 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             if (!run)
                 E.tick_off = -1;
             E.clk_seen = t;
+            if (ENG_RARELY(tick_mark >= 0))      /* (a tick marked: where it falls, eng_tick_fell) */
+                tick_mark_block(off);
             E.clk_pulse = seen && run ? (n + 1u) / 2u : 0u;   /* the Main clock: half a block per block that saw a tick while running */
             if (ENG_RARELY(E.nkev))
                 steps_keys();

@@ -382,6 +382,10 @@ Editor-only data laid over the flat module and cable list (assemblies, layout); 
 
 Four rows of a device's card that K1..K4 turn at once on the FM-1.
 
+### Palette
+
+Up to 8 sounds collected for a project, in order, to switch among them. Each entry is a bank slot, checked by its patch's name, with every device's preset and the selected pattern. The FM-1 keeps one palette; HOME held with a black key switches to an entry or saves to it. It is unrelated to the colour palettes of the screen and the editor.
+
 ### Panel core
 
 `firmware/src/panel.c`: the panel logic, separate from the hardware layer, shared by the device, host tests and the WebAssembly build.

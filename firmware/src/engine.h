@@ -702,6 +702,19 @@ uint32_t eng_ticks(void);                 /* the clock's ticks so far (24 a quar
 int32_t eng_run_ticks(void);              /* ticks since the transport started (the Steps tracks' bars count from there:
                                            * eng_bar_ticks a bar), -1 until the engine has taken the start */
 int eng_clock_is_external(void);          /* MIDI clock drives the clock */
+/* The palette's bar line (#1196, pal_fade.h), in run ticks (eng_run_ticks' scale). Read between renders: from the audio
+ * interrupt, or once from the main loop to arm (a render in between moves them by its half, harmlessly).
+ * eng_next_bar: the first bar line of the global time signature (eng_bar_ticks) at least lead_samples ahead of the next
+ * render's first sample; -1 while the transport is stopped.
+ * eng_samples_to: samples from the next render's first sample to the sample run_tick falls on; exact on the internal
+ * clock at a steady tempo, estimated from the measured tick on MIDI clock; 0 once reached or passed, or stopped.
+ * eng_tick_mark: the run tick eng_tick_fell reports (-1 none: the render then only tests the mark once a block).
+ * eng_tick_fell: after a render, the sample of that whole render (0..n - 1, over its blocks) the marked run_tick fell
+ * on; -1 when it did not fall in it or is not the one marked */
+int32_t eng_next_bar(uint32_t lead_samples);
+uint32_t eng_samples_to(int32_t run_tick);
+void eng_tick_mark(int32_t run_tick);
+int32_t eng_tick_fell(int32_t run_tick);
 /* MIDI clock out (#473, main.c clock_out.h): the ticks of the tempo the last eng_render made (none while MIDI clock
  * drives the clock), up to `max` of their samples in it in *off, and the transport's edge in it in *edge (1 started,
  * -1 stopped, 0 none). A render that starts the transport has a tick on the start's sample: tick 0, where the tracks'

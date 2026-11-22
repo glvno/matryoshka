@@ -59,6 +59,23 @@
 #define MSG_SANDBOX_EDITED MSG_SANDBOX " *"             /* the same, the patch with unsaved edits */
 #define MSG_BROWSER_PLAYS "THE BROWSER PLAYS THIS PATCH"
 
+/* the palette (#1196: palette.c, pal_ui.c; the owner's wording, C1): a position's number 1..8 and a slot's 1..60 go
+ * between the parts */
+#define MSG_PAL "PALETTE "                              /* PALETTE 3 EMPTY: HOLD KEY, PALETTE 3: MISSING */
+#define MSG_PAL_EMPTY " EMPTY: HOLD KEY"
+#define MSG_PAL_MISSING ": MISSING"
+#define MSG_PAL_SAVED "SAVED TO PALETTE "              /* SAVED TO PALETTE 3 */
+#define MSG_PAL_SAVED_SLOT "SAVED: SLOT "              /* SAVED: SLOT 31, PALETTE 3 (a patch in no slot stored first) */
+#define MSG_PAL_SAVED_AND ", PALETTE "
+#define MSG_PAL_BANK_FULL "BANK FULL: NOT SAVED"
+#define MSG_PAL_NEXT "NEXT: "                           /* the bar while a switch waits: NEXT: 3 MONOLITH D (18 of the name) */
+#define MSG_PAL_HOLD_TO_SAVE "HOLD A BLACK KEY TO SAVE"  /* the overview of an empty palette */
+#define MSG_PAL_ROW_EMPTY "EMPTY"                       /* the overview's rows */
+#define MSG_PAL_ROW_MISSING " MISSING"                  /* after the name */
+#define MSG_PAL_ROW_NEXT " NEXT"
+#define MSG_PAL_TITLE "PALETTE"                         /* the overview's title */
+#define MSG_PAL_UNNAMED "PATCH "                        /* a patch from the editor stored with no name sent: PATCH 31 */
+
 /* the menu (menu.c) */
 #define MSG_TEST_REFUSED "TEST INPUT: REFUSED"
 #define MSG_HOLD_GLO "HOLD GLO 2 S"

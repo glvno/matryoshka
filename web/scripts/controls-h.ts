@@ -154,7 +154,7 @@ export function controlsHeader(helpUi: string, fontH: string): string {
   w('enum { CK_BUTTON, CK_ENCODER, CK_KNOBS, CK_WHITE, CK_BLACK, CK_ANY, CK_KEYS, CK_CHORD };');
   w('#define CH_NONE 255u                       /* hold: nothing held; CH_STEP a step (its white key) held; else a matrix id */');
   w('#define CH_STEP 254u');
-  w('enum { CW_PRESS, CW_TAP, CW_HELD, CW_HOLD2S };   /* how: as the handler takes it, a tap, held while keys play, held 2 s */');
+  w('enum { CW_PRESS, CW_TAP, CW_HELD, CW_HOLD2S, CW_HOLD1S };   /* how: as the handler takes it, a tap, held while keys play, held 2 s, held 1 s */');
   w('typedef struct { uint8_t kind, id, n; } ctl_part_t;');
   w('/* first: a button tapped before the rest (ENV then SEL), CH_NONE none; all: the parts are buttons pressed together (nalt 1,');
   w(' * all of them in alt), 0: alternatives */');
@@ -170,7 +170,7 @@ export function controlsHeader(helpUi: string, fontH: string): string {
   for (const r of CONTROLS) {
     const g = r.gesture;
     const hold = g.hold === undefined ? 'CH_NONE' : g.hold === 'step' ? 'CH_STEP' : String(BUTTON_ID[g.hold]);
-    const how = g.how === 'tap' ? 'CW_TAP' : g.how === 'held' ? 'CW_HELD' : g.how === 'hold 2 s' ? 'CW_HOLD2S' : 'CW_PRESS';
+    const how = g.how === 'tap' ? 'CW_TAP' : g.how === 'held' ? 'CW_HELD' : g.how === 'hold 2 s' ? 'CW_HOLD2S' : g.how === 'hold 1 s' ? 'CW_HOLD1S' : 'CW_PRESS';
     if (g.do.length > 5) throw new Error(`controls: ${r.id}: more than 5 parts`);
     const first = g.first === undefined ? 'CH_NONE' : String(BUTTON_ID[g.first]);
     const all = g.join === 'together';
