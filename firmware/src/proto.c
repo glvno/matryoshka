@@ -245,15 +245,22 @@ static void m1_ack(uint32_t cmd, uint32_t seq, uint32_t status, uint32_t aux)
 }
 
 /* a patch the firmware already runs (boot: from flash or a factory patch): what STORE writes and PARAM edits. Its stored
- * pattern links (#901) are resolved here: the engine gets the linked patterns the binary leaves out (m1_pat_load) */
+ * pattern links (#901) are resolved here: the engine gets the linked patterns the binary leaves out (m1_pat_load).
+ * 0 = it is the current patch; -1 = longer than M1_PATCH_MAX (#1134): nothing is copied and there is no current patch
+ * (m1_cur_len 0: STORE answers S_NONE, every edit through m1_cur is refused), so no edit lands in the patch before it;
+ * the caller refuses the load */
 static uint32_t m1_gen;                                     /* counts patches set as current: the LCD reads the device pages again */
 static uint8_t m1_edited;                                    /* the running patch differs from what was loaded (SAVE clears it; the LCD shows *) */
 
-static void m1_set_current(const uint8_t *p, uint32_t len)
+static int m1_set_current(const uint8_t *p, uint32_t len)
 {
     uint32_t i;
-    if (len > M1_PATCH_MAX)
-        return;
+    m1_edited = 0;
+    m1_gen++;
+    if (len > M1_PATCH_MAX) {
+        m1_cur_len = 0;
+        return -1;
+    }
     for (i = 0; i < len; i++)
         m1_cur[i] = p[i];
     m1_cur_len = len;
@@ -261,8 +268,7 @@ static void m1_set_current(const uint8_t *p, uint32_t len)
                                                          * parameter it leaves out grows its record: m1_patch_param);
                                                          * one that would not fit stays as it is */
     m1_pat_load();
-    m1_edited = 0;
-    m1_gen++;
+    return 0;
 }
 
 #define M1_BYPASS 0x80u                                     /* bit 7 of a record's type byte: the module is bypassed */
@@ -1050,7 +1056,10 @@ static int m1_handle(const uint8_t *f, uint32_t n)
             m1_ack(C_COMMIT, 0, S_LOAD, (uint32_t)-rc);
             break;
         }
-        m1_set_current(m1_up, total);
+        if (m1_set_current(m1_up, total)) {                  /* (CHUNK already refuses a total past M1_PATCH_MAX) */
+            m1_ack(C_COMMIT, 0, S_RANGE, 0);
+            break;
+        }
         m1_up_got = m1_up_total = 0;
         m1_ack(C_COMMIT, 0, S_OK, 0);
         m1_origin_snapshot();

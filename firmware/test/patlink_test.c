@@ -92,9 +92,8 @@ static int load_patch(const uint8_t *b, uint32_t len)
 {
     static uint8_t tmp[M1_PATCH_MAX];
     memcpy(tmp, b, len);
-    if (eng_load(tmp, len))
+    if (eng_load(tmp, len) || m1_set_current(tmp, len))
         return -1;
-    m1_set_current(tmp, len);
     return 0;
 }
 /* some track of the engine has pattern p */

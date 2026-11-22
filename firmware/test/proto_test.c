@@ -339,7 +339,7 @@ static int old_format(int n, char **argv)
         E.idle_blk = 0;
         run(a_l, a_r);
         eng_all_notes_off();
-        m1_set_current(old, (uint32_t)no);
+        CHECK(m1_set_current(old, (uint32_t)no) == 0);
         if (old[1] >= ENG_COUNTED || m1_cur[1] != ENG_UPGRADED) {   /* (eng_upgrade writes ENG_UPGRADED, D-299) */
             kept++;                                           /* (too big to upgrade: it stays in its format) */
             CHECK(m1_cur_len == (uint32_t)no && !memcmp(m1_cur, old, (size_t)no));
@@ -379,7 +379,7 @@ static int old_format(int n, char **argv)
                 fprintf(stderr, "FAIL %s: the grown binary renders differently\n", argv[k]);
                 return 1;
             }
-            m1_set_current(old, (uint32_t)no);
+            CHECK(m1_set_current(old, (uint32_t)no) == 0);
         }
         for (m = 0; m < old[2]; m++)
             for (r = 0; r < 8u; r++) {
@@ -427,7 +427,7 @@ static int grow_test(int n, char **argv)
             continue;
         }
         CHECK(m1_valid(o, (uint32_t)nb) && eng_load(o, (uint32_t)nb) == 0);
-        m1_set_current(o, (uint32_t)nb);
+        CHECK(m1_set_current(o, (uint32_t)nb) == 0);
         bset += (o[6] & 1u) != 0u;
         for (m = 0; m < o[2]; m++) {
             uint32_t at = m1_record(m);
@@ -611,7 +611,7 @@ static int patterns_test(const char *kit_path, const char *song_path)
     const uint32_t *w;
     int n;
     CHECK(kit[1] == 48u && (kit[7] & ENG_FLAG_PATTERNS) && m1_valid(kit, (uint32_t)nk) && !m1_valid(kit, (uint32_t)nk - 1u));
-    m1_set_current(kit, (uint32_t)nk);
+    CHECK(m1_set_current(kit, (uint32_t)nk) == 0);
     CHECK(eng_load(m1_cur, m1_cur_len) == 0);
     sec = pat_section();
     n = eng_patterns_record(rec, sizeof rec);                   /* the engine writes what the encoder wrote */
@@ -684,7 +684,7 @@ static int patterns_test(const char *kit_path, const char *song_path)
     m1_patch_patterns();
     CHECK(pat_agree());
     /* the song kit: what the encoder wrote, the engine writes */
-    m1_set_current(song, (uint32_t)ns);
+    CHECK(m1_set_current(song, (uint32_t)ns) == 0);
     CHECK(eng_load(m1_cur, m1_cur_len) == 0 && eng_song() == 1 && eng_song_len(0) == 4 && eng_song_len(1) == 2 && pat_agree());
     CHECK(eng_song_get(0, 2) == (2 | 0xF9 << 8));
     {                                                           /* SONG_NOW: s, n, n (pattern, shift), 7-bit packed */
@@ -722,7 +722,7 @@ static int patterns_test(const char *kit_path, const char *song_path)
         plain[1] = 47;
         plain[7] &= (uint8_t)~ENG_FLAG_PATTERNS;
         CHECK(m1_valid(plain, (uint32_t)nk - pn));
-        m1_set_current(plain, (uint32_t)nk - pn);
+        CHECK(m1_set_current(plain, (uint32_t)nk - pn) == 0);
         CHECK(m1_cur[1] == ENG_UPGRADED && eng_load(m1_cur, m1_cur_len) == 0 && eng_patterns_record(0, 0) == 0);
         ul = m1_cur_len;                                        /* (upgraded: records of types that grew since 47 are longer) */
         memcpy(up, m1_cur, ul);
@@ -800,7 +800,7 @@ static int locks_test(const char *kit_path)
     int32_t v = 0;
     int n;
     CHECK(kit[1] == 49u && (kit[7] & ENG_FLAG_LOCKS) && m1_valid(kit, (uint32_t)nk) && !m1_valid(kit, (uint32_t)nk - 1u));
-    m1_set_current(kit, (uint32_t)nk);
+    CHECK(m1_set_current(kit, (uint32_t)nk) == 0);
     CHECK(eng_load(m1_cur, m1_cur_len) == 0);
     sec = lock_section();
     n = eng_locks_record(rec, sizeof rec);                      /* the engine writes what the encoder wrote */
@@ -879,7 +879,7 @@ static int fx_test(const char *path)
     uint8_t record[1u + ENG_FX_STAGE_COUNT * (4u + ENG_FX_TARGETS_MAX)];
     CHECK(kit && len >= 8 && len <= M1_PATCH_MAX && m1_valid(kit, (uint32_t)len));
     CHECK(!eng_load(kit, (uint32_t)len) && eng_fx_count() == ENG_FX_STAGE_COUNT);
-    m1_set_current(kit, (uint32_t)len);
+    CHECK(m1_set_current(kit, (uint32_t)len) == 0);
     flags = (uint32_t)m1_cur[6] | (uint32_t)m1_cur[7] << 8;
     CHECK(flags & ENG_FLAG_FX_BUS);
     at = m1_notes_at();
@@ -974,7 +974,7 @@ static int maps_test(int n, char **argv)
     CHECK(eng_maps(o, (uint32_t)nb, &e) == 3u && (at = eng_maps_at(o, (uint32_t)nb)) == (uint32_t)nb - 16u);
     CHECK(e[0] == 1u && e[5] == ENG_MAP_BEND && e[8] == 51u && e[9] == 204u && e[10] == 74u && e[13] == 255u && e[14] == 0u);
     CHECK((o[6] & 2u) && o[at - 16u] == 3u);                     /* (the kit's three macro ranges just before) */
-    m1_set_current(o, (uint32_t)nb);
+    CHECK(m1_set_current(o, (uint32_t)nb) == 0);
     m1_patch_range(1, 0, 0, 1, 10, 20);                          /* a range more (a section of its own without one): the mappings move along, still last */
     CHECK(m1_cur_len == (uint32_t)nb + ((o[6] & 2u) ? 5u : 6u) && m1_valid(m1_cur, m1_cur_len) && eng_maps(m1_cur, m1_cur_len, &e) == 3u && e[10] == 74u);
     m1_patch_range(1, 0, 0, 0, 0, 0);
@@ -1026,7 +1026,7 @@ static int maps_test(int n, char **argv)
         if (old[1] < ENG_COUNTED) {
             memcpy(buf, old, (size_t)ob);
             CHECK(eng_map_edit(buf, &len, M1_PATCH_MAX, 1, 0, 0, 0, 255, 1) && len == (uint32_t)ob + 6u);
-            m1_set_current(buf, len);
+            CHECK(m1_set_current(buf, len) == 0);
             CHECK(m1_cur[1] == ENG_UPGRADED && eng_maps(m1_cur, m1_cur_len, &e) == 1u && e[0] == 1u && e[4] == 255u);
             k = 1;
         }
@@ -1691,6 +1691,28 @@ int main(int argc, char **argv)
         n0 = nreplies;
         CHECK(m1_handle(fr, 4) == 1 && m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) >= 7 && (got[6] & 2u));
         printf("test mode ok\n");
+    }
+    {   /* #1134: a binary past M1_PATCH_MAX is refused and leaves no current patch: the edits after it (a parameter, a
+         * bypass, a preset's name) touch neither it nor the patch before it, and STORE has nothing to write */
+        static uint8_t big[M1_PATCH_MAX + 1u], before[M1_PATCH_MAX];
+        uint8_t q[4] = {0x7D, 0x4D, 0x31, C_STORE}, p[8];
+        uint32_t blen;
+        int was = stored;
+        CHECK(np <= (long)M1_PATCH_MAX && m1_set_current(patch, (uint32_t)np) == 0 && m1_cur_len && !m1_edited);
+        m1_patch_param(mod, par, val);                        /* (on a patch that fits the edit lands) */
+        CHECK(m1_edited);
+        blen = m1_cur_len;
+        memcpy(before, m1_cur, blen);
+        memcpy(big, patch, (size_t)np);
+        CHECK(m1_set_current(big, sizeof big) == -1 && m1_cur_len == 0 && !m1_edited);
+        m1_patch_param(mod, par, val + 65536);
+        m1_patch_bypass(mod, 1);
+        CHECK(m1_preset_name(0, "OVER") == -1);
+        CHECK(m1_cur_len == 0 && !m1_edited && !memcmp(m1_cur, before, blen));
+        nreplies = 0;
+        CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 1 && replies[0][4] == R_ACK);
+        CHECK(m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p) >= 3u && p[0] == C_STORE && p[2] == S_NONE && stored == was);
+        printf("over-size binary refused\n");
     }
     printf("proto ok: %u acks, %ld patch bytes, render identical\n", acks_ok, np);
     return 0;

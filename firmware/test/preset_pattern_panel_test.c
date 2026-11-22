@@ -124,6 +124,17 @@ int main(void)
             check("origin stays cleared after reload", !m1_pattern_origin((uint32_t)mod, 0));
             check("select factory after physical preset save", !dp_load(d, 0));
             check("saved user pattern survives factory selection", eng_pattern_notes((uint32_t)mod, 0, &words) == n && !memcmp(saved, words, (size_t)n * 4));
+            {   /* #1134: a binary past M1_PATCH_MAX (PR #1129's test patch was 3,841 bytes) after this one is refused as it
+                 * is: not named or given a pattern with this patch's data */
+                static uint8_t big[4096], keep[4096];
+                uint32_t fits = pv_len, over = 3841u;
+                memcpy(big, pv_bin, pv_len);
+                check("a binary that fits is named", host_preset_name(big, &fits, pg_dev[d].bin, "FITS") == 0);
+                memcpy(big, pv_bin, pv_len); memset(big + pv_len, 0xA5, sizeof big - pv_len); memcpy(keep, big, sizeof big);
+                check("an over-size binary is refused a name", host_preset_name(big, &over, pg_dev[d].bin, "OVER") == -1);
+                check("an over-size binary is refused a default pattern", !host_default_pattern(big, &over, (uint32_t)mod, 0, words, (uint32_t)n, 1u));
+                check("the over-size binary stays as it was", over == 3841u && !memcmp(big, keep, sizeof big));
+            }
             break;
         }
         check("Meridian save owner found", d < pg_ndev);
