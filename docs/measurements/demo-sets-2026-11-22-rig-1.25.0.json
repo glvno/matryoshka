@@ -1,0 +1,567 @@
+{
+ "checks": [
+  {
+   "name": "Silver Box: the editor's demo-set binary is v1.24.1's patch byte for byte (DEMO_CASES vs presets-1.24.1.h)",
+   "ok": true,
+   "detail": "1523 / 1523 B"
+  },
+  {
+   "name": "Silver Box: slot 3 (SILVER BOX) holds the empty version",
+   "ok": true,
+   "detail": "1386 B, the empty version 1386 B"
+  },
+  {
+   "name": "Silver Box: the SEQ page shows P01",
+   "ok": true,
+   "detail": "PATTERN ARM G#3-D#4 P01 | 1-16 OF 16  RATE 1/16 | D#4 | D4 | C#4 | C4 | B3 | A#3 | A3 | G#3 | TRACK 1/1  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "Silver Box: the EMPTY hint (SEQ+SEL demo set)",
+   "ok": true,
+   "detail": "PATTERN ARM G#3-D#4 P01 | 1-16 OF 16  RATE 1/16 | D#4 | D4 | C#4 | C4 | B3 | A#3 | A3 | G#3 | TRACK 1/1  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "Silver Box: SEQ held + SEL asks: LOAD DEMO SET? SEL AGAIN",
+   "ok": true,
+   "detail": "LOAD DEMO SET? SEL AGAIN | 1-16 OF 16  RATE 1/16 | D#4 | D4 | C#4 | C4 | B3 | A#3 | A3 | G#3 | TRACK 1/1  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "Silver Box: SEL again: DEMO SET LOADED",
+   "ok": true,
+   "detail": "PATTERN ARM G#3-D#4 P01 | 1-16 OF 16  RATE 1/16 | D#4 | D4 | C#4 | C4 | B3 | A#3 | A3 | G#3 | TRACK 1/1  ARMED  ALGO track  S | KEYS play  SELECT view  OCT oct"
+  },
+  {
+   "name": "Silver Box: PATTERN_OP demo set with the editor's hash 68beb605",
+   "ok": true,
+   "detail": [
+    "68beb605"
+   ]
+  },
+  {
+   "name": "Silver Box: SAVE: SAVED",
+   "ok": true,
+   "detail": "SAVED | 1-16 OF 16  RATE 1/16 | D#4 | D4 | C#4 | C4 | B3 | A#3 | A3 | G#3 | TRACK 1/1  ARMED  ALGO track  S | KEYS play  SELECT view  OCT oct"
+  },
+  {
+   "name": "Silver Box: slot 3 keeps its name and holds v1.24.1's length",
+   "ok": true,
+   "detail": "'SILVER BOX' 1523 B (v1.24.1 1523 B)"
+  },
+  {
+   "name": "Silver Box: the saved slot plays pattern 2 as v1.24.1's patch (loudest 250 ms within 15 %, sum within 25 %)",
+   "ok": true,
+   "detail": "loudest 6996 / 6932, sum 44114 / 43777"
+  },
+  {
+   "name": "Silver Box: the empty version was silent (under a tenth)",
+   "ok": true,
+   "detail": "loudest 0 against 6932"
+  },
+  {
+   "name": "Scrounge: the editor's demo-set binary is v1.24.1's patch byte for byte (DEMO_CASES vs presets-1.24.1.h)",
+   "ok": true,
+   "detail": "3717 / 3717 B"
+  },
+  {
+   "name": "Scrounge: slot 15 (SCROUNGE) holds the empty version",
+   "ok": true,
+   "detail": "3024 B, the empty version 3024 B"
+  },
+  {
+   "name": "Scrounge: the SEQ page shows P01",
+   "ok": true,
+   "detail": "VOICE 1 ARM P01 | 1-16 OF 16  RATE 1/16 | VOICE 1 | VOICE 2 | VOICE 3 | VOICE 4 | VOICE 5 | MOD X | MOD Y | EXT | TRACK 1/8  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "Scrounge: the EMPTY hint (SEQ+SEL demo set)",
+   "ok": true,
+   "detail": "VOICE 1 ARM P01 | 1-16 OF 16  RATE 1/16 | VOICE 1 | VOICE 2 | VOICE 3 | VOICE 4 | VOICE 5 | MOD X | MOD Y | EXT | TRACK 1/8  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "Scrounge: SEQ held + SEL asks: LOAD DEMO SET? SEL AGAIN",
+   "ok": true,
+   "detail": "LOAD DEMO SET? SEL AGAIN | 1-16 OF 16  RATE 1/16 | VOICE 1 | VOICE 2 | VOICE 3 | VOICE 4 | VOICE 5 | MOD X | MOD Y | EXT | TRACK 1/8  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "Scrounge: SEL again: DEMO SET LOADED",
+   "ok": true,
+   "detail": "VOICE 1 ARM P01 | 1-16 OF 16  RATE 1/16 | VOICE 1 | VOICE 2 | VOICE 3 | VOICE 4 | VOICE 5 | MOD X | MOD Y | EXT | TRACK 1/8  ARMED  ALGO track  S | BLACK row  WHITE step  FX acc  "
+  },
+  {
+   "name": "Scrounge: PATTERN_OP demo set with the editor's hash 58c41bd5",
+   "ok": true,
+   "detail": [
+    "58c41bd5"
+   ]
+  },
+  {
+   "name": "Scrounge: SAVE: SAVED",
+   "ok": true,
+   "detail": "SAVED | 1-16 OF 16  RATE 1/16 | VOICE 1 | VOICE 2 | VOICE 3 | VOICE 4 | VOICE 5 | MOD X | MOD Y | EXT | TRACK 1/8  ARMED  ALGO track  S | BLACK row  WHITE step  FX acc  "
+  },
+  {
+   "name": "Scrounge: slot 15 keeps its name and holds v1.24.1's length",
+   "ok": true,
+   "detail": "'SCROUNGE' 3717 B (v1.24.1 3717 B)"
+  },
+  {
+   "name": "Scrounge: the saved slot plays pattern 1 as v1.24.1's patch (loudest 250 ms within 15 %, sum within 25 %)",
+   "ok": true,
+   "detail": "loudest 3847 / 3844, sum 26107 / 25945"
+  },
+  {
+   "name": "Scrounge: the empty version was silent (under a tenth)",
+   "ok": true,
+   "detail": "loudest 0 against 3844"
+  },
+  {
+   "name": "808 Kit: the editor's demo-set binary is v1.24.1's patch byte for byte (DEMO_CASES vs presets-1.24.1.h)",
+   "ok": true,
+   "detail": "3659 / 3659 B"
+  },
+  {
+   "name": "808 Kit: slot 17 (808 KIT) holds the empty version",
+   "ok": true,
+   "detail": "3441 B, the empty version 3441 B"
+  },
+  {
+   "name": "808 Kit: the SEQ page shows P01",
+   "ok": true,
+   "detail": "DRUMS ARM P01 | 1-16 OF 16  RATE 1/16 | BD | SD | CP/MA | CH | OH | LT/LC | RS/CL | CB | TRACK 1/1  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "808 Kit: the EMPTY hint (SEQ+SEL demo set)",
+   "ok": true,
+   "detail": "DRUMS ARM P01 | 1-16 OF 16  RATE 1/16 | BD | SD | CP/MA | CH | OH | LT/LC | RS/CL | CB | TRACK 1/1  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "808 Kit: SEQ held + SEL asks: LOAD DEMO SET? SEL AGAIN",
+   "ok": true,
+   "detail": "LOAD DEMO SET? SEL AGAIN | 1-16 OF 16  RATE 1/16 | BD | SD | CP/MA | CH | OH | LT/LC | RS/CL | CB | TRACK 1/1  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "808 Kit: SEL again: DEMO SET LOADED",
+   "ok": true,
+   "detail": "DRUMS ARM P01 | 1-16 OF 16  RATE 1/16 | BD | SD | CP/MA | CH | OH | LT/LC | RS/CL | CB | TRACK 1/1  ARMED  ALGO track  S | BLACK row  WHITE step  FX acc  "
+  },
+  {
+   "name": "808 Kit: PATTERN_OP demo set with the editor's hash bac6deaa",
+   "ok": true,
+   "detail": [
+    "bac6deaa"
+   ]
+  },
+  {
+   "name": "808 Kit: SAVE: SAVED",
+   "ok": true,
+   "detail": "SAVED | 1-16 OF 16  RATE 1/16 | BD | SD | CP/MA | CH | OH | LT/LC | RS/CL | CB | TRACK 1/1  ARMED  ALGO track  S | BLACK row  WHITE step  FX acc  "
+  },
+  {
+   "name": "808 Kit: slot 17 keeps its name and holds v1.24.1's length",
+   "ok": true,
+   "detail": "'808 KIT' 3659 B (v1.24.1 3659 B)"
+  },
+  {
+   "name": "808 Kit: the saved slot plays pattern 1 as v1.24.1's patch (loudest 250 ms within 15 %, sum within 25 %)",
+   "ok": false,
+   "detail": "loudest 7177 / 5515, sum 38749 / 35328"
+  },
+  {
+   "name": "808 Kit: the empty version was silent (under a tenth)",
+   "ok": true,
+   "detail": "loudest 0 against 5515"
+  },
+  {
+   "name": "909 Kit: the editor's demo-set binary is v1.24.1's patch byte for byte (DEMO_CASES vs presets-1.24.1.h)",
+   "ok": true,
+   "detail": "3756 / 3756 B"
+  },
+  {
+   "name": "909 Kit: slot 18 (909 KIT) holds the empty version",
+   "ok": true,
+   "detail": "3606 B, the empty version 3606 B"
+  },
+  {
+   "name": "909 Kit: the SEQ page shows P01",
+   "ok": true,
+   "detail": "DRUMS ARM P01 | 1-16 OF 16  RATE 1/16 | KICK | SNARE | CLAP | CL HAT | OP HAT | LOW TOM | RIM | HI TOM | TRACK 1/1  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "909 Kit: the EMPTY hint (SEQ+SEL demo set)",
+   "ok": true,
+   "detail": "DRUMS ARM P01 | 1-16 OF 16  RATE 1/16 | KICK | SNARE | CLAP | CL HAT | OP HAT | LOW TOM | RIM | HI TOM | TRACK 1/1  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "909 Kit: SEQ held + SEL asks: LOAD DEMO SET? SEL AGAIN",
+   "ok": true,
+   "detail": "LOAD DEMO SET? SEL AGAIN | 1-16 OF 16  RATE 1/16 | KICK | SNARE | CLAP | CL HAT | OP HAT | LOW TOM | RIM | HI TOM | TRACK 1/1  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "909 Kit: SEL again: DEMO SET LOADED",
+   "ok": true,
+   "detail": "DRUMS ARM P01 | 1-16 OF 16  RATE 1/16 | KICK | SNARE | CLAP | CL HAT | OP HAT | LOW TOM | RIM | HI TOM | TRACK 1/1  ARMED  ALGO track  S | BLACK row  WHITE step  FX acc  "
+  },
+  {
+   "name": "909 Kit: PATTERN_OP demo set with the editor's hash 71a2a62f",
+   "ok": true,
+   "detail": [
+    "71a2a62f"
+   ]
+  },
+  {
+   "name": "909 Kit: SAVE: SAVED",
+   "ok": true,
+   "detail": "SAVED | 1-16 OF 16  RATE 1/16 | KICK | SNARE | CLAP | CL HAT | OP HAT | LOW TOM | RIM | HI TOM | TRACK 1/1  ARMED  ALGO track  S | BLACK row  WHITE step  FX acc  "
+  },
+  {
+   "name": "909 Kit: slot 18 keeps its name and holds v1.24.1's length",
+   "ok": true,
+   "detail": "'909 KIT' 3756 B (v1.24.1 3756 B)"
+  },
+  {
+   "name": "909 Kit: the saved slot plays pattern 1 as v1.24.1's patch (loudest 250 ms within 15 %, sum within 25 %)",
+   "ok": true,
+   "detail": "loudest 6496 / 6729, sum 34374 / 35715"
+  },
+  {
+   "name": "909 Kit: the empty version was silent (under a tenth)",
+   "ok": true,
+   "detail": "loudest 0 against 6729"
+  },
+  {
+   "name": "Verona Drum 1: the editor's demo-set binary is v1.24.1's patch byte for byte (DEMO_CASES vs presets-1.24.1.h)",
+   "ok": true,
+   "detail": "3644 / 3644 B"
+  },
+  {
+   "name": "Verona Drum 1: slot 20 (VERONA DRUM 1) holds the empty version",
+   "ok": true,
+   "detail": "3545 B, the empty version 3545 B"
+  },
+  {
+   "name": "Verona Drum 1: the SEQ page shows P01",
+   "ok": true,
+   "detail": "PATTERN ARM P01 | 1-16 OF 16  RATE 1/16 | KICK | DRUM 1 | DRUM 2 | MULTI | SNARE | HI HAT 1 | HI HAT 2 | CLAP | TRACK 1/1  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "Verona Drum 1: the EMPTY hint (SEQ+SEL demo set)",
+   "ok": true,
+   "detail": "PATTERN ARM P01 | 1-16 OF 16  RATE 1/16 | KICK | DRUM 1 | DRUM 2 | MULTI | SNARE | HI HAT 1 | HI HAT 2 | CLAP | TRACK 1/1  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "Verona Drum 1: SEQ held + SEL asks: LOAD DEMO SET? SEL AGAIN",
+   "ok": true,
+   "detail": "LOAD DEMO SET? SEL AGAIN | 1-16 OF 16  RATE 1/16 | KICK | DRUM 1 | DRUM 2 | MULTI | SNARE | HI HAT 1 | HI HAT 2 | CLAP | TRACK 1/1  ARMED  ALGO track  S | EMPTY  SEQ+SEL demo set  SEL+PR"
+  },
+  {
+   "name": "Verona Drum 1: SEL again: DEMO SET LOADED",
+   "ok": true,
+   "detail": "PATTERN ARM P01 | 1-16 OF 16  RATE 1/16 | KICK | DRUM 1 | DRUM 2 | MULTI | SNARE | HI HAT 1 | HI HAT 2 | CLAP | TRACK 1/1  ARMED  ALGO track  S | BLACK row  WHITE step  FX acc  "
+  },
+  {
+   "name": "Verona Drum 1: PATTERN_OP demo set with the editor's hash 76709dce",
+   "ok": true,
+   "detail": [
+    "76709dce"
+   ]
+  },
+  {
+   "name": "Verona Drum 1: SAVE: SAVED",
+   "ok": true,
+   "detail": "SAVED | 1-16 OF 16  RATE 1/16 | KICK | DRUM 1 | DRUM 2 | MULTI | SNARE | HI HAT 1 | HI HAT 2 | CLAP | TRACK 1/1  ARMED  ALGO track  S | BLACK row  WHITE step  FX acc  "
+  },
+  {
+   "name": "Verona Drum 1: slot 20 keeps its name and holds v1.24.1's length",
+   "ok": true,
+   "detail": "'VERONA DRUM 1' 3644 B (v1.24.1 3644 B)"
+  },
+  {
+   "name": "Verona Drum 1: the saved slot plays pattern 1 as v1.24.1's patch (loudest 250 ms within 15 %, sum within 25 %)",
+   "ok": true,
+   "detail": "loudest 4836 / 4628, sum 28584 / 26371"
+  },
+  {
+   "name": "Verona Drum 1: the empty version was silent (under a tenth)",
+   "ok": true,
+   "detail": "loudest 0 against 4628"
+  }
+ ],
+ "patches": {
+  "Silver Box": {
+   "slot": 3,
+   "empty_len": 1386,
+   "v1241_len": 1523,
+   "hash": "68beb605",
+   "before": [
+    "SILVER BOX",
+    1386
+   ],
+   "hint": [
+    "EMPTY  SEQ+SEL demo set  SEL+PR"
+   ],
+   "empty_render": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "pattern_op": [
+    [
+     3,
+     0,
+     0,
+     5,
+     182,
+     190,
+     104
+    ]
+   ],
+   "after_save": [
+    "SILVER BOX",
+    1523
+   ],
+   "saved_render": [
+    5527,
+    6994,
+    6735,
+    5542,
+    6996,
+    6743,
+    5577
+   ],
+   "v1241_render": [
+    5511,
+    6930,
+    6665,
+    5527,
+    6932,
+    6677,
+    5535
+   ]
+  },
+  "Scrounge": {
+   "slot": 15,
+   "empty_len": 3024,
+   "v1241_len": 3717,
+   "hash": "58c41bd5",
+   "before": [
+    "SCROUNGE",
+    3024
+   ],
+   "hint": [
+    "EMPTY  SEQ+SEL demo set  SEL+PR"
+   ],
+   "empty_render": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "pattern_op": [
+    [
+     3,
+     0,
+     0,
+     213,
+     27,
+     196,
+     88
+    ]
+   ],
+   "after_save": [
+    "SCROUNGE",
+    3717
+   ],
+   "saved_render": [
+    3659,
+    3847,
+    3847,
+    3563,
+    3847,
+    3843,
+    3501
+   ],
+   "v1241_render": [
+    3533,
+    3794,
+    3839,
+    3440,
+    3844,
+    3835,
+    3660
+   ]
+  },
+  "808 Kit": {
+   "slot": 17,
+   "empty_len": 3441,
+   "v1241_len": 3659,
+   "hash": "bac6deaa",
+   "before": [
+    "808 KIT",
+    3441
+   ],
+   "hint": [
+    "EMPTY  SEQ+SEL demo set  SEL+PR"
+   ],
+   "empty_render": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "pattern_op": [
+    [
+     3,
+     0,
+     0,
+     170,
+     222,
+     198,
+     186
+    ]
+   ],
+   "after_save": [
+    "808 KIT",
+    3659
+   ],
+   "saved_render": [
+    7177,
+    4868,
+    4306,
+    6791,
+    5105,
+    4292,
+    6210
+   ],
+   "v1241_render": [
+    4979,
+    5118,
+    4853,
+    5515,
+    5220,
+    4455,
+    5188
+   ]
+  },
+  "909 Kit": {
+   "slot": 18,
+   "empty_len": 3606,
+   "v1241_len": 3756,
+   "hash": "71a2a62f",
+   "before": [
+    "909 KIT",
+    3606
+   ],
+   "hint": [
+    "EMPTY  SEQ+SEL demo set  SEL+PR"
+   ],
+   "empty_render": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "pattern_op": [
+    [
+     3,
+     0,
+     0,
+     47,
+     166,
+     162,
+     113
+    ]
+   ],
+   "after_save": [
+    "909 KIT",
+    3756
+   ],
+   "saved_render": [
+    4971,
+    6496,
+    3527,
+    5546,
+    5821,
+    3161,
+    4852
+   ],
+   "v1241_render": [
+    4504,
+    6426,
+    3752,
+    5549,
+    6729,
+    3803,
+    4952
+   ]
+  },
+  "Verona Drum 1": {
+   "slot": 20,
+   "empty_len": 3545,
+   "v1241_len": 3644,
+   "hash": "76709dce",
+   "before": [
+    "VERONA DRUM 1",
+    3545
+   ],
+   "hint": [
+    "EMPTY  SEQ+SEL demo set  SEL+PR"
+   ],
+   "empty_render": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "pattern_op": [
+    [
+     3,
+     0,
+     0,
+     206,
+     157,
+     112,
+     118
+    ]
+   ],
+   "after_save": [
+    "VERONA DRUM 1",
+    3644
+   ],
+   "saved_render": [
+    3879,
+    4836,
+    2992,
+    4330,
+    4054,
+    3992,
+    4501
+   ],
+   "v1241_render": [
+    4628,
+    4010,
+    3026,
+    3428,
+    3613,
+    3092,
+    4574
+   ]
+  }
+ },
+ "all_ok": false
+}
