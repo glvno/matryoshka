@@ -56,7 +56,7 @@ int main(void)
         static fc_pattern_t a, b, got;
         const fc_pattern_t *init = 0, *next = 0;
         CHECK(lz_unpack(PRESET_LIST[i].lz, PRESET_LIST[i].lz_len, bin, sizeof bin) == (int32_t)PRESET_LIST[i].len);
-        m1_set_current(bin, PRESET_LIST[i].len);
+        CHECK(m1_set_current(bin, PRESET_LIST[i].len) == 0);
         CHECK(eng_load(m1_cur, m1_cur_len) == 0);
         if (!eng_steps_count()) continue;
         mod = eng_steps_module(0);

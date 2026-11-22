@@ -114,7 +114,8 @@ const BC: &str = include_str!("../../../firmware/src/font_bc.h");
 pub struct BcFont {
     h: usize,
     map: Vec<u8>,
-    glyphs: Vec<(usize, usize, i32, usize)>, // ink width, advance, ink start, offset into bits
+    glyphs: Vec<(usize, usize, i32, usize, usize, usize)>, // ink width, advance, ink start, first ink row, its rows' bits
+                                                         // (from, to): a glyph keeps only its ink rows
     bits: Vec<u8>,
 }
 
@@ -151,7 +152,9 @@ pub fn bc_fonts() -> &'static Vec<BcFont> {
             let h = numbers(&head[..head.find('}').unwrap()])[0] as usize;
             let map: Vec<u8> = numbers(array(&format!("{l}_map"))).into_iter().map(|v| v as u8).collect();
             let g = numbers(array(&format!("{l}_g")));
-            let glyphs = g.chunks(4).map(|c| (c[0] as usize, c[1] as usize, c[2] as i32, c[3] as usize)).collect();
+            // (w, adv, x, y, off) each, then an entry whose off ends the last glyph's rows
+            let ends: Vec<usize> = g.chunks(5).skip(1).map(|c| c[4] as usize).collect();
+            let glyphs = g.chunks(5).zip(ends).map(|(c, end)| (c[0] as usize, c[1] as usize, c[2] as i32, c[3] as usize, c[4] as usize, end)).collect();
             let bits = numbers(array(&format!("{l}_bits"))).into_iter().map(|v| v as u8).collect();
             out.push(BcFont { h, map, glyphs, bits });
         }
@@ -162,7 +165,7 @@ pub fn bc_fonts() -> &'static Vec<BcFont> {
 /// The block `text_bc` draws for `s` in font `f`: coverage 0..15 per pixel (left aligned, as wide as the text).
 pub fn render_bc(s: &str, f: usize) -> (usize, usize, Vec<u8>) {
     let font = &bc_fonts()[f];
-    let gl = |c: char| -> Option<&(usize, usize, i32, usize)> {
+    let gl = |c: char| -> Option<&(usize, usize, i32, usize, usize, usize)> {
         let c = c as u32;
         if !(0x20..0x7f).contains(&c) {
             return None;
@@ -174,11 +177,14 @@ pub fn render_bc(s: &str, f: usize) -> (usize, usize, Vec<u8>) {
     let mut px = vec![0u8; w * font.h];
     let mut x = 0usize;
     for c in s.chars() {
-        let Some(&(gw, adv, gx, off)) = gl(c) else { continue };
+        let Some(&(gw, adv, gx, gy, off, end)) = gl(c) else { continue };
         let rb = (gw + 1) / 2;
-        for r in 0..font.h {
+        for r in gy..font.h {
+            if off + (r - gy) * rb >= end {
+                break;
+            }
             for j in 0..gw {
-                let b = font.bits[off + r * rb + j / 2];
+                let b = font.bits[off + (r - gy) * rb + j / 2];
                 let a = if j % 2 == 1 { b & 15 } else { b >> 4 };
                 let at = x as i32 + j as i32 + gx;
                 if a > 0 && at >= 0 && (at as usize) < w {
