@@ -26,7 +26,7 @@ static void midi_drain_mode(int quick)
         RING_PUBLISH();
         mi_r++;
         if (st == 0xF0u) {                      /* realtime and Song Position (MENU > CLOCK IN, CLOCK IN DELAY): clock_in.h */
-            clk_in_take(pkt, at);
+            clk_in_take(pkt, (uint16_t)at);
         } else if ((st == 0x90u || st == 0x80u) && (!cfg.ch || cfg.ch == chn) &&
                    (pad_learn(n, st == 0x90u ? v : 0u, chn) || map_midi(ENG_MAP_NOTE + n, st == 0x90u ? v : 0u) ||
                     pad_midi(n, st == 0x90u ? v : 0u, chn))) {

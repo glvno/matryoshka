@@ -4,7 +4,8 @@
 /* MIDI rings: 4-byte USB-MIDI event packets */
 #define MQ 64u
 static uint32_t midi_in_q[MQ];
-static uint32_t midi_in_at[MQ];                       /* when it came: TIMER4 (fm1_ticks), CLOCK IN DELAY's start (clock_in.h) */
+static uint16_t midi_in_at[MQ];                       /* when it came: TIMER4 / 1024 (42.7 us, wraps every 2.8 s), CLOCK IN
+                                                       * DELAY's start (clock_in.h CIN_T) */
 static uint8_t midi_in_source[MQ];                    /* 1 USB, 2 TRS */
 static volatile uint32_t mi_w, mi_r;
 static volatile uint8_t midi_in_overflow;               /* audio ISR discards a broken stream and releases notes */
@@ -25,7 +26,7 @@ static int midi_enqueue(uint32_t pkt, uint32_t source)
         return 0;
     }
     midi_in_q[at] = pkt;
-    midi_in_at[at] = fm1_ticks();
+    midi_in_at[at] = (uint16_t)(fm1_ticks() >> 10);
     midi_in_source[at] = (uint8_t)source;
     RING_PUBLISH();
     mi_w++;

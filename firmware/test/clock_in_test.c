@@ -117,7 +117,7 @@ static void deliver(uint32_t pkt, int pos, double at)
     }
     if (pos != -9)
         host_m = pos;
-    clk_in_take(pkt, (uint32_t)(uint64_t)(at * 24000000.0 / ENG_SR));
+    clk_in_take(pkt, CIN_T((uint32_t)(uint64_t)(at * 24000000.0 / ENG_SR)));
 }
 static void sim_to(double t)
 {
@@ -492,7 +492,7 @@ static void release_times(int ms)
         samples = s;
         fm1_ms = (uint32_t)(samples * 1000u / ENG_SR);
         while (sent < n && at[sent] <= (double)s) {
-            clk_in_take(pkt[sent], (uint32_t)(uint64_t)(at[sent] * 24000000.0 / ENG_SR));
+            clk_in_take(pkt[sent], CIN_T((uint32_t)(uint64_t)(at[sent] * 24000000.0 / ENG_SR)));
             sent++;
         }
         clk_in_idle();
@@ -516,8 +516,10 @@ static void release_times(int ms)
             err = ((double)s - (at[got] + d)) / (ENG_SR / 1000.0);   /* ms */
             worst_late = err > worst_late ? err : worst_late;
             worst_early = err < worst_early ? err : worst_early;
-            if (err > 0.03 || err < (b == 0xF8u ? -1.0 : -0.03))
+            if (err > 0.05 || err < (b == 0xF8u ? -1.05 : -0.05)) {   /* (CIN_T's unit: 43 us) */
+                printf("      (message %d, status %02X, %+.3f ms)\n", got, b, err);
                 bad++;
+            }
             got++;
         }
         ton = transport_on;
@@ -527,8 +529,8 @@ static void release_times(int ms)
     check(what, got == n && sent == n && bad == 0 && clk_ticks == ck && cin_dq_r == cin_dq_w);
     {   /* an entry due further ahead than the longest delay: TIMER4 wrapped while nothing drained (an update session) */
         uint32_t now = test_ticks();
-        clk_in_take(0x0Fu | 0xF8u << 8, now - 24000u * 300u);
-        clk_in_take(0x0Fu | 0xF8u << 8, now + 24000u * 100000u);
+        clk_in_take(0x0Fu | 0xF8u << 8, CIN_T(now - 24000u * 300u));
+        clk_in_take(0x0Fu | 0xF8u << 8, CIN_T(now + 24000u * 1500u));
         clk_in_idle();
         check("  a message stamped far in the past or more than the longest delay ahead (TIMER4 wrapped) goes at once",
               clk_ticks == ck + 2u && cin_dq_r == cin_dq_w);
