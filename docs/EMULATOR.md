@@ -414,7 +414,7 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
   are skipped.
 - **The rig's knob does not matter (issue #1170).** For each recording the scenarios hold the rig's USB audio at
   MASTER's default level, whatever the knob, and let it go after the recording
-  ([D-1169](ledger/releases.md#D-1169), Proposed). They send an encoder turn of no clicks, which starts the device test
+  ([D-1169](ledger/releases.md#D-1169), Decided). They send an encoder turn of no clicks, which starts the device test
   mode and changes nothing else, then DIAG page 100; page 101 ends it. The firmware takes page 100 only in the test
   mode, and drops the fixed level when the test mode ends 10 s after the last test key or turn. The analog output still
   follows the knob, and outside the test mode so does USB audio ([D-927](ledger/device-ui.md#D-927)). The run says once
