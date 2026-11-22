@@ -276,6 +276,49 @@ static void ff_suite(const char *name, int npos)   /* (the first npos of FF_AT) 
     ff_clock();
 }
 
+/* (#1132, D-543) song s (0-based, the one playing) from the top: every track starts each entry on its first step (visit
+ * 0, whatever the length of the entry before it), on the tick eng_song_ticks gives (the SONG page's PLAY start), or the
+ * tick after when the entry's first step falls half a tick after it (after a step of 1/64) */
+static void song_starts(const char *name, uint32_t s)
+{
+    int n = eng_steps_count() < FF_TRK ? eng_steps_count() : FF_TRK, len = eng_song_len(s), k, t, done = 0, bad = 0;
+    int seen[FF_TRK], half[FF_TRK], b_k = -1, b_e = -1, b_t = -1, b_want = -1, b_visit = -1;
+    ff_send(0xFCu, 0, 0);
+    for (k = 0; k < 4; k++)
+        ff_clock();
+    ff_send(0xFAu, 0, 0);
+    for (k = 0; k < n; k++)
+        seen[k] = half[k] = 0;
+    for (t = 0; t < 100000 && done < n; t++) {
+        ff_clock();                                 /* (tick t) */
+        for (done = k = 0; k < n; k++) {
+            int mod = eng_steps_module((uint32_t)k);
+            const inst_t *it = &inst_pool[E.node[mod].inst0];
+            int e = E.trk_spos[E.node[mod].trk];
+            if (seen[k] < len && e == seen[k]) {
+                int want = eng_song_ticks((uint32_t)mod, s, (uint32_t)e);
+                if ((it->s.stp.visit != 0 || !(t == want || (t == want + 1 && half[k] > 0))) && !bad++) {
+                    b_k = k;
+                    b_e = e;
+                    b_t = t;
+                    b_want = want;
+                    b_visit = it->s.stp.visit;
+                }
+                seen[k]++;
+            }
+            half[k] = it->s.stp.half;
+            done += seen[k] >= len;
+        }
+    }
+    snprintf(what, sizeof what, "%s: every track starts each song entry on its first step, on the tick of eng_song_ticks "
+             "(%d off)", name, bad);
+    check(what, bad == 0 && done == n && n > 0 && len > 1);
+    if (bad)
+        printf("      (the first: track %d, entry %d at tick %d (eng_song_ticks %d), on visit %d)\n", b_k, b_e, b_t, b_want, b_visit);
+    ff_send(0xFCu, 0, 0);
+    ff_clock();
+}
+
 int main(void)
 {
     int from, mid, k;
@@ -485,8 +528,19 @@ int main(void)
                 eng_song_set(0);
             snprintf(name, sizeof name, "%s, %s, the track %s", c < 16u ? "song 3 of patterns with their own lengths and rates"
                      : "the pattern alone", DIR_NAME[d], SHAPE_NAME[s]);
+            if (c < 16u)
+                song_starts(name, 2);
             ff_suite(name, c == 7u || c == 13u || c == 16u ? FF_N : 21);   /* (three of them up to 16383, the rest up to 1000) */
         }
+        eng_song_set(3);                            /* pattern 2 of 5 steps at 1/64 (7.5 ticks a pass), then pattern 3 at */
+        eng_set_param(mod, STEPS_P_DIR, 0);         /* 1/16: its first step half a tick after a tick, the rest on ticks */
+        eng_set_param(mod, STEPS_P_LEN, 16 << 16);
+        eng_set_param(mod, STEPS_P_RATE, 4 << 16);
+        check("  (pattern 2 of 5 steps at 1/64; song 3's patterns 1, 2, 3, 3, 1, 4, 3)", eng_pattern_shape(mod, 1, 5, 8) == 0
+              && eng_song_put(2, 2, 2, -1) == 0 && eng_song_len(2) == sizeof P);
+        song_starts("song 3 (1, 2, 3, 3, 1, 4, 3), pattern 2 of 5 steps at 1/64, forward, the track 16 steps at 1/16", 2);
+        ff_suite("song 3 (1, 2, 3, 3, 1, 4, 3), pattern 2 of 5 steps at 1/64, forward, the track 16 steps at 1/16", 21);
+        eng_song_set(0);
         check("the 808 Kit loads again", factory_load("808 KIT") == 0);
         eng_set_param((uint32_t)eng_find(T_FM1), FM1_P_TEMPO, 120 << 16);
         trk_mod = eng_steps_module(0);
