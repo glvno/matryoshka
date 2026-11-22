@@ -75,6 +75,9 @@
                                            web/public/firmware/matryoshka-factory.bin; sectors whose sum already matches
                                            are skipped, so a cut install is resumed by running it again)
   tools/m1_link.py factory-read [OFFSET [LENGTH [OUT]]]   (#915: the region's bytes, default all 73,728, to OUT or stdout)
+  tools/m1_link.py font-info              (#602: the font area: the font this firmware needs, and whether the FM-1 has it)
+  tools/m1_link.py font-install [FILE]    (#602: the screen font into the font area; FILE default
+                                           web/public/firmware/matryoshka-font.bin; resumed like factory-install)
 Every command takes --rig (the test rig: the FM-1 at its registered USB location, checked by its mark) or --location HEX
 (the FM-1 in that USB socket, tools/fm1_usb.py list). Without either it takes the FM-1 by its port name, and refuses
 while more than one FM-1 is connected, since they share the name (#771).
@@ -84,6 +87,7 @@ import atexit
 import collections
 import os
 import re
+import struct
 import sys
 import time
 
@@ -362,8 +366,9 @@ def factory_info_text(i):
             + ("; an install was begun" if i["writing"] else "") + tier)
 
 
-def factory_sector_sum(img, s):
-    """CRC-16 of sector s as the flash holds the image before the commit (the header's 64 bytes erased)"""
+def sector_sum(img, s):
+    """CRC-16 of sector s as the flash holds a factory region or font area image before the commit (the header's 64 bytes
+    erased)"""
     b = bytearray(b"\xFF" * 0x1000)
     part = img[s * 0x1000:(s + 1) * 0x1000]
     b[:len(part)] = part
@@ -387,7 +392,7 @@ def factory_install(link, img, log=lambda s: None):
     link.ack(frame(C_FACT_BEGIN), C_FACT_BEGIN, wait=3.0)
     sectors = (len(img) + 0xFFF) // 0x1000
     for s in range(sectors):
-        if factory_sum(link, s) == factory_sector_sum(img, s):
+        if factory_sum(link, s) == sector_sum(img, s):
             log(f"sector {s + 1:2d} of {sectors}: already there")
             continue
         off = FACTORY_HDR if s == 0 else 0
@@ -397,7 +402,7 @@ def factory_install(link, img, log=lambda s: None):
                 page += b"\xFF" * (256 - len(page))
             link.ack(frame(C_FACT_WRITE, [s, off & 0xFF, off >> 8, *page]), C_FACT_WRITE, wait=3.0)
             off = (off | 0xFF) + 1
-        if factory_sum(link, s) != factory_sector_sum(img, s):
+        if factory_sum(link, s) != sector_sum(img, s):
             sys.exit(f"factory region: sector {s} did not read back as written")
         log(f"sector {s + 1:2d} of {sectors}: written")
     link.ack(frame(C_FACT_COMMIT, list(img[:FACTORY_HDR])), C_FACT_COMMIT, wait=5.0)
@@ -413,6 +418,64 @@ def factory_read(link, off, n):
             sys.exit(f"factory region: {at:#x} not readable")
         out += bytes(p[4:4 + k])
     return bytes(out)
+
+
+# ---- the font area (#602, firmware/src/font_area.c): the screen type's larger sizes in their own flash sectors
+FONT_BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web", "public", "firmware", "matryoshka-font.bin")
+FONT_HDR = 64
+C_FONT, R_FONT_SUM = 0x1F, 0x68
+
+
+def font_id(img):
+    """the id of the font in a font area image (its header's CRC-32), None when img is not one"""
+    return struct.unpack_from("<I", img, 12)[0] if len(img) >= FONT_HDR and img[:4] == b"MFN1" else None
+
+
+def font_info(link):
+    """INFO byte 20 and bytes 21..24 (proto.c m1_info): None for a firmware with its type compiled in (before #602), else
+    {"valid": the FM-1 has the font it needs, "writing": an install began and did not commit, "id": that font's id}"""
+    p = link.ask(frame(0x01), (0x41,))
+    if len(p) < 25 or not p[20] & 1:
+        return None
+    return {"valid": bool(p[20] & 2), "writing": bool(p[20] & 4), "id": p[21] | p[22] << 8 | p[23] << 16 | p[24] << 24}
+
+
+def font_info_text(i):
+    if i is None:
+        return "screen font: built into this firmware (no font area)"
+    return (f"screen font: {'installed' if i['valid'] else 'missing (every size draws the small type)'}, font {i['id']:08x}"
+            + ("; an install was begun" if i["writing"] else ""))
+
+
+def font_sum(link, s):
+    p = link.ask(frame(C_FONT, [3, s]), (R_FONT_SUM, s), wait=2.0)
+    return p[2] | p[3] << 8 if p[1] else None
+
+
+def font_install(link, img, log=lambda s: None):
+    """the image into the font area, in the factory region's order: BEGIN (the header goes), each sector whose SUM differs
+    written a page at a time, then COMMIT (the firmware takes only its own font and checks the image's CRC-32 before it
+    programs the magic). Run again after a cut: the matching sectors are skipped"""
+    if font_id(img) is None:
+        sys.exit("not a font area image (web/public/firmware/matryoshka-font.bin)")
+    link.ack(frame(C_FONT, [1]), C_FONT, wait=3.0)
+    sectors = (len(img) + 0xFFF) // 0x1000
+    for s in range(sectors):
+        if font_sum(link, s) == sector_sum(img, s):
+            log(f"sector {s + 1:2d} of {sectors}: already there")
+            continue
+        off = FONT_HDR if s == 0 else 0
+        while off < 0x1000 and s * 0x1000 + off < len(img):
+            page = bytearray(img[s * 0x1000 + off:s * 0x1000 + (off | 0xFF) + 1])
+            if off & 0xF00 == 0xF00 and len(page) < 80:
+                page += b"\xFF" * (256 - len(page))
+            link.ack(frame(C_FONT, [2, s, off & 0xFF, off >> 8, *page]), C_FONT, wait=3.0)
+            off = (off | 0xFF) + 1
+        if font_sum(link, s) != sector_sum(img, s):
+            sys.exit(f"font area: sector {s} did not read back as written")
+        log(f"sector {s + 1:2d} of {sectors}: written")
+    link.ack(frame(C_FONT, [4, *img[:FONT_HDR]]), C_FONT, wait=5.0)
+    log("screen font committed")
 
 
 def bank_slots(link):
@@ -477,6 +540,12 @@ def main():
         print(f"uploaded {len(data)} bytes")
     elif a[0] in ("bank", "bank-info", "bank-clear"):
         bank_command(link, a)
+    elif a[0] == "font-info":
+        print(font_info_text(font_info(link)))
+    elif a[0] == "font-install":
+        img = open(a[1] if len(a) > 1 else FONT_BIN, "rb").read()
+        font_install(link, img, log=print)
+        print(font_info_text(font_info(link)))
     elif a[0] == "factory-info":
         print(factory_info_text(factory_info(link)))
     elif a[0] == "factory-install":

@@ -9,6 +9,19 @@
 typedef struct { uint8_t w, adv; int8_t x; uint8_t y; uint16_t off; } fglyph_t;   /* ink width, advance, ink start, first ink row, offset into bits */
 typedef struct { uint8_t h, base; const uint8_t *map; const fglyph_t *g; const uint8_t *bits; } font_t;   /* map: ASCII 0x20.. -> glyph, 255 none */
 
+/* The font area (#602): a FONT_AREA build (the device's) reads the tables of FONT_M, FONT_L, FONT_F, FONT_H, FONT_N, FONT_V, FONT_T from
+ * 10 flash sectors outside the firmware: the image web/public/firmware/matryoshka-font.bin, written with this file, which the
+ * installer puts on the FM-1 next to the firmware (firmware/src/font_area.c checks it at boot). FA_ID, the CRC-32 of the
+ * image's bytes 16 .. its end, names the font this firmware needs; FA_SECTOR_LIST is the flash sector (offset / 4096) of
+ * each of the image's sectors. Without that image every size draws FONT_S's letters (font_bc.c font_use). */
+#define FA_ID 0xE6118A53u
+#define FA_LEN 40946u
+#define FA_SECTORS 10u
+#define FA_SECTOR_LIST {0x93u, 0x94u, 0x95u, 0x96u, 0xE7u, 0xE8u, 0xE9u, 0xFCu, 0xFDu, 0xFEu}
+#if FONT_AREA
+#include "fm1_xip.h"
+#endif
+
 /* FONT_S: 13 px per em, line box 14 px, baseline at 11 */
 #define FONT_S_PX 13
 static const uint8_t font_s_map[95] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94};
@@ -127,6 +140,7 @@ static const font_t FONT_S = {14, 11, font_s_map, font_s_g, font_s_bits};
 
 /* FONT_M: 17 px per em, line box 18 px, baseline at 14 */
 #define FONT_M_PX 17
+#if !FONT_AREA
 static const uint8_t font_m_map[95] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94};
 static const fglyph_t font_m_g[96] = {
     {0, 3, 0, 0, 0}, {3, 5, 1, 2, 0}, {5, 5, 0, 2, 24}, {10, 10, 0, 2, 36}, {7, 7, 0, 0, 96}, {12, 13, 1, 2, 160}, {10, 10, 0, 2, 238}, {3, 3, 0, 2, 303},
@@ -304,10 +318,16 @@ static const uint8_t font_m_bits[3840] = {
     253,0,0,239,128,0,143,240,0,239,80,2,252,0,4,251,0,4,251,0,4,251,0,42,
     251,0,143,248,0,36,64,0,1,66,0,0,29,255,149,213,94,137,255,227,1,0,36,32,
 };
+#else                                           /* the same tables in the font area */
+#define font_m_map ((const uint8_t *)FM1_XIP(0xE9F6Bu))
+#define font_m_g ((const fglyph_t *)FM1_XIP(0xFEAB4u))
+#define font_m_bits ((const uint8_t *)FM1_XIP(0xFDBB4u))
+#endif
 static const font_t FONT_M = {18, 14, font_m_map, font_m_g, font_m_bits};
 
 /* FONT_L: 24 px per em, line box 24 px, baseline at 19 */
 #define FONT_L_PX 24
+#if !FONT_AREA
 static const uint8_t font_l_map[95] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94};
 static const fglyph_t font_l_g[96] = {
     {0, 5, 0, 0, 0}, {4, 6, 1, 2, 0}, {7, 7, 0, 2, 34}, {13, 15, 1, 2, 58}, {10, 10, 0, 0, 177}, {17, 19, 1, 2, 282}, {13, 14, 0, 2, 444}, {4, 4, 0, 2, 570},
@@ -621,10 +641,16 @@ static const uint8_t font_l_bits[7092] = {
     79,255,244,0,79,255,160,0,20,67,0,0,1,158,198,0,22,0,12,255,255,216,223,144,
     63,249,142,255,255,48,3,80,2,157,180,0,
 };
+#else                                           /* the same tables in the font area */
+#define font_l_map ((const uint8_t *)FM1_XIP(0xFEF34u))
+#define font_l_g ((const fglyph_t *)FM1_XIP(0xFECF4u))
+#define font_l_bits ((const uint8_t *)FM1_XIP(0xFC000u))
+#endif
 static const font_t FONT_L = {24, 19, font_l_map, font_l_g, font_l_bits};
 
 /* FONT_F: 14 px per em, line box 15 px, baseline at 12 */
 #define FONT_F_PX 14
+#if !FONT_AREA
 static const uint8_t font_f_map[95] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 255, 33, 64, 65, 66, 37, 38, 39, 40, 41, 42, 67, 44, 68, 46, 69, 70, 49, 50, 71, 72, 53, 54, 55, 56, 57, 73, 255, 255, 255, 255};
 static const fglyph_t font_f_g[75] = {
     {0, 3, 0, 0, 0}, {2, 4, 1, 2, 0}, {4, 4, 0, 2, 10}, {8, 8, 0, 2, 18}, {6, 6, 0, 1, 58}, {10, 11, 0, 2, 97}, {8, 8, 0, 2, 147}, {2, 2, 0, 2, 187},
@@ -726,10 +752,16 @@ static const uint8_t font_f_bits[2043] = {
     196,8,248,36,68,48,143,255,176,36,143,144,0,222,32,8,247,0,46,192,0,159,168,96,
     191,255,176,
 };
+#else                                           /* the same tables in the font area */
+#define font_f_map ((const uint8_t *)FM1_XIP(0xFEF93u))
+#define font_f_g ((const fglyph_t *)FM1_XIP(0x958B4u))
+#define font_f_bits ((const uint8_t *)FM1_XIP(0x950B8u))
+#endif
 static const font_t FONT_F = {15, 12, font_f_map, font_f_g, font_f_bits};
 
 /* FONT_H: 16 px per em, line box 16 px, baseline at 13 */
 #define FONT_H_PX 16
+#if !FONT_AREA
 static const uint8_t font_h_map[95] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 255, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 255, 255, 255, 255};
 static const fglyph_t font_h_g[65] = {
     {0, 3, 0, 0, 0}, {3, 4, 1, 1, 0}, {5, 5, 0, 1, 24}, {9, 10, 0, 2, 39}, {7, 7, 0, 0, 94}, {12, 12, 0, 1, 154}, {9, 9, 0, 1, 232}, {2, 2, 0, 1, 297},
@@ -851,10 +883,16 @@ static const uint8_t font_h_bits[2548] = {
     175,80,1,255,144,6,248,224,10,195,245,31,128,217,111,48,158,36,0,36,104,136,136,32,
     191,255,255,64,
 };
+#else                                           /* the same tables in the font area */
+#define font_h_map ((const uint8_t *)FM1_XIP(0x9608Eu))
+#define font_h_g ((const fglyph_t *)FM1_XIP(0x95A76u))
+#define font_h_bits ((const uint8_t *)FM1_XIP(0x946C4u))
+#endif
 static const font_t FONT_H = {16, 13, font_h_map, font_h_g, font_h_bits};
 
 /* FONT_N: 20 px per em, line box 19 px, baseline at 16 */
 #define FONT_N_PX 20
+#if !FONT_AREA
 static const uint8_t font_n_map[95] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 255, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 255, 255, 255, 255};
 static const fglyph_t font_n_g[65] = {
     {0, 4, 0, 0, 0}, {3, 5, 1, 2, 0}, {6, 6, 0, 2, 28}, {12, 12, 0, 2, 43}, {8, 9, 0, 0, 127}, {14, 15, 1, 1, 199}, {11, 12, 0, 1, 311}, {3, 3, 0, 2, 407},
@@ -1017,10 +1055,16 @@ static const uint8_t font_n_bits[3552] = {
     127,240,79,255,240,43,187,176,0,31,245,0,0,111,249,0,0,175,222,0,1,252,143,80,
     5,248,79,128,9,244,14,208,14,224,10,243,95,144,6,248,139,187,187,184,191,255,255,251,
 };
+#else                                           /* the same tables in the font area */
+#define font_n_map ((const uint8_t *)FM1_XIP(0x960EDu))
+#define font_n_g ((const fglyph_t *)FM1_XIP(0x95BFCu))
+#define font_n_bits ((const uint8_t *)FM1_XIP(0xE918Bu))
+#endif
 static const font_t FONT_N = {19, 16, font_n_map, font_n_g, font_n_bits};
 
 /* FONT_V: 26 px per em, line box 25 px, baseline at 21 */
 #define FONT_V_PX 26
+#if !FONT_AREA
 static const uint8_t font_v_map[95] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 255, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 255, 255, 255, 255};
 static const fglyph_t font_v_g[65] = {
     {0, 5, 0, 0, 0}, {5, 7, 1, 2, 0}, {8, 8, 0, 3, 57}, {14, 16, 1, 3, 81}, {11, 11, 0, 0, 207}, {18, 20, 1, 2, 345}, {14, 15, 0, 2, 525}, {4, 4, 0, 2, 665},
@@ -1276,10 +1320,16 @@ static const uint8_t font_v_bits[5764] = {
     0,15,247,47,247,0,10,252,4,65,0,2,67,36,68,68,68,68,143,255,255,255,255,143,
     255,255,255,255,
 };
+#else                                           /* the same tables in the font area */
+#define font_v_map ((const uint8_t *)FM1_XIP(0x9614Cu))
+#define font_v_g ((const fglyph_t *)FM1_XIP(0x95D82u))
+#define font_v_bits ((const uint8_t *)FM1_XIP(0x93040u))
+#endif
 static const font_t FONT_V = {25, 21, font_v_map, font_v_g, font_v_bits};
 
 /* FONT_T: 32 px per em, line box 31 px, baseline at 26 */
 #define FONT_T_PX 32
+#if !FONT_AREA
 static const uint8_t font_t_map[95] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 255, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 255, 255, 255, 255};
 static const fglyph_t font_t_g[65] = {
     {0, 6, 0, 0, 0}, {5, 9, 2, 3, 0}, {10, 10, 0, 3, 69}, {17, 19, 1, 4, 109}, {12, 14, 1, 0, 307}, {22, 25, 1, 3, 481}, {17, 19, 1, 3, 745}, {5, 5, 0, 3, 961},
@@ -1652,4 +1702,9 @@ static const uint8_t font_t_bits[8587] = {
     0,9,255,112,143,248,0,5,255,192,223,244,0,1,255,242,68,64,0,0,52,65,107,187,
     187,187,187,187,96,143,255,255,255,255,255,128,127,255,255,255,255,255,112,
 };
+#else                                           /* the same tables in the font area */
+#define font_t_map ((const uint8_t *)FM1_XIP(0x961ABu))
+#define font_t_g ((const fglyph_t *)FM1_XIP(0x95F08u))
+#define font_t_bits ((const uint8_t *)FM1_XIP(0xE7000u))
+#endif
 static const font_t FONT_T = {31, 26, font_t_map, font_t_g, font_t_bits};

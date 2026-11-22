@@ -1060,10 +1060,12 @@ static uint16_t mix565(uint16_t a, uint16_t b, uint32_t k)
 /* glyph row r of s (font f) blended in fg onto whatever row[] already holds, from x (row[] is w px wide) */
 static void text_onto(uint16_t *row, uint32_t w, const font_t *f, uint32_t r, const char *s, uint32_t x, uint16_t fg)
 {
+    font_t fb;
     uint32_t px = x;
     int32_t k;
     if (r >= f->h)
         return;
+    f = font_use(f, &fb);                               /* (FONT_S's letters until the font area holds the font: font_bc.c) */
     if (r == 0u)
         scr_pend(x, text_w(f, s, -1), f->h, s, -1);
     for (k = 0; s[k]; k++) {
