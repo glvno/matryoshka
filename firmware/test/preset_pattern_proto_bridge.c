@@ -24,7 +24,8 @@ uint32_t host_eng_routes_end(const uint8_t *p, uint32_t len, uint32_t at);
 int host_preset_name(uint8_t *bin, uint32_t *len, uint32_t dev, const char *name)
 {
     int result;
-    m1_set_current(bin, *len);
+    if (m1_set_current(bin, *len))                   /* (past M1_PATCH_MAX: refused, bin stays as it is, #1134) */
+        return -1;
     result = m1_preset_name(dev, name);
     memcpy(bin, m1_cur, m1_cur_len); *len = m1_cur_len;
     return result;
@@ -33,7 +34,8 @@ int host_default_pattern(uint8_t *bin, uint32_t *len, uint32_t mod, uint32_t pat
                          const uint32_t *words, uint32_t n, uint32_t identity)
 {
     int result;
-    m1_set_current(bin, *len);
+    if (m1_set_current(bin, *len))
+        return 0;
     result = m1_default_pattern(mod, pattern, words, n, identity);
     memcpy(bin, m1_cur, m1_cur_len); *len = m1_cur_len;
     return result;
