@@ -108,6 +108,7 @@ import { currentTheme, onThemeChange, setTheme, themeChoice, toggleTheme } from 
 import { INSTALL_VERSION, installLabel } from './version';
 import { runningVersion, updateOffer } from './fm1-version';
 import { factoryOffer, fetchFactoryImage, loadFactorySets, pickSet, type FactorySet } from './factory-content';
+import { fetchFont, fontOffer } from './font-content';
 import { PanelAlign } from './panel-align';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -2965,7 +2966,7 @@ async function connectFm1(ask = false): Promise<void> {
     libraryDeviceChanged();
     showPads();
     if (syncsWith(device.info)) void offerFirmwareUpdate();   // (else sayUpdate has offered the update already)
-    void offerFactoryContent();
+    void offerScreenFont().then((shown) => { if (!shown) void offerFactoryContent(); });
   } catch (e) {
     showBudget();
     libraryDeviceChanged();
@@ -2986,6 +2987,28 @@ async function offerFirmwareUpdate(): Promise<void> {
   if (!text || !device.connected) return;
   devStatus(text);
   showAction(text, 'Update', openInstall, 12000);
+}
+/** the FM-1's screen font (#602): missing or cut off while its firmware needs one this site has: one click installs it
+ *  (font-content.ts), then the factory sounds' offer follows. True when it offered the install */
+async function offerScreenFont(): Promise<boolean> {
+  const font = device.info?.font;
+  if (!font || (font.valid && !font.writing)) return false;
+  const image = await fetchFont();
+  const offer = fontOffer(font, image);
+  if (!offer || !device.connected) return false;
+  devStatus(offer.text);
+  if (!offer.install || !image) return false;
+  showAction(offer.text, 'Install', () => void installScreenFont(image), 20000);
+  return true;
+}
+async function installScreenFont(image: Uint8Array): Promise<void> {
+  try {
+    await device.installFont(image, (done, total) => devStatus(`Installing the screen font: ${Math.round((100 * done) / total)} %`));
+    devStatus('Screen font installed');
+    void offerFactoryContent();
+  } catch (e) {
+    devStatus(`The screen font was not installed: ${(e as Error).message}`);
+  }
 }
 /** the FM-1's factory sounds (#915): none, damaged, for a newer firmware, a cut-off install, or older than this site's set
  *  for the firmware it runs: one click installs them (factory-content.ts). A saved slot changes only when it still holds a
