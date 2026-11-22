@@ -1052,7 +1052,7 @@ int main(int argc, char **argv)
         uint32_t n;
         CHECK(m1_handle(q, sizeof q) == 1 && replies[0][4] == R_INFO);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 20u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
+        CHECK(n == 26u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
         CHECK(p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION && p[14] == M1_FEATURES4 && p[15] == 64u);
         printf("allocation rule %u advertised with unchanged format range %u..%u\n", p[13], p[7], p[8]);
         return 0;
@@ -1203,7 +1203,7 @@ int main(int argc, char **argv)
         nreplies = 0;
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4 && replies[0][4] == R_INFO && replies[1][4] == R_TEMPO_NOW);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 20u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION && p[14] == M1_FEATURES4);
+        CHECK(n == 26u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION && p[14] == M1_FEATURES4);
         { uint32_t j; uint8_t origin[6];
           for (j = 0; j < 2u; j++) {
               CHECK(replies[j + 2u][4] == R_PATTERN_ORIGIN);
@@ -1217,7 +1217,7 @@ int main(int argc, char **argv)
         nreplies = 0;
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 20u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[14] == M1_FEATURES4);
+        CHECK(n == 26u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[14] == M1_FEATURES4);
         CHECK(!(p[3] & M1_INFO_MIDI_OUT));
         midi_out_on = 1;
         /* #702: EDITOR at IGNORE is flag bit 3; at ALLOW the bit is clear (as in older firmware) */
@@ -1226,7 +1226,7 @@ int main(int argc, char **argv)
         nreplies = 0;
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 20u && (p[3] & M1_INFO_EDITOR_IGNORE) && (p[3] & M1_INFO_MIDI_OUT) && p[14] == M1_FEATURES4);
+        CHECK(n == 26u && (p[3] & M1_INFO_EDITOR_IGNORE) && (p[3] & M1_INFO_MIDI_OUT) && p[14] == M1_FEATURES4);
         editor_ignore_on = 0;
         CHECK(p[14] & 4u);                                    /* #915: feature bit 26, the factory region's commands */
         CHECK(p[14] & 8u);                                    /* #1107: feature bit 27, MASTER_EQ */
