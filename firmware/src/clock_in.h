@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 glvno */
-/* MIDI clock in and transport in (GLO > MIDI > CLOCK IN, D-452, #870; MIDI 2/3 > TRANSPORT IN, #596): the realtime and
+/* MIDI clock in and transport in (GLO > MIDI > CLOCK IN, D-452, #870; MIDI 2/4 > TRANSPORT IN, #596): the realtime and
  * Song Position messages midi_input.h takes from the MIDI ring, on the main thread. CLOCK IN takes the clock (0xF8),
  * TRANSPORT IN takes Start, Continue, Stop and Song Position; each works without the other. MIDI clock drives the clock
  * while it comes, and the Steps tracks step on its ticks: the host's first clock after its Start is their tick 0
@@ -13,9 +13,22 @@
  * back only half a second after the last clock while the transport is stopped, or at once with CLOCK IN off.
  * The host test (firmware/test/clock_in_test.c) runs this file with the engine.
  *
+ * CLOCK IN DELAY (MIDI 2/4, #870, 0..200 ms, 0 as made): the FM-1 acts on every message this file takes that much later,
+ * for a host whose MIDI clock runs ahead of its own audio (Reel: about 70 ms). Each message is due at the time it came
+ * into the MIDI ring (midi_queue.h midi_in_at: TIMER4 in units of 1024 ticks, CIN_T) plus the delay set when it came; a change of the delay applies to
+ * the messages that come after it. They wait in arrival order in a small queue (cin_dq) and go to clk_in_rt, the same
+ * code as without the delay, after each drain of the ring (clk_in_idle), in order: never one before an earlier one, so a
+ * delay lowered while messages wait holds the newer ones until the older ones are due. Clock, Start, Stop, Continue and
+ * Song Position all wait, so tempo following, Start and Stop, Song Position and the stall handling act as without the
+ * delay, only later; notes and controls do not wait. At 0 ms with nothing waiting a message goes to clk_in_rt at once,
+ * as before the delay. A clock due within CIN_DQ_MERGE of the clock run newest in the queue joins that run (a burst of
+ * missed clocks takes one entry a millisecond); a full queue (only a burst faster than that, 32 entries deep) lets its
+ * oldest entry go early rather than lose one. MIDI clock out has nothing to pass on (clock_out.h: while MIDI clock
+ * drives, the engine makes no ticks of its own), so it follows what the FM-1 plays.
+ *
  * The log (#870: what a looper such as Reel sends, read on the Mac afterwards): the realtime and Song Position messages
- * as the FM-1 takes them, logged whether CLOCK IN and TRANSPORT IN are on or not, in a ring of CIN_LOG_N entries. Each
- * entry has its time in
+ * as the FM-1 takes them from the MIDI ring, before CLOCK IN DELAY holds them, logged whether CLOCK IN and TRANSPORT IN
+ * are on or not, in a ring of CIN_LOG_N entries. Each entry has its time in
  * microseconds (TIMER4, CIN_LOG_NOW) and the transport's state; Start, Stop and Continue the engine's tick count (low 16
  * bits) as the last block left it, Song Position its value. A clock that comes a period like the one before it (within a
  * quarter) and finds a clock entry newest is folded into it (up to 31 more; the entry keeps the time from its first clock
@@ -26,7 +39,7 @@
  * CIN_LOG_RING, ota.c ota_buf: the pool has no room of its own, D-100), so an update empties it. DIAG 145 (the header,
  * and the read starts at the oldest entry), 146 (the next 4 entries), 147 (empty it); tools/m1_link.py midilog. */
 #ifndef CIN_LOG_NOW
-#define CIN_LOG_NOW() fm1_ticks()
+#define CIN_LOG_NOW() fm1_ticks()               /* (TIMER4: the log's clock and CLOCK IN DELAY's) */
 #endif
 #define CIN_LOG_N 256u
 #define CIN_LOG_AFTER 64u
@@ -152,11 +165,10 @@ static uint32_t cin_log_diag(uint32_t page, uint8_t *out)
     return 1u;
 }
 
-/* one realtime or system common packet from the MIDI ring (USB-MIDI layout: the status in bits 8..15, data above) */
+/* one realtime or system common packet (USB-MIDI layout: the status in bits 8..15, data above), when it is due */
 static void clk_in_rt(uint32_t pkt)
 {
     uint32_t rt = (pkt >> 8) & 0xFFu;
-    cin_log_add(pkt);
     if (rt == 0xF8u) {
         if (!cfg.clock_in)
             return;
@@ -192,9 +204,75 @@ static void clk_in_rt(uint32_t pkt)
         ui_dirty = 1;
 }
 
-/* after each drain: MIDI clock lets go of the clock half a second after its last tick, unless the transport runs on it */
+/* CLOCK IN DELAY's queue (main thread only): each entry's due time (CIN_T) and its packet; a clock run keeps the clocks
+ * after its first in the packet's bits 16..23, which a clock leaves 0. (CIN_DELAY_MAX, the setting's top: ui.c) */
+#define CIN_T(ticks) ((uint16_t)((ticks) >> 10))   /* TIMER4 in units of 1024 ticks: 42.7 us, wrapping every 2.8 s */
+#define CIN_T_MS(ms) (((uint32_t)(ms) * 1000u * FM1_TICKS_PER_US + 1023u) >> 10)   /* ms in those units, rounded up (the
+                                                * stamp rounds down: a message goes within one unit of its time) */
+#define CIN_DQ_N 32u                            /* at 300 bpm 200 ms is 24 clocks; Start, Stop and Song Position besides */
+#define CIN_DQ_MERGE (CIN_T_MS(1u) - 1u)        /* a clock due this soon after a run's first joins the run (under 1 ms) */
+static uint16_t cin_dq_due[CIN_DQ_N];
+static uint32_t cin_dq_pkt[CIN_DQ_N];
+static uint8_t cin_dq_r, cin_dq_w;              /* (taken, put: CIN_DQ_N divides their 256) */
+static uint8_t cin_dq_most;                     /* the deepest the queue has been, in entries (the host test) */
+static uint32_t cin_dq_early;                   /* entries a full queue let go before their time (the host test) */
+
+static void cin_dq_out(void)                    /* the oldest entry to clk_in_rt, a clock run clock by clock */
+{
+    uint32_t pkt = cin_dq_pkt[cin_dq_r % CIN_DQ_N], n = 1u;
+    cin_dq_r++;
+    if (((pkt >> 8) & 0xFFu) == 0xF8u) {
+        n += (pkt >> 16) & 0xFFu;
+        pkt &= 0xFFFFu;
+    }
+    while (n--)
+        clk_in_rt(pkt);
+}
+
+/* the drain's realtime and Song Position packet, which came into the MIDI ring at `at` (CIN_T): logged, then to
+ * clk_in_rt now (CLOCK IN DELAY at 0 and nothing waiting) or into the queue */
+static void clk_in_take(uint32_t pkt, uint16_t at)
+{
+    uint32_t k, clock = ((pkt >> 8) & 0xFFu) == 0xF8u, full;
+    uint16_t due;
+    cin_log_add(pkt);
+    if (!cfg.clock_delay && cin_dq_w == cin_dq_r) {
+        clk_in_rt(pkt);
+        return;
+    }
+    due = (uint16_t)(at + CIN_T_MS(cfg.clock_delay));
+    full = (uint8_t)(cin_dq_w - cin_dq_r) == CIN_DQ_N;
+    k = (uint8_t)(cin_dq_w - 1u) % CIN_DQ_N;
+    if (clock && cin_dq_w != cin_dq_r && ((cin_dq_pkt[k] >> 8) & 0xFFu) == 0xF8u && ((cin_dq_pkt[k] >> 16) & 0xFFu) < 255u
+        && ((int16_t)(due - cin_dq_due[k]) <= (int16_t)CIN_DQ_MERGE || full)) {
+        cin_dq_pkt[k] += 1u << 16;              /* (a delay lowered meanwhile: due before the run, which it waits behind) */
+        return;
+    }
+    if (full) {
+        cin_dq_early++;
+        cin_dq_out();
+    }
+    cin_dq_due[cin_dq_w % CIN_DQ_N] = due;
+    cin_dq_pkt[cin_dq_w % CIN_DQ_N] = clock ? pkt & 0xFFFFu : pkt;
+    cin_dq_w++;
+    if ((uint8_t)(cin_dq_w - cin_dq_r) > cin_dq_most)
+        cin_dq_most = (uint8_t)(cin_dq_w - cin_dq_r);
+}
+
+/* after each drain: CLOCK IN DELAY's messages that are due, in order; then MIDI clock lets go of the clock half a second
+ * after its last tick, unless the transport runs on it. An entry more than the longest delay ahead is due too: it is
+ * one that waited a whole wrap of CIN_T (2.8 s) behind a main loop that did not drain the ring (an update session) */
 static void clk_in_idle(void)
 {
+    if (cin_dq_r != cin_dq_w) {
+        uint16_t now = CIN_T(CIN_LOG_NOW());
+        while (cin_dq_r != cin_dq_w) {
+            int16_t late = (int16_t)(now - cin_dq_due[cin_dq_r % CIN_DQ_N]);
+            if (late < 0 && late >= -(int16_t)CIN_T_MS(CIN_DELAY_MAX))
+                break;
+            cin_dq_out();
+        }
+    }
     if (midi_clk_seen && (!cfg.clock_in || (fm1_ms - midi_clk_ms > 500u && eng_run_ticks() < 0))) {
         midi_clk_seen = 0;
         eng_clock_external(0);

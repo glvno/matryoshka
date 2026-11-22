@@ -16,7 +16,7 @@ static void midi_drain_mode(int quick)
     midi_draining = 1;
     while (mi_r != end) {
         uint32_t pkt = midi_in_q[mi_r % MQ], st = (pkt >> 8) & 0xF0u, n = (pkt >> 16) & 0x7Fu, v = pkt >> 24;
-        uint32_t chn = ((pkt >> 8) & 15u) + 1u;
+        uint32_t chn = ((pkt >> 8) & 15u) + 1u, at = midi_in_at[mi_r % MQ];
         if (quick && (!cfg.ch || cfg.ch == chn) &&
             (st == 0xC0u || (st == 0xB0u && ((n >= 16u && n <= 19u) ||
                                              (n >= 80u && n < 80u + ENG_PANEL_BUTTONS))) ||
@@ -25,8 +25,8 @@ static void midi_drain_mode(int quick)
             break;
         RING_PUBLISH();
         mi_r++;
-        if (st == 0xF0u) {                      /* realtime and Song Position (MENU > CLOCK IN): clock_in.h */
-            clk_in_rt(pkt);
+        if (st == 0xF0u) {                      /* realtime and Song Position (MENU > CLOCK IN, CLOCK IN DELAY): clock_in.h */
+            clk_in_take(pkt, (uint16_t)at);
         } else if ((st == 0x90u || st == 0x80u) && (!cfg.ch || cfg.ch == chn) &&
                    (pad_learn(n, st == 0x90u ? v : 0u, chn) || map_midi(ENG_MAP_NOTE + n, st == 0x90u ? v : 0u) ||
                     pad_midi(n, st == 0x90u ? v : 0u, chn))) {

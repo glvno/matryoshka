@@ -122,6 +122,7 @@ static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 #define HALF_FRAMES 128u
+static uint32_t fm1_ticks(void) { return 0; }  /* (midi_queue.h's arrival stamp, CLOCK IN DELAY's: unused here) */
 #ifndef FELUCCA_OTA
 #define FELUCCA_OTA 0
 #endif

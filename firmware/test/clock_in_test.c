@@ -18,8 +18,9 @@
 
 #define HALF 128u
 static struct {
-    uint8_t clock_in, transport_in;
-} cfg = {1, 1};
+    uint8_t clock_in, transport_in, clock_delay;
+} cfg = {1, 1, 0};
+#define CIN_DELAY_MAX 200u                          /* (ui.c's) */
 static volatile uint32_t fm1_ms;
 static uint8_t ui_dirty;
 static void leds_play(void) {}
@@ -38,15 +39,16 @@ static void check(const char *what, int ok)
 
 /* the host's messages, each at its sample; pos: where the host's playhead is once it is delivered (-9: as the messages say,
  * for a host whose playhead does not follow its own messages: a looper's relocation sent early, clocks that do not move it) */
-#define EVN 20000
+#define EVN 100000
 static struct {
     double at;
     uint32_t pkt;
     int pos;
 } ev[EVN];
-static int ev_w, ev_r;
+static int ev_w, ev_r, ev_lost;
 static double host_t;                               /* the host's time (samples) */
 static double host_per;                             /* samples a tick */
+static uint32_t host_clocks;                        /* clocks sent */
 static void host_send_pos(uint32_t b, uint32_t d1, uint32_t d2, int pos)
 {
     if (ev_w < EVN) {
@@ -54,6 +56,9 @@ static void host_send_pos(uint32_t b, uint32_t d1, uint32_t d2, int pos)
         ev[ev_w].pkt = (b == 0xF2u ? 3u : 0xFu) | b << 8 | d1 << 16 | d2 << 24;
         ev[ev_w].pos = pos;
         ev_w++;
+        host_clocks += b == 0xF8u;
+    } else {
+        ev_lost++;
     }
 }
 static void host_send(uint32_t b, uint32_t d1, uint32_t d2) { host_send_pos(b, d1, d2, -9); }
@@ -74,9 +79,28 @@ static uint32_t test_ticks(void) { return (uint32_t)(samples * 24000000u / ENG_S
 static int host_m = -1, host_run;
 static int trk_mod, trk_len = 16;
 static int last_pos = -1;
-#define LOGN 4096
+#define LOGN 16384
 static int log_m[LOGN], log_pos[LOGN], log_n;       /* each step the track took, and the host's tick then */
-static void deliver(uint32_t pkt, int pos)
+/* CLOCK IN DELAY's runs (tr_on): each step the track took, and each change of MIDI clock driving or the transport
+ * running, with its sample from the run's start (tr_t0); kind 0 a step (v its position), 1 MIDI clock drives (v 0/1), 2
+ * the transport runs (v 0/1) */
+#define TRN 8192
+typedef struct { uint64_t t; int kind, v; } tr_ev;
+static tr_ev tr[TRN], tr0[TRN];                     /* (tr0: the run at 0 ms the delayed run is held against) */
+static int tr_n, tr0_n, tr_on, tr_ext, tr_run;
+static uint64_t tr_t0;
+static void tr_add(int kind, int v)
+{
+    if (tr_on && tr_n < TRN) {
+        tr[tr_n].t = samples - tr_t0;
+        tr[tr_n].kind = kind;
+        tr[tr_n].v = v;
+        tr_n++;
+    }
+}
+/* a message reaches the FM-1 at its own time `at` (samples, the USB poll's stamp: midi_queue.h midi_in_at), taken by the
+ * drain at the half buffer it arrives in */
+static void deliver(uint32_t pkt, int pos, double at)
 {
     uint32_t b = (pkt >> 8) & 0xFFu;
     if (b == 0xFAu) {
@@ -93,7 +117,7 @@ static void deliver(uint32_t pkt, int pos)
     }
     if (pos != -9)
         host_m = pos;
-    clk_in_rt(pkt);
+    clk_in_take(pkt, CIN_T((uint32_t)(uint64_t)(at * 24000000.0 / ENG_SR)));
 }
 static void sim_to(double t)
 {
@@ -101,7 +125,7 @@ static void sim_to(double t)
     while ((double)samples < t) {
         fm1_ms = (uint32_t)(samples * 1000u / ENG_SR);
         while (ev_r < ev_w && ev[ev_r].at <= (double)samples)
-            deliver(ev[ev_r].pkt, ev[ev_r].pos), ev_r++;
+            deliver(ev[ev_r].pkt, ev[ev_r].pos, ev[ev_r].at), ev_r++;
         clk_in_idle();
         eng_render(l, r, HALF);
         samples += HALF;
@@ -112,7 +136,13 @@ static void sim_to(double t)
                 log_pos[log_n] = p;
                 log_n++;
             }
+            if (p != last_pos && p >= 0)
+                tr_add(0, p);
             last_pos = p;
+            if (eng_clock_is_external() != tr_ext)
+                tr_add(1, tr_ext = eng_clock_is_external());
+            if (eng_transport_running() != tr_run)
+                tr_add(2, tr_run = eng_transport_running());
         }
     }
 }
@@ -320,6 +350,273 @@ static void song_starts(const char *name, uint32_t s)
         printf("      (the first: track %d, entry %d at tick %d (eng_song_ticks %d), on visit %d)\n", b_k, b_e, b_t, b_want, b_visit);
     ff_send(0xFCu, 0, 0);
     ff_clock();
+}
+
+/* ---- CLOCK IN DELAY (#870): the FM-1 acts on MIDI clock and transport that many ms later */
+
+/* a run from a fresh start, traced (tr): the host at `bpm` with clock before its Start, four bars, an 800 ms stall and
+ * on, an 800 ms stall and the missed clocks in a burst (`gap_ms` apart, 0 at once), a Start while running 10 clocks short
+ * of a bar line, Stop, Song Position 20 + Continue, Song Position 8 + Continue while running, the host gone 3 s while
+ * the transport runs, Stop, clock while stopped. CLOCK IN DELAY at `ms`, from the middle on (messages waiting) at `ms2`
+ * when that is not -1. The trace starts on a half buffer, so two runs meet the same half buffers */
+static uint32_t sc_clocks, sc_ticks;                /* the clocks the host sent in the run, the clocks the engine took */
+static void scenario_run(int ms, int ms2, double bpm, double gap_ms)
+{
+    uint32_t c0, k0;
+    int n, k;
+    cfg.clock_delay = 0;
+    reset();
+    host_t = (double)samples;
+    tr_n = 0;
+    tr_on = 1;
+    tr_t0 = samples;
+    tr_ext = eng_clock_is_external();
+    tr_run = eng_transport_running();
+    cfg.clock_delay = (uint8_t)ms;
+    c0 = host_clocks;
+    k0 = clk_ticks;
+    host_tempo(bpm);
+    host_ticks(24);
+    host_send(0xFAu, 0, 0);
+    host_ticks(96 * 4);
+    host_wait_ms(800);
+    host_ticks(96 * 2);
+    host_wait_ms(800);
+    n = (int)(0.8 * ENG_SR / host_per);
+    for (k = 0; k < n; k++) {
+        host_send(0xF8u, 0, 0);
+        host_t += gap_ms * ENG_SR / 1000.0;
+    }
+    host_t += host_per;
+    host_ticks(96 * 2 - n);
+    if (ms2 >= 0) {
+        sim_host();
+        cfg.clock_delay = (uint8_t)ms2;
+    }
+    host_ticks(96 - 10);
+    host_send(0xFAu, 0, 0);
+    host_ticks(96 * 2);
+    host_send(0xFCu, 0, 0);
+    host_wait_ms(1500);
+    host_send(0xF2u, 20, 0);
+    host_send(0xFBu, 0, 0);
+    host_t += host_per;
+    host_ticks(96 * 2);
+    host_send(0xF2u, 8, 0);
+    host_send(0xFBu, 0, 0);
+    host_ticks(96 * 2);
+    host_wait_ms(3000);
+    host_send(0xFCu, 0, 0);
+    host_wait_ms(300);
+    host_ticks(48);
+    host_wait_ms(1000);
+    sim_host();
+    tr_on = 0;
+    sc_clocks = host_clocks - c0;
+    sc_ticks = clk_ticks - k0;
+    host_tempo(90);
+    cfg.clock_delay = 0;
+}
+static void trace_keep(void)
+{
+    memcpy(tr0, tr, sizeof tr);
+    tr0_n = tr_n;
+}
+/* the run just made against the one kept: the same steps and changes, each `ms` later (within a half buffer, which
+ * the engine steps on, and a millisecond), on average within a millisecond */
+static void trace_shifted(const char *name, int ms)
+{
+    double d = ms * ENG_SR / 1000.0, sum = 0, worst = 0, ms1 = ENG_SR / 1000.0;
+    int i, steps = 0, first = -1;
+    for (i = 0; i < tr_n && i < tr0_n; i++) {
+        double dt = (double)tr[i].t - (double)tr0[i].t - d;
+        if (tr[i].kind != tr0[i].kind || tr[i].v != tr0[i].v) {
+            first = i;
+            break;
+        }
+        if ((dt < 0 ? -dt : dt) > (worst < 0 ? -worst : worst))
+            worst = dt;
+        if (!tr[i].kind) {
+            sum += dt;
+            steps++;
+        }
+    }
+    sum = steps ? sum / steps : 0;
+    snprintf(what, sizeof what, "%s: the same %d steps and changes as at 0 ms (%d), %d ms later: on average %+.2f ms off, "
+             "at most %+.2f ms", name, tr_n, tr0_n, ms, sum / ms1, worst / ms1);
+    check(what, first < 0 && tr_n == tr0_n && steps > 150 && (sum < 0 ? -sum : sum) <= ms1
+          && (worst < 0 ? -worst : worst) <= HALF + ms1);
+    if (first >= 0)
+        printf("      (the first difference: entry %d, kind %d value %d at %.1f ms, at 0 ms kind %d value %d at %.1f ms)\n", first,
+               tr[first].kind, tr[first].v, tr[first].t / ms1, tr0[first].kind, tr0[first].v, tr0[first].t / ms1);
+}
+
+/* the queue alone, sample by sample (the device drains between renders, many times a half buffer): each message reaches
+ * the engine at its arrival plus the delay; a clock of a burst within a millisecond of its run's first at most a
+ * millisecond early. Clocks count in clk_ticks, Start and Continue in top_gen, Stop clears transport_on, Song Position
+ * sets midi_spp */
+static void release_times(int ms)
+{
+    enum { M = 80 };
+    double at[M], d = ms * ENG_SR / 1000.0, worst_late = 0, worst_early = 0;
+    uint32_t pkt[M];
+    int n = 0, sent = 0, got = 0, k, bad = 0;
+    uint64_t s, end;
+    uint32_t ck, tg;
+    uint16_t spp;
+    uint8_t ton;
+    reset();
+    cfg.clock_delay = (uint8_t)ms;
+    {   /* Start, 30 clocks at 90 bpm (each 0..0.3 ms late), Song Position 37 + Continue together, 10 clocks, a TRS-rate burst
+         * of 8 clocks 0.32 ms apart, 5 clocks, Stop */
+        double t = (double)samples + 7.3, per = 60.0 * ENG_SR / (90 * 24.0);
+        pkt[n] = 0x0Fu | 0xFAu << 8, at[n++] = t;
+        for (k = 0; k < 30; k++)
+            pkt[n] = 0x0Fu | 0xF8u << 8, at[n++] = t += per + (k * 7 % 13) * 0.025 * ENG_SR / 1000.0;
+        pkt[n] = 3u | 0xF2u << 8 | 37u << 16, at[n++] = t += per / 2;
+        pkt[n] = 0x0Fu | 0xFBu << 8, at[n++] = t;
+        for (k = 0; k < 10; k++)
+            pkt[n] = 0x0Fu | 0xF8u << 8, at[n++] = t += per;
+        for (k = 0; k < 8; k++)
+            pkt[n] = 0x0Fu | 0xF8u << 8, at[n++] = t += 0.32 * ENG_SR / 1000.0;
+        for (k = 0; k < 5; k++)
+            pkt[n] = 0x0Fu | 0xF8u << 8, at[n++] = t += per;
+        pkt[n] = 0x0Fu | 0xFCu << 8, at[n++] = t += per;
+        end = (uint64_t)(t + d) + 4410u;
+    }
+    ck = clk_ticks;
+    tg = top_gen;
+    ton = transport_on;
+    spp = midi_spp = 0;                             /* (an earlier run left Song Position 37) */
+    for (s = samples; s < end; s++) {
+        samples = s;
+        fm1_ms = (uint32_t)(samples * 1000u / ENG_SR);
+        while (sent < n && at[sent] <= (double)s) {
+            clk_in_take(pkt[sent], CIN_T((uint32_t)(uint64_t)(at[sent] * 24000000.0 / ENG_SR)));
+            sent++;
+        }
+        clk_in_idle();
+        for (;;) {                                  /* what reached the engine at this sample, in order */
+            uint32_t b;
+            double err;
+            int seen;
+            if (got >= sent)
+                break;
+            b = (pkt[got] >> 8) & 0xFFu;
+            seen = b == 0xF8u ? clk_ticks != ck : b == 0xFAu || b == 0xFBu ? top_gen != tg : b == 0xFCu ? ton && !transport_on
+                 : midi_spp != spp;
+            if (!seen)
+                break;
+            if (b == 0xF8u)
+                ck++;
+            else if (b == 0xFAu || b == 0xFBu)
+                tg++;
+            else if (b == 0xF2u)
+                spp = midi_spp;
+            err = ((double)s - (at[got] + d)) / (ENG_SR / 1000.0);   /* ms */
+            worst_late = err > worst_late ? err : worst_late;
+            worst_early = err < worst_early ? err : worst_early;
+            if (err > 0.05 || err < (b == 0xF8u ? -1.05 : -0.05)) {   /* (CIN_T's unit: 43 us) */
+                printf("      (message %d, status %02X, %+.3f ms)\n", got, b, err);
+                bad++;
+            }
+            got++;
+        }
+        ton = transport_on;
+    }
+    snprintf(what, sizeof what, "%d ms: each of %d messages (clock, Start, Song Position + Continue, a burst, Stop) reaches the engine "
+             "%d ms after it came, %+.3f .. %+.3f ms (%d off)", ms, n, ms, worst_early, worst_late, bad);
+    check(what, got == n && sent == n && bad == 0 && clk_ticks == ck && cin_dq_r == cin_dq_w);
+    {   /* an entry due further ahead than the longest delay: TIMER4 wrapped while nothing drained (an update session) */
+        uint32_t now = test_ticks();
+        clk_in_take(0x0Fu | 0xF8u << 8, CIN_T(now - 24000u * 300u));
+        clk_in_take(0x0Fu | 0xF8u << 8, CIN_T(now + 24000u * 1500u));
+        clk_in_idle();
+        check("  a message stamped far in the past or more than the longest delay ahead (TIMER4 wrapped) goes at once",
+              clk_ticks == ck + 2u && cin_dq_r == cin_dq_w);
+    }
+    cfg.clock_delay = 0;
+    host_t = (double)samples;
+}
+
+static int trace_last_step(const tr_ev *t, int n)
+{
+    while (n-- > 0)
+        if (!t[n].kind)
+            return t[n].v;
+    return -1;
+}
+/* the run just made ends as the one kept: its last step, and the same changes of MIDI clock driving and the transport */
+static int trace_same_end(void)
+{
+    int i = 0, j = 0;
+    for (;;) {
+        while (i < tr_n && !tr[i].kind)
+            i++;
+        while (j < tr0_n && !tr0[j].kind)
+            j++;
+        if (i == tr_n || j == tr0_n)
+            break;
+        if (tr[i].kind != tr0[j].kind || tr[i].v != tr0[j].v)
+            return 0;
+        i++;
+        j++;
+    }
+    return i == tr_n && j == tr0_n && trace_last_step(tr, tr_n) == trace_last_step(tr0, tr0_n) && trace_last_step(tr, tr_n) >= 0;
+}
+static void delay_suite(void)
+{
+    check("CLOCK IN DELAY at 0 ms: every case above took the direct path, the queue never used", cin_dq_most == 0u && !cin_dq_early);
+    release_times(70);
+    release_times(200);
+    release_times(1);
+
+    scenario_run(0, -1, 90, 1);
+    trace_keep();
+    snprintf(what, sizeof what, "the host's run at 0 ms: %d steps and changes, every clock taken (%u of %u)", tr0_n, sc_ticks, sc_clocks);
+    check(what, tr0_n > 200 && sc_ticks == sc_clocks);
+    cin_dq_most = 0;
+    scenario_run(70, -1, 90, 1);
+    trace_shifted("70 ms at 90 bpm (steady, stalls, a burst a ms apart, Start while running, Song Position + Continue, "
+                  "the host gone, clock while stopped)", 70);
+    snprintf(what, sizeof what, "  every clock taken (%u of %u), none early, at most %u entries waiting", sc_ticks, sc_clocks, cin_dq_most);
+    check(what, sc_ticks == sc_clocks && !cin_dq_early && cin_dq_r == cin_dq_w);
+    scenario_run(200, -1, 90, 1);
+    trace_shifted("200 ms at 90 bpm", 200);
+
+    scenario_run(0, -1, 300, 0);
+    trace_keep();
+    cin_dq_most = 0;
+    scenario_run(200, -1, 300, 0);
+    trace_shifted("200 ms at 300 bpm (the missed clocks at once)", 200);
+    snprintf(what, sizeof what, "  the queue never full: at most %u of %u entries, none early, every clock taken (%u of %u)", cin_dq_most,
+             CIN_DQ_N, sc_ticks, sc_clocks);
+    check(what, cin_dq_most < CIN_DQ_N && !cin_dq_early && sc_ticks == sc_clocks);
+    {   /* the missed clocks a millisecond apart at 300 bpm and 200 ms: more than the queue holds; the newest run takes the
+         * rest (they go a little early), none is lost, and the tracks end where they end at 0 ms */
+        scenario_run(0, -1, 300, 1);
+        trace_keep();
+        scenario_run(200, -1, 300, 1);
+        snprintf(what, sizeof what, "200 ms at 300 bpm, a burst of 96 clocks a ms apart: every clock taken (%u of %u), none let go "
+                 "early, the same last step (%d, at 0 ms %d) and changes of clock and transport", sc_ticks, sc_clocks,
+                 trace_last_step(tr, tr_n), trace_last_step(tr0, tr0_n));
+        check(what, sc_ticks == sc_clocks && !cin_dq_early && trace_same_end());
+    }
+
+    {   /* the delay changed while messages wait: it applies to what comes after; nothing lost or doubled, the track ends
+         * where it ends at 0 ms */
+        static const int CH[][2] = {{70, 0}, {70, 200}, {200, 30}, {0, 70}};
+        int i;
+        scenario_run(0, -1, 90, 1);
+        trace_keep();
+        for (i = 0; i < 4; i++) {
+            scenario_run(CH[i][0], CH[i][1], 90, 1);
+            snprintf(what, sizeof what, "the delay from %d to %d ms mid-run: every clock taken once (%u of %u), in order, the same last "
+                     "step (%d, at 0 ms %d) and changes of clock and transport", CH[i][0], CH[i][1], sc_ticks, sc_clocks,
+                     trace_last_step(tr, tr_n), trace_last_step(tr0, tr0_n));
+            check(what, sc_ticks == sc_clocks && cin_dq_r == cin_dq_w && !cin_dq_early && trace_same_end());
+        }
+    }
 }
 
 int main(void)
@@ -710,6 +1007,8 @@ int main(void)
         check("  DIAG 147 empties it", h[0] == 0u && h[2] == 0u);
     }
 
+
+    delay_suite();
     printf(fails ? "%d FAILED\n" : "all passed\n", fails);
     return fails != 0;
 }

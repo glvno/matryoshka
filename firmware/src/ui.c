@@ -37,13 +37,14 @@ static void sandbox_bar(void);
 #include "device_identity.h"
 enum { MR_LEDS, MR_ACCEL, MR_CIN, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_UPDATE, MR_DEFAULTS, MR_QUICK, MR_TEMPO,
        MR_CLKOUT, MR_OUTPUT, MR_CORES, MR_EDITOR, MR_OUT35, MR_USB_RETURN, MR_DEVICE_NAME, MR_METER, MR_EQ_LOW, MR_EQ_MID, MR_EQ_HIGH,
-       MR_EQ_FREQ, MR_TIN, MR_TOUT, MR_LEARN, MR_MAPS, MR_MAP_CLEAR, MR_PADS_ON, MR_PAD_ROW, MR_PAD_CLEAR, MR_PADS_CLEAR, MR_COUNT };
+       MR_EQ_FREQ, MR_TIN, MR_TOUT, MR_LEARN, MR_MAPS, MR_MAP_CLEAR, MR_PADS_ON, MR_PAD_ROW, MR_PAD_CLEAR, MR_PADS_CLEAR, MR_CLK_DELAY,
+       MR_COUNT };
 /* the menu's tabs (menu.c, #395): MIDI, PANEL, SYSTEM and EQ (the master EQ, master_eq.h, #1107) are pages of settings on
  * K1..K4, INFO a list of readings, GUIDE a text (the ideas behind the controls, D-248) */
 enum { MT_MIDI, MT_PANEL, MT_SYSTEM, MT_EQ, MT_INFO, MT_GUIDE, MT_COUNT };
 static uint8_t menu_tab;
 static uint8_t menu_page2;                      /* the tab's page past its first, 0 on the first (ALGO steps MIDI 1/4, 2/4: TRANSPORT
-                                                 * IN and OUT, #596, 3/4: MIDI learn, 4/4: the pad map, #1067; PANEL 1/2, 2/2: TIME
+                                                 * IN and OUT, #596, CLOCK IN DELAY, #870, 3/4: MIDI learn, 4/4: the pad map, #1067; PANEL 1/2, 2/2: TIME
                                                  * SIG, #1011; SYSTEM 1/2, 2/2: EDITOR, #702, 3.5MM OUT, #631) */
 static uint32_t menu_pages(uint32_t t) { return t == MT_MIDI ? 4u : t <= MT_SYSTEM ? 2u : 1u; }   /* a tab's pages */
 static int menu_two(uint32_t t) { return menu_pages(t) > 1u; }   /* the tabs with more than one page: MIDI, PANEL, SYSTEM */
@@ -64,12 +65,16 @@ static struct {
                                          * alone; the firmware itself refuses nothing (proto.c) */
     uint8_t transport_in;               /* MIDI Start, Continue, Stop and Song Position are followed (TRANSPORT IN, #596) */
     uint8_t transport_out;              /* PLAY's Start, Continue, Stop and Song Position go out (TRANSPORT OUT, #596) */
-} cfg = {2, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1};
+    uint8_t clock_delay;                /* CLOCK IN DELAY: MIDI clock in and transport in are followed this many ms later,
+                                         * 0..CIN_DELAY_MAX (clock_in.h, #870); kept in the settings extension (settings_ext.h) */
+} cfg = {2, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0};
+#define CIN_DELAY_MAX 200u              /* CLOCK IN DELAY's top, ms */
 static uint8_t editor_info_due;         /* EDITOR changed (menu.c): INFO goes to an editor that said HELLO (main.c editor_poll, #702) */
 static void cfg_defaults(void)
 {
     cfg.cpu_bar = cfg.accel = cfg.clock_in = cfg.prog_chg = cfg.midi_out = cfg.clock_out = 1;
     cfg.transport_in = cfg.transport_out = 1;
+    cfg.clock_delay = 0;                /* (and CLOCK IN DELAY at 0 ms, #870) */
     cfg.leds = 2;
     cfg.ch = 0;
     cfg.count_in = 0;
