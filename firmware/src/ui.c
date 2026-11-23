@@ -446,7 +446,7 @@ static void ui_msg_clear(void)
 }
 
 /* the patch has an FX rack (format 66: an effect or an FX drawer; formats 55..65: the master FX bus): FX is the rack's
- * (panel.c fx_button), the patch's own FX button job shadowed (the lead's ruling, 1.26.2) */
+ * (panel.c fx_button), the patch's own FX button job shadowed (the lead's ruling, 1.26.3) */
 static int fx_rack(void) { return eng_rack_count() || eng_fx_count(); }
 
 /* the patch buttons that glow: assigned (any kind but Nothing, #116) or with a cable from them; the rest stay dark. FX

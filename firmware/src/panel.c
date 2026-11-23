@@ -280,12 +280,12 @@ static void page_set(uint32_t p)
     page_show(p);
 }
 
-/* FX on a device page or the environment (the FX drawer, 1.26.2): the effect the rack has for here (pages_ui.c
+/* FX on a device page or the environment (the FX drawer, 1.26.3): the effect the rack has for here (pages_ui.c
  * fx_target: the drawer of the instrument on show, else of the armed one, else the Output drawer) on its first page, a
  * step on the trail; FX again from there goes back. A patch with an FX rack (an effect or a drawer, ui.c fx_rack) shadows
  * its own FX button job, as the master FX bus did; one with none keeps it (a Toggle, a Page button, a Gate with a cable),
  * and FX set to Nothing there, like a drawer with no effect for here, says NO FX IN THE RACK. The SEQ and SONG pages keep
- * FX's jobs there (D-933) */
+ * FX's jobs there (D-946) */
 static uint8_t fx_step;                             /* trail_n just after FX's step on the trail, 0 none */
 static int fx_takes(uint32_t b)
 {

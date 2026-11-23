@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The FX drawer's panel fixtures (1.26.2, #1214), written by `golden.ts --panel-fixtures` into build/panel-fixtures/:
+// The FX drawer's panel fixtures (1.26.3, #1214), written by `golden.ts --panel-fixtures` into build/panel-fixtures/:
 // format-66 patches with FX drawers for firmware/test/panel_test.c (fx_suite, controls_test.h, fx_preset_panel_test.h
 // fxd_preset_suite) and firmware/test/pal_preset_test.c. The format-55..65 master FX bus patches the FM-1 still reads are
 // frozen in firmware/test/legacy_fx_fixtures.h (no encoder writes them any more).

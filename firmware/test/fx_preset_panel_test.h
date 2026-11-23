@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Real assembly/rack fixtures; flash records, native reload, and linked-editor notifications. FXP1 ("+ FX", D-1010) on the
  * frozen format-55..65 master FX bus patches (legacy_fx_fixtures.h: the FM-1 still reads them), FXD1 (an instrument with
- * its FX drawer, 1.26.2) on panel-fixtures.ts's format-66 drawers */
+ * its FX drawer, 1.26.3) on panel-fixtures.ts's format-66 drawers */
 static int fx_preset_index(uint32_t d, uint32_t structure, const char *name)
 {
     uint32_t k, n = dp_list(d);

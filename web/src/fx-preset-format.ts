@@ -3,7 +3,7 @@
 // transport and store; a structure of their own keeps older firmware, or another drawer, from reading FX values as an
 // instrument's rows.
 //
-// FXD1 (1.26.2): an instrument with its FX drawer. Values: the instrument's card rows (structure.ts rowOrder, drawer
+// FXD1 (1.26.3): an instrument with its FX drawer. Values: the instrument's card rows (structure.ts rowOrder, drawer
 // left out), then for each effect in chain order its on/off (0 or 1) and its card rows (rowOrder of the effect), then
 // the footer lo16(base), hi16(base), n, 23119. Its structure is structure.ts drawerPresetStructure(base, effects).
 // The FM-1 checks the same layout (pages_ui.c).
