@@ -136,7 +136,7 @@ import { payloadHash } from './pattern-store';
 import { lockPlan, PATCH_LOCKS_MAX } from './locks';
 import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS } from './poly';
 import { devicesOf, NAME_MAX, type Device, type PageRow } from './pages';
-import { allModules, assemblyById, ROW_NAMES_MAX } from './assembly';
+import { assemblyById, deviceModules, ROW_NAMES_MAX } from './assembly';
 import { structureAndRows } from './structure';
 import { CPU, cpuEstimate, planCosts, type CpuEstimate } from './cpu';
 import { schedule, type Schedule } from './schedule';
@@ -986,7 +986,7 @@ export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceV
   const out = [devs.length];
   devs.forEach((d, di) => {
     // (the track's device: the track itself, or the card it is inside, which then names itself: the kits, #1202 K2)
-    const t = d.track === undefined ? -1 : devs.findIndex((x) => x.module === d.track || (x.asm !== undefined && allModules(source, assemblyById(source, x.asm)!).includes(d.track!)));
+    const t = d.track === undefined ? -1 : devs.findIndex((x) => x.module === d.track || (x.asm !== undefined && deviceModules(source, assemblyById(source, x.asm)!).includes(d.track!)));
     const a = d.asm === undefined ? undefined : assemblyById(source, d.asm);
     const sr = a ? cardRows(source, a) : undefined;
     const h = sr ? parseInt(sr.structure, 16) >>> 0 : 0;
@@ -1000,7 +1000,7 @@ export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceV
       const par = i === undefined ? -1 : rowParam(dev.modules[i].type, r.param);
       out.push(par < 0 ? 0xff : i!, par < 0 ? 0xff : par);
     }
-    const members = (a ? allModules(source, a) : [d.module!]).map((id) => index.get(id)).filter((i): i is number => i !== undefined);
+    const members = (a ? deviceModules(source, a) : [d.module!]).map((id) => index.get(id)).filter((i): i is number => i !== undefined);
     if (v >= COUNTED && members.length > 2 && members.every((x, i) => x === members[0] + i)) out.push(MEMBER_RUN | members.length, members[0]);
     else out.push(members.length, ...members);
   });

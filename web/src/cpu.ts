@@ -7,7 +7,7 @@
 import TABLE from './cpu-costs.json';
 import PLAN from './plan-costs.json';
 import { DEFS, LFO_RANGE_K, MATRIX_N, matrixPin, STACKS, TRACK_POLY } from './modules';
-import { allModules, assembliesOf, parentOf } from './assembly';
+import { allModules, assembliesOf, deviceModules, parentOf } from './assembly';
 import { flawOf, hasMorph, type ModuleInst, type Patch } from './patch';
 import { chainHelpers, rackOf } from './fx-drawer';
 import { deviceView } from './poly';
@@ -316,7 +316,7 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
   for (const a of assembliesOf(source)) {
     const k = table.rig?.engines[a.name], kv = table.rig?.voices?.[a.name];
     if (k === undefined || parentOf(source, a.id)) continue;
-    for (const id of allModules(source, a)) factor.set(id, kv !== undefined && groupOf.has(id) ? kv : k);
+    for (const id of deviceModules(source, a)) factor.set(id, kv !== undefined && groupOf.has(id) ? kv : k);
     engineUs += table.rig?.blockUs?.[a.name] ?? 0;
   }
   const kfx = table.rig?.fx;
@@ -457,7 +457,7 @@ export function cardCosts(source: Patch, est: CpuEstimate, table: CpuTable = CPU
   const assemblies = new Map<number, CardCost>();
   for (const a of assembliesOf(source)) {
     let share = 0, perVoice = 0, voices = 0;
-    for (const id of allModules(source, a)) {
+    for (const id of deviceModules(source, a)) {
       const c = modules.get(id);
       if (!c) continue;
       share += c.share;

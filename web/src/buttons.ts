@@ -6,7 +6,7 @@
 // The kinds live in the Main module's panel (patch.ts MainPanel: `kinds`, `targets`); `toggle` there is the PRESS setting
 // (switches instead of acting while held), kept from #60.
 
-import { allModules, assembliesOf } from './assembly';
+import { allModules, assembliesOf, chainHelpers, deviceModules } from './assembly';
 import { PANEL_BUTTONS } from './modules';
 import { FIXED_BUTTONS } from './patch';
 import { PAGE_LIST_MAX } from './patch';
@@ -43,7 +43,8 @@ export function pageList(p: Patch, b: string, devices: Device[]): { device: stri
 /**
  * The modules a Toggle button bypasses (ids): its module, or the members of its assembly that the assembly's own switch
  * moves (not those bypassed on their own: while the assembly is on, the ones bypassed now; while it is off, the ones it
- * kept, assembly.ts bypassAssembly). Never Main or the Output. Empty for any other kind or a missing target.
+ * kept, assembly.ts bypassAssembly: an instrument's leaves its FX drawer alone, and no switch moves an effect's helper).
+ * Never Main or the Output. Empty for any other kind or a missing target.
  */
 export function toggleTargets(p: Patch, b: string): number[] {
   const panel = mainOf(p)?.panel;
@@ -54,7 +55,8 @@ export function toggleTargets(p: Patch, b: string): number[] {
   const a = assembliesOf(p).find((x) => x.id === t.asm);
   if (!a) return [];
   const own = a.bypass ? new Set(a.kept ?? []) : new Set(p.modules.filter((m) => m.bypass).map((m) => m.id));
-  return allModules(p, a).filter((id) => ok(id) && !own.has(id));
+  const helpers = chainHelpers(p);
+  return (a.drawer ? allModules(p, a) : deviceModules(p, a)).filter((id) => ok(id) && !own.has(id) && !helpers.has(id));
 }
 
 /** a Toggle button is engaged while every module it bypasses is bypassed (and it has some) */
