@@ -2053,22 +2053,27 @@ const keepBlueprint = (): void => {
   const name = window.prompt('Name of the blueprint', 'my-chain')?.trim();
   if (name) quick.keepAs(name);
 };
+/** an added effect shows on the canvas, from whichever view it was added (the sidebar's Effects panel shows in every view) */
+const toCanvas = (): void => {
+  closeSidebar();
+  if (currentView !== 'patch') setView('patch');
+};
 /** an effect into a drawer (made first when there is none), as one undo step */
 const addEffectToDrawer = (s: EffectSource, to: number | 'output', name: string, at?: number): void => {
-  toPatch();
+  toCanvas();
   if (editor.transact(() => addToDrawer(editor.patch, s, to, at))) status.textContent = `${name} is in ${drawerName(editor.patch, to)}`;
 };
 /** what the Library's Effects section and the Patch tab's Effects panel do: the canvas first, a drawer second */
 const effectActions: EffectActions = {
   patch: () => editor.patch,
   canvas(s) {
-    toPatch();
+    toCanvas();
     if ('type' in s) editor.add(s.type);
     else editor.insert(s.def);
   },
   drawer: (s, to, name) => addEffectToDrawer(s, to, name),
   drag: {
-    start: toPatch,
+    start: toCanvas,
     over: (x, y) => editor.dragEffectOver(x, y),
     end: () => editor.dragEffectOver(null),
     drop: (s, x, y) => void editor.dropEffect(s, x, y),
