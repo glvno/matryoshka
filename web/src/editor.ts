@@ -87,7 +87,7 @@ import { addPresetOf, applyPreset, deletePreset, matchesPreset, nextPresetName, 
 import { snapshotPreset } from './snapshot-presets';
 import { engineOf } from './library-presets';
 import { fxPresetInfo } from './fx-preset-format';
-import { chainJackProblem, drawerOutput, drawers, effectKind, effectsOf, insertEffect, moveEffect, outputDrawer, ownerOf, removeEffect, rewire, takeOut } from './fx-drawer';
+import { chainCableProblem, chainJackProblem, drawerOutput, drawers, effectKind, effectsOf, insertEffect, moveEffect, outputDrawer, ownerOf, removeEffect, rewire, takeOut } from './fx-drawer';
 import { armable, armDrawing, armedWith, deviceOfModule, keepArmed, keysTargets, noKeysReach, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
 import { stepGrid, stopEntry, type LockRow, type StepGrid } from './step-grid';
@@ -8304,9 +8304,9 @@ export class Editor {
     const sources: Endpoint[] = [{ module: Number(out.dataset.mod), port: out.dataset.port! },
       ...(out.dataset.also ? JSON.parse(out.dataset.also) as Target[] : [])];
     this.change(() => {
-      // a chain jack of an FX drawer is wired by the drawer: refused with the reason (fx-drawer.ts chainJackProblem)
+      // a chain jack of an FX drawer is wired by the drawer: refused with the reason (fx-drawer.ts chainCableProblem)
       const refuse = (from: Endpoint, to?: Endpoint): void => {
-        const why = (to && chainJackProblem(this.patch, to, 'in')) || chainJackProblem(this.patch, from, 'out');
+        const why = to ? chainCableProblem(this.patch, from, to) : chainJackProblem(this.patch, from, 'out');
         if (why) throw new Error(why);
       };
       const wire = (from: Endpoint, to: Endpoint): void => {
