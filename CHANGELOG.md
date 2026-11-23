@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.26.0 — 2026-11-23
 
 - The FM-1 now tells computers and phones its true USB audio delay (about 6 ms each way), so recording apps that use it line up more closely.
 - **The 808 Kit and the 909 Kit are one card and one device, with their sequencer inside.** The DRUMS track now sits in the kit card: the card shows the drum grid across its top and a pattern section with LAST STEP and the kit's own timing controls (the 808's PRE-SCALE, the 909's SHUFFLE and SCALE). On the FM-1 the kit is a single device: SEQ on it opens the drum steps, ENV lists it with its length, SEL arms it, and a held step's P-lock pages are the kit's. The track's own RATE and SWING rows no longer appear anywhere, so each setting has one control. The kits sound and play exactly as before, and your saved kit presets keep every value. The editor sends these kits only to an FM-1 with the next firmware: on 1.25 it asks you to update first, and every other patch syncs as before. An FM-1 on 1.25 keeps the factory sounds made for its own kits (#1202).
