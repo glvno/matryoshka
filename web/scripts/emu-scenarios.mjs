@@ -2447,6 +2447,48 @@ async function main() {
       await check('device preset: the first PRESET turn left loads the last of its list, not INIT', shown && !(await emu.text('PRESET INIT')));
       await emu.elapse(1200);
     },
+    // #1214 (the FX drawer, 1.26.2): Oracle V's master FX bus became its FX drawer when the editor opened it; on the FM-1
+    // FX opens the drawer's first effect and SELECT walks its effects in chain order (devices right after the instrument);
+    // a patch with no FX rack and FX set to Nothing says NO FX IN THE RACK
+    async fxDrawer() {
+      const shown = (name) => emu.waitText(name.toUpperCase().slice(0, 10), 2000);
+      await check('fx drawer: Oracle V opens converted, synced', await openSynced('Oracle V'));
+      const { instrument, effects } = await page.evaluate(() => {
+        const p = JSON.parse(window.__m1test.patchJson()), all = (p.assemblies ?? []).filter(Boolean);
+        const drawer = all.find((a) => a.drawer?.taps);
+        const owner = drawer && all.find((a) => a.children?.includes(drawer.id));
+        return { instrument: owner?.label ?? '', effects: (drawer?.children ?? []).map((id) => all.find((a) => a.id === id)?.label ?? '') };
+      });
+      await check('fx drawer: its instrument owns an FX drawer of effects', !!instrument && effects.length > 1, JSON.stringify({ instrument, effects }));
+      await emu.elapse(300);
+      await check(`fx drawer: the FM-1 opens on ${instrument}`, !!instrument && (await shown(instrument)));
+      await emu.tap(B.fx);
+      await check(`fx drawer: FX opens the first effect, ${effects[0]}`, !!effects[0] && (await shown(effects[0])));
+      await emu.snap('fx-drawer-first');
+      for (let i = 1; i < effects.length; i++) {
+        await emu.turn(ENC.select, 1);
+        await check(`fx drawer: SELECT walks to the next effect in chain order, ${effects[i]}`, await shown(effects[i]));
+      }
+      await emu.tap(B.fx);
+      await check('fx drawer: FX on an effect goes to the first effect of its drawer', await shown(effects[0]));
+      await emu.tap(B.fx);
+      await check(`fx drawer: FX again goes back to ${effects.at(-1)}`, await shown(effects.at(-1)));
+      const plain = await page.evaluate(async () => {
+        const { PRESETS } = await import('/src/presets.ts');
+        const { setKind } = await import('/src/buttons.ts');
+        const p = PRESETS['Silver Box']();
+        p.name = 'T1214 NO RACK';
+        setKind(p, 'fx', 'nothing');
+        window.__m1test.save(JSON.stringify(p));
+        return p.name;
+      });
+      await check('fx drawer: a patch with no FX rack and FX set to Nothing opens, synced', await openSynced(plain));
+      await emu.elapse(300);
+      await emu.tap(B.fx);
+      await check('fx drawer: FX says NO FX IN THE RACK', await emu.waitText('NO FX IN THE RACK', 2000));
+      await emu.snap('fx-drawer-none');
+      await emu.elapse(1600);
+    },
     // #485: a Cassia 1 preset (153 rows since #755, D-747) stored on the FM-1 holds all its rows: sent from the editor (two store slots on
     // firmware with feature bit 17), read back whole, and loaded on the FM-1 with PRESET: every row reaches the editor.
     // Glass Bell differs from Init in 11 of the 31 rows past 88, which an 88-value store left at Init's
