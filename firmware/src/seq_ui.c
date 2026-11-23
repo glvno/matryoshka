@@ -2755,6 +2755,16 @@ static void seq_poll(void)
     if (seq_demo_at && fm1_ms - (seq_demo_at & ~1u) >= SEQ_CLEAR_MS)
         seq_demo_at = 0;                         /* (the demo set asked in vain) */
     song_poll();
+    if (page == PAGE_SEQ && eng_steps_count()) {
+        static uint8_t seq_cells_pl = 0xFFu;     /* the playing pattern the cells were last asked to show */
+        uint8_t pl = (uint8_t)seq_pat_state();
+        if (pl != seq_cells_pl) {                /* (the track took another pattern, a queued one at once while stopped:
+                                                  * its cells and the roll's markers too, not only the bar) */
+            if (seq_cells_pl != 0xFFu)
+                ui_dirty = ui_dirty ? ui_dirty : 1;
+            seq_cells_pl = pl;
+        }
+    }
     if (page == PAGE_SEQ && eng_steps_count() && (seq_pat_state() != seq_shown_pat || seq_bar_mark() != seq_shown_mark
         || seq_shown_sr != (uint8_t)(sr_on ? sr_k + 1u : 0u) || seq_shown_lo != seq_bar_lo()) && !ui_yielding
         && !(msg_until && (int32_t)(fm1_ms - msg_until) < 0))
