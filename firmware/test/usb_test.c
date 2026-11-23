@@ -277,6 +277,7 @@ static void walk_config(const char *what, const uint8_t *c, uint32_t len, int ua
                 rates++;
             } else if (cur_cls == 1 && cur_sub == 2 && d[2] == 1u) {   /* AS general */
                 CHECK(d[3] == (duplex && cur_if == 2 ? 3u : 2u), "%s: AS general links terminal %u (the USB streaming output is 2)", what, d[3]);
+                CHECK(d[4] == 6u, "%s: AS general delay %u ms (6, the measured delay, D-1351)", what, d[4]);
             }
             break;
         default:
