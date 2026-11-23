@@ -14,7 +14,7 @@ import { FIXED_BUTTONS, setBy, type Range } from './patch';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
 import { litWhileEnabled, buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
 import { buttonEditor } from './button-editor';
-import { arpChoices, arpFree, type ArpChoice } from './arp-button';
+import { arpChoices, arpFree, arpJackless, type ArpChoice } from './arp-button';
 import { showToast, showUndo } from './toast';
 import { positionPopover } from './popover';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
@@ -1200,8 +1200,9 @@ export class Editor {
       btn.style.gridArea = `${r + 1} / ${c + 1}`;
       buttons.append(btn);
     }));
-    // the patch buttons' jacks in a row on the dock's edge (the buttons name them), each over its button or lane
-    const buttonJacks = jacks(PANEL_BUTTONS);
+    // the patch buttons' jacks in a row on the dock's edge (the buttons name them), each over its button or lane; none for
+    // ARP while it switches an Arpeggiator (arpJackless)
+    const buttonJacks = jacks(arpJackless(this.patch) ? PANEL_BUTTONS.filter((b) => b !== 'arp') : PANEL_BUTTONS);
     buttonJacks.className = 'dock-button-jacks';
     for (const port of buttonJacks.querySelectorAll<HTMLElement>(':scope > .port')) {
       port.querySelectorAll(':scope > span:not(.dot)').forEach((s) => s.remove());
