@@ -213,6 +213,8 @@ static void host_ps_init(void)
  * links a stored pattern), then the store, off until host_pt_init turns it on (erased and formatted) */
 #define M1_PATCH_MAX 3840u                 /* (proto.c's) */
 static uint8_t sl_buf[M1_PATCH_MAX];       /* slotstore.c's */
+static uint8_t m1_up[M1_PATCH_MAX];        /* (proto.c's: the store's scan keeps half its table there) */
+static uint32_t pt_nsec = 4u;              /* slotstore.c's: the store over its 4 sectors here (0xDC000 .. 0xDFFFF) */
 typedef struct { uint32_t magic, id, seq, len, crc; char name[20]; uint32_t rsv[2]; } sl_hdr_t;
 static int sl_head(uint32_t id, sl_hdr_t *h, int check) { (void)id; (void)h; (void)check; return -1; }
 #include "../src/patstore.c"
@@ -391,7 +393,9 @@ static void m1_origins_drop(void)                    /* (clear all, #1178: every
 }
 static int m1_patch_locks(void) { return 1; }      /* (the preview keeps no patch: the engine has the locks) */
 /* the pattern store's glue (patlink.c, #901) on the previewed binary: what proto.c sends stood in (its status codes above) */
-static uint8_t m1_up[M1_PATCH_MAX];        /* (proto.c's upload buffer, the payloads' scratch) */
+static int m1_steps_write(uint32_t s, uint64_t omit) { (void)s; (void)omit; return 1; }   /* (the preview keeps no patch) */
+static int32_t m1_steps_cost(uint32_t s, uint64_t omit) { (void)s; (void)omit; return 0; }
+static const char *m1_patch_name(void) { return "PREVIEW"; }
 static int m1_patch_links(const uint8_t *s, uint32_t n) { (void)s; (void)n; return 1; }   /* (no links in the preview) */
 static uint32_t m1_sec_at(uint32_t sec)               /* (proto.c's, on the previewed binary: the demo set's room, #1179) */
 {

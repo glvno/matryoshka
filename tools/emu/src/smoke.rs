@@ -39,20 +39,22 @@
 use crate::font;
 use crate::machine::Machine;
 use std::process::ExitCode;
+use std::sync::LazyLock;
 
 /// The FM-1's I2S rate (fm1_open's fm1_audio.h: 44118 Hz).
 pub const AUDIO_RATE: u32 = 44118;
 
-const PRESETS_H: &str = include_str!("../../../firmware/src/presets.h");
+// (the checkout's headers, read when m1emu runs: repo.rs)
+static PRESETS_H: LazyLock<String> = LazyLock::new(|| crate::repo::text("firmware/src/presets.h"));
 /// What the firmware compiles in of the factory content (#915): the fallback patch's name
-const FACTORY_TIER_H: &str = include_str!("../../../firmware/src/factory_tier.h");
+static FACTORY_TIER_H: LazyLock<String> = LazyLock::new(|| crate::repo::text("firmware/src/factory_tier.h"));
 /// Earlier presets of factory engines and what the editor makes of them (web/scripts/export-defs.ts, D-865)
-const PMIG_CASES_H: &str = include_str!("../../../firmware/test/pmig_cases.h");
+static PMIG_CASES_H: LazyLock<String> = LazyLock::new(|| crate::repo::text("firmware/test/pmig_cases.h"));
 /// Released copies of factory patches unlike today's: a firmware-tier patch's, then a factory-region patch's
 /// (web/scripts/legacy-factory.ts, D-887)
-const RELEASED_CASES_H: &str = include_str!("../../../firmware/test/released_cases.h");
+static RELEASED_CASES_H: LazyLock<String> = LazyLock::new(|| crate::repo::text("firmware/test/released_cases.h"));
 /// The Drum maps' default row names (DRUM_ROW_NAME), which format 64 leaves out of a patch binary
-const DEFS_H: &str = include_str!("../../../firmware/src/defs.h");
+static DEFS_H: LazyLock<String> = LazyLock::new(|| crate::repo::text("firmware/src/defs.h"));
 
 /// Panel ids (fm1-emu / Felucca's table, confirmed by M-VAVE's fm1_open)
 pub(crate) const OCT_DOWN: u8 = 0;
@@ -148,12 +150,12 @@ fn packed_list(h: &str, list: &str) -> Vec<(String, Vec<u8>)> {
 
 /// (name, binary) of every factory patch in presets.h, unpacked
 pub(crate) fn factory() -> Vec<(String, Vec<u8>)> {
-    packed_list(PRESETS_H, "PRESET_LIST")
+    packed_list(&PRESETS_H, "PRESET_LIST")
 }
 
 /// (name, binary) of released_cases.h's released copies: a firmware-tier patch's, then a factory-region patch's
 pub(crate) fn released_cases() -> Vec<(String, Vec<u8>)> {
-    packed_list(RELEASED_CASES_H, "RELEASED_CASES")
+    packed_list(&RELEASED_CASES_H, "RELEASED_CASES")
 }
 
 /// Rows of a Drum map, and bytes of a row name before format 64 (engine.h ENG_DRUM_ROWS, ENG_DRUM_NAME)
@@ -912,7 +914,7 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     let (name, old) = released_cases().pop().ok_or("no released case")?;
     let today = presets.iter().find(|p| p.0 == name).map(|p| p.1.clone()).ok_or("the released case is not a factory patch")?;
     let (third, kept) = presets.get(2).cloned().ok_or("no third factory patch")?;
-    let version: u8 = include_str!("../../../firmware/src/engine.h").split("#define ENG_PATCH_VERSION ").nth(1).and_then(|s| s.split_whitespace().next()?.parse().ok()).ok_or("ENG_PATCH_VERSION")?;
+    let version: u8 = crate::repo::text("firmware/src/engine.h").split("#define ENG_PATCH_VERSION ").nth(1).and_then(|s| s.split_whitespace().next()?.parse().ok()).ok_or("ENG_PATCH_VERSION")?;
     let set_id = factory_set_id();
     let (plan, skipped) = bank_plan(0, 0b111, factory_named(&[&name, "MY COPY", &third], presets), presets);
     let Some(bar) = bank_msg(&plan, skipped, presets) else {
@@ -988,7 +990,7 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
 /// owner's slot stays as it is.
 fn new_patch(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
     const SET_191: u32 = 0xb9a4a8; // 1.9.1's factory set
-    let version: u8 = include_str!("../../../firmware/src/engine.h").split("#define ENG_PATCH_VERSION ").nth(1).and_then(|s| s.split_whitespace().next()?.parse().ok()).ok_or("ENG_PATCH_VERSION")?;
+    let version: u8 = crate::repo::text("firmware/src/engine.h").split("#define ENG_PATCH_VERSION ").nth(1).and_then(|s| s.split_whitespace().next()?.parse().ok()).ok_or("ENG_PATCH_VERSION")?;
     let names: Vec<&str> = presets.iter().take(3).map(|p| p.0.as_str()).collect();
     let named = factory_named(&names, presets);
     let (plan, skipped) = bank_plan(SET_191, 0b111, named, presets);
@@ -1267,7 +1269,7 @@ fn bank_with_7ph(app: &[u8], presets: &[(String, Vec<u8>)]) -> Result<(Vec<u8>, 
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     let mut f = m.flash();
-    const AT: usize = 0xDB000; // the bank's last sector (firmware/src/slotstore.c; 0xDC000.. is the pattern store's), free after the factory bank
+    const AT: usize = 0xCF000; // the bank's last sector (firmware/src/slotstore.c, 48 slots; 0xD0000.. is the pattern store's), free after the factory bank
     if f[AT..AT + 0x1000].iter().any(|&b| b != 0xff) {
         return Err("the bank's last sector is not free after the first boot".into());
     }
