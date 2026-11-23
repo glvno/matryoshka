@@ -11,7 +11,7 @@ import { addUserPreset, capturePreset, exportPresets, importPresets, migrateUser
 import { presetEngines, snapshotPreset } from './snapshot-presets';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
-import { fxBusOf, fxRuntimeHelpers } from './fx-bus';
+import { chainHelpers, rackOf } from './fx-drawer';
 import { FEATURE_FX_PRESETS, FX_BYPASS_PARAM } from './protocol';
 import { applyImport, backupFile, backupKeys, collectKeys, importSummary, receiveMigration } from './migrate';
 import { moveOffer, onPagesDev } from './move-offer';
@@ -585,11 +585,11 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     const m = deviceView(editor.patch, true).patch.modules[e.module];
     if (e.param === FX_BYPASS_PARAM) {
       if (!m || (e.value !== 0 && e.value !== 1) || (from === 'device' && !(device.info && device.info.features & FEATURE_FX_PRESETS))) return;
-      const stage = fxBusOf(editor.patch)?.stages.find(stage => stage.targets.includes(m.id));
-      if (!stage) return;
-      const helpers = fxRuntimeHelpers(editor.patch);
-      for (const id of editor.setFxStage(stage, e.value === 0)) {
-        if (helpers.has(id)) continue;
+      const effect = rackOf(editor.patch).effects.find((x) => x.targets.includes(m.id));
+      const a = effect && editor.patch.assemblies?.find((x) => x.id === effect.asm);
+      if (!a) return;
+      // the FM-1 switched the whole effect (engine.c eng_fx_set): its card's ⏻, which never bypasses a helper
+      for (const id of editor.setBypass([], e.value !== 0, a)) {
         const module = editor.patch.modules.find(module => module.id === id)!;
         host.send({ t: 'bypass', id, on: !!module.bypass });
       }
@@ -1147,7 +1147,7 @@ const editor = new Editor($('canvas'), firstPatch, {
   onFill: (on) => host.send({ t: 'fill', on }),
   onBypass(id, on) {
     if (fromDevice) uploadGate.forget();
-    if (fxRuntimeHelpers(editor.patch).has(id)) { queueSave(editor.patch); return; }   // (the stage's targets carry it)
+    if (chainHelpers(editor.patch).has(id)) { queueSave(editor.patch); return; }   // (an effect's helper: its switch leaves it running)
     host.send({ t: 'bypass', id, on });
     queueEmu();
     tutorial.bypassed();

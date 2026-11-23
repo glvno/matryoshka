@@ -57,8 +57,8 @@ export function scheduleWork(s: Schedule, work: (m: number) => number): (m: numb
 }
 
 /** Input must be deviceView(source, true); `rig`: the plan's costs measured on the test rig (engine.c DEF_COST,
- * DEF_COST_BYPASS); `table`: the CPU table's (DEF_TCOST, DEF_TCOST_BYPASS); `helpers`: fx-bus.ts fxHelperIds(source), which
- * play though the patch marks them bypassed. Two plans, each item in E.order where it would end first: one at the table's
+ * DEF_COST_BYPASS); `table`: the CPU table's (DEF_TCOST, DEF_TCOST_BYPASS); `helpers`: fx-drawer.ts chainHelpers(source),
+ * which play though the patch marks them bypassed. Two plans, each item in E.order where it would end first: one at the table's
  * costs, one at the rig's (an oscillator's cost times its voices, SCH_ITEM more an item). The rig's plan is kept when, at
  * the rig's costs, it ends sooner than the table's by 1 / SCH_GAIN (#1073): where the two are closer, the costs' own error
  * decides which ends first on the FM-1, and the table's plan is the one the FM-1 played before */

@@ -19,17 +19,17 @@ import { lockPlan, lockValue } from './locks';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
 import { harmButton, harmButtonOf, harmChord, harmSnapshot, harmClear, harmInit, harmKey, type HarmParams, type HarmState } from './harmonizer';
 import { DEFS, DELAY_SWELL_DEN, DELAY_SWELL_NUM } from './modules';
-import { fxBusOf, type FxStageKind } from './fx-bus';
-import { devicesOf } from './pages';
+import { rackPlan } from './rack-plan';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 export const BLOCK = 128;
 
 const FX_RAMP = 1024, FX_FULL = 2 ** 30;
-const FX_KINDS: readonly FxStageKind[] = ['drive', 'chorus', 'delay', 'reverb'];
 /** quiet: consecutive OFF samples whose natural tail stayed within IDLE at mix qmix (runFx ends it; engine.c fx_run_t) */
 interface FxRun { gain: number; fade: number; tail: number; quiet: number; qmix: number }
-interface FxStageRun { kind: FxStageKind; assembly: number; device: number; page: number; targets: Node[]; helpers: Node[]; on: boolean }
+/** an effect of the FX rack (rack-plan.ts): its targets share one on/off and run as a master FX stage's did (D-1100;
+ *  engine.c fx); one without targets switches by ordinary bypass */
+interface FxEffect { asm: number; targets: Node[]; on: boolean }
 /**
  * A paraphonic group's mix (#125): a poly group whose parts do not gate their own sound (no cable from its Part's gate or
  * legato output to a module inside the group: the gate goes only to modules that run once, say one shared envelope) has
@@ -100,7 +100,7 @@ interface Node {
   flawParams: { key: 'bright' | 'env' | 'level'; pd: ParamDef }[];
   /** the P-locks on it now (#524): per parameter the value a track's step locks it to, in place of `params` (null: none) */
   lock: Record<string, number> | null;
-  fx: { stage: FxStageRun; run: FxRun } | null;
+  fx: { effect: FxEffect; run: FxRun } | null;
 }
 
 /** a Steps track's P-locks as it plays them (locks.ts lockPlan): per locked row the parameters it sets, per pattern its
@@ -271,7 +271,9 @@ export class Engine {
   private main: Node | null = null;
   private morphT = 0;
   private hasB = false;
-  private fxStages: FxStageRun[] = [];
+  private fxEffects: FxEffect[] = [];
+  /** the effects' helpers (fx-drawer.ts chainHelpers): they run whatever the effect's switch, never bypassed (D-1100) */
+  private fxHelpers = new Set<number>();
   private readonly fxZero = new Float32Array(BLOCK);
 
   constructor(readonly sampleRate: number) {}
@@ -317,7 +319,7 @@ export class Engine {
     }
     const routingError = keyRouteError(source);
     if (routingError) throw new Error(routingError);
-    const bus = fxBusOf(source);
+    const rack = rackPlan(source);   // (the binary's FX rack: the FM-1 runs the same targets, engine.c fx_load)
     this.src = source;
     this.compiled = compile;
     source = armView(source, this.armedKeys); // the armed devices hear Main's keys, the others not (#190); unchanged while none is
@@ -421,35 +423,30 @@ export class Engine {
     this.nodes = next;
     const previousFx = new Map([...next.values()].map((node) => [node.id, node.fx]));
     for (const node of next.values()) node.fx = null;
-    const devices = bus ? devicesOf(source, DEFS) : [];
-    this.fxStages = bus ? bus.stages.map((stage) => {
-      const targets = stage.targets.map((id) => {
+    this.fxHelpers = rack?.helpers ?? new Set();
+    for (const id of this.fxHelpers) {
+      const node = next.get(id);
+      if (node) node.bypass = false; // runtime-owned: the effect's switch leaves its helpers running (D-1100)
+    }
+    this.fxEffects = (rack?.effects ?? []).map((e) => {
+      const targets = e.targets.map((id) => {
         const node = next.get(id);
-        if (!node || node.inst.length !== 1 || node.group >= 0) throw new Error('Master FX target was dropped or made polyphonic');
+        if (!node || node.inst.length !== 1 || node.group >= 0) throw new Error('An FX rack target was dropped or made polyphonic');
         return node;
       });
-      const device = devices.findIndex((d) => d.asm === bus.assembly);
-      const page = devices[device]?.pages.findIndex((p) => p.rows.some((r) => stage.targets.includes(r.module) || r.also?.some((a) => stage.targets.includes(a.module)))) ?? -1;
-      if (device < 0 || page < 0) throw new Error('Master FX device/page is missing');
-      const helpers = (stage.kind === 'reverb' && targets.length === 1 ? stage.helpers : []).map(id => {
-        const node = next.get(id);
-        if (!node) throw new Error('Master FX helper was dropped');
-        node.bypass = false; // runtime-only: the wet kernel owns OFF and spillover, never ordinary helper bypass
-        return node;
-      });
-      const st: FxStageRun = { kind: stage.kind, assembly: stage.assembly, device, page, targets, helpers, on: targets.some((node) => !node.bypass) };
+      const effect: FxEffect = { asm: e.asm, targets, on: targets.some((node) => !node.bypass) };
       for (const node of targets) {
         const old = previousFx.get(node.id);
-        const run = old?.stage.kind === stage.kind ? old.run : { gain: st.on ? FX_RAMP : 0, fade: FX_FULL, tail: st.on ? 1 : 0, quiet: 0, qmix: 0 };
-        if (st.on) {
+        const run = old?.effect.asm === e.asm ? old.run : { gain: effect.on ? FX_RAMP : 0, fade: FX_FULL, tail: effect.on ? 1 : 0, quiet: 0, qmix: 0 };
+        if (effect.on) {
           run.tail = 1;
           run.quiet = 0;
         }
-        node.bypass = !st.on;
-        node.fx = { stage: st, run };
+        node.bypass = !effect.on;
+        node.fx = { effect, run };
       }
-      return st;
-    }) : [];
+      return effect;
+    });
     paraMix([...next.values()]);
     const { order } = processingOrder(patch);
     this.order = order.map((id) => next.get(id)!);
@@ -460,8 +457,7 @@ export class Engine {
     const mainInst = patch.modules.find((m) => m.type === 'fm1');   // the switched-on buttons the patch was saved with
     this.buttons = PANEL_BUTTONS.reduce((mask, b, i) => (mainInst?.panel?.on?.includes(b) && mainInst.panel.toggle?.includes(b) ? mask | (1 << i) : mask), 0);
     const srcPanel = source.modules.find((m) => m.type === 'fm1')?.panel;
-    const wetHelpers = new Set(this.fxStages.flatMap(s => s.helpers.map(n => n.id)));
-    this.btnTargets = PANEL_BUTTONS.map((b) => (kindOf(srcPanel, b) === 'bypass' ? toggleTargets(source, b).filter((id) => next.has(id) && !wetHelpers.has(id)) : null));
+    this.btnTargets = PANEL_BUTTONS.map((b) => (kindOf(srcPanel, b) === 'bypass' ? toggleTargets(source, b).filter((id) => next.has(id) && !this.fxHelpers.has(id)) : null));
     this.btnSwitch = PANEL_BUTTONS.map((b) => switches(srcPanel, b));
     this.syncToggles();
     const oldArps = new Map(this.arps.map((a) => [a.node.id, a]));
@@ -921,17 +917,15 @@ export class Engine {
     else delete n.range[index][name];
   }
 
-  fxCount(): number { return this.fxStages.length; }
-  fxKind(stage: number): number { return this.fxStages[stage] ? FX_KINDS.indexOf(this.fxStages[stage].kind) : -1; }
-  fxDevice(stage: number): number { return this.fxStages[stage]?.device ?? -1; }
-  fxPage(stage: number): number { return this.fxStages[stage]?.page ?? -1; }
-  fxOn(stage: number): boolean { return this.fxStages[stage]?.on ?? false; }
-  /** Desired stage state; processing a spillover tail is deliberately separate. */
-  setFx(stage: number, on: boolean): void {
-    const st = this.fxStages[stage];
-    if (!st) return;
-    st.on = on;
-    for (const node of st.targets) {
+  /** the FX rack's effects (engine.c eng_fx_count), in device order */
+  fxCount(): number { return this.fxEffects.length; }
+  fxOn(effect: number): boolean { return this.fxEffects[effect]?.on ?? false; }
+  /** Desired effect state (engine.c eng_fx_set); processing a spillover tail is deliberately separate. */
+  setFx(effect: number, on: boolean): void {
+    const e = this.fxEffects[effect];
+    if (!e) return;
+    e.on = on;
+    for (const node of e.targets) {
       node.bypass = !on;
       if (on) {
         node.fx!.run.tail = 1;
@@ -945,10 +939,10 @@ export class Engine {
   setBypass(id: number, on: boolean): void {
     const n = this.nodes.get(id);
     if (n?.fx) {
-      this.setFx(this.fxStages.indexOf(n.fx.stage), !on);
+      this.setFx(this.fxEffects.indexOf(n.fx.effect), !on);
       return;
     }
-    if (n && this.fxStages.some((s) => s.helpers.includes(n))) return; // runtime-owned wet return (D-1100)
+    if (this.fxHelpers.has(id)) return; // runtime-owned: an effect's helper keeps running (D-1100)
     if (n && n.type !== 'fm1' && n.type !== 'output') n.bypass = on;
     const a = this.arpById.get(id);
     if (a && a.byp !== a.node.bypass) this.arpSwitched(a);
@@ -1100,10 +1094,10 @@ export class Engine {
     return {
       ...src,
       assemblies: src.assemblies?.map((a) => {
-        const stage = this.fxStages.find((s) => s.assembly === a.id);
-        if (!stage) return a;
+        const effect = this.fxEffects.find((e) => e.asm === a.id && e.targets.length);
+        if (!effect) return a;
         const out = { ...a };
-        if (stage.on) delete out.bypass;
+        if (effect.on) delete out.bypass;
         else out.bypass = true;
         delete out.kept;
         return out;
@@ -1115,8 +1109,7 @@ export class Engine {
         if (Object.keys(n.range[0]).length || Object.keys(n.range[1]).length)
           out.range = { p1: { ...n.range[0] }, p2: { ...n.range[1] } };
         else delete out.range;
-        const helperStage = this.fxStages.find(s => s.helpers.includes(n));
-        if (helperStage ? !helperStage.on : n.bypass) out.bypass = true;
+        if (n.bypass) out.bypass = true;
         else delete out.bypass;
         if (m.type === 'steps') {
           const st = n.inst[0].state as StepsState;
@@ -1598,12 +1591,13 @@ export class Engine {
   }
 
   private runFx(node: Node, inst: Inst, ctx: Ctx): void {
-    const { stage: st, run } = node.fx!;
-    const tail = st.kind === 'delay' || st.kind === 'reverb';
-    // The single kernel's stereo dry paths live outside it; this branch returns wet or zero only.
-    const wetOnly = st.kind === 'reverb' && st.targets.length === 1;
-    const dry = inst.inp.in;
-    const input = ctx.inp.in;
+    const { effect: st, run } = node.fx!;
+    const thru = node.thru!;   // (rack-plan.ts: every target has a through input)
+    const tail = node.type === 'delay' || node.type === 'reverb';
+    // An effect's only Reverb: its stereo dry paths live outside it; this branch returns wet or zero only.
+    const wetOnly = node.type === 'reverb' && st.targets.length === 1;
+    const dry = inst.inp[thru];
+    const input = ctx.inp[thru];
     const mix = inst.eff.mix ?? 0;
     let { gain, fade } = run;
     if (!st.on && (tail ? !run.tail : !gain)) {
@@ -1615,16 +1609,16 @@ export class Engine {
     }
     // the Delay's read point and line format, which the quiet window below must see still (engine.c m_fx)
     type DelayMark = { cur: number; rate: number; hold: number; rk: number; tp: boolean; buf: Float32Array };
-    const dly = st.kind === 'delay' ? inst.state as DelayMark : null;
+    const dly = node.type === 'delay' ? inst.state as DelayMark : null;
     let cur0 = 0, rate0 = 0, hold0 = 0, rk0 = 0, tp0 = false;
     if (!st.on && tail) {
-      if (run.tail === 1 && (st.kind === 'reverb' ? (inst.eff.freeze ?? 0) >= 0.5 :
+      if (run.tail === 1 && (node.type === 'reverb' ? (inst.eff.freeze ?? 0) >= 0.5 :
         (inst.eff.swell ?? 0) >= 0.5 && Math.round((inst.eff.fb ?? 0) * 65536) * DELAY_SWELL_NUM >= 65536 * DELAY_SWELL_DEN)) run.tail = 2;
       if (dly) ({ cur: cur0, rate: rate0, hold: hold0, rk: rk0, tp: tp0 } = dly);
-      ctx.inp.in = this.fxZero;
+      ctx.inp[thru] = this.fxZero;
     }
     node.impl.process(ctx, inst.state);
-    ctx.inp.in = input;
+    ctx.inp[thru] = input;
     if (st.on && gain === FX_RAMP && (!tail || fade === FX_FULL)) return;
     // An OFF natural tail at rest: gain and fade stay put, so the loop below reduces exactly to these forms. Its tail ends
     // once every sample it added stayed within IDLE for a whole line (the Delay's length times its rate step, the
