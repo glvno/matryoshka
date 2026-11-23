@@ -105,6 +105,8 @@ class ReleaseBuild(unittest.TestCase):
         app = (normal / "matryoshka-1.13.0-app.bin").read_bytes()
         self.assertIn(b"flash:" + app, (normal / "matryoshka-1.13.0.fwsc").read_bytes())
         self.assertEqual(record["files"]["normal"]["sha256"], hashlib.sha256(app).hexdigest())
+        font = (normal / "matryoshka-1.13.0-font.bin").read_bytes()
+        self.assertEqual(record["files"]["font"]["sha256"], hashlib.sha256(font).hexdigest())
 
     def test_reject_existing_outputs_without_changing_them(self):
         target = self.root / "normal"
@@ -155,6 +157,12 @@ class ReleaseBuild(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 release_manifest.artifacts("1.13.0", normal, bridge)
         side_path.write_text(json.dumps(original))
+        font = normal / "matryoshka-1.13.0-font.bin"
+        good = font.read_bytes()
+        font.write_bytes(good[:12] + bytes(4) + good[16:])
+        with self.assertRaisesRegex(ValueError, "screen font disagrees"):
+            release_manifest.artifacts("1.13.0", normal, bridge)
+        font.write_bytes(good)
         (normal / "matryoshka-1.13.0.fwsc").write_bytes(b"tampered")
         with self.assertRaisesRegex(ValueError, "package disagrees"):
             release_manifest.artifacts("1.13.0", normal, bridge)

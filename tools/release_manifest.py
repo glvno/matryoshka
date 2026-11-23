@@ -22,6 +22,7 @@ def artifacts(version, normal, bridge):
         "normal": normal / f"matryoshka-{version}-app.bin",
         "normal_elf": normal / f"matryoshka-{version}-app.elf",
         "normal_sidecar": normal / f"matryoshka-{version}.json",
+        "font": normal / f"matryoshka-{version}-font.bin",
         "bridge": bridge / "matryoshka-emu.bin",
         "bridge_elf": bridge / "matryoshka-emu.elf",
         "bridge_sidecar": bridge / "matryoshka-emu.json",
@@ -40,6 +41,8 @@ def artifacts(version, normal, bridge):
         if role == "normal" and (side["sha256"] != sha(names["package"])
                                  or side["size"] != names["package"].stat().st_size):
             raise ValueError("release package disagrees with its sidecar")
+        if role == "normal" and side.get("font") != names["font"].read_bytes()[12:16][::-1].hex():
+            raise ValueError("screen font disagrees with its sidecar")
     if configs[0] != configs[1]:
         raise ValueError("normal and bridge build options differ beyond M1_EMU_MIDI")
     return {
