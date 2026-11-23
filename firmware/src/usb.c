@@ -454,13 +454,19 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
 #else
 #define AC_COLL(a) (a) + IF_MIDI, (a) + IF_AS
 #endif
+/* bDelay of each AS general descriptor (UAC1 4.5.2, in frames = ms): the measured typical delay, rounded to
+ * the nearest whole frame (D-1351; issue #870, measured on the test rig): recording (engine -> EP4 IN) about
+ * 5.7 ms, the ring at 160..208 frames when a block starts and a 128-frame block tapped at once; playback
+ * (EP2 OUT -> mix) about 5.4-5.8 ms, the 512-frame queue filled 3.9-7.8 ms. Both round to 6. */
+#define UAC_DELAY_IN 6
+#define UAC_DELAY_OUT 6
 #if FELUCCA_UAC_RETURN
 #define AC_HEAD(a) 11, 0x24, 1, 0, 1, 53, 0, 3, (a)+1, (a)+2, (a)+3,
 #define AC_RETURN 12, 0x24, 2, 3, 1, 1, 0, 2, 3, 0, 0, 0, 9, 0x24, 3, 4, 1, 3, 0, 3, 0,
 #define D_RETURN(a) \
     9, 4, (a)+2, 0, 0, 1, 2, 0, 0, \
     9, 4, (a)+2, 1, 2, 1, 2, 0, 0, \
-    7, 0x24, 1, 3, 1, 1, 0, \
+    7, 0x24, 1, 3, UAC_DELAY_OUT, 1, 0, \
     11, 0x24, 2, 1, 2, 2, 16, 1, 0x44, 0xAC, 0, \
     9, 5, 0x02, 0x05, 180, 0, 1, 0, 0x83, \
     7, 0x25, 1, 1, 0, 0, 0, \
@@ -478,7 +484,7 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
 #define D_AS(s)                                                                                      \
     9, 4, (s), 0, 0, 1, 2, 0, 0,                           /* audio streaming, alt 0: no bandwidth */    \
     9, 4, (s), 1, 1, 1, 2, 0, 0,                           /* alt 1: the stream */                      \
-    7, 0x24, 1, 2, 1, 0x01, 0x00,                          /* AS general: terminal 2, delay 1, PCM */   \
+    7, 0x24, 1, 2, UAC_DELAY_IN, 0x01, 0x00,               /* AS general: terminal 2, delay, PCM */     \
     D_FMT                                                  /* type I: 2 ch, 16 bit, the rates */        \
     9, 5, 0x84, 0x05, UAC_MAXP & 0xFF, UAC_MAXP >> 8, 1, 0, 0,   /* EP4 IN isochronous async, 1 ms */   \
     7, 0x25, 1, 0x01, 0, 0, 0,                             /* CS endpoint: sampling frequency control */
