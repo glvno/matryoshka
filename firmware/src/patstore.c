@@ -38,6 +38,9 @@
 #define PT_ID_MAX 0xDFFFu               /* user ids 1..PT_ID_MAX; 0xE000.. are read-only factory entries (patlink.c) */
 #define PT_FNV0 0x811C9DC5u
 #define PT_MAGIC 0x31544150u            /* "PAT1": a committed record */
+#define PT_KMAGIC 0x4B544150u           /* "PATK": a committed record kept as a copy (FX+SAVE, PAT_PUT's PAT_KEPT; #1202 P1):
+                                         * patlink.c pl_gc never frees it, and only a kept put writes over it */
+#define PT_LIVE(m) ((m) == PT_MAGIC || (m) == PT_KMAGIC)
 #define PT_SMAGIC 0x31535450u           /* "PTS1": a formatted sector */
 #define PT_SEC 0x1000u
 #define PT_SHDR 16u                     /* the sector header */
@@ -45,7 +48,7 @@
 #define PT_TAB (PT_NSEC_MAX * (PT_SEC - PT_SHDR) / (PT_HDR + 4u))   /* records the store holds at most: 1,632 */
 
 typedef struct {
-    uint32_t magic;          /* PT_MAGIC: committed; 0: killed; 0xFFFFFFFF: never committed */
+    uint32_t magic;          /* PT_MAGIC or PT_KMAGIC: committed; 0: killed; 0xFFFFFFFF: never committed */
     uint32_t seq;            /* store-wide write sequence */
     uint16_t id, len;        /* id 1..PT_ID_MAX; len = payload bytes 1..PT_MAX */
     uint32_t hash;           /* pt_fnv(PT_FNV0, payload, len) */
@@ -63,7 +66,7 @@ _Static_assert(sizeof(pt_shdr_t) == PT_SHDR, "pattern sector header");
 _Static_assert(2u * PT_TAB <= M1_PATCH_MAX, "the scan's table fits in sl_buf and m1_up");
 _Static_assert(PT_NSEC_MAX * PT_SEC <= 1u << 16, "a record's place in the store fits 16 bits");
 
-typedef struct { uint16_t id, len; uint32_t hash; char name[PT_NAME + 1]; } pt_info_t;
+typedef struct { uint16_t id, len; uint32_t hash; char name[PT_NAME + 1]; uint8_t kept; } pt_info_t;
 
 static uint8_t pt_on;                   /* the store is claimed (slotstore.c pt_claim) */
 static uint8_t pt_scanned;              /* pt_scan ran (main.c runs it at boot) */
@@ -169,7 +172,7 @@ static int pt_find(uint32_t id, pt_hdr_t *out)
     uint32_t loc;
     int at = -1;
     for (loc = 0; !pt_iter(&loc, &h); loc += pt_size(h.len))
-        if (h.magic == PT_MAGIC && h.id == id && (at < 0 || h.seq > out->seq)) {
+        if (PT_LIVE(h.magic) && h.id == id && (at < 0 || h.seq > out->seq)) {
             *out = h;
             at = (int)loc;
         }
@@ -244,6 +247,7 @@ static void pt_fill(const pt_hdr_t *h, pt_info_t *out)
     for (i = 0; i < PT_NAME; i++)
         out->name[i] = h->name[i];
     out->name[PT_NAME] = 0;
+    out->kept = h->magic == PT_KMAGIC;
 }
 
 /* the live record bytes in sector sec */
@@ -252,7 +256,7 @@ static uint32_t pt_live(uint32_t sec)
     pt_hdr_t h;
     uint32_t loc = sec * PT_SEC, n = 0;
     for (; !pt_iter(&loc, &h) && loc / PT_SEC == sec; loc += pt_size(h.len))
-        n += h.magic == PT_MAGIC ? pt_size(h.len) : 0u;
+        n += PT_LIVE(h.magic) ? pt_size(h.len) : 0u;
     return n;
 }
 
@@ -302,7 +306,7 @@ static int pt_compact(uint32_t r)
     if (t == PT_NSEC || v == PT_NSEC || PT_SEC - PT_SHDR - live < r)
         return -2;
     for (loc = v * PT_SEC; !pt_iter(&loc, &h) && loc / PT_SEC == v; loc += pt_size(h.len)) {
-        if (h.magic != PT_MAGIC)
+        if (!PT_LIVE(h.magic))
             continue;
         if (pt_emit(t, &h, 0, PT_BASE + loc + PT_HDR))
             return -1;
@@ -409,7 +413,7 @@ static void pt_scan(void)
             pt_see_id(h.nextid);
             if (h.magic != 0xFFFFFFFFu && h.seq >= pt_seq) /* (a record never committed may have its number half written) */
                 pt_seq = h.seq + 1u;
-            if (h.magic != PT_MAGIC)
+            if (!PT_LIVE(h.magic))
                 continue;
             if (h.id < 1u || h.id > PT_ID_MAX || n >= PT_TAB || pt_crc_ok(loc, &h)) {
                 (void)pt_kill(loc);                         /* (foreign bytes) */
@@ -453,7 +457,7 @@ static int pt_read_at(uint32_t at, uint8_t *dst, uint32_t cap, pt_info_t *out)
 {
     pt_hdr_t h;
     uint32_t i;
-    if (pt_head(at, &h) || h.magic != PT_MAGIC || h.len < 1u || h.len > PT_MAX)
+    if (pt_head(at, &h) || !PT_LIVE(h.magic) || h.len < 1u || h.len > PT_MAX)
         return -1;
     pt_fill(&h, out);
     if (h.len > cap)
@@ -491,7 +495,7 @@ static void pt_find_many(const uint16_t *ids, uint32_t n, int32_t *at, uint32_t 
         return;
     pt_ensure();
     for (loc = 0; !pt_iter(&loc, &h); loc += pt_size(h.len))
-        for (k = 0; h.magic == PT_MAGIC && k < n; k++)
+        for (k = 0; PT_LIVE(h.magic) && k < n; k++)
             if (ids[k] == h.id && (at[k] < 0 || h.seq > seq[k])) {
                 at[k] = (int32_t)loc;
                 seq[k] = h.seq;
@@ -501,8 +505,9 @@ static void pt_find_many(const uint16_t *ids, uint32_t n, int32_t *at, uint32_t 
 }
 
 /* store a pattern: *id 0 a new one (its id assigned into *id), else over that live id (the old record is killed once
- * the new one is committed). 0 ok, -1 flash, -2 full, -3 range (len 0 / > PT_MAX / ids used up), -4 missing */
-static int pt_put(uint32_t *id, const char *name, const uint8_t *p, uint32_t len)
+ * the new one is committed); kept: as a kept copy (PT_KMAGIC). Only a kept put writes over a kept copy: any other answers
+ * -4, so SAVE makes a new entry. 0 ok, -1 flash, -2 full, -3 range (len 0 / > PT_MAX / ids used up), -4 missing */
+static int pt_put(uint32_t *id, const char *name, const uint8_t *p, uint32_t len, int kept)
 {
     pt_hdr_t h, o;
     uint32_t i, end, sec, r = pt_size(len);
@@ -512,7 +517,7 @@ static int pt_put(uint32_t *id, const char *name, const uint8_t *p, uint32_t len
     pt_ensure();
     if (len < 1u || len > PT_MAX || (!*id && pt_nextid > PT_ID_MAX))
         return -3;
-    if (*id && pt_find(*id, &o) < 0)
+    if (*id && (pt_find(*id, &o) < 0 || (o.magic == PT_KMAGIC && !kept)))
         return -4;
     sec = pt_pick(r);
     if (sec == PT_NSEC) {
@@ -525,7 +530,7 @@ static int pt_put(uint32_t *id, const char *name, const uint8_t *p, uint32_t len
     }
     if (*id)
         old = pt_find(*id, &o);                         /* (compaction moves records) */
-    h.magic = PT_MAGIC;
+    h.magic = kept ? PT_KMAGIC : PT_MAGIC;
     h.seq = pt_seq++;
     h.id = (uint16_t)(*id ? *id : pt_nextid++);         /* (a new id is taken even if the write fails: never reused) */
     h.len = (uint16_t)len;
@@ -569,7 +574,7 @@ static uint32_t pt_count(void)
         return 0;
     pt_ensure();
     for (loc = 0; !pt_iter(&loc, &h); loc += pt_size(h.len))
-        n += h.magic == PT_MAGIC;
+        n += PT_LIVE(h.magic);
     return n;
 }
 
@@ -583,7 +588,7 @@ static int pt_near(uint32_t from, int up, pt_info_t *out)
         return -1;
     pt_ensure();
     for (loc = 0; !pt_iter(&loc, &h); loc += pt_size(h.len))
-        if (h.magic == PT_MAGIC && (up ? h.id > from : h.id < from) && (!found || (up ? h.id < b.id : h.id > b.id))) {
+        if (PT_LIVE(h.magic) && (up ? h.id > from : h.id < from) && (!found || (up ? h.id < b.id : h.id > b.id))) {
             b = h;
             found = 1;
         }

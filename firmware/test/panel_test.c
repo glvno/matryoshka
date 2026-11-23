@@ -5096,6 +5096,18 @@ int main(void)
         panel_edges(0, 1u << BTN_SEQ);
         loop();
         check("  SEQ let go: the SEQ page stays, the patch not saved", page == PAGE_SEQ);
+        {                                               /* (#1202 P1: SEL held + SAVE's pattern save went) */
+            int was = saved, pat = eng_pattern();
+            panel_held |= 1u << BTN_SEL;
+            panel_edges(1u << BTN_SEL, 0);
+            tap(BTN_SAVE);
+            loop();
+            panel_held &= ~(1u << BTN_SEL);
+            panel_edges(0, 1u << BTN_SEL);
+            loop();
+            check("SEL held + SAVE on the SEQ page: nothing, the patch not saved, SEL's release opens nothing",
+                  saved == was && page == PAGE_SEQ && eng_pattern() == pat);
+        }
         enc(6, -1);
         later(1100);
         panel_held |= 1u << BTN_SEQ;
