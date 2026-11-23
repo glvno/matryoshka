@@ -598,9 +598,10 @@ static void fx_suite(void)
     tap(BTN_ENV);
     tap(2);
     check("FX from the environment: the effect's device page", page == 0u && pg_cur_dev == fx_dev(first));
+    tap(2);
+    check("  FX again: back to the environment", page == PAGE_ENV && pg_cur_dev == home);
     tap(BTN_HOME);
-    check("  HOME back to the environment", page == PAGE_ENV && pg_cur_dev == home);
-    tap(BTN_HOME);
+    check("  HOME leaves the environment", page == 0u);
     {   /* the drawer's on/off: a Toggle on the drawer (LFO in the fixture) switches every effect through eng_fx_set */
         const uint8_t *t;
         uint32_t k, n;

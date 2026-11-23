@@ -6,7 +6,7 @@
 import { writeFileSync } from 'node:fs';
 import { encodePatch } from '../src/patchbin';
 import { DEFS } from '../src/modules';
-import { newPatch, type Patch } from '../src/patch';
+import { connect, newPatch, type Patch } from '../src/patch';
 import { insertAssembly, type AssemblyInst } from '../src/assembly';
 import { FACTORY } from '../src/assemblies';
 import { wireEngine } from '../src/engines';
@@ -37,10 +37,13 @@ export function writeFxPanelFixtures(out: URL): void {
     write('fx-drawer', p);
   }
   {
-    // fx-layers: Silver Box (no drawer, into the Output), Monolith D with a drawer of one effect, and an Output drawer
+    // fx-layers: Silver Box (no drawer) into the Output's l, Monolith D with a drawer of one effect into its r (both heard,
+    // so the encoder keeps both), and an Output drawer
     const p = newPatch(DEFS);
     instrument(p, 'Silver Box', 300);
-    const b = instrument(p, 'Monolith D', 900);
+    const b = instrument(p, 'Monolith D', 900), out = p.modules.find((m) => m.type === 'output')!;
+    p.cables = p.cables.filter((c) => !(c.to.module === out.id && c.to.port === 'r'));
+    connect(p, DEFS, { module: b.outputs[0].module, port: b.outputs[0].port }, { module: out.id, port: 'r' });
     insertEffect(p, addDrawer(p, b.id), { type: 'shape' });
     insertEffect(p, addDrawer(p, 'output'), { type: 'chorus' });
     write('fx-layers', p);
