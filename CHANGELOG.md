@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Turning PRESET with HOME held while the palette overview or the quick start shows no longer leaves pieces of it between the next patch's bars: the screen is drawn whole (#1222).
+
 ## 1.26.0 — 2026-11-23
 
 - The FM-1 now tells computers and phones its true USB audio delay (about 6 ms each way), so recording apps that use it line up more closely.
