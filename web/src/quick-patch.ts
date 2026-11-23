@@ -3,7 +3,8 @@
 // screen: what a card offers as ports and which one Enter takes, the search for modules, the typed chain
 // (`lfo.out > multimode.cv; multimode.lp > vca.in > output.in`), following cables, blueprints and where a new card goes.
 // quick-patch-view.ts draws the field and the ring and drives the editor with these.
-import { allModules, assembliesOf, assemblyById, assemblyOf, cardWidth, findRef, insertAssembly, overlaps, paramColumns, parentOf, targetsOf, tiedTo, type AssemblyDef, type Rect } from './assembly';
+import { allModules, assembliesOf, assemblyById, assemblyOf, cardWidth, deviceModules, findRef, insertAssembly, overlaps, paramColumns, parentOf, targetsOf, tiedTo, type AssemblyDef, type AssemblyInst, type Rect } from './assembly';
+import { addDrawer, chainCableProblem, chainJackProblem, drawerOf, drawerOfEffect, drawerOutput, drawers, effectKind, effectsOf, insertEffect, outputDrawer, ownerOf, rewire } from './fx-drawer';
 import { score } from './fuzzy';
 import { keyRouteError } from './key-routing';
 import { longName, moduleKeywords, moduleTitle } from './labels';
@@ -30,12 +31,88 @@ export interface QPort {
   param?: Endpoint & { param: string };
   /** a jack that is a parameter's dedicated input (the Multimode's cv sets cutoff): the parameters it moves */
   drives?: string[];
+  /** a jack of an effect's stereo chain while it sits in an FX drawer: the editor wires it, so a cable onto it is refused
+   *  with this reason (the ring greys it out, labelled chain) */
+  chain?: string;
+  /** what the ring writes under the name: `after FX` for an instrument's out L / R that give the sound after its drawer,
+   *  `into FX` for the Output's left / right while the Output drawer runs them through its effects */
+  note?: string;
 }
 
-/** the card a module shows on: itself, or the outermost collapsed assembly that hides it */
+// ---- FX drawers (D-1310..D-1316 amended for the drawer): an effect in a drawer is a card of its own, named after its
+// instrument, even while the drawer is closed
+
+/** a drawer by who owns it: an instrument (its top-level assembly's id), or the patch's Output drawer */
+export type DrawerOwner = number | 'output';
+
+const ownerKey = (p: Patch, d: AssemblyInst): DrawerOwner => { const o = ownerOf(p, d); return o === 'output' ? 'output' : o.id; };
+
+/** the drawer of an owner, if it has one */
+export const drawerFor = (p: Patch, owner: DrawerOwner): AssemblyInst | undefined => (owner === 'output' ? outputDrawer(p) : drawerOf(p, owner));
+
+/** a drawer's name in words: `Hera 4's FX`, `Output FX` */
+export function drawerName(p: Patch, owner: DrawerOwner): string {
+  if (owner === 'output') return 'Output FX';
+  const a = assemblyById(p, owner);
+  return `${a ? a.label || a.name : '?'}'s FX`;
+}
+
+/** the drawer a card sits in as an effect, if it does */
+export const drawerOfCard = (p: Patch, c: Card): AssemblyInst | undefined => (c.kind === 'assembly' ? drawerOfEffect(p, c.id) : undefined);
+
+const ordinal = (n: number): string => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+
+/** where an effect in a drawer sits, in words: `Hera 4 › FX, 3rd of 3`, `Output FX, 1st of 2`; null for any other card */
+export function effectPlace(p: Patch, c: Card): string | null {
+  const d = drawerOfCard(p, c);
+  if (!d) return null;
+  const list = effectsOf(p, d);
+  const at = `${ordinal(list.findIndex((e) => e.id === c.id) + 1)} of ${list.length}`;
+  const owner = ownerKey(p, d);
+  return owner === 'output' ? `Output FX, ${at}` : `${ownTitle(p, { kind: 'assembly', id: owner })} › FX, ${at}`;
+}
+
+/** the instruments that can own a drawer (top-level assemblies that are neither an effect nor a drawer) and the Output, by
+ *  what `@` names: a title in full, else the start of one, else the best fuzzy match; `output` is the Output drawer */
+export function findOwner(p: Patch, text: string): DrawerOwner | undefined {
+  const t = text.trim().toLowerCase();
+  if (!t) return undefined;
+  const owners: { owner: DrawerOwner; title: string }[] = [
+    ...assembliesOf(p).filter((a) => !parentOf(p, a.id) && !a.chain && !a.drawer).map((a) => ({ owner: a.id as DrawerOwner, title: (a.label || a.name).toLowerCase() })),
+    { owner: 'output', title: 'output' },
+    { owner: 'output', title: 'output fx' },
+  ];
+  const hit = owners.find((o) => o.title === t) ?? owners.find((o) => o.title.startsWith(t))
+    ?? owners.map((o) => ({ o, s: score(t, o.title) })).filter((x) => x.s >= 0).sort((a, b) => b.s - a.s)[0]?.o;
+  return hit?.owner;
+}
+
+/** where a new effect goes in an owner's drawer: after the current card when that is one of its effects, else at the end */
+export function insertPlace(p: Patch, owner: DrawerOwner, current: Card | null): { index: number | undefined; detail: string } {
+  const d = drawerFor(p, owner);
+  if (!d) return { index: undefined, detail: 'a new drawer' };
+  const list = effectsOf(p, d);
+  const i = current?.kind === 'assembly' ? list.findIndex((e) => e.id === current.id) : -1;
+  return i >= 0 && i < list.length - 1 ? { index: i + 1, detail: `after ${list[i].label || list[i].name}` } : { index: undefined, detail: 'at the end' };
+}
+
+/** add a new effect into an owner's drawer (made when it has none), after `index - 1` or at the end; its card */
+export function addToDrawer(p: Patch, owner: DrawerOwner, what: { type: string } | { def: AssemblyDef }, index?: number): Card {
+  const d = drawerFor(p, owner) ?? addDrawer(p, owner);
+  return { kind: 'assembly', id: insertEffect(p, d, what, index).id };
+}
+
+/** whether a module or catalog assembly is an audio effect, one that fits a drawer */
+export const isEffect = (what: { type: string } | { def: AssemblyDef }): boolean => effectKind('type' in what ? what.type : what.def.name) !== null;
+
+/** the card a module shows on: itself, the effect in an FX drawer it belongs to, or the outermost collapsed assembly that
+ *  hides it */
 export function cardOf(p: Patch, module: number): Card {
   let hidden: number | undefined;
-  for (let a = assemblyOf(p, module); a; a = parentOf(p, a.id)) if (!a.open) hidden = a.id;
+  for (let a = assemblyOf(p, module); a; a = parentOf(p, a.id)) {
+    if (drawerOfEffect(p, a.id)) return { kind: 'assembly', id: a.id };
+    if (!a.open) hidden = a.id;
+  }
   return hidden !== undefined ? { kind: 'assembly', id: hidden } : { kind: 'module', id: module };
 }
 
@@ -43,14 +120,23 @@ export function cardOf(p: Patch, module: number): Card {
 export const cardExists = (p: Patch, c: Card): boolean =>
   c.kind === 'module' ? p.modules.some((m) => m.id === c.id) : !!assemblyById(p, c.id);
 
-/** a card's name as the canvas shows it */
-export function cardTitle(p: Patch, defs: Record<string, ModuleDef>, c: Card): string {
+/** a card's own name as the canvas shows it */
+function ownTitle(p: Patch, c: Card, defs?: Record<string, ModuleDef>): string {
   if (c.kind === 'assembly') {
     const a = assemblyById(p, c.id);
     return a ? a.label || a.name : '?';
   }
   const m = p.modules.find((x) => x.id === c.id);
-  return m ? moduleTitle(m, defs[m.type]?.label ?? m.type) : '?';
+  return m ? moduleTitle(m, defs?.[m.type]?.label ?? m.type) : '?';
+}
+
+/** a card's name: as the canvas shows it, and an effect in a drawer after its instrument (`Hera 4 › Delay`) */
+export function cardTitle(p: Patch, defs: Record<string, ModuleDef>, c: Card): string {
+  const own = ownTitle(p, c, defs);
+  const d = drawerOfCard(p, c);
+  if (!d) return own;
+  const owner = ownerKey(p, d);
+  return `${owner === 'output' ? 'Output FX' : ownTitle(p, { kind: 'assembly', id: owner })} › ${own}`;
 }
 
 /** a parameter row takes a cable (editor.ts paramRow: its thumb, switch or selector is a jack) */
@@ -70,11 +156,14 @@ export function cardPorts(p: Patch, defs: Record<string, ModuleDef>, c: Card): Q
     const def = m && defs[m.type];
     if (!m || !def) return [];
     const end = (port: string): Endpoint[] => [{ module: m.id, port }];
+    // (the Output's left / right with an Output drawer: what comes in runs through its effects)
+    const intoFx = m.type === 'output' && !!outputDrawer(p) && effectsOf(p, outputDrawer(p)!).length > 0;
     return [
       ...def.outputs.map((o): QPort => ({ dir: 'out', name: o.name, label: longName(m.type, o.name), kind: o.kind, ends: end(o.name) })),
       ...def.inputs.filter((i) => !isPin(i.name)).map((i): QPort => {
         const drives = drivenBy(def, i.name);
-        return { dir: 'in', name: i.name, label: longName(m.type, i.name), kind: i.kind, ends: end(i.name), ...(drives.length ? { drives } : {}) };
+        const note = intoFx && OUTPUT_SIDES.includes(i.name) ? { note: 'into FX' } : {};
+        return { dir: 'in', name: i.name, label: longName(m.type, i.name), kind: i.kind, ends: end(i.name), ...(drives.length ? { drives } : {}), ...note };
       }),
       ...moduleRows(def).filter((pd) => takesCable(def, pd, parameterInputs(m, pd).length > 0))
         .map((pd): QPort => ({ dir: 'in', name: pd.name, label: longName(m.type, pd.name), kind: 'control', ends: [], param: { module: m.id, port: '', param: pd.name } })),
@@ -87,10 +176,29 @@ export function cardPorts(p: Patch, defs: Record<string, ModuleDef>, c: Card): Q
     const def = m && defs[m.type];
     return (dir === 'in' ? def?.inputs : def?.outputs)?.find((q) => q.name === e.port)?.kind ?? 'control';
   };
-  const jack = (dir: 'in' | 'out') => (r: { module: number; port: string; label: string; also?: Endpoint[] }): QPort => {
+  // an effect in a drawer: its chain jacks are the editor's (refused with the reason); an instrument with a drawer of
+  // effects: its out L / R give the sound after them, from the drawer's outputs
+  const inDrawer = a.chain && drawerOfEffect(p, a.id) ? a.chain : null;
+  const d = drawerOf(p, a.id);
+  const taps = d?.drawer?.taps && effectsOf(p, d).length ? d.drawer.taps : null;
+  const jack = (dir: 'in' | 'out') => (r: { module: number; port: string; label: string; also?: Endpoint[] }, i: number): QPort => {
     const m = p.modules.find((x) => x.id === r.module);
     const drives = dir === 'in' && m ? drivenBy(defs[m.type], r.port) : [];
-    return { dir, name: r.label, label: r.label, kind: kindOf(r, dir), ends: targetsOf(r), ...(drives.length ? { drives } : {}) };
+    let ends = targetsOf(r);
+    const extra: Partial<QPort> = {};
+    if (inDrawer && (dir === 'in' ? inDrawer.ins : inDrawer.outs).includes(i)) {
+      const why = chainJackProblem(p, ends[0], dir);
+      if (why) extra.chain = why;
+    }
+    if (taps && dir === 'out') {
+      // (a mono instrument's one out takes the left side)
+      const chans = ([0, 1] as const).filter((ch) => ends.some((e) => sameEnd(e, taps[ch])) && (ch === 0 || !sameEnd(taps[0], taps[1])));
+      if (chans.length) {
+        ends = chans.flatMap((ch) => drawerOutput(p, a.id, ch)).filter((e, k, all) => all.findIndex((x) => sameEnd(x, e)) === k);
+        extra.note = 'after FX';
+      }
+    }
+    return { dir, name: r.label, label: r.label, kind: kindOf(r, dir), ends, ...(drives.length ? { drives } : {}), ...extra };
   };
   return [
     ...a.outputs.map(jack('out')),
@@ -108,9 +216,15 @@ export function cardPorts(p: Patch, defs: Record<string, ModuleDef>, c: Card): Q
 /** the cables at a port: from an output, into a jack, or reaching a thumb's parameter (its dedicated input, a pin that
  *  routes to it, a side input routed to it). An assembly's port leaves out the cables that stay inside it */
 export function portCables(p: Patch, defs: Record<string, ModuleDef>, c: Card, port: QPort): Cable[] {
-  const inside = c.kind === 'assembly' ? new Set(allModules(p, assemblyById(p, c.id)!)) : null;
+  // (the chain wires are the editor's: never followed)
+  if (port.chain) return [];
+  // (an instrument's drawer is not inside its card: its effects are cards of their own; but the out L / R after its FX
+  // leave out the wires inside the drawer)
+  const a = c.kind === 'assembly' ? assemblyById(p, c.id)! : null;
+  const inside = a ? new Set(port.note === 'after FX' ? allModules(p, a) : deviceModules(p, a)) : null;
   const outside = (e: Endpoint): boolean => !inside || !inside.has(e.module);
   if (port.dir === 'out') return p.cables.filter((x) => port.ends.some((e) => sameEnd(x.from, e)) && outside(x.to));
+  if (port.note === 'into FX') return outputDrawerSources(p, port.ends[0]);
   if (!port.param) return p.cables.filter((x) => port.ends.some((e) => sameEnd(x.to, e)) && outside(x.from));
   const m = p.modules.find((x) => x.id === port.param!.module);
   const pd = m && defs[m.type].params.find((q) => q.name === port.param!.param);
@@ -119,10 +233,24 @@ export function portCables(p: Patch, defs: Record<string, ModuleDef>, c: Card, p
   return p.cables.filter((x) => x.to.module === m.id && ins.includes(x.to.port) && outside(x.from));
 }
 
+/** the Output's inputs an Output drawer takes */
+const OUTPUT_SIDES = ['l', 'r'];
+
+/** what feeds the Output's left or right while an Output drawer of effects sits in front of it: the cables into its first
+ *  effect's chain input on that side from outside the drawer */
+function outputDrawerSources(p: Patch, side: Endpoint): Cable[] {
+  const d = outputDrawer(p);
+  const first = d && effectsOf(p, d)[0];
+  if (!d || !first?.chain) return [];
+  const ref = first.inputs[first.chain.ins[side.port === 'r' ? 1 : 0]];
+  const inside = new Set(allModules(p, d));
+  return ref ? p.cables.filter((x) => targetsOf(ref).some((e) => sameEnd(x.to, e)) && !inside.has(x.from.module)) : [];
+}
+
 /** how well a port takes the held cable end: 0 lit (the same kind of signal), 1 allowed, -1 not (the same direction, the
  *  same card, keys with anything but keys) */
 export function fit(held: QPort, port: QPort): number {
-  if (held.dir === port.dir) return -1;
+  if (held.dir === port.dir || held.chain || port.chain) return -1;
   if ((held.kind === 'keys') !== (port.kind === 'keys')) return -1;
   const cls = (k: SignalKind): string => (k === 'gate' ? 'control' : k);
   return held.kind === port.kind || (cls(held.kind) === cls(port.kind) && held.kind !== 'gate' && port.kind !== 'gate') ? 0 : 1;
@@ -138,11 +266,17 @@ const FIRST_IN: Record<SignalKind, string[]> = { audio: ['in', 'l', 'in1', 'a'],
  * an input: the card's first output of its kind.
  */
 export function defaultPort(ports: QPort[], held: QPort | null, cabled: (q: QPort) => boolean): QPort | null {
-  return rankPorts(ports, held, cabled)[0] ?? null;
+  return rankPorts(ports, held, cabled).find((q) => !q.chain) ?? null;
 }
 
-/** the ports in the order the list offers them: the default first, then the lit ones, then the rest that fit */
+/** the ports in the order the list offers them: the default first, then the lit ones, then the rest that fit; a drawer's
+ *  chain jacks last (picking one says why not) */
 export function rankPorts(ports: QPort[], held: QPort | null, cabled: (q: QPort) => boolean): QPort[] {
+  const chain = ports.filter((q) => q.chain && (!held || held.dir !== q.dir));
+  return [...rankFree(ports.filter((q) => !q.chain), held, cabled), ...chain];
+}
+
+function rankFree(ports: QPort[], held: QPort | null, cabled: (q: QPort) => boolean): QPort[] {
   const order = new Map(ports.map((q, i) => [q, i]));
   const by = (key: (q: QPort) => number) => (a: QPort, b: QPort): number => key(a) - key(b) || order.get(a)! - order.get(b)!;
   if (!held) {
@@ -185,24 +319,36 @@ export interface Catalog {
   assemblies: { def: AssemblyDef; shelf: string; keywords: string }[];
   blueprints: Blueprint[];
 }
+/** a new module or assembly goes on the canvas, or with `into` into that owner's FX drawer */
 export type Hit =
   | { kind: 'card'; card: Card; label: string; detail: string }
-  | { kind: 'module'; type: string; label: string; detail: string }
-  | { kind: 'assembly'; def: AssemblyDef; label: string; detail: string }
+  | { kind: 'module'; type: string; label: string; detail: string; into?: DrawerOwner }
+  | { kind: 'assembly'; def: AssemblyDef; label: string; detail: string; into?: DrawerOwner }
   | { kind: 'blueprint'; blueprint: Blueprint; label: string; detail: string };
 
 /** the modules people reach for most: they win a tie (`filt` finds the Multimode filter before the Formant filter) */
 const COMMON = ['osc', 'filter', 'vca', 'adsr', 'lfo', 'mixer', 'output', 'delay', 'reverb', 'noise', 'ladder', 'env', 'chorus', 'seq', 'steps'];
 
-/** the cards a search offers: every module card (Main's too) and collapsed assembly */
+/** the cards a search offers: every module card (Main's too) and collapsed assembly, and every effect in an FX drawer,
+ *  open or closed, right after its instrument's card (the Output drawer's last); a drawer itself is not a card */
 export function patchCards(p: Patch): Card[] {
+  const ds = drawers(p);
+  const fx = new Set(ds.flatMap((d) => effectsOf(p, d).map((e) => e.id)));
   const hidden = new Set<number>();
-  for (const a of assembliesOf(p)) if (!a.open) for (const id of allModules(p, a)) hidden.add(id);
-  const nested = (id: number): boolean => { for (let x = parentOf(p, id); x; x = parentOf(p, x.id)) if (!x.open) return true; return false; };
-  return [
+  for (const a of assembliesOf(p)) if (!a.open || fx.has(a.id)) for (const id of allModules(p, a)) hidden.add(id);
+  const nested = (id: number): boolean => { for (let x = parentOf(p, id); x; x = parentOf(p, x.id)) if (!x.open || x.drawer || fx.has(x.id)) return true; return false; };
+  const cards: Card[] = [
     ...p.modules.filter((m) => !hidden.has(m.id)).map((m): Card => ({ kind: 'module', id: m.id })),
-    ...assembliesOf(p).filter((a) => !a.open && !nested(a.id)).map((a): Card => ({ kind: 'assembly', id: a.id })),
+    ...assembliesOf(p).filter((a) => !a.open && !a.drawer && !fx.has(a.id) && !nested(a.id)).map((a): Card => ({ kind: 'assembly', id: a.id })),
   ];
+  for (const d of ds) {
+    const owner = ownerKey(p, d);
+    const list = effectsOf(p, d).map((e): Card => ({ kind: 'assembly', id: e.id }));
+    const i = owner === 'output' ? -1 : cards.findIndex((c) => c.kind === 'assembly' && c.id === owner);
+    if (i < 0) cards.push(...list);
+    else cards.splice(i + 1, 0, ...list);
+  }
+  return cards;
 }
 
 /**
@@ -211,12 +357,21 @@ export function patchCards(p: Patch): Card[] {
  * (`envelope` finds every envelope, the commonest, the ADSR, first), and a name match beats a search-word match. At a like
  * match a card already in the patch comes first, so `out` finds the Output there is, then a new module, then a new
  * assembly (`mm` is the Multimode filter, not Shimmer); the type's own name typed in full (`filter`, `vca`) wins outright.
- * A leading `+` offers only new ones.
+ * A leading `+` offers only new ones. `name@hera 4` looks only in Hera 4's FX drawer, and a new effect it names goes into
+ * that drawer (`@output`: the Output drawer). Without `@`, a new effect is offered on the canvas first, then into each
+ * drawer the patch has, as extra rows.
  */
 export function search(p: Patch, defs: Record<string, ModuleDef>, cat: Catalog, query: string): Hit[] {
   let q = query.trim().toLowerCase();
   const fresh = q.startsWith('+');
   if (fresh) q = q.slice(1).trim();
+  let owner: DrawerOwner | undefined;
+  const atSign = q.indexOf('@');
+  if (atSign >= 0) {
+    const where = q.slice(atSign + 1).trim();
+    q = q.slice(0, atSign).trim();
+    if (where && (owner = findOwner(p, where)) === undefined) return [];
+  }
   if (!q) return [];
   const rank = (label: string, words: string, exact: string[], bonus: number): number => {
     if (exact.some((e) => e.toLowerCase() === q)) return 10000 + bonus;
@@ -232,32 +387,46 @@ export function search(p: Patch, defs: Record<string, ModuleDef>, cat: Catalog, 
   const out: { hit: Hit; r: number }[] = [];
   if (!fresh) {
     for (const c of patchCards(p)) {
-      const label = cardTitle(p, defs, c);
+      const d = drawerOfCard(p, c);
+      if (owner !== undefined && (!d || ownerKey(p, d) !== owner)) continue;
+      const label = d ? ownTitle(p, c) : cardTitle(p, defs, c);
+      const detail = effectPlace(p, c) ?? 'in the patch';
       if (c.kind === 'module') {
         const m = p.modules.find((x) => x.id === c.id)!;
         const def = defs[m.type];
         const r = rank(label, `${moduleKeywords(m.type, def.label)} ${m.name ? def.label : ''}`, [m.type, def.label, label], CARD_BONUS + common(m.type));
-        if (r >= 0) out.push({ hit: { kind: 'card', card: c, label, detail: 'in the patch' }, r });
+        if (r >= 0) out.push({ hit: { kind: 'card', card: c, label, detail }, r });
       } else {
         const a = assemblyById(p, c.id)!;
-        const r = rank(label, a.name, [a.name, label], CARD_BONUS);
-        if (r >= 0) out.push({ hit: { kind: 'card', card: c, label, detail: 'in the patch' }, r });
+        const r = rank(label, `${a.name} ${d ? cardTitle(p, defs, c) : ''}`, [a.name, label], CARD_BONUS);
+        if (r >= 0) out.push({ hit: { kind: 'card', card: c, label, detail }, r });
       }
     }
   }
+  const into = owner !== undefined ? { into: owner } : {};
+  const intoDetail = owner !== undefined ? `into ${drawerName(p, owner)}` : '';
   for (const m of cat.modules) {
+    if (owner !== undefined && !isEffect({ type: m.type })) continue;
     const r = rank(m.name, m.keywords, [m.type, m.name], MODULE_BONUS + common(m.type));
-    if (r >= 0) out.push({ hit: { kind: 'module', type: m.type, label: m.name, detail: 'module' }, r });
+    if (r >= 0) out.push({ hit: { kind: 'module', type: m.type, label: m.name, detail: intoDetail || 'module', ...into }, r });
   }
   for (const a of cat.assemblies) {
+    if (owner !== undefined && !isEffect({ def: a.def })) continue;
     const r = rank(a.def.name, a.keywords, [a.def.name], 0);
-    if (r >= 0) out.push({ hit: { kind: 'assembly', def: a.def, label: a.def.name, detail: `assembly · ${a.shelf}` }, r });
+    if (r >= 0) out.push({ hit: { kind: 'assembly', def: a.def, label: a.def.name, detail: intoDetail || `assembly · ${a.shelf}`, ...into }, r });
   }
-  for (const b of cat.blueprints) {
+  if (owner === undefined) for (const b of cat.blueprints) {
     const r = rank(b.name, b.chain, [b.name], -1);
     if (r >= 0) out.push({ hit: { kind: 'blueprint', blueprint: b, label: b.name, detail: `blueprint · ${b.chain}` }, r });
   }
-  return out.sort((a, b) => b.r - a.r).map((x) => x.hit);
+  const hits = out.sort((a, b) => b.r - a.r).map((x) => x.hit);
+  if (owner !== undefined) return hits;
+  // a new effect: on the canvas first, then into each drawer
+  const owners = drawers(p).map((d) => ownerKey(p, d));
+  return hits.flatMap((h): Hit[] => {
+    if ((h.kind !== 'module' && h.kind !== 'assembly') || !owners.length || !isEffect(h.kind === 'module' ? { type: h.type } : { def: h.def })) return [h];
+    return [{ ...h, detail: `on the canvas · ${h.detail}` }, ...owners.map((o): Hit => ({ ...h, detail: `into ${drawerName(p, o)}`, into: o }))];
+  });
 }
 
 // ---- wiring: what a dropped cable does on the canvas (editor.ts connectJacks), between two ports
@@ -265,9 +434,12 @@ export function search(p: Patch, defs: Record<string, ModuleDef>, cat: Catalog, 
 /** connect two ports, whichever way round they come; cables into one input add up. Throws with the editor's reason */
 export function wire(p: Patch, defs: Record<string, ModuleDef>, a: QPort, b: QPort): void {
   if (a.dir === b.dir) throw new Error('a cable joins a jack that sends to one that takes it');
+  if (a.chain || b.chain) throw new Error((a.chain ?? b.chain)!);
   const [out, input] = a.dir === 'out' ? [a, b] : [b, a];
   const one = (from: Endpoint, to: Endpoint): void => {
     if (p.cables.some((c) => sameEnd(c.from, from) && sameEnd(c.to, to))) return;
+    const why = chainCableProblem(p, from, to);
+    if (why) throw new Error(why);
     if (!connect(p, defs, from, to)) throw new Error(from.port === 'keys' ? keyRouteError(p, { from, to }) ?? 'Cannot connect these ports.' : 'Cannot connect these ports.');
   };
   for (const from of out.ends) {
@@ -276,12 +448,17 @@ export function wire(p: Patch, defs: Record<string, ModuleDef>, a: QPort, b: QPo
       continue;
     }
     const { module, param } = input.param;
+    const back = chainCableProblem(p, from, { module, port: '' });
+    if (back) throw new Error(back);
     const to = connectParameter(p, defs, from, module, param);
     // a card row that sets several parameters: the cable reaches every one of them
     for (const t of tiedTo(p, module, param).slice(1)) connectParameter(p, defs, from, t.module, t.param);
     // the thumb of a merged assembly jack feeds the same group of inputs
     for (const asm of assembliesOf(p)) for (const t of findRef(asm, 'in', to.module, to.port)?.also ?? []) one(from, t);
   }
+  // a new sound into the Output while an Output drawer sits in front of it: it joins the drawer's chain
+  const od = outputDrawer(p);
+  if (od && input.ends.some((e) => OUTPUT_SIDES.includes(e.port) && p.modules.find((m) => m.id === e.module)?.type === 'output')) rewire(p, od);
 }
 
 /** whether the cable `wire` would make between `a` and `b` is there already (every end of it): then it would change nothing */
@@ -401,9 +578,11 @@ export interface ChainItem {
   name: string;
   /** `+`: always a new one */
   fresh: boolean;
-  /** what names this item within the text: the same tag is the same card (`lfo`, `lfo#2`) */
+  /** what names this item within the text: the same tag is the same card (`lfo`, `lfo#2`, `delay@hera 4`) */
   tag: string;
   port?: string;
+  /** `@hera 4`: the instrument (or `output`) whose FX drawer the effect sits in or goes into */
+  at?: string;
 }
 export type Statement = { kind: 'chain'; items: ChainItem[] } | { kind: 'blueprint'; name: string };
 
@@ -413,7 +592,8 @@ export const isChainText = (text: string): boolean => /[>;\n]/.test(text) || /^\
 /**
  * Read a typed chain: statements split by `;` or new lines, each `a.port > b.port > c.port` or `bp <name>`. An item is a
  * name (a card in the patch, a module or an assembly), `+` in front for a new one, `#2` after it for a second one of the
- * same name, `.port` after that. Returns the first error in words.
+ * same name, `@hera 4` after that for the FX drawer it sits in or goes into (`@output`: the Output drawer), `.port` last.
+ * Returns the first error in words.
  */
 export function parseChain(text: string): { statements: Statement[] } | { error: string } {
   const statements: Statement[] = [];
@@ -436,10 +616,14 @@ export function parseChain(text: string): { statements: Statement[] } | { error:
       const head = (dot > 0 ? body.slice(0, dot) : body).trim();
       const port = dot > 0 ? body.slice(dot + 1).trim() : undefined;
       if (port === '') return { error: `"${part}": a port name is missing after the dot` };
-      const hash = /^(.*?)\s*#\s*(\d+)$/.exec(head);
-      const name = (hash ? hash[1] : head).trim();
+      const atSign = head.indexOf('@');
+      const at = atSign >= 0 ? head.slice(atSign + 1).trim() : undefined;
+      if (at === '') return { error: `"${part}": name the instrument after @, as in delay@hera 4, or @output` };
+      const hash = /^(.*?)\s*#\s*(\d+)$/.exec((atSign >= 0 ? head.slice(0, atSign) : head).trim());
+      const name = (hash ? hash[1] : atSign >= 0 ? head.slice(0, atSign) : head).trim();
       if (!name) return { error: `"${part}": a module name is missing` };
-      items.push({ name, fresh, tag: `${name.toLowerCase()}#${hash ? Number(hash[2]) : 1}`, ...(port ? { port } : {}) });
+      const where = at ? `@${at.toLowerCase()}` : '';
+      items.push({ name, fresh, tag: `${name.toLowerCase()}${where}#${hash ? Number(hash[2]) : 1}`, ...(port ? { port } : {}), ...(at ? { at } : {}) });
     }
     statements.push({ kind: 'chain', items });
   }
@@ -460,13 +644,16 @@ export class ChainError extends Error {}
 export function resolvePort(p: Patch, defs: Record<string, ModuleDef>, card: Card, typed: string | undefined, held: QPort | null, want: 'in' | 'out'): QPort {
   const ports = cardPorts(p, defs, card).filter((q) => q.dir === want);
   const cabled = (q: QPort): boolean => portCables(p, defs, card, q).length > 0;
-  const fallback = (): QPort | null => (held ? defaultPort(ports, held, cabled) : rankPorts(ports, null, cabled).find((q) => q.dir === want) ?? null);
+  const fallback = (): QPort | null => (held ? defaultPort(ports, held, cabled) : rankPorts(ports, null, cabled).find((q) => q.dir === want && !q.chain) ?? null);
   const title = cardTitle(p, defs, card);
   const list = (): string => ports.slice(0, 12).map((q) => q.name).join(', ') + (ports.length > 12 ? ', …' : '');
   // a typed name picks the port of that name (`out` is the port named out); `in` / `out` that the card has no port of
   // pick the likely one, as nothing typed does
   const found = typed ? matchPorts(ports, typed).filter((q) => !held || fit(held, q) >= 0) : [];
   if (found.length) return found[0];
+  // (a drawer's chain jack: why not, and what to do instead)
+  const chain = typed ? matchPorts(ports, typed).find((q) => q.chain) : undefined;
+  if (chain) throw new ChainError(chain.chain);
   if (!typed || typed.toLowerCase() === want) {
     const d = fallback();
     if (!d) throw new ChainError(want === 'in' ? `${title} has no jack that takes ${held ? held.kind : 'a cable'}` : `${title} has no jack to cable from`);
@@ -505,30 +692,40 @@ export function buildChain(p: Patch, defs: Record<string, ModuleDef>, statements
     for (const t of parsed.statements) if (t.kind === 'chain') flat.push({ ...t, scope });
   }
   // name every item: the same tag in one text is the same card
-  const bound = new Map<string, { card?: Card; make?: { type: string } | { def: AssemblyDef } }>();
+  const bound = new Map<string, { card?: Card; make?: { type: string } | { def: AssemblyDef }; into?: DrawerOwner }>();
   const fresh: string[] = [];
   for (const s of flat) for (const it of s.items) {
     const key = `${s.scope}:${it.tag}`;
     if (bound.has(key)) continue;
-    const hits = search(p, defs, cat, `${it.fresh ? '+' : ''}${it.name}`).filter((h) => h.kind !== 'blueprint');
+    const hits = search(p, defs, cat, `${it.fresh ? '+' : ''}${it.name}${it.at ? `@${it.at}` : ''}`).filter((h) => h.kind !== 'blueprint');
     const taken = new Set([...bound.values()].flatMap((b) => (b.card ? [cardKey(b.card)] : [])));
     // a card already named by another tag is not this one: `lfo#2` is a second LFO
     const hit = hits.find((h) => h.kind !== 'card' || !taken.has(cardKey(h.card)));
-    if (!hit) throw new ChainError(`no module, assembly or card called "${it.name}"`);
+    if (!hit && it.at && findOwner(p, it.at) === undefined) throw new ChainError(`no instrument called "${it.at}" to hold the effect (or @output for the Output FX)`);
+    if (!hit) throw new ChainError(it.at ? `no effect called "${it.name}" for ${drawerName(p, findOwner(p, it.at)!)}` : `no module, assembly or card called "${it.name}"`);
     if (hit.kind === 'card') bound.set(key, { card: hit.card });
     else if (hit.kind === 'module' || hit.kind === 'assembly') {
-      bound.set(key, { make: hit.kind === 'module' ? { type: hit.type } : { def: hit.def } });
+      bound.set(key, { make: hit.kind === 'module' ? { type: hit.type } : { def: hit.def }, ...(hit.into !== undefined ? { into: hit.into } : {}) });
       fresh.push(key);
     }
   }
-  // make the new cards (placed below), then place each beside a card it is cabled to
+  // make the new cards (an effect for a drawer goes into it there; the others are placed below), then place each beside a
+  // card it is cabled to
   const made = new Map<string, { card: Card; size: Size }>();
+  const freshCards: Card[] = [];
   for (const key of fresh) {
-    const what = bound.get(key)!.make!;
+    const b = bound.get(key)!;
+    const what = b.make!;
+    if (b.into !== undefined) {
+      b.card = addToDrawer(p, b.into, what);
+      freshCards.push(b.card);
+      continue;
+    }
     const card: Card = 'type' in what
       ? { kind: 'module', id: addModule(p, defs[what.type], 0, 0).id }
       : { kind: 'assembly', id: insertAssembly(p, defs, what.def, 0, 0).id };
-    bound.get(key)!.card = card;
+    b.card = card;
+    freshCards.push(card);
     made.set(key, { card, size: guessSize(defs, what) });
   }
   const placed = new Map<string, Rect>();
@@ -570,7 +767,7 @@ export function buildChain(p: Patch, defs: Record<string, ModuleDef>, statements
     });
   }
   const cards = [...new Map([...bound.values()].map((b) => [cardKey(b.card!), b.card!])).values()];
-  return { cards, fresh: [...made.values()].map((m) => m.card), cables, links };
+  return { cards, fresh: freshCards, cables, links };
 }
 
 /** put a card at a place: a module's position, or a collapsed assembly's (its members keep their places inside) */
@@ -593,7 +790,11 @@ export function chainText(p: Patch, defs: Record<string, ModuleDef>, links: Link
       const name = c.kind === 'module' ? p.modules.find((m) => m.id === c.id)?.type ?? '?' : assemblyById(p, c.id)?.name ?? '?';
       const n = (counts.get(name) ?? 0) + 1;
       counts.set(name, n);
-      tags.set(k, n > 1 ? `${name}#${n}` : name);
+      // (an effect in a drawer by its instrument: `delay@hera 4`)
+      const d = drawerOfCard(p, c);
+      const owner = d && ownerKey(p, d);
+      const at = owner === undefined ? '' : `@${owner === 'output' ? 'output' : ownTitle(p, { kind: 'assembly', id: owner }).toLowerCase()}`;
+      tags.set(k, `${name}${n > 1 ? `#${n}` : ''}${at}`);
     }
     return tags.get(k)!;
   };
@@ -632,7 +833,8 @@ export function farEnds(p: Patch, defs: Record<string, ModuleDef>, c: Card, port
   for (const x of portCables(p, defs, c, port)) {
     const end = port.dir === 'out' ? x.to : x.from;
     const card = cardOf(p, end.module);
-    if (sameCard(card, c) || out.some((o) => sameCard(o.card, card) && o.port === end.port)) continue;
+    // (a merged jack's several inner ends, such as a drawer effect's out L with its correction, reach a card once)
+    if (sameCard(card, c) || out.some((o) => sameCard(o.card, card) && (o.port === end.port || port.ends.length > 1))) continue;
     out.push({ card, port: end.port, title: cardTitle(p, defs, card) });
   }
   return out;

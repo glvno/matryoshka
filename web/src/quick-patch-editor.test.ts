@@ -5,12 +5,14 @@
 // chain one undo step.
 import { describe, expect, it, vi } from 'vitest';
 import { FACTORY } from './assemblies';
+import { insertAssembly } from './assembly';
 import { addableModules } from './catalog';
 import { Editor, type EditorEvents } from './editor';
 import { moduleKeywords } from './labels';
+import { addDrawer, effectsOf, insertEffect } from './fx-drawer';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, type Patch } from './patch';
-import { BLUEPRINT_KEY, loadBlueprints, type Catalog } from './quick-patch';
+import { BLUEPRINT_KEY, cardPorts, loadBlueprints, type Catalog } from './quick-patch';
 import { QuickPatch } from './quick-patch-view';
 
 // (jsdom lacks these; selector.ts makes its ResizeObserver when it loads, so before the imports)
@@ -300,5 +302,102 @@ describe('Quick patch in the editor', () => {
       play('Esc');
       expect(history(editor)).toBe(steps);
     });
+  });
+});
+
+describe('Quick patch and FX drawers', () => {
+  /** Cassia 1 named Hera 4, its drawer (closed) of Drive then Delay; an LFO */
+  const rig = () => {
+    const p = newPatch(DEFS);
+    const inst = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Cassia 1')!, 0, 0);
+    inst.label = 'Hera 4';
+    const drawer = addDrawer(p, inst.id);
+    drawer.open = false;
+    insertEffect(p, drawer, { type: 'shape' });
+    const delay = insertEffect(p, drawer, { type: 'delay' });
+    const lfo = addModule(p, DEFS.lfo, 0, 600).id;
+    return { p, inst, drawer, delay, lfo };
+  };
+  /** type a whole text into the field (play splits on spaces) */
+  const type = (text: string): void => {
+    field().value = text;
+    field().dispatchEvent(new Event('input'));
+  };
+  const key = (k: string): void => void field().dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+  const labels = (): string[] => [...document.querySelectorAll('.qp-list li .qp-label')].map((e) => e.textContent ?? '');
+  const hintText = (): string => document.querySelector('.qp-hint')?.textContent ?? '';
+
+  it('Q1: lists the drawer\'s effect under its instrument while the drawer is closed', () => {
+    const { p } = rig();
+    const { quick } = setup(p);
+    quick.show();
+    type('delay');
+    const first = document.querySelector('.qp-list li')!;
+    expect(first.querySelector('.qp-detail')!.textContent).toBe('Hera 4 › FX, 2nd of 2');
+  });
+
+  it('Q2 + Q3: delay@hera 4.time drops the held cable there; the closed drawer opens while Delay is current and closes after', () => {
+    const { p, drawer, delay, lfo } = rig();
+    const { editor, quick } = setup(p);
+    const slide = vi.spyOn(editor, 'setDrawerOpen');
+    quick.show({ kind: 'module', id: lfo });
+    play('out ⏎');
+    type('delay@hera 4.time');
+    expect(labels()[0]).toMatch(/^Hera 4 › .+\.time$/i);
+    key('Enter');
+    expect(editor.patch.cables.some((c) => c.from.module === lfo && delay.modules.includes(c.to.module))).toBe(true);
+    expect(slide).toHaveBeenLastCalledWith(drawer.id, true);
+    expect(editor.patch.assemblies!.find((a) => a.id === drawer.id)!.open).toBe(true);
+    play('Esc');
+    expect(slide).toHaveBeenLastCalledWith(drawer.id, false);
+    expect(editor.patch.assemblies!.find((a) => a.id === drawer.id)!.open).toBe(false);
+  });
+
+  it('Q3: a drawer that was open stays open after', () => {
+    const { p, drawer, delay } = rig();
+    drawer.open = true;
+    const { editor, quick } = setup(p);
+    const slide = vi.spyOn(editor, 'setDrawerOpen');
+    quick.show({ kind: 'assembly', id: delay.id });
+    play('Esc');
+    expect(slide).not.toHaveBeenCalled();
+  });
+
+  it('Q5: the chain jacks are greyed out in the ring, labelled chain, and picking one says why not', () => {
+    const { p, delay } = rig();
+    const { editor, quick } = setup(p);
+    quick.show({ kind: 'assembly', id: delay.id });
+    const chain = [...document.querySelectorAll<SVGGElement>('.qp-sec.chain')];
+    expect(chain.length).toBeGreaterThanOrEqual(2);
+    expect(chain.every((g) => g.classList.contains('off') && g.querySelector('.qp-sub')?.textContent === 'chain')).toBe(true);
+    const before = JSON.stringify(editor.patch.cables);
+    chain[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const port = cardPorts(editor.patch, DEFS, { kind: 'assembly', id: delay.id }).find((q) => q.chain)!;
+    expect(hintText()).toBe(port.chain);
+    expect(JSON.stringify(editor.patch.cables)).toBe(before);
+  });
+
+  it('Q4: the instrument\'s ring says its out L / R give the sound after its FX', () => {
+    const { p, inst } = rig();
+    const { quick } = setup(p);
+    quick.show({ kind: 'assembly', id: inst.id });
+    expect([...document.querySelectorAll('.qp-sec .qp-sub')].map((e) => e.textContent)).toEqual(['after FX', 'after FX']);
+  });
+
+  it('Q6: under New, the canvas first, then each drawer; ⏎ on a drawer row adds the effect there, one undo step', () => {
+    const { p, drawer } = rig();
+    const { editor, quick } = setup(p);
+    const steps = history(editor);
+    quick.show();
+    type('+reverb');
+    const all = labels();
+    const i = all.indexOf('New Reverb');
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(all[i + 1]).toBe("New Reverb → Hera 4's FX");
+    for (let k = 0; k <= i; k++) key('ArrowDown');
+    key('Enter');
+    expect(effectsOf(editor.patch, editor.patch.assemblies!.find((a) => a.id === drawer.id)!).length).toBe(3);
+    play('Esc');
+    expect(history(editor)).toBe(steps + 1);
   });
 });
