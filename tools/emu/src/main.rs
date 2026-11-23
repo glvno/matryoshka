@@ -26,6 +26,9 @@
 //!
 //! BIN is the build's matryoshka.bin (app.bin, runs from 0x02000120). M1EMU_TIMING=FILE runs any command under the
 //! timing model (timing.rs, tools/emu/timing.txt): the device's cycles instead of one 240 MHz cycle an instruction.
+//! Every command takes --factory FILE, the factory region's image (default: the checkout's
+//! web/public/firmware/matryoshka-factory.bin); it and the firmware headers m1emu checks against are read when it runs,
+//! from the checkout it runs in (repo.rs).
 
 mod boot;
 mod cpu;
@@ -35,6 +38,7 @@ mod isa_tests;
 mod machine;
 mod p33;
 mod png;
+mod repo;
 mod serve;
 mod smoke;
 mod timing;
@@ -43,7 +47,7 @@ use machine::Machine;
 use std::process::ExitCode;
 
 fn usage() -> ExitCode {
-    eprintln!("usage: m1emu smoke BIN [--out DIR] [--levels FILE] [--strict]\n       m1emu roll BIN [--out DIR]\n       m1emu boot BIN [--link EMU_BIN] [--out DIR]\n       m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]\n       m1emu serve BIN [--flash-in F] [--name NAME]\n       m1emu cpu BIN --elf ELF [--slots 0,3,..] [--notes 0,1,4,8] [--hold MS] [--run] [--modtime] [--window MS] [--keys K,..] [--settle MS] [--mt-run] [--bank FILE] [--no-survey] [--poke8 NAME=BYTE,..] [--out FILE]");
+    eprintln!("usage: m1emu smoke BIN [--out DIR] [--levels FILE] [--strict]\n       m1emu roll BIN [--out DIR]\n       m1emu boot BIN [--link EMU_BIN] [--out DIR]\n       m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]\n       m1emu serve BIN [--flash-in F] [--name NAME]\n       m1emu cpu BIN --elf ELF [--slots 0,3,..] [--notes 0,1,4,8] [--hold MS] [--run] [--modtime] [--window MS] [--keys K,..] [--settle MS] [--mt-run] [--bank FILE] [--no-survey] [--poke8 NAME=BYTE,..] [--out FILE]\n       (every command: [--factory FILE])");
     ExitCode::from(2)
 }
 
@@ -80,6 +84,9 @@ fn main() -> ExitCode {
     } else {
         app
     };
+    if let Some(f) = opt(&a, "--factory") {
+        repo::set_factory(f.into());
+    }
     match cmd.as_str() {
         "smoke" => {
             let out = opt(&a, "--out").unwrap_or("build/emu/smoke");
