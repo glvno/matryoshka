@@ -165,33 +165,38 @@ async function main(): Promise<void> {
   gcc(join(tree, 'firmware/test/host_test.c'), join(T, 'base_test'));
   gcc(join(root, 'firmware/test/host_test.c'), join(T, 'new_test'));
   writeFileSync(join(out, 'events.ev'), EV_TEXT);
-  const host = (exe: string, stem: string): void => {
-    if (!existsSync(`${stem}.m1p`)) return;
-    spawnSync(join(T, exe), [`${stem}.m1p`, join(out, 'events.ev'), `${stem}.ts.f32`], { env: { ...process.env, HOST_TEST_DUMP: `${stem}.c.f32` }, stdio: 'ignore' });
+  /** host_test's verdict when the FM-1 refuses the binary (`eng_load failed (-7)`: more module copies than it holds, an
+   *  XL patch), '' when it played; 'no binary' when it could not be encoded */
+  const host = (exe: string, stem: string): string => {
+    if (!existsSync(`${stem}.m1p`)) return 'no binary';
+    const r = spawnSync(join(T, exe), [`${stem}.m1p`, join(out, 'events.ev'), `${stem}.ts.f32`], { env: { ...process.env, HOST_TEST_DUMP: `${stem}.c.f32` }, encoding: 'utf8' });
+    return /eng_load failed \(-?\d+\)/.exec(r.stdout + r.stderr)?.[0] ?? '';
   };
   const lines: string[] = [];
   let failed = 0, pairs = 0;
   const show = (d: number | null): string => (d === null ? 'missing' : d === 0 ? '0' : d.toExponential(3));
   for (const c of cases) {
     const b = join(out, 'base', c.id);
-    host('base_test', b);
+    const refused = host('base_test', b);
     for (const w of ways) {
       const a = join(after, `${c.id}.${w}`);
-      host('new_test', a);
+      const refusedAfter = host('new_test', a);
       const ts = maxDiff(`${b}.ts.f32`, `${a}.ts.f32`);
-      const encodable = existsSync(`${b}.m1p`) || existsSync(`${a}.m1p`);
-      const cdiff = encodable ? maxDiff(`${b}.c.f32`, `${a}.c.f32`) : 0;
+      // (a binary the FM-1 refuses the same way before and after has no engine.c render to compare)
+      const both = refused !== '' && refused === refusedAfter;
+      const cdiff = both ? 0 : maxDiff(`${b}.c.f32`, `${a}.c.f32`);
       const ok = ts === 0 && cdiff === 0;
       pairs++;
       if (!ok) failed++;
-      const note = encodable ? '' : ' (too big for the FM-1 in both: engine.ts only)';
-      lines.push(`${ok ? 'ok  ' : 'FAIL'} ${c.kind.padEnd(9)} ${`${c.name}${c.fx ? ' ~fx' : ''}`.padEnd(34)} ${w.padEnd(9)} engine.ts ${show(ts).padEnd(9)} engine.c ${show(cdiff)}${note}`);
+      const note = both ? ` (the FM-1 refuses it before and after: ${refused}; engine.ts only)` : refused || refusedAfter ? ` (before: ${refused || 'plays'}; after: ${refusedAfter || 'plays'})` : '';
+      lines.push(`${ok ? 'ok  ' : 'FAIL'} ${c.kind.padEnd(9)} ${`${c.name}${c.fx ? ' ~fx' : ''}`.padEnd(34)} ${w.padEnd(9)} engine.ts ${show(ts).padEnd(9)} engine.c ${both ? '-' : show(cdiff)}${note}`);
     }
   }
   const head1 = [
     `FX drawer migration proof (#1214): max abs sample difference, ${base} (${sha.slice(0, 10)}) vs this tree (${head.slice(0, 10)})`,
-    `generated ${new Date().toISOString().slice(0, 10)} by web/scripts/fxdrawer-proof.ts; ${cases.length} patches (${cases.filter((c) => c.fx).length} of them with every FX stage on), ${pairs} pairs per engine`,
+    `generated ${new Date().toISOString().slice(0, 10)} by web/scripts/fxdrawer-proof.ts; ${cases.filter((c) => !c.fx).length} patches, ${cases.filter((c) => c.fx).length} of them also with every FX stage on (~fx); ${pairs} pairs (each before vs after, opened and converted)`,
     `opened: as this tree opens the patch; converted: ${base}'s patch JSON through validatePatch (convertLegacyBus)`,
+    `engine.c "-": the FM-1 refuses the binary the same way before and after (an XL patch past its module copies), so only engine.ts renders it (${lines.filter((l) => l.includes('engine.c -')).length} pairs)`,
     failed ? `${failed} pairs differ` : 'every pair renders sample-identically in both engines',
     '',
   ];
