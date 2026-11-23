@@ -246,6 +246,27 @@ describe('drawers', () => {
     expectChain(p, od, out);
   });
 
+  it('an effect that sat in line on the canvas keeps the sound going when it moves into a drawer', () => {
+    const { p, inst, out } = synth();
+    const d = addDrawer(p, inst.id);
+    const tap = d.drawer!.taps![0];
+    const ph = addModule(p, DEFS.phaser, 1200, 0);
+    p.cables = p.cables.filter((c) => c.to.module !== out);
+    connect(p, DEFS, tap, { module: ph.id, port: 'in' });
+    connect(p, DEFS, { module: ph.id, port: 'out' }, { module: out, port: 'l' });
+    connect(p, DEFS, { module: ph.id, port: 'out' }, { module: out, port: 'r' });
+    insertEffect(p, d, { module: ph.id });
+    expectChain(p, d, out);
+    const rv = addModule(p, DEFS.reverb, 1200, 600);
+    const end = drawerOutput(p, inst.id, 0);
+    p.cables = p.cables.filter((c) => c.to.module !== out);
+    for (const e of end) connect(p, DEFS, e, { module: rv.id, port: 'in' });
+    connect(p, DEFS, { module: rv.id, port: 'out' }, { module: out, port: 'l' });
+    insertEffect(p, addDrawer(p, 'output'), { module: rv.id });
+    expectChain(p, outputDrawer(p)!, out);
+    for (const port of ['l', 'r']) expect(heard(p, out, port).has(tap.module)).toBe(true);
+  });
+
   it('the Output drawer runs every source of the Output through its chain; a new source joins on rewire', () => {
     const { p, out } = synth(true);
     const od = addDrawer(p, 'output');

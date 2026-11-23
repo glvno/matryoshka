@@ -246,7 +246,7 @@ export function convertLegacyBus(p: Patch, defs: Record<string, ModuleDef>): Pat
     };
     a.inputs = stage.inputs.map((e, ch) => port(a.inputs, [e], ch ? 'in R' : 'in L'));
     a.outputs = stage.outputs.map((ends, ch) => port(a.outputs, ends, ch ? 'out R' : 'out L'));
-    a.chain = { ins: [0, 1], outs: [0, 1], helpers: [...stage.helpers] };
+    a.chain = { ins: [0, 1], outs: [0, 1], ...(stage.helpers.length ? { helpers: [...stage.helpers] } : {}) };
   }
   const at = p.assemblies!.indexOf(root);
   const drawer: AssemblyInst = {
