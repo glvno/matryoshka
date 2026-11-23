@@ -1,0 +1,1135 @@
+{
+ "written": [
+  {
+   "slot": 1,
+   "name": "MONOLITH D",
+   "len": 2758,
+   "crc32": "de7db0d7",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 2,
+   "name": "ORACLE V",
+   "len": 3099,
+   "crc32": "dbf02a45",
+   "source": "edited (Oracle V with every FX stage on)"
+  },
+  {
+   "slot": 3,
+   "name": "SILVER BOX",
+   "len": 1386,
+   "crc32": "c9142da0",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 4,
+   "name": "HERA 6",
+   "len": 2370,
+   "crc32": "6e1299e7",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 5,
+   "name": "SALLEN 20",
+   "len": 2481,
+   "crc32": "bdb9b4ae",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 6,
+   "name": "EXPANDER S",
+   "len": 2156,
+   "crc32": "3d515c36",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 7,
+   "name": "ALGO FOUR",
+   "len": 2088,
+   "crc32": "f9d12fb3",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 8,
+   "name": "CANVAS",
+   "len": 3821,
+   "crc32": "721c0432",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 9,
+   "name": "WANDERER",
+   "len": 3165,
+   "crc32": "9d309c0c",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 10,
+   "name": "BRIEFCASE 3",
+   "len": 3818,
+   "crc32": "71e905de",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 11,
+   "name": "IO 4",
+   "len": 2818,
+   "crc32": "f12027ed",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 12,
+   "name": "VERNON 100",
+   "len": 3026,
+   "crc32": "21de2cd3",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 13,
+   "name": "8 LIRE",
+   "len": 3736,
+   "crc32": "6ec4b297",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 14,
+   "name": "ELVIRA 2",
+   "len": 3491,
+   "crc32": "0b3bc2fe",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 15,
+   "name": "SCROUNGE",
+   "len": 3024,
+   "crc32": "c5b713b6",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 16,
+   "name": "MERIDIAN 8",
+   "len": 3493,
+   "crc32": "c8ac62d8",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 17,
+   "name": "808 KIT",
+   "len": 3441,
+   "crc32": "81bfb152",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 18,
+   "name": "909 KIT",
+   "len": 3606,
+   "crc32": "ab901c75",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 19,
+   "name": "CASSIA 1",
+   "len": 3698,
+   "crc32": "7dd02ab0",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 20,
+   "name": "VERONA DRUM 1",
+   "len": 3545,
+   "crc32": "4f090bb4",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 21,
+   "name": "SHUSH 101",
+   "len": 2222,
+   "crc32": "a09ea280",
+   "source": "v1.25.0"
+  },
+  {
+   "slot": 22,
+   "name": "MY 808 KIT",
+   "len": 3659,
+   "crc32": "5ec53a2d",
+   "source": "v1.24.1 808 Kit (links 23 factory patterns)"
+  },
+  {
+   "slot": 23,
+   "name": "MY SCROUNGE",
+   "len": 3717,
+   "crc32": "ec5de9a2",
+   "source": "v1.24.1 Scrounge (10 patterns inline)"
+  },
+  {
+   "slot": 24,
+   "name": "MY SILVER",
+   "len": 1523,
+   "crc32": "859d418d",
+   "source": "user patch (an edited Silver Box)"
+  },
+  {
+   "slot": 25,
+   "name": "SILVER BOX",
+   "len": 1523,
+   "crc32": "859d418d",
+   "source": "the edited Silver Box under the factory name"
+  },
+  {
+   "slot": 49,
+   "name": "HIGH 8 LIRE",
+   "len": 3736,
+   "crc32": "6ec4b297",
+   "source": "v1.25.0 8 Lire in slot 49"
+  },
+  {
+   "slot": 60,
+   "name": "HIGH SILVER",
+   "len": 1523,
+   "crc32": "859d418d",
+   "source": "the user patch in slot 60"
+  }
+ ],
+ "baseline": {
+  "MY 808 KIT P02": [
+   4618,
+   5286,
+   4481,
+   4447,
+   4515,
+   5277,
+   4016
+  ],
+  "MY SCROUNGE P01": [
+   3659,
+   3847,
+   3847,
+   3563,
+   3847,
+   3843,
+   3501
+  ],
+  "MY SCROUNGE P02": [
+   3847,
+   3847,
+   3847,
+   3847,
+   3847,
+   3847,
+   3847
+  ],
+  "MY SCROUNGE P03": [
+   3847,
+   3591,
+   3847,
+   3847,
+   3700,
+   3847,
+   3847
+  ],
+  "MY SCROUNGE P04": [
+   3114,
+   3847,
+   3698,
+   3699,
+   3847,
+   3815,
+   3733
+  ],
+  "MY SCROUNGE P05": [
+   3847,
+   3847,
+   3847,
+   3847,
+   3847,
+   3847,
+   3847
+  ],
+  "MY SCROUNGE P06": [
+   3847,
+   3847,
+   3847,
+   3847,
+   3847,
+   3847,
+   3845
+  ],
+  "MY SCROUNGE P07": [
+   3757,
+   3845,
+   3846,
+   3610,
+   3847,
+   3847,
+   3599
+  ],
+  "MY SCROUNGE P08": [
+   3847,
+   3847,
+   3847,
+   3847,
+   3847,
+   3847,
+   3847
+  ],
+  "MY SCROUNGE P09": [
+   3267,
+   3618,
+   3847,
+   3218,
+   3617,
+   3847,
+   3176
+  ],
+  "MY SCROUNGE P10": [
+   3847,
+   3847,
+   3847,
+   3847,
+   3847,
+   3847,
+   3847
+  ],
+  "HIGH 8 LIRE P02": [
+   1606,
+   2051,
+   2126,
+   1877,
+   1982,
+   2212,
+   1954
+  ]
+ },
+ "bank": {
+  "1": [
+   "MONOLITH D",
+   2758
+  ],
+  "2": [
+   "ORACLE V",
+   3099
+  ],
+  "3": [
+   "SILVER BOX",
+   1386
+  ],
+  "4": [
+   "HERA 6",
+   2370
+  ],
+  "5": [
+   "SALLEN 20",
+   2481
+  ],
+  "6": [
+   "EXPANDER S",
+   2156
+  ],
+  "7": [
+   "ALGO FOUR",
+   2088
+  ],
+  "8": [
+   "CANVAS",
+   3821
+  ],
+  "9": [
+   "WANDERER",
+   3165
+  ],
+  "10": [
+   "BRIEFCASE 3",
+   3818
+  ],
+  "11": [
+   "IO 4",
+   2818
+  ],
+  "12": [
+   "VERNON 100",
+   3026
+  ],
+  "13": [
+   "8 LIRE",
+   3736
+  ],
+  "14": [
+   "ELVIRA 2",
+   3491
+  ],
+  "15": [
+   "SCROUNGE",
+   3024
+  ],
+  "16": [
+   "MERIDIAN 8",
+   3493
+  ],
+  "17": [
+   "808 KIT",
+   3441
+  ],
+  "18": [
+   "909 KIT",
+   3606
+  ],
+  "19": [
+   "CASSIA 1",
+   3698
+  ],
+  "20": [
+   "VERONA DRUM 1",
+   3545
+  ],
+  "21": [
+   "SHUSH 101",
+   2222
+  ],
+  "22": [
+   "MY 808 KIT",
+   3659
+  ],
+  "23": [
+   "MY SCROUNGE",
+   3717
+  ],
+  "24": [
+   "MY SILVER",
+   1523
+  ],
+  "25": [
+   "SILVER BOX",
+   1523
+  ],
+  "26": [
+   null,
+   0
+  ],
+  "27": [
+   null,
+   0
+  ],
+  "28": [
+   null,
+   0
+  ],
+  "29": [
+   null,
+   0
+  ],
+  "30": [
+   null,
+   0
+  ],
+  "31": [
+   null,
+   0
+  ],
+  "32": [
+   null,
+   0
+  ],
+  "33": [
+   null,
+   0
+  ],
+  "34": [
+   null,
+   0
+  ],
+  "35": [
+   null,
+   0
+  ],
+  "36": [
+   null,
+   0
+  ],
+  "37": [
+   null,
+   0
+  ],
+  "38": [
+   null,
+   0
+  ],
+  "39": [
+   null,
+   0
+  ],
+  "40": [
+   null,
+   0
+  ],
+  "41": [
+   null,
+   0
+  ],
+  "42": [
+   null,
+   0
+  ],
+  "43": [
+   null,
+   0
+  ],
+  "44": [
+   null,
+   0
+  ],
+  "45": [
+   null,
+   0
+  ],
+  "46": [
+   null,
+   0
+  ],
+  "47": [
+   null,
+   0
+  ],
+  "48": [
+   null,
+   0
+  ],
+  "49": [
+   "HIGH 8 LIRE",
+   3736
+  ],
+  "50": [
+   null,
+   0
+  ],
+  "51": [
+   null,
+   0
+  ],
+  "52": [
+   null,
+   0
+  ],
+  "53": [
+   null,
+   0
+  ],
+  "54": [
+   null,
+   0
+  ],
+  "55": [
+   null,
+   0
+  ],
+  "56": [
+   null,
+   0
+  ],
+  "57": [
+   null,
+   0
+  ],
+  "58": [
+   null,
+   0
+  ],
+  "59": [
+   null,
+   0
+  ],
+  "60": [
+   "HIGH SILVER",
+   1523
+  ]
+ },
+ "pats": [
+  {
+   "id": 57344,
+   "len": 170,
+   "hash": "3808621e",
+   "flags": 1,
+   "name": "808 ELECTRO B"
+  },
+  {
+   "id": 57345,
+   "len": 146,
+   "hash": "12e149d6",
+   "flags": 1,
+   "name": "808 DISCO A"
+  },
+  {
+   "id": 57346,
+   "len": 190,
+   "hash": "02010f1a",
+   "flags": 1,
+   "name": "808 DISCO B"
+  },
+  {
+   "id": 57347,
+   "len": 198,
+   "hash": "73f01a03",
+   "flags": 1,
+   "name": "808 FUNK A"
+  },
+  {
+   "id": 57348,
+   "len": 198,
+   "hash": "08781fff",
+   "flags": 1,
+   "name": "808 FUNK B"
+  },
+  {
+   "id": 57349,
+   "len": 110,
+   "hash": "b4dbf035",
+   "flags": 1,
+   "name": "808 HIP HOP A"
+  },
+  {
+   "id": 57350,
+   "len": 118,
+   "hash": "3c82f4ed",
+   "flags": 1,
+   "name": "808 HIP HOP B"
+  },
+  {
+   "id": 57351,
+   "len": 190,
+   "hash": "a835abbc",
+   "flags": 1,
+   "name": "808 MIAMI BASS A"
+  },
+  {
+   "id": 57352,
+   "len": 162,
+   "hash": "436fdb89",
+   "flags": 1,
+   "name": "808 MIAMI BASS B"
+  },
+  {
+   "id": 57353,
+   "len": 150,
+   "hash": "78df5239",
+   "flags": 1,
+   "name": "808 HOUSE A"
+  },
+  {
+   "id": 57354,
+   "len": 198,
+   "hash": "1fdc1112",
+   "flags": 1,
+   "name": "808 HOUSE B"
+  },
+  {
+   "id": 57355,
+   "len": 170,
+   "hash": "f0b939ff",
+   "flags": 1,
+   "name": "808 SLOW JAM A"
+  },
+  {
+   "id": 57356,
+   "len": 182,
+   "hash": "ab8621ab",
+   "flags": 1,
+   "name": "808 SLOW JAM B"
+  },
+  {
+   "id": 57357,
+   "len": 154,
+   "hash": "e0a9ef5e",
+   "flags": 1,
+   "name": "808 ROCK A"
+  },
+  {
+   "id": 57358,
+   "len": 154,
+   "hash": "80a99faa",
+   "flags": 1,
+   "name": "808 ROCK B"
+  },
+  {
+   "id": 57359,
+   "len": 150,
+   "hash": "75f8a0e6",
+   "flags": 1,
+   "name": "808 BOSSA NOVA A"
+  },
+  {
+   "id": 57360,
+   "len": 162,
+   "hash": "0836a726",
+   "flags": 1,
+   "name": "808 BOSSA NOVA B"
+  },
+  {
+   "id": 57361,
+   "len": 234,
+   "hash": "16eae40b",
+   "flags": 1,
+   "name": "808 SAMBA A"
+  },
+  {
+   "id": 57362,
+   "len": 294,
+   "hash": "2a7e67da",
+   "flags": 1,
+   "name": "808 SAMBA B"
+  },
+  {
+   "id": 57363,
+   "len": 110,
+   "hash": "52ec8128",
+   "flags": 1,
+   "name": "808 REGGAE A"
+  },
+  {
+   "id": 57364,
+   "len": 134,
+   "hash": "966abaa9",
+   "flags": 1,
+   "name": "808 REGGAE B"
+  },
+  {
+   "id": 57365,
+   "len": 230,
+   "hash": "6944ee88",
+   "flags": 1,
+   "name": "808 SYNTH POP A"
+  },
+  {
+   "id": 57366,
+   "len": 214,
+   "hash": "9fcc5d18",
+   "flags": 1,
+   "name": "808 SYNTH POP B"
+  },
+  {
+   "id": 57408,
+   "len": 146,
+   "hash": "89f9e4e6",
+   "flags": 1,
+   "name": "909 HOUSE"
+  },
+  {
+   "id": 57409,
+   "len": 40,
+   "hash": "f535bf9b",
+   "flags": 1,
+   "name": "909 HOUSE FILL"
+  },
+  {
+   "id": 57410,
+   "len": 186,
+   "hash": "9d40870c",
+   "flags": 1,
+   "name": "909 TECHNO A"
+  },
+  {
+   "id": 57411,
+   "len": 262,
+   "hash": "a5b42fe8",
+   "flags": 1,
+   "name": "909 TECHNO B"
+  },
+  {
+   "id": 57412,
+   "len": 174,
+   "hash": "77d7d9bc",
+   "flags": 1,
+   "name": "909 ACID"
+  },
+  {
+   "id": 57413,
+   "len": 202,
+   "hash": "e6a86a0a",
+   "flags": 1,
+   "name": "909 JACK"
+  },
+  {
+   "id": 57414,
+   "len": 158,
+   "hash": "3a567b56",
+   "flags": 1,
+   "name": "909 GARAGE"
+  },
+  {
+   "id": 57415,
+   "len": 150,
+   "hash": "a5404707",
+   "flags": 1,
+   "name": "909 ELECTRO"
+  },
+  {
+   "id": 57416,
+   "len": 154,
+   "hash": "549b3740",
+   "flags": 1,
+   "name": "909 BREAKS"
+  },
+  {
+   "id": 57417,
+   "len": 44,
+   "hash": "f58b68e4",
+   "flags": 1,
+   "name": "909 TOM FILL"
+  },
+  {
+   "id": 57418,
+   "len": 30,
+   "hash": "73529356",
+   "flags": 1,
+   "name": "909 INTRO"
+  },
+  {
+   "id": 65280,
+   "len": 58,
+   "hash": "d6a70d7e",
+   "flags": 1,
+   "name": "INIT"
+  },
+  {
+   "id": 65281,
+   "len": 34,
+   "hash": "62c1e95e",
+   "flags": 1,
+   "name": "DEEP TECHNO"
+  },
+  {
+   "id": 65282,
+   "len": 42,
+   "hash": "8e5674d6",
+   "flags": 1,
+   "name": "BROKEN BEAT"
+  },
+  {
+   "id": 65283,
+   "len": 42,
+   "hash": "4308f2b3",
+   "flags": 1,
+   "name": "LO-FI HIP HOP"
+  },
+  {
+   "id": 65284,
+   "len": 38,
+   "hash": "920a8ef8",
+   "flags": 1,
+   "name": "INDUSTRIAL"
+  },
+  {
+   "id": 65285,
+   "len": 48,
+   "hash": "8722ef10",
+   "flags": 1,
+   "name": "TONAL PERCS"
+  },
+  {
+   "id": 65286,
+   "len": 52,
+   "hash": "74c16fe6",
+   "flags": 1,
+   "name": "INIT"
+  },
+  {
+   "id": 65287,
+   "len": 32,
+   "hash": "a36bf37e",
+   "flags": 1,
+   "name": "TECHNO RUMBLE"
+  },
+  {
+   "id": 65288,
+   "len": 40,
+   "hash": "ee077b20",
+   "flags": 1,
+   "name": "PUNCHY BREAKS"
+  },
+  {
+   "id": 65289,
+   "len": 36,
+   "hash": "1c6bb190",
+   "flags": 1,
+   "name": "DISTORTED EBM"
+  },
+  {
+   "id": 65290,
+   "len": 26,
+   "hash": "d404aaf3",
+   "flags": 1,
+   "name": "DUB PERCUSSION"
+  },
+  {
+   "id": 65291,
+   "len": 28,
+   "hash": "ecd6f9f4",
+   "flags": 1,
+   "name": "CLICKY MINIMAL"
+  },
+  {
+   "id": 65292,
+   "len": 50,
+   "hash": "f16dd2e2",
+   "flags": 1,
+   "name": "INIT"
+  },
+  {
+   "id": 65293,
+   "len": 32,
+   "hash": "a36bf37e",
+   "flags": 1,
+   "name": "TIGHT TECHNO"
+  },
+  {
+   "id": 65294,
+   "len": 40,
+   "hash": "f3fc75c2",
+   "flags": 1,
+   "name": "BOOM BAP"
+  },
+  {
+   "id": 65295,
+   "len": 36,
+   "hash": "2a7ce604",
+   "flags": 1,
+   "name": "INDUSTRIAL"
+  },
+  {
+   "id": 65296,
+   "len": 30,
+   "hash": "46e81ff0",
+   "flags": 1,
+   "name": "FM MELODIC"
+  },
+  {
+   "id": 65297,
+   "len": 32,
+   "hash": "5848977e",
+   "flags": 1,
+   "name": "LO-FI HOUSE"
+  },
+  {
+   "id": 65298,
+   "len": 54,
+   "hash": "db1a1813",
+   "flags": 1,
+   "name": "INIT"
+  },
+  {
+   "id": 65299,
+   "len": 30,
+   "hash": "3059f3d1",
+   "flags": 1,
+   "name": "DANCE FLOOR"
+  },
+  {
+   "id": 65300,
+   "len": 38,
+   "hash": "d81b9bd6",
+   "flags": 1,
+   "name": "TROUSER FLAP"
+  },
+  {
+   "id": 65301,
+   "len": 36,
+   "hash": "969d1dac",
+   "flags": 1,
+   "name": "BEAT BOX 78"
+  },
+  {
+   "id": 65302,
+   "len": 58,
+   "hash": "0ef6faed",
+   "flags": 1,
+   "name": "CLAVE AND CONGA"
+  },
+  {
+   "id": 65303,
+   "len": 30,
+   "hash": "205f062b",
+   "flags": 1,
+   "name": "METAL WORKS"
+  },
+  {
+   "id": 65304,
+   "len": 48,
+   "hash": "21fbb554",
+   "flags": 1,
+   "name": "INIT"
+  },
+  {
+   "id": 65305,
+   "len": 38,
+   "hash": "0ae641e3",
+   "flags": 1,
+   "name": "BOOM BAP"
+  },
+  {
+   "id": 65306,
+   "len": 32,
+   "hash": "1f5fab38",
+   "flags": 1,
+   "name": "TIGHT TECHNO"
+  },
+  {
+   "id": 65307,
+   "len": 36,
+   "hash": "28692922",
+   "flags": 1,
+   "name": "ELECTRO 808"
+  },
+  {
+   "id": 65308,
+   "len": 30,
+   "hash": "4481d961",
+   "flags": 1,
+   "name": "LO-FI HOUSE"
+  },
+  {
+   "id": 65309,
+   "len": 36,
+   "hash": "514b9d9d",
+   "flags": 1,
+   "name": "TRIBAL TOMS"
+  },
+  {
+   "id": 65310,
+   "len": 60,
+   "hash": "c9dbd50a",
+   "flags": 1,
+   "name": "INIT"
+  },
+  {
+   "id": 65311,
+   "len": 56,
+   "hash": "e722e118",
+   "flags": 1,
+   "name": "ELECTRO SNAP"
+  },
+  {
+   "id": 65312,
+   "len": 34,
+   "hash": "c4a34729",
+   "flags": 1,
+   "name": "DEEP MACHINE"
+  },
+  {
+   "id": 65313,
+   "len": 46,
+   "hash": "4da4ea45",
+   "flags": 1,
+   "name": "DRY LATIN"
+  },
+  {
+   "id": 65314,
+   "len": 44,
+   "hash": "cf9f299c",
+   "flags": 1,
+   "name": "INIT"
+  },
+  {
+   "id": 65315,
+   "len": 32,
+   "hash": "f29235fe",
+   "flags": 1,
+   "name": "WAREHOUSE"
+  },
+  {
+   "id": 65316,
+   "len": 42,
+   "hash": "4bbc0553",
+   "flags": 1,
+   "name": "DRY JACK"
+  },
+  {
+   "id": 65317,
+   "len": 26,
+   "hash": "60c11597",
+   "flags": 1,
+   "name": "DUB PRESSURE"
+  },
+  {
+   "id": 65318,
+   "len": 16,
+   "hash": "bbc8bd64",
+   "flags": 1,
+   "name": "INIT"
+  },
+  {
+   "id": 65319,
+   "len": 18,
+   "hash": "d1b16b67",
+   "flags": 1,
+   "name": "LYRE CHORD"
+  },
+  {
+   "id": 65320,
+   "len": 42,
+   "hash": "d5b58ceb",
+   "flags": 1,
+   "name": "EIGHT DRONE"
+  },
+  {
+   "id": 65321,
+   "len": 26,
+   "hash": "ab27a471",
+   "flags": 1,
+   "name": "PAIR FM BELLS"
+  },
+  {
+   "id": 65322,
+   "len": 54,
+   "hash": "0996772d",
+   "flags": 1,
+   "name": "TRILL DELAY"
+  },
+  {
+   "id": 65323,
+   "len": 42,
+   "hash": "0fc8f8a3",
+   "flags": 1,
+   "name": "FEEDBACK HOWL"
+  },
+  {
+   "id": 65324,
+   "len": 14,
+   "hash": "d3ec556d",
+   "flags": 1,
+   "name": "INIT"
+  },
+  {
+   "id": 65325,
+   "len": 14,
+   "hash": "1ff14a3f",
+   "flags": 1,
+   "name": "FIFTHS PAD"
+  },
+  {
+   "id": 65326,
+   "len": 26,
+   "hash": "a802d1b7",
+   "flags": 1,
+   "name": "DEEP DRONE"
+  },
+  {
+   "id": 65327,
+   "len": 16,
+   "hash": "2b054bc8",
+   "flags": 1,
+   "name": "RUSTY BELLS"
+  },
+  {
+   "id": 65328,
+   "len": 34,
+   "hash": "523effc7",
+   "flags": 1,
+   "name": "PULSE LANTERN"
+  },
+  {
+   "id": 65329,
+   "len": 26,
+   "hash": "cc22d567",
+   "flags": 1,
+   "name": "BEATING CLUSTER"
+  }
+ ]
+}

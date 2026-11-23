@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Library › Presets names the instrument of a preset you saved from the Hera 6 patch Hera 6. It said Hera 4, the library's four-voice engine with the same panel, which shares Hera 6's presets and now shows that name too. Presets saved from the 808 Kit and the 909 Kit name their kit instead of "your assembly". Presets load exactly as before.
 - **Pressing ARP after deleting a patch's Arpeggiator puts it back where it was.** The new one goes after the Harmonizer and PATTERN and plays the instrument again, as in the factory patch. Before, it was fed straight from Main's keys and played nothing. An instrument with two voice allocators, such as Hera 6, Vernon 100, Wanderer, Io 4 or the drum kits, is also offered once in the ARP menu instead of once per allocator ("New arpeggiator for Hera 6", not "Hera 6 only" twice). The ARP button no longer shows a jack while it switches an Arpeggiator, since nothing is wired from it then. A cable already on it stays and still works ([D-1336](docs/ledger/editor.md#D-1336)).
 
 ## 1.26.1 — 2026-11-23
