@@ -15,7 +15,7 @@ import { keyFeed, keyReach, chainedHarmonizer } from './key-routing';
 // before poly assemblies (Patch.voices, the Main module's voicing, the oscillator's drift).
 import { compileDevice, DEVICE_COMPILE, SHOWN } from './device-compile';
 import {
-  allModules,
+  deviceModules,
   assembliesOf,
   assemblyOf,
   descendants,
@@ -60,10 +60,10 @@ export interface PolyGroup {
   modules: Set<number>;
 }
 
-/** the members of a poly assembly that run once per voice */
+/** the members of a poly assembly that run once per voice (never its FX drawer's: the drawer plays the voices' mix, once) */
 function copied(p: Patch, a: AssemblyInst): Set<number> {
   const types = new Map(p.modules.map((m) => [m.id, m.type]));
-  return new Set(allModules(p, a).filter((id) => { const t = types.get(id) ?? ''; return !SHARED_TYPES.has(t) && t !== ALLOC; }));
+  return new Set(deviceModules(p, a).filter((id) => { const t = types.get(id) ?? ''; return !SHARED_TYPES.has(t) && t !== ALLOC; }));
 }
 
 /** the allocator that drives a poly assembly: the first one (in module order) with a cable into a member that runs per voice,
@@ -71,7 +71,7 @@ function copied(p: Patch, a: AssemblyInst): Set<number> {
 export function allocatorOf(p: Patch, a: AssemblyInst): ModuleInst | undefined {
   const inside = copied(p, a);
   const feeding = new Set(p.cables.filter((c) => inside.has(c.to.module)).map((c) => c.from.module));
-  const members = new Set(allModules(p, a));
+  const members = new Set(deviceModules(p, a));
   return p.modules.find((m) => m.type === ALLOC && feeding.has(m.id)) ?? p.modules.find((m) => m.type === ALLOC && members.has(m.id));
 }
 
@@ -269,23 +269,29 @@ export function deviceView(source: Patch, compile = false): { patch: Patch; grou
   return compile ? compileDevice(view.patch, view.groups, DEVICE_COMPILE.on && SHOWN.of ? () => SHOWN.of!(source) : null) : view;
 }
 
-/** the poly assembly above `a` (not `a` itself), if any */
+/** the poly assembly above `a` (not `a` itself), if any; an FX drawer in between ends the search (its effects run once) */
 function polyAncestor(p: Patch, a: AssemblyInst): AssemblyInst | undefined {
-  for (let x = parentOf(p, a.id); x; x = parentOf(p, x.id)) if (x.poly) return x;
+  for (let x = parentOf(p, a.id); x; x = parentOf(p, x.id)) {
+    if (x.drawer) return undefined;
+    if (x.poly) return x;
+  }
   return undefined;
 }
 
-/** the poly assembly a module runs in (the outermost poly assembly that holds it) */
+/** the poly assembly a module runs in (the outermost poly assembly that holds it; none inside an FX drawer) */
 export function polyOfModule(p: Patch, moduleId: number): AssemblyInst | undefined {
   let found: AssemblyInst | undefined;
-  for (let x = assemblyOf(p, moduleId); x; x = parentOf(p, x.id)) if (x.poly) found = x;
+  for (let x = assemblyOf(p, moduleId); x; x = parentOf(p, x.id)) {
+    if (x.drawer) return undefined;
+    if (x.poly) found = x;
+  }
   return found;
 }
 
 /** why `a` cannot become a poly assembly, or null */
 export function polyProblem(p: Patch, a: AssemblyInst): string | null {
   if (polyAncestor(p, a)) return `"${a.label}" is inside a poly assembly already: its modules run once per voice there`;
-  const inner = descendants(p, a).find((d) => d.poly);
+  const inner = descendants(p, a, true).find((d) => d.poly);
   if (inner) return `"${inner.label}" inside it is a poly assembly: poly assemblies do not nest`;
   return null;
 }
@@ -316,8 +322,8 @@ export const POLY_TOP = 50;
 
 /** move a poly assembly down so its expanded frame's header and settings fit above its members */
 export function makeRoom(p: Patch, a: AssemblyInst): void {
-  const ys = allModules(p, a).map((id) => p.modules.find((m) => m.id === id)?.y ?? POLY_TOP);
-  const top = Math.min(...ys, ...descendants(p, a).filter((d) => !d.open).map((d) => d.y));
+  const ys = deviceModules(p, a).map((id) => p.modules.find((m) => m.id === id)?.y ?? POLY_TOP);
+  const top = Math.min(...ys, ...descendants(p, a, true).filter((d) => !d.open).map((d) => d.y));
   if (top < POLY_TOP) moveAssembly(p, a, 0, POLY_TOP - top);
 }
 
@@ -330,7 +336,7 @@ export function makeRoom(p: Patch, a: AssemblyInst): void {
  */
 export function setPoly(p: Patch, defs: Record<string, ModuleDef>, a: AssemblyInst, on: boolean): void {
   const main = p.modules.find((m) => m.type === 'fm1');
-  const inside = new Set(allModules(p, a));
+  const inside = new Set(deviceModules(p, a));
   if (on) {
     const why = polyProblem(p, a);
     if (why) throw new Error(why);
