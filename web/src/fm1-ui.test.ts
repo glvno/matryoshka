@@ -305,8 +305,11 @@ describe('the FM-1 UI as WebAssembly', () => {
     expect([ui.focusDevice, ui.focusPage]).toEqual([1, 0]); // the home device (#196): the 808 kit card, after Main (its track inside)
     ui.encoder(ENCODERS.algo, 1);
     ui.encoder(ENCODERS.select, 1);
+    ui.encoder(ENCODERS.select, 1);
     ui.encoder(ENCODERS.algo, 1);
-    expect([ui.focusDevice, ui.focusPage]).toEqual([2, 1]); // (Output: its second page)
+    // (the kit's FX drawer: its effects Drive and Reverb are devices right after it, D-945; Reverb has two pages)
+    expect([ui.focusDevice, ui.focusPage]).toEqual([3, 1]); // (Reverb: its second page)
+    ui.encoder(ENCODERS.select, -1);
     ui.encoder(ENCODERS.select, -1);
     ui.encoder(ENCODERS.algo, 1);
     expect([ui.focusDevice, ui.focusPage]).toEqual([1, 1]); // (the 808 kit card: its snare drum page)
@@ -342,8 +345,8 @@ describe('the FM-1 UI as WebAssembly', () => {
     const kit = Object.keys(FM1_PRESETS).find((n) => /808/.test(n))!;
     expect(ui.load(encodePatch(FM1_PRESETS[kit]()), '808 KIT')).toBe(0);
     let t = 10_000;
-    // recorded from the panel: SELECT +1, ALGO +1 (CC 20 / 21), SEQ pressed and let go (CC 89), HOME pressed and let go (CC 87)
-    const recorded = [[0xb0, 20, 1], [0xb0, 21, 1], [0xb0, 89, 127], [0xb0, 89, 0], [0xb0, 87, 127], [0xb0, 87, 0]];
+    // recorded from the panel: SELECT +1 twice, ALGO +1 (CC 20 / 21), SEQ pressed and let go (CC 89), HOME pressed and let go (CC 87)
+    const recorded = [[0xb0, 20, 1], [0xb0, 20, 1], [0xb0, 21, 1], [0xb0, 89, 127], [0xb0, 89, 0], [0xb0, 87, 127], [0xb0, 87, 0]];
     const pages: number[] = [];
     for (const m of recorded)
       for (const i of PROFILES.matryoshka.translate(m)) {
@@ -353,7 +356,8 @@ describe('the FM-1 UI as WebAssembly', () => {
         ui.tick((t += 60));
         pages.push(ui.page);
       }
-    expect(focus).toEqual([[2, 0], [2, 1]]); // SELECT from the home device (1, the 808 kit card) to Output, ALGO its next page
-    expect(pages).toEqual([0, 0, 0, 8, 8, 0]);              // SEQ opens on its release, HOME goes back
+    // SELECT from the home device (1, the 808 kit card) to its FX drawer's effects (D-945): Drive, Reverb, ALGO Reverb's next page
+    expect(focus).toEqual([[2, 0], [3, 0], [3, 1]]);
+    expect(pages).toEqual([0, 0, 0, 0, 8, 8, 0]);           // SEQ opens on its release, HOME goes back
   }, 30_000);
 });

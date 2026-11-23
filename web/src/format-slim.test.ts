@@ -5,7 +5,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
-import { cablesGrouped, COUNTED, DEVICE, drumNamed, encodePatch, FLAG_CABLES3, FLAG_NAMES, GROUP_REC, layout, panelBytes, PANEL_BYTES, SLIM } from './patchbin';
+import { cablesGrouped, COUNTED, DEVICE, drumNamed, encodePatch, FLAG_CABLES3, FLAG_NAMES, GROUP_REC, layout, panelBytes, PANEL_BYTES, SLIM, VERSION } from './patchbin';
+import { rackOf } from './assembly';
 import { deviceView } from './poly';
 import { FM1_PRESETS } from './presets';
 
@@ -64,10 +65,19 @@ describe("format 64's shorter layout (D-1025)", () => {
     expect(w.length).toBe(layout(p, undefined, SLIM).size);
   });
 
-  it('keeps every factory patch in its older format unless no older form fits, and counts the smallest form', () => {
+  it('keeps every factory patch without an FX rack in its older format unless no older form fits, and counts the smallest form', () => {
     const slim: string[] = [];
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
-      const l = layout(make());
+      const p = make();
+      const l = layout(p);
+      // a patch with an FX rack (its converted FX drawers, #1214) is written at format 66, which has the shorter layout too:
+      // no older form holds the rack (FX drawer contracts §4: "a patch is written at 66 only when it has a rack")
+      const rack = rackOf(p);
+      if (rack.effects.length || rack.drawers.length) {
+        expect(l.v, name).toBe(VERSION);
+        expect(l.need, name).toBe(l.base.bytes);
+        continue;
+      }
       if (l.base.bytes > DEVICE.bytes && l.counted > DEVICE.bytes) {
         expect(l.v, name).toBe(SLIM);
         slim.push(name);
@@ -82,7 +92,9 @@ describe("format 64's shorter layout (D-1025)", () => {
   });
 
   it('writes format 64 for a patch that fits the FM-1 in no older form', () => {
-    const p = FM1_PRESETS.Canvas();
+    // (8 Lire: a factory patch without an FX rack; Canvas, used before, has its converted FX drawer and is written at 66)
+    const p = FM1_PRESETS['8 Lire']();
+    expect(rackOf(p).effects).toEqual([]);
     const out = p.modules.find((m) => m.type === 'output')!;
     while (layout(p).base.bytes <= DEVICE.bytes)
       connect(p, DEFS, { module: addModule(p, DEFS.const, 0, 0).id, port: 'out' }, { module: out.id, port: 'l' });
