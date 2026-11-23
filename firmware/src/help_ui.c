@@ -46,8 +46,6 @@ static uint32_t help_state(void)
         return HS_MENU;
     if (page == PAGE_ENV)
         return HS_ENV;
-    if (page == PAGE_FX)
-        return HS_FX;
     if (page == PAGE_SONG)
         return HS_SONG;
     if (page == PAGE_SEQ)
@@ -83,7 +81,7 @@ static int hc_menu_guide(void) { return menu_tab == MT_GUIDE; }
 static int hc_menu_page(void) { return menu_page() != 0; }
 static int hc_menu_system(void) { return menu_tab == MT_SYSTEM && !menu_page2; }   /* (its first page: UPDATE MODE, FACTORY RESET) */
 static int hc_harm(void) { return (sr_on ? eng_steps_harm((uint32_t)seq_module()) : eng_keys_harm()) >= 0; }   /* (the keys reach a Harmonizer: its chord buttons, #598) */
-static int hc_fx_bank(void) { return eng_fx_count() > 0u; }
+static int hc_fx_rack(void) { return fx_rack(); }  /* (FX goes to the rack's effects: panel.c fx_button) */
 static int hc_pattern_store(void) { return pt_on; }   /* (the pattern store is claimed: the SEQ page's pattern rows, #901) */
 static int hc_oct_banks(void) { return drum_bank_oct(); }   /* (OCT picks the drum bank, not the octave: D-520) */
 static int hc_drum_banks(void) { return page == PAGE_SEQ && seq_map() >= 0 && seq_rl_n > ENG_DRUM_ROWS; }   /* (a drum grid in banks: SEL + OCT) */
@@ -102,8 +100,8 @@ static uint32_t help_patch_rows(const char **out)
     for (i = 0; i < 4u; i++) {
         uint32_t b = B[i], kind = eng_button_kind(b), k;
         char lab[16], *p = help_btn_row[n];
-        if (b == 0u && hc_fx_bank())
-            continue;                              /* controls.ts's FX row describes the graph contract, never the old patch mapping */
+        if (b == 0u && hc_fx_rack())
+            continue;                              /* controls.ts's FX row says where FX goes in a patch with an FX rack */
         if (!panel_btn_job(b))                      /* (ui.c: a Gate's job is its jack's cable) */
             continue;
         if (!m1_panel_label(b, lab))

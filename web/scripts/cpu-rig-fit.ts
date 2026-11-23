@@ -22,10 +22,9 @@
 // scripts/cpu-costs-emu.ts's, whose own scale stays: the 1.14 bank has no patch without an engine of its own)
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { assembliesOf, parentOf } from '../src/assembly';
+import { assembliesOf, assemblyById, bypassAssembly, parentOf } from '../src/assembly';
 import { CPU as SHIPPED, cpuEstimate, type CpuTable } from '../src/cpu';
-import { fxBusOf } from '../src/fx-bus';
-import { setFxStageEnabled } from '../src/fx-preset';
+import { rackOf } from '../src/fx-drawer';
 import { DEFS } from '../src/modules';
 import { validatePatch, type Patch } from '../src/patch';
 import { deviceView } from '../src/poly';
@@ -147,11 +146,11 @@ const a = frozen ? BASE.cyclesPerUs / CPU.cyclesPerUs : (N * sxy - sx * sy) / (N
 const scaled: CpuTable = frozen ? { ...CPU, rig: undefined }
   : { ...base, cyclesPerUs: Math.round((10 * BASE.cyclesPerUs) / a) / 10, fixedUs: Math.round(b + a * BASE.fixedUs), cores: { ...base.cores!, idleUs: Math.round(a * BASE.idleUs) } };
 
-// the master FX bus's factor: least squares of the rig's rise from each POLY patch as shipped to every stage on, on the
-// estimate's rise (at the shipped engine factors: the rise is the bus's own cost), over 0.30..1.00
+// the FX drawers' factor: least squares of the rig's rise from each POLY patch as shipped to every effect on, on the
+// estimate's rise (at the shipped engine factors: the rise is the effects' own cost), over 0.30..1.00
 const allOn = (src: Patch): Patch => {
   const p = structuredClone(src);
-  for (const s of fxBusOf(p)!.stages) setFxStageEnabled(p, s, true);
+  for (const d of rackOf(p).drawers) for (const id of d.effects) bypassAssembly(p, assemblyById(p, id)!, false);
   return p;
 };
 const steady = (r: Reading): number | undefined => {

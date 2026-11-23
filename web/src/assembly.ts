@@ -383,6 +383,29 @@ export interface AssemblyInst extends AssemblyLayout {
   preset?: string;
   /** the whole card is locked: Mutate and Randomize leave every parameter of its members alone, nested ones too (#944) */
   mutateLockAll?: true;
+  /** this assembly is an FX drawer (fx-drawer.ts): its children are its effects in signal order and it has no modules of
+   *  its own; `open` = slid out. Never dropped or ungrouped when empty */
+  drawer?: DrawerInfo;
+  /** this assembly is a stereo audio effect: it fits an FX drawer (fx-drawer.ts) and may sit on the canvas too */
+  chain?: ChainPorts;
+  /** children shown whole as embedded cards on the collapsed card (ids in `children`) */
+  cards?: number[];
+}
+
+/** an FX drawer (fx-drawer.ts, docs/ledger/vocabulary.md "FX drawer") */
+export interface DrawerInfo {
+  /** an instrument's drawer: the instrument's exposed output endpoints the chain takes, [L, R] (R = L for a mono
+   *  instrument). Absent: the Output drawer, anchored at the patch's single Output module's l / r inputs */
+  taps?: [Target, Target];
+}
+
+/** the stereo ports of an effect (fx-drawer.ts) */
+export interface ChainPorts {
+  /** indices into the assembly's `inputs`: [in L, in R]; into `outputs`: [out L, out R] */
+  ins: [number, number];
+  outs: [number, number];
+  /** member modules its ⏻ never bypasses: corrections, wet-return send / return / scales / mix (runtime-owned, D-1100) */
+  helpers?: number[];
 }
 
 /** a nested assembly inside a saved definition: local module ids and local assembly ids, positions relative like the modules */
@@ -403,6 +426,9 @@ export interface NestedDef extends AssemblyLayout {
   bypass?: boolean;
   kept?: number[];
   poly?: PolyCards;
+  drawer?: DrawerInfo;
+  chain?: ChainPorts;
+  cards?: number[];
 }
 
 /** a saved assembly: the file format, the library entry and the factory set. Module ids are local (1..n), positions relative. */
@@ -429,6 +455,10 @@ export interface AssemblyDef extends AssemblyLayout {
   assemblies?: NestedDef[];
   /** the top level is a poly assembly */
   poly?: PolyCards;
+  /** the top level is a stereo audio effect (fx-drawer.ts); helpers in local module ids */
+  chain?: ChainPorts;
+  /** the top level's embedded cards (local assembly ids among `children`) */
+  cards?: number[];
 }
 
 export const ASSEMBLY_FORMAT = 'matryoshka-assembly';
@@ -455,13 +485,14 @@ export function parentOf(p: Patch, asmId: number): AssemblyInst | undefined {
 
 export const childrenOf = (p: Patch, a: AssemblyInst): AssemblyInst[] => (a.children ?? []).map((id) => assemblyById(p, id)).filter((x): x is AssemblyInst => !!x);
 
-/** every assembly nested in `a`, parents before their children */
-export function descendants(p: Patch, a: AssemblyInst): AssemblyInst[] {
+/** every assembly nested in `a`, parents before their children; `base`: leaving out every FX drawer inside and all it holds
+ *  (an instrument's own part: what its structure, its FM-1 device and its ⏻ cover) */
+export function descendants(p: Patch, a: AssemblyInst, base = false): AssemblyInst[] {
   const out: AssemblyInst[] = [];
   const seen = new Set<number>([a.id]);
   const walk = (x: AssemblyInst): void => {
     for (const c of childrenOf(p, x)) {
-      if (seen.has(c.id)) continue;
+      if (seen.has(c.id) || (base && c.drawer)) continue;
       seen.add(c.id);
       out.push(c);
       walk(c);
@@ -478,14 +509,77 @@ export function allModules(p: Patch, a: AssemblyInst): number[] {
   return ids;
 }
 
+/** the modules of an assembly without its FX drawer's (descendants `base`): an instrument's FM-1 device (its drawer's
+ *  effects are devices of their own) */
+export function deviceModules(p: Patch, a: AssemblyInst): number[] {
+  const ids = [...a.modules];
+  for (const d of descendants(p, a, true)) ids.push(...d.modules);
+  return ids;
+}
+
+/** every module an effect's ⏻ never bypasses (ChainPorts.helpers of every assembly): the patch binary writes them playing
+ *  and no Toggle lists them */
+export const chainHelpers = (p: Patch): Set<number> => new Set(assembliesOf(p).flatMap((a) => a.chain?.helpers ?? []));
+
+// ---- reading the drawers ----
+
+/** every FX drawer of the patch, in overlay order */
+export const drawers = (p: Patch): AssemblyInst[] => assembliesOf(p).filter((a) => a.drawer);
+
+/** an instrument's FX drawer */
+export function drawerOf(p: Patch, instrumentId: number): AssemblyInst | undefined {
+  const a = assemblyById(p, instrumentId);
+  return a ? childrenOf(p, a).find((c) => c.drawer) : undefined;
+}
+
+/** the patch's Output drawer */
+export const outputDrawer = (p: Patch): AssemblyInst | undefined => assembliesOf(p).find((a) => a.drawer && !a.drawer.taps);
+
+/** the instrument a drawer belongs to, or 'output' for the Output drawer */
+export function ownerOf(p: Patch, drawer: AssemblyInst): AssemblyInst | 'output' {
+  return (drawer.drawer?.taps && parentOf(p, drawer.id)) || 'output';
+}
+
+/** the drawer an effect is in */
+export function drawerOfEffect(p: Patch, effectId: number): AssemblyInst | undefined {
+  const d = parentOf(p, effectId);
+  return d?.drawer ? d : undefined;
+}
+
+/** a drawer's effects in signal order */
+export const effectsOf = (p: Patch, drawer: AssemblyInst): AssemblyInst[] => childrenOf(p, drawer).filter((e) => e.chain);
+
+/** what the patch binary's rack section needs (patchbin.ts): every effect that is a device (drawers' in chain order, then
+ *  the canvas's), with the modules its runtime switches (its members minus its helpers), and every drawer */
+export interface RackEffect { asm: number; targets: number[] }
+export interface RackDrawer { drawer: number; owner: number | 'output'; effects: number[] }
+export interface Rack { effects: RackEffect[]; drawers: RackDrawer[] }
+
+/** what the patch binary's rack section is made from (Rack) */
+export function rackOf(p: Patch): Rack {
+  const helpers = chainHelpers(p);
+  const targets = (e: AssemblyInst): number[] => allModules(p, e).filter((id) => !helpers.has(id));
+  const list = drawers(p).map((d) => ({ d, fx: effectsOf(p, d) }));
+  const canvas = assembliesOf(p).filter((a) => a.chain && !parentOf(p, a.id));
+  return {
+    effects: [...list.flatMap((x) => x.fx), ...canvas].map((e) => ({ asm: e.id, targets: targets(e) })),
+    drawers: list.map(({ d, fx }) => { const o = ownerOf(p, d); return { drawer: d.id, owner: o === 'output' ? 'output' : o.id, effects: fx.map((e) => e.id) }; }),
+  };
+}
+
 /**
  * The group switch: off bypasses every member (nested ones too) and remembers which were already off; on restores exactly
- * that, so a member you switched off yourself stays off. Returns the ids of the modules whose flag changed.
+ * that, so a member you switched off yourself stays off. An instrument's switch leaves its FX drawer alone (the drawer has
+ * its own); an effect's helpers (ChainPorts.helpers) are never bypassed. Returns the ids of the modules whose flag changed.
  */
 export function bypassAssembly(p: Patch, a: AssemblyInst, off: boolean): number[] {
   const changed: number[] = [];
-  const members = allModules(p, a);
+  const base = !a.drawer;
+  const helpers = chainHelpers(p);
+  const members = (base ? deviceModules(p, a) : allModules(p, a)).filter((id) => !helpers.has(id));
   const mods = members.map((id) => p.modules.find((m) => m.id === id)!);
+  // (a drawer's switch keeps each effect's own: an effect that was off stays off, its switch untouched)
+  const nested = a.drawer ? [] : descendants(p, a, base);
   if (off) {
     a.kept = mods.filter((m) => m.bypass).map((m) => m.id);
     for (const m of mods) if (!m.bypass) {
@@ -493,7 +587,7 @@ export function bypassAssembly(p: Patch, a: AssemblyInst, off: boolean): number[
       changed.push(m.id);
     }
     a.bypass = true;
-    for (const d of descendants(p, a)) if (d.bypass) delete d.kept; // a nested group's own switch is superseded: it comes back with this one
+    for (const d of nested) if (d.bypass) delete d.kept; // a nested group's own switch is superseded: it comes back with this one
   } else {
     const keep = new Set(a.kept ?? []);
     for (const m of mods) if (m.bypass && !keep.has(m.id)) {
@@ -502,7 +596,7 @@ export function bypassAssembly(p: Patch, a: AssemblyInst, off: boolean): number[
     }
     delete a.bypass;
     delete a.kept;
-    for (const d of descendants(p, a)) {
+    for (const d of nested) {
       delete d.bypass;
       delete d.kept;
     }
@@ -522,17 +616,22 @@ export function heightOf(p: Patch, a: AssemblyInst): number {
   return 1 + Math.max(0, ...childrenOf(p, a).map((c) => heightOf(p, c)));
 }
 
-/** the ids of modules inside collapsed assemblies (nested ones included): not drawn as cards */
+/** the ids of modules inside collapsed assemblies (nested ones included) and inside FX drawers (the editor draws a drawer
+ *  itself, open or not): not drawn as cards */
 export function hiddenModules(p: Patch): Set<number> {
   const h = new Set<number>();
-  for (const a of assembliesOf(p)) if (!a.open) for (const id of allModules(p, a)) h.add(id);
+  for (const a of assembliesOf(p)) if (!a.open || a.drawer) for (const id of allModules(p, a)) h.add(id);
   return h;
 }
 
-/** the ids of assemblies nested in a collapsed one: neither their card nor their frame is drawn */
+/** the ids of assemblies nested in a collapsed one, and every FX drawer with all it holds: neither their card nor their
+ *  frame is drawn */
 export function hiddenAssemblies(p: Patch): Set<number> {
   const h = new Set<number>();
-  for (const a of assembliesOf(p)) if (!a.open) for (const d of descendants(p, a)) h.add(d.id);
+  for (const a of assembliesOf(p)) {
+    if (a.drawer) h.add(a.id);
+    if (!a.open || a.drawer) for (const d of descendants(p, a)) h.add(d.id);
+  }
   return h;
 }
 
@@ -720,6 +819,9 @@ function cleanRows(p: Patch, a: AssemblyInst, member: Set<number>, defs?: Record
  * Keep an assembly consistent with the patch: members that are gone leave, exposures and promotions of departed modules
  * go, a parent only shows what its children expose, and every inner port with an outside cable is exposed (labels of
  * ports that stay are kept). Children must be reconciled first (reconcileAll does). Returns false when nothing is left.
+ * An FX drawer is never empty in this sense (it stays with no effects) and shows nothing itself; an instrument's ports
+ * and rows are worked out without its drawer (its effects show their own); an effect's chain ports keep pointing at the
+ * same jacks, or the effect stops being one when a jack is gone.
  */
 export function reconcile(p: Patch, a: AssemblyInst, defs?: Record<string, ModuleDef>): boolean {
   const ids = new Set(p.modules.map((m) => m.id));
@@ -728,13 +830,34 @@ export function reconcile(p: Patch, a: AssemblyInst, defs?: Record<string, Modul
     a.children = a.children.filter((id) => id !== a.id && assemblyById(p, id));
     if (!a.children.length) delete a.children;
   }
-  const members = allModules(p, a);
+  if (a.cards) {
+    a.cards = a.cards.filter((id) => a.children?.includes(id));
+    if (!a.cards.length) delete a.cards;
+  }
+  if (a.drawer) {
+    const all = new Set(allModules(p, a));
+    if (a.kept) {
+      a.kept = a.kept.filter((id) => all.has(id));
+      if (!a.bypass) delete a.kept;
+    }
+    a.modules = [];
+    a.inputs = [];
+    a.outputs = [];
+    a.params = [];
+    delete a.heads;
+    return true;
+  }
+  const members = deviceModules(p, a);
   if (!members.length) return false;
   const member = new Set(members);
   if (a.kept) {
     a.kept = a.kept.filter((id) => member.has(id));
     if (!a.bypass) delete a.kept;
   }
+  const chainEnds = a.chain && {
+    ins: a.chain.ins.map((i) => a.inputs[i] && { module: a.inputs[i].module, port: a.inputs[i].port }),
+    outs: a.chain.outs.map((i) => a.outputs[i] && { module: a.outputs[i].module, port: a.outputs[i].port }),
+  };
   const typeOf = (id: number): string => p.modules.find((m) => m.id === id)!.type;
   // an allocator inside feeds an input inside: the note comes from within, so the jack on the card is dead (an outside
   // cable into the same input still crosses the frame and exposes it again below)
@@ -779,6 +902,19 @@ export function reconcile(p: Patch, a: AssemblyInst, defs?: Record<string, Modul
     else if (!isExposed(a, 'in', r.module, r.port)) a.inputs.push({ ...r, label: uniqueLabel(a.inputs.map((x) => x.label), childLabel(p, a, 'in', r.module, r.port) ?? r.port) });
   }
   for (const r of b.outputs) if (!isExposed(a, 'out', r.module, r.port)) a.outputs.push({ ...r, label: uniqueLabel(a.outputs.map((x) => x.label), childLabel(p, a, 'out', r.module, r.port) ?? r.port) });
+  if (a.chain && chainEnds) {
+    const at = (list: PortRef[], t: Target | undefined): number => (t ? list.findIndex((r) => targetsOf(r).some((x) => sameEnd(x, t))) : -1);
+    const ins = chainEnds.ins.map((t) => at(a.inputs, t));
+    const outs = chainEnds.outs.map((t) => at(a.outputs, t));
+    if ([...ins, ...outs].some((i) => i < 0)) delete a.chain;
+    else {
+      a.chain.ins = [ins[0], ins[1]];
+      a.chain.outs = [outs[0], outs[1]];
+      const helpers = a.chain.helpers?.filter((id) => member.has(id));
+      if (helpers?.length) a.chain.helpers = helpers;
+      else delete a.chain.helpers;
+    }
+  }
   return true;
 }
 
@@ -1338,9 +1474,18 @@ export function tileMembers(p: Patch, a: AssemblyInst): void {
 
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 
-/** the saved form of an assembly: every module with local ids 1..n, nested assemblies with local ids, positions from the top left member */
-export function toDef(p: Patch, a: AssemblyInst): AssemblyDef {
-  const nested = descendants(p, a);
+/** an effect's chain ports with its helpers' ids mapped (to local ids and back); helpers not in the map go */
+function mapChain(c: ChainPorts, ids: Map<number, number>): ChainPorts {
+  const n: ChainPorts = { ins: [c.ins[0], c.ins[1]], outs: [c.outs[0], c.outs[1]] };
+  const helpers = c.helpers?.filter((id) => ids.has(id)).map((id) => ids.get(id)!);
+  if (helpers?.length) n.helpers = helpers;
+  return n;
+}
+
+/** the saved form of an assembly: every module with local ids 1..n, nested assemblies with local ids, positions from the top
+ * left member. `base`: without its FX drawer (descendants `base`: what its structure covers) */
+export function toDef(p: Patch, a: AssemblyInst, base = false): AssemblyDef {
+  const nested = descendants(p, a, base);
   const order = [...a.modules, ...nested.flatMap((d) => d.modules)];
   const ms = order.map((id) => clone(p.modules.find((m) => m.id === id)!));
   const local = new Map(order.map((id, i) => [id, i + 1]));
@@ -1348,8 +1493,11 @@ export function toDef(p: Patch, a: AssemblyInst): AssemblyDef {
   const x0 = Math.min(...ms.map((m) => m.x));
   const y0 = Math.min(...ms.map((m) => m.y));
   const kept = a.bypass ? new Set(a.kept ?? []) : null; // a group that is off: the definition gets the members' own switches
+  // (the modules the group's switch covers: an instrument's leaves its drawer alone, no switch touches a helper)
+  const helpers = chainHelpers(p);
+  const switched = kept && new Set((a.drawer ? allModules(p, a) : deviceModules(p, a)).filter((id) => !helpers.has(id)));
   for (const m of ms) {
-    if (kept) {
+    if (kept && switched!.has(m.id)) {
       if (kept.has(m.id)) m.bypass = true;
       else delete m.bypass;
     }
@@ -1387,8 +1535,11 @@ export function toDef(p: Patch, a: AssemblyInst): AssemblyDef {
   };
   if (a.heads?.length) def.heads = a.heads.map(remap);
   if (a.poly) def.poly = { ...a.poly };
+  const cards = (list: number[]): number[] => list.filter((id) => localAsm.has(id)).map((id) => localAsm.get(id)!);
+  if (a.chain) def.chain = mapChain(a.chain, local);
   if (nested.length) {
-    def.children = (a.children ?? []).map((id) => localAsm.get(id)!);
+    def.children = (a.children ?? []).filter((id) => localAsm.has(id)).map((id) => localAsm.get(id)!);
+    if (a.cards && cards(a.cards).length) def.cards = cards(a.cards);
     def.assemblies = nested.map((d) => {
       const n: NestedDef = {
         id: localAsm.get(d.id)!,
@@ -1410,6 +1561,9 @@ export function toDef(p: Patch, a: AssemblyInst): AssemblyDef {
         if (d.kept?.length) n.kept = d.kept.map((id) => local.get(id)!).filter((id) => id !== undefined);
       }
       if (d.poly) n.poly = { ...d.poly };
+      if (d.drawer) n.drawer = d.drawer.taps && d.drawer.taps.every((t) => local.has(t.module)) ? { taps: [remap(d.drawer.taps[0]), remap(d.drawer.taps[1])] } : {};
+      if (d.chain) n.chain = mapChain(d.chain, local);
+      if (d.cards && cards(d.cards).length) n.cards = cards(d.cards);
       return n;
     });
   }
@@ -1483,6 +1637,9 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
       if (d.kept?.length) n.kept = d.kept.map((id) => fresh.get(id)!).filter((id) => id !== undefined);
     }
     if (d.poly) n.poly = fixCards(d.poly);
+    if (d.drawer) n.drawer = d.drawer.taps ? { taps: [remap(d.drawer.taps[0]), remap(d.drawer.taps[1])] } : {};
+    if (d.chain) n.chain = mapChain(d.chain, fresh);
+    if (d.cards?.length) n.cards = d.cards.map((id) => freshAsm.get(id)!);
     return n;
   });
   const a: AssemblyInst = {
@@ -1502,6 +1659,8 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
   if (def.heads?.length) a.heads = def.heads.map(remap);
   if (def.children?.length) a.children = def.children.map((id) => freshAsm.get(id)!);
   if (def.poly) a.poly = fixCards(def.poly);
+  if (def.chain) a.chain = mapChain(def.chain, fresh);
+  if (def.cards?.length) a.cards = def.cards.map((id) => freshAsm.get(id)!);
   p.assemblies = [...assembliesOf(p), ...made, a];
   for (const n of [...made].reverse()) reconcile(p, n, defs);
   reconcile(p, a, defs);
@@ -1509,6 +1668,25 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
 }
 
 const isRec = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object';
+
+/** an effect's chain ports from a file: two indices among `inputs` inputs and two among `outputs` outputs, the helpers that
+ *  pass `member`; undefined when malformed */
+function fixChain(raw: unknown, inputs: number, outputs: number, member: (id: number) => boolean): ChainPorts | undefined {
+  if (!isRec(raw) || !Array.isArray(raw.ins) || !Array.isArray(raw.outs) || raw.ins.length !== 2 || raw.outs.length !== 2) return undefined;
+  const index = (n: number) => (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < n;
+  if (!raw.ins.every(index(inputs)) || !raw.outs.every(index(outputs))) return undefined;
+  const c: ChainPorts = { ins: [raw.ins[0], raw.ins[1]], outs: [raw.outs[0], raw.outs[1]] };
+  const helpers = Array.isArray(raw.helpers) ? [...new Set(raw.helpers.filter((id): id is number => Number.isInteger(id) && member(id as number)))] : [];
+  if (helpers.length) c.helpers = helpers;
+  return c;
+}
+
+/** a drawer's taps from a file: two endpoints; undefined when malformed (or absent: the Output drawer) */
+function fixTaps(raw: unknown): [Target, Target] | undefined {
+  if (!Array.isArray(raw) || raw.length !== 2 || !raw.every((t) => isRec(t) && Number.isInteger(t.module) && typeof t.port === 'string')) return undefined;
+  const [l, r] = raw as { module: number; port: string }[];
+  return [{ module: l.module, port: l.port }, { module: r.module, port: r.port }];
+}
 
 /** structural check of a saved assembly (a file, a library entry, a factory file). Throws with a readable message. */
 /**
@@ -1669,6 +1847,17 @@ export function validateAssemblyDef(raw: unknown, defs: Record<string, ModuleDef
         if (Array.isArray(e.kept)) n.kept = e.kept.filter((id): id is number => seen.has(id as number));
       }
       if (e.poly) n.poly = fixCards(e.poly);
+      const chain = fixChain(e.chain, n.inputs.length, n.outputs.length, (id) => seen.has(id));
+      if (chain) n.chain = chain;
+      if (isRec(e.drawer) && !mods.length) {
+        const taps = fixTaps(e.drawer.taps);
+        const isOut = (t: Target): boolean => { const ty = typeOf(t.module); return !!ty && defs[ty].outputs.some((q) => q.name === t.port); };
+        n.drawer = taps && taps.every(isOut) ? { taps } : {};
+      }
+      if (Array.isArray(e.cards)) {
+        const cards = e.cards.filter((id): id is number => n.children?.includes(id as number) ?? false);
+        if (cards.length) n.cards = cards;
+      }
       return n;
     });
     const byId = new Map(d.assemblies.map((n) => [n.id, n]));
@@ -1687,14 +1876,23 @@ export function validateAssemblyDef(raw: unknown, defs: Record<string, ModuleDef
     for (const n of d.assemblies) if (!parent.has(n.id)) throw new Error(`nested assembly "${n.label}" is in no assembly`);
     const depth = (id: number, guard = 0): number => (id === 0 ? 1 : guard > MAX_DEPTH ? guard : 1 + depth(parent.get(id)!, guard + 1));
     for (const n of d.assemblies) if (depth(n.id) > MAX_DEPTH) throw new Error(`assemblies nest at most ${MAX_DEPTH} deep`);
-    for (const n of d.assemblies) if (!n.modules.length && !n.children?.length) throw new Error(`nested assembly "${n.label}" is empty`);
+    for (const n of d.assemblies) if (!n.modules.length && !n.children?.length && !n.drawer) throw new Error(`nested assembly "${n.label}" is empty`);
+    if (Array.isArray((raw as { cards?: unknown }).cards)) {
+      const cards = ((raw as { cards: unknown[] }).cards).filter((id): id is number => d.children!.includes(id as number));
+      if (cards.length) d.cards = cards;
+      else delete d.cards;
+    } else delete d.cards;
     if (!d.children.length) delete d.children;
   } else {
     delete d.assemblies;
+    delete d.cards;
     delete d.children;
   }
   if (d.poly) d.poly = fixCards(d.poly);
   else delete d.poly;
+  const chain = fixChain(d.chain, d.inputs.length, d.outputs.length, (id) => seen.has(id));
+  if (chain) d.chain = chain;
+  else delete d.chain;
   d.version = 1;
   d.name = String(d.name ?? 'assembly').trim() || 'assembly';
   return d;
@@ -1728,7 +1926,8 @@ export function fixAssemblies(p: Patch, defs: Record<string, ModuleDef>): string
     if (!isRec(e) || !Array.isArray(e.modules)) return drop('bad entry');
     const members = e.modules.map(Number);
     const kids = Array.isArray(e.children) ? e.children.map(Number).filter((k) => Number.isInteger(k)) : [];
-    if ((!members.length && !kids.length) || members.some((id) => !Number.isInteger(id))) return drop('no members');
+    const drawer = isRec(e.drawer) && !members.length;
+    if ((!members.length && !kids.length && !drawer) || members.some((id) => !Number.isInteger(id))) return drop('no members');
     for (const id of members) {
       const m = p.modules.find((x) => x.id === id);
       if (!m) return drop(`module ${id} is missing`);
@@ -1753,12 +1952,22 @@ export function fixAssemblies(p: Patch, defs: Record<string, ModuleDef>): string
     const ah = emptyHeads(e.heads, a.params);
     if (ah) a.heads = ah;
     if (e.poly) a.poly = fixCards(e.poly);
+    if (drawer) {
+      const taps = fixTaps((e.drawer as Record<string, unknown>).taps);
+      a.drawer = taps ? { taps } : {};
+    }
+    const chain = fixChain(e.chain, a.inputs.length, a.outputs.length, (m) => Number.isInteger(m));
+    if (chain) a.chain = chain;
+    if (Array.isArray(e.cards)) {
+      const cards = e.cards.filter((k): k is number => kids.includes(k as number));
+      if (cards.length) a.cards = cards;
+    }
     if (typeof e.preset === 'string' && e.preset.trim()) a.preset = e.preset.trim().slice(0, 24);
     if (e.bypass) {
       // the group switch is off: without it the card read on while every member stayed off, and the switch could not bring them back
+      // (members of nested ones and of a drawer's effects included: reconcile keeps those still inside)
       a.bypass = true;
-      const member = new Set(a.modules);
-      a.kept = Array.isArray(e.kept) ? e.kept.filter((id): id is number => member.has(id)) : [];
+      a.kept = Array.isArray(e.kept) ? e.kept.filter((id): id is number => Number.isInteger(id)) : [];
     }
     for (const m of a.modules) used.add(m);
     ids.add(a.id);
@@ -1802,9 +2011,47 @@ export function fixAssemblies(p: Patch, defs: Record<string, ModuleDef>): string
       par.children = par.children!.filter((k) => k !== a.id);
       if (!par.children.length) delete par.children;
     }
+  fixDrawers(p, defs, msgs);
   reconcileAll(p, defs);
+  // every effect in a drawer is a stereo effect: anything else there (an effect whose chain jacks are gone) goes to the canvas
+  for (const d of assembliesOf(p)) if (d.drawer) for (const c of childrenOf(p, d)) if (!c.chain) {
+    msgs.push(`"${c.label}" is no stereo effect: taken out of its FX drawer`);
+    detach(p, c.id);
+  }
   syncTied(p, defs);   // (what a row sets follows its first, #357)
   return msgs;
+}
+
+/**
+ * The FX drawers that fit the patch (fixAssemblies, before reconciling): an instrument's drawer is a child of a top-level
+ * assembly that is no drawer, one per instrument, holds no modules of its own, and taps two outputs of that instrument's
+ * own modules; the Output drawer is top level, one per patch, and needs the patch's single Output. One that does not
+ * fit is an ordinary assembly again (dropped when it holds nothing).
+ */
+function fixDrawers(p: Patch, defs: Record<string, ModuleDef>, msgs: string[]): void {
+  const outputs = p.modules.filter((m) => m.type === 'output').length;
+  const owners = new Set<number>();
+  let output = false;
+  for (const a of assembliesOf(p)) {
+    if (!a.drawer) continue;
+    const parent = parentOf(p, a.id);
+    const isOut = (t: Target): boolean => {
+      const m = p.modules.find((x) => x.id === t.module);
+      return !!m && !!defs[m.type]?.outputs.some((q) => q.name === t.port);
+    };
+    const taps = a.drawer.taps;
+    const fits = a.modules.length === 0 && (taps
+      ? !!parent && !parentOf(p, parent.id) && !parent.drawer && !owners.has(parent.id) &&
+        taps.every((t) => isOut(t) && deviceModules(p, parent).includes(t.module))
+      : !parent && !output && outputs === 1);
+    if (!fits) {
+      msgs.push(`assembly "${a.label}" is no FX drawer here: kept as an ordinary assembly`);
+      delete a.drawer;
+      continue;
+    }
+    if (taps) owners.add(parent!.id);
+    else output = true;
+  }
 }
 
 /** the well-formed empty headings of a file: a heading of up to HEAD_MAX characters at a row the card has; none: undefined */

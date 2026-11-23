@@ -4,11 +4,11 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { FACTORY } from './assemblies';
 import { insertAssembly, type AssemblyInst } from './assembly';
 import type { DeviceLink } from './device';
-import { applyPreset, currentValues, presetsOf, setFactoryPresets, storePreset, userPresets } from './device-presets';
+import { applyPreset, capturePreset, currentValues, presetsOf, setFactoryPresets, storePreset, userPresets } from './device-presets';
 import { defIsEngine } from './engines';
-import { fxPresetScope, soleInstrument } from './fx-preset';
-import { fxPresetInfo } from './fx-preset-format';
-import { buildPresetsSection, engineOf } from './library-presets';
+import { drawerScope } from './fx-preset';
+import { drawerPresetInfo } from './fx-preset-format';
+import { buildPresetsSection, engineOf, factoryInstruments } from './library-presets';
 import { DEFS } from './modules';
 import { newPatch, validatePatch, type Patch } from './patch';
 import { bindPatchPresetTransfer } from './patch-presets';
@@ -87,24 +87,24 @@ it.each([
   expect(putPreset).not.toHaveBeenCalled();
 });
 
-/** a factory patch and its sole instrument (the one assembly device besides its master FX rack) */
+/** a factory patch as the editor opens it and its one instrument (the drawer's effects are devices, not instruments) */
 function factoryInstrument(name: string): { patch: Patch; instrument: AssemblyInst } {
-  const patch = FM1_PRESETS[name]();
-  const id = soleInstrument(patch);
-  return { patch, instrument: patch.assemblies!.find((a) => a.id === id)! };
+  const patch = validatePatch(JSON.parse(JSON.stringify(FM1_PRESETS[name]())), DEFS);
+  const found = factoryInstruments(patch);
+  return { patch, instrument: found.length === 1 ? found[0] : undefined! };
 }
 
-it('labels a preset stored from the factory Hera 6 "Hera 6", not its library engine "Hera 4" (owner 2026-11-23)', () => {
+it('labels a preset stored from the factory Hera 6 with its drawer "Hera 6 with FX", not its library engine "Hera 4" (owner 2026-11-23)', () => {
   const { patch, instrument } = factoryInstrument('Hera 6');
   storePreset(patch, instrument, 'gauze');
   const root = document.createElement('div');
   buildPresetsSection(root, { connected: false, hasPresets: false } as unknown as DeviceLink, { changed() {} });
   const row = root.querySelector('.bank-row')!;
   expect(row.querySelector('.grow')!.textContent).toBe('gauze');
-  expect(row.querySelector('.muted')!.textContent).toBe('Hera 6 + FX');
+  expect(row.querySelector('.muted')!.textContent).toBe('Hera 6 with FX');
 });
 
-it('names every factory instrument as its patch shows it, with "+ FX" for its rack; library engines in no patch keep their own names', () => {
+it('names every factory instrument as its patch shows it, with "with FX" for its drawer; library engines in no patch keep their own names', () => {
   const bankStructures = new Set<string>();
   for (const name of Object.keys(FM1_PRESETS)) {
     const { patch, instrument } = factoryInstrument(name);
@@ -112,19 +112,19 @@ it('names every factory instrument as its patch shows it, with "+ FX" for its ra
     const base = structureOf(patch, instrument);
     bankStructures.add(base);
     expect(engineOf(base), name).toBe(name);
-    const scope = fxPresetScope(patch, instrument);
-    if (scope) expect(engineOf(scope.structure), name).toBe(`${name} + FX`);
+    const scope = drawerScope(patch, instrument);
+    if (scope) expect(engineOf(scope.structure, capturePreset(patch, instrument, 'x').values), name).toBe(`${name} with FX`);
   }
   for (const def of FACTORY.filter((d) => defIsEngine(d) && !bankStructures.has(defStructure(d)))) expect(engineOf(defStructure(def))).toBe(def.name);
   // the library's Hera 4 is the Hera 6 patch's instrument at four voices (D-873): one structure, so one preset list
   expect(engineOf(defStructure(FACTORY.find((d) => d.name === 'Hera 4')!))).toBe('Hera 6');
 });
 
-it('loads a Hera 6 preset with its rack only where the rack is; its card-only presets fit the library Hera 4 as well', () => {
+it('loads a Hera 6 preset with its drawer only where a drawer is; its instrument-only presets fit the library Hera 4 as well', () => {
   const { patch, instrument } = factoryInstrument('Hera 6');
   storePreset(patch, instrument, 'gauze');
   const gauze = userPresets()[0];
-  expect(fxPresetInfo(gauze)).not.toBeNull();
+  expect(drawerPresetInfo(gauze)).not.toBeNull();
   const other = factoryInstrument('Hera 6');
   expect(presetsOf(other.patch, other.instrument).some((p) => p.name === 'gauze')).toBe(true);
   expect(applyPreset(other.patch, other.instrument, gauze)).toBe(true);
@@ -132,10 +132,10 @@ it('loads a Hera 6 preset with its rack only where the rack is; its card-only pr
   const hera4 = insertAssembly(lib, DEFS, FACTORY.find((d) => d.name === 'Hera 4')!, 0, 0);
   expect(structureOf(lib, hera4)).toBe(structureOf(patch, instrument));
   expect(presetsOf(lib, hera4).some((p) => p.name === 'gauze')).toBe(false);
-  expect(applyPreset(lib, hera4, gauze)).toBe(false);
+  expect(applyPreset(lib, hera4, gauze, true)).toBe(false);
   storePreset(lib, hera4, 'plain');
   const plain = userPresets().find((p) => p.name === 'plain')!;
-  expect(fxPresetInfo(plain)).toBeNull();
+  expect(drawerPresetInfo(plain)).toBeNull();
   expect(applyPreset(other.patch, other.instrument, plain)).toBe(true);
   expect(currentValues(other.patch, other.instrument)).toEqual(plain.values);
 });

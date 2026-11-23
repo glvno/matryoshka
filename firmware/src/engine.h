@@ -33,7 +33,7 @@ void eng_fpu_probe(uint32_t lane, uint32_t *h);
 
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 65   /* 65 (the release after 1.22, patchbin.ts FORMAT_1_23): the MIDI learn mappings as the binary's last section (eng_maps, ENG_MAPS, #1067); 64 (the release after 1.21, patchbin.ts FORMAT_1_22): the EQ type (T_EQ, #1107) appended after the Euclid, and the shorter panel labels, cables and Drum map row names (ENG_SLIM, D-1025); 63 (release 1.20, patchbin.ts FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid type (T_EUCLID, #1018) appended after the Limiter, and Steps notes' timing words, ratchets and micro timing (ENG_TIME_BIT, #675, #677); 62 (release 1.19, patchbin.ts FORMAT_1_19): the Low pass gate (T_LPG, #1018) and the Limiter (T_LIMIT, #1019) types appended after the Harmonizer; 61: a cable into a Part's priority input (PART_I_PRIORITY, #976); 60: trig conditions, a note's condition word after it (ENG_NOTE_COND, #674); 59: the stored pattern links (ENG_FLAG_LINKS, #901) after the P-locks; 58: the Oscillator's `phase` (where sync restarts the cycle, #691) appended; 57: the ADSR's `ads` (release at the decay's time, D-745) appended; 56: Env L/R's `curve` (a linear fall, #689) appended; 55: optional validated master FX bus after format54 origins and before macro ranges */
+#define ENG_PATCH_VERSION 66   /* 66 (1.26.3, patchbin.ts FORMAT_RACK): flag bit 14 is the FX rack instead of the master FX bus: the patch's effects and FX drawers (eng_rack_end, ENG_FX_EFFECTS, #1214); 65 (the release after 1.22, patchbin.ts FORMAT_1_23): the MIDI learn mappings as the binary's last section (eng_maps, ENG_MAPS, #1067); 64 (the release after 1.21, patchbin.ts FORMAT_1_22): the EQ type (T_EQ, #1107) appended after the Euclid, and the shorter panel labels, cables and Drum map row names (ENG_SLIM, D-1025); 63 (release 1.20, patchbin.ts FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid type (T_EUCLID, #1018) appended after the Limiter, and Steps notes' timing words, ratchets and micro timing (ENG_TIME_BIT, #675, #677); 62 (release 1.19, patchbin.ts FORMAT_1_19): the Low pass gate (T_LPG, #1018) and the Limiter (T_LIMIT, #1019) types appended after the Harmonizer; 61: a cable into a Part's priority input (PART_I_PRIORITY, #976); 60: trig conditions, a note's condition word after it (ENG_NOTE_COND, #674); 59: the stored pattern links (ENG_FLAG_LINKS, #901) after the P-locks; 58: the Oscillator's `phase` (where sync restarts the cycle, #691) appended; 57: the ADSR's `ads` (release at the decay's time, D-745) appended; 56: Env L/R's `curve` (a linear fall, #689) appended; 55: optional validated master FX bus after format54 origins and before macro ranges */
 #define ENG_COUNTED 51                /* the first format whose module records carry their parameter count (patchbin.ts COUNTED, #667) */
 #define ENG_SLIM 64                   /* the first format with the panel labels by their length (eng_panel_bytes), the cables
                                        * grouped by the module they go into (eng_cables_grouped) and only the Drum map row
@@ -307,7 +307,7 @@ static inline uint32_t eng_links_end(const uint8_t *p, uint32_t len, uint32_t at
     return at <= len ? at : 0;
 }
 /* the sections after the side-input routes, in their order in a binary (eng_section_at): ENG_SEC_FX is where the master
- * FX bus would start, right after the pattern origins */
+ * FX bus (formats 55..65) or the FX rack (format 66) would start, right after the pattern origins */
 enum { ENG_SEC_NOTES, ENG_SEC_PATTERNS, ENG_SEC_LOCKS, ENG_SEC_LINKS, ENG_SEC_DEVICES, ENG_SEC_EXTRAS, ENG_SEC_BUTTONS,
        ENG_SEC_NAMES, ENG_SEC_ORIGINS, ENG_SEC_FX };
 /* where section `sec` (ENG_SEC_*) starts in binary p, or would start, past every section before it that the binary has;
@@ -462,20 +462,40 @@ uint32_t eng_names_end(const uint8_t *p, uint32_t len, uint32_t at);
 uint32_t eng_origins_end(const uint8_t *p, uint32_t len, uint32_t at);
 uint32_t eng_origins_at(const uint8_t *p, uint32_t len);
 uint32_t eng_origin_record(const uint8_t *p, uint32_t len, uint32_t module, uint32_t pattern);
-/* Format55: u8 count (1..4), then in signal order u8 kind, device, first page, target count,
- * and that many device-form module indices. The optional record precedes macro ranges. */
+/* Formats 55..65 (D-1010), flag bit 14: the master FX bus. u8 count (1..4), then in signal order u8 kind, device, first
+ * page, target count, and that many device-form module indices. The optional record precedes macro ranges. The engine
+ * loads its stages as the effects of one Output drawer (eng_rack_*), each effect on the bus device and its page.
+ * Format 66 (#1214), flag bit 14: the FX rack, in the same place:
+ *   u8 E (0..ENG_FX_EFFECTS): the patch's effects in device order, each E x { u8 device (its own device's index), u8 n
+ *   (0..ENG_FX_TARGETS_MAX), n x u8 module (its targets, unique across the section; at most ENG_FX_RUNS in all) },
+ *   then u8 D (0..ENG_FX_DRAWERS): its FX drawers, each D x { u8 owner (the instrument's device index, ENG_RACK_OUTPUT
+ *   for the Output drawer), u8 first (its first effect's place in the list above), u8 count (0: an empty drawer) };
+ *   E + D is at least 1.
+ * A target runs as a master FX stage's did (D-1100): a Delay or a Reverb rings out, any other type fades over 1024
+ * samples, and the only target of an effect that is a Reverb returns its wet sound only. All targets of an effect share
+ * its on/off. An effect with n = 0 (the editor's fallback past 8 targets or ENG_FX_RUNS in all, or with a target that
+ * cannot run so) switches by ordinary bypass: eng_fx_set only keeps its state. */
 #define ENG_FLAG_FX_BUS (1u << 14)
-#define ENG_FX_STAGE_COUNT 4u /* maximum; sparse records contain 1..4 ordered unique kinds */
+#define ENG_FX_STAGE_COUNT 4u /* formats 55..65: maximum; sparse records contain 1..4 ordered unique kinds */
 #define ENG_FX_TARGETS_MAX 8u
+#define ENG_FX_EFFECTS 32u    /* format 66: the most effects in the rack */
+#define ENG_FX_RUNS 32u       /* the most targets of all effects together (the bus's 4 x 8) */
+#define ENG_FX_DRAWERS 16u    /* format 66: the most FX drawers */
+#define ENG_RACK_OUTPUT 0xFFu /* eng_rack_owner: the Output drawer */
 enum { ENG_FX_DRIVE, ENG_FX_CHORUS, ENG_FX_DELAY, ENG_FX_REVERB };
-const uint8_t *eng_skip_fx(const uint8_t *p, const uint8_t *end, uint16_t flags); /* NULL: malformed */
-uint32_t eng_fx_count(void);
-uint32_t eng_fx_kind(uint32_t stage);       /* UINT32_MAX: no such stage */
-uint32_t eng_fx_device(uint32_t stage);     /* UINT32_MAX: no such stage */
-uint32_t eng_fx_page(uint32_t stage);       /* UINT32_MAX: no such stage */
-uint32_t eng_fx_targets(uint32_t stage, const uint8_t **targets);
-int eng_fx_on(uint32_t stage);             /* desired UI state, independent of a processing tail */
-void eng_fx_set(uint32_t stage, int on);    /* coherent stereo stage; does not change parameter values */
+const uint8_t *eng_skip_fx(const uint8_t *p, const uint8_t *end, uint16_t flags); /* formats 55..65; NULL: malformed */
+uint32_t eng_rack_end(const uint8_t *p, uint32_t len, uint32_t at); /* past bit 14's section at `at` (any format); 0: malformed */
+uint32_t eng_fx_count(void);                 /* the effects */
+uint32_t eng_fx_kind(uint32_t e);            /* the master FX kind of its first target's type (ENG_FX_*), UINT32_MAX: none */
+uint32_t eng_fx_device(uint32_t e);          /* its device's index in the binary; UINT32_MAX: no such effect */
+uint32_t eng_fx_page(uint32_t e);            /* formats 55..65: the stage's first page; format 66: 0 */
+uint32_t eng_fx_targets(uint32_t e, const uint8_t **targets);
+int eng_fx_on(uint32_t e);                   /* desired UI state, independent of a processing tail */
+void eng_fx_set(uint32_t e, int on);         /* every target of the effect; does not change parameter values */
+uint32_t eng_rack_count(void);               /* the FX drawers */
+uint32_t eng_rack_owner(uint32_t r);         /* the instrument's device index, ENG_RACK_OUTPUT; UINT32_MAX: no such drawer */
+uint32_t eng_rack_first(uint32_t r);         /* its first effect (eng_fx_*) */
+uint32_t eng_rack_len(uint32_t r);           /* its effects, consecutive from eng_rack_first */
 /* The MIDI mappings (#1067, MIDI learn): the last section of a binary, after the macro ranges (or where they would be).
  * u8 count (1..ENG_MAPS_MAX), then per mapping u8 source (a CC 0..119, ENG_MAP_BEND, or ENG_MAP_NOTE + a note), u8 the row's module and u8 its
  * parameter byte as a device page row has them, u8 low end, u8 high end (0..255 of the row's range: the control's lowest

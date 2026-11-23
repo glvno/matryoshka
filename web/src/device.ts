@@ -5,7 +5,7 @@ import { FEATURE_PATTERN_ORIGINS, PatternOrigins, type OriginUpdate } from './pa
 import { DEFS } from './modules';
 import type { Patch, Range } from './patch';
 import { patternName, READ_ONLY_ID, type SongEntry, type StepNote } from './track';
-import { DEVICE, deviceSection, encodePatch, FLAG_FX_BUS, FLAG_LINKS, FLAG_PATTERN_ORIGINS, layout, mapRecord, toQ16, VERSION, type LinkStore } from './patchbin';
+import { DEVICE, deviceSection, encodePatch, FLAG_LINKS, FLAG_PATTERN_ORIGINS, FLAG_RACK, FORMAT_RACK, layout, mapRecord, toQ16, VERSION, type LinkStore } from './patchbin';
 import { FNV0, fnv, PAYLOAD_MAX, storePlan, withLinks } from './pattern-store';
 import { deviceView } from './poly';
 import type { HostMsg } from './worklet';
@@ -22,13 +22,13 @@ import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type
 import { FEATURE_PATTERN_STORE, FEATURE25_PATTERNS_STORED, FEATURE25_TRACK_CARD, parseLinkNow, parsePatEntry, parsePatStored, PAT_FULL, PAT_MISSING, PAT_OK, PAT_RANGE, PAT_STATUS, PAT_USED, patDelFrame, patPutFrames, patsFrame, readStoredPattern, type PatListItem, type StoredPatternEntry } from './protocol';
 import { holdsTrackCard } from './pages';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
-import { FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo, type MapEntry } from './protocol';
+import { FEATURE5_FX_DRAWERS, FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo, type MapEntry } from './protocol';
 import { FEATURE_PADS, PADS_CMD, padsClearAllFrame, padsOnFrame, padsReadFrame, padsSetFrame, parsePadsNow, parsePatternOp, PATTERN_OP, type PadMap } from './protocol';
 import { hasPaletteFeature, PAL_STATUS, PALETTE, paletteEntryGetFrame, paletteGetFrame, paletteGoFrame, paletteNameFrame, paletteOrderFrame, palettePutFrame, parsePaletteEntry, parsePaletteNow, type PaletteEntry, type PaletteNow } from './protocol';
 import { FEATURE25_SLOT_GET, readSlotBinary, SLOT_STORED } from './protocol';
 import { factoryInfo, installFactory } from './factory-content';
 import { installFont } from './font-content';
-import { fxPresetInfo } from './fx-preset-format';
+import { drawerPresetInfo, fxPresetInfo } from './fx-preset-format';
 import { autoPick, fm1Label, NOT_CHOSEN, readFm1Id, rememberedFm1, rememberFm1, suggested, type Fm1Choice, type Fm1Id } from './fm1-choice';
 
 /** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
@@ -651,8 +651,8 @@ export class DeviceLink {
 
   private async sendChunks(bin: Uint8Array): Promise<void> {
     const flags = bin[6] | bin[7] << 8;
-    if ((flags & FLAG_FX_BUS) && (!this.info?.patchFormats || this.info.patchFormats.max < 55))
-      throw new Error('This patch carries master FX controls. Update the FM-1 firmware before sending it.');
+    if ((flags & FLAG_RACK) && bin[1] >= FORMAT_RACK && (!this.info?.patchFormats || this.info.patchFormats.max < FORMAT_RACK))
+      throw new Error('This patch has FX drawers or effects. Update the FM-1 firmware before sending it.');
     if ((flags & FLAG_PATTERN_ORIGINS) && (!this.info?.patchFormats || bin[1] > this.info.patchFormats.max || !(this.info.features & FEATURE_PATTERN_ORIGINS)))
       throw new Error('This patch carries factory pattern origins. Update the FM-1 firmware before sending it; its origins cannot be removed automatically.');
     if ((flags & FLAG_LINKS) && !this.hasPatternStore) throw new Error('This patch links stored patterns, and this FM-1 has no pattern store.');
@@ -957,9 +957,10 @@ export class DeviceLink {
   }
 
   /** whether a preset of n values can be stored on this FM-1 (false: older firmware and more than 88: it must be updated;
-   *  more than 176 never) */
+   *  more than 176 never; an FX drawer preset needs firmware that reads FX drawers, INFO byte 25 bit 3) */
   presetFits(n: number, preset?: { structure: string; values: number[] }): boolean {
     if (preset && fxPresetInfo(preset) && !(this.info && this.info.features & FEATURE_FX_PRESETS)) return false;
+    if (preset && drawerPresetInfo(preset) && !((this.info?.features25 ?? 0) & FEATURE5_FX_DRAWERS)) return false;
     return n <= PRESET_VALUES_OLD || (this.hasLongPresets && n <= PRESET_VALUES_MAX);
   }
 

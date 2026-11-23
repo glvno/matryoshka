@@ -232,7 +232,7 @@ static void screen_back(void)
     pg_list_step = trail[trail_n].lstep;
     pg_list_peek = 0;
     pg_strip_dirty = 1;
-    if ((trail[trail_n].page == 0u || trail[trail_n].page == PAGE_ENV || trail[trail_n].page == PAGE_FX)
+    if ((trail[trail_n].page == 0u || trail[trail_n].page == PAGE_ENV)
         && pages_focus(trail[trail_n].dev, trail[trail_n].pg))
         m1_focus_now(pg_cur_dev, pg_cur_page);
     page_show(trail[trail_n].page);
@@ -280,20 +280,53 @@ static void page_set(uint32_t p)
     page_show(p);
 }
 
-/* Only recognized master-FX patches reserve FX here. SEQ/SONG and all legacy/custom button mappings keep their jobs. */
+/* FX on a device page or the environment (the FX drawer, 1.26.3): the effect the rack has for here (pages_ui.c
+ * fx_target: the drawer of the instrument on show, else of the armed one, else the Output drawer) on its first page, a
+ * step on the trail; FX again from there goes back. A patch with an FX rack (an effect or a drawer, ui.c fx_rack) shadows
+ * its own FX button job, as the master FX bus did; one with none keeps it (a Toggle, a Page button, a Gate with a cable),
+ * and FX set to Nothing there, like a drawer with no effect for here, says NO FX IN THE RACK. The SEQ and SONG pages keep
+ * FX's jobs there (D-946) */
+static uint8_t fx_step;                             /* trail_n just after FX's step on the trail, 0 none */
+static int fx_takes(uint32_t b)
+{
+    return b == 0u && !sb_on && (page == 0u || page == PAGE_ENV)
+        && (fx_rack() || (eng_button_kind(0) == ENG_BTN_NOTHING && !panel_btn_job(0)));
+}
 static int fx_button(uint32_t b, int down)
 {
-    if (b != 0u || sb_on || !eng_fx_count() || (page != 0u && page != PAGE_ENV && page != PAGE_FX))
+    uint32_t e, d, g;
+    if (!fx_takes(b))
         return 0;
-    if (down) {
-        if (page == PAGE_FX)
-            screen_back();
-        else {
-            trail_push();
-            fx_focus();
-            page_show(PAGE_FX);
-        }
+    if (!down)
+        return 1;
+    pages_ensure();
+    e = fx_target();
+    if (e == UINT32_MAX || (d = pages_dev_of(eng_fx_device(e))) >= pg_ndev) {
+        ui_msg(MSG_NO_FX, 1500);
+        return 1;
     }
+    g = fx_first_page(d, e);
+    if (page == 0u && pg_list_btn < 0 && pg_cur_dev == d && pg_cur_page == g) {   /* there already: back, when FX came */
+        if (fx_step && fx_step == trail_n)
+            screen_back();
+        return 1;
+    }
+    trail_push();
+    fx_step = trail_n;
+    pg_list_btn = -1;                               /* (a Page button's list leaves, as SELECT leaves it) */
+    pg_list_peek = 0;
+    pg_strip_dirty = 1;
+    pages_focus(d, g);
+    m1_focus_now(pg_cur_dev, pg_cur_page);
+    if (page != 0u)
+        page_show(0);
+    else {
+        pages_moved();
+        leds_panel();
+        if (!ui_dirty)
+            ui_dirty = 1;
+    }
+    page_mask();
     return 1;
 }
 
@@ -639,13 +672,6 @@ static void panel_encoders(int32_t *st)
             st[5] = 0;
         }
     }
-    if (page == PAGE_FX) {
-        if (st[0]) {
-            fx_select(st[0]);
-            ui_dirty = ui_dirty ? ui_dirty : 1;
-        }
-        st[0] = st[1] = 0;
-    }
     if (page == PAGE_ENV) {                         /* the environment: SELECT the row (its first page on K1..K4), ALGO its presets */
         if (st[0] && pages_select(st[0])) {
             m1_focus_now(pg_cur_dev, pg_cur_page);
@@ -655,7 +681,7 @@ static void panel_encoders(int32_t *st)
             ui_dirty = ui_dirty ? ui_dirty : 1;
         st[0] = st[1] = 0;
     }
-    if (page != 0 && !menu_page() && page != PAGE_ENV && page != PAGE_FX)
+    if (page != 0 && !menu_page() && page != PAGE_ENV)
         return;
     if (st[0] && pg_list_btn >= 0 && !pg_list_peek) {   /* SELECT inside a page list: leaves it */
         pg_list_btn = -1;
@@ -704,7 +730,7 @@ static void panel_encoders(int32_t *st)
             pages_also(k, v);                       /* (the parameters the row also sets, #357) */
         }
         m1_param_now(mod, par, r == 1 ? v << 16 : v);   /* the editor follows (Live) */
-        if (page == PAGE_ENV || page == PAGE_FX)
+        if (page == PAGE_ENV)
             env_knob_msg(k);
         midi_send(0xB0u, 16u + k, pages_cc(k));
         if (!ui_dirty)
@@ -907,17 +933,7 @@ static uint8_t env_held_used;
 static void sel_open(void)
 {
     pages_ensure();
-    if (page == PAGE_FX) {
-        const uint8_t *targets;
-        uint32_t k, n = eng_fx_targets(fx_row, &targets);
-        eng_fx_set(fx_row, !eng_fx_on(fx_row));
-        for (k = 0; k < n; k++) {
-            m1_patch_bypass(targets[k], !eng_fx_on(fx_row));
-            m1_param_now(targets[k], 0xFFu, eng_fx_on(fx_row) ? 0 : 65536);   /* the editor follows the stage */
-        }
-        leds_panel();
-        ui_dirty = ui_dirty ? ui_dirty : 1;
-    } else if (page == PAGE_ENV) {
+    if (page == PAGE_ENV) {
         dev_arm(1);
         ui_dirty = ui_dirty ? ui_dirty : 1;          /* (its row) */
     } else if (page == PAGE_SONG) {
@@ -1327,10 +1343,11 @@ static void panel_edges(uint32_t p, uint32_t rel)
     {
         uint32_t b;
         for (b = 0; b < ENG_PANEL_BUTTONS; b++) {
-            if ((p >> PANEL_BTN_ID[b] & 1u) && !(FIXED_BTNS >> b & 1u) && !panel_btn_job(b)
+            if ((p >> PANEL_BTN_ID[b] & 1u) && !(FIXED_BTNS >> b & 1u) && !panel_btn_job(b) && !fx_takes(b)
                 && !((page == PAGE_SEQ || page == PAGE_SONG) && (PANEL_BTN_ID[b] == BTN_ACC || PANEL_BTN_ID[b] == BTN_LFO))) {
                 char m[28];                         /* a patch button with no job in the patch names itself (D-249); FX and LFO
-                                                     * have the SEQ and SONG pages' jobs there */
+                                                     * have the SEQ and SONG pages' jobs there, FX says NO FX IN THE RACK
+                                                     * itself (fx_button) */
                 put(put(m, PANEL_BTN_NAME[b]), MSG_NOT_USED)[0] = 0;
                 ui_msg(m, NUDGE_MS);
             }

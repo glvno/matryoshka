@@ -18,17 +18,20 @@ import { devicesOf } from '../src/pages';
 import { presetsOf } from '../src/device-presets';
 import { factoryPresets } from '../src/factory-presets';
 import { presetPattern, seedPresetPattern } from '../src/preset-patterns';
-import { insertAssembly, makeAssembly, rowTargets } from '../src/assembly';
+import { allModules, exposePort, insertAssembly, makeAssembly, rowTargets } from '../src/assembly';
 import { FACTORY } from '../src/assemblies';
 import { wireEngine } from '../src/engines';
 import { withParts } from '../src/test-poly';
 import { acid, cardRows } from '../src/test-patches';
-import { fxBusOf, withFxBus } from '../src/fx-bus';
+import { withFxBus } from '../src/factory-bank';
+import { fxBusOf } from '../src/fx-legacy';
+import { addDrawer, convertLegacyBus, insertEffect } from '../src/fx-drawer';
 import { setKind, setSwitches, setTarget } from '../src/buttons';
 import PANEL_BANK from '../factory/bank.json';
 import PANEL_EXAMPLES from '../factory/examples.json';
 import { validatePatch } from '../src/patch';
 import { packedListC } from './factory-lz';
+import { writeFxPanelFixtures } from './panel-fixtures';
 
 const SR = DEVICE_SR;
 const OUT = new URL('../../build/golden/', import.meta.url);
@@ -4314,36 +4317,8 @@ if (process.argv.includes('--panel-fixtures')) {
   writeFileSync(new URL('panel_bank.h', out), panelHeader.join('\n'));
   for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio', 'harm-side', 'route-harm-steps', 'route-steps-harm', 'route-harm-arp', 'route-steps-harm-arp', 'route-harm-steps-arp', 'route-dense-steps', 'route-root-snapshot', 'route-branch-snapshot'])
     writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));
-  {
-    const p = withFxBus(tests['route-harm-steps']);
-    const harm = p.modules.find(m => m.type === 'harm')!;
-    harm.bypass = true;
-    setKind(p, 'lfo', 'bypass');
-    setTarget(p, 'lfo', { module: harm.id });
-    setSwitches(p, 'lfo', true);
-    writeFileSync(new URL('fx-bus.m1p', out), encodePatch(p, true));
-  }
-  // The shipped factory patches whose FX stages came after the instrument: the FM-1's FX page must show exactly their
-  // stages, every one off at load (panel_test.c fx_suite)
-  for (const name of ['Hera 6', '808 Kit'])
-    writeFileSync(new URL(`factory-rack-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.m1p`, out), encodePatch(FM1_PRESETS[name]()));
-  {
-    // A real assembly owns the complete rack: panel preset recall must include every promoted FX control.
-    const p = newPatch(DEFS);
-    const instrument = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Monolith D')!, 300, 0);
-    wireEngine(p, instrument);
-    writeFileSync(new URL('fx-preset.m1p', out), encodePatch(withFxBus(p), true));
-  }
-  {
-    const p = newPatch(DEFS);
-    const instrument = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Expander S')!, 300, 0);
-    wireEngine(p, instrument);
-    for (const row of instrument.params) if (row.param === 'voices') {
-      row.top = 3;
-      p.modules.find(m => m.id === row.module)!.params.voices = 3;
-    }
-    writeFileSync(new URL('fx-preset-poly.m1p', out), encodePatch(withFxBus(p), true));
-  }
+  // The FX drawer's fixtures (format 66; the master FX bus ones are frozen in firmware/test/legacy_fx_fixtures.h)
+  writeFxPanelFixtures(out);
   {
     // more than 64 modules (#721): arm-many with the Drum map moved last (index 69, a device past 63) and its chain of
     // mixers as one assembly
@@ -4464,12 +4439,12 @@ for (const name of ['envelope filter', 'ducking delay', 'gated reverb', 'overdri
   ends[key] = 128 * 400;
 }
 
-// The ordinary stereo master insert, including its real return helpers and all eight effect kernels.
-// LFO / EDIT toggle Delay / Reverb: cut new wet input while the note still sounds, resume on the
-// same held note, then release and bypass again with echoes/reverb left to spill over the dry ramps.
-// The spilled tails then fall silent and end (D-1100), and both stages come back ON for a new note.
+// The factory master FX bus made into an FX drawer (fx-drawer.ts convertLegacyBus), including its real return helpers
+// and all eight effect kernels. LFO / EDIT toggle Delay / Reverb: cut new wet input while the note still sounds, resume
+// on the same held note, then release and bypass again with echoes/reverb left to spill over the dry ramps.
+// The spilled tails then fall silent and end (D-1100), and both effects come back ON for a new note.
 {
-  const key = 'fx-bus-transitions';
+  const key = 'fx-drawer-transitions';
   const p = withFxBus(make(key, (add, wire) => {
     const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.7 });
     const left = add('osc', 0, 0, { wave: 0, level: 0.5 });
@@ -4488,7 +4463,7 @@ for (const name of ['envelope filter', 'ducking delay', 'gated reverb', 'overdri
     delay: { time: 64, fb: 0.4, mix: 0.4, sync: 0, pingpong: 1, length: 500, rate: 0, tape: 0, heads: 0, swell: 0 },
     reverb: { size: 0.45, damp: 0.55, mix: 1, pre: 8, mod: 0.2, freeze: 0 },
   };
-  for (const stage of fxBusOf(p)!.stages) {
+  for (const stage of fxBusOf(p, DEFS)!.stages) {
     const assembly = p.assemblies!.find(a => a.id === stage.assembly)!;
     assembly.bypass = false;
     for (const id of stage.helpers) p.modules.find(m => m.id === id)!.bypass = false;
@@ -4508,7 +4483,7 @@ for (const name of ['envelope filter', 'ducking delay', 'gated reverb', 'overdri
       setSwitches(p, button, true);
     }
   }
-  tests[key] = p;
+  tests[key] = convertLegacyBus(p);
   events[key] = [
     [0, 'on', 48],
     [128 * 96, 'bon', 3], [128 * 144, 'bon', 4],
@@ -4520,6 +4495,52 @@ for (const name of ['envelope filter', 'ducking delay', 'gated reverb', 'overdri
     [128 * 1040, 'on', 60], [128 * 1100, 'off', 60],
   ];
   ends[key] = 128 * 1280;
+}
+
+// FX drawers (#1214): an instrument's drawer of an in-line pair (Phaser), a stereo effect (Chorus) and a wet one (Reverb),
+// and the Output drawer's Delay. EDIT switches the Chorus, LFO the Output drawer's Delay: off while a note sounds (the
+// Chorus ramps to dry, the Delay's echoes spill), on again, and off for good to let the echoes end (D-1100).
+{
+  const key = 'fx-drawers';
+  const p = make(key, (add, wire) => {
+    const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.7 });
+    const left = add('osc', 0, 0, { wave: 1, level: 0.5 });
+    const right = add('osc', 0, 0, { wave: 1, coarse: 7, level: 0.3 });
+    const env = add('adsr', 0, 0, { a: 0.004, d: 0.06, s: 0.7, r: 0.04 });
+    const vl = add('vca', 0, 0), vr = add('vca', 0, 0);
+    wire(kb, 'pitch', left, 'pitch'); wire(kb, 'pitch', right, 'pitch');
+    wire(kb, 'gate', env, 'gate');
+    wire(left, 'out', vl, 'in'); wire(right, 'out', vr, 'in');
+    wire(env, 'env', vl, 'cv'); wire(env, 'env', vr, 'cv');
+    wire(vl, 'out', out, 'l'); wire(vr, 'out', out, 'r');
+  });
+  const voice = p.modules.filter((m) => m.type === 'osc' || m.type === 'adsr' || m.type === 'vca');
+  const synth = makeAssembly(p, voice.map((m) => m.id), 'Synth');
+  for (const m of voice.filter((m) => m.type === 'vca')) exposePort(synth, 'out', m.id, 'out');
+  const drawer = addDrawer(p, synth.id);
+  insertEffect(p, drawer, { type: 'phaser' });
+  const chorus = insertEffect(p, drawer, { type: 'chorus' });
+  insertEffect(p, drawer, { type: 'reverb' });
+  const delay = insertEffect(p, addDrawer(p, 'output'), { type: 'delay' });
+  for (const id of allModules(p, delay)) {
+    const m = p.modules.find((x) => x.id === id)!;
+    if (m.type === 'delay') Object.assign(m.params, { time: 90, fb: 0.45, mix: 0.4 });
+  }
+  for (const [button, effect] of [['edit', chorus], ['lfo', delay]] as const) {
+    setKind(p, button, 'bypass');
+    setTarget(p, button, { asm: effect.id });
+    setSwitches(p, button, true);
+  }
+  tests[key] = p;
+  events[key] = [
+    [0, 'on', 48],
+    [128 * 80, 'bon', 4], [128 * 120, 'bon', 3],
+    [128 * 200, 'boff', 4], [128 * 240, 'boff', 3],
+    [128 * 300, 'off', 48],
+    [128 * 340, 'on', 55], [128 * 380, 'bon', 3], [128 * 400, 'off', 55],
+    [128 * 1000, 'on', 52], [128 * 1060, 'off', 52],
+  ];
+  ends[key] = 128 * 1200;
 }
 
 // Format 54 metadata cannot change the notes or audio. Unknown identities remain readable.

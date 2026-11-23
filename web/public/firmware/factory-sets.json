@@ -2,11 +2,11 @@
   "sets": [
     {
       "file": "matryoshka-factory.bin",
-      "version": 21,
-      "set": "f81fee",
+      "version": 22,
+      "set": "3af59e",
       "layout": 4,
-      "format": 55,
-      "bytes": 57999
+      "format": 66,
+      "bytes": 57451
     },
     {
       "file": "factory/matryoshka-factory-v19-1072eb.bin",
@@ -31,6 +31,14 @@
       "layout": 2,
       "format": 64,
       "bytes": 59274
+    },
+    {
+      "file": "factory/matryoshka-factory-v21-f81fee.bin",
+      "version": 21,
+      "set": "f81fee",
+      "layout": 4,
+      "format": 55,
+      "bytes": 57999
     }
   ]
 }

@@ -9,12 +9,12 @@
 // The input handlers (panel.c, seq_ui.c, menu.c) do not read this table (#552 moves them onto it later, page by page).
 
 /** the states the controls sheet knows (help_ui.c HS_*, in that order): its first tab is named after the one the FM-1 is in */
-export const HELP_STATES = ['device', 'env', 'drum', 'roll', 'live', 'song', 'menu', 'sandbox', 'step', 'fx'] as const;
+export const HELP_STATES = ['device', 'env', 'drum', 'roll', 'live', 'song', 'menu', 'sandbox', 'step'] as const;
 export type HelpState = (typeof HELP_STATES)[number];
 /** a state's name on the sheet's tab */
 export const HELP_STATE_NAME: Record<HelpState, string> = {
   device: 'DEVICE', env: 'ENVIRONMENT', drum: 'DRUM STEPS', roll: 'PIANO ROLL', live: 'LIVE TAKE', song: 'SONG', menu: 'SETTINGS',
-  sandbox: 'SANDBOX', step: 'STEP RECORD', fx: 'MASTER FX',
+  sandbox: 'SANDBOX', step: 'STEP RECORD',
 };
 
 /** the panel's buttons by matrix id (M-VAVE's order, panel.c; the same as fm1-ui.ts BUTTONS). OCT: either OCT button */
@@ -55,14 +55,14 @@ export const EFFECTS = [
   'take', 'take_accent', 'drone', 'play_notes', 'preview',
   'entry', 'entry_pattern', 'add_entry', 'dup_entry', 'transpose', 'song_play', 'song', 'delete_entry', 'back_steps',
   'tab', 'scroll', 'set', 'save_close', 'run_row',
-  'editor', 'analog_out', 'chord_button', 'fx_page', 'fx_toggle', 'fx_row',
+  'editor', 'analog_out', 'chord_button', 'fx_open',
   'pattern_new', 'pattern_load', 'condition', 'fill', 'ratchet', 'micro', 'drum_bank', 'learn_row', 'learn_mode', 'learn_end',
   'pattern_copy', 'clear_all', 'pattern_browse', 'pattern_double', 'palette_go', 'palette_save', 'pattern_halve',
 ] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 /** the conditions a row can show under (help_ui.c hc_<name>); '!name': when it is false */
-export const CONDITIONS = ['list', 'dev_presets', 'dev_store', 'dev_keys', 'long_track', 'tracks', 'menu_guide', 'menu_page', 'menu_system', 'roll', 'harm', 'roll_preview', 'roll_silent', 'fx_bank', 'pattern_store', 'oct_banks', 'drum_banks', 'learning'] as const;
+export const CONDITIONS = ['list', 'dev_presets', 'dev_store', 'dev_keys', 'long_track', 'tracks', 'menu_guide', 'menu_page', 'menu_system', 'roll', 'harm', 'roll_preview', 'roll_silent', 'fx_rack', 'pattern_store', 'oct_banks', 'drum_banks', 'learning'] as const;
 export type Condition = (typeof CONDITIONS)[number];
 
 export interface ControlRow {
@@ -126,7 +126,7 @@ export const CONTROLS: ControlRow[] = [
   { id: 'save', gesture: { do: [B('SAVE')] }, does: 'save patch', everywhere: at(30, but('menu', 'sandbox')), effect: 'save',
     help: 'the patch into its slot, with the panel settings' },
   { id: 'home', gesture: { do: [B('HOME')] }, does: 'back', everywhere: at(5, but('sandbox')), effect: 'back',
-    help: 'back one step, on release: on a device page to its device’s first page, then to the patch’s home page (its first device); out of the SEQ, SONG, environment and master FX pages, back where you were. Held alone a moment it shows the palette’s eight positions until it is let go, and its release then goes nowhere' },
+    help: 'back one step, on release: on a device page to its device’s first page, then to the patch’s home page (its first device); out of the SEQ, SONG and environment pages, back where you were. Held alone a moment it shows the palette’s eight positions until it is let go, and its release then goes nowhere' },
   { id: 'glo', gesture: { do: [B('GLO')] }, does: 'settings', everywhere: at(50, but('menu')), effect: 'menu',
     help: 'the settings menu, in tabs: MIDI (MIDI channel, clock in, MIDI out: the panel’s controls, clock out; ALGO again for its second page, TRANSPORT IN: Start, Continue, Stop and Song Position followed, and TRANSPORT OUT: PLAY’s sent, each ON as made, and CLOCK IN DELAY: 0 to 200 ms, 0 as made, the FM-1 follows the clock and transport it receives that much later, for a host whose clock runs ahead of its own audio, such as Reel at about 70 ms), PANEL (LEDs, knob acceleration, count-in with a click on each beat, TEMPO: GLOBAL or PATCH, with the tempo playing, or EXT while MIDI clock sets it; ALGO again for its second page, TIME SIG: 2/4 .. 12/8, 4/4 as made, the bar that play once and REC count in and the arpeggiator’s bar rates fill), SYSTEM (update mode, factory reset, quick start, OUTPUT: STEREO, MONO, the sum of both sides on both, for headphones or a stereo input, or MONO L, the sum on the left only and the right silent, for one mono cable into a recorder; ALGO again for its second page, EDITOR: ALLOW, or IGNORE, so the editor and its Install panel leave this FM-1 alone, and 3.5MM OUT: ON, or OFF, the speaker and the headphone jack silent while USB audio plays on, and USB RETURN: the level of playback from a phone or computer in your headphones, separate from MASTER; SAVE keeps it), EQ (the master EQ on the speaker and the headphone jack, for every patch: LOW, a shelf at 120 Hz, MID, a bell at MID FREQ, and HIGH, a shelf at 8 kHz, each ±12 dB in half decibels, and MID FREQ, 100 Hz to 8 kHz; flat as made, kept without SAVE, USB audio left as it is; a band off 0 dB costs CPU on every patch, about 3.5 % for the first and 1.3 % for each one after it, so the heaviest patches with every effect on may drop a voice with all three bands in use), INFO (version, CPU, bank slots, battery, device name) and GUIDE (the ideas behind the FM-1)' },
   { id: 'env', gesture: { do: [B('ENV')] }, does: 'environment', everywhere: at(60, but('env', 'sandbox')), effect: 'env',
@@ -198,15 +198,10 @@ export const CONTROLS: ControlRow[] = [
   { id: 'env-arm', gesture: { do: [B('SEL')] }, does: 'add / drop row', when: 'dev_keys', sheet: { env: 20 }, effect: 'arm',
     help: 'the row’s device into the armed devices or out (several at once: a layer or a split)' },
 
-  // ---- MASTER FX: only a graph-proven terminal stereo FX bus reserves FX in ordinary instrument contexts
-  { id: 'fx-open', gesture: { do: [B('FX')] }, does: 'master FX', when: 'fx_bank', sheet: { device: 95, env: 65 }, effect: 'fx_page',
-    help: 'on a patch with a recognized master FX bus, FX opens its added effects in audio order; effects already on the instrument’s interface are not repeated here. Custom and legacy patches keep their own FX button mapping' },
-  { id: 'fx-row', gesture: { do: [E('SELECT')] }, does: 'effect row', sheet: { fx: 10 }, effect: 'fx_row', hint: 'SELECT row' },
-  { id: 'fx-params', gesture: { do: [K('1234')] }, does: 'effect pg.1 params', sheet: { fx: 20 }, effect: 'param',
-    help: 'the selected stage’s first page on K1-K4; its other parameters remain on the ordinary device pages' },
-  { id: 'fx-toggle', gesture: { do: [B('SEL')] }, does: 'effect on / off', sheet: { fx: 30 }, effect: 'fx_toggle', hint: 'SEL on/off',
-    help: 'enable or bypass the selected stage without changing its saved parameters; Delay and Reverb spill their tails, including a bounded fade for frozen tails' },
-  { id: 'fx-back', gesture: { do: [B('FX')] }, does: 'back', sheet: { fx: 40 }, effect: 'back', hint: 'FX back' },
+  // ---- FX: a patch with an FX rack (an effect or an FX drawer) keeps FX for its effects on device pages and the
+  // environment, its own FX button job shadowed (D-946: FX keeps its SEQ and SONG jobs)
+  { id: 'fx-open', gesture: { do: [B('FX')] }, does: 'first effect', when: 'fx_rack', sheet: { device: 95, env: 65 }, effect: 'fx_open',
+    help: 'the first page of the first effect in the FX drawer of the instrument on show (an effect’s page counts as its instrument’s), else of the armed instrument, else of the Output drawer; with none the bar says NO FX IN THE RACK. Effects are ordinary devices right after their instrument: SELECT walks them in their order, K1-K4 edit them, ALGO turns their pages. FX again goes back. A patch with no effect keeps its own FX button job; with none either, FX says NO FX IN THE RACK' },
 
   // ---- the SEQ page: a drum grid (DRUM STEPS) and a melodic track's piano roll (PIANO ROLL)
   { id: 'roll-keys', gesture: { do: [ANY_KEY] }, does: 'play notes', sheet: { roll: 30 }, effect: 'play_notes', hint: 'KEYS play',
@@ -442,7 +437,6 @@ export const HINTS: HintLine[] = [
   { id: 'menu_page', items: ['menu-tab', 'menu-set', 'menu-back'], width: 226 },
   { id: 'menu_info', items: ['menu-tab', 'menu-back'], width: 226 },
   { id: 'menu_guide', items: ['menu-scroll', 'menu-tab', 'menu-back'], width: 226 },
-  { id: 'fx', items: ['fx-row', 'fx-toggle', 'fx-back'], width: 228 },
 ];
 /** the parts the SEQ page's track line adds where they fit (seq_ui.c), each alone: HINT_ROW_<ROW> */
 export const HINT_ROWS = ['sr-accent', 'sr-back', 'track', 'clear'];
@@ -525,7 +519,6 @@ export const HELP_STATE_TITLE: Record<HelpState, string> = {
   device: 'on a device page', env: 'on the environment (ENV)', drum: 'on the SEQ page of a drum track', roll: 'on the SEQ page of a melodic track (the piano roll)',
   live: 'in a live take (REC on the SEQ page while running)', song: 'on the SONG page (SEL tapped on the SEQ page)', menu: 'in the settings menu (GLO)',
   sandbox: 'in sandbox mode (the editor’s patch over budget under Live)', step: 'in step record (REC on the SEQ page while stopped)',
-  fx: 'on the master FX page',
 };
 /** a condition in words: where the row applies */
 export const CONDITION_TEXT: Record<Condition, string> = {
@@ -533,7 +526,7 @@ export const CONDITION_TEXT: Record<Condition, string> = {
   long_track: 'a track of more than 16 steps', tracks: 'a patch with Steps tracks', menu_guide: 'the GUIDE tab', menu_page: 'the MIDI, PANEL, SYSTEM and EQ tabs',
   menu_system: 'the SYSTEM tab', roll: 'a melodic track', harm: 'the keys on a Harmonizer: the seven lowest keys',
   roll_preview: 'a melodic track with note preview on', roll_silent: 'a melodic track with note preview off',
-  fx_bank: 'a patch with a recognized master FX bus', pattern_store: 'while the pattern store is on',
+  fx_rack: 'a patch with an effect or an FX drawer', pattern_store: 'while the pattern store is on',
   oct_banks: 'the keys on a drum track of more than 8 rows', drum_banks: 'a drum track of more than 8 rows',
   learning: 'while MIDI learn mode waits for a knob or a drum key (HOME + SEL)',
 };
@@ -571,7 +564,7 @@ export const rowHelp = (r: ControlRow): string => (r.help ?? plainDoes(r)) + whe
 export const FM1_NOTES: { keys: string; text: string }[] = [
   { keys: 'OCT- + OCT+', text: 'the controls sheet: what the controls do where the FM-1 is now (its tab) and everywhere (EVERYWHERE), made from the same table as this list. ALGO switches the tab, SELECT scrolls, HOME closes it; the note keys and PLAY still work, the other controls do nothing meanwhile' },
   { keys: 'quick start', text: 'the card after power-on: HOME closes it, OCT- + OCT+ opens the controls sheet instead, HOME + SAVE turns it off for good (GLO › SYSTEM › QUICK START or FACTORY RESET turns it on again); any other knob or button closes it and then does its job' },
-  { keys: 'FX, LFO, EDIT, ARP', text: 'patch buttons: the patch normally decides what each does (a gate, a Toggle that bypasses a module or assembly, or a list of device pages). On patches with a recognized master FX bus, FX lists the added effects; SELECT picks an effect, K1-K4 edit it, SEL turns it on or off, and FX or HOME returns. Effects already on the instrument’s interface stay there instead. The sheet lists the loaded patch’s jobs. On the SEQ and SONG pages FX and LFO keep the jobs below' },
+  { keys: 'FX, LFO, EDIT, ARP', text: 'patch buttons: the patch normally decides what each does (a gate, a Toggle that bypasses a module or assembly, or a list of device pages). On a patch with an FX drawer, FX goes to the first effect of the instrument on show (else the armed one’s, else the Output drawer’s); the effects are ordinary device pages, and a Toggle on a drawer turns its effects on and off. The sheet lists the loaded patch’s jobs. On the SEQ and SONG pages FX and LFO keep the jobs below' },
   { keys: 'the keys', text: 'they play what is armed (SEL, REC held + a black key, the SEQ page arms the track it shows); nothing armed, Main’s cables decide (KEYS WIRED, and the environment says WIRED on the devices they reach). While the keys reach a Drum map, black keys 1..8 play its rows on every page; a drum track with more than 8 rows (several Drum maps) plays them 8 at a time, OCT picking which 8 (SEL + OCT on the SEQ page)' },
   { keys: 'SAVE held at power-on', text: 'safe mode: the fallback patch, nothing read from flash; a restart leaves it (the loading screen says HOLD SAVE: SAFE MODE)' },
 ];

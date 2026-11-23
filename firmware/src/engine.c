@@ -672,24 +672,26 @@ typedef struct {
                                       * (engine.ts fed); an Arpeggiator: 0 Main's keys, 2 + the Steps module cabled into its
                                       * keys in (engine.ts ArpRun.feed: it plays that track's notes) */
 } node_t;
-/* Only the validated master bus opts into spillover. No node/instance arena layout change.
+/* Only the rack's effects (format 66) or a validated master bus (55..65) opt into spillover. No node/instance arena
+ * layout change: static, the bus's 4 x 8 runs.
  * gain: 1024 samples from dry to effect; fade: Q30, bounded by two seconds for a
- * frozen or self-sustaining tail. Each stereo kernel advances its own identical ramp.
+ * frozen or self-sustaining tail. Each target of an effect advances its own identical ramp.
  * quiet: consecutive OFF samples whose natural tail stayed within IDLE_Q16 at mix qmix (m_fx ends it).
  * clr: FX_CLEAR_STEP chunks of an ended tail's line still to clear (fx_clear). */
 #define FX_RAMP 1024u
 #define FX_FULL (1u << 30)
 #define FX_FADE_STEP ((FX_FULL + 2u * ENG_SR - 1u) / (2u * ENG_SR))
 typedef struct { uint32_t fade, quiet; int32_t qmix; uint16_t gain; uint8_t tail, clr; } fx_run_t;
-typedef struct {
-    uint8_t kind, device, page, n, on;
-    uint8_t targets[ENG_FX_TARGETS_MAX];
-    fx_run_t run[ENG_FX_TARGETS_MAX];
-} fx_stage_t;
 static struct {
-    uint32_t count;
-    uint8_t target[ENG_MAX_MODULES];   /* 1 + stage * ENG_FX_TARGETS_MAX + target slot; 0: ordinary module */
-    fx_stage_t stage[ENG_FX_STAGE_COUNT];
+    uint32_t on;                        /* bit e: effect e is on */
+    uint8_t count, nrack, legacy;       /* the effects, the drawers; legacy: they are a format 55..65 bus's stages */
+    uint8_t target[ENG_MAX_MODULES];    /* 1 + the module's run; 0: ordinary module */
+    uint8_t run_eff[ENG_FX_RUNS];       /* a run's effect */
+    uint8_t run_mod[ENG_FX_RUNS];       /* a run's module: effect e's targets are n[e] from first[e] */
+    uint8_t device[ENG_FX_EFFECTS], first[ENG_FX_EFFECTS], n[ENG_FX_EFFECTS];
+    uint8_t page[ENG_FX_STAGE_COUNT];   /* legacy: each stage's first page */
+    uint8_t rack[ENG_FX_DRAWERS][3];    /* a drawer's owner, first effect and effect count */
+    fx_run_t run[ENG_FX_RUNS];
 } fx;
 
 /* a node's morph B side: right after its parameters (eng_load gives it twice its type's npar when the patch has one) */
@@ -2043,14 +2045,46 @@ const uint8_t *eng_skip_fx(const uint8_t *p, const uint8_t *end, uint16_t flags)
     }
     return p;
 }
+/* past flag bit 14's section starting at `at` (at itself when the binary has none; 0: malformed): formats 55..65 the
+ * master FX bus (eng_skip_fx), format 66 the FX rack (engine.h) */
+uint32_t eng_rack_end(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    eng_mset_t seen = mset_none();
+    uint32_t e, k, ne, nd, runs = 0;
+    const uint8_t *q, *end;
+    if (len < 8u || at > len) return 0;
+    if (!(p[7] & (ENG_FLAG_FX_BUS >> 8))) return at;
+    if (p[1] < 66u) {
+        q = eng_skip_fx(p + at, p + len, (uint16_t)((uint16_t)p[6] | (uint16_t)p[7] << 8));
+        return q ? (uint32_t)(q - p) : 0u;
+    }
+    q = p + at;
+    end = p + len;
+    if (q == end || (ne = *q++) > ENG_FX_EFFECTS) return 0;
+    for (e = 0; e < ne; e++) {
+        uint32_t n;
+        if ((uint32_t)(end - q) < 2u) return 0;
+        n = q[1];
+        q += 2u;
+        if (n > ENG_FX_TARGETS_MAX || (runs += n) > ENG_FX_RUNS || (uint32_t)(end - q) < n) return 0;
+        for (k = 0; k < n; k++) {
+            uint32_t m = q[k];
+            if (m >= ENG_MAX_MODULES || mset_has(seen, m)) return 0;
+            seen = mset_or(seen, mset_one(m));
+        }
+        q += n;
+    }
+    if (q == end || (nd = *q++) > ENG_FX_DRAWERS || (!ne && !nd) || (uint32_t)(end - q) < 3u * nd) return 0;
+    for (k = 0; k < nd; k++, q += 3u)
+        if ((uint32_t)q[1] + q[2] > ne) return 0;
+    return (uint32_t)(q - p);
+}
 
 uint32_t eng_maps_at(const uint8_t *p, uint32_t len)
 {
     uint32_t at = len >= 8u ? eng_section_at(p, len, ENG_SEC_FX) : 0u;
-    const uint8_t *next;
-    if (!at || at > len || !(next = eng_skip_fx(p + at, p + len, (uint16_t)((uint16_t)p[6] | (uint16_t)p[7] << 8))))
+    if (!at || at > len || !(at = eng_rack_end(p, len, at)))
         return 0;
-    at = (uint32_t)(next - p);
     if (p[6] & 2u) {                             /* (the macro ranges: u8 count, five bytes each) */
         if (at >= len)
             return 0;
@@ -2177,40 +2211,76 @@ static int fx_page_valid(const uint8_t *p, uint32_t len, uint32_t at, const uint
     return first == rec[2] && found == (1u << rec[3]) - 1u;
 }
 
+/* effect e (fx.count of them so far) on device `device` with the n targets at q, from run `r`: they share one on/off,
+ * on when any of them was saved playing; 0 when a target cannot run as an effect's (a poly copy, no through input) or,
+ * in a bus (`type`), is not its stage's type */
+static int fx_effect(uint32_t e, uint32_t device, uint32_t n, const uint8_t *q, uint32_t r, uint32_t type)
+{
+    uint32_t k, on = 0;
+    for (k = 0; k < n; k++) {
+        uint32_t m = q[k];
+        if (m >= E.nmod || (type && E.node[m].type != type) || E.node[m].grp || E.node[m].ninst != 1u
+            || DEFS[E.node[m].type].thru < 0) return 0;
+        on |= !E.node[m].bypass;
+    }
+    fx.device[e] = (uint8_t)device;
+    fx.first[e] = (uint8_t)r;
+    fx.n[e] = (uint8_t)n;
+    if (on) fx.on |= 1u << e;
+    for (k = 0; k < n; k++, r++) {
+        uint32_t m = q[k];
+        fx.run_mod[r] = (uint8_t)m;
+        fx.run_eff[r] = (uint8_t)e;
+        fx.target[m] = (uint8_t)(1u + r);
+        E.node[m].bypass = (uint8_t)!on;
+        fx.run[r].gain = on ? FX_RAMP : 0u;
+        fx.run[r].fade = FX_FULL;
+        fx.run[r].tail = (uint8_t)on;
+        fx.run[r].quiet = 0;
+        fx.run[r].clr = 0;   /* eng_load zeroed every line */
+    }
+    return 1;
+}
+
+/* flag bit 14's section at `at`: the FX rack (format 66) or the master FX bus (55..65), its stages loaded as the effects
+ * of one Output drawer; `devices`: where the device pages start */
 static int fx_load(const uint8_t *p, uint32_t len, uint32_t at, uint32_t devices)
 {
     static const uint8_t types[ENG_FX_STAGE_COUNT] = { T_SHAPE, T_CHORUS, T_DELAY, T_REVERB };
-    if (at > len) return 0;
-    const uint8_t *q = p + at, *end = eng_skip_fx(q, p + len, (uint16_t)p[6] | (uint16_t)p[7] << 8);
-    uint32_t s, k, device, count;
+    uint32_t end = eng_rack_end(p, len, at), e, r, count, ndev;
+    const uint8_t *q = p + at;
     if (!end) return 0;
     if (!(p[7] & (ENG_FLAG_FX_BUS >> 8))) return (int)at;
     count = *q++;
-    device = q[1];
-    for (s = 0; s < count; s++) {
-        fx_stage_t *st = &fx.stage[s];
-        if (q[1] != device || !fx_page_valid(p, len, devices, q)) return 0;
-        st->kind = q[0]; st->device = q[1]; st->page = q[2]; st->n = q[3]; st->on = 0;
-        for (k = 0; k < st->n; k++) {
-            uint32_t m = q[4u + k];
-            if (m >= E.nmod || E.node[m].type != types[st->kind] || E.node[m].grp || E.node[m].ninst != 1u) return 0;
-            st->targets[k] = (uint8_t)m;
-            st->on |= !E.node[m].bypass;
+    if (p[1] < 66u) {
+        uint32_t device = q[1];
+        for (e = 0, r = 0; e < count; e++) {
+            if (q[1] != device || !fx_page_valid(p, len, devices, q) || !fx_effect(e, device, q[3], q + 4u, r, types[q[0]]))
+                return 0;
+            fx.page[e] = q[2];
+            r += q[3];
+            q += 4u + q[3];
         }
-        for (k = 0; k < st->n; k++) {
-            uint32_t m = st->targets[k];
-            fx.target[m] = (uint8_t)(1u + s * ENG_FX_TARGETS_MAX + k);
-            E.node[m].bypass = (uint8_t)!st->on;
-            st->run[k].gain = st->on ? FX_RAMP : 0u;
-            st->run[k].fade = FX_FULL;
-            st->run[k].tail = st->on;
-            st->run[k].quiet = 0;
-            st->run[k].clr = 0;   /* eng_load zeroed every line */
-        }
-        q += 4u + st->n;
+        fx.legacy = 1;
+        fx.nrack = 1;
+        fx.rack[0][0] = ENG_RACK_OUTPUT; fx.rack[0][1] = 0; fx.rack[0][2] = (uint8_t)count;
+        fx.count = (uint8_t)count;
+        return (int)end;
     }
-    fx.count = count;
-    return (int)(end - p);
+    if (!devices || devices >= len) return 0;
+    ndev = p[devices];
+    for (e = 0, r = 0; e < count; e++) {
+        if (q[0] >= ndev || !fx_effect(e, q[0], q[1], q + 2u, r, 0)) return 0;
+        r += q[1];
+        q += 2u + q[1];
+    }
+    fx.nrack = *q++;
+    for (r = 0; r < fx.nrack; r++, q += 3u) {
+        if (q[0] != ENG_RACK_OUTPUT && q[0] >= ndev) return 0;
+        fx.rack[r][0] = q[0]; fx.rack[r][1] = q[1]; fx.rack[r][2] = q[2];
+    }
+    fx.count = (uint8_t)count;
+    return (int)end;
 }
 
 /* the dummy for the unconnected output ports, and a buffer for each value, the connected outputs and the summed inputs of
@@ -2271,7 +2341,8 @@ int eng_load(const uint8_t *p, uint32_t len)
                                                                  * stack, 1 KB: not the RAM region's, which the interrupts need) */
     uint8_t line_reg[ENG_MAX_LINES];
     E.loaded = 0;
-    fx.count = 0;
+    fx.count = fx.nrack = fx.legacy = 0;
+    fx.on = 0;
     for (i = 0; i < ENG_MAX_MODULES; i++) fx.target[i] = 0;
     load_generation++;
     key_memory = 0;
@@ -3177,35 +3248,43 @@ static void toggles_sync(void)
 static void arp_switched(uint32_t m);
 static void harm_switched(uint32_t m);
 uint32_t eng_fx_count(void) { return E.loaded ? fx.count : 0u; }
-uint32_t eng_fx_kind(uint32_t stage) { return stage < eng_fx_count() ? fx.stage[stage].kind : UINT32_MAX; }
-uint32_t eng_fx_device(uint32_t stage) { return stage < eng_fx_count() ? fx.stage[stage].device : UINT32_MAX; }
-uint32_t eng_fx_page(uint32_t stage) { return stage < eng_fx_count() ? fx.stage[stage].page : UINT32_MAX; }
-uint32_t eng_fx_targets(uint32_t stage, const uint8_t **targets)
+uint32_t eng_fx_kind(uint32_t e)
 {
-    if (targets) *targets = stage < eng_fx_count() ? fx.stage[stage].targets : 0;
-    return stage < eng_fx_count() ? fx.stage[stage].n : 0u;
+    uint32_t t = e < eng_fx_count() && fx.n[e] ? E.node[fx.run_mod[fx.first[e]]].type : 0u;
+    return t == T_SHAPE ? ENG_FX_DRIVE : t == T_CHORUS ? ENG_FX_CHORUS : t == T_DELAY ? ENG_FX_DELAY
+        : t == T_REVERB ? ENG_FX_REVERB : UINT32_MAX;
 }
-int eng_fx_on(uint32_t stage) { return stage < eng_fx_count() && fx.stage[stage].on; }
-void eng_fx_set(uint32_t stage, int on)
+uint32_t eng_fx_device(uint32_t e) { return e < eng_fx_count() ? fx.device[e] : UINT32_MAX; }
+uint32_t eng_fx_page(uint32_t e) { return e < eng_fx_count() ? (fx.legacy && e < ENG_FX_STAGE_COUNT ? fx.page[e] : 0u) : UINT32_MAX; }
+uint32_t eng_fx_targets(uint32_t e, const uint8_t **targets)
 {
-    uint32_t k;
-    fx_stage_t *st;
-    if (stage >= eng_fx_count()) return;
-    st = &fx.stage[stage];
-    st->on = (uint8_t)(on != 0);
-    for (k = 0; k < st->n; k++) {
-        E.node[st->targets[k]].bypass = (uint8_t)!st->on;
-        if (st->on) {
-            st->run[k].tail = 1;
-            st->run[k].quiet = 0;
+    if (targets) *targets = e < eng_fx_count() ? &fx.run_mod[fx.first[e]] : 0;
+    return e < eng_fx_count() ? fx.n[e] : 0u;
+}
+int eng_fx_on(uint32_t e) { return e < eng_fx_count() && (fx.on >> e & 1u); }
+void eng_fx_set(uint32_t e, int on)
+{
+    uint32_t k, r;
+    if (e >= eng_fx_count()) return;
+    if (on) fx.on |= 1u << e;
+    else fx.on &= ~(1u << e);
+    for (k = 0, r = fx.first[e]; k < fx.n[e]; k++, r++) {
+        E.node[fx.run_mod[r]].bypass = (uint8_t)!on;
+        if (on) {
+            fx.run[r].tail = 1;
+            fx.run[r].quiet = 0;
         }
     }
     toggles_sync();
 }
+uint32_t eng_rack_count(void) { return E.loaded ? fx.nrack : 0u; }
+uint32_t eng_rack_owner(uint32_t r) { return r < eng_rack_count() ? fx.rack[r][0] : UINT32_MAX; }
+uint32_t eng_rack_first(uint32_t r) { return r < eng_rack_count() ? fx.rack[r][1] : UINT32_MAX; }
+uint32_t eng_rack_len(uint32_t r) { return r < eng_rack_count() ? fx.rack[r][2] : 0u; }
 void eng_set_bypass(uint32_t module, int on)
 {
     if (module < E.nmod && fx.target[module]) {
-        eng_fx_set((fx.target[module] - 1u) / ENG_FX_TARGETS_MAX, !on);
+        eng_fx_set(fx.run_eff[fx.target[module] - 1u], !on);
         return;
     }
     if (module < E.nmod && E.node[module].type != T_FM1 && E.node[module].type != T_OUTPUT) {
@@ -5107,7 +5186,7 @@ void eng_buttons(uint32_t mask)
             for (k = 0; k < E.btn_n[b]; k++) {
                 uint32_t m = E.btn_list[E.btn_first[b] + k];
                 if (fx.target[m]) {
-                    eng_fx_set((fx.target[m] - 1u) / ENG_FX_TARGETS_MAX, !(mask >> b & 1u));
+                    eng_fx_set(fx.run_eff[fx.target[m] - 1u], !(mask >> b & 1u));
                     continue;
                 }
                 if (E.node[m].type != T_FM1 && E.node[m].type != T_OUTPUT) {
@@ -12348,21 +12427,22 @@ static void fx_end(const node_t *nd, const inst_t *it, fx_run_t *run)
 
 static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
 {
-    fx_stage_t *st = &fx.stage[(target - 1u) / ENG_FX_TARGETS_MAX];
-    fx_run_t *run = &st->run[(target - 1u) % ENG_FX_TARGETS_MAX];
+    const uint32_t e = fx.run_eff[target - 1u];
+    const int on = (int)(fx.on >> e & 1u);
+    fx_run_t *run = &fx.run[target - 1u];
     const def_t *d = &DEFS[nd->type];
     const esig_t *dry = it->in[d->thru];
     uint32_t i, j, gain = run->gain, fade = run->fade;
     int tail = nd->type == T_DELAY || nd->type == T_REVERB;
-    /* A single Reverb is an ordinary parallel wet branch: stereo dry is outside
+    /* An effect's only Reverb is an ordinary parallel wet branch: stereo dry is outside
      * this kernel. Never inject its collapsed input, including OFF and ramps. */
-    int wet_only = st->kind == ENG_FX_REVERB && st->n == 1u;
+    int wet_only = nd->type == T_REVERB && fx.n[e] == 1u;
     int32_t mix = tail ? EF(it, nd->type == T_DELAY ? DELAY_P_MIX : REVERB_P_MIX) : 0, rate0 = 0;
     int64_t cur0 = 0;
     uint32_t mark0 = 0, loud = 0, span;
-    if (run->clr && (st->on || run->tail))   /* the kernel runs again: finish a pending clear first */
+    if (run->clr && (on || run->tail))   /* the kernel runs again: finish a pending clear first */
         fx_clear(nd, it, run, 1);
-    if (!st->on && (tail ? !run->tail : !gain)) {
+    if (!on && (tail ? !run->tail : !gain)) {
         if (wet_only) {
             for (j = 0; j < d->nout; j++)
                 if (!IS_DUMMY(it->out[j])) for (i = 0; i < n; i++) it->out[j][i] = 0;
@@ -12370,7 +12450,7 @@ static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
         if (run->clr) fx_clear(nd, it, run, 0);
         return;
     }
-    if (!st->on && tail) {
+    if (!on && tail) {
         if (run->tail == 1u &&
             (nd->type == T_REVERB ? EF(it, REVERB_P_FREEZE) >= 32768 :
              EF(it, DELAY_P_SWELL) >= 32768 &&
@@ -12385,7 +12465,7 @@ static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
     }
     process(nd, it, n);
     it->in[d->thru] = dry;
-    if (st->on && gain == FX_RAMP && (!tail || fade == FX_FULL)) return;
+    if (on && gain == FX_RAMP && (!tail || fade == FX_FULL)) return;
     /* An OFF natural tail at rest (tail 1, wet gain held, a stereo pair's dry ramp done): gain and fade stay put, so the
      * loop below reduces exactly to these forms (mulq(x, FX_FULL, 30) == x; the direct dry is dry). Its tail ends once
      * every sample it added stayed within IDLE_Q16 for `span` consecutive samples at an unchanged mix, with the Delay's
@@ -12393,7 +12473,7 @@ static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
      * Reverb's whole memory (RV_LEN). In that window, every Delay line sample is rewritten from a read heard as silent,
      * and a feedback below one never grows a sample (dly_pack_fb makes |fb x| smaller than |x|), so no echo above the
      * threshold remains. Then the forced tail's clear applies and later OFF blocks take the bypass above. */
-    if (!st->on && tail && run->tail == 1u && (wet_only || !gain)) {
+    if (!on && tail && run->tail == 1u && (wet_only || !gain)) {
         for (j = 0; j < d->nout; j++) {
             esig_t *o = it->out[j];
             if (IS_DUMMY(o)) continue;
@@ -12427,7 +12507,7 @@ static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
     /* buf_take keeps every input alive through this module's turn (end < next writer).
      * Thus post-kernel dry reads need neither a scratch block nor a longer lifetime. */
     for (i = 0; i < n; i++) {
-        if (st->on) {
+        if (on) {
             if (gain < FX_RAMP) gain++;
             if (fade < FX_FULL) fade = FX_FULL - fade < (FX_FULL / FX_RAMP) ? FX_FULL : fade + FX_FULL / FX_RAMP;
         } else {
@@ -12444,7 +12524,7 @@ static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
                 o[i] = mulq(o[i], (int32_t)fade, 30);
                 o[i] = mulq(o[i], (int32_t)gain, 10);
             } else {
-                int32_t kernel_dry = st->on ? (nd->type == T_REVERB ? mulr(dry[i], ENG_ONE - mix, 16) : mul16(dry[i], ENG_ONE - mix)) : 0;
+                int32_t kernel_dry = on ? (nd->type == T_REVERB ? mulr(dry[i], ENG_ONE - mix, 16) : mul16(dry[i], ENG_ONE - mix)) : 0;
                 int32_t dry_gain = ENG_ONE - mulq(mix, (int32_t)gain, 10);
                 int32_t direct = nd->type == T_REVERB ? mulr(dry[i], dry_gain, 16) : mul16(dry[i], dry_gain);
                 o[i] = direct + mulq(o[i] - kernel_dry, (int32_t)fade, 30);
@@ -12453,7 +12533,7 @@ static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
     }
     run->gain = (uint16_t)gain;
     run->fade = fade;
-    if (tail && !st->on && !fade)
+    if (tail && !on && !fade)
         fx_end(nd, it, run);
 }
 
@@ -12983,9 +13063,8 @@ static int reverb_early(uint32_t m)
 {
     uint32_t t = fx.target[m];
     if (t) {
-        const fx_stage_t *st = &fx.stage[(t - 1u) / ENG_FX_TARGETS_MAX];
-        const fx_run_t *run = &st->run[(t - 1u) % ENG_FX_TARGETS_MAX];
-        return (st->on || run->tail) && !run->clr;
+        const fx_run_t *run = &fx.run[t - 1u];
+        return ((fx.on >> fx.run_eff[t - 1u] & 1u) || run->tail) && !run->clr;
     }
     return !E.node[m].bypass;
 }

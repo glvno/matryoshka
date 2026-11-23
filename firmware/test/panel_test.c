@@ -520,81 +520,200 @@ static const char *harm_notes(int h)
     return out;
 }
 
+/* a format-55..65 master FX bus patch frozen in legacy_fx_fixtures.h (D-1010; no encoder writes one any more) */
+#include "legacy_fx_fixtures.h"
+static int load_legacy(const char *name)
+{
+    uint32_t i;
+    for (i = 0; i < sizeof LEGACY_FX / sizeof LEGACY_FX[0]; i++)
+        if (!strcmp(LEGACY_FX[i].name, name)) {
+            memcpy(pv_bin, LEGACY_FX[i].bin, LEGACY_FX[i].len);
+            pv_len = LEGACY_FX[i].len;
+            return eng_load(pv_bin, pv_len);
+        }
+    return -1;
+}
+/* a fixture running (load_fixture, else load_legacy for a name without a path), on its home page */
+static int fx_fixture(const char *name)
+{
+    ct_reset();
+    if (strchr(name, '/') ? load_fixture(name) : load_legacy(name))
+        return 0;
+    pv_gen++;
+    page_show(0);
+    screen_patch();
+    pages_ensure();
+    pages_focus(pages_home(), 0);
+    eng_arm_mask(mset_none());
+    later(2000);
+    return 1;
+}
+/* the pg device of rack effect e */
+static uint32_t fx_dev(uint32_t e) { return pages_dev_of(eng_fx_device(e)); }
+
+/* The FX drawer on the FM-1 (1.26.3, #1214): its effects are devices right after their instrument, FX goes to the first
+ * page of the first effect of the drawer of the instrument on show (else of the armed one, else of the Output drawer),
+ * else NO FX IN THE RACK; a Toggle on a drawer switches its effects as eng_fx_set does (tails, engine.c) */
 static void fx_suite(void)
 {
-    uint32_t before_dev, before_pg, i, flags, at;
-    check("FX fixture: real compiled graph loads with four stages", ct_fx_load());
-    if (eng_fx_count() != 4u)
+    uint32_t home, first, i, e, flags, at, ok;
+    check("FX drawer fixture: an instrument with three effects in its drawer", ct_fx_load() && eng_rack_owner(0) != ENG_RACK_OUTPUT
+          && eng_rack_len(0) == 3u);
+    if (eng_fx_count() != 3u)
         return;
-    before_dev = pg_cur_dev;
-    before_pg = pg_cur_page;
-    check("new bank: Harmony starts disabled with LFO dark", !(panel_lights() & 8u));
-    tap(5);
-    check("new bank: LFO enables Harmony and lights enabled state", (panel_lights() & 8u) && !(eng_buttons_get() & 8u));
-    tap(5);
-    check("new bank: LFO disables Harmony without changing its legacy Toggle state", !(panel_lights() & 8u) && (eng_buttons_get() & 8u));
+    home = pg_cur_dev;
+    first = eng_rack_first(0);
+    check("FX drawer: the drawer is the instrument's on show", eng_rack_owner(0) == pg_dev[home].bin);
+    for (ok = 1, i = 0; i < 3u; i++)
+        ok = ok && fx_dev(first + i) == home + 1u + i;
+    check("FX drawer: its effects are the devices right after the instrument, in chain order", ok);
+    check("FX drawer: FX glows, unlit off the effects", (panel_used() & 1u) && !(panel_lights() & 1u));
     tap(2);
-    check("FX enters the rendered four-stage page", page == PAGE_FX && help_state() == HS_FX && on_screen("MASTER FX")
-          && on_screen("DRIVE") && on_screen("CHORUS") && on_screen("DELAY") && on_screen("REVERB") && (panel_lights() & 1u));
-    for (i = 0; i < 4u; i++) {
-        uint32_t sum, edited, k, n;
-        const uint8_t *targets;
-        int was = eng_fx_on(i);
-        check("FX SELECT follows metadata's device and first page", fx_row == i && pg_cur_dev == eng_fx_device(i) && pg_cur_page == eng_fx_page(i));
-        sum = ct_params();
+    check("FX goes to the first effect's first page, lit", page == 0u && pg_cur_dev == fx_dev(first) && pg_cur_page == 0u
+          && (panel_lights() & 1u) && help_state() == HS_DEVICE);
+    {
+        uint32_t sum = ct_params();
         enc(2, 1);
         later(50);
         if (ct_params() == sum) {
             enc(2, -1);
             later(50);
         }
-        check("FX K1 changes the actual selected page parameter", ct_params() != sum);
-        edited = ct_params();
-        preset_events = 0;
-        preset_record = 1;
-        tap(BTN_SEL);
-        preset_record = 0;
-        check("FX SEL toggles desired state without changing parameter values", eng_fx_on(i) != was && ct_params() == edited);
-        n = eng_fx_targets(i, &targets);
-        check("FX SEL tells the editor about every target", preset_events == n);
-        for (k = 0; k < n; k++) {
-            check("FX stage desired state reaches every real target", eng_bypass(targets[k]) == !eng_fx_on(i));
-            check("FX SEL notifies the target's stage state", k < preset_events && preset_event[k].mod == targets[k]
-                  && preset_event[k].par == 0xFFu && preset_event[k].value == (eng_fx_on(i) ? 0 : 65536));
-        }
-        if (i < 3u)
-            enc(0, 1);
+        check("FX: K1 edits the effect's page", ct_params() != sum);
     }
+    for (ok = 1, i = 1; i < 3u; i++) {
+        enc(0, 1);
+        ok = ok && pg_cur_dev == fx_dev(first + i) && pg_cur_page == 0u && (panel_lights() & 1u);
+    }
+    check("SELECT walks the effects in chain order", ok);
     tap(2);
-    check("FX returns to the exact preceding device page", page == 0u && pg_cur_dev == before_dev && pg_cur_page == before_pg && !(panel_lights() & 1u));
+    check("FX on an effect: the first effect of its drawer", page == 0u && pg_cur_dev == fx_dev(first));
+    tap(2);
+    check("FX again goes back where FX came from", page == 0u && pg_cur_dev == fx_dev(first + 2u));
+    pages_focus(home, 0);
+    trail_n = 0;
     tap(2);
     tap(BTN_HOME);
-    check("HOME leaves FX with the same back behavior", page == 0u && pg_cur_dev == before_dev && pg_cur_page == before_pg);
+    check("HOME leaves the effect for the instrument", page == 0u && pg_cur_dev == home && !(panel_lights() & 1u));
     tap(BTN_ENV);
-    before_dev = pg_cur_dev;
     tap(2);
+    check("FX from the environment: the effect's device page", page == 0u && pg_cur_dev == fx_dev(first));
     tap(2);
-    check("FX preserves the preceding ENV row", page == PAGE_ENV && pg_cur_dev == before_dev);
+    check("  FX again: back to the environment", page == PAGE_ENV && pg_cur_dev == home);
     tap(BTN_HOME);
-    tap(2);
-    page_set(PAGE_MENU);
-    tap(BTN_HOME);
-    check("FX survives an intervening menu and back", page == PAGE_FX && pg_cur_dev == eng_fx_device(fx_row) && pg_cur_page == eng_fx_page(fx_row));
-    tap(BTN_HOME);
-    check("saved FX desired states reload", !eng_load(pv_bin, pv_len) && eng_fx_on(0) && eng_fx_on(1) && eng_fx_on(2) && eng_fx_on(3));
-    pv_gen++;
-    pages_ensure();
-    pages_focus(eng_fx_device(3), eng_fx_page(3));
-    check("later stage parameters remain accessible on normal device pages", pages_page(1) && page == 0u);
+    check("  HOME leaves the environment", page == 0u);
+    {   /* the drawer's on/off: a Toggle on the drawer (LFO in the fixture) switches every effect through eng_fx_set */
+        const uint8_t *t;
+        uint32_t k, n;
+        check("the fixture's LFO is a Toggle on the drawer", eng_button_kind(3u) == ENG_BTN_TOGGLE);
+        for (ok = 1, e = first; e < first + 3u; e++)
+            ok = ok && eng_fx_on(e);
+        check("  every effect on at load", ok);
+        tap(5);
+        for (ok = 1, e = first; e < first + 3u; e++) {
+            ok = ok && !eng_fx_on(e);
+            for (n = eng_fx_targets(e, &t), k = 0; k < n; k++)
+                ok = ok && eng_bypass(t[k]);
+        }
+        check("  the Toggle turns every effect off (its targets bypassed: eng_fx_set's tails)", ok);
+        tap(5);
+        for (ok = 1, e = first; e < first + 3u; e++)
+            ok = ok && eng_fx_on(e);
+        check("  and on again", ok);
+    }
     page_set(PAGE_SEQ);
     tap(2);
-    check("SEQ FX retains its contextual job", page == PAGE_SEQ);
+    check("SEQ: FX keeps its job there", page == PAGE_SEQ);
     song_prep();
     page_set(PAGE_SONG);
     tap(2);
-    check("SONG FX never opens the FX page", page == PAGE_SONG);
+    check("SONG: FX keeps its job there", page == PAGE_SONG);
 
-    /* Exercise the real bounded reader, including every truncation and overlap, not a copied serialization string. */
+    /* the instrument on show has no drawer: the armed one's, else the Output drawer's */
+    check("FX layers fixture: two instruments, the second with a drawer, and an Output drawer",
+          fx_fixture("build/panel-fixtures/fx-layers.m1p") && eng_rack_count() == 2u);
+    if (eng_rack_count() == 2u) {
+        uint32_t out = eng_rack_owner(0) == ENG_RACK_OUTPUT ? 0u : 1u, mine = 1u - out, other;
+        home = pg_cur_dev;
+        other = pages_dev_of(eng_rack_owner(mine));
+        check("  the first instrument owns no drawer", eng_rack_owner(0) != pg_dev[home].bin && eng_rack_owner(1) != pg_dev[home].bin);
+        tap(2);
+        check("  nothing armed: FX goes to the Output drawer's first effect", page == 0u && pg_cur_dev == fx_dev(eng_rack_first(out)));
+        tap(2);
+        check("  FX again: back", pg_cur_dev == home);
+        pages_focus(other, 0);
+        dev_arm(0);
+        pages_focus(home, 0);
+        trail_n = 0;
+        tap(2);
+        check("  the second instrument armed: its drawer's first effect", pg_cur_dev == fx_dev(eng_rack_first(mine)));
+        eng_arm_mask(mset_none());
+    }
+    check("FX empty fixture: an instrument with an empty drawer", fx_fixture("build/panel-fixtures/fx-empty.m1p")
+          && eng_rack_count() == 1u && !eng_rack_len(0));
+    home = pg_cur_dev;
+    tap(2);
+    check("  FX: NO FX IN THE RACK, the page as it was", page == 0u && pg_cur_dev == home && !strcmp(msg_text, MSG_NO_FX)
+          && (panel_used() & 1u));
+    later(2000);
+    check("a patch with no rack and FX set to Nothing", fx_fixture("build/panel-fixtures/fx-none.m1p")
+          && !eng_fx_count() && !eng_rack_count() && eng_button_kind(0) == ENG_BTN_NOTHING && !panel_btn_job(0));
+    home = pg_cur_dev;
+    tap(2);
+    check("  FX: NO FX IN THE RACK (no nudge), the light as the patch has it", page == 0u && pg_cur_dev == home
+          && !strcmp(msg_text, MSG_NO_FX) && panel_lights() == eng_buttons_lit());
+    later(2000);
+    check("a patch with no rack and FX a Toggle", fx_fixture("build/panel-fixtures/fx-own.m1p") && !eng_fx_count()
+          && eng_button_kind(0) == ENG_BTN_TOGGLE);
+    {
+        uint32_t was = eng_buttons_get() & 1u;
+        tap(2);
+        check("  FX keeps its own job (its Toggle switched), no FX message", (eng_buttons_get() & 1u) != was
+              && strcmp(msg_text, MSG_NO_FX));
+    }
+
+    /* formats 55..65: the master FX bus loads as one Output drawer on the bus device; FX goes to its first stage's page */
+    check("legacy bus: four stages in one Output drawer", fx_fixture("fx-bus") && eng_fx_count() == 4u && eng_rack_count() == 1u
+          && eng_rack_owner(0) == ENG_RACK_OUTPUT);
+    check("legacy bus: Harmony starts disabled with LFO dark", !(panel_lights() & 8u));
+    tap(5);
+    check("legacy bus: LFO enables Harmony and lights enabled state", (panel_lights() & 8u) && !(eng_buttons_get() & 8u));
+    tap(5);
+    check("legacy bus: LFO disables Harmony without changing its legacy Toggle state", !(panel_lights() & 8u) && (eng_buttons_get() & 8u));
+    if (eng_fx_count() == 4u) {
+        const uint8_t *t;
+        uint32_t d = fx_dev(0), k, g, n = eng_fx_targets(0, &t);
+        tap(2);
+        g = pg_cur_page;
+        for (ok = 0, k = 0; pg_cur_dev == d && k < pages_now()->nrows; k++)
+            for (i = 0; i < n; i++)
+                ok |= pages_now()->mod[k] == t[i];
+        check("  FX: the bus device, on the page that shows the first stage", page == 0u && pg_cur_dev == d && ok
+              && (panel_lights() & 1u));
+        enc(1, 1);
+        check("  its other pages stay ordinary device pages", pg_cur_dev == d && pg_cur_page != g);
+        tap(BTN_HOME);
+        tap(BTN_HOME);
+    }
+    {   /* the shipped factory patches with a master bus: every stage off at load, FX on the bus device */
+        static const struct { const char *name; uint32_t n; uint8_t kind[4]; } RACK[] = {
+            {"factory-rack-hera-6", 3u, {ENG_FX_DRIVE, ENG_FX_DELAY, ENG_FX_REVERB}},
+            {"factory-rack-808-kit", 2u, {ENG_FX_DRIVE, ENG_FX_REVERB}},
+        };
+        for (i = 0; i < sizeof RACK / sizeof RACK[0]; i++) {
+            uint32_t k;
+            check("legacy factory rack patch loads", fx_fixture(RACK[i].name));
+            ok = eng_fx_count() == RACK[i].n;
+            for (k = 0; ok && k < RACK[i].n; k++)
+                ok = eng_fx_kind(k) == RACK[i].kind[k] && !eng_fx_on(k) && eng_fx_device(k) == eng_fx_device(0);
+            check("  its stages in order on the bus device, every one off at load", ok);
+            tap(2);
+            check("  FX goes to the bus device", page == 0u && pg_cur_dev == fx_dev(0));
+        }
+    }
+
+    /* The legacy bus reader (engine.c eng_skip_fx, eng_rack_end) on the real record: every truncation and an overlap */
+    check("legacy bus fixture reloads", fx_fixture("fx-bus"));
     flags = (uint32_t)pv_bin[6] | (uint32_t)pv_bin[7] << 8;
     at = panel_buttons_at();
     if (pv_bin[6] & 64u) at = eng_buttons_end(pv_bin, pv_len, at);
@@ -602,18 +721,19 @@ static void fx_suite(void)
     if (pv_bin[7] & ENG_FLAG_ORIGINS) at = eng_origins_end(pv_bin, pv_len, at);
     {
         const uint8_t *end = eng_skip_fx(pv_bin + at, pv_bin + pv_len, (uint16_t)flags);
-        check("FX reader locates the full optional record", at && end && * (pv_bin + at) == 4u);
+        check("legacy reader locates the full optional record", at && end && pv_bin[at] == 4u
+              && eng_rack_end(pv_bin, pv_len, at) == (uint32_t)(end - pv_bin));
         if (at && end) {
             for (i = at; pv_bin + i < end; i++)
-                check("FX reader rejects truncated metadata", !eng_skip_fx(pv_bin + at, pv_bin + i, (uint16_t)flags));
+                check("legacy reader rejects truncated metadata", !eng_skip_fx(pv_bin + at, pv_bin + i, (uint16_t)flags));
             {
                 uint32_t target = at + 5u;
                 uint8_t saved_target = pv_bin[target + 1u];
                 pv_bin[target + 1u] = pv_bin[target];
-                check("FX reader rejects duplicate targets", !eng_skip_fx(pv_bin + at, pv_bin + pv_len, (uint16_t)flags));
+                check("legacy reader rejects duplicate targets", !eng_skip_fx(pv_bin + at, pv_bin + pv_len, (uint16_t)flags));
                 pv_bin[target + 1u] = saved_target;
             }
-            {
+            {   /* a sparse bus (Chorus and Reverb only): FX goes to the Chorus stage's page */
                 uint8_t sparse[1u + ENG_FX_STAGE_COUNT * (4u + ENG_FX_TARGETS_MAX)];
                 uint32_t src = at + 1u, dst = 1u, bytes = (uint32_t)(end - pv_bin - at);
                 sparse[0] = 0;
@@ -629,32 +749,22 @@ static void fx_suite(void)
                 memmove(pv_bin + at + dst, pv_bin + at + bytes, pv_len - at - bytes);
                 memcpy(pv_bin + at, sparse, dst);
                 pv_len -= bytes - dst;
-                check("sparse FX loads actual kinds rather than row-index types", !eng_load(pv_bin, pv_len) && eng_fx_count() == 2u &&
+                check("sparse bus loads actual kinds rather than row-index types", !eng_load(pv_bin, pv_len) && eng_fx_count() == 2u &&
                       eng_fx_kind(0) == ENG_FX_CHORUS && eng_fx_kind(1) == ENG_FX_REVERB);
                 pv_gen++;
                 page_show(0);
-                fx_row = 0;
+                pages_ensure();
+                pages_focus(pages_home(), 0);
+                trail_n = 0;
                 tap(2);
-                check("sparse FX draws only present actual-kind names", page == PAGE_FX && on_screen("CHORUS") && on_screen("REVERB") &&
-                      !on_screen("DRIVE") && !on_screen("DELAY"));
-                enc(0, 1);
-                check("sparse SELECT reaches the Reverb first page", fx_row == 1u &&
-                      pg_cur_dev == eng_fx_device(1) && pg_cur_page == eng_fx_page(1));
-                {
-                    int chorus = eng_fx_on(0), reverb = eng_fx_on(1);
-                    tap(BTN_SEL);
-                    check("sparse SEL toggles selected actual kind only", eng_fx_on(0) == chorus && eng_fx_on(1) != reverb);
-                }
-                enc(0, 1);
-                check("sparse SELECT wraps over present rows only", fx_row == 0u && pg_cur_page == eng_fx_page(0));
-                enc(0, -1);
-                check("sparse SELECT wraps backward over present rows only", fx_row == 1u && pg_cur_page == eng_fx_page(1));
+                check("sparse bus: FX goes to the Chorus stage's page", page == 0u && pg_cur_dev == fx_dev(0)
+                      && pg_cur_page == fx_first_page(fx_dev(0), 0));
                 tap(BTN_HOME);
             }
         }
     }
     /* Optional FX bindings are not authority for a separately verified Harmony Toggle. */
-    check("Harmony-only indicator fixture resets", ct_fx_load());
+    check("Harmony-only indicator fixture resets", fx_fixture("fx-bus"));
     {
         const uint8_t *end = eng_skip_fx(pv_bin + at, pv_bin + pv_len, (uint16_t)((uint32_t)pv_bin[6] | (uint32_t)pv_bin[7] << 8));
         check("Harmony-only fixture has a bounded optional FX record", end != 0);
@@ -663,7 +773,7 @@ static void fx_suite(void)
             memmove(pv_bin + at, end, pv_len - (uint32_t)(end - pv_bin));
             pv_len -= bytes;
             pv_bin[7] &= (uint8_t)~64u;
-            check("format55 loads without an FX record", !eng_load(pv_bin, pv_len) && !eng_fx_count());
+            check("format55 loads without an FX record", !eng_load(pv_bin, pv_len) && !eng_fx_count() && !eng_rack_count());
             pv_gen++;
             page_show(0);
             check("rackless Harmony starts off with LFO dark", !(panel_lights() & 8u));
@@ -676,44 +786,6 @@ static void fx_suite(void)
             check("older Harmony Toggle retains its generic light state", panel_lights() == eng_buttons_lit());
             tap(5);
             check("older Harmony Toggle light follows bypass after switching", panel_lights() == eng_buttons_lit() && !((panel_lights() ^ eng_buttons_get()) & 8u));
-        }
-    }
-    check("legacy patch replaces FX metadata", !load_fixture("build/panel-fixtures/steps-patterns.m1p") && !eng_fx_count());
-    pv_gen++;
-    page_show(0);
-    trail_n = 0;
-    tap(2);
-    check("legacy FX never reserves the new page", page != PAGE_FX && panel_lights() == eng_buttons_lit());
-    {   /* the shipped factory patches whose stages came after the instrument (golden.ts --panel-fixtures writes them from
-         * the selected bank): every stage off at load, FX opens a page with exactly their stages */
-        static const char *const NAME[4] = {"DRIVE", "CHORUS", "DELAY", "REVERB"};   /* (ENG_FX_DRIVE ... ENG_FX_REVERB) */
-        static const struct { const char *path; uint32_t n; uint8_t kind[4]; } RACK[] = {
-            {"build/panel-fixtures/factory-rack-hera-6.m1p", 3u, {ENG_FX_DRIVE, ENG_FX_DELAY, ENG_FX_REVERB}},
-            {"build/panel-fixtures/factory-rack-808-kit.m1p", 2u, {ENG_FX_DRIVE, ENG_FX_REVERB}},
-        };
-        for (i = 0; i < sizeof RACK / sizeof RACK[0]; i++) {
-            uint32_t k, ok, shown = 0;
-            ct_reset();
-            check("factory rack patch loads", !load_fixture(RACK[i].path));
-            ok = eng_fx_count() == RACK[i].n;
-            for (k = 0; ok && k < RACK[i].n; k++) {
-                ok = eng_fx_kind(k) == RACK[i].kind[k] && !eng_fx_on(k);
-                shown |= 1u << RACK[i].kind[k];
-            }
-            check("factory rack: its stages in order, every one off at load", ok);
-            pv_gen++;
-            page_show(0);
-            screen_patch();
-            pages_ensure();
-            pages_focus(pages_home(), 0);
-            fx_row = 0;
-            later(2000);
-            tap(2);
-            ok = page == PAGE_FX && on_screen("MASTER FX");
-            for (k = 0; k < 4u; k++)
-                ok = ok && on_screen(NAME[k]) == !!(shown & 1u << k);
-            check("factory rack: FX opens the page with exactly its stages", ok);
-            tap(2);
         }
     }
     ct_reset();
@@ -5942,6 +6014,7 @@ int main(void)
     pt_on = 0;
     fx_suite();
     fx_preset_suite();
+    fxd_preset_suite();
     report_suite();
     palette_panel_suite();
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");

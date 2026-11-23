@@ -97,10 +97,13 @@ describe('USER presets with a factory sound’s name', () => {
     const choose = (name: string): void => {
       document.querySelector<HTMLButtonElement>(`${chipSelector} .preset-name`)!.click();
       const items = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
-      const labels = items.map((b) => b.textContent?.replace(/^● /, ''));
+      // (the 808 Kit has an FX drawer: each row also says what loading does to it, " · no FX · instrument only, your
+      // drawer stays" for these instrument-only presets; FX drawer spec §5, the menu row says what loading adds/removes)
+      const label = (b: HTMLButtonElement): string | undefined => b.textContent?.replace(/^● /, '').replace(/ · .*$/, '');
+      const labels = items.map(label);
       expect(labels).toContain('Electro Snap (factory)');
       expect(labels).toContain('Electro Snap');
-      const item = items.find((b) => b.textContent?.replace(/^● /, '') === name);
+      const item = items.find((b) => label(b) === name);
       expect(item, `preset menu entry ${name}`).toBeDefined();
       item!.click();
     };

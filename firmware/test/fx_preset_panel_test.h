@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* Real assembly/rack fixture; flash records, native reload, and linked-editor notifications. */
+/* Real assembly/rack fixtures; flash records, native reload, and linked-editor notifications. FXP1 ("+ FX", D-1010) on the
+ * frozen format-55..65 master FX bus patches (legacy_fx_fixtures.h: the FM-1 still reads them), FXD1 (an instrument with
+ * its FX drawer, 1.26.3) on panel-fixtures.ts's format-66 drawers */
 static int fx_preset_index(uint32_t d, uint32_t structure, const char *name)
 {
     uint32_t k, n = dp_list(d);
@@ -27,7 +29,7 @@ static void fx_preset_poly_match(void)
     char name[17];
     ct_reset();
     host_ps_init();
-    check("FX poly preset: capped Expander fixture loads", !load_fixture("build/panel-fixtures/fx-preset-poly.m1p"));
+    check("FX poly preset: capped Expander fixture loads", !load_legacy("fx-preset-poly"));
     pv_gen++; pages_ensure();
     for (d = 0; d < pg_ndev && dp_fx_mask(d) != 15u; d++);
     check("FX poly preset: full rack has one owner", d < pg_ndev);
@@ -84,7 +86,7 @@ static void fx_preset_suite(void)
     int k, ok;
     ct_reset();
     host_ps_init();
-    check("FX preset: real Monolith assembly and complete rack load", !load_fixture("build/panel-fixtures/fx-preset.m1p"));
+    check("FX preset: real Monolith assembly and complete rack load", !load_legacy("fx-preset"));
     pv_gen++;
     pages_ensure();
     for (d = 0; d < pg_ndev && dp_fx_mask(d) != 15u; d++);
@@ -241,5 +243,161 @@ static void fx_preset_suite(void)
     check("FX preset: deleting selected identity clears name, keeps sound", !pg_pname[d][0] && dp_values(d) == n && !memcmp(pr_vals, expected, n * sizeof *expected));
     host_ps_init();
     fx_preset_poly_match();
+    ct_reset();
+}
+
+/* FXD1's namespace, computed here apart from pages_ui.c: FNV-1a over 'F','X','D','1', base (u32 LE), n (u8) and each
+ * effect's structure (u32 LE) */
+static uint32_t fxd_hash(uint32_t base, uint32_t n, const uint32_t *st)
+{
+    static const uint8_t pre[4] = {'F', 'X', 'D', '1'};
+    uint32_t h = 2166136261u, i, k;
+    for (i = 0; i < 4u; i++) h = (h ^ pre[i]) * 16777619u;
+    for (i = 0; i < 4u; i++) h = (h ^ ((base >> (8u * i)) & 255u)) * 16777619u;
+    h = (h ^ (n & 255u)) * 16777619u;
+    for (k = 0; k < n; k++)
+        for (i = 0; i < 4u; i++) h = (h ^ ((st[k] >> (8u * i)) & 255u)) * 16777619u;
+    return h;
+}
+
+/* An instrument with its FX drawer as one preset (FXD1): offered only where every structure matches, loaded effect by
+ * effect (rows, then on/off through eng_fx_set), captured and stored the same way; a base preset leaves the drawer alone */
+static void fxd_preset_suite(void)
+{
+    static int32_t expected[PS_MAXV], old[PS_MAXV], bad[PS_MAXV];
+    static uint8_t binary[sizeof pv_bin];
+    uint32_t d, first = 0, cnt = 0, e, n, rows, base, scope, at, i, len, saved, st[3], st2[3], ed[3], eat[3];
+    char remembered[17];
+    int k, ok;
+    ct_reset();
+    host_ps_init();
+    check("FXD1: the drawer fixture loads", !load_fixture("build/panel-fixtures/fx-drawer.m1p"));
+    pv_gen++;
+    pages_ensure();
+    for (d = 0; d < pg_ndev && !dp_drawer(d, &first, &cnt); d++);
+    check("FXD1: one instrument owns a drawer of three effects", d < pg_ndev && cnt == 3u);
+    if (d >= pg_ndev || cnt != 3u) return;
+    base = pg_dev[d].structure;
+    rows = pg_dev[d].nrows;
+    for (at = rows, e = 0; e < cnt; e++) {
+        ed[e] = pages_dev_of(eng_fx_device(first + e));
+        st[e] = ed[e] < pg_ndev ? pg_dev[ed[e]].structure : 0u;
+        eat[e] = at;
+        at += ed[e] < pg_ndev ? 1u + pg_dev[ed[e]].nrows : 0u;
+    }
+    scope = dp_structure(d);
+    check("FXD1: the namespace hashes the instrument's and each effect's structure", st[0] && st[1] && st[2]
+          && scope == fxd_hash(base, cnt, st));
+    n = dp_values(d);
+    check("FXD1: capture holds the rows, each effect's on/off and rows, and the footer", n == at + 4u && n <= PS_MAXV);
+    if (n != at + 4u) return;
+    check("FXD1: the footer's words", pr_vals[n - 4u] == (int32_t)(int16_t)base * 65536
+          && pr_vals[n - 3u] == (int32_t)(int16_t)(base >> 16) * 65536 && pr_vals[n - 2u] == 3 * 65536 && pr_vals[n - 1u] == 23119 * 65536);
+    for (ok = 1, e = 0; e < cnt; e++)
+        ok &= pr_vals[eat[e]] == (eng_fx_on(first + e) ? 65536 : 0);
+    check("FXD1: each effect's on/off", ok);
+    memcpy(old, pr_vals, n * sizeof *old);
+    memcpy(expected, old, n * sizeof *expected);
+    expected[eat[1]] = 0;                               /* (the stored sound: the second effect off, a row of each moved) */
+    for (ok = 1, e = 0; e < cnt; e++) {
+        for (i = 0; i < pg_dev[ed[e]].nrows; i++) {
+            uint32_t m = pg_dev[ed[e]].rows[2u * i], p = pg_dev[ed[e]].rows[2u * i + 1u];
+            int32_t lo, hi, *v = &expected[eat[e] + 1u + i];
+            if (m == 0xFFu || (p & POLY_ROW) || !row_ok(m, p) || DEF_FIXED((uint32_t)eng_type(m), p)) continue;
+            lo = DEFS[eng_type(m)].pmin[p];
+            hi = DEF_TOP(&DEFS[eng_type(m)], p);
+            if (lo < hi) {
+                *v = *v == lo ? hi : lo;
+                break;
+            }
+        }
+        ok &= i < pg_dev[ed[e]].nrows;
+    }
+    check("FXD1: every effect has a row to move", ok);
+    check("FXD1: the scoped record stores", !ps_put(scope, "DRAWER", expected, n));
+    check("FXD1: a base record of the same name stores", !ps_put(base, "DRAWER", old, rows));
+    check("FXD1: both namespaces listed", fx_preset_index(d, base, "DRAWER") >= 0 && fx_preset_index(d, scope, "DRAWER") >= 0);
+    k = fx_preset_index(d, scope, "DRAWER");
+    preset_record = 1;
+    preset_events = 0;
+    check("FXD1: scoped recall", k >= 0 && !dp_load(d, (uint32_t)k));
+    preset_record = 0;
+    check("FXD1: the instrument and every effect recapture exactly", dp_values(d) == n && !memcmp(pr_vals, expected, n * sizeof *expected));
+    check("FXD1: the second effect off, the others on", eng_fx_on(first) && !eng_fx_on(first + 1u) && eng_fx_on(first + 2u));
+    {
+        const uint8_t *t;
+        uint32_t c = eng_fx_targets(first + 1u, &t);
+        for (ok = c > 0u, i = 0; i < c; i++)
+            ok &= eng_bypass(t[i]) && fx_preset_event(t[i], 0xFFu, 65536);
+        check("FXD1: its targets bypassed, the editor told (PARAM_NOW 0xFF)", ok);
+    }
+    check("FXD1: the loaded sound matches", dp_same(d, (int)n));
+    eng_fx_set(first + 2u, 0);
+    check("FXD1: an effect's on/off alone breaks matching", !dp_same(d, (int)n));
+    eng_fx_set(first + 2u, 1);
+    check("FXD1: the native binary reloads the same sound", !eng_load(pv_bin, pv_len));
+    pv_gen++;
+    pages_ensure();
+    check("FXD1: reloaded, it recaptures exactly", dp_values(d) == n && !memcmp(pr_vals, expected, n * sizeof *expected));
+
+    k = fx_preset_index(d, base, "DRAWER");                /* a base preset ("no FX") leaves the drawer as it is */
+    preset_record = 1;
+    preset_events = 0;
+    check("FXD1: a base preset loads", k >= 0 && !dp_load(d, (uint32_t)k));
+    preset_record = 0;
+    ok = dp_values(d) == n && !memcmp(pr_vals + rows, expected + rows, (n - rows) * sizeof *expected);
+    for (i = 0; i < preset_events; i++)
+        ok &= preset_event[i].par != 0xFFu;
+    check("FXD1: the base preset leaves every effect and its on/off alone", ok);
+    memcpy(expected, pr_vals, n * sizeof *expected);
+
+    for (i = 0; i < 6u; i++) {                         /* each malformed record rejects before anything changes */
+        uint32_t count = n;
+        memcpy(bad, expected, n * sizeof *bad);
+        if (i == 0u) count--;
+        if (i == 1u) bad[n - 4u] ^= 65536;
+        if (i == 2u) bad[n - 1u] = 23118 * 65536;
+        if (i == 3u) bad[n - 2u] = 2 * 65536;
+        if (i == 4u) bad[eat[0]] = 32768;
+        if (i == 5u) bad[eat[2]] = 2 * 65536;
+        check("FXD1: a malformed record stores", !ps_put(scope, "BAD", bad, count));
+        k = fx_preset_index(d, scope, "BAD");
+        len = pv_len;
+        memcpy(binary, pv_bin, len);
+        memcpy(remembered, pg_pname[d], sizeof remembered);
+        saved = ct_params();
+        preset_events = 0;
+        preset_record = 1;
+        check("FXD1: a malformed record rejects without changing the sound, the binary, the name or the editor",
+              k >= 0 && dp_load(d, (uint32_t)k) < 0 && ct_params() == saved && pv_len == len && !memcmp(binary, pv_bin, len)
+              && !preset_events && !strcmp(remembered, pg_pname[d]));
+        preset_record = 0;
+        (void)ps_del(scope, "BAD");
+    }
+    memcpy(st2, st, sizeof st2);
+    st2[1] ^= 1u;
+    check("FXD1: another drawer's preset stores", !ps_put(fxd_hash(base, cnt, st2), "OTHER", expected, n));
+    check("FXD1: a preset whose effects differ is not offered (no partial loads)", fx_preset_index(d, fxd_hash(base, cnt, st2), "OTHER") < 0);
+    check("FXD1: a preset of fewer effects is not offered", !ps_put(fxd_hash(base, 2u, st), "FEWER", expected, n)
+          && fx_preset_index(d, fxd_hash(base, 2u, st), "FEWER") < 0);
+
+    dp_name_set(d, "");
+    pages_ensure();
+    dp_store(d);
+    check("FXD1: ENV+SAVE stores under the scoped identity, the editor told", pg_pstructure[d] == scope
+          && host_preset_structure == scope && ps_find(scope, pg_pname[d]) >= 0);
+    saved = pg_dev[d].nrows;
+    pg_dev[d].nrows = (uint8_t)(PS_MAXV + 1u - (n - rows));   /* (with the effects and the footer: 177 values) */
+    check("FXD1: a capture past 176 values refuses rather than cutting it short", !dp_values(d));
+    pg_dev[d].nrows = (uint8_t)saved;
+
+    check("FXD1: the empty-drawer fixture loads", !load_fixture("build/panel-fixtures/fx-empty.m1p"));
+    pv_gen++;
+    pages_ensure();
+    for (d = 0; d < pg_ndev && !dp_drawer(d, &first, &cnt); d++);
+    check("FXD1: an empty drawer stores n = 0 with the instrument's rows", d < pg_ndev && !cnt
+          && dp_structure(d) == fxd_hash(pg_dev[d].structure, 0u, st) && dp_values(d) == pg_dev[d].nrows + 4u
+          && pr_vals[pg_dev[d].nrows + 2u] == 0 && pr_vals[pg_dev[d].nrows + 3u] == 23119 * 65536);
+    host_ps_init();
     ct_reset();
 }

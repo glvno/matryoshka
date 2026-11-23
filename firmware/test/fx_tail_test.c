@@ -2,7 +2,7 @@
 /* Focused native-kernel transitions, independent of generated bank fixtures:
  * cc -std=c11 -O1 -Ifirmware/src firmware/test/fx_tail_test.c -lm -o build/fx-tail-test
  * build/fx-tail-test
- * Integration separately loads the actual format55 stereo graph through eng_load. */
+ * Integration separately loads actual FX racks (format 66) and master FX buses (55..65) through eng_load. */
 #include <stdio.h>
 #include <string.h>
 #include "engine.c"
@@ -13,12 +13,14 @@ static node_t node;
 static inst_t inst;
 static int32_t effective[32], input[ENG_BLOCK], left[ENG_BLOCK], right[ENG_BLOCK];
 static int16_t line[DELAY_LEN];
-static uint32_t kind;
+/* the effect under test (effect 0, run 0): render() copies it into the engine's rack and back */
+typedef struct { uint8_t on, n; fx_run_t run[1]; } stage_t;
+static stage_t one;
 
-static fx_stage_t *setup(uint32_t type)
+static stage_t *setup(uint32_t type)
 {
     uint32_t i;
-    kind = type == T_DELAY ? ENG_FX_DELAY : ENG_FX_REVERB;
+    memset(&one, 0, sizeof one);
     memset(&node, 0, sizeof node);
     memset(&inst, 0, sizeof inst);
     memset(&fx, 0, sizeof fx);
@@ -42,25 +44,28 @@ static fx_stage_t *setup(uint32_t type)
         effective[REVERB_P_MIX] = ENG_ONE;
         effective[REVERB_P_MOD] = 0;
     }
-    fx.stage[kind].kind = (uint8_t)kind;
-    fx.stage[kind].n = 2; /* legacy/general paired stages still return their own dry signal */
-    fx.stage[kind].on = 1;
-    fx.stage[kind].run[0].gain = FX_RAMP;
-    fx.stage[kind].run[0].fade = FX_FULL;
-    fx.stage[kind].run[0].tail = 1;
-    return &fx.stage[kind];
+    one.n = 2; /* paired targets still return their own dry signal */
+    one.on = 1;
+    one.run[0].gain = FX_RAMP;
+    one.run[0].fade = FX_FULL;
+    one.run[0].tail = 1;
+    return &one;
 }
 
 static uint64_t render(uint32_t frames, int32_t value)
 {
     uint64_t energy = 0;
+    fx.on = one.on;
+    fx.n[0] = one.n;
+    fx.run[0] = one.run[0];
     while (frames) {
         uint32_t n = frames > ENG_BLOCK ? ENG_BLOCK : frames, i;
         for (i = 0; i < n; i++) input[i] = value;
-        m_fx(&node, &inst, n, 1u + kind * ENG_FX_TARGETS_MAX);
+        m_fx(&node, &inst, n, 1u);
         for (i = 0; i < n; i++) energy += (uint64_t)((int64_t)left[i] * left[i]);
         frames -= n;
     }
+    one.run[0] = fx.run[0];
     return energy;
 }
 
@@ -95,11 +100,52 @@ static void skip_record(void)
     }
 }
 
+/* format 66's rack section: effects (device, n, targets), then drawers (owner, first, count) */
+static void rack_record(void)
+{
+    uint8_t p[64] = {0xA1, 66, 0, 0, 0, 0, 32, 0x40};
+    const uint8_t rack[] = {3, 1, 2, 4, 5, 2, 0, 3, 1, 6, 2, 2, 0, 2, 0xFF, 2, 1};
+    uint32_t n, len = 8u + sizeof rack;
+    memcpy(p + 8, rack, sizeof rack);
+    CHECK(eng_rack_end(p, len, 8) == len, "a rack of three effects and two drawers is read whole");
+    for (n = 8; n < len; n++) CHECK(!eng_rack_end(p, n, 8), "every truncated rack rejected");
+    p[7] = 0;
+    CHECK(eng_rack_end(p, len, 8) == 8u, "a binary without the rack consumes nothing");
+    p[7] = 0x40;
+    p[8 + 9] = 4;
+    CHECK(!eng_rack_end(p, len, 8), "a target shared by two effects rejected");
+    p[8 + 9] = 6;
+    p[8 + 16] = 2;
+    CHECK(!eng_rack_end(p, len, 8), "a drawer past the effects rejected");
+    p[8 + 16] = 1;
+    p[8 + 2] = ENG_FX_TARGETS_MAX + 1u;
+    CHECK(!eng_rack_end(p, len, 8), "an effect of more than eight targets rejected");
+    {
+        const uint8_t empty[] = {0, 1, 0, 0, 0};
+        memcpy(p + 8, empty, sizeof empty);
+        CHECK(eng_rack_end(p, 8u + sizeof empty, 8) == 8u + sizeof empty, "an empty drawer alone is a rack");
+        p[9] = 0;
+        CHECK(!eng_rack_end(p, 8u + 2u, 8), "a rack of nothing rejected");
+    }
+    {
+        uint8_t big[1u + 5u * (2u + 8u) + 1u] = {5};
+        for (n = 0; n < 5u; n++) {
+            uint32_t k;
+            big[1u + n * 10u] = (uint8_t)n;
+            big[2u + n * 10u] = 8;
+            for (k = 0; k < 8u; k++) big[3u + n * 10u + k] = (uint8_t)(n * 8u + k);
+        }
+        memcpy(p + 8, big, sizeof big);
+        CHECK(!eng_rack_end(p, 8u + sizeof big, 8), "more than ENG_FX_RUNS targets in all rejected");
+    }
+}
+
 int main(void)
 {
-    fx_stage_t *stage;
+    stage_t *stage;
     uint32_t i;
     skip_record();
+    rack_record();
     stage = setup(T_DELAY);
     effective[DELAY_P_FB] = 0;
     render(4096, ENG_ONE / 8);

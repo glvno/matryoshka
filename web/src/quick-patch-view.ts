@@ -12,13 +12,13 @@ import { formatValue, longName, moduleTag } from './labels';
 import { DEPTH_MAX, fromUnit, toUnit, type ParamDef, type Patch } from './patch';
 import { isPin, parameterInputs } from './parameter-routing';
 import {
-  alreadyWired, besideSpot, buildChain, cardExists, cardKey, cardPorts, cardTitle, ChainError, chainText, defaultPort, farEnds, fit, guessSize, halfRings,
-  halfSectors, isChainText, matchPorts, moveCard, parseChain, patchCards, portCables, radialPlace, rankPorts, removeBlueprint, RINGS_MAX, sameCard,
+  addToDrawer, alreadyWired, besideSpot, buildChain, cardExists, cardKey, cardPorts, cardTitle, ChainError, chainText, defaultPort, drawerName, drawerOfCard, farEnds, fit, guessSize,
+  halfRings, halfSectors, insertPlace, isChainText, matchPorts, moveCard, parseChain, patchCards, portCables, radialPlace, rankPorts, removeBlueprint, RINGS_MAX, sameCard,
   saveBlueprint, search, sectorPath, Trail, wire,
-  type Built, type Card, type Catalog, type FarEnd, type Hit, type Link, type Place, type QPort, type Statement,
+  type Built, type Card, type Catalog, type DrawerOwner, type FarEnd, type Hit, type Link, type Place, type QPort, type Statement,
 } from './quick-patch';
 import { parseValue } from './value-input';
-import type { AssemblyDef, Rect } from './assembly';
+import { assemblyById, type AssemblyDef, type Rect } from './assembly';
 
 export interface QuickHost {
   editor: Editor;
@@ -115,6 +115,8 @@ export class QuickPatch {
   lastChain = '';
   /** the cards made while it was open: when it closes, the view brings them in if one is off screen */
   private made: Card[] = [];
+  /** the FX drawers Quick patch slid open because one of their effects is the current card; it closes them after */
+  private opened = new Set<number>();
 
   constructor(private readonly host: QuickHost) {
     this.panel.setAttribute('role', 'dialog');
@@ -181,6 +183,7 @@ export class QuickPatch {
     if (!this.isOpen) return;
     this.finishChain();
     this.isOpen = false;
+    this.syncDrawers();
     this.panel.remove();
     this.ring.remove();
     this.field.blur();
@@ -252,16 +255,23 @@ export class QuickPatch {
   }
 
   /** a new module or assembly: beside the held cable's card (after it for an output, before it for an input), else
-   *  beside the current card, else near the pointer */
-  private make(what: { type: string } | { def: AssemblyDef }): void {
+   *  beside the current card, else near the pointer; with `into`, a new effect in that FX drawer (after the current card
+   *  when it is one of the drawer's effects, else at the end; the drawer is made when the instrument has none) */
+  private make(what: { type: string } | { def: AssemblyDef }, into?: DrawerOwner): void {
     const ed = this.ed;
     this.startChange();
-    const size = guessSize(DEFS, what);
-    const anchor = this.held?.card ?? this.at;
-    const r = anchor && ed.cardRect(anchor);
-    const side = this.held && this.held.port.dir === 'in' ? 'left' : 'right';
-    const at = r ? besideSpot(r, side, size, ed.takenRects()) : ed.freeSpot(size.w);
-    const card = ed.placeCard(what, at);
+    let card: Card | null = null;
+    if (into !== undefined) {
+      const { index } = insertPlace(ed.patch, into, this.at);
+      if (!ed.transact(() => { card = addToDrawer(ed.patch, into, what, index); })) return;
+    } else {
+      const size = guessSize(DEFS, what);
+      const anchor = this.held?.card ?? this.at;
+      const r = anchor && ed.cardRect(anchor);
+      const side = this.held && this.held.port.dir === 'in' ? 'left' : 'right';
+      const at = r ? besideSpot(r, side, size, ed.takenRects()) : ed.freeSpot(size.w);
+      card = ed.placeCard(what, at);
+    }
     if (!card) return;
     this.fresh.push(card);
     this.made.push(card);
@@ -269,10 +279,11 @@ export class QuickPatch {
   }
 
   /** pick a port: without a cable, pick one up there (the ring folds into the plug); with one, drop it here and stay on
-   *  this card */
+   *  this card. A drawer's chain jack is refused with the reason and what to do instead */
   private pick(port: QPort): void {
     const at = this.at;
     if (!at) return;
+    if (port.chain) return this.fail(port.chain);
     if (!this.held) {
       this.held = { card: at, port };
       this.field.value = '';
@@ -498,11 +509,36 @@ export class QuickPatch {
     const set = this.sliders && this.valueChoice(t);
     if (set) return [set];
     if (!t && this.inSocket()) return this.destinations();
+    // `delay@hera 4.time`: that effect in Hera 4's drawer, and its port
+    const addr = /^([^@]+@[^.]+)\.\s*(\S.*)$/.exec(t);
+    if (addr) return this.addressChoices(addr[1], addr[2].trim());
     const ports = this.rankedPorts();
     const shown = t ? matchPorts(ports, t) : ports;
     const out: Choice[] = shown.map((q) => this.portChoice(q));
     if (t) for (const hit of search(this.patch, DEFS, this.host.catalog(), t)) out.push(this.hitChoice(hit));
     return out;
+  }
+
+  /** the effects `name@where` names, each with the port typed after it: Enter goes there and picks that port */
+  private addressChoices(where: string, typed: string): Choice[] {
+    const p = this.patch;
+    return search(p, DEFS, this.host.catalog(), where).flatMap((hit): Choice[] => {
+      if (hit.kind !== 'card') return [];
+      const card = hit.card;
+      const port = matchPorts(cardPorts(p, DEFS, card), typed)[0];
+      const title = cardTitle(p, DEFS, card);
+      return [{
+        label: `${title}.${port?.name ?? typed}`, detail: port ? (port.chain ? 'chain · the editor wires it' : hit.detail) : `${title} has no port "${typed}"`, card,
+        ...(port ? { io: { dir: port.dir, kind: port.param ? 'control' : port.kind } } : {}),
+        run: () => {
+          if (this.held && sameCard(card, this.held.card)) return this.fail('that is the card this cable starts from: pick another card');
+          if (!port) return this.fail(`${title} has no port "${typed}"`);
+          this.goTo(card);
+          this.pick(port);
+          this.render();
+        },
+      }];
+    });
   }
 
   /** a cable held on its own card: the centre is the empty socket, no ring shows until the card it goes to is picked */
@@ -549,7 +585,7 @@ export class QuickPatch {
     const follow = ends.length ? ` · ⤳ ${ends.length === 1 ? ends[0].title : `${ends.length} cables`} (⇧⏎)` : '';
     return {
       label: q.name,
-      detail: `${q.label !== q.name ? `${q.label} · ` : ''}${q.param ? 'parameter' : q.kind}${follow}`,
+      detail: q.chain ? 'chain · the editor wires it' : `${q.label !== q.name ? `${q.label} · ` : ''}${q.param ? 'parameter' : q.kind}${q.note ? ` · ${q.note}` : ''}${follow}`,
       port: q,
       io: { dir: q.dir, kind: q.param ? 'control' : q.kind },
       follow: ends.length > 0,
@@ -565,13 +601,33 @@ export class QuickPatch {
       if (hit.kind === 'card') {
         this.goTo(hit.card);
         this.render();
-      } else if (hit.kind === 'module') this.make({ type: hit.type });
-      else if (hit.kind === 'assembly') this.make({ def: hit.def });
+      } else if (hit.kind === 'module') this.make({ type: hit.type }, hit.into);
+      else if (hit.kind === 'assembly') this.make({ def: hit.def }, hit.into);
       else this.build([{ kind: 'blueprint', name: hit.blueprint.name }], `bp ${hit.blueprint.name}`);
       this.render();
     };
-    const label = hit.kind === 'module' || hit.kind === 'assembly' ? `New ${hit.label}` : hit.label;
-    return { label, detail: own ? 'where this cable starts' : hit.detail, ...(hit.kind === 'card' && !own ? { card: hit.card } : {}), run };
+    // (a new effect: on the canvas first, then a row for each FX drawer, after the current effect when it is in that one)
+    const fresh = hit.kind === 'module' || hit.kind === 'assembly';
+    const into = fresh && hit.into !== undefined ? hit.into : undefined;
+    const label = fresh ? `New ${hit.label}${into !== undefined ? ` → ${drawerName(this.patch, into)}` : ''}` : hit.label;
+    const detail = own ? 'where this cable starts' : into !== undefined ? insertPlace(this.patch, into, this.at).detail : hit.detail;
+    return { label, detail, ...(hit.kind === 'card' && !own ? { card: hit.card } : {}), run };
+  }
+
+  /** Q3: the FX drawer of the current card's effect slides open while it is current (so the cable lands where it shows),
+   *  and closes again after, unless it was open already */
+  private syncDrawers(): void {
+    const p = this.patch;
+    const want = this.isOpen && this.at ? drawerOfCard(p, this.at) : undefined;
+    for (const id of [...this.opened]) {
+      if (id === want?.id) continue;
+      this.opened.delete(id);
+      if (assemblyById(p, id)?.open) this.ed.setDrawerOpen(id, false);
+    }
+    if (want && !want.open) {
+      this.opened.add(want.id);
+      this.ed.setDrawerOpen(want.id, true);
+    }
   }
 
   private blueprintChoices(rest: string): Choice[] {
@@ -642,6 +698,7 @@ export class QuickPatch {
     if (this.at && !cardExists(this.patch, this.at)) this.at = null;
     if (this.held && !cardExists(this.patch, this.held.card)) this.held = null;
     this.trail.keep((c) => cardExists(this.patch, c));
+    this.syncDrawers();
     this.choices = this.compute();
     if (this.sel < 0 || this.sel >= this.choices.length) this.resetSel();
     this.renderTrail();
@@ -790,17 +847,22 @@ export class QuickPatch {
       g.append(node('path', { d: sectorPath(c, r0, r1, s.a0, s.a1) }));
       const f = held ? fit(held, q) : 0;
       const ends = !this.held ? farEnds(this.patch, DEFS, at!, q) : [];
-      if (held) g.classList.add(f === 0 ? 'lit' : f > 0 ? 'dim' : 'off');
+      if (q.chain) g.classList.add('off', 'chain');
+      else if (held) g.classList.add(f === 0 ? 'lit' : f > 0 ? 'dim' : 'off');
       if (same(chosen, q)) g.classList.add('sel');
       if (this.landed === `${cardKey(at!)}:${portKey(q)}`) g.classList.add('flash');
       // the label fits its sector: as many letters as the arc has room for, the whole name in the tooltip
       const room = Math.max(3, Math.floor(Math.min((s.a1 - s.a0) * label, r1 - r0 + 40) / 6.6));
       const text = q.name.length > room ? `${q.name.slice(0, room - 1)}…` : q.name;
-      g.append(node('title', {}, `${q.label} (${q.param ? 'parameter' : q.kind})${ends.length ? `: ⤳ ${ends.map((e) => e.title).join(', ')}, Shift-click follows` : ''}`));
+      g.append(node('title', {}, q.chain ?? `${q.label} (${q.param ? 'parameter' : q.kind})${q.note ? `, ${q.note}` : ''}${ends.length ? `: ⤳ ${ends.map((e) => e.title).join(', ')}, Shift-click follows` : ''}`));
       g.append(node('circle', { class: `qp-kind ${q.param ? 'control' : q.kind}${ends.length || (this.held && this.cabled(at!)(q)) ? ' cabled' : ''}`, cx: String(tx), cy: String(ty - 9), r: '2.4' }));
       g.append(node('text', { class: 'qp-name', x: String(tx), y: String(ty + 5) }, `${ends.length ? '⤳' : ''}${text}${same(first, q) ? ' ⏎' : ''}`));
+      // under the name: `chain` for a drawer's chain jack, `after FX` / `into FX` for a jack the drawer stands behind
+      const sub = q.chain ? 'chain' : q.note;
+      if (sub) g.append(node('text', { class: 'qp-sub', x: String(tx), y: String(ty + 17) }, sub));
       g.addEventListener('click', (e) => {
-        if (g.classList.contains('off')) return;
+        // (a chain jack is picked anyway: picking it says why not)
+        if (g.classList.contains('off') && !q.chain) return;
         if (e.shiftKey && ends.length) this.follow(q);
         else this.pick(q);
       });
@@ -960,12 +1022,14 @@ export class QuickPatch {
   private settle(): void {
     const ed = this.ed;
     const view = document.getElementById('canvas')?.getBoundingClientRect();
-    if (!view || !this.made.length) return;
-    const away = this.made.some((card) => {
+    // (an effect made in a drawer shows with its instrument: the drawer it went into closes again, so it is not brought in)
+    const made = this.made.filter((card) => cardExists(this.patch, card) && !drawerOfCard(this.patch, card));
+    if (!view || !made.length) return;
+    const away = made.some((card) => {
       const r = ed.cardScreenRect(card);
       return !!r && (r.right < view.left || r.left > view.right || r.bottom < view.top || r.top > view.bottom);
     });
-    if (away) ed.showRects(this.made.flatMap((card) => ed.cardRect(card) ?? []));
+    if (away) ed.showRects(made.flatMap((card) => ed.cardRect(card) ?? []));
   }
 }
 

@@ -18,8 +18,7 @@
     ],
     "kinds": {
      "arp": "bypass",
-     "lfo": "bypass",
-     "fx": "page"
+     "lfo": "bypass"
     },
     "targets": {
      "arp": {
@@ -31,30 +30,6 @@
     },
     "labels": {
      "lfo": "BYP HARM"
-    },
-    "pages": {
-     "fx": [
-      {
-       "device": "a6",
-       "page": 0
-      },
-      {
-       "device": "a6",
-       "page": 1
-      },
-      {
-       "device": "a6",
-       "page": 2
-      },
-      {
-       "device": "a6",
-       "page": 3
-      },
-      {
-       "device": "a6",
-       "page": 4
-      }
-     ]
     }
    }
   },
@@ -1672,8 +1647,7 @@
     "p2": [
      "offset"
     ]
-   },
-   "bypass": true
+   }
   },
   {
    "id": 69,
@@ -1695,8 +1669,7 @@
     "p2": [
      "offset"
     ]
-   },
-   "bypass": true
+   }
   },
   {
    "id": 70,
@@ -1719,8 +1692,7 @@
     "p2": [
      "kb"
     ]
-   },
-   "bypass": true
+   }
   },
   {
    "id": 71,
@@ -1739,8 +1711,7 @@
      "value"
     ],
     "p2": []
-   },
-   "bypass": true
+   }
   },
   {
    "id": 72,
@@ -1763,8 +1734,7 @@
     "p2": [
      "kb"
     ]
-   },
-   "bypass": true
+   }
   }
  ],
  "cables": [
@@ -3404,7 +3374,8 @@
     }
    ],
    "children": [
-    1
+    1,
+    6
    ]
   },
   {
@@ -3490,7 +3461,17 @@
     }
    ],
    "bypass": true,
-   "kept": []
+   "kept": [],
+   "chain": {
+    "ins": [
+     0,
+     1
+    ],
+    "outs": [
+     0,
+     1
+    ]
+   }
   },
   {
    "v": 1,
@@ -3502,7 +3483,8 @@
    "open": false,
    "modules": [
     65,
-    66
+    66,
+    62
    ],
    "inputs": [
     {
@@ -3519,23 +3501,25 @@
    "outputs": [
     {
      "module": 65,
-     "port": "r",
-     "label": "r"
-    },
-    {
-     "module": 66,
      "port": "out",
-     "label": "out"
-    },
-    {
-     "module": 65,
-     "port": "out",
-     "label": "out 2"
+     "label": "out 2",
+     "also": [
+      {
+       "module": 62,
+       "port": "sub"
+      }
+     ]
     },
     {
      "module": 66,
      "port": "r",
-     "label": "r 2"
+     "label": "r 2",
+     "also": [
+      {
+       "module": 62,
+       "port": "sub"
+      }
+     ]
     }
    ],
    "params": [
@@ -3607,7 +3591,20 @@
     }
    ],
    "bypass": true,
-   "kept": []
+   "kept": [],
+   "chain": {
+    "ins": [
+     0,
+     1
+    ],
+    "outs": [
+     0,
+     1
+    ],
+    "helpers": [
+     62
+    ]
+   }
   },
   {
    "v": 1,
@@ -3641,17 +3638,24 @@
     {
      "module": 68,
      "port": "out",
-     "label": "out"
-    },
-    {
-     "module": 72,
-     "port": "mul",
-     "label": "mul"
+     "label": "out",
+     "also": [
+      {
+       "module": 72,
+       "port": "mul"
+      }
+     ]
     },
     {
      "module": 69,
      "port": "out",
-     "label": "out 2"
+     "label": "out 2",
+     "also": [
+      {
+       "module": 72,
+       "port": "mul"
+      }
+     ]
     }
    ],
    "params": [
@@ -3687,198 +3691,54 @@
     }
    ],
    "bypass": true,
-   "kept": []
+   "kept": [],
+   "chain": {
+    "ins": [
+     0,
+     1
+    ],
+    "outs": [
+     0,
+     1
+    ],
+    "helpers": [
+     68,
+     69,
+     70,
+     71,
+     72
+    ]
+   }
   },
   {
    "v": 1,
    "id": 6,
    "name": "FX",
    "label": "FX",
-   "x": 2960,
-   "y": 20,
+   "x": 20,
+   "y": 60,
    "open": false,
-   "modules": [
-    62
-   ],
-   "inputs": [
-    {
-     "module": 63,
-     "port": "in",
-     "label": "in"
-    },
-    {
-     "module": 64,
-     "port": "in",
-     "label": "in 2"
-    }
-   ],
-   "outputs": [
-    {
-     "module": 68,
-     "port": "out",
-     "label": "out"
-    },
-    {
-     "module": 72,
-     "port": "mul",
-     "label": "mul"
-    },
-    {
-     "module": 69,
-     "port": "out",
-     "label": "out 2"
-    }
-   ],
-   "params": [
-    {
-     "module": 63,
-     "param": "drive",
-     "label": "drive",
-     "head": "Drive",
-     "also": [
-      {
-       "module": 64,
-       "param": "drive"
-      }
-     ]
-    },
-    {
-     "module": 63,
-     "param": "mode",
-     "label": "mode",
-     "also": [
-      {
-       "module": 64,
-       "param": "mode"
-      }
-     ]
-    },
-    {
-     "module": 63,
-     "param": "level",
-     "label": "level",
-     "also": [
-      {
-       "module": 64,
-       "param": "level"
-      }
-     ]
-    },
-    {
-     "module": 63,
-     "param": "sym",
-     "label": "sym",
-     "also": [
-      {
-       "module": 64,
-       "param": "sym"
-      }
-     ]
-    },
-    {
-     "module": 65,
-     "param": "time",
-     "label": "time",
-     "head": "Delay",
-     "also": [
-      {
-       "module": 66,
-       "param": "time"
-      }
-     ]
-    },
-    {
-     "module": 65,
-     "param": "fb",
-     "label": "fb",
-     "also": [
-      {
-       "module": 66,
-       "param": "fb"
-      }
-     ]
-    },
-    {
-     "module": 65,
-     "param": "mix",
-     "label": "mix",
-     "also": [
-      {
-       "module": 66,
-       "param": "mix"
-      }
-     ]
-    },
-    {
-     "module": 65,
-     "param": "sync",
-     "label": "sync",
-     "also": [
-      {
-       "module": 66,
-       "param": "sync"
-      }
-     ]
-    },
-    {
-     "module": 65,
-     "param": "pingpong",
-     "label": "pingpong",
-     "also": [
-      {
-       "module": 66,
-       "param": "pingpong"
-      }
-     ]
-    },
-    {
-     "module": 65,
-     "param": "note",
-     "label": "note",
-     "also": [
-      {
-       "module": 66,
-       "param": "note"
-      }
-     ]
-    },
-    {
-     "module": 67,
-     "param": "size",
-     "label": "size",
-     "head": "Reverb"
-    },
-    {
-     "module": 67,
-     "param": "damp",
-     "label": "damp"
-    },
-    {
-     "module": 71,
-     "param": "value",
-     "label": "mix"
-    },
-    {
-     "module": 67,
-     "param": "pre",
-     "label": "pre"
-    },
-    {
-     "module": 67,
-     "param": "mod",
-     "label": "mod"
-    },
-    {
-     "module": 67,
-     "param": "freeze",
-     "label": "freeze"
-    }
-   ],
+   "modules": [],
    "children": [
     3,
     4,
     5
-   ]
+   ],
+   "inputs": [],
+   "outputs": [],
+   "params": [],
+   "drawer": {
+    "taps": [
+     {
+      "module": 56,
+      "port": "out"
+     },
+     {
+      "module": 57,
+      "port": "out"
+     }
+    ]
+   }
   }
  ],
  "notes": "Juno-106 panel, four voices (the original has six; Hera 6 XL plays six in the browser). MIDI CC 64 is the hold pedal; Output sets volume. Poly 2 steals when all voices are busy. HPF 2/3 and chorus II settings are approximated by ear. Patch shift, tape, memory and the MIDI function switch are hardware or storage, not reproduced."

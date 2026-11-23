@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { searchCommands, type Command } from './commands';
+import { keyOf, runFor, searchCommands, type Command } from './commands';
 
 const command = (label: string, kind = 'assembly', detail = 'Drums'): Command => ({ label, kind, detail, run() {} });
 
@@ -38,5 +38,28 @@ describe('Commands search', () => {
     expect(searchCommands(choices, 'assembly')).toHaveLength(43);
     expect(searchCommands(choices, '   ')).toEqual(choices);
     expect(searchCommands(choices, 'unfindable')).toEqual([]);
+  });
+});
+
+describe('effects in the + list', () => {
+  it('lists effects by their tag, modules and assemblies alike', () => {
+    const phaser = { ...command('Phaser', 'add module', ''), tags: ['module', 'effect'] };
+    const echo = { ...command('Echo', 'assembly', 'Effects'), tags: ['assembly', 'effect'] };
+    const osc = command('Oscillator', 'add module', '');
+    expect(searchCommands([osc, phaser, echo], 'effect')).toEqual([phaser, echo]);
+    expect(searchCommands([osc, phaser, echo], 'effects echo')).toEqual([echo]);
+  });
+
+  it('⏎ adds to the canvas, ⇧⏎ and ⌥⏎ run the other places, a missing one falls back to the canvas', () => {
+    const ran: string[] = [];
+    const c: Command = { ...command('Reverb', 'add module', ''), run: () => ran.push('canvas'), also: [
+      { key: 'shift', label: 'or into Hera 4’s FX', run: () => ran.push('drawer') },
+      { key: 'alt', label: 'or into the Output FX', run: () => ran.push('output') },
+    ] };
+    runFor(c, keyOf({ shiftKey: false, altKey: false }))();
+    runFor(c, keyOf({ shiftKey: true, altKey: false }))();
+    runFor(c, keyOf({ shiftKey: false, altKey: true }))();
+    runFor({ ...c, also: [] }, 'shift')();
+    expect(ran).toEqual(['canvas', 'drawer', 'output', 'canvas']);
   });
 });

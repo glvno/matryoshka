@@ -28,9 +28,9 @@ const samePreset = (a: string | undefined, b: string): boolean =>
   !!a && (sameName(a, b) || ((a.length > BIN_PRESET_CHARS || b.length > BIN_PRESET_CHARS) && sameName(a.slice(0, BIN_PRESET_CHARS), b.slice(0, BIN_PRESET_CHARS))));
 
 /** the devices of `patch` that hold a preset, as an entry keeps them: the device's index in the binary's device extras,
- *  its structure, the preset's namespace (the structure the preset belongs to: the device's own, or its FX-scoped one; 0
- *  when not known, and the FM-1 looks the name up), the preset's name. A device with no preset name plays the slot's own
- *  values and is left out; the first PALETTE_DEVS are kept */
+ *  its structure, the preset's namespace (the structure the preset belongs to: the device's own, or that of its instrument
+ *  with its FX drawer, FXD1; 0 when not known, and the FM-1 looks the name up), the preset's name. A device with no preset
+ *  name plays the slot's own values and is left out; the first PALETTE_DEVS are kept */
 export function paletteDevices(patch: Patch): PaletteDevice[] {
   const out: PaletteDevice[] = [];
   layout(patch).devs.forEach((d, dev) => {
@@ -97,8 +97,9 @@ export const entryOf = (patch: Patch, slot: number, name = deviceName(patch.name
 /**
  * The entry applied to `patch` (a copy of its slot's patch) as the FM-1 applies it before its load: each device whose
  * preset name differs from the entry's takes the entry's preset (factory first, then the user's, by name), values only,
- * as the FM-1 brings no preset pattern; then the entry's pattern is selected and no song plays. Returns the preset names
- * this browser has not got (those devices keep the slot's values, as on an FM-1 without them).
+ * as the FM-1 brings no preset pattern; an FX drawer preset only where the drawer holds its effects already (the FM-1
+ * never rebuilds a drawer). Then the entry's pattern is selected and no song plays. Returns the preset names this
+ * browser has not got (those devices keep the slot's values, as on an FM-1 without them).
  */
 export function applyEntry(patch: Patch, entry: PaletteEntry): string[] {
   const gone: string[] = [];

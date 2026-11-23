@@ -14,7 +14,7 @@ import { keyReach } from './key-routing';
 // section's second group). Groups fill in fours; a row's `group` flag (Arrange's "new group") or a column break ends one
 // early. An envelope's shape on the card (adsr / env `view`) is drawn above the page that holds its rows. Pure model code: the editor, the binary
 // format (patchbin.ts) and the tests use it.
-import { allModules, assembliesOf, copyStarts, parentOf, ties, type AssemblyInst, type RowTarget } from './assembly';
+import { assembliesOf, childrenOf, copyStarts, deviceModules, drawerOf, drawers, effectsOf, outputDrawer, parentOf, ties, type AssemblyInst, type RowTarget } from './assembly';
 import { longName, moduleName } from './labels';
 import { EDITOR_ONLY, rowDef, type ModuleDef, type ModuleInst, type Patch } from './patch';
 
@@ -202,7 +202,7 @@ export function fm1PageTitle(device: string, pg: Page): string {
 /** where a top-level item sits on the canvas: a collapsed card's corner, an open frame's first member */
 function placeOf(p: Patch, a: AssemblyInst): { x: number; y: number } {
   if (!a.open) return { x: a.x, y: a.y };
-  const ms = allModules(p, a).map((id) => p.modules.find((m) => m.id === id)).filter((m) => !!m);
+  const ms = deviceModules(p, a).map((id) => p.modules.find((m) => m.id === id)).filter((m) => !!m);
   return ms.length ? { x: Math.min(...ms.map((m) => m!.x)), y: Math.min(...ms.map((m) => m!.y)) } : { x: a.x, y: a.y };
 }
 
@@ -225,7 +225,7 @@ function drumDrivers(p: Patch, members: Set<number>, defs: Record<string, Module
 
 /** Pattern replacement needs one note/gate driver; control-only environment grouping grants no permission. */
 export function patternDriver(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): number | undefined {
-  const members = new Set(allModules(p, a));
+  const members = new Set(deviceModules(p, a));
   const mapped = drumDrivers(p, members, defs);
   // (Drum maps that no track reaches drive nothing: the other rules decide, as pages_ui.c dp_pattern_module does)
   if (mapped?.length) return mapped.length === 1 ? mapped[0] : undefined;
@@ -243,13 +243,19 @@ export function patternDriver(p: Patch, a: AssemblyInst, defs: Record<string, Mo
 /** the Steps track inside top-level card `a`, which makes the card that track's device, driven by it (the kits' DRUMS,
  *  #1202 K2, D-1062); undefined: none */
 export const cardTrack = (p: Patch, a: AssemblyInst): number | undefined =>
-  allModules(p, a).find((id) => p.modules.find((m) => m.id === id)?.type === 'steps');
+  deviceModules(p, a).find((id) => p.modules.find((m) => m.id === id)?.type === 'steps');
 /** the patch has a card that is its own track's device: firmware without INFO byte 25 bit 0 (1.25) does not treat it as
  *  the track (no P-lock pages for it), so the editor does not send it there (D-1062) */
 export const holdsTrackCard = (p: Patch, defs: Record<string, ModuleDef>): boolean =>
   assembliesOf(p).some((a) => !parentOf(p, a.id) && cardTrack(p, a) !== undefined && assemblyPages(p, a, defs).length > 0);
 
-/** the patch's devices in the environment's grouped order (see the top of this file) */
+/** an assembly's device pages: its own, then those of the children it shows as embedded cards (`cards`) */
+const devicePages = (p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): Page[] =>
+  [...assemblyPages(p, a, defs), ...childrenOf(p, a).filter((c) => a.cards?.includes(c.id) && !c.drawer).flatMap((c) => assemblyPages(p, c, defs))];
+
+/** the patch's devices in the environment's grouped order (see the top of this file). An FX drawer is never a device: each
+ *  of its effects is one, right after its instrument (the Output drawer's right before the Output), in chain order; an
+ *  instrument's device leaves its drawer out (deviceModules) */
 export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   const inAsm = new Set(assembliesOf(p).flatMap((a) => a.modules));
   const items: { x: number; y: number; dev: Device }[] = [];
@@ -261,11 +267,16 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
     if (pages.length) items.push({ x: m.x, y: m.y, dev: { key: `m${m.id}`, name, module: m.id, pages, ...(KINDS[m.type] ? { kind: KINDS[m.type] } : {}) } });
   }
   for (const a of assembliesOf(p)) {
-    if (parentOf(p, a.id)) continue;
-    const pages = assemblyPages(p, a, defs);
+    if (parentOf(p, a.id) || a.drawer) continue;
+    const pages = devicePages(p, a, defs);
     const inner = cardTrack(p, a);
     if (pages.length) items.push({ ...placeOf(p, a), dev: { key: `a${a.id}`, name: a.label, asm: a.id, pages, ...(inner !== undefined ? { track: inner } : {}) } });
   }
+  // each drawer's effects as devices, in chain order
+  const effectDevices = (d: AssemblyInst | undefined): Device[] => (d ? effectsOf(p, d) : []).flatMap((e) => {
+    const pages = assemblyPages(p, e, defs);
+    return pages.length ? [{ key: `a${e.id}`, name: e.label, asm: e.id, pages }] : [];
+  });
   // columns from the left; a card joins the column of the first card in it while it starts within half a card of it
   const cols: (typeof items)[] = [];
   for (const it of [...items].sort((u, v) => u.x - v.x || u.y - v.y)) {
@@ -276,9 +287,9 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   const reading = cols.flatMap((col) => col.sort((u, v) => u.y - v.y || u.x - v.x).map((it) => it.dev));
   // the device each module belongs to: its outermost assembly's, else its own
   const deviceOf = new Map<number, Device>();
-  for (const d of reading) for (const id of d.asm !== undefined ? allModules(p, assembliesOf(p).find((a) => a.id === d.asm)!) : [d.module!]) deviceOf.set(id, d);
+  for (const d of reading) for (const id of d.asm !== undefined ? deviceModules(p, assembliesOf(p).find((a) => a.id === d.asm)!) : [d.module!]) deviceOf.set(id, d);
   const drums = new Map(reading.filter((d) => d.asm !== undefined).map((d) =>
-    [d, drumDrivers(p, new Set(allModules(p, assembliesOf(p).find((a) => a.id === d.asm)!)), defs)]));
+    [d, drumDrivers(p, new Set(deviceModules(p, assembliesOf(p).find((a) => a.id === d.asm)!)), defs)]));
   const out: Device[] = reading.filter((d) => d.kind === 'main');
   const placed = new Set<Device>(out);
   // (a card with its own track is its track's device, never driven by another track)
@@ -302,7 +313,19 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   }
   out.push(...reading.filter((d) => !placed.has(d) && d.kind !== 'output'));
   out.push(...reading.filter((d) => d.kind === 'output'));
-  return out;
+  // (the effects go in last, so no rule above places them: each instrument's right after it, the Output drawer's before the
+  // Output, with those of an instrument that is no device itself)
+  const placedDrawers = new Set<number>();
+  const withFx = out.flatMap((d) => {
+    const drawer = d.asm !== undefined ? drawerOf(p, d.asm) : undefined;
+    if (drawer) placedDrawers.add(drawer.id);
+    return [d, ...effectDevices(drawer)];
+  });
+  const rest = drawers(p).filter((a) => a.drawer!.taps && !placedDrawers.has(a.id));
+  const output = [...rest, outputDrawer(p)].flatMap(effectDevices);
+  const at = withFx.findIndex((d) => d.kind === 'output');
+  withFx.splice(at < 0 ? withFx.length : at, 0, ...output);
+  return withFx;
 }
 
 /** the device, page and row a module's parameter is on, if it is on one */

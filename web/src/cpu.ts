@@ -7,9 +7,8 @@
 import TABLE from './cpu-costs.json';
 import PLAN from './plan-costs.json';
 import { DEFS, LFO_RANGE_K, MATRIX_N, matrixPin, STACKS, TRACK_POLY } from './modules';
-import { allModules, assembliesOf, parentOf } from './assembly';
+import { allModules, assembliesOf, chainHelpers, deviceModules, parentOf, rackOf } from './assembly';
 import { flawOf, hasMorph, type ModuleInst, type Patch } from './patch';
-import { fxBusOf, fxHelperIds } from './fx-bus';
 import { deviceView } from './poly';
 import { schedule, scheduleTime, scheduleWork, SCH_FORK, SCH_SYNC, type PlanCosts, type Schedule } from './schedule';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
@@ -127,8 +126,8 @@ export interface CpuTable {
    * `engines`'), fitted to the rig's rise from one voice count to the next, so the estimate follows the rig's slope as
    * voices are added; `blockUs`, that engine's time a block beyond its modules' counted cycles (us, once per block
    * whatever the voices), the least that reads at least the rig at every count measured. `fx`: the factor on the modules
-   * of the patch's master FX bus (fx-bus.ts fxBusOf), fitted to the rig's poly factory patches as shipped and with every
-   * stage on */
+   * of the effects in the patch's FX drawers (fx-drawer.ts rackOf), fitted to the rig's poly factory patches as shipped
+   * (with the master FX bus those drawers replace) and with every effect on */
   rig?: { engines: Record<string, number>; voices?: Record<string, number>; blockUs?: Record<string, number>; fx?: number; survey: string };
 }
 
@@ -316,12 +315,14 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
   for (const a of assembliesOf(source)) {
     const k = table.rig?.engines[a.name], kv = table.rig?.voices?.[a.name];
     if (k === undefined || parentOf(source, a.id)) continue;
-    for (const id of allModules(source, a)) factor.set(id, kv !== undefined && groupOf.has(id) ? kv : k);
+    for (const id of deviceModules(source, a)) factor.set(id, kv !== undefined && groupOf.has(id) ? kv : k);
     engineUs += table.rig?.blockUs?.[a.name] ?? 0;
   }
-  const kfx = table.rig?.fx, bus = kfx === undefined ? null : fxBusOf(source);
-  const busRoot = bus && source.assemblies?.find((a) => a.id === bus.assembly);
-  if (busRoot) for (const id of allModules(source, busRoot)) factor.set(id, kfx!);
+  const kfx = table.rig?.fx;
+  if (kfx !== undefined) for (const d of rackOf(source).drawers) for (const id of d.effects) {
+    const a = source.assemblies?.find((x) => x.id === id);
+    if (a) for (const m of allModules(source, a)) factor.set(m, kfx);
+  }
   let total = table.block, split = 0, counted = table.block;
   const splitGroups = new Set<number>();
   const modules: CpuModule[] = [];
@@ -417,7 +418,7 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
   let parted = splitGroups.size;
   if (cores === 2 && c) {
     const { rig, table: tc } = planCosts(table);
-    const s = schedule(p, groups, rig, tc, fxHelperIds(source));
+    const s = schedule(p, groups, rig, tc, chainHelpers(source));
     if (s.on && (scheduleFits?.(s) ?? true)) {
       const each = (m: number): number => work.get(p.modules[m].id) ?? 0;
       const items = s.order.reduce((n, m) => n + each(m) * s.copies[m], 0);
@@ -455,7 +456,7 @@ export function cardCosts(source: Patch, est: CpuEstimate, table: CpuTable = CPU
   const assemblies = new Map<number, CardCost>();
   for (const a of assembliesOf(source)) {
     let share = 0, perVoice = 0, voices = 0;
-    for (const id of allModules(source, a)) {
+    for (const id of deviceModules(source, a)) {
       const c = modules.get(id);
       if (!c) continue;
       share += c.share;

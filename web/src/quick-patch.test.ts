@@ -3,14 +3,15 @@
 // blueprints. The editor's own step (one undo step per chain) is in quick-patch-editor.test.ts.
 import { describe, expect, it } from 'vitest';
 import { FACTORY } from './assemblies';
-import { insertAssembly } from './assembly';
+import { insertAssembly, targetsOf } from './assembly';
+import { addDrawer, chainJackProblem, drawerOf, drawerOutput, drawers, effectsOf, insertEffect, outputDrawer } from './fx-drawer';
 import { addableModules } from './catalog';
 import { moduleKeywords } from './labels';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, type Patch } from './patch';
 import {
-  besideSpot, buildChain, cardPorts, cardTitle, chainText, defaultPort, farEnds, GAP, HALF_GAP, HALF_MAX, halfRings, halfSectors, loadBlueprints, matchPorts, parseChain, portCables,
-  radialPlace, rankPorts, removeBlueprint, RINGS_MAX, saveBlueprint, search, sectorPath, Trail, type Card, type Catalog, type Place, type QPort,
+  besideSpot, buildChain, cardOf, cardPorts, cardTitle, chainText, defaultPort, effectPlace, farEnds, findOwner, GAP, HALF_GAP, HALF_MAX, halfRings, halfSectors, loadBlueprints, matchPorts,
+  parseChain, patchCards, portCables, radialPlace, rankPorts, removeBlueprint, RINGS_MAX, saveBlueprint, search, sectorPath, Trail, wire, type Card, type Catalog, type Place, type QPort,
 } from './quick-patch';
 
 const catalog = (blueprints: Catalog['blueprints'] = []): Catalog => ({
@@ -336,5 +337,136 @@ describe('where a new card goes', () => {
     expect(besideSpot(anchor, 'left', { w: 200, h: 100 }, [])).toEqual({ x: -200 - GAP, y: 0 });
     const spot = besideSpot(anchor, 'right', { w: 200, h: 100 }, [{ x: 200 + GAP, y: 0, w: 200, h: 100 }]);
     expect(spot).toEqual({ x: 200 + GAP, y: 120 });
+  });
+});
+
+describe('FX drawers (D-1310..D-1316 with the drawer)', () => {
+  /** a patch with Cassia 1 (out l / r to the Output) and a drawer of Drive then Delay; a free LFO */
+  const rig = () => {
+    const p = newPatch(DEFS);
+    const def = FACTORY.find((d) => d.name === 'Cassia 1')!;
+    const inst = insertAssembly(p, DEFS, def, 0, 0);
+    inst.label = 'Hera 4';
+    const out = p.modules.find((m) => m.type === 'output')!;
+    const [l, r] = inst.outputs;
+    connect(p, DEFS, { module: l.module, port: l.port }, { module: out.id, port: 'l' });
+    connect(p, DEFS, { module: r.module, port: r.port }, { module: out.id, port: 'r' });
+    const drawer = addDrawer(p, inst.id);
+    const drive = insertEffect(p, drawer, { type: 'shape' });
+    const delay = insertEffect(p, drawer, { type: 'delay' });
+    const lfo = mod(p, 'lfo', 0, 600);
+    return { p, inst, drawer, drive, delay, lfo, out };
+  };
+  const asm = (id: number): Card => ({ kind: 'assembly', id });
+
+  it('Q1: lists a drawer\'s effects under their instrument, even with the drawer closed', () => {
+    const { p, drawer, delay } = rig();
+    drawer.open = false;
+    expect(patchCards(p)).toContainEqual(asm(delay.id));
+    expect(patchCards(p)).not.toContainEqual(asm(drawer.id));
+    expect(cardTitle(p, DEFS, asm(delay.id))).toBe(`Hera 4 › ${delay.label || delay.name}`);
+    expect(effectPlace(p, asm(delay.id))).toBe('Hera 4 › FX, 2nd of 2');
+    const hit = search(p, DEFS, catalog(), 'delay')[0];
+    expect(hit).toMatchObject({ kind: 'card', card: asm(delay.id), detail: 'Hera 4 › FX, 2nd of 2' });
+    // a module inside the effect shows on the effect's card
+    expect(cardOf(p, delay.modules[0])).toEqual(asm(delay.id));
+  });
+
+  it('Q2: delay@hera 4 names the effect in that drawer, delay@hera 4.time its port', () => {
+    const { p, delay, lfo } = rig();
+    const parsed = parseChain('lfo.out > delay@hera 4.time');
+    expect(parsed).toEqual({ statements: [{ kind: 'chain', items: [
+      { name: 'lfo', fresh: false, tag: 'lfo#1', port: 'out' },
+      { name: 'delay', fresh: false, tag: 'delay@hera 4#1', port: 'time', at: 'hera 4' },
+    ] }] });
+    expect(search(p, DEFS, catalog(), 'delay@hera 4')[0]).toMatchObject({ kind: 'card', card: asm(delay.id) });
+    expect(search(p, DEFS, catalog(), 'delay@nobody')).toEqual([]);
+    const built = buildChain(p, DEFS, (parsed as { statements: never[] }).statements, catalog(), placer(p), rectOf(p));
+    expect(built.links).toEqual([{ from: lfo, fromPort: 'out', to: asm(delay.id), toPort: 'time' }]);
+    expect(p.cables.some((c) => c.from.module === lfo.id && delay.modules.includes(c.to.module))).toBe(true);
+    expect(chainText(p, DEFS, built.links, [])).toBe(`lfo.out > ${delay.name}@hera 4.time`);
+  });
+
+  it('Q2: +reverb@hera 4 adds into that drawer, +reverb@output into the Output drawer (made), +reverb makes a canvas card', () => {
+    const { p, inst, drawer } = rig();
+    const run = (text: string) => buildChain(p, DEFS, (parseChain(text) as { statements: never[] }).statements, catalog(), placer(p), rectOf(p));
+    const a = run('lfo.out > +reverb@hera 4.mix');
+    expect(effectsOf(p, drawer).map((e) => e.id)).toContain(a.fresh[0].id);
+    expect(drawerOf(p, inst.id)!.id).toBe(drawer.id);
+    expect(outputDrawer(p)).toBeUndefined();
+    const b = run('lfo.out > +reverb@output.mix');
+    expect(effectsOf(p, outputDrawer(p)!).map((e) => e.id)).toEqual([b.fresh[0].id]);
+    const c = run('lfo.out > +reverb.mix');
+    expect(c.fresh[0].kind).toBe('module');
+    expect(drawers(p).flatMap((d) => effectsOf(p, d)).length).toBe(4);
+    expect(() => run('lfo.out > +reverb@nobody.mix')).toThrow(/no instrument called "nobody"/);
+  });
+
+  it('Q2: +reverb@monolith makes that instrument\'s drawer when it has none', () => {
+    const p = newPatch(DEFS);
+    const inst = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'basic poly')!, 0, 0);
+    inst.label = 'Monolith';
+    mod(p, 'lfo', 0, 600);
+    buildChain(p, DEFS, (parseChain('lfo.out > +reverb@monolith.mix') as { statements: never[] }).statements, catalog(), placer(p), rectOf(p));
+    expect(effectsOf(p, drawerOf(p, inst.id)!).length).toBe(1);
+  });
+
+  it('Q4: the instrument\'s out L / R give the sound after its FX', () => {
+    const { p, inst, out } = rig();
+    const outs = cardPorts(p, DEFS, asm(inst.id)).filter((q) => q.dir === 'out').slice(0, 2);
+    expect(outs.map((q) => q.note)).toEqual(['after FX', 'after FX']);
+    expect(outs[0].ends).toEqual(drawerOutput(p, inst.id, 0));
+    expect(outs[1].ends).toEqual(drawerOutput(p, inst.id, 1));
+    // its cables are the drawer's output cables (one per inner end of the merged jack), never the wires inside the drawer
+    expect([...new Set(portCables(p, DEFS, asm(inst.id), outs[0]).map((c) => c.to.module))]).toEqual([out.id]);
+    expect(farEnds(p, DEFS, asm(inst.id), outs[0]).map((e) => e.title)).toEqual(['Output']);
+    const filt = mod(p, 'filter', 600, 600);
+    wire(p, DEFS, outs[0], port(p, filt, 'in', 'in'));
+    expect(p.cables.some((c) => c.to.module === filt.id && drawerOutput(p, inst.id, 0).some((e) => e.module === c.from.module && e.port === c.from.port))).toBe(true);
+  });
+
+  it('Q5: chain jacks carry the reason; a cable onto one is refused with it, and they are never the default', () => {
+    const { p, delay, lfo } = rig();
+    const ports = cardPorts(p, DEFS, asm(delay.id));
+    const chain = ports.filter((q) => q.chain);
+    expect(chain.length).toBeGreaterThanOrEqual(2);
+    for (const q of chain) expect(q.chain).toBe(chainJackProblem(p, q.ends[0], q.dir));
+    const lfoOut = port(p, lfo, 'out', 'out');
+    const chainIn = chain.find((q) => q.dir === 'in')!;
+    expect(() => wire(p, DEFS, lfoOut, chainIn)).toThrow(chainIn.chain);
+    expect(defaultPort(ports, lfoOut, () => false)?.chain).toBeUndefined();
+    expect(rankPorts(ports, null, () => false).slice(-chain.length).every((q) => q.chain)).toBe(true);
+    // (the chain wires are never followed)
+    for (const q of chain) expect(portCables(p, DEFS, asm(delay.id), q)).toEqual([]);
+    expect(() => buildChain(p, DEFS, (parseChain(`lfo.out > delay@hera 4.${chainIn.name}`) as { statements: never[] }).statements, catalog(), placer(p), rectOf(p))).toThrow(chainIn.chain);
+  });
+
+  it('Q6: a new effect is offered on the canvas first, then into each drawer', () => {
+    const { p } = rig();
+    addDrawer(p, 'output');
+    const hits = search(p, DEFS, catalog(), '+reverb');
+    const i = hits.findIndex((h) => h.kind === 'module' && h.type === 'reverb');
+    expect(hits[i]).toMatchObject({ detail: 'on the canvas · module' });
+    expect(hits[i].kind === 'module' && hits[i].into).toBeUndefined();
+    expect(hits.slice(i + 1, i + 3)).toMatchObject([{ kind: 'module', type: 'reverb', detail: "into Hera 4's FX" }, { kind: 'module', type: 'reverb', into: 'output', detail: 'into Output FX' }]);
+    // not an effect: no drawer rows
+    expect(search(p, DEFS, catalog(), '+lfo').filter((h) => h.kind === 'module' && h.type === 'lfo' && h.into !== undefined)).toEqual([]);
+    expect(findOwner(p, 'hera')).toBe(p.assemblies!.find((a) => a.label === 'Hera 4')!.id);
+    expect(findOwner(p, 'output')).toBe('output');
+  });
+
+  it('a new sound into the Output with an Output drawer runs through its effects', () => {
+    const p = newPatch(DEFS);
+    const out = p.modules.find((m) => m.type === 'output')!;
+    const osc = mod(p, 'osc', 0, 0);
+    const d = addDrawer(p, 'output');
+    const rev = insertEffect(p, d, { type: 'reverb' });
+    const l = cardPorts(p, DEFS, { kind: 'module', id: out.id }).find((q) => q.name === 'l')!;
+    expect(l.note).toBe('into FX');
+    wire(p, DEFS, port(p, osc, 'out', 'out'), l);
+    // the osc now feeds the Reverb's chain input, not the Output directly
+    const into = targetsOf(rev.inputs[rev.chain!.ins[0]]);
+    expect(p.cables.some((c) => c.from.module === osc.id && into.some((e) => e.module === c.to.module && e.port === c.to.port))).toBe(true);
+    expect(portCables(p, DEFS, { kind: 'module', id: out.id }, l).map((c) => c.from.module)).toContain(osc.id);
   });
 });
