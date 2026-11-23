@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { cardCosts, cardCostText, CPU, cpuEstimate, runCost } from './cpu';
-import { allModules, assembliesOf, assemblyById, bypassAssembly, rackOf } from './assembly';
+import { allModules, assembliesOf, assemblyById, bypassAssembly, deviceModules, drawers, ownerOf, rackOf, type AssemblyInst } from './assembly';
 import { cpuChecks, looseModel } from './cpu-checks';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, EDITOR_ONLY, validatePatch } from './patch';
@@ -210,5 +210,19 @@ describe('card costs', () => {
     const q = relocatedPatches['Io 4']();
     const scope = addModule(q, DEFS.scope, 0, 0);
     expect(cardCosts(q, cpuEstimate(q)).modules.has(scope.id)).toBe(false);
+  });
+  it('gives an instrument card its own modules and its FX drawer card its effects (#1214), adding up to the instrument', () => {
+    const name = Object.keys(FM1_PRESETS).find((n) => drawers(FM1_PRESETS[n]()).some((d) => d.drawer!.taps))!;
+    const q = FM1_PRESETS[name]();
+    for (const e of rackOf(q).effects) bypassAssembly(q, assemblyById(q, e.asm)!, false);   // (effects on, so they cost)
+    const d = drawers(q).find((x) => x.drawer!.taps)!, inst = ownerOf(q, d) as AssemblyInst;
+    const e = cpuEstimate(q), c = cardCosts(q, e);
+    const sum = (ids: number[]): number => e.modules.filter((m) => ids.includes(m.id)).reduce((s, m) => s + m.cycles, 0) / block;
+    const fx = allModules(q, d), own = deviceModules(q, inst);
+    expect(own.some((id) => fx.includes(id)), name).toBe(false);
+    expect(sum(fx), name).toBeGreaterThan(0);
+    expect(c.assemblies.get(inst.id)!.share).toBeCloseTo(sum(own), 9);
+    expect(c.assemblies.get(d.id)!.share).toBeCloseTo(sum(fx), 9);
+    expect(c.assemblies.get(inst.id)!.share + c.assemblies.get(d.id)!.share).toBeCloseTo(sum(allModules(q, inst)), 9);
   });
 });
