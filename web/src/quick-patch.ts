@@ -218,8 +218,10 @@ export function cardPorts(p: Patch, defs: Record<string, ModuleDef>, c: Card): Q
 export function portCables(p: Patch, defs: Record<string, ModuleDef>, c: Card, port: QPort): Cable[] {
   // (the chain wires are the editor's: never followed)
   if (port.chain) return [];
-  // (an instrument's drawer is not inside its card: its effects are cards of their own)
-  const inside = c.kind === 'assembly' ? new Set(deviceModules(p, assemblyById(p, c.id)!)) : null;
+  // (an instrument's drawer is not inside its card: its effects are cards of their own; but the out L / R after its FX
+  // leave out the wires inside the drawer)
+  const a = c.kind === 'assembly' ? assemblyById(p, c.id)! : null;
+  const inside = a ? new Set(port.note === 'after FX' ? allModules(p, a) : deviceModules(p, a)) : null;
   const outside = (e: Endpoint): boolean => !inside || !inside.has(e.module);
   if (port.dir === 'out') return p.cables.filter((x) => port.ends.some((e) => sameEnd(x.from, e)) && outside(x.to));
   if (port.note === 'into FX') return outputDrawerSources(p, port.ends[0]);

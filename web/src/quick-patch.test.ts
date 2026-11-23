@@ -412,11 +412,14 @@ describe('FX drawers (D-1310..D-1316 with the drawer)', () => {
   });
 
   it('Q4: the instrument\'s out L / R give the sound after its FX', () => {
-    const { p, inst } = rig();
+    const { p, inst, out } = rig();
     const outs = cardPorts(p, DEFS, asm(inst.id)).filter((q) => q.dir === 'out').slice(0, 2);
     expect(outs.map((q) => q.note)).toEqual(['after FX', 'after FX']);
     expect(outs[0].ends).toEqual(drawerOutput(p, inst.id, 0));
     expect(outs[1].ends).toEqual(drawerOutput(p, inst.id, 1));
+    // its cables are the drawer's output cables (one per inner end of the merged jack), never the wires inside the drawer
+    expect([...new Set(portCables(p, DEFS, asm(inst.id), outs[0]).map((c) => c.to.module))]).toEqual([out.id]);
+    expect(farEnds(p, DEFS, asm(inst.id), outs[0]).map((e) => e.title)).toEqual(['Output']);
     const filt = mod(p, 'filter', 600, 600);
     wire(p, DEFS, outs[0], port(p, filt, 'in', 'in'));
     expect(p.cables.some((c) => c.to.module === filt.id && drawerOutput(p, inst.id, 0).some((e) => e.module === c.from.module && e.port === c.from.port))).toBe(true);
