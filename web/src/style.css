@@ -2069,6 +2069,8 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .pattern-strip button, .pattern-strip select { height: 20px; padding: 0 6px; font: inherit; color: var(--muted); background: transparent;
   border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
 .pattern-strip select { padding: 0 2px; max-width: 92px; }
+/* (on a card, over `.module select`'s 14px Barlow: the len and rate boxes' labels fit their 92px, as the buttons' do) */
+.module .pattern-strip select { font: inherit; }
 .pattern-strip select:disabled { opacity: .45; cursor: default; }
 .pattern-strip .pat-name { min-width: 40px; text-align: center; color: var(--ink); font-size: 11px; }
 .pattern-strip .pat-name.borrowed { color: var(--muted); font-style: italic; }
