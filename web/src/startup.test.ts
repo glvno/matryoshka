@@ -112,7 +112,8 @@ function oldRowOrder(def: AssemblyDef): number[] {
 
 describe('structure fingerprints and row orders', () => {
   it('are the same as before for every factory assembly and every assembly of a factory patch or XL', () => {
-    const defs = [...FACTORY, ...ALL.flatMap((p) => (p.assemblies ?? []).map((a) => toDef(p, a)))];
+    // (an instrument's structure leaves its FX drawer out: toDef's `base`)
+    const defs = [...FACTORY, ...ALL.flatMap((p) => (p.assemblies ?? []).filter((a) => !a.drawer).map((a) => toDef(p, a, true)))];
     expect(defs.length).toBeGreaterThan(100);
     for (const d of defs) {
       const want = { structure: oldStructure(d), order: oldRowOrder(d) };
