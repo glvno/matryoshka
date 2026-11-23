@@ -6,7 +6,12 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //   u8  magic 0xA1, u8 version (VERSION), u8 module count, u8 poly group count G (0..MAX_POLY), u16 LE cable count, u16 LE flags
 //       (bit 0: a morph B set follows the cables; bit 2: disabled-input masks follow it; bit 3: additional input routes follow masks; bit 4: the tracks' notes follow them; bit 1: macro ranges are last, but for format 65's MIDI mappings;
 //       bit 13, format 54: u16 count, then (module u8, pattern u8, identity u32 LE) origins before the final macro ranges;
-//       bit 14, format 55: graph-proven master FX stages after origins and before macro ranges (fxRecord);
+//       bit 14, format 55..65: graph-proven master FX stages after origins and before macro ranges (engine.h; no longer
+//       written); format 66: the FX rack there instead (rackRecord, #1214): u8 E (0..32), the patch's effects in device order,
+//       each u8 device (its own device's index), u8 n (0..8), n u8 module indices (its targets: its modules but the
+//       helpers, rack-plan.ts; n = 0: it switches by ordinary bypass), then u8 D (0..16), its FX drawers, each u8 owner (the
+//       instrument's device index, 0xFF the Output drawer, RACK_OUTPUT), u8 first (its first effect's place in that list),
+//       u8 count (0: empty); written only by a patch with an effect or a drawer the device pages list;
 //       bit 15, format 59: stored pattern links right after the P-locks (linkRecord);
 //       bit 12, format 51: the cables take 3 bytes, FLAG_CABLES3; format 64: they are grouped by the module they go into)
 //   (everything below describes the patch's device form, poly.ts deviceView: Voice allocators become Part modules in the
@@ -137,7 +142,8 @@ import { CPU, cpuEstimate, planCosts, type CpuEstimate } from './cpu';
 import { schedule, type Schedule } from './schedule';
 import { instIsEngine } from './engines';
 import { engineUnreached } from './arm';
-import { FX_STAGE_TARGET_MAX, fxBusOf, fxHelperIds, type FxStageKind } from './fx-bus';
+import { chainHelpers } from './fx-drawer';
+import { rackPlan } from './rack-plan';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 import { noteSource, sourceNote, type LearnSource } from './midi-learn';
 
@@ -148,7 +154,7 @@ export const GROUP_REC = 4 + 5 * MAX_PARTS + 4;
 /** bytes of the panel section before format 64 (engine.h ENG_PANEL_BYTES): two masks and the labels (since: panelBytes) */
 export const PANEL_BYTES = 4 + PANEL_LABEL_KEYS.length * PANEL_LABEL_MAX;
 export const MAX_CABLES = 255;
-export const VERSION = 65; // 65 (the release after 1.22, FORMAT_1_23): the MIDI learn mappings, the binary's last section (mapRecord, #1067), written only by a patch with MIDI learn; 64 (the release after 1.21, FORMAT_1_22): the EQ module (eq, #1107) appended after the Euclid, written only by patches that use it (ModuleDef.since); and the panel labels by length, the cables grouped by the module they go into, only the Drum map row names off their default (SLIM, D-1025), for a patch that fits no older format; 63 (release 1.20, FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid module (euclid, #1018) appended after the Limiter, Steps notes' timing words, ratchets and micro timing (#675, #677); 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14; ordinary patches retain their lowest format
+export const VERSION = 66; // 66 (1.26.2, FORMAT_RACK): flag bit 14 is the FX rack, the patch's effects and FX drawers (rackRecord, #1214), written only by a patch with one; 65 (the release after 1.22, FORMAT_1_23): the MIDI learn mappings, the binary's last section (mapRecord, #1067), written only by a patch with MIDI learn; 64 (the release after 1.21, FORMAT_1_22): the EQ module (eq, #1107) appended after the Euclid, written only by patches that use it (ModuleDef.since); and the panel labels by length, the cables grouped by the module they go into, only the Drum map row names off their default (SLIM, D-1025), for a patch that fits no older format; 63 (release 1.20, FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid module (euclid, #1018) appended after the Limiter, Steps notes' timing words, ratchets and micro timing (#675, #677); 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14 (no longer written: the editor turns a master FX bus into FX drawers, fx-legacy.ts); ordinary patches retain their lowest format
 /**
  * The lowest format the encoder writes: a patch that uses no parameter appended after it (ParamDef.since past it: a value
  * off its default on either morph side, a pin, macro range, input route or card row on it) is written in this format, its
@@ -162,9 +168,9 @@ export const WRITE_FLOOR = 46;
  * fit otherwise, COUNTED; format 59: stored pattern links, flag bit 15; format 60: trig conditions, FORMAT_CONDS; format
  * 61: a cable into a Part's priority input, FORMAT_PRIORITY_CABLE; format 62: the 1.19 module types, FORMAT_1_19; format
  * 63: the 1.20 module types, FORMAT_1_20; format 64: the EQ module, and the shorter panel labels, cables and Drum map row
- * names when the patch would not fit otherwise, FORMAT_1_22, SLIM); every other format past WRITE_FLOOR appends parameters
- * (ParamDef.since) */
-export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase', 59: 'stored pattern links', 60: 'trig conditions', 61: 'note priority on a cable', 62: 'the 1.19 modules', 63: 'the 1.20 features', 64: 'the EQ module and the shorter panel labels, cables and row names', 65: 'MIDI learn mappings' };
+ * names when the patch would not fit otherwise, FORMAT_1_22, SLIM; format 66: the FX rack, FORMAT_RACK); every other
+ * format past WRITE_FLOOR appends parameters (ParamDef.since) */
+export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase', 59: 'stored pattern links', 60: 'trig conditions', 61: 'note priority on a cable', 62: 'the 1.19 modules', 63: 'the 1.20 features', 64: 'the EQ module and the shorter panel labels, cables and row names', 65: 'MIDI learn mappings', 66: 'FX drawers' };
 /** the flag (u16 at offset 6) of the P-locks section (format 49, #524) */
 export const FLAG_LOCKS = 2048;
 
@@ -346,6 +352,12 @@ function uses122(dev: Patch): boolean {
  */
 export const FORMAT_1_23 = 65;
 /**
+ * The format of 1.26.2 (#1214): flag bit 14 holds the FX rack (rackRecord) instead of the master FX bus. A patch with an
+ * effect or an FX drawer the device pages list is written in it; every other patch keeps its lower format. The FM-1 still
+ * reads a master FX bus of formats 55..65 (engine.c fx_load); the editor turns one into FX drawers as it opens the patch.
+ */
+export const FORMAT_RACK = 66;
+/**
  * The first format that writes the panel labels by their length (panelBytes), the cables grouped by the module they go
  * into (cablesGrouped) and only the Drum map row names off their default (drumNamed): the same values in fewer bytes
  * (D-1025, engine.h ENG_SLIM). Every binary of this format has that layout.
@@ -426,7 +438,7 @@ export const formatOf = (source: Patch, view: ReturnType<typeof deviceView> = de
 /** the lowest format that holds what this patch uses: VERSION, or WRITE_FLOOR when it uses nothing appended since (`dev`: its device form) */
 export function baseFormat(source: Patch, dev: Patch = deviceView(source, true).patch): number {
   const late = (type: string): ParamDef[] => DEFS[type].params.filter((q) => (q.since ?? 0) > WRITE_FLOOR || (q.grew?.since ?? 0) > WRITE_FLOOR);
-  const floor = source.midiLearn?.length ? FORMAT_1_23 : uses122(dev) ? FORMAT_1_22 : uses120(dev) ? FORMAT_1_20 : uses119(dev) ? FORMAT_1_19 : usesPriorityCable(dev) ? FORMAT_PRIORITY_CABLE : usesConds(dev) ? FORMAT_CONDS : fxRecord(source, dev).length || harmonyLfo(source, dev) ? 55 : originRecord(dev).length ? 54 : chainedHarmonizer(source) ? 53 : uses112(dev) ? FORMAT_1_12 : uses111(source, dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
+  const floor = rackPlan(source, { patch: dev, groups: [] }) ? FORMAT_RACK : source.midiLearn?.length ? FORMAT_1_23 : uses122(dev) ? FORMAT_1_22 : uses120(dev) ? FORMAT_1_20 : uses119(dev) ? FORMAT_1_19 : usesPriorityCable(dev) ? FORMAT_PRIORITY_CABLE : usesConds(dev) ? FORMAT_CONDS : harmonyLfo(source, dev) ? 55 : originRecord(dev).length ? 54 : chainedHarmonizer(source) ? 53 : uses112(dev) ? FORMAT_1_12 : uses111(source, dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
   if (!dev.modules.some((m) => late(m.type).length)) return floor;
   let v = floor;
   const rows = new Set<string>();
@@ -623,40 +635,36 @@ export function originRecord(p: Patch): Uint8Array {
   });
   return bytes;
 }
-/** Format 55: graph-proven master FX, after origins and before the final macro ranges (engine.h ENG_FX_*). */
-export const FLAG_FX_BUS = 1 << 14;
-export const FX_STAGE_COUNT = 4, FX_TARGETS_MAX = FX_STAGE_TARGET_MAX;
-const FX_KINDS: readonly FxStageKind[] = ['drive', 'chorus', 'delay', 'reverb'];
-const FX_TYPES = ['shape', 'chorus', 'delay', 'reverb'] as const;
-/** Resolve only after compilation: editor IDs, names and helper nodes are never wire module indices. */
-export function fxRecord(source: Patch, dev: Patch, devs = deviceSection(source, dev)): number[] {
-  const bus = fxBusOf(source);
-  if (!bus) return [];
-  if (!bus.stages.length || bus.stages.length > FX_STAGE_COUNT) throw new Error('Invalid master FX stage count');
-  const device = devs.findIndex((d) => d.asm === bus.assembly);
-  if (device < 0 || device >= MAX_DEVICES) throw new Error('Master FX device was dropped by compilation');
-  const pagesBefore = devs.slice(0, device).reduce((n, d) => n + d.pages.length, 0);
+/** flag bit 14: formats 55..65 a master FX bus (no longer written), format 66 the FX rack (rackRecord, engine.h ENG_FX_*) */
+export const FLAG_RACK = 1 << 14;
+/** a drawer's owner byte in the FX rack: the Output drawer (engine.h ENG_RACK_OUTPUT) */
+export const RACK_OUTPUT = 0xff;
+/** the FX rack section (see the top of this file; rack-plan.ts rackPlan), [] when the patch has none. `dev`, `groups`:
+ *  its device form; `devs`: its device pages as the binary lists them. Resolved after compilation: editor ids are never
+ *  module or device indices. */
+export function rackRecord(source: Patch, dev: Patch, devs: Device[], groups: readonly DeviceGroup[]): number[] {
+  const plan = rackPlan(source, { patch: dev, groups });
+  if (!plan) return [];
   const index = new Map(dev.modules.map((m, i) => [m.id, i]));
-  const used = new Set<number>(), out = [bus.stages.length];
-  let previous = -1;
-  bus.stages.forEach((stage) => {
-    const kind = FX_KINDS.indexOf(stage.kind);
-    if (kind <= previous || !stage.targets.length || stage.targets.length > FX_TARGETS_MAX)
-      throw new Error('Invalid master FX stage');
-    previous = kind;
-    const targets = stage.targets.map((id) => {
-      const i = index.get(id);
-      if (i === undefined || i >= MAX_MODULES || dev.modules[i].type !== FX_TYPES[kind] || used.has(i))
-        throw new Error('Invalid, dropped or overlapping master FX target');
-      used.add(i);
-      return i;
-    });
-    const page = devs[device].pages.findIndex((pg) => pg.rows.some((r) =>
-      stage.targets.includes(r.module) || r.also?.some((t) => stage.targets.includes(t.module))));
-    if (page < 0 || page >= MAX_PAGES || pagesBefore + page >= MAX_DEVICE_PAGES)
-      throw new Error('Master FX parameter page was dropped by compilation');
-    out.push(kind, device, page, targets.length, ...targets);
-  });
+  const deviceOf = (asm: number): number => {
+    const d = devs.findIndex((x) => x.asm === asm);
+    if (d < 0) throw new Error('An FX rack device was dropped by compilation');
+    return d;
+  };
+  const devices = plan.effects.map((e) => deviceOf(e.asm));
+  const out = [plan.effects.length];
+  plan.effects.forEach((e, i) => out.push(devices[i], e.targets.length, ...e.targets.map((id) => index.get(id)!)));
+  out.push(plan.drawers.length);
+  // (an empty drawer's first: where its first effect's device would go, after its instrument's or before the Output's)
+  const outputId = dev.modules.find((m) => m.type === 'output')?.id;
+  const outputAt = devs.findIndex((x) => x.module !== undefined && x.module === outputId);
+  for (const d of plan.drawers) {
+    const at = d.effects.map((id) => plan.effects.findIndex((e) => e.asm === id));
+    if (at.some((x, k) => x !== at[0] + k)) throw new Error('An FX drawer\'s effects are not consecutive devices');
+    const owner = d.owner === 'output' ? RACK_OUTPUT : deviceOf(d.owner);
+    const before = d.owner === 'output' ? (outputAt < 0 ? Infinity : outputAt) : owner;
+    out.push(owner, at.length ? at[0] : devices.filter((x) => x < before).length, at.length);
+  }
   return out;
 }
 export const FLAG_RANGE = 2;
@@ -702,9 +710,8 @@ export function buttonRecord(source: Patch, p: Patch): number[] {
   const panel = mainOf(source)?.panel;
   if (!PANEL_BUTTONS.some((b) => kindOf(panel, b) !== 'gate')) return [];
   const index = new Map(p.modules.map((m, i) => [m.id, i]));
-  // Ordinary assembly Toggles still own the real kernel, but cannot mute a
-  // format55 wet-only return helper while that kernel is spilling its tail.
-  const wetHelpers = fxHelperIds(source);
+  // An effect's helpers run whatever its switch (D-1100): no Toggle bypasses one (fx-drawer.ts chainHelpers).
+  const helpers = chainHelpers(source);
   const out = PANEL_BUTTONS.map((b) => KIND_CODE[kindOf(panel, b)]);
   let total = 0;
   for (const b of PANEL_BUTTONS) {
@@ -714,7 +721,7 @@ export function buttonRecord(source: Patch, p: Patch): number[] {
       continue;
     }
     if (kindOf(panel, b) !== 'bypass') continue;
-    const ids = toggleTargets(source, b).filter((id) => index.has(id) && !wetHelpers.has(id));
+    const ids = toggleTargets(source, b).filter((id) => index.has(id) && !helpers.has(id));
     total += ids.length;
     if (total > BUTTON_TARGETS_MAX) throw new Error(`the buttons toggle more than ${BUTTON_TARGETS_MAX} modules`);
     out.push(ids.length, ...ids.map((id) => index.get(id)!));
@@ -723,8 +730,6 @@ export function buttonRecord(source: Patch, p: Patch): number[] {
 }
 /** the most devices, and pages per device, the binary lists (the rest are left out) */
 export const MAX_DEVICES = 32, MAX_PAGES = 32;
-/** Total page slots in firmware/src/pages_ui.c PG_PAGES. FX metadata may only reference pages the actual panel holds. */
-export const MAX_DEVICE_PAGES = 160;
 /** the Steps modules of a (device form) patch that hold notes, by module index */
 const noteTracks = (p: Patch): number[] => p.modules.flatMap((m, i) => (m.type === 'steps' && m.notes?.length ? [i] : []));
 /** bytes of a track's entry in the notes section: module index, count, the notes */
@@ -1064,7 +1069,7 @@ function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], v: number, keep: Ma
   size += patternRecord(source ?? p, p).length;
   size += lockRecord(source ?? p, p).length;
   size += originRecord(p).length;
-  if (source) size += fxRecord(source, p, devs).length + mapRecord(source, p, devs).length;
+  if (source) size += rackRecord(source, p, devs, dg).length + mapRecord(source, p, devs).length;
   if (ranges) size += 1 + 5 * ranges;
   size += drumNamesBytes(p, v);
   return size + devicesSize(devs, p, v, source, names);
@@ -1093,10 +1098,9 @@ export function encodePatch(source: Patch, anyway = false, force = 0, allocation
   const pats = patternRecord(source, p);
   const locks = lockRecord(source, p);
   const origins = originRecord(p);
-  const fx = fxRecord(source, p, devs);
-  // Saved/portable graphs bypass the ordinary helpers with their stage. Format55's
-  // wet-only kernel wrapper owns OFF/tails, so only its compiled helper flags are active.
-  const fxHelpers = fxHelperIds(source);
+  const rack = rackRecord(source, p, devs, groups);
+  // an effect's helpers are never written bypassed: its switch leaves them running (D-1100, fx-drawer.ts chainHelpers)
+  const helpers = chainHelpers(source);
   const grouped = cablesGrouped(p, ver), short = cables3(p, ver);
   const out = new Uint8Array(size);
   const dv = new DataView(out.buffer);
@@ -1105,7 +1109,7 @@ export function encodePatch(source: Patch, anyway = false, force = 0, allocation
   out[2] = p.modules.length;
   out[3] = groups.length;
   dv.setUint16(4, p.cables.length, true);
-  dv.setUint16(6, (short || grouped ? FLAG_CABLES3 : 0) | (morph ? FLAG_MORPH | FLAG_MORPH_MODULES : 0) | (ranges.length ? FLAG_RANGE : 0) | (routes.length ? FLAG_INPUT_MAP : 0) | (valued.length ? FLAG_NOTES : 0) | (devs.length ? FLAG_DEVICES | FLAG_EXTRAS : 0) | (kinds.length ? FLAG_BUTTONS : 0) | (drumMaps(p).length ? FLAG_NAMES : 0) | (pats.length ? FLAG_PATTERNS : 0) | (locks.length ? FLAG_LOCKS : 0) | (links.length ? FLAG_LINKS : 0) | (origins.length ? FLAG_PATTERN_ORIGINS : 0) | (fx.length ? FLAG_FX_BUS : 0), true);
+  dv.setUint16(6, (short || grouped ? FLAG_CABLES3 : 0) | (morph ? FLAG_MORPH | FLAG_MORPH_MODULES : 0) | (ranges.length ? FLAG_RANGE : 0) | (routes.length ? FLAG_INPUT_MAP : 0) | (valued.length ? FLAG_NOTES : 0) | (devs.length ? FLAG_DEVICES | FLAG_EXTRAS : 0) | (kinds.length ? FLAG_BUTTONS : 0) | (drumMaps(p).length ? FLAG_NAMES : 0) | (pats.length ? FLAG_PATTERNS : 0) | (locks.length ? FLAG_LOCKS : 0) | (links.length ? FLAG_LINKS : 0) | (origins.length ? FLAG_PATTERN_ORIGINS : 0) | (rack.length ? FLAG_RACK : 0), true);
   let at = 8;
   for (const { cfg, src } of groups) {
     out.set([cfg.parts | (Math.min(MAX_PARTS, cfg.unisonParts ?? 0) << 4), cfg.assign, cfg.legato | (cfg.unison ? 0x80 : 0) | (cfg.unisonShare ? 0x40 : 0), cfg.priority | (cfg.steal === false ? 0x80 : 0)], at);
@@ -1138,7 +1142,7 @@ export function encodePatch(source: Patch, anyway = false, force = 0, allocation
   }
   for (const m of p.modules) {
     const def = DEFS[m.type];
-    out[at++] = TYPE_ORDER.indexOf(m.type) | (m.bypass && !fxHelpers.has(m.id) ? BYPASS_BIT : 0);
+    out[at++] = TYPE_ORDER.indexOf(m.type) | (m.bypass && !helpers.has(m.id) ? BYPASS_BIT : 0);
     const ps = storedParams(m, ver, morph, keep.get(m.id));
     const pres = def.paramInputs && ver >= COUNTED ? presenceOf(m) : 0;
     if (ver >= COUNTED) out[at++] = ps.length | (def.paramInputs && !pres ? REC_TEMPLATE : 0);
@@ -1281,8 +1285,8 @@ export function encodePatch(source: Patch, anyway = false, force = 0, allocation
   }
   out.set(origins, at);
   at += origins.length;
-  out.set(fx, at);
-  at += fx.length;
+  out.set(rack, at);
+  at += rack.length;
   if (ranges.length) {
     out[at++] = ranges.length;
     for (const r of ranges) out.set([r.mod, r.pin | (r.bi ? RANGE_BIPOLAR : 0), r.par, r.lo, r.hi], (at += 5) - 5);
@@ -1429,7 +1433,7 @@ export function scheduleFits(p: Patch, groups: DeviceGroup[], s: Schedule): bool
 export function deviceBuffers(source: Patch): number {
   const { patch: p, groups } = deviceView(source, true);
   const { rig, table } = planCosts(CPU);
-  const s = schedule(p, groups, rig, table, fxHelperIds(source));
+  const s = schedule(p, groups, rig, table, chainHelpers(source));
   return signalBuffers(p, groups, false, s.on && scheduleFits(p, groups, s) ? s : undefined).physical;
 }
 export const KEY_ROUTING_BYTES = 8040;

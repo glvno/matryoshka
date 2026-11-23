@@ -7,15 +7,17 @@ import { assemblyPages } from './pages';
 import type { Patch } from './patch';
 import { devicePresetName } from './protocol';
 import { structureOf } from './structure';
-import { fxPresetScope } from './fx-preset';
+import { drawerScope } from './fx-preset';
 
-/** Assemblies with card pages, including nested ones; repeated copies share one preset list. */
+/** Assemblies with card pages, including nested ones (an FX drawer's effects too); repeated copies share one preset list.
+ *  An instrument with a drawer sends its instrument-only presets and those of it with this drawer's chain (the FM-1
+ *  lists only those). */
 export function patchPresets(patch: Patch): Preset[] {
   const structures = new Set((patch.assemblies ?? [])
     .filter((a) => assemblyPages(patch, a, DEFS).length > 0)
     .flatMap(a => {
-      const scope = fxPresetScope(patch, a);
-      return scope ? [scope.baseStructure, scope.structure] : [structureOf(patch, a)];
+      const scope = drawerScope(patch, a);
+      return scope ? [scope.base, scope.structure] : [structureOf(patch, a)];
     }));
   return userPresets().filter((p) => structures.has(p.structure));
 }

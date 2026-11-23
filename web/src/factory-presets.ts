@@ -18,6 +18,7 @@ import { defStructureAndOrder } from './structure';
 import { factoryFxPresets } from './factory-fx-presets';
 import { FACTORY_FX_MASKS } from './factory-fx-recipes';
 import { lofiPresets } from './lofi-presets';
+import { drawerPresetInfo } from './fx-preset-format';
 
 /** the card files by slug (web/presets/cards/hera-6.txt is "hera-6") */
 export const CARDS: Record<string, string> = Object.fromEntries(
@@ -136,8 +137,9 @@ export const kitCardDefs = once((): AssemblyDef[] => ['808 Kit', '909 Kit'].flat
 export const factoryPresetDefs = once((): AssemblyDef[] => [...FACTORY, ...kitCardDefs()]);
 export const factoryPresets = once((): Preset[] => factoryPresetDefs().flatMap((d) => shippedPresets(d)));
 
-/** Read-only sounds for the selected racks, plus new card-only sounds where no rack is added.
- * These do not change any factory patch or the legacy card-only sound definitions. */
+/** Read-only sounds of the factory instruments with their FX drawers (factory-fx-presets.ts: the converted factory
+ * drawers), plus new instrument-only sounds where the factory patch has no drawer. These do not change any factory patch
+ * or the instrument-only factory presets. */
 export const factoryRackPresets = once((): Preset[] => factoryPresetDefs().flatMap(def => {
   const base = shippedPresets(def), extra = lofiPresets(def, base);
   return FACTORY_FX_MASKS[def.name] === undefined ? extra : factoryFxPresets(def, [...base, ...extra]);
@@ -176,4 +178,4 @@ export const allFactoryPresets = (): Preset[] => [...factoryPresets(), ...factor
 setFactoryPresets(structure => [
   ...(fm1Structures().has(structure) ? factoryPresets() : communityOnly()).filter(p => p.structure === structure),
   ...factoryRackPresets().filter(p => p.structure === structure),
-]);
+], base => factoryRackPresets().filter(p => p.structure !== base && drawerPresetInfo(p)?.baseStructure === base));

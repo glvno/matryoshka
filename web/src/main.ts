@@ -11,7 +11,7 @@ import { addUserPreset, capturePreset, exportPresets, importPresets, migrateUser
 import { presetEngines, snapshotPreset } from './snapshot-presets';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
-import { fxBusOf, fxRuntimeHelpers } from './fx-bus';
+import { chainHelpers, rackOf } from './fx-drawer';
 import { FEATURE_FX_PRESETS, FX_BYPASS_PARAM } from './protocol';
 import { applyImport, backupFile, backupKeys, collectKeys, importSummary, receiveMigration } from './migrate';
 import { moveOffer, onPagesDev } from './move-offer';
@@ -585,11 +585,11 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     const m = deviceView(editor.patch, true).patch.modules[e.module];
     if (e.param === FX_BYPASS_PARAM) {
       if (!m || (e.value !== 0 && e.value !== 1) || (from === 'device' && !(device.info && device.info.features & FEATURE_FX_PRESETS))) return;
-      const stage = fxBusOf(editor.patch)?.stages.find(stage => stage.targets.includes(m.id));
-      if (!stage) return;
-      const helpers = fxRuntimeHelpers(editor.patch);
-      for (const id of editor.setFxStage(stage, e.value === 0)) {
-        if (helpers.has(id)) continue;
+      const effect = rackOf(editor.patch).effects.find((x) => x.targets.includes(m.id));
+      const a = effect && editor.patch.assemblies?.find((x) => x.id === effect.asm);
+      if (!a) return;
+      // the FM-1 switched the whole effect (engine.c eng_fx_set): its card's ⏻, which never bypasses a helper
+      for (const id of editor.setBypass([], e.value !== 0, a)) {
         const module = editor.patch.modules.find(module => module.id === id)!;
         host.send({ t: 'bypass', id, on: !!module.bypass });
       }
@@ -1147,7 +1147,7 @@ const editor = new Editor($('canvas'), firstPatch, {
   onFill: (on) => host.send({ t: 'fill', on }),
   onBypass(id, on) {
     if (fromDevice) uploadGate.forget();
-    if (fxRuntimeHelpers(editor.patch).has(id)) { queueSave(editor.patch); return; }   // (the stage's targets carry it)
+    if (chainHelpers(editor.patch).has(id)) { queueSave(editor.patch); return; }   // (an effect's helper: its switch leaves it running)
     host.send({ t: 'bypass', id, on });
     queueEmu();
     tutorial.bypassed();
@@ -1890,7 +1890,7 @@ const removeCandidate = (letter: string): void => {
 const storeSnapshotPreset = (s: Snapshot, a: AssemblyInst): void => {
   const cur = editor.currentPatch();
   if (!snapshotPreset(cur, a, editor.snapshotVersion(s), a.label))
-    return void (status.textContent = `${a.label} or its FX rack in candidate ${s.letter} is built differently from the current patch's: a preset holds values only, so it cannot be one of its presets`);
+    return void (status.textContent = `${a.label} or the effects in its FX drawer in candidate ${s.letter} are built differently from the current patch's: a preset holds values only, so it cannot be one of its presets`);
   const name = window.prompt(`Store candidate ${s.letter}’s ${a.label} as a preset of the current patch’s ${a.label}`, s.name ?? nextPresetName(cur, a))?.trim();
   if (!name) return;
   const [done] = editor.storeSnapshotPresets(a.id, [{ letter: s.letter, name }], false).stored;
@@ -1903,7 +1903,7 @@ const storeKeptPresets = (a: AssemblyInst): void => {
   const { stored, skipped } = editor.storeSnapshotPresets(a.id, keeps.map((s) => ({ letter: s.letter, name: s.name ?? s.letter })), true);
   if (!stored.length && !skipped.length) return;   // (an error: the status line says it)
   const done = stored.length ? `${stored.length} preset${stored.length === 1 ? '' : 's'} of ${a.label} stored: ${stored.map((x) => `${x.letter} as “${x.name}”`).join(', ')} (Ctrl/Cmd+Z takes ${stored.length === 1 ? 'it' : 'them'} out)` : `no preset of ${a.label} stored`;
-  status.textContent = done + (skipped.length ? ` · skipped ${skipped.join(', ')}: ${a.label} or its FX rack is built differently there from the current patch's, and a preset holds values only` : '');
+  status.textContent = done + (skipped.length ? ` · skipped ${skipped.join(', ')}: ${a.label} or the effects in its FX drawer are built differently there from the current patch's, and a preset holds values only` : '');
 };
 /** Store kept candidates as presets, one item per engine of the current patch that has presets */
 const keptPresetItems = (): MenuItem[] => presetEngines(editor.currentPatch()).map((a, i) => ({ text: `Store kept candidates as presets of ${a.label}`, rule: i === 0, run: () => storeKeptPresets(a) }));

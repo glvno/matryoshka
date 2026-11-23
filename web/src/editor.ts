@@ -83,11 +83,12 @@ import { fixLocks, fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, pattern
 import { applyPayload, type LocksLoaded } from './pattern-store';
 import { clearAllPatterns as clearAllPatternsIn, copyPattern as copyPatternIn, doublePattern as doublePatternIn, halvePattern as halvePatternIn, nextEmptyPattern as nextEmptyAfter, patternsEmpty, type ResizeRefusal } from './pattern-ops';
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
-import { addPresetOf, applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, rememberedPreset, replaceUserPresets, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset, type Preset } from './device-presets';
+import { addPresetOf, applyPreset, capturePreset, deletePreset, drawerChangeText, matchesPreset, nextPresetName, PRESET_NAME_MAX, presetChoices, presetsOf, presetView, rememberedPreset, replaceUserPresets, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset, type Preset } from './device-presets';
 import { snapshotPreset } from './snapshot-presets';
 import { engineOf } from './library-presets';
-import { fxPresetInfo } from './fx-preset-format';
+import { drawerScope } from './fx-preset';
 import { chainCableProblem, chainJackProblem, drawerOutput, drawers, effectKind, effectsOf, insertEffect, moveEffect, outputDrawer, ownerOf, removeEffect, rewire, takeOut } from './fx-drawer';
+import { PRESET_VALUES_MAX } from './protocol';
 import { armable, armDrawing, armedWith, deviceOfModule, keepArmed, keysTargets, noKeysReach, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
 import { stepGrid, stopEntry, type LockRow, type StepGrid } from './step-grid';
@@ -5200,11 +5201,12 @@ export class Editor {
     return [...arm, this.polyButton(a), pw, this.moreButton((at) => this.assemblyMenu(a, at))];
   }
 
-  /** the preset chip on an assembly device that has presets (#192): ‹ name › steps through them (each load one undo
-   * step), the name opens the list; a star after it once a value differs from the preset */
+  /** the preset chip on an assembly device that has presets (#192), and on every effect (its own presets, so its first one
+   * can be stored from it): ‹ name › steps through them (each load one undo step), the name opens the list; a star after
+   * it once a value differs from the preset */
   private presetChip(a: AssemblyInst): HTMLElement | null {
     const list = presetsOf(this.patch, a);
-    if (!list.length) return null;
+    if (!list.length && !a.chain) return null;
     const chip = document.createElement('span');
     chip.className = 'preset-chip';
     const step = (dir: 1 | -1): void => {
@@ -5244,28 +5246,38 @@ export class Editor {
     });
   }
 
-  /** load the selected preset into an assembly: one undo step */
+  /** load the selected preset into an assembly: one undo step (an FX drawer preset rebuilds the drawer to match first) */
   private loadPreset(a: AssemblyInst, pr: Preset): void {
     const missing = shortBy(this.patch, a, pr);
-    if (this.change(() => applyPreset(this.patch, a, pr)))
-      this.ev.onError(missing ? shortPresetText(engineOf(pr.structure) || a.label, missing, pr.values.length + missing) : `${a.label}: preset "${pr.name}"`);
+    const view = presetView(this.patch, a, pr);
+    const change = view && !view.noFx ? drawerChangeText(view.adds, view.removes, true) : '';
+    if (this.change(() => applyPreset(this.patch, a, pr, true)))
+      this.ev.onError(missing ? shortPresetText(engineOf(pr.structure) || a.label, missing, pr.values.length + missing)
+        : `${a.label}: preset "${pr.name}"${view?.noFx ? ' (no FX: the drawer stays as it was)' : change ? ` (FX drawer: ${change})` : ''}`);
   }
 
-  /** the presets menu of an assembly device: load one, store, rename, delete */
+  /** the presets menu of an assembly device: load one, store, rename, delete. An instrument with an FX drawer lists its
+   *  presets with the chain each holds and what loading it adds to or removes from the drawer; instrument-only ones are
+   *  tagged "no FX"; one whose effects cannot be found says why and is not loaded. */
   private presetItems(a: AssemblyInst): MenuItem[] {
-    const list = presetsOf(this.patch, a);
+    const { list, unloadable } = presetChoices(this.patch, a);
     const cur = rememberedPreset(this.patch, a, list);
-    const items: MenuItem[] = list.map(pr => ({ text: `${pr === cur ? '● ' : ''}${pr.name}${fxPresetInfo(pr) ? ' + FX' : ''}${pr.factory ? ' (factory)' : ''}`, run: () => this.loadPreset(a, pr) }));
-    items.push({ text: cur && !cur.factory ? `Store over "${cur.name}"` : 'Store as a preset…', rule: !!list.length, run: () => {
-      const n = cur && !cur.factory ? cur.name : window.prompt('Store this sound as the preset', nextPresetName(this.patch, a))?.trim();
-      if (!n) return;
-      this.change(() => storePreset(this.patch, a, n));
+    const scope = drawerScope(this.patch, a);
+    const items: MenuItem[] = list.map(pr => {
+      const view = presetView(this.patch, a, pr, scope);
+      const change = view && !view.noFx ? drawerChangeText(view.adds, view.removes) : '';
+      const lit = view ? view.chain.filter((_, i) => view.on[i]) : [];
+      const tail = !view ? '' : view.noFx ? ' · no FX · instrument only, your drawer stays'
+        : ` · ${!view.chain.length ? 'empty drawer' : lit.length ? lit.join(', ') : 'all effects off'}${change ? ` · ${change}` : ''}`;
+      return { text: `${pr === cur ? '● ' : ''}${pr.name}${pr.factory ? ' (factory)' : ''}${tail}`, run: () => this.loadPreset(a, pr) };
+    });
+    for (const u of unloadable) items.push({ text: `${u.preset.name} · cannot be loaded`, run: () => this.ev.onError(`${a.label}: preset "${u.preset.name}" cannot be loaded. ${u.reason}.`) });
+    items.push({ text: cur && !cur.factory ? `Store over "${cur.name}"` : 'Store preset…', rule: list.length + unloadable.length > 0, run: () => {
+      if (cur && !cur.factory) this.change(() => storePreset(this.patch, a, cur.name));
+      else this.storePresetDialog(a);
     } });
     if (cur && !cur.factory) {
-      items.push({ text: 'Store as a new preset…', run: () => {
-        const n = window.prompt('Store this sound as the new preset', nextPresetName(this.patch, a))?.trim();
-        if (n) this.change(() => storePreset(this.patch, a, n));
-      } });
+      items.push({ text: 'Store as a new preset…', run: () => this.storePresetDialog(a) });
       items.push({ text: 'Rename preset…', run: () => {
         const n = window.prompt('Rename the preset', cur.name)?.trim();
         if (n && n !== cur.name && renamePreset(cur.structure, cur.name, n)) this.change(() => (a.preset = n));
@@ -5275,6 +5287,62 @@ export class Editor {
       } });
     }
     return items;
+  }
+
+  /** The Store dialog: the preset's name, and what it holds. An instrument with an FX drawer: the instrument and its
+   *  chain as one sound, with the count of values against the 176 a preset holds; the Output drawer belongs to the patch
+   *  and is not stored. An effect: its own controls, loadable onto any copy of it. */
+  private storePresetDialog(a: AssemblyInst): void {
+    const p = this.patch;
+    const scope = drawerScope(p, a);
+    const values = capturePreset(p, a, a.label).values.length;
+    const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '', cls = ''): HTMLElementTagNameMap[K] => {
+      const e = document.createElement(tag);
+      e.textContent = text;
+      if (cls) e.className = cls;
+      return e;
+    };
+    const dlg = el('dialog', '', 'help sync-ask preset-store');
+    dlg.setAttribute('aria-label', `Store preset · ${a.label}`);
+    const form = el('form', '', 'sync-ask-body');
+    form.method = 'dialog';
+    const input = el('input');
+    input.value = nextPresetName(p, a);
+    input.maxLength = PRESET_NAME_MAX;
+    input.setAttribute('aria-label', a.chain ? 'Effect preset name' : 'Preset name');
+    const field = el('label', 'Name ');
+    field.append(input);
+    const what: HTMLElement[] = [];
+    const tooMany = values > PRESET_VALUES_MAX;
+    const named = (e: AssemblyInst): string => e.label || e.name;
+    if (a.chain) {
+      what.push(el('p', `This ${named(a)}’s controls only.`), el('p', `Loads onto any ${a.name || named(a)}, in any FX drawer or on the canvas. Leaves the instrument and the rest of the chain alone.`, 'muted'));
+    } else if (scope) {
+      const out = outputDrawer(p);
+      const shared = out ? effectsOf(p, out).map(named) : [];
+      what.push(el('p', `${a.label} with its FX drawer, as one sound.`),
+        el('p', scope.effects.length ? `The drawer: ${scope.effects.map(named).join(', ')}.` : 'The drawer is empty, and loading this preset empties it again.'),
+        el('p', `${out ? `Not stored: the Output drawer${shared.length ? ` (${shared.join(', ')})` : ''}, which belongs to the patch. ` : ''}${values} of ${PRESET_VALUES_MAX} values.${tooMany ? ' That is too many to store: take an effect out of the drawer first.' : ''}`, 'muted'));
+    } else {
+      what.push(el('p', `${a.label}’s controls.`));
+    }
+    const store = el('button', 'Store', 'primary');
+    store.value = 'store';
+    store.disabled = tooMany;
+    const cancel = el('button', 'Cancel');
+    cancel.value = '';
+    const actions = el('div', '', 'sync-ask-actions');
+    actions.append(store, cancel);
+    form.append(el('h2', `Store preset · ${a.label}`), field, ...what, actions);
+    dlg.append(form);
+    document.body.append(dlg);
+    dlg.addEventListener('close', () => {
+      const name = input.value.trim();
+      dlg.remove();
+      if (dlg.returnValue === 'store' && name) this.change(() => storePreset(this.patch, a, name));
+    }, { once: true });
+    dlg.showModal();
+    input.select();
   }
 
   /** ARM on a device with a keys input (#190): an independent toggle; armed, Main's keys play it (and every other armed
