@@ -57,7 +57,7 @@ export const EFFECTS = [
   'tab', 'scroll', 'set', 'save_close', 'run_row',
   'editor', 'analog_out', 'chord_button', 'fx_page', 'fx_toggle', 'fx_row',
   'pattern_new', 'pattern_load', 'condition', 'fill', 'ratchet', 'micro', 'drum_bank', 'learn_row', 'learn_mode', 'learn_end',
-  'pattern_copy', 'clear_all', 'pattern_browse', 'pattern_double', 'palette_go', 'palette_save',
+  'pattern_copy', 'clear_all', 'pattern_browse', 'pattern_double', 'palette_go', 'palette_save', 'pattern_halve',
 ] as const;
 export type Effect = (typeof EFFECTS)[number];
 
@@ -272,6 +272,9 @@ export const CONTROLS: ControlRow[] = [
   // (the double, D-838: the editor's ×2)
   { id: 'pattern-double', gesture: { hold: 'SEQ', do: [B('OCT+')] }, does: 'double pattern', sheet: { drum: 79, roll: 69 }, effect: 'pattern_double',
     help: 'the selected pattern of every track twice as long (16 steps become 32), its steps copied into the new half: notes, ties, velocities, chance, conditions, ratchets, micro timing and P-locks, so it plays the same twice; again doubles it again, up to 64 steps. Pattern 1 doubles the track’s length (its other patterns keep theirs). While playing it goes on in the first half. The bar says DOUBLED: 32 STEPS (the longest track); nothing changes when a track would pass 64 steps (64 STEPS MAX: NOT DOUBLED), a pattern 128 notes or the patch 1536 (TOO MANY NOTES TO DOUBLE), a pattern 64 P-locks or the patch 256 (TOO MANY P-LOCKS TO DOUBLE), or the patch its bytes (PATCH FULL: NOT DOUBLED)' },
+  // (the halve, D-841: the editor's ÷2)
+  { id: 'pattern-halve', gesture: { hold: 'SEQ', do: [B('OCT-')] }, does: 'halve pattern', sheet: { drum: 79.5, roll: 69.5 }, effect: 'pattern_halve',
+    help: 'the selected pattern of every track half as long, rounded down (16 steps become 8, 15 become 7), down to 1 step. Its notes and P-locks stay as they are: those past the new end wait unplayed, as when LAST STEP shortens the track, and play again if LAST STEP lengthens it (a double copies the first half over them instead). Pattern 1 halves the track’s length (its other patterns keep theirs). The bar says HALVED: 8 STEPS (the longest track); nothing changes when a track is at 1 step (1 STEP MIN: NOT HALVED), when a track that lacks the pattern would take a copy of its pattern 1 past the patch’s 1536 notes (TOO MANY NOTES TO HALVE) or 256 P-locks (TOO MANY P-LOCKS TO HALVE), or the patch its bytes (PATCH FULL: NOT HALVED)' },
 
   // ---- STEP RECORD (#532, D-804)
   { id: 'sr-keys', gesture: { do: [{ key: 'keys' }] }, does: 'play, let go: write', sheet: { step: 20 }, effect: 'write', hint: 'KEYS note',

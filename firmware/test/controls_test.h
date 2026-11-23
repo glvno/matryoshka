@@ -236,6 +236,8 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     }
     case CE_PATTERN_DOUBLE: return b->slen > 0 && a->slen == 2 * b->slen && a->pattern == b->pattern && a->page == b->page
                                    && a->octave == b->octave && a->seq_pg == b->seq_pg;   /* (twice as long; OCT+'s own jobs not done) */
+    case CE_PATTERN_HALVE: return b->slen > 1 && a->slen == b->slen / 2 && a->pattern == b->pattern && a->page == b->page
+                                  && a->octave == b->octave && a->seq_pg == b->seq_pg;   /* (half as long; OCT-'s own jobs not done) */
     case CE_DRUM_BANK: return a->bank != b->bank && a->octave == b->octave && a->seq_pg == b->seq_pg && a->page == b->page;
     case CE_FILL: return a->msg_sum != b->msg_sum && a->page == b->page && a->notes_sum == b->notes_sum && a->mutes == b->mutes
                          && a->params == b->params && !eng_fill_on();   /* (FILL said, and let go with FX; FX's own job not done) */

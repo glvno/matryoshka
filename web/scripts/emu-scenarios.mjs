@@ -1212,6 +1212,17 @@ async function main() {
       // (a track's `patterns` start at pattern 2: pattern 3 is index 1)
       await check('patterns: the editor doubles pattern 3 too (PATTERN_OP)', !!(await until(async () => (await tracksOf()).every((t) => t.patterns?.[1]?.len), 3000)),
         JSON.stringify((await tracksOf()).map((t) => t.patterns?.[1]?.len)));
+      // D-841: SEQ held + OCT- halves pattern 3 of every track again; the editor halves its copy too (PATTERN_OP op 5)
+      const doubledLens = (await tracksOf()).map((t) => t.patterns?.[1]?.len);
+      await emu.key(B.seq, true);
+      await emu.elapse(150);
+      await emu.tap(B.octDown);
+      await check('patterns: SEQ held + OCT- halves the pattern (HALVED: n STEPS)', await emu.waitText('HALVED:', 2000));
+      await emu.key(B.seq, false);
+      await emu.elapse(300);
+      await check('patterns: the editor halves pattern 3 too (PATTERN_OP)',
+        !!(await until(async () => (await tracksOf()).every((t, i) => t.patterns?.[1]?.len === Math.floor(doubledLens[i] / 2)), 3000)),
+        JSON.stringify({ doubled: doubledLens, now: (await tracksOf()).map((t) => t.patterns?.[1]?.len) }));
       await emu.tap(B.seq);
       await shot('patterns');
     },

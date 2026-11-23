@@ -3,9 +3,10 @@
 // pattern (track.ts SeqState.pattern: every track shows and plays its pattern of that number; while the transport runs a
 // track takes it at the end of its pass, and the strip shows the one playing → the one waiting, blinking). Then this
 // track's pattern: its own length and rate or the track's, Copy (every track's pattern to the first empty number after it,
-// or one asked for, #1177), ×2 (every track's pattern twice as long, its steps repeated, D-838), Clear (its notes go: the
-// pattern stays, silent), Clear all (every pattern and song, #1178; not on the compact strip) and SONG, which opens the
-// song drawer (song.ts). The editor owns the patch: the strip only reports through `ops`.
+// or one asked for, #1177), ×2 (every track's pattern twice as long, its steps repeated, D-838), ÷2 (every track's
+// pattern half as long, its notes as they are, D-841), Clear (its notes go: the pattern stays, silent), Clear all (every
+// pattern and song, #1178; not on the compact strip) and SONG, which opens the song drawer (song.ts). The editor owns the
+// patch: the strip only reports through `ops`.
 import { patternName, PATTERNS_MAX, STEPS_MAX, STEPS_RATES } from './track';
 
 export interface PatternStripOps {
@@ -22,8 +23,9 @@ export interface PatternStripOps {
   /** copy pattern `from` of every track to `to`; the first empty number after `from` (-1: none, all 64 used) */
   copy(from: number, to: number): void;
   nextEmpty(from: number): number;
-  /** double the selected pattern of every track (an undo step; the editor says what it did or why not) */
+  /** double or halve the selected pattern of every track (an undo step; the editor says what it did or why not) */
   double(): void;
+  halve(): void;
   /** clear every pattern of every track and every song (an undo step), and whether there is nothing to clear */
   clearAll(): void;
   empty(): boolean;
@@ -76,6 +78,7 @@ export function patternStrip(ops: PatternStripOps, opts: { compact?: boolean } =
   rateSel.onchange = () => ops.setShape(ops.pattern(), { rate: rateSel.value === '' ? null : Number(rateSel.value) });
   const clear = btn('clear', 'pat-act', 'clear this track’s notes in this pattern (the pattern stays, silent; undo brings them back)', () => ops.clear(ops.pattern()));
   const double = btn('×2', 'pat-act pat-double', 'double this pattern on every track: twice as long, its steps (notes, P-locks, conditions, timing) repeated in the new half, so it plays the same twice; up to 64 steps (on the FM-1: SEQ held + OCT+ on the SEQ page); undo brings it back', () => ops.double());
+  const halve = btn('÷2', 'pat-act pat-halve', 'halve this pattern on every track: half as long, rounded down, its notes and P-locks kept as they are (those past the new end wait unplayed, as when you shorten the length); down to 1 step (on the FM-1: SEQ held + OCT- on the SEQ page); undo brings it back', () => ops.halve());
   const copy = btn('copy', 'pat-act', 'copy this pattern of every track to the first empty pattern after it (on the FM-1: SEQ held + SAVE on the SEQ page; Alt-click: to a number you choose)', () => {});
   copy.onclick = (e) => {
     e.stopPropagation();
@@ -94,7 +97,7 @@ export function patternStrip(ops: PatternStripOps, opts: { compact?: boolean } =
     if (window.confirm('Clear every pattern of every track (1–64) and all 8 songs? Pattern 1 stays, empty. Undo brings them back.')) ops.clearAll();
   });
   const song = btn('song', 'pat-act pat-song', 'SONG: the patch’s songs, patterns in a row with a shift each (on the FM-1: SEL tapped on the SEQ page)', () => ops.song());
-  el.append(prev, label, pick, next, lenSel, rateSel, copy, double, clear, ...(opts.compact ? [] : [clearAll]), song);
+  el.append(prev, label, pick, next, lenSel, rateSel, copy, double, halve, clear, ...(opts.compact ? [] : [clearAll]), song);
 
   let playing = -1, waiting = -1;
   const fill = (s: HTMLSelectElement, items: [string, string][], value: string): void => {

@@ -5365,6 +5365,68 @@ int main(void)
         check("patterns fixture loads again", load_fixture("build/panel-fixtures/steps-patterns.m1p") == 0);
         pv_gen++;
     }
+    /* the halve (D-841): SEQ held + OCT- makes the selected pattern of every track half as long, rounded down, its notes
+     * kept, on the press; OCT-'s release changes neither the octave nor the step page, SEQ's leaves the page. Running, the
+     * transport goes on. Refused (the patch's bytes, 1 step), nothing changes and the editor is not told */
+    {
+        uint32_t told = host_op_told, p, pg;
+        int m0 = eng_steps_module(0), m1 = eng_steps_module(1), l0, l1, n0, oct = octave, h;
+        const uint32_t *w;
+        char want[28];
+        if (page != PAGE_SEQ)
+            page_set(PAGE_SEQ);
+        loop();
+        p = (uint32_t)eng_pattern();
+        l0 = eng_steps_len((uint32_t)m0);
+        l1 = eng_steps_len((uint32_t)m1);
+        n0 = eng_pattern_notes((uint32_t)m0, p, &w);
+        pg = seq_pg;
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        tap(BTN_OCT_DOWN);
+        loop();
+        check("SEQ held + OCT-: every track's pattern half as long, the first's notes kept; the editor told (PATTERN_OP "
+              "halve)", l0 > 1 && l1 > 1 && eng_steps_len((uint32_t)m0) == l0 / 2 && eng_steps_len((uint32_t)m1) == l1 / 2
+              && eng_pattern_notes((uint32_t)m0, p, &w) == n0 && host_op_told == told + 1u && host_op_last[0] == 5u && host_op_last[1] == p);
+        h = (l0 > l1 ? l0 : l1) / 2;
+        snprintf(want, sizeof want, "%s%d%s", MSG_HALVED, h, h == 1 ? MSG_STEP_AFTER : MSG_STEPS_AFTER);
+        check("  the bar: HALVED: <the longest track> STEPS", strstr(msg_text, want) != 0);
+        check("  OCT-'s release: the octave and the step page stay", octave == oct && seq_pg == pg);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        loop();
+        check("  SEQ let go: the SEQ page stays", page == PAGE_SEQ);
+        tap(BTN_PLAY);
+        blocks(300);
+        told = host_op_told;
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        host_patterns_room = 0;
+        tap(BTN_OCT_DOWN);
+        loop();
+        host_patterns_room = 1;
+        check("the patch has no room: PATCH FULL: NOT HALVED, nothing changes, the editor not told", eng_steps_len((uint32_t)m0) == l0 / 2
+              && strstr(msg_text, MSG_HALVE_FULL) != 0 && host_op_told == told);
+        while (eng_steps_len((uint32_t)m0) > 1 && eng_steps_len((uint32_t)m1) > 1)
+            tap(BTN_OCT_DOWN);
+        blocks(300);
+        check("halved while playing: the transport goes on, the tracks inside their new length", eng_transport_running()
+              && eng_steps_pos((uint32_t)m0) < eng_steps_len((uint32_t)m0) && eng_steps_pos((uint32_t)m1) < eng_steps_len((uint32_t)m1));
+        l0 = eng_steps_len((uint32_t)m0);
+        l1 = eng_steps_len((uint32_t)m1);
+        told = host_op_told;
+        tap(BTN_OCT_DOWN);
+        loop();
+        check("  at 1 step: 1 STEP MIN: NOT HALVED, nothing changes, the notes all kept", eng_steps_len((uint32_t)m0) == l0
+              && eng_steps_len((uint32_t)m1) == l1 && strstr(msg_text, MSG_HALVE_STEPS) != 0 && host_op_told == told
+              && eng_pattern_notes((uint32_t)m0, p, &w) == n0);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        tap(BTN_PLAY);
+        loop();
+        check("patterns fixture loads again", load_fixture("build/panel-fixtures/steps-patterns.m1p") == 0);
+        pv_gen++;
+    }
     {   /* the stored patterns' browser and the EMPTY hint (#1202 G8): SEQ held + SEL lists the store's entries, PRESET moves
          * through them, SEL loads one (linked), HOME closes it; the hint says EMPTY  SEQ+SEL load a pattern on a patch
          * without a note while the store holds an entry */

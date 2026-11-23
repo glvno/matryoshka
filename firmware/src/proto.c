@@ -98,9 +98,10 @@ enum { C_PADS = 0x1D, R_PADS_NOW = 0x64 };                  /* the global pad ma
                                                              * + note u8 (0xFF: none) to set a row, 0xFE to clear every row, 0xFD
                                                              * + on u8 for PAD MAP; -> PADS_NOW on u8, then the 24 rows' notes,
                                                              * also unasked after a change on the FM-1 */
-enum { R_PATTERN_OP = 0x65 };                               /* unasked (#1177, #1178, D-838): the SEQ page copied a pattern,
-                                                             * cleared every pattern and song or doubled the pattern; op u8, from
-                                                             * u8, to u8, hash u32 LE (always 0: op 3 is retired; m1_pattern_op_now) */
+enum { R_PATTERN_OP = 0x65 };                               /* unasked (#1177, #1178, D-838, D-841): the SEQ page copied a
+                                                             * pattern, cleared every pattern and song, or doubled or halved the
+                                                             * pattern; op u8, from u8, to u8, hash u32 LE (always 0: op 3 is
+                                                             * retired; m1_pattern_op_now) */
 enum { C_SLOT_GET = 0x02, R_SLOT_DATA = 0x69 };            /* #1202 P2: slot u8, offset u16 LE, mode u8 (absent: 0) -> SLOT_DATA
                                                              * slot u8, total u16 LE, offset u16 LE, up to 256 bytes from there.
                                                              * Mode 0: the slot's patch binary as stored (SLOT_INFO's length:

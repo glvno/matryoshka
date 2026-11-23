@@ -834,7 +834,8 @@ static void pl_clear_all(void)
     m1_edited = 1;
 }
 
-/* ---- the SEQ page's double (D-838): web/src/pattern-ops.ts doublePattern on the running patch */
+/* ---- the SEQ page's double (D-838) and halve (D-841): web/src/pattern-ops.ts doublePattern, halvePattern on the running
+ * patch */
 
 /* the length of pattern p on module m's track: its own, else the track's (pattern 1 has none) */
 static uint32_t pl_len(uint32_t m, uint32_t p)
@@ -1008,6 +1009,100 @@ static int pl_double(uint32_t p, uint32_t *longest)
         return 0;
     }
     pl_undouble(p, m1_up, len, has, was, pin);
+    (void)m1_patterns_fit();
+    for (t = 0; !p && t < nt; t++)
+        (void)m1_track_fit((uint32_t)eng_steps_module(t), (int)rn[t]);
+    return -4;
+}
+/* pattern p of every track halved (pattern-ops.ts halvePattern, D-841) in the engine and the running binary: its length
+ * halved, rounded down, its notes and P-locks as they were (as LAST STEP shortens it). 0 done (*longest: the longest new
+ * length), -1 a track of 1 step, -2 the patch would pass ENG_MAX_NOTES, -3 ENG_MAX_LOCKS (a track without p gets it first
+ * from its pattern 1, D-542), -4 the binary has no room. Refused, nothing changes. Which length is pl_double's: pattern 1
+ * halves the track's length, and the track's other patterns on the track's length get it as their own. The playhead
+ * goes on as after LAST STEP */
+static int pl_halve(uint32_t p, uint32_t *longest)
+{
+    uint32_t w[TRACK_NOTES_MAX];
+    uint8_t lk[7u * ENG_PAT_LOCKS], len[ENG_MAX_TRACKS], has[ENG_MAX_TRACKS], own[ENG_MAX_TRACKS], rn[ENG_MAX_TRACKS];
+    int32_t was[ENG_MAX_TRACKS];
+    uint64_t pin[ENG_MAX_TRACKS];
+    uint32_t nt = (uint32_t)eng_steps_count(), t, m, q, j, n, c, words = 0, locks = (uint32_t)eng_locks_count(), most = 0;
+    const uint32_t *src;
+    int ok = 1, r;
+    for (t = 0; t < nt; t++) {
+        m = (uint32_t)eng_steps_module(t);
+        has[t] = (uint8_t)(!p || eng_pattern_has(m, p));
+        len[t] = (uint8_t)pl_len(m, has[t] ? p : 0u);
+        if (len[t] < 2u)
+            return -1;
+        for (q = 0; q < ENG_PATTERNS; q++)
+            if (!q || eng_pattern_has(m, q))
+                words += (uint32_t)eng_pattern_notes(m, q, &src);
+        if (!has[t]) {                           /* (the copy of its pattern 1 it gets) */
+            words += (uint32_t)eng_pattern_notes(m, 0, &src);
+            locks += (uint32_t)eng_locks_list(m, 0, lk, sizeof lk);
+        }
+    }
+    if (words > ENG_MAX_NOTES)
+        return -2;
+    if (locks > ENG_MAX_LOCKS)
+        return -3;
+    for (t = 0; t < nt; t++) {
+        m = (uint32_t)eng_steps_module(t);
+        pin[t] = 0;
+        was[t] = eng_get_param(m, STEPS_P_LEN);
+        rn[t] = (uint8_t)m1_track_npar(m);
+        own[t] = (uint8_t)(p && has[t] ? eng_pattern_len(m, p) : 0);
+        if (!p) {
+            for (q = 1; q < ENG_PATTERNS; q++)
+                if (eng_pattern_has(m, q) && !eng_pattern_len(m, q)) {
+                    r = eng_pattern_rate(m, q);
+                    (void)eng_pattern_shape(m, q, len[t], r < 0 ? 0xFFu : (uint32_t)r);
+                    pin[t] |= (uint64_t)1u << q;
+                }
+            eng_set_param(m, STEPS_P_LEN, (int32_t)(len[t] / 2u) << 16);
+        } else {
+            if (!has[t]) {
+                n = (uint32_t)eng_pattern_notes(m, 0, &src);
+                for (j = 0; j < n; j++)          /* (a copy: setting p moves the engine's slices) */
+                    w[j] = src[j];
+                ok &= eng_pattern_set_notes(m, p, w, n) != 0;
+                c = (uint32_t)eng_locks_list(m, 0, lk, sizeof lk);
+                for (j = 0; j < c; j++)
+                    ok &= eng_lock_set(m, p, lk[7u * j], lk[7u * j + 1u], lk[7u * j + 2u], 0, (int32_t)pl_rd32(lk + 7u * j + 3u), 1) == 0;
+            }
+            r = has[t] ? eng_pattern_rate(m, p) : -1;
+            (void)eng_pattern_shape(m, p, len[t] / 2u, r < 0 ? 0xFFu : (uint32_t)r);
+        }
+        most = len[t] / 2u > most ? len[t] / 2u : most;
+    }
+    ok = ok && m1_patterns_fit();
+    for (t = 0; ok && !p && t < nt; t++)
+        ok = m1_track_fit((uint32_t)eng_steps_module(t), -1);
+    if (ok) {
+        m1_edited = 1;
+        *longest = most;
+        return 0;
+    }
+    for (t = 0; t < nt; t++) {                   /* (undone) */
+        m = (uint32_t)eng_steps_module(t);
+        if (!p) {
+            eng_set_param(m, STEPS_P_LEN, was[t]);
+            for (q = 1; q < ENG_PATTERNS; q++)
+                if (pin[t] >> q & 1u) {
+                    r = eng_pattern_rate(m, q);
+                    (void)eng_pattern_shape(m, q, 0, r < 0 ? 0xFFu : (uint32_t)r);
+                }
+        } else if (has[t]) {
+            r = eng_pattern_rate(m, p);
+            (void)eng_pattern_shape(m, p, own[t], r < 0 ? 0xFFu : (uint32_t)r);
+        } else {
+            c = (uint32_t)eng_locks_list(m, p, lk, sizeof lk);
+            for (j = 0; j < c; j++)
+                (void)eng_lock_set(m, p, lk[7u * j], lk[7u * j + 1u], lk[7u * j + 2u], 0, 0, 0);
+            eng_pattern_drop(m, p);
+        }
+    }
     (void)m1_patterns_fit();
     for (t = 0; !p && t < nt; t++)
         (void)m1_track_fit((uint32_t)eng_steps_module(t), (int)rn[t]);

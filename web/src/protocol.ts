@@ -186,8 +186,9 @@
 //                                                    pattern command, which the editor runs on its patch too (pattern-ops.ts):
 //                                                    op 1 pattern `from` of every track copied to `to` (SEQ held + SAVE), op 2
 //                                                    every pattern and song cleared (SEQ held + HOME); hash 0 for both; op
-//                                                    4 pattern `from` of every track doubled (SEQ held + OCT+, D-838), to 0.
-//                                                    Op 3 is retired (the editor ignores it)
+//                                                    4 pattern `from` of every track doubled (SEQ held + OCT+, D-838), op 5
+//                                                    halved (SEQ held + OCT-, D-841), to 0 for both. Op 3 is retired (the
+//                                                    editor ignores it)
 //   66 PALETTE_NOW  version u8 (1), cur u8, next u8 (0xFF none), flags u8 (bit0 edited), seq u16, then 8 × {state u8 (0
 //                                                    empty, 1 ok, 2 missing), slot u8, pattern u8, hash u16 (the entry's
 //                                                    CRC-16), len u16 (the slot's binary now), name[20]}: the answer to GET,
@@ -601,7 +602,7 @@ export function parsePadsNow(payload: number[]): PadMap | null {
 /** INFO feature bit 30 (byte 14 bit 6, #1177, #1178): the FM-1 reports the SEQ page's pattern commands (PATTERN_OP) */
 export const FEATURE_PATTERN_OP = 1 << 30;
 /** PATTERN_OP's id and ops */
-export const PATTERN_OP = { report: 0x65, copy: 1, clearAll: 2, double: 4 } as const;
+export const PATTERN_OP = { report: 0x65, copy: 1, clearAll: 2, double: 4, halve: 5 } as const;
 /** a PATTERN_OP payload, null when short */
 export function parsePatternOp(payload: number[]): { op: number; from: number; to: number; hash: number } | null {
   if (payload.length < 7) return null;

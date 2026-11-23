@@ -88,6 +88,40 @@ it('the double (D-838): SEQ held + OCT+ on the FM-1 and the Steps card’s ×2 l
   expect(parsePatternOp([4, 3, 0, 0, 0, 0, 0])).toEqual({ op: 4, from: 3, to: 0, hash: 0 });
 }, 150_000);
 
+it('the halve (D-841): SEQ held + OCT- on the FM-1 and the Steps card’s ÷2 leave the same patch, notes kept, each one undo step', async () => {
+  const bytes = new Uint8Array(readFileSync(buildFm1Wasm()));
+  const patch = FM1_PRESETS['Meridian 8']();
+  const shown = (p: Patch) => ({ ...sequence(p), len: p.modules.filter((m) => m.type === 'steps').map((m) => m.params.len) });
+  const fm1 = editorOn(structuredClone(patch));
+  const ops: number[][] = [];
+  const ui = await Fm1Ui.create(bytes, { patternOp: (op, from, to) => { ops.push([op, from, to]); fm1.editor.patternOpFromDevice(op, from, to); fm1.editor.endGesture(); } });
+  expect(ui.load(encodePatch(patch), 'MERIDIAN 8')).toBe(0);
+  let t = 1000;
+  const tap = (id: number): void => { ui.tick(t += 50); ui.button(id, true); ui.tick(t += 50); ui.button(id, false); ui.tick(t += 50); };
+  tap(BUTTONS.seq);
+  ui.button(BUTTONS.seq, true);
+  tap(BUTTONS.octDown);
+  ui.button(BUTTONS.seq, false);
+  ui.tick(t += 50);
+  expect(ops).toEqual([[PATTERN_OP.halve, 0, 0]]);
+  expect(ui.page).toBe(8);                      // (SEQ's release: the SEQ page stays)
+  const fromFm1 = shown(fm1.editor.patch), fm1Bin = encodePatch(fm1.editor.patch);
+  expect(fromFm1.len).toEqual([8]);
+  expect(fromFm1.tracks).toEqual(shown(patch).tracks);   // (the notes past step 8 stay, unplayed)
+  expect(fm1.said).toEqual(['HALVED: 8 STEPS']);
+  fm1.editor.undo();
+  expect(shown(fm1.editor.patch)).toEqual(shown(patch));
+  const card = editorOn(structuredClone(patch));
+  const half = [...document.querySelectorAll<HTMLButtonElement>('.pattern-strip .pat-act')].find((b) => b.textContent === '÷2')!;
+  half.click();
+  card.editor.endGesture();
+  expect(shown(card.editor.patch)).toEqual(fromFm1);
+  expect(encodePatch(card.editor.patch)).toEqual(fm1Bin);
+  card.editor.undo();
+  expect(shown(card.editor.patch)).toEqual(shown(patch));
+  expect(parsePatternOp([5, 3, 0, 0, 0, 0, 0])).toEqual({ op: 5, from: 3, to: 0, hash: 0 });
+}, 150_000);
+
 /** an editor on `patch`, with the status line's messages */
 function editorOn(patch: Patch): { editor: Editor; said: string[] } {
   document.body.innerHTML = '<div id="canvas"><div id="canvas-space"><div id="patch-world"><svg id="cables"></svg><div id="modules"></div><svg id="cable-glow"></svg><svg id="patch-preview"></svg></div></div></div>';

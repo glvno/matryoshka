@@ -7,7 +7,7 @@ import { DEFS } from '../src/modules';
 import { addModule, connect, emptyPatch, type ModuleInst, type Patch } from '../src/patch';
 import { encodePatch } from '../src/patchbin';
 import { encodePayload, layoutOf } from '../src/pattern-store';
-import { clearAllPatterns, copyPattern, doublePattern, nextEmptyPattern, type DoubleRefusal } from '../src/pattern-ops';
+import { clearAllPatterns, copyPattern, doublePattern, halvePattern, nextEmptyPattern, type ResizeRefusal } from '../src/pattern-ops';
 import { UNSHIPPED_PATTERNS } from '../src/factory-bank';
 import { factoryWithPatterns } from '../src/presets';
 import { deviceView } from '../src/poly';
@@ -104,20 +104,32 @@ export function patternCases(): PatternCase[] {
     st[1].notes = [n(20, 1, 45), { at: 31, len: 4, note: 47, vel: 100, wrap: true }];
     out.push({ name: 'DOUBLE ONE', patch: p, pattern: 0 });
   }
+  {   // (for the halve, D-841: an own length of 15 to 7 with a rate, a note across the new end, notes and a lock past it; a
+      // track without pattern 2, which gets a copy of its pattern 1 with its P-locks; a pattern on the track's odd length)
+    const { p, st, k } = rig('HALVE ODD', 3);
+    st[0].patterns = [{ len: 15, rate: 3, notes: [n(0, 1, 36), n(5, 4, 40), n(9, 1, 42, 127), n(14, 1, 44)],
+      locks: [{ at: 2, module: k.id, param: 'value', value: 0.25 }, { at: 10, module: k.id, param: 'value', value: -0.5 }] }];
+    st[1].notes = [n(1, 1, 30), n(11, 2, 33)];
+    st[1].locks = [{ at: 11, module: k.id, param: 'value', value: 1 }];
+    st[2].params.len = 9;
+    st[2].patterns = [{ notes: [n(0, 1, 60), n(8, 1, 62)] }];
+    out.push({ name: 'HALVE ODD', patch: p, pattern: 1 });
+  }
   return out;
 }
 
-/** the pattern commands (#1177, #1178, D-838) on a case's patch as the editor runs them: its pattern copied to the first
- *  empty number after it and selected, everything cleared, and its pattern doubled (`refused`: why not) */
-export function patternOps(c: PatternCase): { to: number; copied: Patch; cleared: Patch; doubled: Patch; refused?: DoubleRefusal } {
-  const copied = structuredClone(c.patch), cleared = structuredClone(c.patch), doubled = structuredClone(c.patch);
+/** the pattern commands (#1177, #1178, D-838, D-841) on a case's patch as the editor runs them: its pattern copied to the
+ *  first empty number after it and selected, everything cleared, and its pattern doubled and halved (`refused`, `halveRefused`:
+ *  why not) */
+export function patternOps(c: PatternCase): { to: number; copied: Patch; cleared: Patch; doubled: Patch; refused?: ResizeRefusal; halved: Patch; halveRefused?: ResizeRefusal } {
+  const copied = structuredClone(c.patch), cleared = structuredClone(c.patch), doubled = structuredClone(c.patch), halved = structuredClone(c.patch);
   const to = nextEmptyPattern(copied, c.pattern);
   copyPattern(copied, c.pattern, to);
   const main = copied.modules.find((m) => m.type === 'fm1')!;
   main.seq = { ...(main.seq ?? {}), pattern: to };
   clearAllPatterns(cleared);
-  const r = doublePattern(doubled, c.pattern);
-  return { to, copied, cleared, doubled, ...('refused' in r ? { refused: r.refused } : {}) };
+  const r = doublePattern(doubled, c.pattern), h = halvePattern(halved, c.pattern);
+  return { to, copied, cleared, doubled, ...('refused' in r ? { refused: r.refused } : {}), halved, ...('refused' in h ? { halveRefused: h.refused } : {}) };
 }
 
 /** the cases as a C header for the firmware's host test (the layout is the patch's fingerprint, whether or not the
@@ -136,16 +148,17 @@ export function patternCasesHeader(cases: PatternCase[] = patternCases()): strin
   L.push(...rows, '};', '');
   // the pattern commands as the editor runs them (pattern-ops.ts): the FM-1 running them on the same patch must hold the
   // same patterns, songs, P-locks, links and origins (firmware/test/patlink_test.c ops)
+  const rcOf = (why?: ResizeRefusal): number => (why ? -1 - ['steps', 'notes', 'locks'].indexOf(why) : 0);
   const ops = cases.map((c, i) => {
-    const { to, copied, cleared, doubled, refused } = patternOps(c);
-    const a = encodePatch(copied, true), b = encodePatch(cleared, true), d = encodePatch(doubled, true);
+    const { to, copied, cleared, doubled, refused, halved, halveRefused } = patternOps(c);
+    const a = encodePatch(copied, true), b = encodePatch(cleared, true), d = encodePatch(doubled, true), h = encodePatch(halved, true);
     L.push(`static const uint8_t PTC_COPIED_${i}[${a.length}] = {${a.join(',')}};`);
     L.push(`static const uint8_t PTC_CLEARED_${i}[${b.length}] = {${b.join(',')}};`);
     L.push(`static const uint8_t PTC_DOUBLED_${i}[${d.length}] = {${d.join(',')}};`);
-    const rc = refused ? -1 - ['steps', 'notes', 'locks'].indexOf(refused) : 0;
-    return `    {${c.pattern}, ${to}, PTC_COPIED_${i}, ${a.length}, PTC_CLEARED_${i}, ${b.length}, PTC_DOUBLED_${i}, ${d.length}, ${rc}},`;
+    L.push(`static const uint8_t PTC_HALVED_${i}[${h.length}] = {${h.join(',')}};`);
+    return `    {${c.pattern}, ${to}, PTC_COPIED_${i}, ${a.length}, PTC_CLEARED_${i}, ${b.length}, PTC_DOUBLED_${i}, ${d.length}, ${rcOf(refused)}, PTC_HALVED_${i}, ${h.length}, ${rcOf(halveRefused)}},`;
   });
-  L.push('static const struct { uint32_t from, to; const uint8_t *copied; uint32_t copied_len; const uint8_t *cleared; uint32_t cleared_len; const uint8_t *doubled; uint32_t doubled_len; int doubled_rc; } PATTERN_OPS[N_PATTERN_CASES] = {');
+  L.push('static const struct { uint32_t from, to; const uint8_t *copied; uint32_t copied_len; const uint8_t *cleared; uint32_t cleared_len; const uint8_t *doubled; uint32_t doubled_len; int doubled_rc; const uint8_t *halved; uint32_t halved_len; int halved_rc; } PATTERN_OPS[N_PATTERN_CASES] = {');
   L.push(...ops, '};', '');
   // the factory patches of UNSHIPPED_PATTERNS with the patterns and songs they shipped with up to 1.24.1, as the FM-1 gets
   // them from the editor (test material: firmware tests that play their patterns)

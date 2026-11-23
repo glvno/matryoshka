@@ -238,9 +238,10 @@ static uint32_t content(const uint8_t *b, uint32_t len, uint8_t *out)
     return n;
 }
 /* each case's pattern copied (SEQ held + SAVE: pl_copy, the copy selected), everything cleared (SEQ held + HOME:
- * pl_clear_all) and its pattern doubled (SEQ held + OCT+: pl_double) on the running patch: what the FM-1's binary then
- * holds is what the editor's copy of the patch holds after the same command (pattern_cases.h PATTERN_OPS,
- * web/src/pattern-ops.ts); a double the editor refuses the FM-1 refuses for the same reason */
+ * pl_clear_all), and its pattern doubled (SEQ held + OCT+: pl_double) and halved (SEQ held + OCT-: pl_halve) on the
+ * running patch: what the FM-1's binary then holds is what the editor's copy of the patch holds after the same command
+ * (pattern_cases.h PATTERN_OPS, web/src/pattern-ops.ts); a double or halve the editor refuses the FM-1 refuses for the
+ * same reason */
 static void ops(void)
 {
     static uint8_t a[24576], b[24576];
@@ -268,15 +269,24 @@ static void ops(void)
         OK(na && na == nb && !memcmp(a, b, na));
         OK(!load_patch(PATTERN_CASES[c].patch, PATTERN_CASES[c].patch_len));
         OK(pl_double(from, &most) == PATTERN_OPS[c].doubled_rc);
-        if (PATTERN_OPS[c].doubled_rc)
+        if (!PATTERN_OPS[c].doubled_rc) {
+            na = content(m1_cur, m1_cur_len, a);
+            nb = content(PATTERN_OPS[c].doubled, PATTERN_OPS[c].doubled_len, b);
+            if (!na || na != nb || memcmp(a, b, na))
+                fprintf(stderr, "case %s: the double of P%02u differs from the editor's\n", PATTERN_CASES[c].name, (unsigned)from + 1u);
+            OK(na && na == nb && !memcmp(a, b, na));
+        }
+        OK(!load_patch(PATTERN_CASES[c].patch, PATTERN_CASES[c].patch_len));
+        OK(pl_halve(from, &most) == PATTERN_OPS[c].halved_rc);
+        if (PATTERN_OPS[c].halved_rc)
             continue;
         na = content(m1_cur, m1_cur_len, a);
-        nb = content(PATTERN_OPS[c].doubled, PATTERN_OPS[c].doubled_len, b);
+        nb = content(PATTERN_OPS[c].halved, PATTERN_OPS[c].halved_len, b);
         if (!na || na != nb || memcmp(a, b, na))
-            fprintf(stderr, "case %s: the double of P%02u differs from the editor's\n", PATTERN_CASES[c].name, (unsigned)from + 1u);
+            fprintf(stderr, "case %s: the halve of P%02u differs from the editor's\n", PATTERN_CASES[c].name, (unsigned)from + 1u);
         OK(na && na == nb && !memcmp(a, b, na));
     }
-    printf("patlink: %u patches copied, cleared and doubled on the FM-1 as the editor does it (#1177, #1178, D-838)\n", (unsigned)N_PATTERN_CASES);
+    printf("patlink: %u patches copied, cleared, doubled and halved on the FM-1 as the editor does it (#1177, #1178, D-838, D-841)\n", (unsigned)N_PATTERN_CASES);
 }
 
 /* the case of that name */
@@ -287,13 +297,14 @@ static uint32_t case_of(const char *name)
         ;
     return c;
 }
-/* a double refused with rc: the binary byte for byte as it was, and the engine's patterns too */
-static int refused(uint32_t p, int rc)
+/* a double or halve (op: pl_double, pl_halve) refused with rc: the binary byte for byte as it was, and the engine's
+ * patterns too */
+static int refused(int (*op)(uint32_t, uint32_t *), uint32_t p, int rc)
 {
     static uint8_t bin[M1_PATCH_MAX], a[24576], b[24576];
     uint32_t len = m1_cur_len, na = state(a), nb, most = 0;
     memcpy(bin, m1_cur, len);
-    if (pl_double(p, &most) != rc)
+    if (op(p, &most) != rc)
         return 0;
     nb = state(b);
     return m1_cur_len == len && !memcmp(bin, m1_cur, len) && na == nb && !memcmp(a, b, na);
@@ -338,31 +349,100 @@ static void doubles(void)
         }
     OK(ok);
     OK(eng_pattern_len((uint32_t)eng_steps_module(0), 1) == 48 && eng_pattern_len((uint32_t)eng_steps_module(2), 1) == 32);
-    OK(refused(1, -1));
+    OK(refused(pl_double, 1, -1));
     OK(!load_patch(PATTERN_CASES[one].patch, PATTERN_CASES[one].patch_len));
     OK(pl_double(0, &most) == 0 && most == 64u);  /* (its second track's 32 steps to 64: the next double is refused) */
-    OK(refused(0, -1));
+    OK(refused(pl_double, 0, -1));
     OK(!load_patch(PATTERN_CASES[all].patch, PATTERN_CASES[all].patch_len));
     m = (uint32_t)eng_steps_module(0);
     for (j = 0; j < 70u; j++)                    /* (70 notes on 12 steps: 140 doubled) */
         w[j] = NW(j % 12u, 1u, 40u + j / 12u, STEP_VEL, 0u);
     OK(eng_pattern_set_notes(m, 1, w, 70));
-    OK(refused(1, -2));
+    OK(refused(pl_double, 1, -2));
     OK(!load_patch(PATTERN_CASES[one].patch, PATTERN_CASES[one].patch_len));
     m = (uint32_t)eng_steps_module(1);           /* (33 locks on 32 steps, two rows: 66 doubled) */
     for (j = 0; j < 32u; j++)
         OK(!eng_lock_set(m, 0, j, (uint32_t)eng_find(T_CONST), 0, 0, 65536, 1));
     OK(!eng_lock_set(m, 0, 0, (uint32_t)eng_find(T_OUTPUT), 0, 0, 0, 1));
-    OK(refused(0, -3));
+    OK(refused(pl_double, 0, -3));
     pt_on = 0;
     OK(!load_patch(PATTERN_CASES[all].patch, PATTERN_CASES[all].patch_len));
     fill_bytes(5);
-    OK(refused(1, -4));
+    OK(refused(pl_double, 1, -4));
     OK(!load_patch(PATTERN_CASES[one].patch, PATTERN_CASES[one].patch_len));
     fill_bytes(5);
-    OK(refused(0, -4));
+    OK(refused(pl_double, 0, -4));
     pt_on = 1;
     printf("patlink: doubled twice to 64 steps, the doubled pattern repeated; each refusal leaves the binary as it was (D-838)\n");
+}
+
+/* the running patch's note words, every pattern of every track */
+static uint32_t words_all(void)
+{
+    const uint32_t *x;
+    uint32_t t, q, m, k = 0;
+    for (t = 0; (int)t < eng_steps_count(); t++)
+        for (m = (uint32_t)eng_steps_module(t), q = 0; q < ENG_PATTERNS; q++)
+            if (!q || eng_pattern_has(m, q))
+                k += (uint32_t)eng_pattern_notes(m, q, &x);
+    return k;
+}
+/* the halve's rules (D-841): half the length, rounded down, the notes and P-locks as they were; a track without the
+ * pattern gets its pattern 1's; pattern 1 halves the track's length and pins the patterns on it; down to 1 step, then
+ * refused; each refusal (1 step, the patch's notes, its P-locks, its bytes) changes nothing */
+static void halves(void)
+{
+    uint32_t odd = case_of("HALVE ODD"), one = case_of("DOUBLE ONE"), most = 0, m0, m1, m2, j, q, k, n0, n1;
+    uint32_t w[TRACK_NOTES_MAX];
+    const uint32_t *x;
+    OK(odd < N_PATTERN_CASES && one < N_PATTERN_CASES);
+    OK(!load_patch(PATTERN_CASES[odd].patch, PATTERN_CASES[odd].patch_len));
+    m0 = (uint32_t)eng_steps_module(0);
+    m1 = (uint32_t)eng_steps_module(1);
+    m2 = (uint32_t)eng_steps_module(2);
+    n0 = (uint32_t)eng_pattern_notes(m0, 1, &x);
+    n1 = (uint32_t)eng_pattern_notes(m1, 0, &x);
+    OK(!eng_pattern_has(m1, 1));
+    OK(pl_halve(1, &most) == 0 && most == 8u);
+    OK(eng_pattern_len(m0, 1) == 7 && eng_pattern_rate(m0, 1) == 3 && eng_pattern_notes(m0, 1, &x) == (int)n0);
+    OK(eng_pattern_has(m1, 1) && eng_pattern_len(m1, 1) == 8 && eng_pattern_notes(m1, 1, &x) == (int)n1 && eng_locks_list(m1, 1, (uint8_t *)w, sizeof w) == 1);
+    OK(eng_pattern_len(m2, 1) == 4);
+    OK(pl_halve(1, &most) == 0 && most == 4u && eng_pattern_len(m0, 1) == 3 && eng_pattern_len(m2, 1) == 2);
+    OK(pl_halve(1, &most) == 0 && most == 2u && eng_pattern_len(m0, 1) == 1);
+    OK(refused(pl_halve, 1, -1));                /* (the first track at 1 step: nothing halves) */
+    OK(eng_pattern_notes(m0, 1, &x) == (int)n0);
+    OK(!load_patch(PATTERN_CASES[one].patch, PATTERN_CASES[one].patch_len));
+    m0 = (uint32_t)eng_steps_module(0);
+    OK(pl_halve(0, &most) == 0 && most == 16u);  /* (16 and 32 steps to 8 and 16; pattern 2 on the track's length keeps 16) */
+    OK(eng_steps_len(m0) == 8 && eng_pattern_len(m0, 1) == 16 && eng_pattern_len(m0, 2) == 10);
+    OK(!load_patch(PATTERN_CASES[odd].patch, PATTERN_CASES[odd].patch_len));
+    m0 = (uint32_t)eng_steps_module(0);
+    m1 = (uint32_t)eng_steps_module(1);
+    for (j = 0; j < 60u; j++)                    /* (track 2's pattern 1 of 60 notes, copied into its pattern 2: the patch past 1536) */
+        w[j] = NW(j % 16u, 1u, 30u + j / 16u, STEP_VEL, 0u);
+    OK(eng_pattern_set_notes(m1, 0, w, 60));
+    for (q = 2; q < ENG_PATTERNS && (k = words_all()) < ENG_MAX_NOTES - 10u; q++) {
+        k = ENG_MAX_NOTES - 10u - k < TRACK_NOTES_MAX ? ENG_MAX_NOTES - 10u - k : TRACK_NOTES_MAX;
+        for (j = 0; j < k; j++)
+            w[j] = NW(j % 16u, 1u, 30u + j / 16u, STEP_VEL, 0u);
+        OK(eng_pattern_set_notes(m0, q, w, k));
+    }
+    OK(words_all() == ENG_MAX_NOTES - 10u);
+    OK(refused(pl_halve, 1, -2));
+    OK(!load_patch(PATTERN_CASES[odd].patch, PATTERN_CASES[odd].patch_len));
+    m0 = (uint32_t)eng_steps_module(0);
+    m2 = (uint32_t)eng_steps_module(2);
+    for (k = 0; k < 4u; k++)                     /* (the patch at 256 P-locks: track 2's one, copied, would pass it) */
+        for (j = 0; j < 64u && eng_locks_count() < ENG_MAX_LOCKS; j++)
+            (void)eng_lock_set(k < 2u ? m0 : m2, k & 1u, j, (uint32_t)eng_find(T_CONST), 0, 0, 65536, 1);
+    OK(eng_locks_count() == ENG_MAX_LOCKS);
+    OK(refused(pl_halve, 1, -3));
+    pt_on = 0;
+    OK(!load_patch(PATTERN_CASES[odd].patch, PATTERN_CASES[odd].patch_len));
+    fill_bytes(5);
+    OK(refused(pl_halve, 1, -4));                /* (track 2's new pattern 2 does not fit) */
+    pt_on = 1;
+    printf("patlink: halved down to 1 step, the notes kept; a track without the pattern gets its pattern 1; each refusal leaves the binary as it was (D-841)\n");
 }
 
 /* one note, for an edit */
@@ -1176,6 +1256,7 @@ int main(void)
     vectors();
     ops();
     doubles();
+    halves();
     links();
     seq_page();
     link_frames();

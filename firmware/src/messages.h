@@ -136,6 +136,12 @@
 #define MSG_DOUBLE_NOTES "TOO MANY NOTES TO DOUBLE"
 #define MSG_DOUBLE_LOCKS "TOO MANY P-LOCKS TO DOUBLE"
 #define MSG_DOUBLE_FULL "PATCH FULL: NOT DOUBLED"
+#define MSG_HALVED "HALVED: "                           /* HALVED: 8 STEPS (SEQ held + OCT-, D-841: the longest track) */
+#define MSG_STEP_AFTER " STEP"                          /* (HALVED: 1 STEP) */
+#define MSG_HALVE_STEPS "1 STEP MIN: NOT HALVED"
+#define MSG_HALVE_NOTES "TOO MANY NOTES TO HALVE"
+#define MSG_HALVE_LOCKS "TOO MANY P-LOCKS TO HALVE"
+#define MSG_HALVE_FULL "PATCH FULL: NOT HALVED"
 #define MSG_BAR_STEP "STEP "                            /* the SEQ bar in step record: STEP n/len, two spaces, the track */
 #define MSG_BAR_ARM " ARM"                              /* the SEQ bar: after the track's name */
 #define MSG_BAR_REC " REC"
