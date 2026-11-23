@@ -65,6 +65,13 @@
  *   static int  m1_fact_sum(uint32_t s, uint32_t *crc);         FACT_SUM: sector s's CRC-16, 0 = ok
  *   static int  m1_fact_read(uint32_t off, uint8_t *p, uint32_t n);   FACT_READ: n bytes from off, 0 = ok
  *   static uint32_t m1_fact_commit(const uint8_t *h);           FACT_COMMIT: the 64-byte header checked and programmed: a status
+ *   static void m1_font_info(uint8_t *p);                       the font area (#602, font_area.c): INFO bytes 20..24, its flags
+ *                                                               and the id of the font this firmware needs
+ *   static uint32_t m1_font_begin(void);                        FONT BEGIN: its header erased: a status
+ *   static uint32_t m1_font_write(uint32_t s, uint32_t off, const uint8_t *p, uint32_t n);   FONT WRITE: n bytes at off of
+ *                                                               the image's sector s (one page): a status
+ *   static int  m1_font_sum(uint32_t s, uint32_t *crc);         FONT SUM: the image's sector s's CRC-16, 0 = ok
+ *   static uint32_t m1_font_commit(const uint8_t *h);           FONT COMMIT: the 64-byte header checked and programmed: a status
  * and calls m1_handle() with every received frame (the bytes between F0 and F7). */
 #include "engine.h"
 #include "defs.h"
@@ -88,6 +95,12 @@ enum { C_PADS = 0x1D, R_PADS_NOW = 0x64 };                  /* the global pad ma
 enum { R_PATTERN_OP = 0x65 };                               /* unasked (#1177, #1178, #1179, D-838): the SEQ page copied a pattern,
                                                              * cleared every pattern and song, loaded the demo set or doubled the
                                                              * pattern; op u8, from u8, to u8, hash u32 LE (m1_pattern_op_now) */
+enum { C_FONT = 0x1F, R_FONT_SUM = 0x68 };                  /* the font area (#602, font_area.c): op u8 then 1 BEGIN; 2 WRITE
+                                                             * sector u8, offset u16, 1..256 bytes inside one page; 3 SUM sector
+                                                             * u8 -> FONT_SUM sector, ok u8, CRC-16 u16; 4 COMMIT the 64-byte
+                                                             * header. BEGIN, WRITE and COMMIT -> ACK FONT, op, status, sector
+                                                             * (BEGIN S_BANK: the bank holds more than 48 patches and keeps the
+                                                             * font area's second run, font_area.c) */
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
 #define M1_FEATURES3 255u                                      /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549), bit 19 = INFO's flags bit 3 says GLO > SYSTEM > EDITOR (#702), bit 20 = ARMS, the editor's armed set (#191), bit 21 = ARMS and ARMS_NOW carry ENG_MSET_WORDS words, modules 0..127 (#721; INFO byte 1 says 128), bit 22 = device settings, bit 23 = explicit factory pattern origins / snapshots */
@@ -100,7 +113,7 @@ enum { R_PATTERN_OP = 0x65 };                               /* unasked (#1177, #
 #define M1_SLOTS 64u                                         /* the bank's ids (slotstore.c) */
 static uint32_t bank_slots = M1_SLOTS;                       /* the slots there are (slotstore.c pt_claim: 60 once the pattern store is on) */
 #define M1_NAME 20u
-enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE, S_FULL, S_MISSING, S_USED };
+enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE, S_FULL, S_MISSING, S_USED, S_BANK };
 
 static uint8_t m1_up[M1_PATCH_MAX] ENG_POOL, m1_cur[M1_PATCH_MAX] ENG_POOL;     /* the patch as it runs (parameter edits included) */
 static uint32_t m1_up_got, m1_up_total, m1_cur_len;
@@ -188,8 +201,11 @@ static void m1_slot_now(uint32_t slot, const char *name)
  * Byte 14: feature bits 24..31 (bit 24: complete FX-scoped preset recall; bit 25: the pattern store is on, #901; bit 26:
  * the factory region's commands, #915). Byte 15:
  * the bank's slots (48 with the store, 60 in the layout of 1.25, else 64); bytes 16..19: the store's bytes free and total
- * (u16 LE each, capped); bytes 20..24: the screen font's area (#1203; 0 here: none); byte 25: feature bits 32..39 (bit 1:
- * every saved patch keeps its patterns 2..64 in the store, #1202). */
+ * (u16 LE each, capped). Byte 20 (#602, font_area.c): the font area, bit 0 this firmware reads its type's larger sizes
+ * from it (the FONT command), bit 1 the area holds that font, bit 2 an install began and did not commit, bit 3 no room for
+ * it (a bank of more than 48 patches keeps its sectors); bytes 21..24: the id of the font it needs (u32 LE, the image's
+ * CRC-32). Byte 25: feature bits 32..39 (bit 33: every saved patch keeps its patterns 2..64 in the store, #1202).
+ * Older firmware ends at byte 19 and has its type compiled in. */
 static void m1_info(void)
 {
     uint8_t p[26] = { 0 };
@@ -209,7 +225,9 @@ static void m1_info(void)
     p[12] = M1_FEATURES3;
     p[13] = ENG_BUFFER_ALLOCATION;
     p[14] = M1_FEATURES4;
+    p[25] = 0;                                               /* (feature bits 32..39: m1_pat_info sets bit 33) */
     m1_pat_info(p + 14);
+    m1_font_info(p + 20);
     m1_reply(R_INFO, p, sizeof p);
 }
 
@@ -1546,6 +1564,24 @@ static int m1_handle(const uint8_t *f, uint32_t n)
     }
     case C_FACT_COMMIT:                                      /* #915: the 64-byte header -> ACK */
         m1_ack(C_FACT_COMMIT, 0, len < 64u ? S_RANGE : m1_fact_commit(d), 0);
+        break;
+    case C_FONT:                                             /* #602: the font area (font_area.c), op u8 first (the enum above) */
+        if (len >= 2u && d[0] == 3u) {                       /* SUM sector -> FONT_SUM sector, ok u8, CRC-16 u16 */
+            uint8_t p[4];
+            uint32_t crc = 0;
+            p[0] = d[1];
+            p[1] = (uint8_t)!m1_font_sum(d[1], &crc);
+            p[2] = (uint8_t)crc;
+            p[3] = (uint8_t)(crc >> 8);
+            m1_reply(R_FONT_SUM, p, 4);
+        } else if (len >= 1u && d[0] == 1u)
+            m1_ack(C_FONT, 1, m1_font_begin(), 0);
+        else if (len >= 5u && d[0] == 2u)                    /* WRITE sector u8, offset u16, the bytes */
+            m1_ack(C_FONT, 2, m1_font_write(d[1], (uint32_t)d[2] | (uint32_t)d[3] << 8, d + 4, len - 4u), d[1]);
+        else if (len >= 1u + 64u && d[0] == 4u)              /* COMMIT the header */
+            m1_ack(C_FONT, 4, m1_font_commit(d + 1), 0);
+        else
+            m1_ack(C_FONT, len ? d[0] : 0u, S_RANGE, 0);
         break;
     case C_LIVE:                                             /* every 2 s while the editor's Live is on: no reply; [paused u8] (#200) */
         m1_live(len >= 1u ? d[0] : 0u);

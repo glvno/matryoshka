@@ -608,6 +608,42 @@ class RigPin(RigFakes, unittest.TestCase):
         self.assertEqual((code, len(calls)), (0, 1))
         self.assertIn("--no-factory", buf.getvalue())
 
+    def test_screen_font_follows_always_and_matches_the_package(self):
+        """#602: after a Matryoshka install its screen font goes in over the editor link, --no-factory or not: the image
+        beside the package when its sidecar names that font; a sidecar naming a font no image here has is refused before
+        anything reaches the FM-1"""
+        import io
+        import shutil
+        import tempfile
+        with open(fi.FONT_BIN, "rb") as f:
+            font = f.read()
+        fid = f"{fi.font_image_id(font):08x}"
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        pkg = os.path.join(d, "matryoshka.fwsc")
+        shutil.copy(OURS, pkg)
+        with open(os.path.join(d, "matryoshka-font.bin"), "wb") as f:
+            f.write(font)
+        with open(os.path.join(d, "matryoshka.json"), "w") as f:
+            json.dump({"font": fid}, f)
+        steps = []
+        usb = self.usb((OWNER, "FM-1_7011000", None), (RIG, "FM-1_7000000", MARK))
+        buf = io.StringIO()
+        code = fi.main([pkg, "--rig", "--yes", "--no-factory"], backend=self.backend(usb), out=buf,
+                       factory=lambda a, out: steps.append("factory"),
+                       font_step=lambda a, out, img: steps.append((a.location, img[0], fi.font_image_id(img[1]))))
+        self.assertEqual(code, 0, buf.getvalue())
+        self.assertEqual(steps, [(f"{RIG:#010x}", os.path.join(d, "matryoshka-font.bin"), int(fid, 16))])
+        with open(os.path.join(d, "matryoshka.json"), "w") as f:
+            json.dump({"font": "0badf00d"}, f)
+        usb = self.usb((OWNER, "FM-1_7011000", None), (RIG, "FM-1_7000000", MARK))
+        buf = io.StringIO()
+        code = fi.main([pkg, "--rig", "--yes"], backend=self.backend(usb), out=buf,
+                       font_step=lambda a, out, img: steps.append("font"))
+        self.assertEqual((code, len(steps)), (fi.EXIT["nofont"], 1))
+        self.assertFalse(usb.sent)
+        self.assertEqual(self.installed, [(RIG, "FM-1_7000000")])   # (only the first install)
+
     def test_nothing_at_the_location(self):
         usb = self.usb((OWNER, "FM-1_7011000", MARK))
         self.assertEqual(self.run_rig(usb)[0], 3)

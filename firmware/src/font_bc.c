@@ -1,15 +1,45 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
-/* The LCD's brand type (font_bc.h, tools/gen_font.py: Barlow Condensed SemiBold at four sizes, 4-bit coverage). A text is
+/* The LCD's brand type (font_bc.h, tools/gen_font.py: Barlow Condensed SemiBold at eight sizes, 4-bit coverage). A text is
  * drawn as one block of the font's line box, row by row like text_dots: the field is painted in the paper colour, each
- * glyph's coverage blended from paper to ink (16 steps, per channel). Mixed case. */
+ * glyph's coverage blended from paper to ink (16 steps, per channel). Mixed case.
+ * The font area (#602): a FONT_AREA build (the device's, modular.c) reads every size but FONT_S from flash outside the
+ * firmware, which the installer writes (font_area.c). Until font_area.c finds this firmware's font there (font_ok), each
+ * of those sizes draws FONT_S's letters in its own line box (font_use): smaller and set high, but every screen stays
+ * readable and works while the FM-1 says how to install the font. */
+#ifndef FONT_AREA
+#define FONT_AREA 0
+#endif
 #include "font_bc.h"
+
+#if FONT_AREA
+static uint8_t font_ok;                         /* the font area holds this firmware's font (font_area.c fa_scan) */
+#endif
+
+/* the font f's tables, or FONT_S's in f's line box (in fb) while the font area does not hold this firmware's font */
+static const font_t *font_use(const font_t *f, font_t *fb)
+{
+#if FONT_AREA
+    if (!font_ok && f->bits != font_s_bits) {
+        fb->h = f->h;
+        fb->base = f->base;
+        fb->map = font_s_map;
+        fb->g = font_s_g;
+        fb->bits = font_s_bits;
+        return fb;
+    }
+#endif
+    (void)fb;
+    return f;
+}
 
 /* the width of the first n characters of s (n < 0: all of it) */
 static uint32_t text_w(const font_t *f, const char *s, int32_t n)
 {
+    font_t fb;
     uint32_t w = 0;
     int32_t i;
+    f = font_use(f, &fb);
     for (i = 0; s[i] && (n < 0 || i < n); i++) {
         uint32_t c = (uint8_t)s[i];
         uint8_t g = c >= 0x20u && c < 0x7Fu ? f->map[c - 0x20u] : 255u;
@@ -43,10 +73,14 @@ static void text_ramp(uint16_t *lut, uint16_t fg, uint16_t bg)
  * TA_LEFT / TA_RIGHT / TA_CENTER and cut at the field's edge; the field is painted bg first. Returns the text's width. */
 static uint32_t text_bcn(const font_t *f, uint32_t x, uint32_t y, const char *s, int32_t n, uint16_t fg, uint16_t bg, uint32_t field, uint32_t align)
 {
+    font_t fb;
     uint16_t *row;                              /* (lcd.c's lcd_line, afresh for every row: it flips with each out, #377) */
     uint16_t lut[16];
-    uint32_t tw = text_w(f, s, n), w = field ? field : tw, x0, r, i;
+    uint32_t tw, w, x0, r, i;
     int32_t k;
+    f = font_use(f, &fb);
+    tw = text_w(f, s, n);
+    w = field ? field : tw;
     if (x >= 240u || !w)
         return tw;
     if (x + w > 240u)

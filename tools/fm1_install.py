@@ -10,9 +10,12 @@ device asks (SysEx read requests on the logical image) and we answer. Then
 the FM-1 restarts and the installed identity is checked.
 
   fm1_install.py PACKAGE.fwsc [--port NAME] [--yes] [--force] [--no-factory]
-                                      (a Matryoshka package: then the factory content, web/public/firmware/
-                                      matryoshka-factory.bin, into the FM-1's factory region over the editor link, #915;
-                                      --no-factory leaves it out: the FM-1 plays its firmware tier until it is installed)
+                                      (a Matryoshka package: then its screen font, NAME-font.bin beside it or
+                                      web/public/firmware/matryoshka-font.bin, into the FM-1's font area, #602: always,
+                                      and refused before anything is written when the package's NAME.json names another
+                                      font; then the factory content, web/public/firmware/matryoshka-factory.bin, into
+                                      the FM-1's factory region over the editor link, #915; --no-factory leaves it out:
+                                      the FM-1 plays its firmware tier until it is installed)
   fm1_install.py FM-1.fwsc            (the official V15 file: back to the stock firmware)
   fm1_install.py FM1-Open-V14-Workbench.html   (M-VAVE Official Open, from its Workbench page or its .fwsc:
                                       for an FM-1 set up by Official Open, #183; not shipped with Matryoshka:
@@ -102,7 +105,7 @@ DELAY = {"open": 0.3, "start": 2.0, "reply": 0.01, "loader": 3.0, "reboot": 3.0,
 
 EXIT = {"usage": 2, "badpkg": 2, "notfound": 3, "model": 6, "lost": 4, "stopped": 4, "badreq": 4,
         "phase": 4, "noloader": 5, "noreturn": 5, "mismatch": 6, "otherloader": 7, "wrongtarget": 7, "whichtarget": 7,
-        "bootcode": 8, "notrig": 9, "bank": 10, "older": 11}
+        "bootcode": 8, "notrig": 9, "bank": 10, "older": 11, "nofont": 12}
 
 
 class InstallError(Exception):
@@ -979,15 +982,21 @@ def check_rig(dev, rig, read_mark, loc_text):
                                      "rig, nothing was sent (another FM-1 in the rig's socket? register the rig again)")
 
 
-def install_factory(a, out):
-    """#915: the factory content (web/public/firmware/matryoshka-factory.bin) into the FM-1's factory region over the editor
-    link, once the new firmware runs (tools/m1_link.py factory-install; run that again to finish a cut install)"""
+def editor_link(a):
+    """the editor protocol to the FM-1 just installed (tools/m1_link.py), at the same USB location"""
     import m1_link
     loc = None
     if a.location:
         import fm1_usb
         loc = fm1_usb.parse_location(a.location)
-    link = m1_link.Link(loc)
+    return m1_link.Link(loc)
+
+
+def install_factory(a, out):
+    """#915: the factory content (web/public/firmware/matryoshka-factory.bin) into the FM-1's factory region over the editor
+    link, once the new firmware runs (tools/m1_link.py factory-install; run that again to finish a cut install)"""
+    import m1_link
+    link = editor_link(a)
     if not m1_link.has_factory(link):
         print("factory content: not needed (this firmware carries its factory sounds itself: 1.17 and older)", file=out)
         return
@@ -996,8 +1005,74 @@ def install_factory(a, out):
     print(m1_link.factory_info_text(m1_link.factory_info(link)), file=out)
 
 
-def run(a, backend, out, ask, factory=None):
-    real = backend is None                                # (a real FM-1: the tests pass their own backend, and `factory`)
+FONT_BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web", "public", "firmware",
+                        "matryoshka-font.bin")         # this checkout's screen font (tools/gen_font.py, #602)
+
+
+def font_image_id(img):
+    """the id of the font in a font area image (its header's CRC-32, #602), None when img is not one"""
+    return int.from_bytes(img[12:16], "little") if len(img) >= 64 and img[:4] == b"MFN1" else None
+
+
+def package_font(path):
+    """#602: the screen font a Matryoshka package needs: (path, image), or None when it is not known here. The build puts
+    <name>-font.bin beside <name>.fwsc and names its id in <name>.json ("font"); with that id named, an image of another
+    font is not taken and the install is refused before anything is written (a firmware without its font shows only the
+    small type). Without a sidecar the image beside the package or this checkout's is taken, and the installed firmware
+    says after the install whether it is the one it needs"""
+    stem = os.path.splitext(path)[0]
+    want = None
+    try:
+        with open(stem + ".json") as f:
+            want = json.load(f).get("font")
+    except (OSError, ValueError):
+        pass
+    found = []
+    for p in (stem + "-font.bin", FONT_BIN):
+        try:
+            with open(p, "rb") as f:
+                img = f.read()
+        except OSError:
+            continue
+        if font_image_id(img) is not None:
+            found.append((p, img))
+    if want is None:
+        return found[0] if found else None
+    for p, img in found:
+        if f"{font_image_id(img):08x}" == want:
+            return p, img
+    raise InstallError("nofont", f"{path} needs screen font {want}, and neither {stem}-font.bin nor this checkout's "
+                                 f"{os.path.relpath(FONT_BIN)} is that font: nothing was written")
+
+
+def install_font(a, out, font):
+    """#602: the screen font into the FM-1's font area over the editor link, once the new firmware runs (tools/m1_link.py
+    font-install; run that again to finish a cut install). Always, unlike the factory content: until it is there the FM-1
+    draws every size with the small type"""
+    import m1_link
+    link = editor_link(a)
+    i = m1_link.font_info(link)
+    if i is None:
+        print("screen font: built into this firmware (1.25 and older)", file=out)
+        return
+    if i["valid"] and not i["writing"]:
+        print(f"screen font: current (font {i['id']:08x})", file=out)
+        return
+    if i.get("blocked"):                                  # (a bank of more than 48 patches keeps the font's sectors)
+        print(f"screen font: not installed: {m1_link.FONT_BLOCKED}", file=out)
+        return
+    if font is None or font_image_id(font[1]) != i["id"]:
+        raise InstallError("nofont", f"the firmware needs screen font {i['id']:08x}, which is not here"
+                                     f"{f' ({font[0]} is font {font_image_id(font[1]):08x})' if font else ''}: the FM-1 "
+                                     "shows the small type and SCREEN FONT MISSING until tools/m1_link.py font-install FILE "
+                                     "puts that font on it")
+    print(f"screen font: installing font {i['id']:08x} from {font[0]}", file=out)
+    m1_link.font_install(link, font[1], log=lambda s: print(f"  {s}", file=out))
+    print(m1_link.font_info_text(m1_link.font_info(link)), file=out)
+
+
+def run(a, backend, out, ask, factory=None, font_step=None):
+    real = backend is None                                # (a real FM-1: the tests pass their own backend, `factory`, `font_step`)
     rig = None
     if a.rig:
         rig = load_rig()
@@ -1038,6 +1113,9 @@ def run(a, backend, out, ask, factory=None):
         return 0
     product, image, target = load_package(a.package, a.force)
     print(f"package: {product}  ({a.package})", file=out)
+    font = package_font(a.package) if product.startswith("FM-1_7") else None   # (#602: refused here, before any write)
+    if font:
+        print(f"screen font: {font[0]} (font {font_image_id(font[1]):08x})", file=out)
     dev = up.find()
     if not dev:
         if a.location:
@@ -1068,9 +1146,13 @@ def run(a, backend, out, ask, factory=None):
         up.install(dev, image, product, prog, target=target, sure=a.sure)
     finally:
         prog.end()
+    if product.startswith("FM-1_7") and (font_step or real):   # (Matryoshka: its screen font, always, #602)
+        time.sleep(DELAY["settle"] * 3)
+        (font_step or install_font)(a, out, font)
     if product.startswith("FM-1_7") and not a.no_factory:   # (Matryoshka only: its factory content, #915)
         if factory or real:
-            time.sleep(DELAY["settle"] * 3)
+            if not (font_step or real):
+                time.sleep(DELAY["settle"] * 3)
             (factory or install_factory)(a, out)
     elif product.startswith("FM-1_7"):
         print("factory content: not installed (--no-factory): the FM-1 plays its firmware tier until the editor or "
@@ -1085,7 +1167,7 @@ def ask_tty(prompt):
         return False
 
 
-def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty, factory=None):
+def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty, factory=None, font_step=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("package", nargs="?", help="Felucca package (.fwsc)")
     ap.add_argument("--info", action="store_true", help="print the identity of the connected FM-1")
@@ -1113,7 +1195,7 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty, factory=None):
         ap.error("--rig takes the rig's own location: give one of --rig and --location")
     try:
         try:
-            return run(a, backend, out, ask, factory)
+            return run(a, backend, out, ask, factory, font_step)
         except ImportError:
             raise InstallError("usage", "needs mido and python-rtmidi (pip install mido python-rtmidi)")
     except InstallError as e:

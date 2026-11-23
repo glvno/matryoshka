@@ -626,23 +626,20 @@ static uint32_t m1_fact_begin(void)
     return st_erase(FC_BASE) ? S_FLASH : S_OK;
 }
 
-/* FACT_WRITE: n bytes at offset off of sector s, inside one page (offset 0 of sectors 1..17 erases the sector first);
- * read back and compared */
-static uint32_t m1_fact_write(uint32_t s, uint32_t off, const uint8_t *p, uint32_t n)
+/* n bytes at offset off of the flash sector at sec, inside one page (offset 0 erases the sector first when `erase`); read
+ * back and compared. The page an update record would be in is written whole and never as one. A status (S_OK ..): FACT_WRITE,
+ * and the font area's writes (font_area.c) */
+static uint32_t fc_page(uint32_t sec, uint32_t off, const uint8_t *p, uint32_t n, int erase)
 {
     uint8_t b[256];
-    uint32_t i, at = FC_BASE + s * 0x1000u + off;
-    if (!flash_ok)
-        return S_FLASH;
-    if (!fc_writing)
-        return S_NONE;
-    if (s >= FC_SECTORS || !n || n > 256u || (off & 0xFFu) + n > 256u || off + n > 0x1000u || (!s && off < FC_HDR))
+    uint32_t i;
+    if (!n || n > 256u || (off & 0xFFu) + n > 256u || off + n > 0x1000u)
         return S_RANGE;
     if ((off & 0xF00u) == 0xF00u && (off != 0xF00u || n < LDR_REC_LEN || ldr_is_record(p)))
         return S_RANGE;                                /* (the page an update record would be in: whole, and not one) */
-    if (!off && s && st_erase(FC_BASE + s * 0x1000u))
+    if (!off && erase && st_erase(sec))
         return S_FLASH;
-    if (st_prog(at, p, n) || st_read(at, b, n))
+    if (st_prog(sec + off, p, n) || st_read(sec + off, b, n))
         return S_FLASH;
     for (i = 0; i < n; i++)
         if (b[i] != p[i])
@@ -650,20 +647,37 @@ static uint32_t m1_fact_write(uint32_t s, uint32_t off, const uint8_t *p, uint32
     return S_OK;
 }
 
-/* FACT_SUM: CRC-16 of sector s's 4096 bytes into *crc: 0 ok */
-static int m1_fact_sum(uint32_t s, uint32_t *crc)
+/* CRC-16 of the 4096 bytes of the flash sector at sec into *crc: 0 ok (FACT_SUM, and the font area's, font_area.c) */
+static int fc_sector_sum(uint32_t sec, uint32_t *crc)
 {
     uint8_t b[256];
     uint32_t off, c = 0xFFFFu;
-    if (!flash_ok || s >= FC_SECTORS)
-        return -1;
     for (off = 0; off < 0x1000u; off += sizeof b) {
-        if (st_read(FC_BASE + s * 0x1000u + off, b, sizeof b))
+        if (st_read(sec + off, b, sizeof b))
             return -1;
         c = fc_crc16(c, b, sizeof b);
     }
     *crc = c;
     return 0;
+}
+
+/* FACT_WRITE: n bytes at offset off of sector s, inside one page (offset 0 of sectors 1..17 erases the sector first);
+ * read back and compared */
+static uint32_t m1_fact_write(uint32_t s, uint32_t off, const uint8_t *p, uint32_t n)
+{
+    if (!flash_ok)
+        return S_FLASH;
+    if (!fc_writing)
+        return S_NONE;
+    if (s >= FC_SECTORS || (!s && off < FC_HDR))
+        return S_RANGE;
+    return fc_page(FC_BASE + s * 0x1000u, off, p, n, s != 0u);
+}
+
+/* FACT_SUM: CRC-16 of sector s's 4096 bytes into *crc: 0 ok */
+static int m1_fact_sum(uint32_t s, uint32_t *crc)
+{
+    return flash_ok && s < FC_SECTORS ? fc_sector_sum(FC_BASE + s * 0x1000u, crc) : -1;
 }
 
 /* FACT_READ: n bytes of the region from offset off: 0 ok */

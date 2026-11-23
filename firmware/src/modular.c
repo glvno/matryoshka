@@ -62,6 +62,7 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #define SCR_POOL __attribute__((section(".pool")))   /* screen_text.h: the texts on the screen, as text (#291) */
 #include "lcd.c"
 #include "font5x7.c"
+#define FONT_AREA 1          /* the type's larger sizes from the font area, outside the firmware (#602, font_area.c) */
 #include "font_bc.c"
 #define ENG_POOL __attribute__((section(".pool")))
 #define ENG_LOWRAM __attribute__((section(".lowram")))   /* app.ld: the SRAM below the RAM region (#273) */
@@ -184,6 +185,12 @@ static uint32_t m1_fact_write(uint32_t s, uint32_t off, const uint8_t *p, uint32
 static int m1_fact_sum(uint32_t s, uint32_t *crc);
 static int m1_fact_read(uint32_t off, uint8_t *p, uint32_t n);
 static uint32_t m1_fact_commit(const uint8_t *h);
+static void m1_font_info(uint8_t *p);                         /* font_area.c: the font area (#602), the hooks proto.c needs */
+static uint32_t m1_font_begin(void);
+static uint32_t m1_font_write(uint32_t s, uint32_t off, const uint8_t *p, uint32_t n);
+static int m1_font_sum(uint32_t s, uint32_t *crc);
+static uint32_t m1_font_commit(const uint8_t *h);
+static void m1_font_changed(void);                            /* main.c: the font area changed: the screen drawn again */
 #include "tempo_glo.h"            /* the global tempo (D-907): proto.c, menu.c, main.c */
 #include "pad_map.h"              /* the global pad map (#1067): proto.c's PADS, ui.c's FACTORY RESET, midi_learn.c, main.c */
 #include "proto.c"
@@ -195,6 +202,7 @@ _Static_assert(sizeof sx_frame >= 4u + (8u * M1_RX_MAX + 7u) / 7u && sizeof sx_f
 #endif
 #define FC_MEM ENG_NOINIT      /* factory.c: its headers and merged list (fc_scan sets them first) */
 #include "factory.c"           /* the factory content: the firmware tier and the factory region (#915) */
+#include "font_area.c"         /* the type's larger sizes in their own flash sectors (#602) */
 #include "slotstore.c"
 #include "patstore.c"          /* the pattern store in the bank's last 4 sectors (#901; slotstore.c pt_claim hands them over) */
 #include "patlink.c"           /* the pattern store's glue: the payloads, the running patch's links (#901) */

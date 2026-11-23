@@ -24,6 +24,7 @@ import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 import { FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo, type MapEntry } from './protocol';
 import { FEATURE_PADS, PADS_CMD, padsClearAllFrame, padsOnFrame, padsReadFrame, padsSetFrame, parsePadsNow, parsePatternOp, PATTERN_OP, type PadMap } from './protocol';
 import { factoryInfo, installFactory } from './factory-content';
+import { installFont } from './font-content';
 import { fxPresetInfo } from './fx-preset-format';
 import { autoPick, fm1Label, NOT_CHOSEN, readFm1Id, rememberedFm1, rememberFm1, suggested, type Fm1Choice, type Fm1Id } from './fm1-choice';
 
@@ -702,6 +703,13 @@ export class DeviceLink {
   /** the factory region installed from `image` (factory-content.ts installFactory); `progress` in pages */
   installFactory(image: Uint8Array, progress?: (done: number, total: number) => void): Promise<void> {
     return this.serial(() => installFactory((f, m, t, n) => this.request(f, m, t, n), image, progress));
+  }
+
+  /** the screen font installed from `image` (font-content.ts installFont, #602); `progress` in pages. The commit's ACK
+   *  means the FM-1 checked and took it: `info.font` says so from then on */
+  async installFont(image: Uint8Array, progress?: (done: number, total: number) => void): Promise<void> {
+    await this.serial(() => installFont((f, m, t, n) => this.request(f, m, t, n), image, progress));
+    if (this.info?.font) this.info.font = { ...this.info.font, valid: true, writing: false };
   }
 
   /** the pattern store a patch sent now is written for (patchbin.ts LinkStore): what this FM-1's store holds, `unknown`

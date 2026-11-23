@@ -36,26 +36,30 @@ static inline void *fl_far(void *p) { void *volatile q = p; return q; }
 #define T4_CNT          REG32(0x10804u)            /* TIMER4, 24 MHz free-running */
 
 #define FL_XIP(off)     FM1_XIP(off)              /* fm1_xip.h */
+#define FL_FONT_LO      0x00093000u                /* Matryoshka (#602, D-184): the font area's first run, 4 sectors (src/font_area.c;
+                                                    * its second, 0xD0000 .. 0xD2FFF, is in Felucca's store, its third in the globals) */
 #define FL_DATA_LO      0x00097000u                /* Felucca main store */
 #define FL_DATA_HI      0x000E0000u
-#define FL_GLOB_LO      0x000FC000u                /* Felucca superblock / globals */
+#define FL_GLOB_LO      0x000FC000u                /* Felucca superblock / globals (Matryoshka #602: the font area's third run) */
 #define FL_GLOB_HI      0x000FF000u
 #define FL_OTA_LO       0x000E0000u                /* M-UPGRADE loader staging, ota.c */
 #define FL_OTA_HI       0x000E5000u
 #define FL_AUTO_LO      0x000E5000u                /* 1.2: the autosave (storage.c OBJ_AUTOSAVE), A/B, just above */
 #define FL_AUTO_HI      0x000E7000u                /* the OTA staging */
 #define FL_VBANK_LO     0x000E7000u                /* 1.4.1: the FM6 voice bank (fm6_vbank.c), the sector above */
-#define FL_VBANK_HI     0x000E8000u                /* (below the stock OTA's VM backup, 0xE8000: never written) */
+#define FL_VBANK_HI     0x000E8000u                /* (below the stock firmware's VM, 0xE8000, and its Bluetooth address, 0xE9000:
+                                                    * never written) */
 #define FL_FACT_LO      0x000EA000u                /* Matryoshka (#915): the factory region (src/factory.c), the 18 sectors */
 #define FL_FACT_HI      0x000FC000u                /* the stock package's USR file fills; below Felucca's globals */
 /* [off, off + n) inside [lo, hi), without wrapping: off + n can overflow, and
  * the 1 MiB part ignores the high address bits, so a wrapped range lands low. */
 #define FL_IN(off, n, lo, hi) ((uint32_t)(off) >= (lo) && (uint32_t)(off) <= (hi) && \
                                (uint32_t)(n) <= (hi) - (uint32_t)(off))
-/* Felucca's own store (projects, user samples; settings; the autosave and the FM6 voice bank: one range), and the factory
- * region with Felucca's globals right above it (one range: FL_FACT_HI is FL_GLOB_LO, and a fourth test does not fit
- * .ram_text) */
-#define FL_STORE_OK(off, n) (FL_IN(off, n, FL_DATA_LO, FL_DATA_HI) || FL_IN(off, n, FL_FACT_LO, FL_GLOB_HI) || \
+/* The font area's first run with Felucca's own store above it (projects, user samples; settings; the font area's second
+ * run), the autosave and the FM6 voice bank (one range), and the factory region with Felucca's globals right above it
+ * (one range: FL_FACT_HI is FL_GLOB_LO; the globals hold the font area's third run; a fourth test does not fit
+ * .ram_text). Never 0xE8000 .. 0xE9FFF (the stock firmware's VM and Bluetooth address) or the key sector 0xFF000. */
+#define FL_STORE_OK(off, n) (FL_IN(off, n, FL_FONT_LO, FL_DATA_HI) || FL_IN(off, n, FL_FACT_LO, FL_GLOB_HI) || \
                              FL_IN(off, n, FL_AUTO_LO, FL_VBANK_HI))
 /* Where the RAM driver may erase / program. The app build allows only its own
  * data regions; the update loader (firmware/loader) defines its own window. */

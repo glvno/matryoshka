@@ -34,6 +34,7 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1]
 FW = SRC / "firmware"
+FONT_BIN = SRC / "web" / "public" / "firmware" / "matryoshka-font.bin"   # the font area's image (tools/gen_font.py, #602)
 OUT = SRC / "build"
 GEN = OUT / "gen"
 LDR = OUT / "loader"
@@ -676,10 +677,19 @@ def main():
         raise SystemExit("build: checks failed")
     pkg = fm1pkg_make.ufw(fm1pkg_make.flash_image(img, fm1pkg_make.KEY), ota, PRODUCT)
     (OUT / name).write_bytes(pkg)
+    # the font area's image this firmware needs (#602, firmware/src/font_area.c): next to the package as <name>-font.bin,
+    # its id in the sidecar, so the installers write the font that goes with the firmware
+    font = FONT_BIN.read_bytes()
+    font_id = struct.unpack_from("<I", font, 12)[0]
+    want = int(re.search(r"#define FA_ID 0x([0-9A-F]+)u", (FW / "src" / "font_bc.h").read_text())[1], 16)
+    if font_id != want:
+        raise SystemExit(f"build: {FONT_BIN.relative_to(SRC)} is font {font_id:08x}, font_bc.h needs {want:08x}: run tools/gen_font.py")
+    font_name = f"{Path(name).stem}-font.bin"
+    (OUT / font_name).write_bytes(font)
     # the package's image is encrypted: its version goes in a sidecar for web/scripts/sync-firmware.mjs (x.fwsc -> x.json)
     version = VERSION or re.search(r'#define FELUCCA_VERSION "([^"]+)"', (FW / "src" / "modular.c").read_text())[1]
     side = json.dumps({"version": version, "product": PRODUCT, "size": len(pkg), "sha256": hashlib.sha256(pkg).hexdigest(),
-                       "app_sha256": hashlib.sha256(img).hexdigest(),
+                       "app_sha256": hashlib.sha256(img).hexdigest(), "font": f"{font_id:08x}",
                        "build": {"ENG_AOT": int(os.environ.get("ENG_AOT", "0")),
                                  "ENG_RAMCODE": int(RAMCODE),
                                  "ENG_BUF_REUSE": int(os.environ.get("ENG_BUF_REUSE", "1")),
@@ -696,15 +706,17 @@ def main():
     print(f"app      {OUT / 'matryoshka.bin'}  {len(img)} B")
     print(f"loader   {LDR / 'ota.bin'}  {len(ota)} B")
     print(f"package  {OUT / name}  {len(pkg)} B, identity {PRODUCT}")
-    if a.release:                   # what a release carries: the package, the app and every licence they need
+    print(f"font     {OUT / font_name}  {len(font)} B, font {font_id:08x}")
+    if a.release:                   # what a release carries: the package, the app, the font and every licence they need
         rel = OUT / f"release-{a.release}"
         (rel / "LICENSES").mkdir(parents=True)
         app = f"matryoshka-{a.release}-app.bin"
         (rel / name).write_bytes(pkg)
         (rel / app).write_bytes(img)
+        (rel / font_name).write_bytes(font)
         (rel / name).with_suffix(".json").write_text(side)
         (rel / "SHA256SUMS").write_text("".join(f"{hashlib.sha256(b).hexdigest()}  {n}\n"
-                                                for n, b in ((name, pkg), (app, bytes(img)))))
+                                                for n, b in ((name, pkg), (app, bytes(img)), (font_name, font))))
         # only the texts for what the package embeds (LICENSING.md): the JieLi SDK files, LCD font bitmaps and rate-envelope implementation
         for f in (SRC / "LICENSES" / "Apache-2.0.txt", SRC / "web" / "public" / "fonts" / "OFL-BarlowCondensed.txt", SRC / "LICENSES" / "BSD-3-Clause-ymfm.txt"):
             shutil.copy(f, rel / "LICENSES" / f.name)

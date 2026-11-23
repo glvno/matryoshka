@@ -18,11 +18,43 @@ pub const FLASH_SIZE: usize = 1 << 20;
 /// and where it lives (#915, firmware/src/factory.c)
 pub static FACTORY_REGION: std::sync::LazyLock<Vec<u8>> = std::sync::LazyLock::new(crate::repo::factory);
 pub const FACTORY_BASE: usize = 0xEA000;
+/// The screen font's image (#602, web/public/firmware/matryoshka-font.bin, tools/gen_font.py): the type's larger sizes,
+/// which a device build reads from their own flash sectors (firmware/src/font_area.c)
+pub const FONT_IMAGE: &[u8] = include_bytes!("../../../web/public/firmware/matryoshka-font.bin");
 
-/// An erased flash chip holding the factory region: an FM-1 the editor or tools/fm1_install.py set up (#915)
-pub fn installed_flash() -> Vec<u8> {
+/// The flash offset of each 4 KiB sector of the font image, from its header (font_area.c: the sector count u8 at 5, then
+/// from 16 a u16 per sector, the flash sector number)
+pub fn font_sectors(img: &[u8]) -> Vec<usize> {
+    (0..img[5] as usize).map(|s| (u16::from_le_bytes([img[16 + 2 * s], img[17 + 2 * s]]) as usize) << 12).collect()
+}
+
+/// `f` with the font image in its sectors, as the installer writes it
+pub fn put_font(f: &mut [u8]) {
+    for (s, at) in font_sectors(FONT_IMAGE).into_iter().enumerate() {
+        let part = &FONT_IMAGE[s * 0x1000..((s + 1) * 0x1000).min(FONT_IMAGE.len())];
+        f[at..at + part.len()].copy_from_slice(part);
+    }
+}
+
+/// An erased flash chip holding the screen font only: an FM-1 whose factory region is missing (#915)
+pub fn font_only_flash() -> Vec<u8> {
+    let mut f = vec![0xffu8; FLASH_SIZE];
+    put_font(&mut f);
+    f
+}
+
+/// An erased flash chip holding the factory region only: an FM-1 whose screen font is missing (#602)
+pub fn factory_only_flash() -> Vec<u8> {
     let mut f = vec![0xffu8; FLASH_SIZE];
     f[FACTORY_BASE..FACTORY_BASE + FACTORY_REGION.len()].copy_from_slice(&FACTORY_REGION);
+    f
+}
+
+/// An erased flash chip holding the factory region and the screen font: an FM-1 the editor or tools/fm1_install.py set
+/// up (#915, #602)
+pub fn installed_flash() -> Vec<u8> {
+    let mut f = factory_only_flash();
+    put_font(&mut f);
     f
 }
 /// Stack paint (#273): the firmware paints its stacks with this word at boot (main.c `stack_paint`); the emulator also
