@@ -183,6 +183,7 @@ describe('My take', () => {
     expect(a.el.querySelector('.ph-rec')!.textContent).toBe('Save0:00');
     await a.exportPhrase();
     expect(a.el.querySelector('.ph-status')!.classList.contains('on')).toBe(true);
+    await a.recorded([new Float32Array(0), new Float32Array(0)], true);   // stop the take, so its 1 s timer does not outlive the test's DOM
   });
 
   it('a new take replaces My take', () => {
