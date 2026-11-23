@@ -28,6 +28,7 @@ import { relocatedPatches } from './community-factory';
 import { chipEl } from './sandbox';
 import { isSaved, onSavedChange, putBackSaved, renameSaved, savedPatches, savePatch } from './saved';
 import { showToast, showUndo } from './toast';
+import { patchDragSource, type PatchDragItem } from './patch-drag';
 
 interface Entry {
   name: string;
@@ -192,20 +193,12 @@ export interface Candidate {
   factory?: boolean;
 }
 
-/** the candidates for a slot's patch: the offline copy (`list`), Your patches, the added community patches, the factory
- *  patches and the examples */
-const candidatesOf = (list: Entry[]): Candidate[] => [
-  ...list.map((e) => ({ name: e.name, patch: () => patchOf(e), factory: !e.patch })),
-  ...savedPatches().map((s) => ({ name: s.name, patch: () => s.patch })),
-  ...addedCommunity().map((c) => ({ name: c.entry.title, patch: () => openCommunity(c) })),
-  ...Object.entries(FM1_PRESETS).map(([name, make]) => ({ name, patch: make, factory: true })),
-  ...Object.entries(EXAMPLE_PRESETS).map(([name, make]) => ({ name, patch: make })),
-];
-/** the candidates for a slot's patch as this browser keeps them now (the Install panel's check of the bank, #1202 G9) */
-export const bankCandidates = (): Candidate[] => candidatesOf(load());
+/** a slot's patch as this browser has it: the name it goes by here, the patch, and whether it is a factory patch */
+export interface KnownCopy { name: string; patch: Patch; factory: boolean }
+
 /** this browser's copy of a slot's patch: the first candidate with the slot's name and binary length; null when there is
  *  none (the FM-1 cannot send the patch itself) */
-export function knownCopy(s: SlotInfo, candidates: Candidate[], length: (p: Patch) => number = (p) => binLength(p)): { name: string; patch: Patch; factory: boolean } | null {
+export function knownCopy(s: SlotInfo, candidates: Candidate[], length: (p: Patch) => number = binLength): KnownCopy | null {
   if (!s.used) return null;
   for (const c of candidates) {
     if (deviceName(c.name) !== s.name) continue;
@@ -215,9 +208,41 @@ export function knownCopy(s: SlotInfo, candidates: Candidate[], length: (p: Patc
   return null;
 }
 
+/** the candidates for a slot's patch, in this order: the offline copy (`list`), Your patches, the added community
+ *  patches, the factory patches, the examples */
+export const bankCandidates = (list: Entry[] = load()): Candidate[] => [
+  ...list.map((e) => ({ name: e.name, patch: () => patchOf(e), factory: !e.patch })),
+  ...savedPatches().map((s) => ({ name: s.name, patch: () => s.patch })),
+  ...addedCommunity().map((c) => ({ name: c.entry.title, patch: () => openCommunity(c) })),
+  ...Object.entries(FM1_PRESETS).map(([name, make]) => ({ name, patch: make, factory: true })),
+  ...Object.entries(EXAMPLE_PRESETS).map(([name, make]) => ({ name, patch: make })),
+];
+
+/** where Send bank moves each patch (#1196, the palette follows it): old slot → new slot of each used slot whose patch
+ *  (its name and binary length) the sent list holds, at that list index; a patch the list does not hold is left out */
+export function slotMoves(have: SlotInfo[], sent: { name: string; length: number }[]): Map<number, number> {
+  const moves = new Map<number, number>();
+  const taken = new Set<number>();
+  for (const s of have) {
+    if (!s.used) continue;
+    const i = sent.findIndex((e, k) => !taken.has(k) && deviceName(e.name) === s.name && e.length === s.length);
+    if (i < 0) continue;
+    taken.add(i);
+    moves.set(s.slot, i);
+  }
+  return moves;
+}
+
 /** Stored copies and archived names are always opened; `factory` can cheaply filter current defaults by shape. */
 export const bankPatches = (factory: (name: string) => boolean = () => true): { name: string; patch: Patch }[] =>
   load().filter((e) => e.patch || !(e.name in FM1_PRESETS) || factory(e.name)).map((e) => ({ name: e.name, patch: patchOf(e) }));
+
+/** a row's name, dragged onto a palette chip (#1196): it carries the row's patch */
+function dragName(span: HTMLElement, item: PatchDragItem): HTMLElement {
+  span.title = 'Drag onto a palette chip to add it to the FM-1’s palette';
+  patchDragSource(span, () => item);
+  return span;
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { class?: string } = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -231,6 +256,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
 export interface PatchesEvents {
   /** delete one of Your patches at once, with an Undo toast (main.ts deleteSaved) */
   remove(name: string): void;
+  /** Send bank moved patches to other slots (slotMoves): the palette points its entries at the new ones */
+  slotsMoved?(moves: Map<number, number>): void;
 }
 
 /** one of the Library's sections with an FM-1 column */
@@ -270,7 +297,8 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
   const live = (): boolean => device.connected;
   /** the store the FM-1's budget and its slots' lengths count with (patchbin.ts BudgetStore) */
   const store = (): BudgetStore => device.budgetStore;
-  const candidates = (): Candidate[] => candidatesOf(list);
+  /** the candidates for a slot's patch: the offline copy, Your patches, the factory patches */
+  const candidates = (): Candidate[] => bankCandidates(list);
   const lengthIn = (p: Patch): number => binLength(p, store());
   const factoryLength = new Map<string, number>(); // a factory patch's binary length, by store and name
   const lengthOf = (e: Entry): number => {
@@ -379,7 +407,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
       ...(total ? [...mine.map((e) => {
         const ok = fits(e.patch, device.bufferAllocation, store());
         return el('div', { class: 'bank-row' },
-          el('span', { class: 'grow', textContent: e.name }),
+          dragName(el('span', { class: 'grow', textContent: e.name }), { name: e.name, patch: () => e.patch }),
           ...(ok ? [] : [sandbox()]),
           el('span', { class: 'muted', textContent: e.saved ? new Date(e.saved).toLocaleDateString() : '' }),
           el('button', { textContent: 'Rename', title: `rename "${e.name}"`, onclick: () => {
@@ -394,7 +422,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
         const name = c.entry.title;
         const ok = fits(c.patch, device.bufferAllocation, store());
         return el('div', { class: 'bank-row' },
-          el('span', { class: 'grow' }, name, el('span', { class: 'muted', textContent: ` · ${c.entry.author}` })),
+          dragName(el('span', { class: 'grow' }, name, el('span', { class: 'muted', textContent: ` · ${c.entry.author}` })), { name, patch: () => openCommunity(c) }),
           ...(ok ? [] : [sandbox()]),
           el('span', { class: 'muted', textContent: 'community', title: 'Added from Library > Community: it follows the bundled patch until you save it as your own' }),
           el('button', { class: 'delete', textContent: 'Remove', title: `take "${name}" out of Your patches (you can undo it; Library > Community still has it)`, onclick: () => {
@@ -428,7 +456,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
         const copy = knownCopy(s, known, lengthIn);
         return el('div', { class: 'bank-row' },
           el('span', { class: 'slot', textContent: slotLabel(s.slot) }),
-          el('span', { class: 'grow', textContent: s.name }),
+          dragName(el('span', { class: 'grow', textContent: s.name }), { name: copy?.name ?? s.name, patch: () => copy?.patch ?? null, slot: { slot: s.slot, name: s.name } }),
           el('button', { class: 'delete', textContent: '×', title: 'Erase this slot on the FM-1 (asks first)', ariaLabel: `erase slot ${slotLabel(s.slot)} on the FM-1`, disabled: busy, onclick: () => {
             if (!window.confirm(`Erase FM-1 slot ${slotLabel(s.slot)} ("${s.name}")? ${copy ? 'This browser keeps its copy.' : 'This browser has no copy of it, so it is gone for good.'}`)) return;
             void run('Erasing', async () => {
@@ -446,7 +474,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     } else {
       bankEl.replaceChildren(...(list.length ? list.map((e, i) => el('div', { class: 'bank-row' },
         el('span', { class: 'slot', textContent: slotLabel(i) }),
-        el('span', { class: 'grow', textContent: e.name }),
+        dragName(el('span', { class: 'grow', textContent: e.name }), { name: e.name, patch: () => patchOf(e) }),
         ...(e.patch ? [] : [el('span', { class: 'muted', textContent: 'factory' })]),
         el('button', { textContent: '▲', title: 'move up', ariaLabel: `move "${e.name}" up`, disabled: busy || i === 0, onclick: () => { [list[i - 1], list[i]] = [list[i], list[i - 1]]; changed(); } }),
         el('button', { textContent: '▼', title: 'move down', ariaLabel: `move "${e.name}" down`, disabled: busy || i === list.length - 1, onclick: () => { [list[i + 1], list[i]] = [list[i], list[i + 1]]; changed(); } }),
@@ -501,6 +529,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
       status.textContent = 'Nothing was sent.';
       return;
     }
+    const moves = slotMoves(have, list.slice(0, total).map((e) => ({ name: e.name, length: lengthOf(e) })));
     bar.hidden = false;
     // (to a 1.26 FM-1 each patch's patterns go into its store, then the patch, before the next patch's: #1202. A patch the
     // store has no room for and that does not fit with its patterns inside is refused, its slot left as it was)
@@ -523,6 +552,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
       }
     bar.value = 100;
     slots = await device.readBank();
+    ev.slotsMoved?.(moves);
     status.textContent = `${total} patches are on the FM-1. Hold HOME and turn PRESET to step through them.${notes.length ? ` ${notes.join(' ')}` : ''}`;
     if (notes.length) showToast(notes.join(' '));
   });

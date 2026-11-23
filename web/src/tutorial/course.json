@@ -63,7 +63,7 @@
           "id": "osc",
           "kind": "task",
           "title": "Add an Oscillator",
-          "text": "**Main** here is what is going to send the information from our keyboard circulating through our patch.\n\nIts two most important functions are to send `pitch` (i.e., what note is being played) and `gate`, which answers yes or no to the question, \"Is a key being held down right now?\"[^1]\n\nThe output of **Output** is what you hear. It's can be thought of as the rectum of a patch. A synth patch poops sound into the toilet of the ear.\n\n[Add an **Oscillator** module with `+ Module` in the PATCH panel or the command palette (`Ctrl/Cmd+K` or the `/` key).](req:add-osc)\n\nAny module on the canvas can be moved around by clicking on its header and dragging it around.\n\n[^1]: The caveats, exceptions, and backpedaling that go here are on our feature roadmap and are slated to be added in Q3 of FY 2029",
+          "text": "**Main** here is what is going to send the information from our keyboard circulating through our patch.\n\nIts two most important functions are to send `pitch` (i.e., what note is being played) and `gate`, which answers yes or no to the question, \"Is a key being held down right now?\"[^1]\n\nThe output of **Output** is what you hear. It's can be thought of as the rectum of a patch. A synth patch poops sound into the toilet of the ear.\n\n[Add an **Oscillator** module with `+ Module` in the PATCH panel or Commands (`Ctrl/Cmd+K` or the `/` key).](req:add-osc)\n\nAny module on the canvas can be moved around by clicking on its header and dragging it around.\n\n[^1]: The caveats, exceptions, and backpedaling that go here are on our feature roadmap and are slated to be added in Q3 of FY 2029",
           "why": "",
           "parts": [
             { "id": "add-osc", "kind": "module", "type": "osc" }
@@ -3166,7 +3166,7 @@
           "kind": "task",
           "title": "Modules inside modules",
           "text": "stack voice and echo are *assemblies*: groups of modules that behave as one. A closed assembly shows only the jacks and sliders its author brought out, so stack voice reads like a single voice module and echo like a single effect.\n\n[Expand stack voice with ▸ before its name](req:stack-voice-open). Inside are the oscillators, mixer, filter, envelope and VCA.",
-          "why": "Assemblies nest, save to your library and insert like a module with + Assembly or the palette. Inside an expanded assembly the frame’s **card** button (or Cmd/Ctrl-click) picks which ports and sliders the closed card shows. Select some cards and press Ctrl/Cmd+G to make your own. The FM-1 never sees assemblies: on the FM-1 the patch is the plain modules underneath.",
+          "why": "Assemblies nest, save to your library and insert like a module with + Assembly or Commands. Inside an expanded assembly the frame’s **card** button (or Cmd/Ctrl-click) picks which ports and sliders the closed card shows. Select some cards and press Ctrl/Cmd+G to make your own. The FM-1 never sees assemblies: on the FM-1 the patch is the plain modules underneath.",
           "parts": [
             { "id": "stack-voice-open", "kind": "assembly", "role": "stackVoice", "fact": "open" }
           ]
@@ -3204,7 +3204,7 @@
           "id": "palette",
           "kind": "task",
           "title": "One box for everything",
-          "text": "Ctrl/Cmd+K (or /) opens the *command palette*. It finds modules, assemblies, patches and every action by name, so you rarely need a menu.\n\n[Add a **Wavetable**](req:add-wavetable): open the palette, type `wavetable` and press Enter.",
+          "text": "Ctrl/Cmd+K (or /) opens *Commands*. It finds modules, assemblies, patches and every action by name, so you rarely need a menu.\n\n[Add a **Wavetable**](req:add-wavetable): open Commands, type `wavetable` and press Enter.",
           "why": "The chips under the search field narrow it to modules, assemblies or patches. Press ? for the shortcuts: B bypasses the selection, Ctrl/Cmd+D duplicates it with its cables, Ctrl/Cmd+G groups it into an assembly.",
           "parts": [
             { "id": "add-wavetable", "kind": "module", "type": "wavetable" }
@@ -3226,10 +3226,10 @@
           "id": "tools",
           "kind": "continue",
           "title": "Hearing and comparing",
-          "text": "- A **Scope** module shows whatever you cable into it, as a waveform or a spectrum.\n- B bypasses the selected modules; ⏻ bypasses an assembly.\n- *Show changes* lists what moved since you loaded or sent the patch.\n- *Share patch…* puts the whole patch in a URL and draws its card for a post.\n\nAll of them are in the palette.",
+          "text": "- A **Scope** module shows whatever you cable into it, as a waveform or a spectrum.\n- B bypasses the selected modules; ⏻ bypasses an assembly.\n- *Show changes* lists what moved since you loaded or sent the patch.\n- *Share patch…* puts the whole patch in a URL and draws its card for a post.\n\nAll of them are in Commands.",
           "why": "",
           "playback": false,
-          "pointer": { "kind": "ui", "id": "palette-btn" }
+          "pointer": { "kind": "ui", "id": "commands-btn" }
         }
       ]
     }

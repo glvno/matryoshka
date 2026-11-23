@@ -78,9 +78,9 @@ One of a [Harmonizer](#harmonizer)'s seven buttons that pick the chord its keys 
 
 Folding an expanded assembly back into one card. Also called closed in the model.
 
-### Command palette
+### Commands
 
-The searchable list of every editor action, module, assembly and patch, opened with `/` or Ctrl/Cmd+K.
+The searchable list of every editor action, module, assembly and patch, opened with `/` or Ctrl/Cmd+K. Avoid: command palette, palette (the palette is only the palette of sounds).
 
 ### Comment box
 
@@ -88,7 +88,7 @@ A box of free text on the editor's canvas, like a Max comment. It has no ports, 
 
 ### Community shelf
 
-Opt-in patches in Library > Community, including submitted patches and archived factory data. Each keeps its author, source and licence; adding an entry makes it available in Your patches and the palette.
+Opt-in patches in Library > Community, including submitted patches and archived factory data. Each keeps its author, source and licence; adding an entry makes it available in Your patches and Commands.
 
 ### Compiled assembly
 
@@ -176,7 +176,7 @@ An assembly that takes keys and makes audio: its voicing turns the keys into not
 
 ### Engines shelf
 
-The derived first shelf of the assembly browser and the palette, listing every engine.
+The derived first shelf of the assembly browser and Commands, listing every engine.
 
 ### Environment
 

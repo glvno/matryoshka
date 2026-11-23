@@ -80,7 +80,7 @@ const EVENTS: Record<EventName, string> = {
   notes: 'notes played', undos: 'undo', redos: 'redo', zooms: 'zoom', flips: 'candidate switch', shares: 'share link', bypasses: 'bypass presses', news: 'New patch pressed', saves: 'assembly saves',
   audio: 'audio enabled', arpPlay: 'arpeggiator playing', snapshotA: 'a first candidate', snapshotB: 'a second candidate', selected: 'modules selected', bypassed: 'a module bypassed / on',
 };
-const UI_IDS = ['add-btn', 'add-assembly-btn', 'palette-btn', 'audio-btn', 'new-patch-btn', 'tour-btn'];
+const UI_IDS = ['add-btn', 'add-assembly-btn', 'commands-btn', 'audio-btn', 'new-patch-btn', 'tour-btn'];
 
 async function request(init?: RequestInit): Promise<Snapshot> {
   const response = await fetch(API, { cache: 'no-store', ...init });

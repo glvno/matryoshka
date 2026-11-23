@@ -25,6 +25,14 @@
 //               FE                                   clear every row
 //               FD, on u8                            PAD MAP off (0) or on (1)
 //                                                    every form answers PADS_NOW
+//   1E PALETTE  op u8, …                             the palette (#1196, feature bit 31; ENTRY bytes: encodePaletteEntry):
+//               00 GET                               answers PALETTE_NOW; from then on the FM-1 sends it unasked too
+//               01 ENTRY_GET, pos u8                 answers PALETTE_ENTRY
+//               02 PUT, pos u8, ENTRY (none: empty)  ACK (seq = pos; 8 = the slot does not hold that name), then PALETTE_NOW
+//               03 ORDER, from[8]                    new position i takes old position from[i] (0xFF empty); ACK, PALETTE_NOW
+//               04 GO, pos u8 (0xFF cancel)          switch (stopped: at once, playing: at the bar line); ACK (seq = pos;
+//                                                    6 empty, 8 MISSING, 5 sandbox; aux 0 now, 1 waiting, 2 cancelled)
+//               05 NAME, name[20]                    the name of the patch uploaded under Live, for a hold-save; no reply
 //   1F FONT     op u8, then                          the font area (#602, INFO byte 20 bit 0; firmware/src/font_area.c):
 //               1                                    BEGIN: its header erased (the FM-1 draws the small type until COMMIT)
 //               2, sector u8, offset u16, 1..256 bytes   WRITE inside one page (offset 0 of sectors 1.. erases it first)
@@ -174,6 +182,11 @@
 //                                                    the patch's demo set loaded (SEQ held + SEL, then SEL, #1179,
 //                                                    demo-sets.ts): hash = the set's region record hash, from 0 and to 0; op
 //                                                    4 pattern `from` of every track doubled (SEQ held + OCT+, D-838), to 0
+//   66 PALETTE_NOW  version u8 (1), cur u8, next u8 (0xFF none), flags u8 (bit0 edited), seq u16, then 8 × {state u8 (0
+//                                                    empty, 1 ok, 2 missing), slot u8, pattern u8, hash u16 (the entry's
+//                                                    CRC-16), len u16 (the slot's binary now), name[20]}: the answer to GET,
+//                                                    and unasked after any change once the editor sent GET
+//   67 PALETTE_ENTRY  pos u8, then the ENTRY bytes (none: empty)   the answer to ENTRY_GET
 //   68 FONT_SUM  sector u8, ok u8, CRC-16 u16          the CRC-16 of a sector of the font area (#602): the install skips one
 //                                                    that holds its bytes already
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
@@ -185,7 +198,7 @@
 //               [features 16..23: bit16 TEMPO / TEMPO_NOW, bit17 a preset carries up to 176 values, bit18 KEYS_NOW /
 //               GUIDE_NOW, bit19 flags bit3 says EDITOR, bit20 ARMS, bit21 ARMS wide, bit22 DEVICE_SETTINGS, bit23 PATTERN_ORIGIN],
 //               [byte13 allocation rule: 0 separate signal buffers, 1 physical lifetime buffers; unknown/missing means 0],
-//               [features 24..31: bit24 FX presets, bit25 the pattern store is on, bit28 MAP / MAP_NOW, bit29 PADS / PADS_NOW, bit30 PATTERN_OP],
+//               [features 24..31: bit24 FX presets, bit25 the pattern store is on, bit28 MAP / MAP_NOW, bit29 PADS / PADS_NOW, bit30 PATTERN_OP, bit31 PALETTE],
 //               [byte15 the bank's slots (absent: 64; 60 with the pattern store before 1.26; 48 from 1.26, or 60 on a 1.26
 //               FM-1 that kept the older layout because it holds more than 48 patches)],
 //               [bytes16..19 the pattern store's bytes free and in all, u16 LE each],
@@ -906,4 +919,108 @@ export function parseDeviceSettings(p: Parsed | null): DeviceSettings {
   const nameBytes = p.payload.slice(1, 17);
   if (nameBytes.some((v) => v !== 0 && (v < 32 || v > 126)) || p.payload[17] > 100) throw new Error('The FM-1 sent invalid settings.');
   return { name: String.fromCharCode(...nameBytes).replace(/\0.*$/, ''), returnLevel: p.payload[17], serial: p.payload.slice(18).map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase() };
+}
+
+// ---- the palette (#1196, feature bit 31): 8 entries, each a bank slot checked by name, its devices' presets and a pattern
+
+/** INFO feature bit 31 (byte 14 bit 7): the FM-1 keeps a palette (PALETTE, PALETTE_NOW, PALETTE_ENTRY). It is the sign
+ *  bit: `features` is then negative, so test it with `hasPaletteFeature`, not `> 0` */
+export const FEATURE_PALETTE = 1 << 31;
+export const hasPaletteFeature = (features: number): boolean => ((features >>> 31) & 1) === 1;
+/** the palette's command and replies, and PALETTE's ops */
+export const PALETTE = { cmd: 0x1e, now: 0x66, entry: 0x67, get: 0, entryGet: 1, put: 2, order: 3, go: 4, name: 5 } as const;
+/** the palette's positions */
+export const PALETTE_SIZE = 8;
+/** the devices with a preset one entry keeps at most (the FM-1's PAL_DEVS) */
+export const PALETTE_DEVS = 12;
+/** ACK statuses for PALETTE (proto.c S_*) and what they mean there */
+export const PAL_OK = 0, PAL_RANGE = 1, PAL_FLASH = 4, PAL_REFUSED = 5, PAL_EMPTY = 6, PAL_MISSING = 8;
+export const PAL_STATUS: Record<number, string> = {
+  [PAL_OK]: 'ok', [PAL_RANGE]: 'refused (a bad position or entry)', [PAL_FLASH]: 'flash error', [PAL_REFUSED]: 'refused in sandbox mode',
+  [PAL_EMPTY]: 'that position is empty', [PAL_MISSING]: 'that slot no longer holds the patch',
+};
+/** GO's ACK aux: switched at once (stopped), waiting for the bar line, the waiting switch cancelled */
+export const PAL_GO_NOW = 0, PAL_GO_WAITING = 1, PAL_GO_CANCELLED = 2;
+/** one device's preset in an entry: the device's index in the patch's device extras, its structure and the preset's
+ *  namespace (0: not known, the FM-1 looks it up by name), and the preset's name (1..16 characters) */
+export interface PaletteDevice { dev: number; structure: number; pstructure: number; name: string }
+/** an entry: the slot (0..63), the pattern (0-based), the slot's patch name when saved, and the devices' presets */
+export interface PaletteEntry { slot: number; pattern: number; name: string; devices: PaletteDevice[] }
+/** a position as PALETTE_NOW lists it: 0 empty, 1 ok, 2 missing; hash: CRC-16 of the entry's bytes; len: the slot's
+ *  binary length now (0 when missing or empty), for D-605 matching */
+export interface PalettePos { state: 0 | 1 | 2; slot: number; pattern: number; hash: number; len: number; name: string }
+/** PALETTE_NOW: the position playing and the one waiting for the bar line (null none), the running patch edited, the
+ *  record's sequence number, the 8 positions */
+export interface PaletteNow { version: number; cur: number | null; next: number | null; edited: boolean; seq: number; positions: PalettePos[] }
+
+const nameBytes = (s: string, n: number): number[] =>
+  Array.from({ length: n }, (_, i) => { const c = s.charCodeAt(i); return c >= 32 && c < 127 ? c : 0; });
+const readName = (p: ArrayLike<number>, at: number, n: number): string => {
+  const out: number[] = [];
+  for (let i = 0; i < n && p[at + i]; i++) out.push(p[at + i]);
+  return String.fromCharCode(...out.filter((c) => c >= 32 && c < 127));
+};
+const u32le = (v: number): number[] => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
+
+/** an entry's bytes, the same in the FM-1's flash and on the link: slot, pattern, name[20], ndev, then per device dev u8,
+ *  structure u32, pstructure u32, nl u8, name[nl]. The name is written as given (callers pass deviceName); a preset name
+ *  is cut to 16 printable characters, and devices past PALETTE_DEVS or without a name are left out */
+export function encodePaletteEntry(e: PaletteEntry): number[] {
+  const devs = e.devices.map((d) => ({ ...d, name: devicePresetName(d.name) })).filter((d) => d.name).slice(0, PALETTE_DEVS);
+  const out = [e.slot & 0xff, e.pattern & 0xff, ...nameBytes(e.name, NAME_BYTES), devs.length];
+  for (const d of devs) out.push(d.dev & 0xff, ...u32le(d.structure), ...u32le(d.pstructure), d.name.length, ...nameBytes(d.name, d.name.length));
+  return out;
+}
+/** the entry from its bytes, null when malformed (short, too many devices, a name length out of 1..16) */
+export function decodePaletteEntry(bytes: ArrayLike<number>): PaletteEntry | null {
+  const b = Array.from(bytes);
+  if (b.length < 23) return null;
+  const n = b[22];
+  if (n > PALETTE_DEVS) return null;
+  const devices: PaletteDevice[] = [];
+  let at = 23;
+  for (let k = 0; k < n; k++) {
+    if (at + 10 > b.length) return null;
+    const nl = b[at + 9];
+    if (nl < 1 || nl > PRESET_NAME_BYTES || at + 10 + nl > b.length) return null;
+    devices.push({ dev: b[at], structure: u32at(b, at + 1), pstructure: u32at(b, at + 5), name: readName(b, at + 10, nl) });
+    at += 10 + nl;
+  }
+  return { slot: b[0], pattern: b[1], name: readName(b, 2, NAME_BYTES), devices };
+}
+/** PALETTE_NOW's hash of an entry: CRC-16/CCITT-FALSE of its bytes */
+export const paletteHash = (e: PaletteEntry): number => crc16(encodePaletteEntry(e));
+
+export const paletteGetFrame = (): Uint8Array => frame(PALETTE.cmd, [PALETTE.get]);
+export const paletteEntryGetFrame = (pos: number): Uint8Array => frame(PALETTE.cmd, [PALETTE.entryGet, pos]);
+/** PUT: position `pos` takes the entry, or empties (null) */
+export const palettePutFrame = (pos: number, e: PaletteEntry | null): Uint8Array =>
+  frame(PALETTE.cmd, [PALETTE.put, pos, ...(e ? encodePaletteEntry(e) : [])]);
+/** ORDER: new position i takes old position from[i] (null: empty) */
+export function paletteOrderFrame(from: readonly (number | null)[]): Uint8Array {
+  if (from.length !== PALETTE_SIZE) throw new Error(`ORDER takes ${PALETTE_SIZE} positions`);
+  return frame(PALETTE.cmd, [PALETTE.order, ...from.map((f) => (f === null ? 0xff : f))]);
+}
+/** GO: switch to position `pos`, or cancel a waiting switch (null) */
+export const paletteGoFrame = (pos: number | null): Uint8Array => frame(PALETTE.cmd, [PALETTE.go, pos === null ? 0xff : pos]);
+/** NAME: the name of the patch the editor runs under Live (callers pass deviceName) */
+export const paletteNameFrame = (name: string): Uint8Array => frame(PALETTE.cmd, [PALETTE.name, ...nameBytes(name, NAME_BYTES)]);
+
+/** a PALETTE_NOW payload, null when short or of another version */
+export function parsePaletteNow(p: number[]): PaletteNow | null {
+  if (p.length < 6 + PALETTE_SIZE * 27 || p[0] !== 1) return null;
+  const positions: PalettePos[] = [];
+  for (let i = 0; i < PALETTE_SIZE; i++) {
+    const at = 6 + i * 27;
+    positions.push({ state: (p[at] <= 2 ? p[at] : 0) as 0 | 1 | 2, slot: p[at + 1], pattern: p[at + 2], hash: p[at + 3] | (p[at + 4] << 8), len: p[at + 5] | (p[at + 6] << 8), name: readName(p, at + 7, NAME_BYTES) });
+  }
+  const pos = (v: number): number | null => (v < PALETTE_SIZE ? v : null);
+  return { version: p[0], cur: pos(p[1]), next: pos(p[2]), edited: !!(p[3] & 1), seq: p[4] | (p[5] << 8), positions };
+}
+/** a PALETTE_ENTRY payload: the position and its entry (null empty); null when malformed */
+export function parsePaletteEntry(p: number[]): { pos: number; entry: PaletteEntry | null } | null {
+  if (p.length < 1 || p[0] >= PALETTE_SIZE) return null;
+  if (p.length === 1) return { pos: p[0], entry: null };
+  const entry = decodePaletteEntry(p.slice(1));
+  return entry ? { pos: p[0], entry } : null;
 }

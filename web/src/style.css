@@ -102,7 +102,7 @@ html { touch-action: pan-x pan-y; }
 }
 @media (max-width: 700px) { .side-collapse { display: none; } }
 .sidebar-bottom { margin-top: auto; display: grid; gap: 12px; }
-#palette-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; background: transparent; }
+#commands-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; background: transparent; }
 kbd { font: 10px system-ui, sans-serif; color: var(--muted); }
 .mobile-bar, .sidebar-dismiss { display: none; }
 a { color: var(--secondary); text-decoration: none; }
@@ -210,20 +210,20 @@ select.over { border-color: var(--danger); color: var(--danger); }
 .panel h3 button { margin-left: auto; padding: 0 6px; }
 .panel ul { margin: 0; padding-left: 16px; }
 .panel li.p { color: var(--ink); } .panel li.add { color: var(--gate); } .panel li.rm { color: var(--danger); } .panel li.o { color: var(--muted); }
-dialog.palette { width: 580px; max-width: calc(100% - 24px); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 48px var(--backdrop); }
+dialog.commands { width: 580px; max-width: calc(100% - 24px); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 48px var(--backdrop); }
 dialog::backdrop { background: var(--backdrop); }
-.palette-search { display: flex; align-items: center; gap: 8px; padding: 12px; }
-.palette-search input { width: 100%; min-width: 0; border: 0; padding: 10px 4px; background: transparent; cursor: text; }
-.palette-search button { border: 0; font-size: 22px; padding: 2px 8px; }
-.palette-filters { display: flex; gap: 6px; padding: 0 12px 12px; border-bottom: 1px solid var(--line); }
-.palette-filters button { font-size: 12px; background: transparent; }
-.palette-filters button[aria-pressed="true"] { background: var(--secondary); color: var(--panel); border-color: var(--secondary); }
-dialog.palette ul { list-style: none; margin: 0; padding: 6px; max-height: min(55dvh, 480px); overflow: auto; }
-dialog.palette li { padding: 10px; border-radius: 5px; cursor: pointer; display: flex; align-items: center; gap: 12px; font-size: 13px; }
-dialog.palette li span.k { color: var(--muted); font-size: 10px; min-width: 64px; }
-dialog.palette li .detail { margin-left: auto; color: var(--muted); font-size: 11px; text-align: right; }
-dialog.palette li.sel, dialog.palette li:hover { background: var(--surface-tint); box-shadow: inset 2px 0 var(--secondary); }
-.palette-hint { display: flex; justify-content: space-between; padding: 10px 16px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--line); }
+.commands-search { display: flex; align-items: center; gap: 8px; padding: 12px; }
+.commands-search input { width: 100%; min-width: 0; border: 0; padding: 10px 4px; background: transparent; cursor: text; }
+.commands-search button { border: 0; font-size: 22px; padding: 2px 8px; }
+.commands-filters { display: flex; gap: 6px; padding: 0 12px 12px; border-bottom: 1px solid var(--line); }
+.commands-filters button { font-size: 12px; background: transparent; }
+.commands-filters button[aria-pressed="true"] { background: var(--secondary); color: var(--panel); border-color: var(--secondary); }
+dialog.commands ul { list-style: none; margin: 0; padding: 6px; max-height: min(55dvh, 480px); overflow: auto; }
+dialog.commands li { padding: 10px; border-radius: 5px; cursor: pointer; display: flex; align-items: center; gap: 12px; font-size: 13px; }
+dialog.commands li span.k { color: var(--muted); font-size: 10px; min-width: 64px; }
+dialog.commands li .detail { margin-left: auto; color: var(--muted); font-size: 11px; text-align: right; }
+dialog.commands li.sel, dialog.commands li:hover { background: var(--surface-tint); box-shadow: inset 2px 0 var(--secondary); }
+.commands-hint { display: flex; justify-content: space-between; padding: 10px 16px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--line); }
 dialog.browser { width: 720px; max-width: calc(100% - 32px); height: 70vh; max-height: calc(100% - 32px); padding: 0; border: 1px solid var(--muted); border-radius: 8px; background: var(--panel); color: var(--ink); box-shadow: 0 4px 16px var(--backdrop); display: flex; flex-direction: column; overflow: hidden; }
 dialog.browser:not([open]) { display: none; }
 dialog.browser::backdrop { background: var(--backdrop); }
@@ -447,6 +447,65 @@ body:has(.snap-column:not([hidden])) .workspace { margin-right: var(--snap-col-w
 .snap-generate .snap-btn:first-child { flex: 1; min-width: 0; border-radius: 7px 0 0 7px; }
 .snap-generate .snap-count { padding: 0 10px; border-radius: 0 7px 7px 0; border-left: 1px solid color-mix(in srgb, var(--accent-ink) 30%, transparent);
   font: 500 12px/1 var(--snap-body); letter-spacing: 0; text-transform: none; }
+/* the palette (#1196, palette-view.ts): 8 chips, two across, under the footer; numbered as the FM-1's black keys. Teal
+   (--secondary) marks the one the FM-1 plays, gold (--gate) the one waiting for the bar line, coral MISSING */
+.palette { flex: none; padding: 8px 10px 10px; border-top: 1px solid var(--line); font-family: 'Barlow', system-ui, sans-serif;
+  --pal-tile: color-mix(in oklab, var(--ink) 9%, var(--panel)); }
+.palette-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.palette-title { font: 600 13px/1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.palette-keys { margin-left: auto; font: 400 11px/1 'Barlow', system-ui, sans-serif; color: var(--muted); opacity: .8; }
+.palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.pal-chip { position: relative; display: grid; grid-template-columns: 16px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 6px; align-items: center; min-height: 38px;
+  padding: 4px 18px 4px 6px; border-radius: 7px; background: var(--pal-tile); color: var(--ink); cursor: pointer; user-select: none; -webkit-user-select: none; outline: none; }
+.pal-chip:hover { box-shadow: inset 0 0 0 1px var(--secondary); }
+.pal-chip:focus-visible { box-shadow: inset 0 0 0 1.5px var(--secondary); }
+.pal-num { grid-row: span 2; font: 700 14px/1 'Barlow Condensed', system-ui, sans-serif; color: var(--muted); text-align: center; }
+.pal-name { font: 600 12px/1.15 'Barlow', system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pal-meta { min-height: 13px; font: 400 11px/1.2 'Barlow', system-ui, sans-serif; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pal-chip.empty { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
+.pal-chip.empty .pal-name { grid-row: span 2; color: var(--muted); font-weight: 500; letter-spacing: .06em; }
+.pal-chip.empty .pal-meta { display: none; }
+.pal-chip.missing .pal-name { color: var(--muted); text-decoration: line-through; }
+.pal-chip.missing .pal-meta { color: var(--accent); font-weight: 600; letter-spacing: .06em; }
+.pal-chip.nocopy .pal-name::after { content: ' ·'; color: var(--muted); }
+.pal-chip.cur { background: color-mix(in oklab, var(--secondary) 22%, var(--panel)); box-shadow: inset 3px 0 var(--secondary); }
+.pal-chip.cur .pal-num { color: var(--secondary); }
+.pal-chip.next { box-shadow: inset 0 0 0 1.5px var(--gate); }
+.pal-tag { position: absolute; right: 4px; bottom: 3px; font: 700 9px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .08em; color: var(--gate); }
+.pal-x { position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px;
+  background: transparent; color: var(--muted); font-size: 13px; line-height: 1; cursor: pointer; opacity: 0; }
+.pal-chip:hover .pal-x, .pal-chip:focus-within .pal-x { opacity: 1; }
+.pal-x:hover { color: var(--ink); background: var(--line); }
+.palette[data-mode="offline"] .pal-chip, .palette[data-mode="old"] .pal-chip { opacity: .55; }
+.palette[data-mode="offline"] .pal-chip.cur { box-shadow: none; }
+.palette[data-mode="old"] .pal-chip, .pal-chip[aria-disabled="true"] { cursor: default; }
+.palette[data-mode="old"] .pal-chip:hover, .pal-chip[aria-disabled="true"]:hover { box-shadow: none; }
+.palette-note { margin: 6px 0 0; font: 400 11px/1.3 'Barlow', system-ui, sans-serif; color: var(--muted); }
+.palette-note[hidden] { display: none; }
+/* a patch dragged over a chip (patch-drag.ts), or a chip dragged onto another */
+.pal-chip.patch-drop-over, .pal-chip.pal-drop { box-shadow: inset 0 0 0 2px var(--secondary); background: color-mix(in oklab, var(--secondary) 14%, var(--panel)); }
+.pal-chip.pal-ghost { opacity: .35; }
+.pal-lifted { position: fixed; z-index: 1000; pointer-events: none; background: color-mix(in oklab, var(--secondary) 10%, var(--panel)); box-shadow: 0 8px 22px var(--shadow); }
+.patch-drag-source { cursor: grab; }
+.patch-drag-label { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; padding: 4px 10px; border-radius: 6px; background: var(--secondary); color: var(--accent-ink);
+  font: 600 12px/1.2 'Barlow', system-ui, sans-serif; box-shadow: 0 6px 18px var(--shadow); white-space: nowrap; }
+body.patch-dragging, body.patch-dragging * { cursor: grabbing !important; }
+/* the Library's copy of the square: a card at the bottom right while Library shows, so its rows can be dragged onto it */
+.palette.lib-dock { position: fixed; right: 16px; bottom: 16px; z-index: 7; width: 280px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 4px 16px var(--shadow); }
+body:has(.palette.lib-dock:not([hidden])) #tab-library { padding-right: 312px; }
+.palette.lib-dock[hidden] { display: none; }
+/* the folded rail: a dot per position */
+.pal-rail { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 6px 0 0; border-top: 1px solid var(--line); }
+.pal-dot { width: 18px; height: 18px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--muted);
+  font: 600 10px/1 'Barlow Condensed', system-ui, sans-serif; cursor: pointer; }
+.pal-dot.ok { background: color-mix(in oklab, var(--ink) 9%, var(--panel)); color: var(--ink); }
+.pal-dot.missing { color: var(--accent); }
+.pal-dot.cur { background: var(--secondary); border-color: var(--secondary); color: var(--accent-ink); }
+.pal-dot.next { border-color: var(--gate); }
+.pal-dot:disabled { cursor: default; opacity: .5; }
+/* the grip beside the patch name: drag the current patch onto a chip */
+.patch-grip { flex: none; padding: 0 4px; border: 0; background: transparent; color: var(--muted); font-size: 14px; line-height: 1; }
+.patch-grip:hover { color: var(--ink); }
 /* folded: the 52 px rail. The letter you hear (A outlined), N / M, ▲, a dot per candidate (A a square, gold kept, dashed
    being judged; a click plays it), ▼, then Keep, remove and +N (Generate) */
 .snap-rail { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0; }
@@ -961,10 +1020,10 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
   .sidebar.open { display: flex; }
   .sidebar-dismiss:not([hidden]) { display: block; position: fixed; inset: 44px 0 0; z-index: 40; background: var(--backdrop); border: 0; border-radius: 0; }
   .tab:not(#tab-patch) { padding: 52px 16px 16px; }
-  dialog.palette li { gap: 8px; }
-  dialog.palette li .detail { max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .palette-filters { gap: 4px; }
-  .palette-filters button { flex: 1; padding: 6px; }
+  dialog.commands li { gap: 8px; }
+  dialog.commands li .detail { max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .commands-filters { gap: 4px; }
+  .commands-filters button { flex: 1; padding: 6px; }
 }
 
 /* Every card is one layer; internal routes never escape onto another card. */
@@ -1354,9 +1413,9 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 .sbody button { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sidebar button { min-height: 30px; padding: 4px 8px; border-radius: 5px; white-space: nowrap; }
 /* the plain buttons in the (muted) gate colour: a grey fill read as a slider's bar */
-.sidebar button:not(.primary), .sidebar #tour-btn, .sidebar #palette-btn { background: var(--btn-yellow); border-color: var(--btn-yellow); color: var(--accent-ink); }
-.sidebar button:not(.primary):hover, .sidebar #tour-btn:hover, .sidebar #palette-btn:hover { border-color: var(--ink); color: var(--accent-ink); filter: brightness(1.08); }
-.sidebar #palette-btn kbd { color: inherit; opacity: .7; }
+.sidebar button:not(.primary), .sidebar #tour-btn, .sidebar #commands-btn { background: var(--btn-yellow); border-color: var(--btn-yellow); color: var(--accent-ink); }
+.sidebar button:not(.primary):hover, .sidebar #tour-btn:hover, .sidebar #commands-btn:hover { border-color: var(--ink); color: var(--accent-ink); filter: brightness(1.08); }
+.sidebar #commands-btn kbd { color: inherit; opacity: .7; }
 #add-assembly-btn, .sidebar #demo-btn { background: var(--secondary); border-color: var(--secondary); color: var(--panel); }
 /* the canvas panel's buttons (TIDY, FIT) look like the dock's octave buttons: outlined on the panel, the border teal on hover */
 .sidebar .view-row button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); font-size: 11px; letter-spacing: .06em; }
@@ -1382,8 +1441,8 @@ html.panning, html.panning * { cursor: grabbing !important; user-select: none; }
 .patching-any .side-bar, .patching-any .side-bar .slider-port { cursor: crosshair; }
 /* PATCH: the Open picker under New patch */
 .sidebar select#preset { width: 100%; min-height: 28px; padding: 2px 6px; border-radius: 5px; border-color: var(--line); background: var(--bar); font: 500 13px/1.2 'Barlow', system-ui, sans-serif; }
-#palette-btn { font-size: 12px; }
-#palette-btn kbd { font: 500 10px/1 'Barlow', system-ui, sans-serif; text-transform: none; letter-spacing: 0; }
+#commands-btn { font-size: 12px; }
+#commands-btn kbd { font: 500 10px/1 'Barlow', system-ui, sans-serif; text-transform: none; letter-spacing: 0; }
 .sidebar #tour-btn { padding-inline: 8px; text-align: center; }
 /* the LIBRARY view's sidebar (main.ts setLibrarySection): its sections as a list, the current one marked like a selected row */
 

@@ -70,7 +70,7 @@
         </section>
       </div>
       <div class="sidebar-bottom">
-        <button id="palette-btn" title="All commands (Ctrl/Cmd+K)">Commands <kbd>⌘ / Ctrl K</kbd></button>
+        <button id="commands-btn" title="All commands (Ctrl/Cmd+K)">Commands <kbd>⌘ / Ctrl K</kbd></button>
       </div>
     </aside>
     <main>
@@ -118,7 +118,7 @@
     <nav id="library-tabs" class="library-tabs view-switch" aria-label="Library sections" hidden><button type="button" data-section="patches" aria-current="true">Patches</button><button type="button" data-section="assemblies" aria-current="false">Assemblies</button><button type="button" data-section="presets" aria-current="false">Presets</button><button type="button" data-section="patterns" aria-current="false">Patterns</button><button type="button" data-section="community" aria-current="false">Community</button></nav>
     <!-- Connect FM-1 (top right, in every view): connects as FM-1 & MIDI's Connect does; connected, it opens FM-1 & MIDI (main.ts syncChip) -->
     <button id="fm1-connect" class="fm1-connect" type="button" title="Connect the FM-1 over USB MIDI"><span class="sl-dot" aria-hidden="true"></span><span class="fm1-connect-text">Connect FM-1</span></button>
-    <!-- the Install panel (Get started > Install firmware, the palette, #flash): flasher.ts's page over the main area -->
+    <!-- the Install panel (Get started > Install firmware, Commands, #flash): flasher.ts's page over the main area -->
     <section id="flash-view" class="flash-view" aria-labelledby="install-title" hidden>
       <div class="install-head"><h2 id="install-title">Install firmware</h2><button id="install-close" type="button" title="Close the Install panel (an install keeps running)">Close</button></div>
       <div id="flash-body"></div>
@@ -147,13 +147,13 @@
     </div>
   </div>
   <input id="load-file" type="file" accept="application/json,.json" hidden />
-  <dialog id="palette" class="palette" aria-label="Command palette">
-    <div class="palette-search"><input id="palette-input" type="text" role="combobox" aria-label="Search commands" aria-controls="palette-list" aria-expanded="true" aria-autocomplete="list" placeholder="Find a command, module, assembly or patch…" autocomplete="off" /><button id="palette-close" aria-label="Close commands">×</button></div>
-    <div class="palette-filters" aria-label="Filter commands">
+  <dialog id="commands" class="commands" aria-label="Commands">
+    <div class="commands-search"><input id="commands-input" type="text" role="combobox" aria-label="Search commands" aria-controls="commands-list" aria-expanded="true" aria-autocomplete="list" placeholder="Find a command, module, assembly or patch…" autocomplete="off" /><button id="commands-close" aria-label="Close commands">×</button></div>
+    <div class="commands-filters" aria-label="Filter commands">
       <button data-query="" aria-pressed="true">Actions</button><button data-query="module" aria-pressed="false">Modules</button><button data-query="engine" aria-pressed="false">Engines</button><button data-query="assembly" aria-pressed="false">Assemblies</button><button data-query="load patch" aria-pressed="false">Patches</button>
     </div>
-    <ul id="palette-list" role="listbox" aria-label="Commands"></ul>
-    <div class="palette-hint">↑ ↓ to browse <span>Enter to run · Esc to close</span></div>
+    <ul id="commands-list" role="listbox" aria-label="Commands"></ul>
+    <div class="commands-hint">↑ ↓ to browse <span>Enter to run · Esc to close</span></div>
   </dialog>
       <dialog id="device-bar" class="device-controls" aria-label="FM-1 and MIDI"><h2>FM-1 &amp; MIDI</h2>
         <span class="menu-heading">FM-1 connection</span>
@@ -175,7 +175,7 @@
         <!-- MIDI learn (#1067, midi-learn.ts): this patch's learned sources, each with its range and Remove (main.ts showLearned) -->
         <span class="menu-heading">MIDI learn (this patch)</span>
         <div id="midi-learn-list" class="midi-learn-list" role="group" aria-label="MIDI controls learned by this patch"></div>
-        <p class="muted">A row’s ⋮ menu or the palette’s <b>MIDI learn…</b> waits for a knob, a fader, a pad’s axis or the pitch bend wheel of a MIDI controller, or one of its notes; the first that moves drives the row (a note at once). A learned note flips a switch row each time it is played and sets any other row by how hard it is played; it no longer plays a note in this patch. Low and High set where the control’s ends land in the row’s range (%). A learned control no longer does its usual job (CC 1 no longer moves Main’s mod wheel). When the controller also sent a CC with a job of its own while learn waited, the status line and this list say so (“CC 16 also sent: turns K1”). CC 80..86 and 120..127 cannot be learned, nor anything from an FM-1. The patch keeps what it learned, and the FM-1 plays it on its own for every row its pages show. On the FM-1, hold HOME and press SEL for learn mode, turn a row’s knob, then move the control.</p>
+        <p class="muted">A row’s ⋮ menu or Commands’ <b>MIDI learn…</b> waits for a knob, a fader, a pad’s axis or the pitch bend wheel of a MIDI controller, or one of its notes; the first that moves drives the row (a note at once). A learned note flips a switch row each time it is played and sets any other row by how hard it is played; it no longer plays a note in this patch. Low and High set where the control’s ends land in the row’s range (%). A learned control no longer does its usual job (CC 1 no longer moves Main’s mod wheel). When the controller also sent a CC with a job of its own while learn waited, the status line and this list say so (“CC 16 also sent: turns K1”). CC 80..86 and 120..127 cannot be learned, nor anything from an FM-1. The patch keeps what it learned, and the FM-1 plays it on its own for every row its pages show. On the FM-1, hold HOME and press SEL for learn mode, turn a row’s knob, then move the control.</p>
         <!-- the global pad map (main.ts showPads): only while the connected FM-1 keeps one (INFO feature bit 29, PADS / PADS_NOW) -->
         <div id="pads-section" class="pads-section" hidden>
           <span class="menu-heading">Pads</span>
@@ -259,10 +259,10 @@
         <div class="shead"><span class="mtag util">HELP</span><span class="stitle" id="help-title">Shortcuts</span><form method="dialog"><button class="help-close" aria-label="Close">×</button></form></div>
         <div class="help-body">
           <section class="hsec"><h3>Commands</h3>
-            <div class="hrow"><span class="hkeys"><kbd>/</kbd> <kbd>Ctrl/Cmd+K</kbd></span><span>command palette: add a module, insert an assembly, open a patch, any action</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>/</kbd> <kbd>Ctrl/Cmd+K</kbd></span><span>Commands: add a module, insert an assembly, open a patch, any action</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+S</kbd></span><span>save the patch to Your patches</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+B</kbd></span><span>collapse / expand the sidebar</span></div>
-            <div class="hrow"><span class="hkeys">PATCH · EMU · LIBRARY</span><span>the switch at the top: the canvas, the FM-1’s firmware emulated in the browser (with the controls strip under it: the controls for what the FM-1 is doing now, and what a held button does), and what is stored in this browser and on the FM-1 (<kbd>←</kbd><kbd>→</kbd> move along it). Install (the firmware) is under Get started and in the palette</span></div>
+            <div class="hrow"><span class="hkeys">PATCH · EMU · LIBRARY</span><span>the switch at the top: the canvas, the FM-1’s firmware emulated in the browser (with the controls strip under it: the controls for what the FM-1 is doing now, and what a held button does), and what is stored in this browser and on the FM-1 (<kbd>←</kbd><kbd>→</kbd> move along it). Install (the firmware) is under Get started and in Commands</span></div>
             <div class="hrow"><span class="hkeys">LIBRARY <b>→</b> <b>←</b></span><span>Patches and Presets in two columns, this browser and the FM-1: → puts one on the FM-1 (or in the bank’s offline copy while none is connected), ← copies one into this browser. Deleting in this browser offers Undo; replacing on the FM-1 asks first</span></div>
             <div class="hrow"><span class="hkeys"><kbd>?</kbd></span><span>this list</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Esc</kbd></span><span>cancel a connection or a MIDI learn, clear the rows selected while choosing or arranging a card (again: finish choosing or arranging), close a dialog or the Install panel</span></div>
@@ -275,7 +275,7 @@
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+G</kbd></span><span>make an assembly from the selection</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Delete</kbd> <kbd>Backspace</kbd></span><span>remove the selection</span></div>
             <div class="hrow"><span class="hkeys"><kbd>B</kbd></span><span>bypass / un-bypass the selection</span></div>
-            <div class="hrow"><span class="hkeys"><kbd>Alt+M</kbd></span><span>mutate the selection: each parameter moves by up to ±25 % of its range (the <b>±25 %</b> chip over the candidates, or the palette’s <b>Mutate amount</b>, sets 5, 10, 25 or 50 %), in octaves for a frequency or a time, between From and To when it plays between two values. <b>Randomize</b> (the palette, a card’s ⋯ menu) puts each anywhere in its range. A collapsed assembly moves the rows its card shows. A locked parameter (its ⋮ menu) or card (⋯ › <b>Lock card for Mutate</b>) stays, and so do Main, the Output, the voices, Steps, the Arpeggiator, Drum maps and the Harmonizer; a level never rises above its default. The palette’s <b>Mutate category</b> (lead, stab, pluck, pad, bass, keys, drone) brings the envelopes, the filter cutoff and the glide into ranges that suit it; <b>Lock envelopes</b> keeps every envelope as it is. One undo step</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Alt+M</kbd></span><span>mutate the selection: each parameter moves by up to ±25 % of its range (the <b>±25 %</b> chip over the candidates, or Commands’ <b>Mutate amount</b>, sets 5, 10, 25 or 50 %), in octaves for a frequency or a time, between From and To when it plays between two values. <b>Randomize</b> (Commands, a card’s ⋯ menu) puts each anywhere in its range. A collapsed assembly moves the rows its card shows. A locked parameter (its ⋮ menu) or card (⋯ › <b>Lock card for Mutate</b>) stays, and so do Main, the Output, the voices, Steps, the Arpeggiator, Drum maps and the Harmonizer; a level never rises above its default. Commands’ <b>Mutate category</b> (lead, stab, pluck, pad, bass, keys, drone) brings the envelopes, the filter cutoff and the glide into ranges that suit it; <b>Lock envelopes</b> keeps every envelope as it is. One undo step</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Shift+Alt+M</kbd></span><span>the next Mutate category: Any, Lead, Stab, Pluck, Pad, Bass, Keys, Drone, then Any again; the status line names it. The Aim chip over the candidates shows it, and a click on it picks one</span></div>
             <div class="hrow"><span class="hkeys"><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd></span><span>nudge the selection (with <kbd>Shift</kbd>: ten times further); with nothing selected, <kbd>←</kbd><kbd>→</kbd> put the previous / next device on Main’s knobs, <kbd>↑</kbd><kbd>↓</kbd> its previous / next page. While the open Sound design sidebar has the focus (click in it), <kbd>↑</kbd><kbd>↓</kbd> go to the candidate before / after instead, as <kbd>Alt+K</kbd> / <kbd>Alt+J</kbd> do</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+Z</kbd> <kbd>Shift+Ctrl/Cmd+Z</kbd></span><span>undo, redo</span></div>
@@ -286,7 +286,7 @@
             <div class="hrow"><span class="hkeys">drag to the edge</span><span>dragging a card, a cable or an area near the canvas’s edge moves the canvas, faster the closer to the edge</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Alt+T</kbd> <kbd>Alt+Z</kbd></span><span>TIDY: line the cards up in columns, keeping their order; FIT: zoom so every card is in view (the sidebar’s Canvas buttons)</span></div>
             <div class="hrow"><span class="hkeys">right-click a title</span><span>the card’s ⋯ menu</span></div>
-            <div class="hrow"><span class="hkeys">right-click the empty canvas</span><span><b>Add comment</b>: a box of free text (also in the palette). Double-click a comment to edit it (<kbd>Ctrl/Cmd+Enter</kbd> or a click elsewhere keeps it, <kbd>Esc</kbd> puts it back, left empty it goes); drag it, its corner resizes it. It is selected, copied, deleted and undone like a card, and saved in the patch, but never sent to the FM-1</span></div>
+            <div class="hrow"><span class="hkeys">right-click the empty canvas</span><span><b>Add comment</b>: a box of free text (also in Commands). Double-click a comment to edit it (<kbd>Ctrl/Cmd+Enter</kbd> or a click elsewhere keeps it, <kbd>Esc</kbd> puts it back, left empty it goes); drag it, its corner resizes it. It is selected, copied, deleted and undone like a card, and saved in the patch, but never sent to the FM-1</span></div>
           </section>
           <section class="hsec"><h3>Patching</h3>
             <div class="hrow"><span class="hkeys">click a jack, then another</span><span>connect (dragging works too)</span></div>
@@ -305,7 +305,7 @@
             <div class="hrow"><span class="hkeys">sliders</span><span>a cable into a jack with a parameter shows it in the list beside the disc (and its depth for a thumb): drag, or type <code>800hz</code> or <code>cvamt=2</code> and <kbd>Enter</kbd>; the next <kbd>Enter</kbd> goes on without it</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Shift+Enter</kbd> or <b>⤳</b></span><span>with no cable held: follow a cable to the card at its other end (several: choose one). <kbd>[</kbd> <kbd>]</kbd> (empty field) or <kbd>Alt+←</kbd> <kbd>Alt+→</kbd> go back and forward along the trail at the top; from any card start a new chain</span></div>
             <div class="hrow"><span class="hkeys"><code>a.port &gt; b.port</code></span><span>type or paste whole chains, <kbd>;</kbd> between them: <code>lfo.out &gt; multimode.cv; multimode.lp &gt; vca.in &gt; output.in</code> builds them in one undo step, laid out by signal flow; <code>lfo#2</code> is a second one</span></div>
-            <div class="hrow"><span class="hkeys"><code>bp save name</code> · <code>bp name</code></span><span>keep the last chain as a blueprint in this browser, and stamp it later: new cards, wired, one undo step (<code>bp del name</code> deletes; also in the palette)</span></div>
+            <div class="hrow"><span class="hkeys"><code>bp save name</code> · <code>bp name</code></span><span>keep the last chain as a blueprint in this browser, and stamp it later: new cards, wired, one undo step (<code>bp del name</code> deletes; also in Commands)</span></div>
             <div class="hrow"><span class="hkeys"><kbd>C</kbd></span><span>copy the card under the pointer beside it, with its settings, and open its ring</span></div>
           </section>
           <section class="hsec"><h3>Choosing and arranging a card</h3>
@@ -333,9 +333,9 @@
             <div class="hrow"><span class="hkeys">touch screen</span><span>pinch to zoom the canvas, two fingers to pan it, anywhere on it; one finger pans the empty canvas or a card’s body and works a control as a mouse would. Swipe the dock sideways for the rest of Main (from a knob or a button too); drag a knob up and down to turn it</span></div>
             <div class="hrow"><span class="hkeys">drag a slider</span><span>set its value; press anywhere on the bar to jump there. It moves by the row’s steps from where the value is: a typed 1/8 stays off the 0.01 grid. Arrow keys on a slider: a step; <kbd>Shift</kbd>+arrow: a tenth of a step</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Shift</kbd>-drag</span><span>fine: a slider at a tenth of the speed, in tenths of a step (as HOME + a knob on the FM-1); a knob or envelope corner finer too</span></div>
-            <div class="hrow"><span class="hkeys">double-click</span><span>a knob, wheel or envelope display: back to its default; a heading or assembly title: rename it; a module’s title: give it a name of its own (“saw carrier”; also in its ⋯ menu), shown on its card over its type, in cable tooltips, Show changes and the palette, and on the FM-1’s page header for a module that is a device of its own</span></div>
+            <div class="hrow"><span class="hkeys">double-click</span><span>a knob, wheel or envelope display: back to its default; a heading or assembly title: rename it; a module’s title: give it a name of its own (“saw carrier”; also in its ⋯ menu), shown on its card over its type, in cable tooltips, Show changes and Commands, and on the FM-1’s page header for a module that is a device of its own</span></div>
             <div class="hrow"><span class="hkeys">click a row</span><span>its device page goes on Main’s knobs <kbd>K1</kbd>..<kbd>K4</kbd> (dotted lines and numbered badges show which knob turns which row); DEVICE / PAGE in the dock step through them, as SELECT / ALGO do on the FM-1. MIDI CC 16..19 turn them too</span></div>
-            <div class="hrow"><span class="hkeys"><b>MIDI learn…</b> in a row’s ⋮ menu</span><span>then move a knob, a fader, a pad’s axis or the pitch bend wheel of a MIDI controller, or play one of its notes: it moves that row from then on, on a collapsed card too, without its page in focus (a small socket after the row’s name). It no longer does its usual job meanwhile: a learned note flips a switch row or sets the row by how hard it is played, and plays no note. The palette’s <b>MIDI learn…</b> takes the row last clicked; <b>Unlearn</b> in the menu, or FM-1 &amp; MIDI, lets go. The patch keeps it, so the FM-1 plays it on its own. On the FM-1, hold HOME and press SEL for learn mode, turn a row’s knob, then move the control</span></div>
+            <div class="hrow"><span class="hkeys"><b>MIDI learn…</b> in a row’s ⋮ menu</span><span>then move a knob, a fader, a pad’s axis or the pitch bend wheel of a MIDI controller, or play one of its notes: it moves that row from then on, on a collapsed card too, without its page in focus (a small socket after the row’s name). It no longer does its usual job meanwhile: a learned note flips a switch row or sets the row by how hard it is played, and plays no note. Commands’ <b>MIDI learn…</b> takes the row last clicked; <b>Unlearn</b> in the menu, or FM-1 &amp; MIDI, lets go. The patch keeps it, so the FM-1 plays it on its own. On the FM-1, hold HOME and press SEL for learn mode, turn a row’s knob, then move the control</span></div>
             <div class="hrow"><span class="hkeys">double-click a value bar</span><span>type a value (2k, 440 Hz, 120 ms, 50 %, a fraction such as 1/8 or -1/3, a choice by name). It is kept as typed, between the row’s steps too (a row of whole steps, a count or semitones, rounds to them); the bar shows three figures, the field opens with them all. <kbd>Enter</kbd> sets, <kbd>Tab</kbd> sets and moves on, <kbd>Esc</kbd> cancels</span></div>
           </section>
           <section class="hsec"><h3>Playing</h3>

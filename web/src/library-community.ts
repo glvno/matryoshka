@@ -3,15 +3,16 @@
 // XL), with the author, the age, the notes' first line and the Source link, and a row per version: its name, its chip
 // (FM-1 · NN % or SANDBOX, sandbox.ts) and Add / Added ✓. Add puts the entry into Your patches, linked to the bundled entry
 // until the user saves it as their own; Added ✓ takes it out again. Filters: ALL, FM-1, SANDBOX, ADDED. Like the rest of
-// the Library it opens nothing: an added patch opens from the Open picker or the palette.
+// the Library it opens nothing: an added patch opens from the Open picker or Commands.
 import type { BufferAllocation } from './signal-buffers';
 import type { BudgetStore } from './patchbin';
 import type { LibrarySection } from './bank';
 import ARCHIVED from '../community/factory.json';
 import {
   addCommunity, addedTitles, ageOf, chipOfEntry, familiesOf, ISSUE_FORM, isAdded, LICENCES, loadCommunity, notesOf, onAddedChange,
-  REDDIT_SEARCH, removeCommunity, SUBREDDIT, type CommunityPatch,
+  openCommunity, REDDIT_SEARCH, removeCommunity, SUBREDDIT, type CommunityPatch,
 } from './community';
+import { patchDragSource } from './patch-drag';
 import { chipEl } from './sandbox';
 import { isSaved, onSavedChange } from './saved';
 
@@ -63,8 +64,14 @@ export function buildCommunitySection(root: HTMLElement, ev: CommunityEvents, al
 
   const row = (c: CommunityPatch, base: CommunityPatch): HTMLElement => {
     const added = isAdded(c.entry.title) && !isSaved(c.entry.title);
+    const name = el('span', { class: 'grow', textContent: c.entry.title });
+    // (dragged onto a palette chip, #1196: the FM-1 stores it into a free slot first)
+    if (c.patch) {
+      name.title = 'Drag onto a palette chip to add it to the FM-1’s palette';
+      patchDragSource(name, () => ({ name: c.entry.title, patch: () => openCommunity(c) }));
+    }
     return el('div', { class: 'bank-row' },
-      el('span', { class: 'grow', textContent: c.entry.title }),
+      name,
       ...(archivedTitles.has(c.entry.title) ? [el('span', { class: 'muted', textContent: 'Archived factory', title: 'Original version, kept separately from current factory patches.' })] : []),
       ...(c.entry.author !== base.entry.author ? [el('span', { class: 'muted', textContent: c.entry.author })] : []),
       ...(c.entry.source !== base.entry.source ? [el('a', { href: c.entry.source, target: '_blank', rel: 'noopener', textContent: 'Source ↗' })] : []),

@@ -12,7 +12,7 @@ export async function rig(page, pos) {
     await page.getByRole('button', { name: btn }).click();
     await page.keyboard.type(q);
     await page.waitForTimeout(200);
-    if (re) await page.locator('#palette-list li').filter({ hasText: re }).first().click();
+    if (re) await page.locator('#commands-list li').filter({ hasText: re }).first().click();
     else await page.keyboard.press('Enter');
     await page.waitForTimeout(400);
   };

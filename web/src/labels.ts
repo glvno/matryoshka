@@ -178,7 +178,7 @@ const ALIASES: Record<string, string> = {
   rateenv: 'envelope eg rate',
 };
 
-/** the words a module is found by in the palette and + Add module besides its name: its label, its card tag, its former
+/** the words a module is found by in Commands and + Add module besides its name: its label, its card tag, its former
  *  name and its aliases */
 export const moduleKeywords = (type: string, label: string): string =>
   [label, moduleTag(type).tag, FORMER[type], ALIASES[type]].filter(Boolean).join(' ');
