@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The palette (#1196): the entry an editor patch makes, the entry applied to a copy, and the editor's side of the link
 // against a stand-in FM-1 that keeps a palette as build/palette/spec.md §5 says (test-palette-fm1.ts).
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { presetsHPatches } from '../scripts/factory-lz';
 import { FACTORY } from './assemblies';
 import { insertAssembly, type AssemblyInst } from './assembly';
 import { binLength, slotMoves, type Candidate } from './bank';
@@ -11,6 +13,7 @@ import { DEFS } from './modules';
 import { connect, newPatch, type Patch } from './patch';
 import { applyEntry, entryOf, moveOrder, Palette, PALETTE_STORE, paletteDevices, repointed, type PalettePorts } from './palette';
 import { chipMeta } from './palette-view';
+import { FM1_PRESETS } from './presets';
 import { CMD, PALETTE, type PaletteEntry } from './protocol';
 import { structureOf } from './structure';
 import { PaletteFm1 } from './test-palette-fm1';
@@ -251,6 +254,25 @@ const sentCmds = (fm1: PaletteFm1): number[] => fm1.o.sent.map((f) => f[4]);
 const q16 = (values: number[]): number[] => values.map((v) => Math.round(v * 65536));
 
 describe('adding to the palette saves what the FM-1 needs to play the sound (owner 2026-11-23)', () => {
+  it('points a factory patch at its untouched factory slot: the editor encodes it as the firmware writes it', async () => {
+    // (presets.h, the factory region and the firmware tier carry the same binaries in the same order, export-defs.ts; the
+    // FM-1 names a factory slot as the region does, case and all; an FM-1 updated from a release holds them byte for byte,
+    // D-887. A slot that holds another copy, touched or older, plays another patch and is not pointed at: D-1240)
+    const bins = presetsHPatches(readFileSync(new URL('../../firmware/src/presets.h', import.meta.url), 'utf8'));
+    const names = Object.keys(FM1_PRESETS);
+    expect(bins.map((b) => b.name)).toEqual(names.map((n) => n.toUpperCase()));
+    const { fm1, palette } = await linked();
+    names.forEach((name, slot) => {
+      fm1.slots[slot] = { slot, used: true, length: bins[slot].bytes.length, name };
+      fm1.bins[slot] = bins[slot].bytes;
+    });
+    for (const [slot, name] of names.entries()) {
+      expect(await palette.add(name, FM1_PRESETS[name](), { pos: slot % 8 }), name).toBe(true);
+      await fm1.quiet();
+      expect(fm1.entries[slot % 8], name).toMatchObject({ slot, name });
+    }
+    expect(sentCmds(fm1)).not.toContain(CMD.slot);   // (nothing stored)
+  });
   it('uploads a preset only this browser has, under its name and structure, before the entry', async () => {
     const { fm1, palette, said } = await linked();
     const { p, a } = padPatch();
