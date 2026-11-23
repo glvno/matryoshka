@@ -2126,8 +2126,8 @@ async function main() {
     async arming() {
       await check('arming: the 808 Kit opens, synced', await openSynced('808 Kit'));
       await check('arming: a patch loads with nothing armed: the footer says KEYS WIRED', await emu.waitText('KEYS WIRED', 3000));
-      await emu.tap(B.scl);                         // the home device, the kit card: its keys come through DRUMS (#395, D-1059)
-      await check('arming: SEL on a device fed through a track arms it with the track, the bar names both (#582)', await emu.waitText('808 KIT + DRUMS ARMED', 1500));
+      await emu.tap(B.scl);                         // the home device, the kit card: DRUMS' own device (#1202 K2, D-1062)
+      await check('arming: SEL on the kit card arms it with its track, the bar names the card', await emu.waitText('808 KIT ARMED', 1500));
       await check('arming: the editor shows the set the FM-1 armed (ARMS_NOW, #191)', !!(await until(async () => (await T()).armed.length > 0, 2000)));
       await emu.elapse(1300);
       await emu.turn(ENC.select, 2);                // past the FX bus to the Output: it takes no keys
@@ -2149,9 +2149,7 @@ async function main() {
       await emu.elapse(1000);
       await emu.tap(B.env, 120);
       await check('arming: ENV opens the environment', await emu.waitText('ENVIRONMENT', 3000));
-      await emu.turn(ENC.select, -1);               // the kit's row, then DRUMS'
-      await emu.elapse(300);
-      await emu.tap(B.scl);
+      await emu.tap(B.scl);                         // (on the kit's row: the track's)
       await check('arming: SEL on the last armed row: disarmed, the keys WIRED', await emu.waitText('KEYS WIRED', 1500));
       await check('arming: the editor shows nothing armed either (#191)', !!(await until(async () => (await T()).armed.length === 0, 2000)));
       await emu.elapse(1300);
@@ -2161,7 +2159,7 @@ async function main() {
       await emu.tap(B.play);                        // (PLAY stops it all)
       await emu.elapse(1300);
       await emu.tap(B.scl);
-      await check('arming: SEL on the row again: armed', await emu.waitText('DRUMS ARMED', 1500));
+      await check('arming: SEL on the row again: armed', await emu.waitText('808 KIT ARMED', 1500));
       await emu.snap('arming-env');
       await emu.tap(B.env, 120);
       await emu.waitOwnPage(3000);
@@ -2341,11 +2339,12 @@ async function main() {
     // armed track's) at 100 / 127 of what it played at 0
     async velocity808() {
       await check('808 velocity: the 808 Kit opens, synced', await openSynced('808 Kit'));
-      const row = JSON.parse(await patchJson()).assemblies.find((a) => a.name === '808 kit').params.at(-1);
-      await check('808 velocity: the card\'s last row is VELOCITY, a Macro at 0', row?.label === 'velocity', JSON.stringify(row));
+      const rows808 = JSON.parse(await patchJson()).assemblies.find((a) => a.name === '808 kit').params;
+      const row = rows808[rows808.findIndex((r) => r.head === 'pattern') - 1];   // (the last sound row, before the pattern section, D-1062)
+      await check('808 velocity: the card\'s last sound row is VELOCITY, a Macro at 0', row?.label === 'velocity', JSON.stringify(row));
       const value = async () => JSON.parse(await patchJson()).modules.find((m) => m.id === row.module).params.value;
-      await emu.tap(B.scl);                         // the kit card, armed with DRUMS: black key 6 plays the low tom at velocity 100
-      await check('808 velocity: SEL arms the kit with DRUMS', await emu.waitText('808 KIT + DRUMS ARMED', 1500));
+      await emu.tap(B.scl);                         // the kit card, DRUMS' device, armed with it: black key 6 plays the low tom at velocity 100
+      await check('808 velocity: SEL arms the kit with DRUMS', await emu.waitText('808 KIT ARMED', 1500));
       await emu.elapse(1300);
       const kick = async () => {
         const m = await emu.mark();
@@ -2380,11 +2379,12 @@ async function main() {
     // D-1055 amended (#1158 option 2): the 909 Kit's VELOCITY row, as the 808 Kit's in velocity808
     async velocity909() {
       await check('909 velocity: the 909 Kit opens, synced', await openSynced('909 Kit'));
-      const row = JSON.parse(await patchJson()).assemblies.find((a) => a.name === '909 kit').params.at(-1);
-      await check('909 velocity: the card\'s last row is VELOCITY, a Macro at 0', row?.label === 'velocity', JSON.stringify(row));
+      const rows909 = JSON.parse(await patchJson()).assemblies.find((a) => a.name === '909 kit').params;
+      const row = rows909[rows909.findIndex((r) => r.head === 'pattern') - 1];   // (the last sound row, before the pattern section, D-1062)
+      await check('909 velocity: the card\'s last sound row is VELOCITY, a Macro at 0', row?.label === 'velocity', JSON.stringify(row));
       const value = async () => JSON.parse(await patchJson()).modules.find((m) => m.id === row.module).params.value;
-      await emu.tap(B.scl);                         // the kit card, armed with DRUMS: black key 1 plays the kick at velocity 100
-      await check('909 velocity: SEL arms the kit with DRUMS', await emu.waitText('909 KIT + DRUMS ARMED', 1500));
+      await emu.tap(B.scl);                         // the kit card, DRUMS' device, armed with it: black key 1 plays the kick at velocity 100
+      await check('909 velocity: SEL arms the kit with DRUMS', await emu.waitText('909 KIT ARMED', 1500));
       await emu.elapse(1300);
       const kick = async () => {
         const m = await emu.mark();

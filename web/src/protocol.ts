@@ -205,8 +205,9 @@
 //               [byte20 the font area (#602): bit0 the firmware reads its type's larger sizes from it (FONT), bit1 the FM-1
 //               has that font, bit2 an install began and did not commit, bit3 no room for it yet (the bank holds more than
 //               48 patches: FONT BEGIN answers status 10); bytes21..24 the font's id, u32 LE],
-//               [byte25 features from 1.26 on: bit1 every pattern 2..64 lives in the pattern store (#1202: SAVE stores
-//               and links them, the editor sends them as stored entries)]. Also unasked
+//               [byte25 features from 1.26 on: bit0 a card holding its Steps track is that track's device (#1202 K2),
+//               bit1 every pattern 2..64 lives in the pattern store (#1202: SAVE stores and links them, the editor sends
+//               them as stored entries)]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8), and when EDITOR changed after
 //               a HELLO (feature bit 19)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
@@ -439,10 +440,13 @@ export interface Info {
    *  holds more than 48 patches, whose sectors the font needs); absent from firmware with its type compiled in (1.25 and
    *  older) */
   font?: { valid: boolean; writing: boolean; blocked: boolean; id: number };
-  /** INFO byte 25, the feature bits from 1.26 on (bytes 20..24 are the font area's, #1203; bit 0 folded kits, bit 1
-   *  FEATURE25_PATTERNS_STORED); absent from firmware that sends fewer bytes */
-  features25?: number;
+  /** INFO byte 25, the feature bits from 1.26 on (bytes 20..24 are the font area's, #1203): FEATURE25_TRACK_CARD,
+   *  FEATURE25_PATTERNS_STORED; 0 from firmware that sends fewer bytes */
+  features25: number;
 }
+/** INFO byte 25 bit 0 (#1202 K2, D-1062): a top-level card with a Steps track inside is that track's device (SEQ, the
+ *  environment, P-locks, SEL); the editor sends a patch with such a card only to firmware with it (pages.ts holdsTrackCard) */
+export const FEATURE25_TRACK_CARD = 1;
 export interface Ack {
   cmd: number;
   seq: number;
@@ -611,6 +615,7 @@ export function parseInfo(p: Parsed): Info | null {
   if (p.cmd !== CMD.info || p.payload.length < 5) return null;
   const features = (p.payload[5] ?? 0) | ((p.payload[6] ?? 0) << 8) | ((p.payload[12] ?? 0) << 16) | ((p.payload[14] ?? 0) << 24);
   return { version: p.payload[0], maxModules: p.payload[1], maxCables: p.payload[2], flashOk: !!(p.payload[3] & 1), patchLoaded: !!(p.payload[3] & 2), delays: p.payload[4], features,
+    features25: p.payload[25] ?? 0,
     ...(p.payload.length >= 14 ? { bufferAllocation: p.payload[13] } : {}),
     midiOut: features & FEATURE_SANDBOX ? !!(p.payload[3] & 4) : null,
     editorIgnored: !!(features & FEATURE_EDITOR_SETTING) && !!(p.payload[3] & INFO_EDITOR_IGNORE),
@@ -619,8 +624,7 @@ export function parseInfo(p: Parsed): Info | null {
     ...(p.payload.length >= 16 && p.payload[15] ? { slots: p.payload[15] } : {}),
     ...(p.payload.length >= 20 ? { store: { free: p.payload[16] | (p.payload[17] << 8), total: p.payload[18] | (p.payload[19] << 8) } } : {}),
     ...(p.payload.length >= 25 && p.payload[20] & 1 ? { font: { valid: !!(p.payload[20] & 2), writing: !!(p.payload[20] & 4),
-      blocked: !!(p.payload[20] & 8), id: (p.payload[21] | p.payload[22] << 8 | p.payload[23] << 16 | p.payload[24] << 24) >>> 0 } } : {}),
-    ...(p.payload.length >= 26 ? { features25: p.payload[25] } : {}) };
+      blocked: !!(p.payload[20] & 8), id: (p.payload[21] | p.payload[22] << 8 | p.payload[23] << 16 | p.payload[24] << 24) >>> 0 } } : {}) };
 }
 /** the test tools drive the editor's own page against the test rig, which is set to IGNORE so the site leaves it alone
  *  (#702): their page (scripts/emu-scenarios.mjs --device) sets this before it loads. Nothing else does */

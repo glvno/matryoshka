@@ -116,9 +116,9 @@ describe.each(KITS)('$patch: the VELOCITY row (D-1053, D-1055 amended)', ({ patc
     cardName = cardLabel;
   });
 
-  it('is the card\'s last row, 0 in the patch and in every factory preset of the card', () => {
+  it('is the card\'s last sound row, just before its pattern section (D-1062), 0 in the patch and in every factory preset of the card', () => {
     const p = kit(), card = cardOf(p), row = velocityRow(p);
-    expect(card.params.at(-1)).toBe(row);
+    expect(card.params[card.params.findIndex((r) => r.head === 'pattern') - 1]).toBe(row);
     expect(p.modules.find((m) => m.id === row.module)!).toMatchObject({ type: 'macro', params: { value: 0 } });
     const at = rowOrder(p, card).findIndex((r) => r.module === row.module && r.param === row.param);
     const presets = factoryPresets().filter((x) => x.structure === structureOf(p, card));

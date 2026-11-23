@@ -300,15 +300,15 @@ describe('the FM-1 UI as WebAssembly', () => {
     const kit = Object.keys(FM1_PRESETS).find((n) => /808/.test(n))!;
     expect(ui.load(encodePatch(factoryWithDemoSet(kit)), '808 KIT')).toBe(0);   // (with its demo set: the kick's steps, #1179)
     ui.tick(10_000);
-    expect([ui.focusDevice, ui.focusPage]).toEqual([2, 0]); // the home device (#196): the Drum map, after Main and the track
+    expect([ui.focusDevice, ui.focusPage]).toEqual([1, 0]); // the home device (#196): the 808 kit card, after Main (its track inside)
     ui.encoder(ENCODERS.algo, 1);
     ui.encoder(ENCODERS.select, 1);
     ui.encoder(ENCODERS.algo, 1);
-    expect([ui.focusDevice, ui.focusPage]).toEqual([3, 1]); // (the 808 kit card: its snare drum page)
+    expect([ui.focusDevice, ui.focusPage]).toEqual([2, 1]); // (Output: its second page)
     ui.encoder(ENCODERS.select, -1);
     ui.encoder(ENCODERS.algo, 1);
-    expect([ui.focusDevice, ui.focusPage]).toEqual([2, 1]);
-    expect(focus.at(-1)).toEqual([2, 1]);
+    expect([ui.focusDevice, ui.focusPage]).toEqual([1, 1]); // (the 808 kit card: its snare drum page)
+    expect(focus.at(-1)).toEqual([1, 1]);
     ui.takeDirty();
     ui.encoder(ENCODERS.k1, 3);
     expect(params.length).toBe(1);
@@ -316,10 +316,10 @@ describe('the FM-1 UI as WebAssembly', () => {
     ui.tick(12_000);
     const tap = (id: number, at: number): void => { ui.tick(at); ui.button(id, true); ui.tick(at + 50); ui.button(id, false); ui.tick(at + 100); };
     tap(BUTTONS.home, 12_000);                 // HOME on a device's second page: its first page, the editor told (#391)
-    expect([ui.page, ui.focusDevice, ui.focusPage]).toEqual([0, 2, 0]);
-    expect(focus.at(-1)).toEqual([2, 0]);
+    expect([ui.page, ui.focusDevice, ui.focusPage]).toEqual([0, 1, 0]);
+    expect(focus.at(-1)).toEqual([1, 0]);
     tap(BUTTONS.home, 12_300);                 // on the patch's home page: nothing
-    expect([ui.page, ui.focusDevice, ui.focusPage]).toEqual([0, 2, 0]);
+    expect([ui.page, ui.focusDevice, ui.focusPage]).toEqual([0, 1, 0]);
     tap(BUTTONS.seq, 13_000);                  // the SEQ page, HOME back
     expect(ui.page).toBe(8);
     tap(BUTTONS.home, 13_500);
@@ -351,7 +351,7 @@ describe('the FM-1 UI as WebAssembly', () => {
         ui.tick((t += 60));
         pages.push(ui.page);
       }
-    expect(focus).toEqual([[3, 0], [3, 1]]); // SELECT from the home device (2) to the 808 kit card, ALGO its next page
+    expect(focus).toEqual([[2, 0], [2, 1]]); // SELECT from the home device (1, the 808 kit card) to Output, ALGO its next page
     expect(pages).toEqual([0, 0, 0, 8, 8, 0]);              // SEQ opens on its release, HOME goes back
   }, 30_000);
 });

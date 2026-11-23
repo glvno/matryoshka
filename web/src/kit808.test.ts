@@ -166,8 +166,8 @@ describe('808 Kit (the FM-1 version: the whole TR-808, D-1053)', () => {
     const was = (label: string, target: string): number => old[before.rows.findIndex((r) => r[0] === target && r[1] === label)];
     const at = (target: string): number => values[now.rows.findIndex((r) => r[0] === target)];
     expect(at('macro#13.value')).toBeCloseTo(0.5 + 5 / 14, 3);   // low tom / tuning
-    expect(at('env#61.r3')).toBe(was('decay', 'env#35.r3'));      // open hihat / decay
-    expect(at('env#109.r3')).toBe(init.values[now.rows.findIndex((r) => r[0] === 'env#109.r3')]);   // cymbal / decay: Init
+    expect(at('env#62.r3')).toBe(was('decay', 'env#35.r3'));      // open hihat / decay (local ids past DRUMS one higher, #1202 K2)
+    expect(at('env#110.r3')).toBe(init.values[now.rows.findIndex((r) => r[0] === 'env#110.r3')]);   // cymbal / decay: Init
     expect(migration.rows.filter((r) => typeof r === 'number' && r >= 0)).toHaveLength(old.length - 1);
   });
 });

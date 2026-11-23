@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { editorSkips, parsePeak, parseScreen, testKeyFrame, testScreenFrame, testTurnFrame, fm1Ascii, parseInfo, parseSandbox, SANDBOX_BYTES, SANDBOX_EXT_BYTES, sandboxFrame, sandboxPayload, type SandboxPage, chunkFrames, CMD, commitFrame, crc16, devicePresetName, frame, LIVE_MS, liveFrame, MAP_CMD, pack7, paramFrame, parse, parseMapNow, parsePresetData, parsePresetEntry, parsePresetStored, parseSlot, presetPutFrame, slotEraseFrame, slotFrame, slotInfoFrame, unpack7 } from './protocol';
-import { FEATURE_PADS, PADS_CMD, padsClearAllFrame, padsOnFrame, padsReadFrame, padsSetFrame, parsePadsNow, withPad } from './protocol';
+import { FEATURE25_TRACK_CARD, FEATURE_PADS, PADS_CMD, padsClearAllFrame, padsOnFrame, padsReadFrame, padsSetFrame, parsePadsNow, withPad } from './protocol';
 import { decodePaletteEntry, encodePaletteEntry, FEATURE_PALETTE, hasPaletteFeature, PALETTE, PALETTE_DEVS, paletteEntryGetFrame, paletteGetFrame, paletteGoFrame, paletteHash, paletteNameFrame, paletteOrderFrame, palettePutFrame, parsePaletteEntry, parsePaletteNow, type PaletteEntry } from './protocol';
 
 /** sandbox_msg.h's SB_* sizes, its #define expressions evaluated in order */
@@ -187,6 +187,11 @@ describe('sandbox mode on the wire', () => {
     const info = parseInfo(parse(frame(CMD.info, [1, 64, 255, 7, 8, 246, 255, 31, 48, 1, 8, 0]))!)!;
     expect(info).toMatchObject({ patchFormats: { min: 31, max: 48 }, firmware: { major: 1, minor: 8, patch: 0 } });
     expect(parseInfo(parse(frame(CMD.info, [1, 64, 255, 7, 8, 246, 255, 31, 48, 0, 0, 0]))!)!.firmware).toEqual({ major: 0, minor: 0, patch: 0 });
+  });
+  it('INFO: byte 25, the feature bits from 1.26 on (bytes 20..24 the font area\'s); 0 from firmware that sends 20 bytes (#1202 K2)', () => {
+    const head = [1, 128, 255, 7, 255, 246, 255, 31, 65, 1, 26, 0, 255, 0, 125, 60, 0, 0, 0, 0];
+    expect(parseInfo(parse(frame(CMD.info, head))!)!.features25).toBe(0);
+    expect(parseInfo(parse(frame(CMD.info, [...head, 0, 0, 0, 0, 0, FEATURE25_TRACK_CARD]))!)!.features25 & FEATURE25_TRACK_CARD).toBe(FEATURE25_TRACK_CARD);
   });
 });
 

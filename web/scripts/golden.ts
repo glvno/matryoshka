@@ -13,7 +13,11 @@ import { make, factoryWithDemoSet, FM1_PRESETS, PRESETS, type Build } from '../s
 import { relocatedPatches } from '../src/community-factory';
 import { oracleMorph } from '../src/test-morph';
 import { addModule, connect, defaultParams, emptyPatch, fixMatrix, newPatch, paramUnit, setMorphTarget, SOURCES, stepByte, type Patch, type PolyCfg } from '../src/patch';
-import { COND_FILL, COND_FIRST, COND_NEI, COND_NOT, COND_PRE, condAB, migrateSteps, overdub, STEPS_MAX, type StepNote } from '../src/track';
+import { COND_FILL, COND_FIRST, COND_NEI, COND_NOT, COND_PRE, condAB, migrateSteps, overdub, STEPS_MAX, wordsNotes, type StepNote } from '../src/track';
+import { devicesOf } from '../src/pages';
+import { presetsOf } from '../src/device-presets';
+import { factoryPresets } from '../src/factory-presets';
+import { presetPattern, seedPresetPattern } from '../src/preset-patterns';
 import { insertAssembly, makeAssembly, rowTargets } from '../src/assembly';
 import { FACTORY } from '../src/assemblies';
 import { wireEngine } from '../src/engines';
@@ -4386,12 +4390,20 @@ if (process.argv.includes('--panel-fixtures')) {
     writeFileSync(new URL('engine-tracked.m1p', out), encodePatch(p, true));
   }
   for (const mode of ['control-only', 'direct-trig', 'ambiguous-gate']) {
-    // (the 808 Kit with its demo set loaded: pattern 1 the Init demo notes and their origin, which it ships without, #1179)
-    const p = factoryWithDemoSet('808 Kit');
-    // (the kit reached only through the route under test: DRUMS' keys into its Drum maps go, the 808 Kit has two inside its
-    // card, D-1053, D-1059; the maps stay cabled, so the card's structure and its pattern origin stay those of the factory)
+    // (Verona Drum 1: its Drum maps inside its card and its PATTERN track outside, as the 808 Kit's were before DRUMS joined
+    // its card, #1202 K2; pattern 1 the Init default and its origin, as preset-patterns.test.ts's fixture sets them)
+    factoryPresets();   // (presetsOf reads them)
+    const p = PRESETS['Verona Drum 1']();
+    const card = devicesOf(p, DEFS).find((d) => d.asm !== undefined)!;
+    const a = p.assemblies!.find((x) => x.id === card.asm)!;
+    const track = p.modules.find((m) => m.id === card.track)!;
+    const init = presetPattern(presetsOf(p, a)[0].structure, 'Init')!;
+    a.preset = 'Init';
+    track.notes = wordsNotes(init.notes);
+    seedPresetPattern(p, a, init.id);
+    // (the card reached only through the route under test: PATTERN's keys into its Drum maps go; the maps stay cabled, so
+    // the card's structure and its pattern origin stay those of the factory)
     const maps = new Set(p.modules.filter((m) => m.type === 'drummap').map((m) => m.id));
-    const track = p.modules.find((m) => m.type === 'steps')!;
     const gate = p.cables.find((c) => maps.has(c.from.module) && /^g[1-8]$/.test(c.from.port))!.to;
     p.cables = p.cables.filter((c) => !(c.from.module === track.id && maps.has(c.to.module)));
     const osc = p.modules.find((m) => m.type === 'osc')!;

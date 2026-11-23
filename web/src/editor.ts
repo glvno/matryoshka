@@ -91,7 +91,7 @@ import { engineOf } from './library-presets';
 import { fxPresetInfo } from './fx-preset-format';
 import { fxBusOf, type FxBus, type FxStage } from './fx-bus';
 import { setFxStageEnabled } from './fx-preset';
-import { armable, armDrawing, armedWith, keepArmed, noKeysReach, type DeviceKey } from './arm';
+import { armable, armDrawing, armedWith, deviceOfModule, keepArmed, keysTargets, noKeysReach, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
 import { stepGrid, stopEntry, type LockRow, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
@@ -1785,8 +1785,8 @@ export class Editor {
       },
       mute: (on) => this.ev.onMute?.(m.id, on),
       fill: (on) => this.ev.onFill?.(on),
-      arm: (on) => this.toggleArm(`m${m.id}`, on),
-      armed: () => this.armedSet.has(`m${m.id}`),
+      arm: (on) => this.toggleArm(this.trackKey(m.id), on),
+      armed: () => this.armedSet.has(this.trackKey(m.id)),
       rec: (on) => {
         if (on) this.armTrack(m.id);
         this.setRec(on && this.armedTrack === m.id);
@@ -1816,10 +1816,19 @@ export class Editor {
     return this.trackOf(this.armedSet);
   }
 
-  /** the one Steps track these devices arm, themselves or as the key source an armed instrument plays through (#395) */
+  /** the one Steps track these devices arm, themselves, as the key source an armed instrument plays through (#395) or
+   * inside an armed card whose keys jack it takes (the kits' DRUMS, #1202 K2) */
   private trackOf(keys: Iterable<DeviceKey>): number | null {
-    const ids = armedWith(this.patch, keys).filter((k) => k[0] === 'm').map((k) => Number(k.slice(1))).filter((id) => this.patch.modules.some((m) => m.id === id && m.type === 'steps'));
-    return ids.length === 1 ? ids[0] : null;
+    const ids = new Set(armedWith(this.patch, keys).flatMap((k) => (k[0] === 'm' ? [Number(k.slice(1))] : keysTargets(this.patch, k).map((t) => t.module)))
+      .filter((id) => this.patch.modules.some((m) => m.id === id && m.type === 'steps')));
+    return ids.size === 1 ? [...ids][0] : null;
+  }
+
+  /** the device key that arms Steps track `id`: the card it is inside when that card's keys jack takes it (the kits'
+   * DRUMS, #1202 K2: the card is the track's device, as on the FM-1), else the track itself */
+  private trackKey(id: number): DeviceKey {
+    const key = deviceOfModule(this.patch, id);
+    return key[0] === 'a' && keysTargets(this.patch, key).some((t) => t.module === id) ? key : `m${id}`;
   }
 
   /** arm exactly these devices (the ones that cannot be armed are left out) */
@@ -1839,7 +1848,7 @@ export class Editor {
   private showArmed(): void {
     const withBy = this.armedWithBy();
     const by = (k: DeviceKey): string => [...withBy.get(k) ?? []].join(', ');
-    for (const [k, g] of this.stepGrids) g.armed(this.armedSet.has(`m${k}`), by(`m${k}`));
+    for (const [k, g] of this.stepGrids) g.armed(this.armedSet.has(this.trackKey(k)), by(this.trackKey(k)));
     for (const [k, card] of this.cards) {
       card.classList.toggle('armed', this.armedSet.has(`m${k}`));
       card.classList.toggle('armed-with', !this.armedSet.has(`m${k}`) && withBy.has(`m${k}`));
@@ -1918,7 +1927,7 @@ export class Editor {
   armTrack(id: number | null): void {
     if (id === null) return this.setArmed([]);
     if (!this.patch.modules.some((m) => m.id === id && m.type === 'steps')) return;
-    this.setArmed([...[...this.armedSet].filter((k) => this.trackOf([k]) === null), `m${id}`]);
+    this.setArmed([...[...this.armedSet].filter((k) => this.trackOf([k]) === null), this.trackKey(id)]);
   }
 
   /** what the armed devices play, by the names the canvas shows: a Steps track, what it drives; anything else, itself */
@@ -2030,8 +2039,8 @@ export class Editor {
       begin: () => this.beginEdit(),
       len: (n) => (this.pattern > 0 ? this.setPatternShape(id, this.pattern, { len: n }) : this.setParam(id, 'len', n)),
       play: (note, vel) => this.ev.onThru?.(id, note, vel),
-      arm: (on) => this.toggleArm(`m${id}`, on),
-      armed: () => this.armedSet.has(`m${id}`),
+      arm: (on) => this.toggleArm(this.trackKey(id), on),
+      armed: () => this.armedSet.has(this.trackKey(id)),
       rec: (on) => {
         if (on) this.armTrack(id);
         this.setRec(on && this.armedTrack === id);

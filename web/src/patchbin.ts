@@ -90,7 +90,8 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //                Selector's, position 1 first; capitals on the FM-1); on a poly row (bit 7; format 51, only the voices
 //                row: polyTop) the extras are u8 top instead: the most voices the FM-1's VOICES row offers
 //   with flag bit 8 (format 34; with the device pages, right after them): the device extras: u8 device count, then per
-//                device u8 track (the device index of the Steps track that drives it, pages.ts Device.track; 0xFF none;
+//                device u8 track (the device index of the Steps track that drives it, pages.ts Device.track; an assembly with
+//                the track inside, #1202 K2: its own index, and it is that track's device; 0xFF none;
 //                0xFE none, and it is an engine no keys cable reaches, KEYS_UNREACHED, #215: firmware before 1.9 reads it as
 //                none, so any format carries it; 0x80 | t, KEYS_UNREACHED_TRACK, #633: the track t drives it through other
 //                cables, and it is an engine no keys cable reaches: firmware before 1.10 reads it as no track),
@@ -980,7 +981,8 @@ export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceV
   const index = new Map(dev.modules.map((m, i) => [m.id, i]));
   const out = [devs.length];
   devs.forEach((d, di) => {
-    const t = d.track === undefined ? -1 : devs.findIndex((x) => x.module === d.track);
+    // (the track's device: the track itself, or the card it is inside, which then names itself: the kits, #1202 K2)
+    const t = d.track === undefined ? -1 : devs.findIndex((x) => x.module === d.track || (x.asm !== undefined && allModules(source, assemblyById(source, x.asm)!).includes(d.track!)));
     const a = d.asm === undefined ? undefined : assemblyById(source, d.asm);
     const sr = a ? cardRows(source, a) : undefined;
     const h = sr ? parseInt(sr.structure, 16) >>> 0 : 0;

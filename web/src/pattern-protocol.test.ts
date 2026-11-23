@@ -71,9 +71,9 @@ describe('pattern store frames', () => {
     expect(old.slots).toBeUndefined();
     expect(slotCount(old)).toBe(SLOTS_MAX);
     expect(slotCount(null)).toBe(64);
-    expect(old.features25).toBeUndefined();
+    expect(old.features25).toBe(0);
     const stored = parseInfo({ cmd: CMD.info, payload: [...base, 2, 48, ...u16(9000), ...u16(60000), 0, 0, 0, 0, 0, 2] })!;
-    expect(stored.features25! & FEATURE25_PATTERNS_STORED).toBe(FEATURE25_PATTERNS_STORED);
+    expect(stored.features25 & FEATURE25_PATTERNS_STORED).toBe(FEATURE25_PATTERNS_STORED);
     expect(slotCount(stored)).toBe(48);
   });
 });

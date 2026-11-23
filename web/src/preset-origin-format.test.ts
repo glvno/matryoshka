@@ -64,6 +64,6 @@ it('supports a u16 count past 255 and enforces the actual byte budget', () => {
 it.each([null, { min: 31, max: 53 }, { min: 31, max: 54 }])('rejects unsupported provenance before sending any bytes (%j)', async (range) => {
   const { p } = fixture(), link = new DeviceLink();
   // No output is attached: reaching a write would fail differently. Rejection happens before chunk construction/send.
-  if (range) link.info = { version: 1, maxModules: 128, maxCables: 255, flashOk: true, patchLoaded: true, midiOut: true, delays: 0, features: 0, patchFormats: range };
+  if (range) link.info = { version: 1, maxModules: 128, maxCables: 255, flashOk: true, patchLoaded: true, midiOut: true, delays: 0, features: 0, features25: 0, patchFormats: range };
   await expect(link.uploadSlotBin(0, 'test', encodePatch(p))).rejects.toThrow(/Update.*origins cannot be removed/);
 });

@@ -2,7 +2,7 @@
 import { recoveredLines } from './test-buffer-budget';
 // Connecting the FM-1 syncs by default (#171): the decision on connect and the chip's state; Live over the budget (#200).
 import { describe, expect, it } from 'vitest';
-import { chipState, DeviceLink, type DeviceEvent, holdsFactoryLinks, IGNORED_NOW, ignoredFound, linkCandidates, type LinkCandidate, liveSync, notFound, sysexRefused, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, transportOf } from './device';
+import { chipState, DeviceLink, type DeviceEvent, holdsFactoryLinks, IGNORED_NOW, ignoredFound, linkCandidates, type LinkCandidate, liveSync, notFound, sysexRefused, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, takesTrackCards, transportOf } from './device';
 import { attachMidi } from './input';
 import { factoryEntries } from './pattern-store';
 import { DEFS } from './modules';
@@ -174,7 +174,7 @@ describe('sandbox mode (the FM-1 as a sandbox patch\'s controller)', () => {
 });
 
 describe('syncsWith', () => {
-  const info = (features: number) => ({ version: 1, maxModules: 64, maxCables: 128, flashOk: true, patchLoaded: true, delays: 4, features, midiOut: null });
+  const info = (features: number) => ({ version: 1, maxModules: 64, maxCables: 128, flashOk: true, patchLoaded: true, delays: 4, features, features25: 0, midiOut: null });
   it('holds back firmware that does not report support for current patch format: it refuses every patch the editor sends', () => {
     expect(syncsWith(info(246 | (63 << 8)))).toBe(false); // unreleased format 37 builds
     expect(syncsWith(info(246 | (127 << 8)))).toBe(false); // unreleased format 38 builds
@@ -206,6 +206,14 @@ describe('syncsWith', () => {
   it('holds back legacy format 39 firmware, but not an FM-1 unheard from yet', () => {
     expect(syncsWith(info(246 | (255 << 8)))).toBe(false); // format 39 predates the current writer
     expect(syncsWith(null)).toBe(true);
+  });
+  it('sends a patch whose card holds its own track (the kits, D-1062) only to firmware with INFO byte 25 bit 0; every other patch to any', () => {
+    const old = { ...info(0), patchFormats: { min: 31, max: VERSION } }, now = { ...old, features25: 1 };
+    for (const kit of ['808 Kit', '909 Kit']) {
+      expect(takesTrackCards(old, FM1_PRESETS[kit]()), kit).toBe(false);
+      expect(takesTrackCards(now, FM1_PRESETS[kit]()), kit).toBe(true);
+    }
+    for (const name of ['Monolith D', 'Silver Box', 'Scrounge']) expect(takesTrackCards(old, FM1_PRESETS[name]()), name).toBe(true);
   });
 });
 

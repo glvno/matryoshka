@@ -1243,6 +1243,7 @@ int main(int argc, char **argv)
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
         CHECK(n == 26u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION && p[14] == M1_FEATURES4);
         CHECK(p[20] == 3u && p[21] == 0x78u && p[22] == 0x56u && p[23] == 0x34u && p[24] == 0x12u);   /* #602: the font area's flags and id */
+        CHECK((p[25] & M1_FEATURES5) == M1_FEATURES5 && (p[25] & 1u));   /* (byte 25 bit 0: a card holding its track is its device, #1202 K2) */
         { uint32_t j; uint8_t origin[6];
           for (j = 0; j < 2u; j++) {
               CHECK(replies[j + 2u][4] == R_PATTERN_ORIGIN);

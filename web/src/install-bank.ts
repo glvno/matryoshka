@@ -28,7 +28,7 @@ export function packageHasSmallBank(product: string): boolean {
 export const packageBeforeStore = (product: string): boolean => runningVersion(null, product) !== null && !packageHasSmallBank(product);
 
 /** the running FM-1 (its INFO) keeps every pattern 2..64 in its pattern store: firmware 1.26 (INFO byte 25 bit 1) */
-export const storesEveryPattern = (info: Info): boolean => !!((info.features25 ?? 0) & FEATURE25_PATTERNS_STORED);
+export const storesEveryPattern = (info: Info): boolean => !!(info.features25 & FEATURE25_PATTERNS_STORED);
 
 /** the running FM-1 (its INFO) has slots past BANK_SLOTS and firmware that does not keep its patterns in the pattern store
  *  (before 1.26): its bank must be looked at before the install. A 1.26 FM-1 that kept 60 slots handles them itself */
