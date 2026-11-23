@@ -9,14 +9,12 @@
 // The FM-1 checks the same layout (pages_ui.c).
 //
 // FXP1 (D-1010, read only): an instrument with the master FX bus of 1.24-1.26. Values: the instrument's rows, then for
-// each stage present in the mask (drive, chorus, delay, reverb) its on/off and FX_PRESET_CONTROLS, then the footer
-// lo16(base), hi16(base), mask, 23118. The editor converts every one it reads to FXD1 (fx-preset.ts fxp1ToFxd1).
-export const FX_PRESET_CONTROLS = {
-  drive: ['drive', 'mode', 'level', 'sym'],
-  chorus: ['rate', 'depth', 'mix'],
-  delay: ['time', 'fb', 'mix', 'sync', 'pingpong', 'note'],
-  reverb: ['size', 'damp', 'mix', 'pre', 'mod', 'freeze'],
-} as const;
+// each stage present in the mask (drive, chorus, delay, reverb) its on/off and its card's controls (fx-legacy.ts
+// LEGACY_STAGE_ROWS), then the footer lo16(base), hi16(base), mask, 23118. The editor converts every one it reads to
+// FXD1 (fx-preset.ts fxp1ToFxd1).
+import { LEGACY_STAGE_ROWS } from './fx-legacy';
+
+export const FX_PRESET_CONTROLS = LEGACY_STAGE_ROWS;
 export const FX_PRESET_KINDS = ['drive', 'chorus', 'delay', 'reverb'] as const;
 export type FxPresetKind = typeof FX_PRESET_KINDS[number];
 const MAGIC = 23118;

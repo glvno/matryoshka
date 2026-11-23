@@ -40,15 +40,11 @@ export interface KnownEffect { structure: string; rows: number; name: string; de
 const known = (name: string, def: AssemblyDef): KnownEffect => ({ structure: defStructureAndOrder(def).structure, rows: def.params.length, name, def });
 
 let libraryEffects: KnownEffect[] | undefined;
-/** every effect the Library can add (the old bus stages are among them: catalogEffectDef gives the same wrappers) */
+/** every effect the Library can add (Drive, Chorus, Delay and Reverb are the old bus stages exactly, catalogEffectDef) */
 function libraryKnown(): KnownEffect[] {
-  libraryEffects ??= [
-    ...FX_PRESET_KINDS.map(kind => known(legacyName(kind), legacyEffectDef(kind))),
-    ...EFFECT_CATALOG.map(entry => known(entry.name, catalogEffectDef(entry))),
-  ];
+  libraryEffects ??= EFFECT_CATALOG.map(entry => known(entry.name, catalogEffectDef(entry)));
   return libraryEffects;
 }
-
 const legacyName = (kind: FxPresetKind): string => kind[0].toUpperCase() + kind.slice(1);
 
 /** the effects a preset of this patch may name, by structure: the patch's own first (its copies keep their settings
@@ -79,7 +75,7 @@ export function resolveEffects(p: Patch, a: AssemblyInst, preset: Preset, scope 
   const info = drawerPresetInfo(preset);
   if (!info || !scope || info.baseStructure !== scope.base) return 'Belongs to another instrument';
   const rows = rowOrder(p, a).length;
-  const fits = (list: readonly string[]): boolean => drawerPresetStructure(scope.base, list) === preset.structure;
+  const fits = (list: readonly string[]): boolean => drawerPresetStructure(scope.base, [...list]) === preset.structure;
   if (preset.fx?.length === info.count && fits(preset.fx.map(f => f.structure)))
     return preset.fx.map(f => ({ structure: f.structure, rows: f.def.params.length, name: f.name, def: f.def }));
   const pool = knownEffects(p);
