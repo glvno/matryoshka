@@ -3,7 +3,7 @@ import { readFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
 import {
   allModules, assembliesOf, assemblyById, childrenOf, findRef, fixAssemblies, insertAssembly, makeAssembly, parentOf, reconcileAll, targetsOf,
-  toDef, validateAssemblyDef, bypassAssembly, type AssemblyInst,
+  toDef, validateAssemblyDef, bypassAssembly, hiddenAssemblies, hiddenModules, type AssemblyInst,
 } from './assembly';
 import {
   addDrawer, catalogEffectDef, chainCableProblem, chainHelpers, chainIns, chainJackProblem, chainOuts, deviceModules, drawerOf, drawerOutput,
@@ -347,6 +347,46 @@ describe('drawers', () => {
   });
 });
 
+describe('repairs', () => {
+  const base = (): { p: Patch; inst: AssemblyInst; d: AssemblyInst } => {
+    const { p, inst } = synth();
+    const d = addDrawer(p, inst.id);
+    insertEffect(p, d, { type: 'crush' });
+    return { p, inst, d };
+  };
+  it('a drawer that does not fit is an ordinary assembly again; a bad chain stops being one and leaves its drawer', () => {
+    const { p, inst, d } = base();
+    const raw = JSON.parse(JSON.stringify(p)) as Patch;
+    const rd = raw.assemblies!.find((a) => a.id === d.id)!;
+    rd.drawer!.taps = [{ module: 999, port: 'out' }, { module: 999, port: 'out' }];
+    const q = validatePatch(raw, DEFS);
+    expect(fixAssemblies(q, DEFS).some((m) => /no FX drawer/.test(m))).toBe(true);
+    expect(drawerOf(q, inst.id)).toBeUndefined();
+    const raw2 = JSON.parse(JSON.stringify(p)) as Patch;
+    const fx = raw2.assemblies!.find((a) => a.chain)!;
+    fx.chain!.ins = [7, 9];
+    const q2 = validatePatch(raw2, DEFS);
+    expect(fixAssemblies(q2, DEFS).some((m) => /taken out of its FX drawer/.test(m))).toBe(true);
+    expect(effectsOf(q2, drawerOf(q2, inst.id)!)).toEqual([]);
+    expect(parentOf(q2, fx.id)).toBeUndefined();
+  });
+  it('one Output drawer per patch; drawers and their effects are never drawn as plain cards', () => {
+    const { p, d } = base();
+    const od = addDrawer(p, 'output');
+    expect(addDrawer(p, 'output')).toBe(od);
+    const raw = JSON.parse(JSON.stringify(p)) as Patch;
+    raw.assemblies!.push({ ...structuredClone(raw.assemblies!.find((a) => a.id === od.id)!), id: 99, label: 'Output FX 2' });
+    const q = validatePatch(raw, DEFS);
+    fixAssemblies(q, DEFS);
+    expect(drawers(q).filter((x) => !x.drawer!.taps)).toHaveLength(1);
+    const hidden = hiddenAssemblies(p);
+    d.open = true;
+    expect(hiddenAssemblies(p)).toEqual(hidden);
+    expect(hidden.has(d.id) && hidden.has(od.id)).toBe(true);
+    for (const e of effectsOf(p, d)) for (const id of allModules(p, e)) expect(hiddenModules(p).has(id)).toBe(true);
+  });
+});
+
 describe('devices', () => {
   it('effects follow their instrument in chain order, the Output drawer\'s come before the Output; drawers are no devices', () => {
     const { p, inst } = synth(true);
@@ -401,7 +441,7 @@ describe('legacy bus conversion', () => {
         expect(drawers(after).length, name).toBe(drawers(before).length);
         continue;
       }
-      converted++;
+      if (name.startsWith('1.14 ')) converted++;
       expect(after.modules.map((m) => m.id), name).toEqual(before.modules.map((m) => m.id));
       const key = (c: Patch['cables'][number]): string => `${c.from.module}.${c.from.port}>${c.to.module}.${c.to.port}`;
       expect(new Set(after.cables.map(key)), name).toEqual(new Set(before.cables.map(key)));
@@ -429,6 +469,7 @@ describe('legacy bus conversion', () => {
       if (owner === 'output') expect(instruments.length, name).not.toBe(1);
       else expect(instruments.map((a) => a.id)).toContain(owner.id);
     }
+    // (the 1.14 graphs keep their buses; today's factory build may already hand out drawers)
     expect(converted).toBeGreaterThan(10);
   });
 
