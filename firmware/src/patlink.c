@@ -546,7 +546,8 @@ static int pl_commit(const char *patch, uint32_t self)
         len[p] = s.n;
         need |= (uint64_t)1u << p;
     }
-    for (loc = 0; need && !pt_iter(&loc, &r); loc += pt_size(r.len))   /* (an entry with the same bytes: one walk) */
+    for (loc = 0; need && !pt_iter(&loc, &r); loc += pt_size(r.len))   /* (an entry with the same bytes: one walk; a kept
+                                                                         * copy stays unlinked) */
         for (p = 1; r.magic == PT_MAGIC && p < ENG_PATTERNS; p++)
             if ((need >> p & 1u) && !(done >> p & 1u) && r.hash == want[p] && r.len == len[p]) {
                 ids[p] = r.id;
@@ -576,14 +577,14 @@ static int pl_commit(const char *patch, uint32_t self)
         pl_encode(p, &s);
         if (id) {
             pt_info_t in;
-            rc = pt_stat(id, &in) ? -4 : pt_put(&id, in.name, m1_up, s.n);
+            rc = pt_stat(id, &in) ? -4 : pt_put(&id, in.name, m1_up, s.n, 0);   /* (-4 too over a kept copy) */
         } else {
             rc = -4;
         }
         if (rc == -4) {
             id = 0;
             pl_name(name, patch, p);
-            rc = pt_put(&id, name, m1_up, s.n);
+            rc = pt_put(&id, name, m1_up, s.n, 0);
         }
         if (rc) {
             full = 1;                                 /* (it stays in the binary, as an edited copy of its link if any) */
@@ -631,10 +632,10 @@ static int m1_pat_spill(void)
             continue;
         id = (pl_priv >> p & 1u) && ids[p] <= PT_ID_MAX ? ids[p] : 0u;
         pl_name(name, m1_patch_name(), p);
-        rc = pt_put(&id, name, m1_up, s.n);
+        rc = pt_put(&id, name, m1_up, s.n, 0);
         if (rc == -4) {
             id = 0;
-            rc = pt_put(&id, name, m1_up, s.n);
+            rc = pt_put(&id, name, m1_up, s.n, 0);
         }
         if (rc)
             continue;
@@ -658,8 +659,9 @@ static int m1_pat_spill(void)
 }
 
 /* a stored pattern is deleted once no patch links it (#1202): after a slot is written or erased, and at boot. Every user
- * entry a saved slot or the running patch links stays. The entries' ids go into m1_up (with a mark each after them), each
- * slot's bytes into sl_buf. A slot that holds a patch but cannot be read leaves every entry as it is */
+ * entry a saved slot or the running patch links stays, and every kept copy (PT_KMAGIC: neither walk below counts it). The
+ * entries' ids go into m1_up (with a mark each after them), each slot's bytes into sl_buf. A slot that holds a patch but
+ * cannot be read leaves every entry as it is */
 static void pl_gc(void)
 {
     uint8_t *mk = m1_up + 2u * PT_TAB;
@@ -706,36 +708,20 @@ static void pl_gc(void)
 
 /* ---- the SEQ page (seq_ui.c) */
 
-/* pattern p into the store: over its link's live entry, else (and with as_new always) a new entry named `name`, which p
- * >= 1 is then linked to. got: the entry's name (PT_NAME + 1 bytes). 0 written over, 1 a new entry, -1 no store or a
- * flash error, -2 full (or too big) */
-static int pl_save(uint32_t p, int as_new, const char *name, char *got)
+/* FX+SAVE (#1202 P1): pattern p into the store as a new kept copy (PT_KMAGIC: never freed, never written over by SAVE),
+ * named as SAVE names its entries (pl_name), linked to nothing: p's link stays. got: its name (PT_NAME + 1 bytes).
+ * 1 stored, -1 no store or a flash error, -2 full (or too big) */
+static int pl_keep(uint32_t p, char *got)
 {
     pl_out_t s = { m1_up, sizeof m1_up, 0, PT_FNV0 };
-    pt_info_t in;
-    uint32_t id, i;
-    int rc, over;
+    uint32_t id = 0;
+    int rc;
     if (!pt_on)
         return -1;
     pl_encode(p, &s);
-    over = !as_new && p && (id = pl_link(p)) != 0 && !pt_stat(id, &in);
-    if (over)
-        name = in.name;
-    else
-        id = 0;
-    rc = s.n > s.cap ? -3 : pt_put(&id, name, m1_up, s.n);
-    if (rc)
-        return rc == -1 ? -1 : -2;
-    for (i = 0; i < PT_NAME && name[i]; i++)
-        got[i] = name[i];
-    got[i] = 0;
-    if (p) {
-        pl_hash[p] = s.h;
-        (void)pl_set_link(p, id);                     /* (a binary that cannot hold the link: the entry is a copy) */
-        pl_rewrite();
-    }
-    m1_pat_link_now(p, pl_link(p), s.h);
-    return over ? 0 : 1;
+    pl_name(got, m1_patch_name(), p);
+    rc = s.n > s.cap ? -3 : pt_put(&id, got, m1_up, s.n, 1);
+    return !rc ? 1 : rc == -1 ? -1 : -2;
 }
 
 /* stored entry id loaded into pattern p: a user entry into p >= 1 links it, a factory one or p 0 is a copy (an older
@@ -1012,7 +998,7 @@ static uint32_t m1_pat_list(uint32_t after, uint8_t *e)
     if (!(after & PL_CUR_KIT) && pt_on) {
         pt_ensure();
         for (loc = after & 0xFFFFFu; !pt_iter(&loc, &r); loc += pt_size(r.len))
-            if (r.magic == PT_MAGIC && !st_read(PT_BASE + loc + PT_HDR, b, sizeof b)) {
+            if (PT_LIVE(r.magic) && !st_read(PT_BASE + loc + PT_HDR, b, sizeof b)) {
                 pt_fill(&r, &in);
                 next = PL_CUR_USER | (loc + pt_size(r.len));
                 break;
@@ -1053,12 +1039,15 @@ static const uint8_t *m1_pat_get(uint32_t id, uint32_t *len)
     return m1_up;
 }
 
+/* len's bit 15 (proto.c PAT_PUT's PAT_KEPT): stored as a kept copy */
 static uint32_t m1_pat_put(uint32_t *id, const char *name, const uint8_t *p, uint32_t len)
 {
+    uint32_t kept = len >> 15 & 1u;
     int rc;
+    len &= 0x7FFFu;
     if (*id > PT_ID_MAX || pl_check(p, len))
         return S_RANGE;
-    rc = pt_put(id, name, p, len);
+    rc = pt_put(id, name, p, len, (int)kept);
     return rc == 0 ? S_OK : rc == -2 ? S_FULL : rc == -3 ? S_RANGE : rc == -4 ? S_MISSING : S_FLASH;
 }
 

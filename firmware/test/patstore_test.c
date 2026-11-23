@@ -124,7 +124,7 @@ static int put(rec_t *r)
     uint32_t id = r->id;
     int rc;
     mk(b, r->len, r->seed);
-    rc = pt_put(&id, r->name, b, r->len);
+    rc = pt_put(&id, r->name, b, r->len, 0);
     if (!rc)
         r->id = id;
     return rc;
@@ -222,9 +222,9 @@ static void api_tests(void)
     CHECK(model_ok(0) && pt_stat(3, &in) == -1 && pt_read(3, b, sizeof b, &in) == -1, "the deleted one is gone, the rest stay");
     CHECK(!pt_next(2, &in) && in.id == 4u && !pt_prev(4, &in) && in.id == 2u, "next / prev step over the deleted id");
     id = 3;
-    CHECK(pt_put(&id, "X", b, 10) == -4, "a put over a deleted id: missing");
+    CHECK(pt_put(&id, "X", b, 10, 0) == -4, "a put over a deleted id: missing");
     id = 0;
-    CHECK(pt_put(&id, "X", b, 0) == -3 && pt_put(&id, "X", b, PT_MAX + 1u) == -3, "len 0 or > PT_MAX: range");
+    CHECK(pt_put(&id, "X", b, 0, 0) == -3 && pt_put(&id, "X", b, PT_MAX + 1u, 0) == -3, "len 0 or > PT_MAX: range");
     r = add(20, 99);
     CHECK(r && r->id == 11u, "the next new id is 11 (3 is not taken again)");
     boot();
@@ -235,11 +235,38 @@ static void api_tests(void)
     r = add(8, 101);
     CHECK(r && r->id == PT_ID_MAX, "the last id");
     id = 0;
-    CHECK(pt_put(&id, "X", b, 8) == -3, "then the ids are used up: range");
+    CHECK(pt_put(&id, "X", b, 8, 0) == -3, "then the ids are used up: range");
     boot();
     id = 0;
-    CHECK(pt_put(&id, "X", b, 8) == -3 && model_ok(0), "also after a power cycle");
+    CHECK(pt_put(&id, "X", b, 8, 0) == -3 && model_ok(0), "also after a power cycle");
     printf("ok    the API: put / read / replace / rename / delete / next / prev / ranges\n");
+}
+
+/* a kept copy (PT_KMAGIC, #1202 P1): live, listed, written over only by a kept put; it stays kept through a power cycle
+ * and a compaction */
+static void kept_tests(void)
+{
+    uint8_t b[40];
+    pt_info_t in;
+    uint32_t k = 0, a = 0;
+    fresh();
+    mk(b, sizeof b, 7);
+    CHECK(!pt_put(&k, "KEPT", b, sizeof b, 1) && !pt_put(&a, "PLAIN", b, sizeof b, 0) && pt_count() == 2u,
+          "a kept and a plain entry: both live");
+    CHECK(!pt_stat(k, &in) && in.kept && !pt_stat(a, &in) && !in.kept && !pt_next(0, &in) && in.id == k && in.kept,
+          "the kept one says so (pt_stat, pt_next)");
+    CHECK(pt_put(&k, "OVER", b, 8, 0) == -4 && !pt_stat(k, &in) && in.len == sizeof b && !strcmp(in.name, "KEPT"),
+          "a plain put over a kept copy: -4, the copy as it was");
+    CHECK(!pt_put(&k, "KEPT2", b, 8, 1) && !pt_stat(k, &in) && in.kept && in.len == 8u && pt_count() == 2u,
+          "a kept put over it: written over, still kept");
+    CHECK(pt_put(&a, "PLAIN", b, 8, 1) == -4 && !pt_put(&a, "PLAIN", b, 8, 0) && !pt_stat(a, &in) && !in.kept,
+          "a kept put over a plain entry: -4; a plain put: it stays plain");
+    boot();
+    CHECK(pt_count() == 2u && !pt_stat(k, &in) && in.kept && !pt_stat(a, &in) && !in.kept, "after a power cycle");
+    CHECK(!pt_compact(pt_size(8)) && pt_count() == 2u && !pt_stat(k, &in) && in.kept && !pt_read(k, b, sizeof b, &in)
+          && !pt_stat(a, &in) && !in.kept, "a compaction copies it kept");
+    CHECK(!pt_del(k) && pt_stat(k, &in) == -1 && pt_count() == 1u, "a kept copy deletes");
+    printf("ok    kept copies: live, written over only by a kept put, kept through a power cycle and a compaction\n");
 }
 
 /* every call refuses while the store is off */
@@ -248,7 +275,7 @@ static void refuses(const char *what)
     uint8_t b[8] = {0};
     pt_info_t in;
     uint32_t id = 0;
-    CHECK(!pt_on && pt_put(&id, "X", b, 8) == -1 && pt_read(1, b, 8, &in) == -1 && pt_stat(1, &in) == -1 && pt_del(1) == -1
+    CHECK(!pt_on && pt_put(&id, "X", b, 8, 0) == -1 && pt_read(1, b, 8, &in) == -1 && pt_stat(1, &in) == -1 && pt_del(1) == -1
           && pt_count() == 0u && pt_next(0, &in) == -1 && pt_prev(9, &in) == -1 && pt_free_bytes() == 0u
           && pt_total_bytes() == 0u, "%s: every pt_ call refuses", what);
     save();
@@ -371,7 +398,7 @@ static int op_put(void)
 {
     uint32_t id = sw_has_old ? sw_target : 0u;
     mk(sw_buf, sw_new.len, sw_new.seed);
-    return pt_put(&id, sw_new.name, sw_buf, sw_new.len);
+    return pt_put(&id, sw_new.name, sw_buf, sw_new.len, 0);
 }
 static int op_del(void) { return pt_del(sw_target); }
 
@@ -769,6 +796,7 @@ static void claim_tests(void)
 int main(void)
 {
     api_tests();
+    kept_tests();
     full_tests();
     id_tests();
     foreign_tests();

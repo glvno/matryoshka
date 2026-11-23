@@ -14,9 +14,9 @@ pub const RAM_SIZE: usize = 1 << 20;
 pub const ENTRY: u32 = 0x0200_0120;
 pub const XIP_PAD: usize = 0x120;
 pub const FLASH_SIZE: usize = 1 << 20;
-/// The factory region's image (web/public/firmware/matryoshka-factory.bin, export-defs) and where it lives (#915,
-/// firmware/src/factory.c)
-pub const FACTORY_REGION: &[u8] = include_bytes!("../../../web/public/firmware/matryoshka-factory.bin");
+/// The factory region's image (web/public/firmware/matryoshka-factory.bin, export-defs; read when m1emu runs, repo.rs)
+/// and where it lives (#915, firmware/src/factory.c)
+pub static FACTORY_REGION: std::sync::LazyLock<Vec<u8>> = std::sync::LazyLock::new(crate::repo::factory);
 pub const FACTORY_BASE: usize = 0xEA000;
 /// The screen font's image (#602, web/public/firmware/matryoshka-font.bin, tools/gen_font.py): the type's larger sizes,
 /// which a device build reads from their own flash sectors (firmware/src/font_area.c)
@@ -46,7 +46,7 @@ pub fn font_only_flash() -> Vec<u8> {
 /// An erased flash chip holding the factory region only: an FM-1 whose screen font is missing (#602)
 pub fn factory_only_flash() -> Vec<u8> {
     let mut f = vec![0xffu8; FLASH_SIZE];
-    f[FACTORY_BASE..FACTORY_BASE + FACTORY_REGION.len()].copy_from_slice(FACTORY_REGION);
+    f[FACTORY_BASE..FACTORY_BASE + FACTORY_REGION.len()].copy_from_slice(&FACTORY_REGION);
     f
 }
 

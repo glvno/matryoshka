@@ -279,7 +279,7 @@ static void links(void)
     m1_patch_patterns();                             /* (a patch without links: written as it was) */
     OK(m1_patch_locks() && pl_set_link(p, 0) && m1_cur_len == len && !memcmp(orig, m1_cur, len));
     wn = encode(p, want);
-    OK(!pt_put(&id, "LOCKS P2", want, wn) && id);
+    OK(!pt_put(&id, "LOCKS P2", want, wn, 0) && id);
     /* linked, clean: the binary keeps the link, not the pattern */
     OK(pl_set_link(p, id) && pl_link(p) == id);
     pl_hash[p] = pt_fnv(PT_FNV0, want, wn);
@@ -324,19 +324,40 @@ static void links(void)
     printf("patlink: links left out, loaded from the store, written back at SAVE\n");
 }
 
-/* the SEQ page: save, save as new, a factory entry and another layout's locks */
+/* the SEQ page: FX+SAVE keeps a copy (#1202 P1), a factory entry and another layout's locks */
 static void seq_page(void)
 {
-    char got[PT_NAME + 1u];
-    uint32_t c, id = 0, p = 1;
+    char got[PT_NAME + 1u], want[PT_NAME + 1u];
+    uint32_t c, id = 0, p = 1, link, before;
+    pt_info_t in = { 0 };
     for (c = 0; c < N_PATTERN_CASES && strcmp(PATTERN_CASES[c].name, "LOCKS P2"); c++)
         ;
     if (c == N_PATTERN_CASES || load_patch(PATTERN_CASES[c].patch, PATTERN_CASES[c].patch_len))
         return;
-    OK(pl_save(p, 0, "LOCKS P2", got) == 1 && !strcmp(got, "LOCKS P2") && (id = pl_link(p)) != 0);
-    OK(pl_save(p, 0, "OTHER", got) == 0 && pl_link(p) == id && !strcmp(got, "LOCKS P2"));
-    OK(pl_save(p, 1, "COPY", got) == 1 && pl_link(p) != id && !strcmp(got, "COPY"));
-    OK(pl_save(0, 0, "FIRST", got) == 1 && !pl_link(0));
+    /* FX+SAVE: a new kept entry named as SAVE names them, linked to nothing; p's link stays */
+    link = pl_link(p);
+    before = pt_count();
+    pl_name(want, m1_patch_name(), p);
+    OK(pl_keep(p, got) == 1 && !strcmp(got, want) && pt_count() == before + 1u && pl_link(p) == link);
+    while (!id && !pt_next(in.id, &in))
+        id = in.kept ? in.id : 0u;
+    OK(id && !pt_stat(id, &in) && in.kept && !strcmp(in.name, want));
+    OK(pl_keep(0, got) == 1 && pt_count() == before + 2u && !pl_link(0));
+    /* the cleanup of unlinked entries leaves a kept copy */
+    pl_gc();
+    OK(!pt_stat(id, &in) && in.kept);
+    /* linked and edited, SAVE does not write over it: a new entry, the kept copy as it was */
+    OK(pl_load_entry(p, id, got) == 0 && pl_link(p) == id && !pt_stat(id, &in));
+    {
+        uint32_t hash = in.hash;
+        OK(eng_pattern_set_notes((uint32_t)eng_steps_module(0), p, notes_one(), 1u));
+        m1_patch_track((uint32_t)eng_steps_module(0));
+        pl_commit("LOCKS", 0);
+        OK(pl_link(p) && pl_link(p) != id && !pt_stat(id, &in) && in.kept && in.hash == hash);
+        OK(!pt_stat(pl_link(p), &in) && !in.kept);
+    }
+    pl_gc();
+    OK(!pt_stat(id, &in) && in.kept);
     OK(pl_load_entry(p, PL_FACTORY, got) == 0 && !pl_link(p) && !strcmp(got, PRESET_PATTERNS[0].name));
     {
         const uint32_t *w;
@@ -361,7 +382,7 @@ static void seq_page(void)
         OK(pl_layout() != PATTERN_CASES[0].layout);
         OK(pl_load_entry(1, id, got) == 1 && eng_locks_count() == 0 && pl_link(1) == id);
     }
-    printf("patlink: the SEQ page's save, save as new and load\n");
+    printf("patlink: the SEQ page's kept copy (never freed, never written over) and load\n");
 }
 
 static void link_frames(void)
@@ -397,6 +418,27 @@ static void link_frames(void)
     b[1] = 0x12;
     frame(C_PAT_GET, b, 4);
     OK(reply(0, R_PAT_DATA, b, sizeof b) == 6u && rd16(b + 2) == 0xFFFFu);
+    /* PUT with total's bit 15 (PAT_KEPT, #1202 P1): a kept copy; a plain PUT over it is refused, a kept one is not */
+    {
+        uint32_t kid;
+        pt_info_t in;
+        memset(b, 0, sizeof b);
+        b[2] = (uint8_t)PATTERN_CASES[c].payload_len;
+        b[3] = 0x80;
+        memcpy(b + 6, "KEPT", 4);
+        memcpy(b + 22, PATTERN_CASES[c].payload, PATTERN_CASES[c].payload_len);
+        frame(C_PAT_PUT, b, 22u + PATTERN_CASES[c].payload_len);
+        OK(reply(0, R_PAT_STORED, e, sizeof e) == 4u && e[2] == S_OK && (kid = rd16(e)) >= 1u && !pt_stat(kid, &in) && in.kept);
+        b[0] = (uint8_t)kid;
+        b[1] = (uint8_t)(kid >> 8);
+        b[3] = 0;
+        frame(C_PAT_PUT, b, 22u + PATTERN_CASES[c].payload_len);
+        OK(reply(0, R_PAT_STORED, e, sizeof e) == 4u && e[2] == S_MISSING);
+        b[3] = 0x80;
+        frame(C_PAT_PUT, b, 22u + PATTERN_CASES[c].payload_len);
+        OK(reply(0, R_PAT_STORED, e, sizeof e) == 4u && e[2] == S_OK && rd16(e) == kid && !pt_stat(kid, &in) && in.kept);
+        OK(!pt_del(kid));
+    }
     /* PATS: the user entries, then the factory patches' patterns, then the demonstration patterns */
     frame(C_PATS, 0, 0);
     cnt = pt_count() + N_KIT_PATTERNS + N_PRESET_PATTERNS;
@@ -725,7 +767,7 @@ static void cuts(void)
         return;
     p = PATTERN_CASES[c].pattern;
     wn = encode(p, pay);
-    OK(!pt_put(&id, "LOCKS P2", pay, wn) && pl_set_link(p, id));
+    OK(!pt_put(&id, "LOCKS P2", pay, wn, 0) && pl_set_link(p, id));
     pl_hash[p] = pt_fnv(PT_FNV0, pay, wn);
     pl_rewrite();
     OK(!sl_write(5, "LINKED", m1_cur, m1_cur_len));

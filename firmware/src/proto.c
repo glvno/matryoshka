@@ -54,7 +54,8 @@
  *                                                               the next cursor (0 none)
  *   static const uint8_t *m1_pat_get(uint32_t id, uint32_t *len);   a stored pattern's payload (a scratch buffer), 0 none
  *   static uint32_t m1_pat_put(uint32_t *id, const char *name, const uint8_t *p, uint32_t len);   stored (*id 0: a new
- *                                                               entry, its id back): S_OK, S_RANGE, S_FLASH, S_FULL, S_MISSING
+ *                                                               entry, its id back; len's bit 15: a kept copy): S_OK, S_RANGE,
+ *                                                               S_FLASH, S_FULL, S_MISSING
  *   static uint32_t m1_pat_del(uint32_t id, uint32_t force, uint32_t *count);   deleted: S_OK, S_MISSING, S_RANGE, S_FLASH;
  *                                                               S_USED with force 0 and *count slots whose patches link it
  *   static uint32_t m1_fact_info(uint8_t *out);                 the factory region (#915, factory.c): FACT_INFO's bytes, how many
@@ -1429,8 +1430,9 @@ static int m1_handle(const uint8_t *f, uint32_t n)
     }
     case C_PAT_PUT: {                                        /* #901: id u16 (0 new), total u16, offset u16, name[16], up to 256
                                                               * bytes, gathered in m1_up -> PAT_STORED (a chunk taken: S_OK, id
-                                                              * 0xFFFF; the last: the store's answer) */
-        uint32_t id, total, off, data, i, end = 0;
+                                                              * 0xFFFF; the last: the store's answer). total's bit 15 (PAT_KEPT,
+                                                              * #1202 P1, in every chunk): stored as a kept copy */
+        uint32_t id, total, kept, off, data, i, end = 0;
         char name[M1_PNAME + 1u];
         if (len < 6u + M1_PNAME) {
             m1_pat_stored(0xFFFFu, S_RANGE, 0);
@@ -1438,6 +1440,8 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         }
         id = (uint32_t)d[0] | (uint32_t)d[1] << 8;
         total = (uint32_t)d[2] | (uint32_t)d[3] << 8;
+        kept = total & 0x8000u;
+        total &= 0x7FFFu;
         off = (uint32_t)d[4] | (uint32_t)d[5] << 8;
         data = len - 6u - M1_PNAME;
         if (!total || total > M1_PATCH_MAX || data > 256u || off + data > total || (off && (total != m1_up_total || off != m1_up_got))) {
@@ -1458,7 +1462,7 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         }
         name[M1_PNAME] = 0;
         m1_up_got = m1_up_total = 0;
-        i = m1_pat_put(&id, name, m1_up, total);
+        i = m1_pat_put(&id, name, m1_up, total | kept);
         m1_pat_stored(id, i, 0);
         break;
     }
