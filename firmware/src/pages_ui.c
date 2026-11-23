@@ -2610,10 +2610,11 @@ static int fx_focus_effect(void)
     return (page == 0u || page == PAGE_ENV) && pg_cur_dev < pg_ndev && fx_drawer_at(pg_dev[pg_cur_dev].bin) != UINT32_MAX;
 }
 /* the effect FX goes to (pages_ensure first): the first of the drawer of the instrument on show (an effect's page counts
- * as its drawer's instrument's), else of the first armed instrument with one, else of the Output drawer; UINT32_MAX none */
+ * as its drawer's instrument's), else of the first armed instrument with one, else of the Output drawer, the first that
+ * has a page (pages_build leaves out a device of no rows); UINT32_MAX none */
 static uint32_t fx_target(void)
 {
-    uint32_t r = UINT32_MAX, d;
+    uint32_t r = UINT32_MAX, d, e;
     if (pg_cur_dev < pg_ndev && (r = fx_drawer_at(pg_dev[pg_cur_dev].bin)) == UINT32_MAX)
         r = fx_drawer_full(pg_dev[pg_cur_dev].bin);
     for (d = 0; r == UINT32_MAX && d < pg_ndev; d++)
@@ -2621,7 +2622,10 @@ static uint32_t fx_target(void)
             r = fx_drawer_full(pg_dev[d].bin);
     if (r == UINT32_MAX)
         r = fx_drawer_full(ENG_RACK_OUTPUT);
-    return r == UINT32_MAX ? r : eng_rack_first(r);
+    for (e = r == UINT32_MAX ? 0u : eng_rack_first(r); r != UINT32_MAX && e < eng_rack_first(r) + eng_rack_len(r); e++)
+        if (pages_dev_of(eng_fx_device(e)) < pg_ndev)
+            return e;
+    return UINT32_MAX;
 }
 /* the page of pg device d effect e opens on: its first; a master FX bus stage (eng_fx_page past 0, format 55..65) the
  * first page that shows one of the stage's modules, as the bus record names it (pages_build leaves out pages of no rows,
