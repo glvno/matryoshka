@@ -2,8 +2,7 @@
 // The FX rack as both engines run it (format 66, #1214): which effects the binary lists, in device order, which of their
 // modules switch as one effect with the master FX runtime (D-1100), and the FX drawers. patchbin.ts writes it (rackRecord),
 // engine.ts runs it, so the editor's engine and the FM-1's play the same targets.
-import { allModules, assemblyById } from './assembly';
-import { chainHelpers, rackOf } from './fx-drawer';
+import { allModules, assemblyById, chainHelpers, rackOf } from './assembly';
 import { DEFS } from './modules';
 import { thruInput, type Patch } from './patch';
 import { devicesOf, type Device } from './pages';
