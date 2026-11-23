@@ -2447,7 +2447,7 @@ async function main() {
       await check('device preset: the first PRESET turn left loads the last of its list, not INIT', shown && !(await emu.text('PRESET INIT')));
       await emu.elapse(1200);
     },
-    // #1214 (the FX drawer, 1.26.2): Oracle V with the old master FX bus (factory-bank.ts withFxBus, as the factory bank
+    // #1214 (the FX drawer, 1.26.3): Oracle V with the old master FX bus (factory-bank.ts withFxBus, as the factory bank
     // shipped it) becomes Oracle V with its FX drawer when the editor opens it (validatePatch); on the FM-1 FX opens the
     // drawer's first effect and SELECT walks its effects in chain order (devices right after the instrument); a patch with
     // no FX rack and FX set to Nothing says NO FX IN THE RACK

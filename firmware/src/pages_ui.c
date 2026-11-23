@@ -2572,7 +2572,7 @@ static void env_knob_msg(uint32_t k)
     ui_msg(m, 1000);
 }
 
-/* ---- FX (the FX drawer, 1.26.2): the rack's effects are ordinary devices, each drawer's right after its instrument in
+/* ---- FX (the FX drawer, 1.26.3): the rack's effects are ordinary devices, each drawer's right after its instrument in
  * chain order (the editor's device list: SELECT walks them, nothing to page here). FX goes to the first page of the first
  * effect of a drawer (panel.c fx_button). A patch of formats 55..65 holds the master FX bus (D-1010): its stages are the
  * effects of one Output drawer, all on the bus device (engine.c) */
@@ -3074,7 +3074,7 @@ static int dp_pb_open(dp_at_t *s, uint8_t *buf, uint32_t *len, uint32_t cap, uin
 }
 
 /* FXP1 (formats 55..65's master FX bus, D-1010) hashes binary bytes, not printed hex. Footer words are signed whole Q16
- * numbers. The FM-1 still reads these presets on such a patch (a bank slot saved before 1.26.2 with its user presets) */
+ * numbers. The FM-1 still reads these presets on such a patch (a bank slot saved before 1.26.3 with its user presets) */
 static uint32_t dp_fx_hash(uint32_t base, uint32_t mask)
 {
     uint32_t h = 2166136261u, i;
@@ -3108,7 +3108,7 @@ static uint32_t ds_fx_mask(const dp_at_t *s)
     return mask;
 }
 
-/* FXD1 (the FX drawer, 1.26.2, docs/ARCHITECTURE.md): an instrument with an FX drawer has its presets with its drawer, the
+/* FXD1 (the FX drawer, 1.26.3, docs/ARCHITECTURE.md): an instrument with an FX drawer has its presets with its drawer, the
  * values [ its rows | each effect in chain order: on (0 / 1), the effect's rows | lo16 base, hi16 base, n, 23119 ] under
  * FNV-1a over 'F','X','D','1', the base structure (u32 LE), n (u8) and each effect's structure (u32 LE): a preset lists
  * only where the instrument and every effect match, device for device (web/src/fx-preset-format.ts) */

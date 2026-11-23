@@ -257,7 +257,7 @@ function promoteRows(p: Patch, a: AssemblyInst, rows: RowTarget[][], kind: FxSta
 }
 
 /**
- * The factory master FX bus of D-888 as the releases before 1.26.2 built it (the stages but the omitted ones, every
+ * The factory master FX bus of D-888 as the releases before 1.26.3 built it (the stages but the omitted ones, every
  * stage bypassed; omit all four to leave the graph unchanged). The factory patches and the golden kits that had one make
  * it, then turn it into an FX drawer (fx-drawer.ts convertLegacyBus): the same modules in the same order with the same
  * cables, so they play sample for sample as before (scripts/fxdrawer-proof.ts).

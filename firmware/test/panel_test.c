@@ -551,7 +551,7 @@ static int fx_fixture(const char *name)
 /* the pg device of rack effect e */
 static uint32_t fx_dev(uint32_t e) { return pages_dev_of(eng_fx_device(e)); }
 
-/* The FX drawer on the FM-1 (1.26.2, #1214): its effects are devices right after their instrument, FX goes to the first
+/* The FX drawer on the FM-1 (1.26.3, #1214): its effects are devices right after their instrument, FX goes to the first
  * page of the first effect of the drawer of the instrument on show (else of the armed one, else of the Output drawer),
  * else NO FX IN THE RACK; a Toggle on a drawer switches its effects as eng_fx_set does (tails, engine.c) */
 static void fx_suite(void)

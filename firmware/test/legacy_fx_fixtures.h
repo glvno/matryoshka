@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Format-65 patches with a master FX bus (D-1010), as web/scripts/golden.ts --panel-fixtures wrote them at 7c6ebcdb (the
-   last commit before the FX drawer, 1.26.2). Frozen: no encoder writes the bus any more; the FM-1 still reads it. Used by
+   last commit before the FX drawer, 1.26.3). Frozen: no encoder writes the bus any more; the FM-1 still reads it. Used by
    panel_test.c and pal_preset_test.c (legacy_fixture). */
 #pragma once
 #include <stdint.h>

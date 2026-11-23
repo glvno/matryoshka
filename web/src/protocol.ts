@@ -526,7 +526,7 @@ export const FEATURE25_PATTERNS_STORED = 2;
 /** INFO byte 25 bit 2 (1.26, #1202 G8): SLOT_GET reads a slot's binary back, and PAT's flags bit 1 marks a kept copy (the
  *  Flash tab's backup before older firmware takes every slot and kept copy from the FM-1 itself) */
 export const FEATURE25_SLOT_GET = 4;
-/** INFO byte 25 bit 3 (Info.features25; 1.26.2, #1214): the FM-1 reads format 66's FX rack (effects and FX drawers) and
+/** INFO byte 25 bit 3 (Info.features25; 1.26.3, #1214): the FM-1 reads format 66's FX rack (effects and FX drawers) and
  *  the FX drawer presets (FXD1); firmware/src/proto.c M1_FEATURES5 */
 export const FEATURE5_FX_DRAWERS = 8;
 /** INFO feature bit 26 (byte 14 bit 2, #915, D-490): the factory region's commands (firmware/src/factory.c) */

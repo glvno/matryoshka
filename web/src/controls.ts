@@ -199,7 +199,7 @@ export const CONTROLS: ControlRow[] = [
     help: 'the row’s device into the armed devices or out (several at once: a layer or a split)' },
 
   // ---- FX: a patch with an FX rack (an effect or an FX drawer) keeps FX for its effects on device pages and the
-  // environment, its own FX button job shadowed (D-933's SEQ and SONG jobs stay)
+  // environment, its own FX button job shadowed (D-946: FX keeps its SEQ and SONG jobs)
   { id: 'fx-open', gesture: { do: [B('FX')] }, does: 'first effect', when: 'fx_rack', sheet: { device: 95, env: 65 }, effect: 'fx_open',
     help: 'the first page of the first effect in the FX drawer of the instrument on show (an effect’s page counts as its instrument’s), else of the armed instrument, else of the Output drawer; with none the bar says NO FX IN THE RACK. Effects are ordinary devices right after their instrument: SELECT walks them in their order, K1-K4 edit them, ALGO turns their pages. FX again goes back. A patch with no effect keeps its own FX button job; with none either, FX says NO FX IN THE RACK' },
 
