@@ -280,6 +280,13 @@ export class Palette {
     }
   }
 
+  /** an INFO the editor did not ask for, as the FM-1 answers another program's HELLO (a second editor window, a tool on
+   *  the computer): after any HELLO it sends PALETTE_NOW unasked only once asked again (proto.c m1_pal_asked), so the
+   *  chips would stop following it (its writes, switches and hold-saves). The palette is read again, which asks */
+  async infoHeard(): Promise<void> {
+    if (this.linked) await this.connected();
+  }
+
   /** a PALETTE_NOW the FM-1 sent unasked (a switch, a hold-save, a write, a slot gone MISSING) */
   received(now: PaletteNow): void {
     if (this.linked) void this.take(now, true);

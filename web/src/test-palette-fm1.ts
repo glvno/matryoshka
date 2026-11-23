@@ -63,6 +63,8 @@ export class PaletteFm1 {
   private chunk: number[] = [];
   /** answers sent but not yet arrived */
   private pending = 0;
+  /** its INFO, the answer to HELLO */
+  private readonly info: Uint8Array;
 
   constructor(o: { features?: number; features25?: number; slots?: SlotInfo[]; presetRoom?: number } = {}) {
     const port = (id: string): PalettePort => {
@@ -75,15 +77,14 @@ export class PaletteFm1 {
     this.bins = this.slots.map(() => null);
     this.presetRoom = o.presetRoom ?? 32;
     const features = o.features ?? PALETTE_FM1_FEATURES, features25 = o.features25 ?? FEATURE25_SLOT_GET;
+    this.info = frame(CMD.info, [1, 64, 255, 3, 1, features & 0xff, (features >> 8) & 0xff, 48, 65, 1, 26, 0, (features >> 16) & 0xff, 1, (features >>> 24) & 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, features25]);
     this.o.send = (d) => {
       const bytes = Uint8Array.from(d);
       this.o.sent.push(bytes);
       const p = parse(bytes);
       if (!p) return;
-      if (p.cmd === CMD.hello) {
-        this.asked = false;
-        this.reply(frame(CMD.info, [1, 64, 255, 3, 1, features & 0xff, (features >> 8) & 0xff, 48, 65, 1, 26, 0, (features >> 16) & 0xff, 1, (features >>> 24) & 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, features25]));
-      } else if (p.cmd === CMD.slotInfo) {
+      if (p.cmd === CMD.hello) this.hello();
+      else if (p.cmd === CMD.slotInfo) {
         const s = this.slots[p.payload[0]];
         this.reply(frame(CMD.slotReply, [s.slot, s.used ? 1 : 0, s.length & 0xff, s.length >> 8, ...name20(s.name)]));
       } else if (p.cmd === CMD.chunk) {
@@ -190,6 +191,14 @@ export class PaletteFm1 {
   /** PALETTE_NOW unasked, once the editor sent GET */
   report(): void {
     if (this.asked) this.reply(frame(PALETTE.now, this.nowPayload()));
+  }
+
+  /** HELLO, from the editor's link or another program on the computer (a second editor window, m1_link.py): INFO, which
+   *  every program listening to the FM-1 hears, and PALETTE_NOW goes out unasked again only after a GET (proto.c
+   *  m1_pal_asked) */
+  hello(): void {
+    this.asked = false;
+    this.reply(this.info);
   }
 
   /** the bar line came: a waiting switch happens */

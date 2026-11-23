@@ -112,6 +112,7 @@ async function linked(o: { features?: number; features25?: number; presetRoom?: 
   };
   const palette = new Palette(ports, storage);
   link.onEvent = (e) => {
+    if (e.kind === 'info') void palette.infoHeard();   // (as main.ts: an INFO not asked for answers another program's HELLO)
     if (e.kind === 'palette') palette.received(e.now);
     if (e.kind === 'slot') { palette.slotNow(); o.onSlot?.(); }   // (as main.ts: then the editor drops its pattern origins)
   };
@@ -172,6 +173,20 @@ describe('the palette over the link (#1196)', () => {
     await palette.remove(5);
     await fm1.quiet();
     expect(fm1.entries[5]).toBeNull();
+  });
+  it('after another program\'s HELLO (its INFO) reads the palette again, so the chips go on following the FM-1', async () => {
+    const { fm1, palette } = await linked();
+    fm1.hello();   // (a second editor window, a tool: PALETTE_NOW goes out unasked only once asked again)
+    await fm1.quiet();
+    expect(fm1.asked).toBe(true);
+    fm1.slots[0] = { slot: 0, used: true, length: 10, name: 'A' };
+    await palette.add('A', null, { pos: 0, slot: { slot: 0, name: 'A' } });
+    await fm1.quiet();
+    expect(palette.chips()[0]).toMatchObject({ state: 'ok', name: 'A' });
+    fm1.entries[2] = { slot: 0, pattern: 1, name: 'A', devices: [] };   // (a change on the FM-1 itself)
+    fm1.report();
+    await fm1.quiet();
+    expect(palette.chips()[2]).toMatchObject({ state: 'ok', name: 'A', pattern: 1 });
   });
   it('refuses to write while a switch waits for the bar line', async () => {
     const { fm1, palette, said } = await linked();

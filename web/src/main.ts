@@ -413,6 +413,7 @@ device.onEvent = (e) => {
     // INFO changes capabilities, not the connection or its in-flight bank operations.
     for (const pane of Object.values(libraryPanes)) pane.refresh();
     showPads();
+    void palette?.infoHeard();   // (another program's HELLO, which this INFO answers, stops the FM-1's unasked PALETTE_NOW)
     return syncChip();   // INFO also refreshes the memory rule for this device
   }
   if (e.kind === 'keys') {   // a key edge the FM-1's panel took (#549): through the copy too, as the FM-1 took it
