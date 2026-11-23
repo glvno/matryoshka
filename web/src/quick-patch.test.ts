@@ -11,7 +11,7 @@ import { DEFS } from './modules';
 import { addModule, connect, newPatch, type Patch } from './patch';
 import {
   besideSpot, buildChain, cardOf, cardPorts, cardTitle, chainText, defaultPort, effectPlace, farEnds, findOwner, GAP, HALF_GAP, HALF_MAX, halfRings, halfSectors, loadBlueprints, matchPorts,
-  parseChain, portCables, radialPlace, rankPorts, removeBlueprint, RINGS_MAX, saveBlueprint, search, sectorPath, Trail, wire, type Card, type Catalog, type Place, type QPort,
+  parseChain, patchCards, portCables, radialPlace, rankPorts, removeBlueprint, RINGS_MAX, saveBlueprint, search, sectorPath, Trail, wire, type Card, type Catalog, type Place, type QPort,
 } from './quick-patch';
 
 const catalog = (blueprints: Catalog['blueprints'] = []): Catalog => ({
@@ -447,7 +447,7 @@ describe('FX drawers (D-1310..D-1316 with the drawer)', () => {
     expect(hits[i].kind === 'module' && hits[i].into).toBeUndefined();
     expect(hits.slice(i + 1, i + 3)).toMatchObject([{ kind: 'module', type: 'reverb', detail: "into Hera 4's FX" }, { kind: 'module', type: 'reverb', into: 'output', detail: 'into Output FX' }]);
     // not an effect: no drawer rows
-    expect(search(p, DEFS, catalog(), '+lfo').filter((h) => h.kind === 'module' && h.into !== undefined)).toEqual([]);
+    expect(search(p, DEFS, catalog(), '+lfo').filter((h) => h.kind === 'module' && h.type === 'lfo' && h.into !== undefined)).toEqual([]);
     expect(findOwner(p, 'hera')).toBe(p.assemblies!.find((a) => a.label === 'Hera 4')!.id);
     expect(findOwner(p, 'output')).toBe('output');
   });

@@ -4,7 +4,7 @@
 // (`lfo.out > multimode.cv; multimode.lp > vca.in > output.in`), following cables, blueprints and where a new card goes.
 // quick-patch-view.ts draws the field and the ring and drives the editor with these.
 import { allModules, assembliesOf, assemblyById, assemblyOf, cardWidth, findRef, insertAssembly, overlaps, paramColumns, parentOf, targetsOf, tiedTo, type AssemblyDef, type AssemblyInst, type Rect } from './assembly';
-import { addDrawer, chainJackProblem, drawerOf, drawerOfEffect, drawerOutput, drawers, effectKind, effectsOf, insertEffect, outputDrawer, ownerOf, rewire } from './fx-drawer';
+import { addDrawer, chainCableProblem, chainJackProblem, drawerOf, drawerOfEffect, drawerOutput, drawers, effectKind, effectsOf, insertEffect, outputDrawer, ownerOf, rewire } from './fx-drawer';
 import { score } from './fuzzy';
 import { keyRouteError } from './key-routing';
 import { longName, moduleKeywords, moduleTitle } from './labels';
@@ -435,6 +435,8 @@ export function wire(p: Patch, defs: Record<string, ModuleDef>, a: QPort, b: QPo
   const [out, input] = a.dir === 'out' ? [a, b] : [b, a];
   const one = (from: Endpoint, to: Endpoint): void => {
     if (p.cables.some((c) => sameEnd(c.from, from) && sameEnd(c.to, to))) return;
+    const why = chainCableProblem(p, from, to);
+    if (why) throw new Error(why);
     if (!connect(p, defs, from, to)) throw new Error(from.port === 'keys' ? keyRouteError(p, { from, to }) ?? 'Cannot connect these ports.' : 'Cannot connect these ports.');
   };
   for (const from of out.ends) {
@@ -443,6 +445,8 @@ export function wire(p: Patch, defs: Record<string, ModuleDef>, a: QPort, b: QPo
       continue;
     }
     const { module, param } = input.param;
+    const back = chainCableProblem(p, from, { module, port: '' });
+    if (back) throw new Error(back);
     const to = connectParameter(p, defs, from, module, param);
     // a card row that sets several parameters: the cable reaches every one of them
     for (const t of tiedTo(p, module, param).slice(1)) connectParameter(p, defs, from, t.module, t.param);
