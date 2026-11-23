@@ -60,11 +60,15 @@ describe('the factory region image and the firmware tier', () => {
     expect(crc32(tier.subarray(64))).toBe(t.crc);
     expect([t.layout, t.set, t.version]).toEqual([r.layout, r.set, r.version]);
   });
-  it('offers each released firmware the newest image made for its kits: 1.25 (layout 2) the frozen 1.25 image, 1.24.x layout 1, today\'s firmware (layout 4) today\'s (D-1020, #1202 K2, G8)', () => {
+  it('offers each released firmware the newest image made for its kits: 1.25 (layout 2) the frozen 1.25 image, 1.24.x layout 1, 1.26.0–1.26.2 (layout 4, format 65) the frozen 1.26 image, today\'s firmware (layout 4, format 66) today\'s (D-1020, #1202 K2, G8)', () => {
     const sets = (JSON.parse(readFileSync(new URL('../public/firmware/factory-sets.json', import.meta.url), 'utf8')) as { sets: FactorySet[] }).sets;
-    const offered = (reads: number): FactorySet | null => pickSet(sets, { state: 1, reads, plays: 65, layout: 0, format: 0, version: 0, set: 0, len: 0, patches: 0,
+    const offered = (reads: number, plays = 66): FactorySet | null => pickSet(sets, { state: 1, reads, plays, layout: 0, format: 0, version: 0, set: 0, len: 0, patches: 0,
       writing: false, tierOnly: false, size: 0, tierVersion: 0, tierPatches: 0, merged: 0 });
     expect(offered(4)?.file).toBe('matryoshka-factory.bin');
+    // today's image is format 66 (the factory patches' FX drawers, the rack section): firmware that plays at most 65 keeps
+    // the last factory content it can play, frozen (D-1020, amended 2026-11-20)
+    expect(offered(4, 65)?.file).toBe('factory/matryoshka-factory-v21-f81fee.bin');
+    expect(offered(4, 65)?.set).toBe('f81fee');
     expect(offered(3)?.file).not.toBe('matryoshka-factory.bin');   // (a layout 3 reader, a 1.26 build before G8: never today's layout 4)
     expect(offered(2)?.file).toBe('factory/matryoshka-factory-v20-665d4c.bin');
     expect(offered(2)?.set).toBe('665d4c');
