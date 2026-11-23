@@ -52,6 +52,9 @@ Choose commands using the canonical stage rules:
 
 - **Agent branches → `main` → frozen candidate:** [D-145](ledger/releases.md#D-145) defines branch roles;
   [D-144](ledger/releases.md#D-144) defines targeted checks and review before the freeze.
+  On a pull request, "targeted" means `emu:scenarios -- --only NAME` for each scenario the change adds or changes.
+  A pull request never runs the full `emu:smoke` or a full `emu:scenarios`.
+  The exceptions are installs: `emu:boot` before the test rig ([D-123](ledger/releases.md#D-123)), `emu:smoke` before any other FM-1 ([D-153](ledger/firmware-install.md#D-153)).
 - **Frozen release candidate and fixes:** [D-144](ledger/releases.md#D-144) defines the full run and affected revalidation;
   [D-146](ledger/releases.md#D-146) governs the final artifacts carried through qualification and publication.
 - **Registered test rig:** [D-123](ledger/releases.md#D-123) governs installation; [D-141](ledger/releases.md#D-141)
