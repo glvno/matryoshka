@@ -41,12 +41,19 @@ M-VAVE loader only gets M-VAVE's packages, and only the one it was writing; a
 Felucca-type one everything else), 8 the FM-1's boot code is not the one in this M-VAVE package (nothing was sent),
 9 --rig: the FM-1 at the rig's USB location is not the rig (no mark, another mark, or in update mode; nothing was sent),
 10 a package of Matryoshka 1.26 or later (48 slots) and a running FM-1 whose bank holds more than 48 patches (nothing
-was sent: free slots in the editor's Library > Patches first, #1202).
+was sent: free slots in the editor's Library > Patches first, #1202), 11 a Matryoshka package older than 1.26 and a
+running FM-1 that keeps patterns 2 to 64 in its pattern store (1.26: older firmware cannot read them; nothing was sent
+without --force, #1202).
 
 Before a package of Matryoshka 1.26 or later goes onto a running Matryoshka FM-1 whose older firmware has more than 48
 slots, the tool reads the bank (SLOT_INFO, as the editor's Install panel does): slots 49 and up empty, it installs; used,
 with 48 patches or fewer, it says that they move to free lower slots at the first start and installs; more than 48, it
 refuses. An FM-1 already in update mode cannot be asked: the tool says the check did not run.
+
+Before a Matryoshka package older than 1.26 goes onto a running FM-1 whose firmware keeps patterns 2 to 64 of its patches
+in the pattern store (1.26, INFO byte 25 bit 1), the tool refuses unless --force: the older firmware cannot read those
+patterns. Back up the bank first: the editor's Install panel offers a backup (each patch with every pattern inside it)
+when it is given the same package.
 
 M-VAVE's loader also writes the small piece of software at the start of the FM-1's memory
 that starts it when switched on (its boot code, flash 0x0000-0x3FFF), from its package, and
@@ -95,7 +102,7 @@ DELAY = {"open": 0.3, "start": 2.0, "reply": 0.01, "loader": 3.0, "reboot": 3.0,
 
 EXIT = {"usage": 2, "badpkg": 2, "notfound": 3, "model": 6, "lost": 4, "stopped": 4, "badreq": 4,
         "phase": 4, "noloader": 5, "noreturn": 5, "mismatch": 6, "otherloader": 7, "wrongtarget": 7, "whichtarget": 7,
-        "bootcode": 8, "notrig": 9, "bank": 10}
+        "bootcode": 8, "notrig": 9, "bank": 10, "older": 11}
 
 
 class InstallError(Exception):
@@ -501,6 +508,39 @@ def bank_check(dev, product, out):
     moving = [u for u in used if u[0] >= BANK_SLOTS]
     if moving:
         print(moves_text(moving), file=out)
+
+
+# install-bank.ts OLDER_FIRMWARE_TEXT
+OLDER_FIRMWARE_TEXT = ("This FM-1 runs firmware 1.26 or later, which keeps patterns 2 to 64 of its patches in the pattern "
+                       "store. Firmware older than 1.26 cannot read them.")
+
+
+def older_check(dev, product, force, out):
+    """#1202, P2: before a Matryoshka package older than 1.26 goes onto a running FM-1 that keeps every pattern 2..64 in its
+    pattern store (1.26): refused (InstallError "older") unless `force`, with the editor's explanation"""
+    if matryoshka_version(product) is None or small_bank_package(product):
+        return
+    unchecked = ("Firmware older than 1.26 cannot read the patterns 2 to 64 that firmware 1.26 keeps in the pattern "
+                 "store")
+    if dev.id.loader:
+        print(f"warning: the patterns could not be checked (the FM-1 waits in update mode). {unchecked}", file=out)
+        return
+    if matryoshka_version(dev.id.text) is None:
+        return                          # (stock, Felucca, Official Open: no pattern store)
+    info = editor_ask(dev.link, C_HELLO, (), R_INFO)
+    if info is None:
+        print(f"warning: the patterns could not be checked (the FM-1 did not answer the editor's HELLO). {unchecked}",
+              file=out)
+        return
+    if not (len(info) >= 26 and info[25] & FEATURE_PATTERNS_STORED):
+        return
+    if force:
+        print(f"warning: {OLDER_FIRMWARE_TEXT} --force: installing anyway", file=out)
+        return
+    dev.link.close()
+    raise InstallError("older", f"nothing was sent. {OLDER_FIRMWARE_TEXT} Back up the bank first (the editor's Install "
+                                "firmware > Install another package offers a backup for this package), then run again "
+                                "with --force.")
 
 
 # ------------------------------------------------------------------ MIDI ---
@@ -1009,6 +1049,7 @@ def run(a, backend, out, ask, factory=None):
         check_rig(dev, rig, fm1_usb.read_mark, a.location)
         print(f"the test rig: its mark reads back at USB location {a.location}", file=out)
     bank_check(dev, product, out)
+    older_check(dev, product, a.force, out)
     if a.dry_run:
         dev.link.close()
         where = f" at USB location {a.location}" if a.location else ""
@@ -1056,7 +1097,9 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty, factory=None):
     ap.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     ap.add_argument("--dry-run", action="store_true", help="run every check (location, mark, package) and say what would "
                                                            "be installed where, then stop: nothing that changes the FM-1 is sent")
-    ap.add_argument("--force", action="store_true", help="install a package without the Felucca loader marker")
+    ap.add_argument("--force", action="store_true", help="install a package without the Felucca loader marker, or a "
+                                                         "Matryoshka package older than 1.26 over firmware 1.26, whose "
+                                                         "patterns 2..64 the older firmware cannot read")
     ap.add_argument("--sure", action="store_true", help="finish a cut-off install in M-VAVE's loader with this package "
                                                         "although it is not recorded which one it was writing")
     ap.add_argument("--no-factory", action="store_true", help="Matryoshka: leave out the factory content after the firmware "

@@ -382,6 +382,56 @@ class Bank(unittest.TestCase):
         self.assertIn("could not be checked", self.check(EditorLink(silent=True)))
 
 
+class OlderOverStore(unittest.TestCase):
+    """#1202, P2: a Matryoshka package older than 1.26 over a running FM-1 that keeps every pattern 2..64 in its pattern
+    store (INFO byte 25 bit 1) is refused unless --force; anything else is not asked"""
+    def setUp(self):
+        self.old = dict(fi.DELAY)
+        fi.DELAY.update(editor=0.01)
+
+    def tearDown(self):
+        fi.DELAY.update(self.old)
+
+    def check(self, link, product="FM-1_7012500", text="FM-1_7012600", force=False):
+        import io
+        buf = io.StringIO()
+        fi.older_check(fi.Device(link, fi.Identity(text, text.split("_")[0], 0), "FM-1"), product, force, buf)
+        return buf.getvalue()
+
+    def test_refused_without_force(self):
+        link = EditorLink(slots=48, more=2)
+        with self.assertRaises(fi.InstallError) as e:
+            self.check(link)
+        self.assertEqual(e.exception.code, "older")
+        self.assertEqual(fi.EXIT["older"], 11)
+        for part in ("nothing was sent", "patterns 2 to 64", "older than 1.26 cannot read them", "Back up the bank", "--force"):
+            self.assertIn(part, str(e.exception))
+        self.assertTrue(link.closed)
+        with self.assertRaises(fi.InstallError):
+            self.check(EditorLink(slots=60, more=2), product="FM-1_717")      # (a 1.26 that kept 60 slots; the old identity)
+
+    def test_force_installs_with_a_warning(self):
+        out = self.check(EditorLink(slots=48, more=2), force=True)
+        self.assertIn("cannot read them", out)
+        self.assertIn("--force", out)
+
+    def test_no_check_where_it_is_not_needed(self):
+        for link, product, text in ((EditorLink(slots=60), "FM-1_7012500", "FM-1_7012500"),               # 1.25 running
+                                    (EditorLink(slots=48, more=0), "FM-1_7012500", "FM-1_7012600"),       # bit clear
+                                    (EditorLink(slots=48, more=2), "FM-1_7012600", "FM-1_7012600"),       # a 1.26 package
+                                    (EditorLink(slots=48, more=2), "FM-1_7000000", "FM-1_7012600"),       # a dev build
+                                    (EditorLink(slots=48, more=2), "FM-1_015", "FM-1_7012600"),           # the stock V15
+                                    (EditorLink(slots=48, more=2), "FM-1_7012500", "FM-1_015")):          # stock running
+            self.assertEqual(self.check(link, product, text), "")
+        quiet = EditorLink(slots=48, more=2)
+        self.check(quiet, "FM-1_7012600")
+        self.assertNotIn(fi.C_HELLO, quiet.asked)
+
+    def test_update_mode_or_silence_warns(self):
+        self.assertIn("could not be checked", self.check(Link(), text="ota-FM-1_700"))
+        self.assertIn("could not be checked", self.check(EditorLink(silent=True)))
+
+
 class BuildIdentity(unittest.TestCase):
     """tools/build.py --release X.Y.Z: the identity FM-1_7MMmmpp (#216), checked against the marker and the handshake"""
     def test_release_identity(self):

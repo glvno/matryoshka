@@ -19,7 +19,7 @@ export function deviceLayoutKey(patch: Patch): string {
   return JSON.stringify([view.patch.modules.map((m) => [m.id, m.type]), view.groups.map((g) => [g.key, [...g.modules], g.src])]);
 }
 import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type DeviceSettings, FEATURE_MASTER_EQ, MASTER_EQ, masterEqFrame, parseMasterEq, type MasterEq, armsFrame, parseArmsNow, FEATURE_WIDE_ARMS, editorSkips, FEATURE_ARMS, FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, slotCount, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
-import { FEATURE_PATTERN_STORE, FEATURE25_PATTERNS_STORED, parseLinkNow, parsePatData, parsePatEntry, parsePatStored, PAT_FULL, PAT_OK, PAT_RANGE, PAT_STATUS, PAT_USED, patDelFrame, patGetFrame, patPutFrames, patsFrame, type PatListItem, type StoredPatternEntry } from './protocol';
+import { FEATURE_PATTERN_STORE, FEATURE25_PATTERNS_STORED, parseLinkNow, parsePatEntry, parsePatStored, PAT_FULL, PAT_MISSING, PAT_OK, PAT_RANGE, PAT_STATUS, PAT_USED, patDelFrame, patPutFrames, patsFrame, readStoredPattern, type PatListItem, type StoredPatternEntry } from './protocol';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 import { FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo, type MapEntry } from './protocol';
 import { FEATURE_PADS, PADS_CMD, padsClearAllFrame, padsOnFrame, padsReadFrame, padsSetFrame, parsePadsNow, parsePatternOp, PATTERN_OP, type PadMap } from './protocol';
@@ -752,34 +752,26 @@ export class DeviceLink {
 
   /** a stored pattern's payload (PAT_GET, in pieces); null: the FM-1 has no such id */
   getPattern(id: number): Promise<Uint8Array | null> {
-    return this.serial(async () => {
-      const out: number[] = [];
-      let total = Infinity;
-      while (out.length < total) {
-        const at = out.length;
-        const d = parsePatData(await this.request(patGetFrame(id, at), (x) => { const r = x && parsePatData(x); return !!r && r.id === id && (r.total === null || r.offset === at); }))!;
-        if (d.total === null) return null;
-        if (!d.bytes.length && at < d.total) throw new Error('the FM-1 sent the pattern short');
-        total = d.total;
-        out.push(...d.bytes);
-      }
-      return Uint8Array.from(out.slice(0, total));
-    });
+    return this.serial(() => readStoredPattern((f, m) => this.request(f, m), id));
   }
 
   /** a payload into the FM-1's pattern store under `name`: a new entry (`id` 0) or over entry `id` (a rename: the same
-   *  payload, a new name); its id. Refused with the store's reason (full, read-only, gone) */
-  putPattern(id: number, name: string, payload: Uint8Array): Promise<number> {
+   *  payload, a new name); its id. `kept`: a new entry kept as a copy (PAT_KEPT, only to an FM-1 that stores every
+   *  pattern). Refused with the store's reason (full, read-only, gone) */
+  putPattern(id: number, name: string, payload: Uint8Array, kept = false): Promise<number> {
     return this.serial(async () => {
-      const r = await this.putEntry(id, name, payload);
+      let r = await this.putEntry(id, name, payload, kept);
+      // (a 1.26 FM-1 writes over a kept copy only with a kept put, and its list does not say which entries are kept: a
+      // put over an id it calls missing goes again as a kept put, which it refuses the same way for any other id)
+      if (r.status === PAT_MISSING && id && !kept && this.patternsStored) r = await this.putEntry(id, name, payload, true);
       if (r.status !== PAT_OK) throw new Error(`FM-1: ${PAT_STATUS[r.status] ?? `error ${r.status}`}`);
       return r.id;
     });
   }
 
   /** putPattern inside the serial queue: the PAT_STORED of its last chunk (or of the first one refused) */
-  private async putEntry(id: number, name: string, payload: Uint8Array): Promise<{ id: number; status: number }> {
-    const frames = patPutFrames(id, name, payload);
+  private async putEntry(id: number, name: string, payload: Uint8Array, kept = false): Promise<{ id: number; status: number }> {
+    const frames = patPutFrames(id, name, payload, kept);
     for (let i = 0; ; i++) {
       const last = i === frames.length - 1;
       // (never sent twice: a chunk again would start the put again or land after it was stored)

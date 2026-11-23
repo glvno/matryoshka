@@ -90,7 +90,10 @@
 //   3D PAT_PUT  id u16 (0 new), total u16, offset u16, name 16 bytes, then up to 256 payload bytes (pattern-store.ts)
 //                                                    the chunks gather on the FM-1 (offset 0 starts a put); each chunk but the
 //                                                    last answers PAT_STORED with id 0xFFFF, the last stores it and answers
-//                                                    PAT_STORED with its id. A rename is a put of the same id and payload
+//                                                    PAT_STORED with its id. A rename is a put of the same id and payload.
+//                                                    total bit 15 in every chunk (PAT_KEPT, a new entry, #1202 P1): store it
+//                                                    as a kept copy, which the FM-1 never frees and never writes over; the
+//                                                    low 15 bits are the total. Firmware before 1.26 refuses it (S_RANGE)
 //   3E PAT_DEL  id u16, force u8                     delete it; PAT_STORED. Without force, an id the bank's patches link
 //                                                    answers S_USED with how many slots link it
 // device -> host
@@ -641,12 +644,18 @@ const u16le = (v: number): number[] => [v & 0xff, (v >> 8) & 0xff];
 const u32at = (p: number[], at: number): number => (p[at] | (p[at + 1] << 8) | (p[at + 2] << 16) | (p[at + 3] << 24)) >>> 0;
 export const patsFrame = (): Uint8Array => frame(CMD.pats);
 export const patGetFrame = (id: number, offset: number): Uint8Array => frame(CMD.patGet, [...u16le(id), ...u16le(offset)]);
-/** a payload as PAT_PUT chunks (`id` 0: a new entry); an empty payload is one chunk with nothing in it */
-export function patPutFrames(id: number, name: string, payload: ArrayLike<number>): Uint8Array[] {
+/** total's bit 15 in PAT_PUT (#1202 P1): a new entry kept as a copy (Keep a copy, FX+SAVE on the FM-1), never freed by the
+ *  FM-1's cleanup of unlinked entries and never written over by SAVE. Only for an FM-1 that stores every pattern
+ *  (FEATURE25_PATTERNS_STORED): older firmware refuses it */
+export const PAT_KEPT = 0x8000;
+/** a payload as PAT_PUT chunks (`id` 0: a new entry; `kept`: as a kept copy, every chunk with PAT_KEPT); an empty payload
+ *  is one chunk with nothing in it */
+export function patPutFrames(id: number, name: string, payload: ArrayLike<number>, kept = false): Uint8Array[] {
   const key = Array.from({ length: 16 }, (_, i) => (name.charCodeAt(i) >= 32 && name.charCodeAt(i) < 127 ? name.charCodeAt(i) : 0));
+  const total = payload.length | (kept ? PAT_KEPT : 0);
   const out: Uint8Array[] = [];
   for (let off = 0; off < payload.length || !out.length; off += PAT_CHUNK)
-    out.push(frame(CMD.patPut, [...u16le(id), ...u16le(payload.length), ...u16le(off), ...key, ...Array.from(payload).slice(off, off + PAT_CHUNK)]));
+    out.push(frame(CMD.patPut, [...u16le(id), ...u16le(total), ...u16le(off), ...key, ...Array.from(payload).slice(off, off + PAT_CHUNK)]));
   return out;
 }
 export const patDelFrame = (id: number, force: boolean): Uint8Array => frame(CMD.patDel, [...u16le(id), force ? 1 : 0]);
@@ -667,6 +676,21 @@ export function parsePatData(p: Parsed): { id: number; total: number | null; off
   if (p.cmd !== CMD.patData || x.length < 6) return null;
   const total = x[2] | (x[3] << 8);
   return { id: x[0] | (x[1] << 8), total: total === 0xffff ? null : total, offset: x[4] | (x[5] << 8), bytes: x.slice(6) };
+}
+/** a stored pattern's payload, read with PAT_GET in pieces over `ask` (a request that resends until an answer matches);
+ *  null when the FM-1 has no such id. The editor link (device.ts) and the Install panel's link both read this way */
+export async function readStoredPattern(ask: (frame: Uint8Array, match: (p: Parsed | null) => boolean) => Promise<Parsed>, id: number): Promise<Uint8Array | null> {
+  const out: number[] = [];
+  let total = Infinity;
+  while (out.length < total) {
+    const at = out.length;
+    const d = parsePatData(await ask(patGetFrame(id, at), (x) => { const r = x && parsePatData(x); return !!r && r.id === id && (r.total === null || r.offset === at); }))!;
+    if (d.total === null) return null;
+    if (!d.bytes.length && at < d.total) throw new Error('the FM-1 sent the pattern short');
+    total = d.total;
+    out.push(...d.bytes);
+  }
+  return Uint8Array.from(out.slice(0, total));
 }
 export const parsePatStored = (p: Parsed): { id: number; status: number; count: number } | null =>
   p.cmd === CMD.patStored && p.payload.length >= 4 ? { id: p.payload[0] | (p.payload[1] << 8), status: p.payload[2], count: p.payload[3] } : null;
