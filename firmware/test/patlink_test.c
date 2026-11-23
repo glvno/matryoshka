@@ -313,7 +313,8 @@ static void fill_bytes(uint32_t first)
         }
 }
 /* the double's limits (D-838): doubled again it repeats the doubled pattern, up to 64 steps; each refusal (64 steps, the
- * notes of a pattern, the P-locks of a pattern, the patch's bytes, for a pattern and for pattern 1) changes nothing */
+ * notes of a pattern, the P-locks of a pattern, the patch's bytes, for a pattern and for pattern 1) changes nothing. The
+ * bytes' refusals with the store off: on, the patterns 2..64 the binary cannot hold go to the store (#1199) */
 static void doubles(void)
 {
     uint32_t all = case_of("DOUBLE ALL"), one = case_of("DOUBLE ONE"), most = 0, m, j, k, n, ok;
@@ -349,12 +350,14 @@ static void doubles(void)
         OK(!eng_lock_set(m, 0, j, (uint32_t)eng_find(T_CONST), 0, 0, 65536, 1));
     OK(!eng_lock_set(m, 0, 0, (uint32_t)eng_find(T_OUTPUT), 0, 0, 0, 1));
     OK(refused(0, -3));
+    pt_on = 0;
     OK(!load_patch(PATTERN_CASES[all].patch, PATTERN_CASES[all].patch_len));
     fill_bytes(5);
     OK(refused(1, -4));
     OK(!load_patch(PATTERN_CASES[one].patch, PATTERN_CASES[one].patch_len));
     fill_bytes(5);
     OK(refused(0, -4));
+    pt_on = 1;
     printf("patlink: doubled twice to 64 steps, the doubled pattern repeated; each refusal leaves the binary as it was (D-838)\n");
 }
 
