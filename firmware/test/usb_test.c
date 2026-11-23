@@ -39,8 +39,13 @@ static uint8_t ep0_sent[512];
 static uint32_t ep0_sent_n;
 static uint32_t ep4_sent[64];
 static uint32_t ep4_sent_n;              /* bytes */
+static uint32_t sim_frame;               /* FRAME1 / FRAME2: the USB frame number (0 unless a test moves it) */
 static uint32_t sim_regs(uint32_t r)
 {
+    if (r == 12u)
+        return sim_frame & 0xFFu;
+    if (r == 13u)
+        return (sim_frame >> 8) & 7u;
     if (r == 6u) {                       /* (read clears) */
         uint32_t v = intrusb_in;
         intrusb_in = 0;
@@ -128,6 +133,22 @@ static uint32_t fm1_ticks(void) { return 0; }  /* (midi_queue.h's arrival stamp,
 #endif
 #if FELUCCA_DEVICE_IDENTITY
 #include "../src/device_identity.h"
+#endif
+#if USB_TEST_EV
+/* #870 DEV diagnostic: usb.c's USB audio events (modular.c sends them to clock_in.h's log), kept here */
+#define TEV_N 4096u
+static struct { uint32_t st, v, fl; } tev[TEV_N];
+static uint32_t tev_n;
+static void test_ev(uint32_t st, uint32_t v, uint32_t fl)
+{
+    if (tev_n < TEV_N) {
+        tev[tev_n].st = st;
+        tev[tev_n].v = v;
+        tev[tev_n].fl = fl;
+    }
+    tev_n++;
+}
+#define UAC_EV(st, v, fl) test_ev(st, v, fl)
 #endif
 #include "../src/usb.c"
 #define FM1_TICKS_PER_US 24u
@@ -533,6 +554,35 @@ static void enum_script(void)
     setup(0xA2, 0x81, 0x0100, 0x84, 3);
     setup(0x80, 6, 0x0200, 0, 255);
     ep0_irq(0x10);
+#if FELUCCA_UAC_RETURN
+    {   /* a host plays into the FM-1 (EP2 OUT) and records it (#870 DEV diagnostic: the events' paths, which must not change
+         * what the SIE is told): 300 ms of polls at 2 kHz, a packet a millisecond, a half mixed every 2.9 ms; an OUT
+         * packet with OverRun, one of a size not taken; then the host stops sending (an underrun), a suspend, alt 0 */
+        int32_t out[256];
+        setup(0x01, 11, 1, 2, 0);
+        for (i = 0; i < 600u; i++) {
+            sim_frame = i / 2u + 1u;
+            if (!(i & 1u) && i < 400u) {
+                rxcsr2 = 1;
+                rxcount2 = 176;
+            }
+            if (i == 101u || i == 103u) {
+                rxcsr2 = i == 101u ? 5u : 1u;
+                rxcount2 = i == 101u ? 176u : 7u;
+            }
+            ur_service();
+            if (i % 6u == 5u) {
+                memset(out, 0, sizeof out);
+                uac_play_mix(out, 128);
+            }
+        }
+        usb.suspended = 1;
+        ur_service();
+        usb.suspended = 0;
+        setup(0x01, 11, 0, 2, 0);
+        sim_frame = 0;
+    }
+#endif
     bus(0x01);
     bus(0x02);
     bus(0x04);
@@ -540,6 +590,64 @@ static void enum_script(void)
     usb.up = 0;
     usb.config = 0;
 }
+
+#if USB_TEST_EV && UR_DG
+/* #870 DEV diagnostic: the enumeration and the stream above report each request, bus event and playback queue event, the
+ * queue's fill each 100 ms and the feedback; a bus reset after more than 2 s without a frame says so */
+static uint32_t tev_find(uint32_t st, uint32_t v, uint32_t mask, uint32_t from)
+{
+    uint32_t k;
+    for (k = from; k < tev_n && k < TEV_N; k++)
+        if (tev[k].st == st && (tev[k].v & mask) == v)
+            return k + 1u;
+    return 0;
+}
+static void test_diag_events(void)
+{
+    uint32_t k, play, start, win, fb, under, pause;
+    tev_n = 0;
+    fm1_ms = 100;
+    enum_script();
+    CHECK(tev_find(UR_EV_USB, UE_CONFIG | 1u << 8, 0xFFFFu, 0), "diag: SET_CONFIGURATION 1 reported");
+    CHECK(tev_find(UR_EV_USB, UE_REC_ALT | 1u << 8, 0xFFFFu, 0), "diag: the recording interface at alt 1 reported");
+    CHECK(tev_find(UR_EV_USB, UE_RATE | 44u << 8, 0xFFFFu, 0), "diag: SET_CUR 44100 reported as 44 kHz");
+    play = tev_find(UR_EV_USB, UE_PLAY_ALT | 1u << 8, 0xFFFFu, 0);
+    CHECK(play, "diag: the playback interface at alt 1 reported");
+    start = tev_find(UR_EV_Q, UQ_START, 0xFFu, play);
+    CHECK(start && tev[start - 1u].fl >= (UR_PRIME - HALF_FRAMES) / 2u, "diag: playing once the queue held UR_PRIME, "
+          "seen after its first half (fill / 2 %u)",
+          start ? tev[start - 1u].fl : 0u);
+    win = tev_find(UR_EV_WIN, 0, 0, play);
+    CHECK(win && (tev[win - 1u].fl & 1u) && (tev[win - 1u].fl & 2u) && (tev[win - 1u].v & 0xFFu) > 0u &&
+          (tev[win - 1u].v >> 8) >= (tev[win - 1u].v & 0xFFu) && (tev[win - 1u].v >> 8) <= 255u,
+          "diag: a window: playing, recording at alt 1, lowest %u highest %u (fill / 2)", win ? tev[win - 1u].v & 0xFFu : 0u,
+          win ? tev[win - 1u].v >> 8 : 0u);
+    fb = tev_find(UR_EV_FB, 0, 0, play);
+    CHECK(fb && tev[fb - 1u].fl >= 90u && (int16_t)tev[fb - 1u].v >= -8192 && (int16_t)tev[fb - 1u].v <= 8192,
+          "diag: the feedback: %d (1/16384 frames a ms from 44.1), taken %u times in the window",
+          fb ? (int16_t)tev[fb - 1u].v : 0, fb ? tev[fb - 1u].fl : 0u);
+    CHECK(tev_find(UR_EV_Q, UQ_RX_ERR | 4u << 8, 0xFFFFu, play), "diag: the OUT packet with OverRun reported (bit 2)");
+    CHECK(tev_find(UR_EV_Q, UQ_RX_SIZE | 1u << 8, 0xFFFFu, play), "diag: the 7-byte OUT packet reported");
+    under = tev_find(UR_EV_Q, UQ_UNDERRUN, 0xFFu, play);
+    CHECK(under && (tev[under - 1u].v >> 8) >= 1u, "diag: the host stopped sending: an underrun");
+    pause = tev_find(UR_EV_USB, UE_PAUSE, 0xFFu, play);
+    CHECK(pause && tev_find(UR_EV_USB, UE_PLAY_ALT | 0u << 8, 0xFFFFu, pause), "diag: the suspend's pause, then alt 0");
+    CHECK(tev_find(UR_EV_USB, UE_SUSPEND, 0xFFu, 0) && tev_find(UR_EV_USB, UE_RESUME, 0xFFu, 0) &&
+          tev_find(UR_EV_USB, UE_RESET | 0u << 8, 0xFFFFu, 0), "diag: suspend, resume and reset reported");
+    k = tev_n;
+    usb.up = 1;
+    ur_dg.alive = 1000;
+    fm1_ms = 4000;
+    bus(0x04);
+    CHECK(tev_find(UR_EV_USB, UE_RESET | 1u << 8, 0xFFFFu, k), "diag: a reset after 3 s with no frame says the cable moved");
+    k = tev_n;
+    ur_dg.alive = 3995;
+    bus(0x04);
+    CHECK(tev_find(UR_EV_USB, UE_RESET | 0u << 8, 0xFFFFu, k), "diag: a reset 5 ms after a frame does not");
+    usb.up = 0;
+    usb.config = 0;
+}
+#endif
 
 #if USB_LOG
 static usb_ev_t *ev(uint32_t k) { return &ul_ring[k & (USB_LOG_N - 1u)]; }
@@ -1251,6 +1359,9 @@ int main(int argc, char **argv)
 #else
     test_descriptors();
     test_return_driver();
+#if USB_TEST_EV && UR_DG
+    test_diag_events();
+#endif
     test_capture_flash_yield();
     test_power();
     test_ep0();

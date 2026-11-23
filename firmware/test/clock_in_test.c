@@ -27,7 +27,25 @@ static void leds_play(void) {}
 #define FM1_TICKS_PER_US 24u
 static uint32_t test_ticks(void);                   /* (TIMER4 from the samples rendered, below) */
 #define CIN_LOG_NOW() test_ticks()
+#define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 #include "../src/clock_in.h"
+#include "../src/usb_return.h"
+
+/* the host's USB playback into the FM-1 (usb_return.h, #870): a noise floor below the onset threshold, and clicks (20 ms,
+ * decaying, each at its sample); sent ahead of the halves that play it, so the half at sample s plays the host's s.. */
+#define CLICKN 64
+static double click_at[CLICKN];
+static int click_n, audio_on;
+static uint64_t audio_fed;
+static void host_click(double at) { if (click_n < CLICKN) click_at[click_n++] = at; }
+static int16_t host_audio(uint64_t f)
+{
+    int k;
+    for (k = 0; k < click_n; k++)
+        if ((double)f >= click_at[k] && (double)f < click_at[k] + 882.0)
+            return (int16_t)((f & 1u ? -1 : 1) * (int)(12000.0 * (1.0 - ((double)f - click_at[k]) / 882.0)));
+    return (int16_t)(f & 1u ? -(int)CIN_ONSET_THR : (int)CIN_ONSET_THR - 1);   /* (the floor: just below it) */
+}
 
 static int fails;
 static void check(const char *what, int ok)
@@ -128,6 +146,17 @@ static void sim_to(double t)
             deliver(ev[ev_r].pkt, ev[ev_r].pos, ev[ev_r].at), ev_r++;
         clk_in_idle();
         eng_render(l, r, HALF);
+        if (audio_on) {                         /* (as the audio ISR: the half's USB playback after the engine) */
+            static int32_t o[2u * HALF];
+            uint32_t p[32], k;
+            while (audio_fed < samples + UR_PRIME + HALF) {
+                for (k = 0; k < 32u; k++, audio_fed++)
+                    p[k] = (uint16_t)host_audio(audio_fed) | (uint32_t)(uint16_t)host_audio(audio_fed) << 16;
+                ur_receive((const uint8_t *)p, sizeof p);
+            }
+            memset(o, 0, sizeof o);
+            cin_onset_block(ur_mix(o, HALF));
+        }
         samples += HALF;
         {
             int p = eng_steps_pos((uint32_t)trk_mod);
@@ -972,8 +1001,8 @@ int main(void)
         } while (0)
         READ_LOG();
         snprintf(what, sizeof what, "the MIDI log: %u messages (want 97: Song Position, Start, 30 clocks, Stop, 64 clocks) in %u entries, frozen %u",
-                 h[0], h[2], h[3]);
-        check(what, h[0] == 97u && h[3] == 1u && h[1] == CIN_LOG_N && h[2] < 16u);
+                 h[0], h[2], h[3] & 1u);
+        check(what, h[0] == 97u && (h[3] & 3u) == 1u && (h[1] & 0xFFFFu) == CIN_LOG_N && h[1] >> 24 == CIN_LOG_FMT && h[2] < 16u);
         ok = got[0].st == 0xF2u && got[0].v == 3u && got[1].st == 0xFAu;
         for (i = 2, clocks = 0; i < h[2] && got[i].st == 0xF8u; i++) {
             clocks += 1u + (got[i].fl >> 3);
@@ -990,7 +1019,7 @@ int main(void)
         host_ticks(5);
         sim_host();
         READ_LOG();
-        check("  a Start after it: the log runs again (103 messages)", h[0] == 103u && h[3] == 0u);
+        check("  a Start after it: the log runs again (103 messages)", h[0] == 103u && !(h[3] & 1u));
         for (k2 = 0; k2 < 300u; k2++) {             /* irregular clocks: none folds, the ring goes round */
             host_ticks(1);
             if (k2 & 1u)
@@ -1005,6 +1034,157 @@ int main(void)
         cin_log_diag(147u, o);
         READ_LOG();
         check("  DIAG 147 empties it", h[0] == 0u && h[2] == 0u);
+
+        {   /* DEV diagnostic (#870): the audio onset (the onset build of #1150): a looper (Reel) plays into the FM-1 over
+             * USB and sends its clock; its audio's downbeat 6 clocks after its Start, a hit on beat 3, a second hit 100 ms
+             * after the downbeat (no silence before it: not an onset), three loops of a bar, Stop, clock on while
+             * stopped, then a hit while the log is frozen (dropped) */
+            static const int at[6] = {6, 54, 102, 150, 198, 246};
+            int32_t z[2u * HALF];
+            uint32_t non = 0, start = 0, worst = 0, bits_ok = 1, order_ok = 1, v_ok = 1;
+            double per_us;
+            host_tempo(120);
+            per_us = host_per * 1e6 / ENG_SR;
+            ur_level = 100;
+            ur_start(1);
+            ur_mix(z, HALF);                        /* (the new stream acknowledged) */
+            audio_fed = samples;
+            audio_on = 1;
+            host_wait_ms(400);
+            host_send(0xFAu, 0, 0);
+            for (k2 = 0; k2 < 3u; k2++) {
+                host_ticks(6);
+                host_click(host_t);
+                host_click(host_t + 0.1 * ENG_SR);
+                host_ticks(48);
+                host_click(host_t);
+                host_ticks(42);
+            }
+            host_send(0xFCu, 0, 0);
+            host_ticks(70);
+            host_click(host_t);
+            host_ticks(24);
+            sim_host();
+            audio_on = 0;
+            READ_LOG();
+            for (i = 0; i < h[2]; i++) {
+                if (i && got[i].us < got[i - 1u].us)
+                    order_ok = 0;
+                if (got[i].st == 0xFAu)
+                    start = i;
+                if (got[i].st != CIN_ONSET_ST)
+                    continue;
+                if (non < 6u) {
+                    double want = at[non] * per_us, d = (double)(got[i].us - got[start].us) - want;
+                    uint32_t e = (uint32_t)(d < 0 ? -d : d);
+                    worst = e > worst ? e : worst;
+                    bits_ok &= (got[i].fl >> 3) == 14u && (got[i].fl & 1u);   /* (12000: below 2^14) */
+                    v_ok &= (uint16_t)(got[i].v - got[start].v) >= at[non] && (uint16_t)(got[i].v - got[start].v) <= at[non] + 1;
+                    if (non == 0u)
+                        printf("      (the first onset: %.2f ms after Start, engine ticks %u after Start's)\n",
+                               (got[i].us - got[start].us) / 1000.0, (uint16_t)(got[i].v - got[start].v));
+                }
+                non++;
+            }
+            snprintf(what, sizeof what, "audio onset: %u onsets logged (want 6: each loop's downbeat and beat 3), %u messages (want 354)",
+                     non, h[0]);
+            check(what, non == 6u && h[0] == 354u);
+            snprintf(what, sizeof what, "  each at its hit's time after Start (6, 54, 102 .. clocks): worst %u us off (< 2 halves: the onset's "
+                     "half starts before the hit)", worst);
+            check(what, worst < 5804u);
+            check("  in time order with the messages; the peak's bits (14) and the transport running in each", order_ok && bits_ok);
+            check("  the engine's ticks in each: its clock count after Start's (or one more)", v_ok);
+            check("  the header: the threshold (256) and the silence (69 halves), frozen after the Stop",
+                  (h[3] >> 16) == CIN_ONSET_THR && ((h[3] >> 8) & 0xFFu) == CIN_ONSET_QUIET && (h[3] & 1u));
+            cin_onset.us = 1u;
+            cin_log_diag(147u, o);
+            clk_in_idle();
+            READ_LOG();
+            check("  DIAG 147 drops an onset not yet logged", h[2] == 0u);
+        }
+
+        {   /* DEV diagnostic (#870): usb.c's USB audio events (cin_ev, from TIMER5) on the same timeline. Like windows fold
+             * into the newest window entry and steady clocks into the newest clock entry, whatever comes between; a
+             * request or a queue event ends a window run; at most CIN_EV_Q_MAX queue events a window, the rest counted;
+             * after a Stop an event counts down as a message does; a bus reset after the cable moved freezes a log that
+             * holds a Start, and only such a log */
+            uint32_t wins = 0, folded = 0, clk_ent = 0, nclk = 0, nq = 0, nusb = 0, nfb = 0, ord = 1, k3;
+            reset();
+            cin_log_diag(147u, o);
+            host_tempo(120);
+            cin_ev(CIN_EV_USB, 2u | 1u << 8, 128u);       /* (playback alt 1 before the Start) */
+            cin_ev(CIN_EV_USB, CIN_EV_RESET | 1u << 8, 0); /* (a reset after a gap, no Start yet: logged, not frozen) */
+            host_wait_ms(10);                             /* (the simulation is past host_t: the Start comes after them) */
+            host_send(0xFAu, 0, 0);
+            for (k2 = 0; k2 < 20u; k2++) {               /* 20 windows of ~104 ms (5 clocks each), alike: one entry */
+                host_ticks(5);
+                sim_to(host_t - host_per / 2.0);          /* (each window between two clocks) */
+                cin_ev(CIN_EV_WIN, (90u + (k2 & 1u)) | 140u << 8, 1u);   /* (within 2 of the first: lowest 90 or 91) */
+                if (k2 == 3u)
+                    cin_ev(CIN_EV_FB, (uint16_t)-300, 100u);
+            }
+            READ_LOG();
+            for (i = 0; i < h[2]; i++) {
+                ord &= !i || got[i].us >= got[i - 1u].us;
+                if (got[i].st == CIN_EV_WIN)
+                    wins++, folded += got[i].fl >> 3;
+                if (got[i].st == 0xF8u)
+                    clk_ent++, nclk += 1u + (got[i].fl >> 3);
+                nfb += got[i].st == CIN_EV_FB;
+            }
+            snprintf(what, sizeof what, "USB audio events: 20 like windows in %u entry (%u folded), 100 clocks in %u entries "
+                     "across them, frozen %u", wins, folded, clk_ent, h[3] & 1u);
+            check(what, wins == 1u && folded == 19u && nclk == 100u && clk_ent <= 6u && nfb == 1u && !(h[3] & 1u));
+            check("  in time order, the request and the reset before the Start first", ord && got[0].st == CIN_EV_USB &&
+                  got[0].v == (2u | 1u << 8) && got[0].fl == 128u && got[1].v == (CIN_EV_RESET | 1u << 8) && got[2].st == 0xFAu);
+            cin_ev(CIN_EV_USB, 1u | 1u << 8, 128u);       /* a request ends the window run; then a window like the last */
+            cin_ev(CIN_EV_WIN, 90u | 140u << 8, 1u);
+            for (k3 = 0; k3 < 12u; k3++)                  /* 12 queue events in a window: 8 logged, 4 counted */
+                cin_ev(CIN_EV_Q, 1u | 1u << 8, 0);
+            cin_ev(CIN_EV_WIN, 0u | 200u << 8, 0);        /* (a new window: the budget again; unlike the last) */
+            cin_ev(CIN_EV_Q, 4u | 2u << 8, 255u);
+            READ_LOG();
+            for (i = 0, wins = 0; i < h[2]; i++) {
+                wins += got[i].st == CIN_EV_WIN;
+                nq += got[i].st == CIN_EV_Q;
+                nusb += got[i].st == CIN_EV_USB;
+            }
+            snprintf(what, sizeof what, "  a request ends a window run (%u window entries, want 3); %u queue events logged (want 9), "
+                     "%u counted (want 4)", wins, nq, h[6] >> 8);
+            check(what, wins == 3u && nq == 9u && h[6] >> 8 == 4u && nusb == 3u);
+            host_send(0xFCu, 0, 0);                       /* Stop: then 64 messages or events */
+            host_wait_ms(10);
+            sim_host();
+            for (k3 = 0; k3 < 40u; k3++)
+                cin_ev(CIN_EV_USB, 3u | 1u << 8, 0);
+            host_ticks(30);
+            sim_host();
+            READ_LOG();
+            snprintf(what, sizeof what, "  after a Stop, 40 events and 30 clocks: frozen %u after 64 of them", h[3] & 1u);
+            check(what, (h[3] & 3u) == 1u);
+            k3 = h[7];
+            cin_ev(CIN_EV_USB, 5u, 0);
+            READ_LOG();
+            check("  frozen: an event is dropped", h[7] == k3);
+            host_send(0xFAu, 0, 0);                       /* Start: running again; the cable moves: frozen at its reset */
+            host_ticks(2);
+            sim_host();
+            cin_ev(CIN_EV_USB, 7u, 0);
+            cin_ev(CIN_EV_USB, CIN_EV_RESET | 0u << 8, 0); /* (a reset with a host there all along: not frozen) */
+            READ_LOG();
+            check("  a Start runs it again; a reset with the host there does not freeze it", !(h[3] & 1u));
+            cin_ev(CIN_EV_USB, CIN_EV_RESET | 1u << 8, 0);
+            k3 = h[7];
+            cin_ev(CIN_EV_USB, 3u | 1u << 8, 0);
+            READ_LOG();
+            check("  a reset after the cable moved: logged, then frozen at once (frozen by the reset in the header)",
+                  (h[3] & 3u) == 3u && h[7] == k3 + 1u && got[h[2] - 1u].v == (CIN_EV_RESET | 1u << 8));
+            cin_log_diag(147u, o);
+            cin_ev(CIN_EV_USB, CIN_EV_RESET | 1u << 8, 0);
+            READ_LOG();
+            check("  DIAG 147: no Start in the log, so a reset after a gap does not freeze it", !(h[3] & 1u) && h[2] == 1u);
+            cin_log_diag(147u, o);
+        }
     }
 
 

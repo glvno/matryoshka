@@ -138,6 +138,91 @@ class FpuBench(unittest.TestCase):
         self.assertEqual(fadd[3:6], ["158.0", "128.0", "16.0"])  # less the loop: 128 cycles, 16 per add
 
 
+class MidiLog(unittest.TestCase):
+    """DIAG pages 145 / 146 as clock_in.h cin_log_diag answers them (#870), with the audio onset: Reel's Start, its clock
+    at 120 bpm (20.8 ms, as the log's 100 us units keep it), its audio's downbeat 1.5 ms after clock #7; and on the DEV
+    diagnostic build the USB audio events and the onsets' offsets from the beat before and after the recording stops"""
+    S, PER = 1_000_000, 20_800
+    ENTS = [(S, 100, 0xFA, 0x00),                                  # Start, engine ticks 100
+            (S, 6 * 208, 0xF8, 0x07 | 6 << 3),                     # clock #1..#7, folded
+            (S + 6 * PER + 1500, 107, 0x01, 0x07 | 14 << 3),       # the onset: peak below 2^14
+            (S + 7 * PER, 9 * 208, 0xF8, 0x07 | 9 << 3),           # clock #8..#17
+            (S + 17 * PER, 0, 0xFC, 0x07)]
+    HEAD = [11, 255, 5, 0 | 69 << 8 | 256 << 16, S + 30 * PER, 120, 0, 5]
+    EV = [(S - 50_000, 1 | 1 << 8, 0x10, 128),                    # the recording interface at alt 1, the queue at 256
+          (S, 100, 0xFA, 0x00),
+          (S, 30 * 208, 0xF8, 0x07 | 30 << 3),                    # clock #1..#31
+          (S + 24 * PER + 1500, 124, 0x01, 0x07 | 14 << 3),       # an onset 1.5 ms after beat 2 (tick 24)
+          (S + 100_000, 90 | 140 << 8, 0x20, 0x03 | 4 << 3),      # 5 windows: 180..280 frames, playing, recording on
+          (S + 30 * PER + 5000, 1 | 0 << 8, 0x10, 120),           # the recording interface at alt 0
+          (S + 31 * PER, 30 * 208, 0xF8, 0x07 | 30 << 3),         # clock #32..#62
+          (S + 48 * PER + 72_000, 140, 0x01, 0x07 | 14 << 3),     # an onset 72 ms after beat 3 (tick 48)
+          (S + 40 * PER, -300 & 0xFFFF, 0x21, 100),               # the feedback, read 100 times in 100 ms
+          (S + 45 * PER, 1 | 2 << 8, 0x11, 3),                    # 2 underruns, 6 frames in the queue
+          (S + 62 * PER, 0, 0xFC, 0x07)]
+    EV_HEAD = [70, 255 | 70 << 16 | 0xD1 << 24, len(EV), 1 | 2 | 69 << 8 | 256 << 16, S + 70 * PER, 120, 7 | 3 << 8, len(EV)]
+
+    class Log:
+        def __init__(self, head, ents):
+            self.head, self.ents, self.rd = head, ents, 0
+
+        def ask(self, msg, want, tries=3, wait=0.8):
+            page = m1_link.unpack7(msg.data[4:])[0]
+            le = lambda *w: [b for x in w for b in x.to_bytes(4, "little")]
+            if page == 145:
+                self.rd = 0
+                return [page, *le(*self.head)]
+            out = []
+            for _ in range(4):
+                if self.rd < len(self.ents):
+                    us, v, st, fl = self.ents[self.rd]
+                    out += [*us.to_bytes(4, "little"), v & 0xFF, v >> 8, st, fl]
+                    self.rd += 1
+                else:
+                    out += [0] * 8
+            return [page, *out]
+
+    def lines(self, head, ents):
+        out = []
+        m1_link.print_midilog(*m1_link.midilog_read(self.Log(head, ents)), out=out.append)
+        return out
+
+    def test_onset_against_the_clock_and_start(self):
+        out = self.lines(self.HEAD, self.ENTS)
+        self.assertIn("peak reaches 256 of 32768 (-42 dBFS) after 69 halves (200 ms)", out[1])
+        onset = [ln for ln in out if "Audio onset" in ln]
+        self.assertEqual(len(onset), 1)
+        self.assertIn("Audio onset  +1.50 ms after clock #7, 6.1 ticks after Start", onset[0])
+        self.assertIn("peak < 16384 of 32768 (-6 dBFS), engine ticks 107 (Start + 7)", onset[0])
+        self.assertIn("Clock #8..#17 since Start", out[out.index(onset[0]) + 1])
+        self.assertIn("+   20.80 ms  Clock #8", out[out.index(onset[0]) + 1])   # (its gap from clock #7, not the onset)
+        self.assertFalse(any("USB audio events" in ln for ln in out))           # (not the diagnostic build)
+
+    def test_onset_before_the_first_clock_and_logged_late(self):
+        ents = [self.ENTS[0], (self.S + 900, 0, 0xF8, 0x07), (self.S + 400, 100, 0x01, 0x05 | 13 << 3)]
+        onset = [ln for ln in self.lines(self.HEAD[:2] + [3] + self.HEAD[3:], ents) if "Audio onset" in ln]
+        self.assertIn("before clock #1, 0.40 ms after Start", onset[0])
+
+    def test_firmware_before_the_onset(self):
+        out = self.lines([3, 256, 1, 1, self.S, 0, 0, 1], [self.ENTS[0]])
+        self.assertIn("frozen 64 messages after a Stop", out[0])
+        self.assertIn("before the audio onset", out[1])
+
+    def test_usb_audio_events_and_the_onsets_before_and_after_the_recording_stops(self):
+        out = self.lines(self.EV_HEAD, self.EV)
+        text = "\n".join(out)
+        self.assertIn("frozen at a bus reset after the cable moved", out[0])
+        self.assertIn("CLOCK IN DELAY 70 ms", text)
+        self.assertIn("3 queue events not logged", text)
+        self.assertIn("USB: SET_INTERFACE recording (FM-1 -> host, EP4 IN) alt 1; queue 256 frames", text)
+        self.assertIn("Queue 180..280 frames (4.1..6.3 ms) over 500 ms, playing, recording interface at alt 1", text)
+        self.assertIn("Feedback 44.0817 frames/ms (44081.7 Hz; -300), the host took 100 in 100 ms", text)
+        self.assertIn("Queue: UNDERRUN x2: the queue ran dry; playback waits for 256 frames again; queue 6 frames", text)
+        self.assertIn("recording interface at alt 1: 1 onsets, from the beat mean +1.50 ms", text)
+        self.assertIn("recording interface at alt 0: 1 onsets, from the beat mean +72.00 ms", text)
+        clocks = [ln for ln in out if "Clock #" in ln]
+        self.assertIn("Clock #32..#62 since Start", clocks[1])
+
 
 if __name__ == "__main__":
     unittest.main()

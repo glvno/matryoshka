@@ -137,6 +137,15 @@ static void bt_parts(uint32_t arg)         /* the awake items handed over, per l
 #define UR_DMA_MEM ENG_POOL
 #define USB_LOG_STATE_MEM ENG_POOL
 #define USB_LOG_MEM ENG_LOWRAM      /* usb.c: the USB setup log (#535), 1,092 B (#725) */
+/* DEV DIAGNOSTIC (#870, the Reel record -> playback turn; never a release): clock_in.h's log also takes each audio onset
+ * of the host's USB playback (from the audio ISR) and usb.c's USB audio events (from TIMER5). Both write the log's
+ * buffer, ota_buf, which an update session takes with the engine stopped (main.c host_poll), so only while it runs */
+static void cin_onset_block(uint32_t pk);
+static void cin_ev(uint32_t st, uint32_t v, uint32_t fl);
+#define UR_ONSET(pk) do { if (eng_run) cin_onset_block(pk); } while (0)
+#define UAC_EV(st, v, fl) do { if (eng_run) cin_ev(st, v, fl); } while (0)
+#define CIN_LOCK() fm1_irq_off()    /* the main thread's log writes (the drain, DIAG 145..147) against TIMER5's */
+#define CIN_UNLOCK() fm1_irq_on()
 #include "usb.c"
 #include "midi_uart.c"
 #include "storage_hw.c"
@@ -146,6 +155,7 @@ static int m1_device_settings(const uint8_t *p, uint32_t n, uint8_t *out);
 static int m1_master_eq(const uint8_t *p, uint32_t n, uint8_t *out);   /* main.c: GLO > EQ over the link (#1107) */
 static int m1_apply(const uint8_t *patch, uint32_t len);       /* main.c: the hooks proto.c needs */
 #define CIN_LOG_RING ((cin_ent_t *)ota_buf.words)   /* clock_in.h: the MIDI clock-in log in ota_stage's 2 KiB (#870) */
+#define CIN_LOG_RING_BYTES sizeof ota_buf
 static int m1_store(const uint8_t *patch, uint32_t len);
 static int m1_flash_ok(void);
 static void m1_send(const uint8_t *f, uint32_t n);

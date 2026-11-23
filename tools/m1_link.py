@@ -28,10 +28,15 @@
                                            the mean period, the deviation of each period and of each tick from a straight
                                            grid, and the link's refused sends over that time, DIAG page 117; BPM: at that
                                            global tempo (TEMPO, set back after); run: with the transport running)
-  tools/m1_link.py midilog [clear]        (#870: the MIDI clock-in log, DIAG pages 145..147: the realtime and Song Position
-                                           messages the FM-1 took (USB and TRS), oldest first, in 256 entries (steady clocks
-                                           folded into one): each with its time, the gap before it, the clocks since the last
-                                           Start / Continue, the engine's ticks and the transport's state; `clear` empties it)
+  tools/m1_link.py midilog [clear] [--save F.json | --load F.json]   (#870: the MIDI clock-in log, DIAG pages 145..147: the
+                                           realtime and Song Position messages the FM-1 took (USB and TRS), oldest first, in
+                                           255 entries (steady clocks folded into one): each with its time, the gap before
+                                           it, the clocks since the last Start / Continue, the engine's ticks and the
+                                           transport's state; each audio onset of the host's USB playback (silence to sound)
+                                           against the clock; on the #870 DEV diagnostic build also the USB audio events
+                                           (requests, bus, the playback queue's events, its fill each 100 ms, the feedback)
+                                           and the onsets' offsets from the beat; `clear` empties it; --save keeps the raw
+                                           log, --load prints a saved one)
   tools/m1_link.py usblog [arm|wrap]      (#535: the USB setup log, DIAG pages 40..71 and 104..107: every control transfer a host started
                                            since boot (or since `arm`) and the firmware's answer, bus resets, suspends, the
                                            address taking effect; kept while the FM-1 stays powered, so a failed host's log
@@ -615,44 +620,17 @@ def main():
                   f"missed +{d[10]}, stalls +{d[11]}, adj_up {d[12] / dt:.2f}/s, adj_down {d[13] / dt:.2f}/s "
                   f"(net {(d[12] - d[13]) / dt:+.2f} frames/s: the I2S clock against the host's)")
     elif a[0] == "midilog":
-        def page(n):
-            p = link.ask(frame(0x2B, [n]), (0x4B, n))
-            if len(p) < 33:
-                sys.exit(f"no DIAG page {n}: firmware from before the MIDI log (#870)")
-            return bytes(p[1:33])
-        h = [int.from_bytes(b, "little") for b in (lambda x: [x[4 * i:4 * i + 4] for i in range(8)])(page(145))]
-        logged, size, held, frozen, now_us, eng_now, st_now, made = h
-        ents = []
-        for _ in range((held + 3) // 4):            # (4 entries a page, oldest first; zeros past the newest)
-            d = page(146)
-            for i in range(4):
-                e = d[8 * i:8 * i + 8]
-                if e[6] and len(ents) < held:
-                    ents.append((int.from_bytes(e[0:4], "little"), e[4] | e[5] << 8, e[6], e[7]))
-        names = {0xF8: "Clock", 0xFA: "Start", 0xFB: "Continue", 0xFC: "Stop", 0xF2: "Song Position"}
-        fl = lambda f: f"{'running' if f & 1 else 'stopped'}{', MIDI clock drives' if f & 2 else ''}{'' if f & 4 else ', CLOCK IN off'}"
-        print(f"MIDI clock-in log: {logged} messages in {held} entries (ring {size}, {made} made)"
-              f"{', frozen 64 messages after a Stop' if frozen else ''}; now: engine ticks {eng_now}, {fl(st_now)}, "
-              f"the newest entry {(now_us - ents[-1][0]) / 1e6 if ents else 0:.1f} s ago")
-        if made > held:
-            print(f"  ({made - held} older entries overwritten: the clock count since the first Start below is not complete)")
-        clocks, prev_end, t0 = 0, None, ents[0][0] if ents else 0
-        for us, v, st, f in ents:
-            gap = (us - prev_end) / 1000 if prev_end is not None else 0.0   # (from the previous message: a run's last clock)
-            prev_end = us + (v * 100 if st == 0xF8 else 0)
-            if st in (0xFA, 0xFB):
-                clocks = 0
-            if st == 0xF8:
-                more = f >> 3
-                first = clocks + 1
-                clocks += 1 + more
-                run = f", then {more} more {v / 10 / more:.2f} ms apart" if more else ""
-                print(f"  {(us - t0) / 1e6:9.4f} s  +{gap:8.2f} ms  Clock #{first}{'..#' + str(clocks) if more else ''} since Start"
-                      f"{run}   {fl(f & 7)}")
-                continue
-            what = f"Song Position {v} (clock {v * 6})" if st == 0xF2 else names.get(st, f"0x{st:02X}")
-            print(f"  {(us - t0) / 1e6:9.4f} s  +{gap:8.2f} ms  {what:<16} after clock #{clocks}   "
-                  + (f"{fl(f & 7)}" if st == 0xF2 else f"engine ticks {v}, {fl(f & 7)}"))
+        import json
+        if "--load" in a:                       # a log saved earlier (--save), printed again without an FM-1
+            d = json.load(open(a[a.index("--load") + 1]))
+            print_midilog(d["header"], [tuple(e) for e in d["entries"]])
+            return
+        h, ents = midilog_read(link)
+        print_midilog(h, ents)
+        if "--save" in a:
+            with open(a[a.index("--save") + 1], "w") as fh:
+                json.dump({"header": h, "entries": ents}, fh)
+            print(f"(saved to {a[a.index('--save') + 1]})")
         if "clear" in a:
             link.ask(frame(0x2B, [147]), (0x4B, 147))
             print("(the log emptied)")
@@ -959,6 +937,152 @@ def print_fpubench(r, out=print):
         net = cyc(k["ticks_min"]) - base
         out(f"{k['name']:<20} {cyc(k['ticks_min']):10.1f} {net:10.1f} {net / k['ops']:8.1f} {cyc(k['ticks_max']):8.1f}  "
             f"{k['result']} ({k['result_f32']:.7g})")
+
+
+MIDILOG_ONSET = 0x01  # firmware/src/clock_in.h CIN_ONSET_ST
+MIDILOG_USB, MIDILOG_Q, MIDILOG_WIN, MIDILOG_FB = 0x10, 0x11, 0x20, 0x21   # clock_in.h CIN_EV_* (#870 DEV diagnostic)
+MIDILOG_FMT_EV = 0xD1  # DIAG 145 word 1's top byte on the build with them (clock_in.h CIN_LOG_FMT)
+MIDILOG_HALF_MS = 128 * 1000 / 44118   # an audio half (128 frames at the FM-1's I2S rate), the onset's resolution
+MIDILOG_FRAME_MS = 1000 / 44118
+MIDILOG_USB_EV = {     # usb.c UE_*: v = code | value << 8
+    1: "SET_INTERFACE recording (FM-1 -> host, EP4 IN) alt {v}", 2: "SET_INTERFACE playback (host -> FM-1, EP2 OUT) alt {v}",
+    3: "SET_CONFIGURATION {v}", 4: "bus reset{reset}", 5: "bus suspend (configuration {v})", 6: "bus resume (configuration {v})",
+    7: "USB frame number stopped for 100 ms", 8: "USB frame number moves again", 9: "playback queue emptied for a suspend",
+    10: "SET_CUR sampling rate {v} kHz (both streams stay at 44.1)", 11: "the host reads the recording stream",
+    12: "the host stopped reading the recording stream (20 ms)"}
+MIDILOG_Q_EV = {       # usb.c UQ_*: v = code | count << 8
+    1: "UNDERRUN x{v}: the queue ran dry; playback waits for 256 frames again", 2: "playing (the queue reached 256 frames)",
+    3: "not playing (the stream restarted, alt 0 or the bus)", 4: "OVERRUN: {v} packets dropped on a full queue",
+    5: "OUT packet dropped: RXCSR1 bits {v:#04x} (4 a packet lost before it, 8 a CRC error)",
+    6: "OUT packet of {v} frames not taken"}
+
+
+def midilog_read(link):
+    """DIAG page 145 (clock_in.h cin_log_diag): the header, and the read starts at the oldest entry; 146 the next 4"""
+    def page(n):
+        p = link.ask(frame(0x2B, [n]), (0x4B, n))
+        if len(p) < 33:
+            sys.exit(f"no DIAG page {n}: firmware from before the MIDI log (#870)")
+        return bytes(p[1:33])
+    d = page(145)
+    h = [int.from_bytes(d[4 * i:4 * i + 4], "little") for i in range(8)]
+    held, ents = h[2], []
+    for _ in range((held + 3) // 4):            # (4 entries a page, oldest first; zeros past the newest)
+        d = page(146)
+        for i in range(4):
+            e = d[8 * i:8 * i + 8]
+            if e[6] and len(ents) < held:
+                ents.append((int.from_bytes(e[0:4], "little"), e[4] | e[5] << 8, e[6], e[7]))
+    return h, ents
+
+
+def print_midilog(h, ents, out=print):
+    """the log oldest first: each message with its time and the gap before it, steady clocks as runs; an audio onset
+    against the clock before it (its time between that clock and the next, the clock's run's period) and Start; on the
+    #870 diagnostic build also the USB audio events (requests, bus, the playback queue, its fill each 100 ms, the
+    feedback), then each onset's offset from its beat, before and after the recording stream stops"""
+    import math
+    logged, size, held, hw, now_us, eng_now, st_now, made = h
+    fmt, delay, size = size >> 24, (size >> 16) & 0xFF, size & 0xFFFF
+    ev = fmt == MIDILOG_FMT_EV
+    lost = st_now >> 8 if ev else 0
+    frozen, quiet, thr = hw & 1, (hw >> 8) & 0xFF, hw >> 16
+    names = {0xF8: "Clock", 0xFA: "Start", 0xFB: "Continue", 0xFC: "Stop", 0xF2: "Song Position"}
+    fl = lambda f: f"{'running' if f & 1 else 'stopped'}{', MIDI clock drives' if f & 2 else ''}{'' if f & 4 else ', CLOCK IN off'}"
+    why = ", frozen at a bus reset after the cable moved" if ev and hw & 2 else ", frozen 64 messages after a Stop"
+    out(f"MIDI clock-in log: {logged} messages in {held} entries (ring {size}, {made} made){why if frozen else ''}; now: "
+        f"engine ticks {eng_now}, {fl(st_now & 0xFF)}, the newest entry {(now_us - ents[-1][0]) / 1e6 if ents else 0:.1f} s ago")
+    if thr:
+        out(f"audio onset: the first half ({MIDILOG_HALF_MS:.1f} ms) of the host's USB playback whose peak reaches {thr} of "
+            f"32768 ({20 * math.log10(thr / 32768):.0f} dBFS) after {quiet} halves ({quiet * MIDILOG_HALF_MS:.0f} ms) below "
+            f"it; its time is that half's mix into the output (after the USB playback queue); ticks after Start count "
+            f"clock #1 as tick 0, as the Steps tracks do")
+    else:
+        out("(a firmware from before the audio onset: no onsets logged)")
+    if ev:
+        out(f"USB audio events (#870 diagnostic build): CLOCK IN DELAY {delay} ms (the FM-1 acts on each clock that much "
+            f"after the time logged); the playback queue in frames (1 frame = {MIDILOG_FRAME_MS * 1000:.1f} us; a sample "
+            f"waits about the queue's fill before it plays){f'; {lost} queue events not logged (over 8 in 100 ms)' if lost else ''}")
+    if made > held:
+        out(f"  ({made - held} older entries overwritten: the clock count since the first Start below is not complete)")
+    t0 = ents[0][0] if ents else 0
+    # (in time order: an onset is logged at the next message or drain after its time; a message at its arrival)
+    ents = sorted((((us - t0) & 0xFFFFFFFF, v, st, f) for us, v, st, f in ents), key=lambda e: e[0])
+    clocks, prev_end, start = 0, None, None     # start: Start's (or Continue's) time and engine ticks
+    run = None                                  # the newest clock entry: its first clock's time, the period (us; None: not
+    rec, onsets = None, []                      # known), its first and last clock's numbers since Start; the recording
+    fr = lambda n: ">=510" if n >= 510 else str(n)   # interface's alt (None: not seen); each onset (time, ticks, period, rec)
+    for t, v, st, f in ents:
+        gap = (t - prev_end) / 1000 if prev_end is not None else 0.0   # (from the previous message: a run's last clock)
+        if st == MIDILOG_ONSET:
+            bits = f >> 3
+            peak = f"peak < {1 << bits} of 32768 ({20 * math.log10((1 << bits) / 32768):.0f} dBFS)"
+            if run is None:
+                where = (f"before clock #1, {(t - start[0]) / 1000:.2f} ms after Start" if start
+                         else "no clock and no Start before it in the log")
+            else:
+                first, per, k0, k1 = run
+                k = max(k0, min(k1, k0 + int((t - first) // per))) if per else k1
+                at = first + (k - k0) * (per or 0)
+                where = f"+{(t - at) / 1000:.2f} ms after clock #{k}" + (
+                    f", {k - 1 + (t - at) / per:.1f} ticks after Start" if per and start else "")
+                if per and start:
+                    onsets.append((t, k - 1 + (t - at) / per, per, rec))
+            out(f"  {t / 1e6:9.4f} s  {'':12}  Audio onset  {where}   {peak}, engine ticks {v}"
+                f"{f' (Start + {(v - start[1]) & 0xFFFF})' if start else ''}, {fl(f & 7)}")
+            continue
+        if ev and st in (MIDILOG_USB, MIDILOG_Q):
+            code, val = v & 0xFF, v >> 8
+            if st == MIDILOG_USB:
+                what = MIDILOG_USB_EV.get(code, f"USB event {code} ({val})").format(
+                    v=val, reset=": after more than 2 s with no host (the cable moved)" if val else "")
+                if code == 1:
+                    rec = val
+                if code == 2:
+                    what += f" (the queue held {fr(f * 2)} frames, dropped)"
+            else:
+                what = MIDILOG_Q_EV.get(code, f"queue event {code} ({val})").format(v=val)
+            out(f"  {t / 1e6:9.4f} s  {'':12}  {'USB' if st == MIDILOG_USB else 'Queue'}: {what}; queue {fr(f * 2)} frames")
+            continue
+        if ev and st == MIDILOG_WIN:
+            lo, hi, n = (v & 0xFF) * 2, (v >> 8) * 2, 1 + (f >> 3)
+            out(f"  {t / 1e6:9.4f} s  {'':12}  Queue {fr(lo)}..{fr(hi)} frames ({lo * MIDILOG_FRAME_MS:.1f}..{hi * MIDILOG_FRAME_MS:.1f}"
+                f" ms) over {n * 100} ms, {'playing' if f & 1 else 'not playing'}{', recording interface at alt 1' if f & 2 else ''}"
+                f"{', the host reads it' if f & 4 else ''}")
+            continue
+        if ev and st == MIDILOG_FB:
+            corr = v - 0x10000 if v & 0x8000 else v
+            fpm = 44.1 + corr / 16384
+            out(f"  {t / 1e6:9.4f} s  {'':12}  Feedback {fpm:.4f} frames/ms ({fpm * 1000:.1f} Hz; {corr:+d}), the host took {f}"
+                f" in 100 ms")
+            continue
+        prev_end = t + (v * 100 if st == 0xF8 else 0)
+        if st in (0xFA, 0xFB):
+            clocks, start, run = 0, (t, v), None
+        if st == 0xF8:
+            more = f >> 3
+            first = clocks + 1
+            clocks += 1 + more
+            per = v * 100 / more if more else (t - (run[0] + (run[3] - run[2]) * (run[1] or 0)) if run else None)
+            run = (t, per, first, clocks)
+            runtxt = f", then {more} more {v / 10 / more:.2f} ms apart" if more else ""
+            out(f"  {t / 1e6:9.4f} s  +{gap:8.2f} ms  Clock #{first}{'..#' + str(clocks) if more else ''} since Start"
+                f"{runtxt}   {fl(f & 7)}")
+            continue
+        what = f"Song Position {v} (clock {v * 6})" if st == 0xF2 else names.get(st, f"0x{st:02X}")
+        out(f"  {t / 1e6:9.4f} s  +{gap:8.2f} ms  {what:<16} after clock #{clocks}   "
+            + (f"{fl(f & 7)}" if st == 0xF2 else f"engine ticks {v}, {fl(f & 7)}"))
+    if onsets:
+        out("onsets against the beat (24 ticks a beat from clock #1; + late): ticks after Start, ms from the nearest beat"
+            " and the nearest 16th")
+        groups = {}
+        for t, k, per, r in onsets:
+            beat, six = (k + 12) % 24 - 12, (k + 3) % 6 - 3
+            phase = "the recording interface not seen" if r is None else f"recording interface at alt {r}"
+            groups.setdefault(phase, []).append(beat * per / 1000)
+            out(f"  {t / 1e6:9.4f} s  {k:8.2f} ticks  beat {beat * per / 1000:+7.2f} ms  16th {six * per / 1000:+7.2f} ms   ({phase})")
+        for phase, ms in groups.items():
+            out(f"  {phase}: {len(ms)} onsets, from the beat mean {sum(ms) / len(ms):+.2f} ms, {min(ms):+.2f} .. {max(ms):+.2f}")
 
 
 def fpubench(link, a):

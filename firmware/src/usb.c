@@ -51,6 +51,55 @@ static uint8_t ur_rx[180 + 4] UR_DMA_MEM __attribute__((aligned(4)));
 static uint8_t ur_fb[4] UR_DMA_MEM __attribute__((aligned(4)));
 static uint16_t ur_frame;
 static uint8_t ur_paused;
+#ifndef UR_ONSET
+#define UR_ONSET(pk) ((void)(pk))     /* each half's peak of the host's playback (ur_mix; modular.c: clock_in.h's onset) */
+#endif
+#endif
+/* DEV DIAGNOSTIC (#870, the Reel record -> playback turn; never a release, never merged): with UAC_EV defined (modular.c:
+ * clock_in.h cin_ev, into the MIDI clock-in log), this file reports from the TIMER5 interrupt every request and bus event
+ * that can move the playback queue (EP2 OUT, usb_return.h) or the recording stream (EP4 IN), the queue's events, its
+ * fill over each 100 ms and the explicit feedback (EP3) (ur_dg_poll). UAC_EV(kind, v, fl) takes the kinds below
+ * (clock_in.h CIN_EV_*, the same values, checked there). It only reads: no SIE access changes (tools/usb_test.sh
+ * compares the traces). Without UAC_EV (the update loader, the other host test builds) none of it is built. */
+#if FELUCCA_UAC_RETURN && defined(UAC_EV)
+#define UR_DG 1
+#define UR_EV_USB 0x10u              /* a request or a bus event: v = UE_* | its value << 8, fl = the queue's fill / 2 */
+#define UR_EV_Q 0x11u                /* a playback queue event: v = UQ_* | a count << 8, fl = the queue's fill / 2 */
+#define UR_EV_WIN 0x20u              /* 100 ms of the queue: v = its lowest fill / 2 | its highest / 2 << 8; fl = bit 0
+                                      * playing, bit 1 the recording interface at alt 1, bit 2 the host reads it */
+#define UR_EV_FB 0x21u               /* the feedback: v = its value - UR_NOMINAL (signed), fl = feedback packets taken */
+enum { UE_REC_ALT = 1,               /* SET_INTERFACE on the recording interface (EP4 IN): the alt setting */
+       UE_PLAY_ALT,                  /* on the playback interface (EP2 OUT): the alt setting (fl: the queue it drops) */
+       UE_CONFIG,                    /* SET_CONFIGURATION: the configuration (1 restarts both streams) */
+       UE_RESET,                     /* a bus reset: 1 after more than 2 s with no frame from a host (the cable moved) */
+       UE_SUSPEND, UE_RESUME,        /* the bus went idle / came back: the configuration */
+       UE_FROZEN, UE_FRAME_RUN,      /* the frame number stood still for 100 ms (usb.suspended) / moves again */
+       UE_PAUSE,                     /* ur_service emptied the queue for a suspend */
+       UE_RATE,                      /* SET_CUR sampling frequency: kHz (both streams stay at 44.1 whatever it says) */
+       UE_REC_READ, UE_REC_STALL };  /* the host takes the recording stream's packets / has not for 20 ms at alt 1 */
+enum { UQ_UNDERRUN = 1,              /* the audio ISR found the queue empty mid-half (count since the last poll): it
+                                      * stops and waits for UR_PRIME frames again */
+       UQ_START,                     /* playing again: the queue reached UR_PRIME (fl: its fill after the first half) */
+       UQ_STOP,                      /* not playing, without an underrun (a new stream, alt 0, the bus) */
+       UQ_OVERRUN,                   /* packets dropped on a full queue (count) */
+       UQ_RX_ERR,                    /* an OUT packet with RXCSR1 OverRun (one lost before it) or DataError (bits 2, 3),
+                                      * dropped */
+       UQ_RX_SIZE };                 /* an OUT packet of a size not taken (its bytes / 4) */
+#define UR_FILL2() (ur_w - ur_r >= 510u ? 255u : (ur_w - ur_r) / 2u)
+#define UR_EV(k, code, val) UAC_EV(UR_EV_##k, (uint32_t)(code) | (uint32_t)(val) << 8, UR_FILL2())
+static struct {
+    uint16_t lo, hi;                 /* the queue's fill, lowest / highest in the window (frames) */
+    uint8_t polls;                   /* polls in the window (200: 100 ms) */
+    uint8_t playing;                 /* ur_playing at the last poll */
+    uint8_t fresh;                   /* no feedback entry since the stream started */
+    uint8_t fb_n, fb_n_log;          /* feedback packets the host took in the window; in the last feedback entry */
+    uint32_t fb, fb_log;             /* the feedback computed last; in the last feedback entry */
+    uint32_t under, over;            /* ur_underruns, ur_overruns at the last poll */
+    uint32_t alive;                  /* fm1_ms when the frame number last moved (0: not since boot) */
+} ur_dg;
+#else
+#define UR_DG 0
+#define UR_EV(k, code, val) ((void)0)   /* (its arguments are not compiled) */
 #endif
 #ifndef FELUCCA_UAC_48K
 #define FELUCCA_UAC_48K 1
@@ -815,7 +864,59 @@ static void ur_config(void)
     sie_wr(S_INTRRX1E, 0x06);
     fm1_usb_ep_enable((1u<<2) | (1u<<3));
     ur_frame = 0xffff;
+#if UR_DG
+    ur_dg.polls = 0;                                    /* (a new stream: a new window, its feedback logged) */
+    ur_dg.lo = 0xFFFFu;
+    ur_dg.hi = 0;
+    ur_dg.fb_n = 0;
+    ur_dg.fresh = 1;
+    ur_dg.playing = ur_playing;
+    ur_dg.under = ur_underruns;
+    ur_dg.over = ur_overruns;
+#endif
 }
+#if UR_DG
+/* each poll while the playback interface is at alt 1, after the packet: the queue's events, and its fill and the
+ * feedback each 100 ms (200 polls). The audio ISR's underruns and start / stop show here within a poll (0.5 ms) */
+static void ur_dg_poll(void)
+{
+    uint32_t fill = ur_w - ur_r, u = ur_underruns, o = ur_overruns, p = ur_playing, d;
+    if (fill < ur_dg.lo)
+        ur_dg.lo = (uint16_t)fill;
+    if (fill > ur_dg.hi)
+        ur_dg.hi = (uint16_t)fill;
+    if (u != ur_dg.under) {
+        d = u - ur_dg.under;
+        UR_EV(Q, UQ_UNDERRUN, d > 255u ? 255u : d);
+        ur_dg.under = u;
+    } else if (ur_dg.playing && !p) {
+        UR_EV(Q, UQ_STOP, 0);
+    }
+    if (p && !ur_dg.playing)
+        UR_EV(Q, UQ_START, 0);
+    ur_dg.playing = (uint8_t)p;
+    if (o != ur_dg.over) {
+        d = o - ur_dg.over;
+        UR_EV(Q, UQ_OVERRUN, d > 255u ? 255u : d);
+        ur_dg.over = o;
+    }
+    if (++ur_dg.polls >= 200u) {
+        int32_t df = (int32_t)(ur_dg.fb - ur_dg.fb_log), dn = (int32_t)ur_dg.fb_n - (int32_t)ur_dg.fb_n_log;
+        uint32_t lo = ur_dg.lo >= 510u ? 255u : ur_dg.lo / 2u, hi = ur_dg.hi >= 510u ? 255u : ur_dg.hi / 2u;
+        UAC_EV(UR_EV_WIN, lo | hi << 8, p | (uac.alt ? 2u : 0u) | (uac.flowing ? 4u : 0u));
+        if (ur_dg.fresh || df > 31 || df < -31 || dn > 2 || dn < -2) {   /* (2 frames of the servo's fill; reads) */
+            UAC_EV(UR_EV_FB, (uint16_t)(int16_t)((int32_t)ur_dg.fb - (int32_t)UR_NOMINAL), ur_dg.fb_n);
+            ur_dg.fb_log = ur_dg.fb;
+            ur_dg.fb_n_log = ur_dg.fb_n;
+            ur_dg.fresh = 0;
+        }
+        ur_dg.polls = 0;
+        ur_dg.lo = 0xFFFFu;
+        ur_dg.hi = 0;
+        ur_dg.fb_n = 0;
+    }
+}
+#endif
 static void ur_service(void)
 {
     if (!usb.up || !usb.config || !UAC_ON) {
@@ -823,7 +924,7 @@ static void ur_service(void)
         return;
     }
     if (usb.suspended) {
-        if (!ur_paused) { ur_start(ur_alt); ur_paused=1; }
+        if (!ur_paused) { UR_EV(USB, UE_PAUSE, 0); ur_start(ur_alt); ur_paused=1; }
         return;
     }
     ur_paused=0;
@@ -838,11 +939,18 @@ static void ur_service(void)
     if (frame != ur_frame) {
         ur_frame = frame;
         uint32_t feedback = ur_feedback();
+#if UR_DG
+        ur_dg.fb = feedback;
+#endif
         sie_wr(S_INDEX, 3);
         if (!(sie_rd(S_TXCSR1) & 1u)) {
             ur_fb[0] = (uint8_t)feedback; ur_fb[1] = (uint8_t)(feedback>>8); ur_fb[2] = (uint8_t)(feedback>>16);
             fm1_usb_ep_send(3, ur_fb, 3);
             sie_wr(S_TXCSR1, 1);
+#if UR_DG
+            if (ur_dg.fb_n < 255u)
+                ur_dg.fb_n++;                           /* (the last one was taken: the host reads the feedback) */
+#endif
         }
     }
     sie_wr(S_INDEX, 2);
@@ -851,19 +959,29 @@ static void ur_service(void)
         uint32_t n = sie_rd(S_RXCOUNT1) | sie_rd(S_RXCOUNT2)<<8;
         fm1_usb_rx_sync();
         if (!(csr & 0x0cu) && n <= 180u) ur_receive(ur_rx, n);
+#if UR_DG
+        if (csr & 0x0cu)
+            UR_EV(Q, UQ_RX_ERR, csr & 0x0cu);
+        else if (n % 4u || n > 180u)
+            UR_EV(Q, UQ_RX_SIZE, n / 4u > 255u ? 255u : n / 4u);
+#endif
         sie_wr(S_RXCSR1, 0x10);
     }
+#if UR_DG
+    ur_dg_poll();
+#endif
 }
 static int uac_play_mix(int32_t *out, uint32_t n)
 {
     if (!usb.up || !usb.config || usb.suspended) {
         ur_r = ur_w; ur_playing = 0;
+        UR_ONSET(0u);
         return 0;
     }
 #if FELUCCA_DEVICE_IDENTITY
     ur_level = di_level;
 #endif
-    ur_mix(out, n);
+    UR_ONSET(ur_mix(out, n));
     return ur_playing && ur_level;
 }
 #endif
@@ -1045,8 +1163,11 @@ static void ep0_service(void)
     if (uac.e0_rx) {                                    /* SET_CUR sampling frequency: 3 bytes, Hz */
         uint32_t n = sie_rd(S_COUNT0);
         uac.rate_sets++;
-        if (n >= 3u)
-            uac_rate_set(ep0buf[0] | (uint32_t)ep0buf[1] << 8 | (uint32_t)ep0buf[2] << 16);
+        if (n >= 3u) {
+            uint32_t hz = ep0buf[0] | (uint32_t)ep0buf[1] << 8 | (uint32_t)ep0buf[2] << 16;
+            UR_EV(USB, UE_RATE, hz / 1000u > 255u ? 255u : hz / 1000u);
+            uac_rate_set(hz);
+        }
         uac.e0_rx = 0;
 #if USB_LOG
         ul.out_data++;
@@ -1087,6 +1208,7 @@ static void ep0_service(void)
     case 0x0009:                                        /* SET_CONFIGURATION: 0 or 1 only */
         if (s[2] > 1u)
             goto stall;
+        UR_EV(USB, UE_CONFIG, s[2]);
         usb.config = s[2];
         if (usb.config == 1u)
             ep1_config();
@@ -1113,12 +1235,14 @@ static void ep0_service(void)
     case 0x010B:                                        /* SET_INTERFACE: alt 0 (alt 1 for the audio stream) */
 #if FELUCCA_UAC_RETURN
         if (UAC_ON && s[4] == AUD_IF+2 && wvalue <= 1u && usb.config) {
+            UR_EV(USB, UE_PLAY_ALT, wvalue);            /* (before: the fill it drops) */
             ur_config(); ur_start(wvalue);
             goto ack;
         }
 #endif
 #if FELUCCA_UAC
         if (UAC_ON && s[4] == UAC_AS_IF && wvalue <= 1u && usb.config) {
+            UR_EV(USB, UE_REC_ALT, wvalue);
             uac_ep4_reset();
             uac_stream(wvalue);
             goto ack;
@@ -1766,12 +1890,15 @@ static void uac_service(void)
         if (uac.wait < 255u && ++uac.wait == 40u && uac.flowing) {
             uac.flowing = 0;
             uac.stalls++;
+            UR_EV(USB, UE_REC_STALL, 0);
         }
         return;
     }
     if (uac.queued) {
         if (csr & 0x04u)
             uac.missed++;                               /* UnderRun: an IN token found nothing queued */
+        if (!uac.flowing)
+            UR_EV(USB, UE_REC_READ, 0);
         uac.flowing = 1;
     }
     uac.queued = 1;
@@ -1871,6 +1998,11 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
                 if (usb.suspended)
                     UL_EV(UL_FRAME_RUN, 0, f, f >> 8, 0);
 #endif
+                if (usb.suspended)
+                    UR_EV(USB, UE_FRAME_RUN, 0);
+#if UR_DG
+                ur_dg.alive = fm1_ms;
+#endif
                 usb.frame = f;
                 usb.frame_same = 0;
                 usb.suspended = 0;
@@ -1878,6 +2010,7 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
                 usb.suspended = 1;
                 usb.frame_stalls++;
                 UL_EV(UL_FROZEN, 0, f, f >> 8, 0);
+                UR_EV(USB, UE_FROZEN, 0);
             }
         }
     }
@@ -1891,14 +2024,17 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
 #endif
     if (iu & 0x01u) {                                   /* suspend: the bus went idle */
         UL_EV(UL_SUSPEND, usb.config, 0, 0, 0);
+        UR_EV(USB, UE_SUSPEND, usb.config);
         usb.suspends++;
         usb.suspended = 1;
     }
     if (iu & 0x02u) {                                   /* resume */
         UL_EV(UL_RESUME, usb.config, 0, 0, 0);
+        UR_EV(USB, UE_RESUME, usb.config);
         usb.suspended = 0;
     }
     if (iu & 0x04u) {                                   /* bus reset */
+        UR_EV(USB, UE_RESET, ur_dg.alive && fm1_ms - ur_dg.alive > 2000u);   /* (1: the cable moved: freezes the log) */
 #if USB_LOG
         UL_EV(UL_RESET, 0, sie_rd(S_POWER), usb.config, ul.addr);   /* POWER, the configuration and address it ends */
         ul.addr = 0;
