@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { litWhileEnabled, kindOf, setKind, setTarget, switches, toggleEngaged, toggleTargets } from './buttons';
-import { arpChoices, arpFree, arpsOf, insertArpeggiator } from './arp-button';
+import { arpChoices, arpFree, arpsOf, insertArpeggiator, keysTargetName } from './arp-button';
 import { DEFS, PANEL_BUTTONS } from './modules';
 import { Engine } from './engine';
-import { addModule, connect, emptyPatch } from './patch';
+import { addModule, connect, emptyPatch, removeModule, type ModuleInst, type Patch } from './patch';
 import { PRESETS } from './presets';
 
 describe('+ Add arpeggiator (#119)', () => {
@@ -152,6 +152,62 @@ describe('ARP with nothing on it: what a click does', () => {
 
   it('no Main module: nothing to offer', () => {
     expect(arpChoices(emptyPatch('t'))).toEqual([]);
+  });
+});
+
+describe('ARP pressed again after the Arpeggiator is taken out (owner 2026-11-23: "it seems to think there are two hera 6s")', () => {
+  const withArp = Object.keys(PRESETS).filter((n) => arpsOf(PRESETS[n]()).length > 0);
+  /** the keys cables, the arpeggiator as ARP: the route a patch plays */
+  const route = (p: Patch, arp: number): string[] => p.cables.filter((c) => c.from.port === 'keys')
+    .map((c) => `${c.from.module === arp ? 'ARP' : c.from.module}>${c.to.module === arp ? 'ARP' : c.to.module}`).sort();
+  /** the factory patch, the patch with its Arpeggiator deleted, and that Arpeggiator's keys cables */
+  const takenOut = (name: string) => {
+    const factory = PRESETS[name]();
+    const [arp] = arpsOf(factory);
+    const p = structuredClone(factory);
+    removeModule(p, arp.id);
+    const feed = factory.cables.find((c) => c.to.module === arp.id && c.to.port === 'keys')!.from;
+    const played = factory.cables.filter((c) => c.from.module === arp.id && c.from.port === 'keys').map((c) => c.to);
+    return { factory, arp, p, feed, played };
+  };
+  /** one thing to do, naming the instrument once; done, the route is the factory's and ARP switches the new arpeggiator */
+  const pressRestores = (name: string, factory: Patch, arp: ModuleInst, p: Patch, played: { module: number }[]) => {
+    const cs = arpChoices(p).filter((c) => !c.disabled);
+    expect(cs.map((c) => c.label), name).toEqual([`New arpeggiator for ${keysTargetName(factory, played[0].module)}`]);
+    const fresh = cs[0].apply(p)!;
+    expect(route(p, fresh.id), name).toEqual(route(factory, arp.id));
+    expect(toggleTargets(p, 'arp'), name).toEqual([fresh.id]);
+  };
+
+  it('covers the poly and the mono instruments the owner named', () => {
+    expect(withArp).toEqual(expect.arrayContaining(['Hera 6', 'Vernon 100', 'Monolith D']));
+    expect(takenOut('Hera 6').played).toHaveLength(2);
+    expect(takenOut('Vernon 100').played).toHaveLength(2);
+    expect(takenOut('Monolith D').played).toHaveLength(1);
+  });
+
+  it('deleted: ARP puts a new one where it was, after the Harmonizer and Steps, playing what it played', () => {
+    for (const name of withArp) {
+      const { factory, arp, p, played } = takenOut(name);
+      expect(arpFree(p), name).toBe(true);
+      pressRestores(name, factory, arp, p, played);
+    }
+  });
+
+  it('deleted and the instrument patched straight again: one instrument, not one per Voicing', () => {
+    for (const name of withArp) {
+      const { factory, arp, p, feed, played } = takenOut(name);
+      for (const to of played) expect(connect(p, DEFS, feed, to), name).toBe(true);
+      pressRestores(name, factory, arp, p, played);
+    }
+  });
+
+  it('taken off ARP but kept: putting it back says once what it plays', () => {
+    for (const name of withArp) {
+      const { factory, played } = takenOut(name);
+      setKind(factory, 'arp', 'nothing');
+      expect(arpChoices(factory).map((c) => c.sub), name).toEqual([`it plays ${keysTargetName(factory, played[0].module)}`]);
+    }
   });
 });
 

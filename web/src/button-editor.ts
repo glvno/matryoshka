@@ -3,6 +3,7 @@
 // Toggle's TARGET (a module or an assembly), PRESS (while held / switches) and the LABEL the FM-1 shows. The Editor owns
 // the popover (a top-layer element that survives redraws) and refills it with this after every change.
 
+import { arpJackless } from './arp-button';
 import { assembliesOf } from './assembly';
 import { KIND_LABEL, kindOf, mainOf, pageList, setKind, setPages, setSwitches, setTarget, switches, type ButtonKind } from './buttons';
 import { pageLabel, type Device } from './pages';
@@ -137,6 +138,7 @@ export function buttonEditor(b: string, ev: ButtonEditorEvents, fixed = false): 
     : kind === 'nothing' ? 'Unassigned: no role. Its jack still goes high while it is held.'
     : kind === 'gate' ? 'Its jack is high while held (or switched on): patch it.'
     : kind === 'page' ? 'A press puts the next page of the list on K1..K4; held, its first page shows while it is down; HOME goes back.'
+    : b === 'arp' && arpJackless(p) ? 'Switches its Arpeggiator, like the card’s ⏻. It has no jack while it does.'
     : 'Bypasses its target, like the card’s ⏻. Its jack is high while engaged.';
   out.push(hint);
   return out;
