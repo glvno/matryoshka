@@ -23,6 +23,7 @@
 - Every effect now rings out when you switch it off, by its own ⏻, the drawer's or a Toggle: Delay and Reverb let their tails fade, the others fade to dry ([D-1100](docs/ledger/engine.md#D-1100)).
 - The FM-1 offers an instrument preset with effects only when the instrument and every effect in its drawer match the preset, and loading sets each effect's values and on/off ([D-1217](docs/ledger/patches-and-presets.md#D-1217)).
 - Patches with effects or FX drawers use patch format 66, which needs the 1.26.3 firmware; the editor asks you to update an older FM-1 before sending one. Older patches play as before ([D-1035](docs/ledger/patch-format.md#D-1035), [D-1038](docs/ledger/patch-format.md#D-1038)).
+- An FM-1 on firmware 1.26.0 or 1.26.1 is still offered the factory sounds it can play: the editor keeps 1.26's factory region image for it, since today's needs the 1.26.3 firmware ([D-1020](docs/ledger/patch-format.md#D-1020)).
 
 ## 1.26.1 — 2026-11-23
 
