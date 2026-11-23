@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 59
+#define N_TYPES 60
 enum {
     T_FM1,
     T_OSC,
@@ -64,6 +64,7 @@ enum {
     T_LIMIT,
     T_EUCLID,
     T_EQ,
+    T_NOUT,
 };
 
 /* fm1: Main */
@@ -1181,6 +1182,19 @@ enum {
 #define EQ_CVBASE 1
 #define EQ_NDATA 0
 
+/* nout: Note Out */
+#define NOUT_I_GATE 0
+#define NOUT_I_VEL 1
+#define NOUT_I_P1 2
+#define NOUT_I_P2 3
+#define NOUT_P_CHANNEL 0
+#define NOUT_P_NOTE 1
+#define NOUT_NIN 4
+#define NOUT_NOUT 0
+#define NOUT_NPAR 2
+#define NOUT_CVBASE 2
+#define NOUT_NDATA 0
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 #define DELAY_SYNC_TOP 520   /* ms: the synced note lengths spread over 1..this (modules.ts) */
@@ -1251,6 +1265,7 @@ static const int32_t ANALOG_SAWC_T[129] = {1073741824, 1071647400, 1069558421, 1
 #define LIMIT_KA 109857605   /* its attack with lookahead, Q30: 99.9 % of a step in LIMIT_AHEAD samples */
 #define EUCLID_STEPS_MAX 32   /* Euclid's longest pattern, steps (#1018) */
 static const uint8_t EUCLID_RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};   /* its rates on the engine's clock: clock ticks a step */
+#define NOUT_VEL_DEFAULT 100u   /* Note Out's velocity with nothing in vel (D-1253) */
 #define EQ_LIM 67108864.0f   /* the EQ's states and output are held to +-this, in steps of Q16 (#1107) */
 #define EQ_SHELF_Q 2.0f   /* a shelf's q is held to this */
 #define EQ_SHELF_TOP 2.19911486f   /* a shelf's third matched level is where its zeros are, at most this (radians a sample) */
@@ -1967,6 +1982,16 @@ static const uint8_t EQ_LOG[] = {1, 0, 1, 0};
 static const char *const EQ_UNIT[] = {"HZ", "DB", "", ""};
 static const char *const EQ_CH3[] = {"LOW SHELF", "BELL", "HIGH SHELF", "LOW PASS", "HIGH PASS", "NOTCH", 0};
 static const char *const *const EQ_CH[] = {0, 0, 0, EQ_CH3};
+static const char *const NOUT_INNAMES[] = {"GATE", "VEL", "P1", "P2"};
+static const int32_t NOUT_MIN[] = {65536, 0};
+static const int32_t NOUT_MAX[] = {1048576, 8323072};
+static const int32_t NOUT_DEF[] = {327680, 2359296};
+static const int32_t NOUT_INC[] = {65536, 65536};
+static const int32_t NOUT_STEP[] = {65536, 65536};
+static const char *const NOUT_PN[] = {"CHANNEL", "NOTE"};
+static const uint8_t NOUT_LOG[] = {0, 0};
+static const char *const NOUT_UNIT[] = {"", ""};
+static const char *const *const NOUT_CH[] = {0, ALLOC_CH6};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0, FM1_STEP},   /* fm1 */
@@ -2028,15 +2053,16 @@ static const def_t DEFS[N_TYPES] = {
     {LIMIT_NIN, LIMIT_NOUT, LIMIT_NPAR, 0, LIMIT_CVBASE, 0, LIMIT_NDATA, 1, LIMIT_MIN, LIMIT_MAX, LIMIT_DEF, LIMIT_INC, "LIMITER", LIMIT_PN, LIMIT_INNAMES, LIMIT_LOG, LIMIT_UNIT, LIMIT_CH, 0, 0, LIMIT_STEP},   /* limit */
     {EUCLID_NIN, EUCLID_NOUT, EUCLID_NPAR, 0, EUCLID_CVBASE, -1, EUCLID_NDATA, 0, EUCLID_MIN, EUCLID_MAX, EUCLID_DEF, EUCLID_INC, "EUCLID", EUCLID_PN, EUCLID_INNAMES, EUCLID_LOG, EUCLID_UNIT, EUCLID_CH, 0, 0, EUCLID_STEP},   /* euclid */
     {EQ_NIN, EQ_NOUT, EQ_NPAR, 0, EQ_CVBASE, 0, EQ_NDATA, 1, EQ_MIN, EQ_MAX, EQ_DEF, EQ_INC, "EQ", EQ_PN, EQ_INNAMES, EQ_LOG, EQ_UNIT, EQ_CH, 0, 0, EQ_STEP},   /* eq */
+    {NOUT_NIN, NOUT_NOUT, NOUT_NPAR, 0, NOUT_CVBASE, -1, NOUT_NDATA, 0, NOUT_MIN, NOUT_MAX, NOUT_DEF, NOUT_INC, "NOTE OUT", NOUT_PN, NOUT_INNAMES, NOUT_LOG, NOUT_UNIT, NOUT_CH, 0, 0, NOUT_STEP},   /* nout */
 };
 /* one copy of each type, a block: what the two-core plan balances (engine.c sched_build, #802), in 64 cycles: its median
  * time measured on the test rig (web/src/plan-costs.json; cpu.ts planCosts rig) */
-static const uint16_t DEF_COST[N_TYPES] = {84, 147, 110, 56, 10, 20, 63, 30, 241, 51, 145, 939, 31, 59, 80, 38, 413, 141, 273, 177, 110, 36, 40, 29, 49, 43, 242, 163, 43, 234, 130, 54, 46, 585, 393, 441, 834, 32, 9, 1, 14, 125, 10, 47, 211, 36, 20, 220, 10, 236, 16, 83, 116, 39, 4, 224, 223, 38, 135};
+static const uint16_t DEF_COST[N_TYPES] = {84, 147, 110, 56, 10, 20, 63, 30, 241, 51, 145, 939, 31, 59, 80, 38, 413, 141, 273, 177, 110, 36, 40, 29, 49, 43, 242, 163, 43, 234, 130, 54, 46, 585, 393, 441, 834, 32, 9, 1, 14, 125, 10, 47, 211, 36, 20, 220, 10, 236, 16, 83, 116, 39, 4, 224, 223, 38, 135, 25};
 /* a module bypassed when the patch loads, in the same units: passing an input through (D-1104) */
 #define DEF_COST_BYPASS 23u
 /* the same from web/src/cpu-costs.json: its run and parameter inputs, and its bypass (cpu.ts planCosts table) */
-static const uint16_t DEF_TCOST[N_TYPES] = {14, 77, 33, 52, 7, 8, 32, 8, 320, 9, 109, 1216, 2, 39, 94, 36, 328, 176, 325, 153, 87, 34, 34, 39, 47, 59, 273, 220, 52, 161, 103, 44, 27, 466, 276, 446, 666, 10, 13, 1, 11, 53, 7, 15, 131, 33, 13, 174, 8, 10, 11, 65, 92, 11, 3, 177, 176, 29, 135};
+static const uint16_t DEF_TCOST[N_TYPES] = {14, 77, 33, 52, 7, 8, 32, 8, 320, 9, 109, 1216, 2, 39, 94, 36, 328, 176, 325, 153, 87, 34, 34, 39, 47, 59, 273, 220, 52, 161, 103, 44, 27, 466, 276, 446, 666, 10, 13, 1, 11, 53, 7, 15, 131, 33, 13, 174, 8, 10, 11, 65, 92, 11, 3, 177, 176, 29, 135, 25};
 #define DEF_TCOST_BYPASS 18u
 /* Gate-port kinds for pattern authorization, independent of environment grouping (bit n: port n is a gate) */
-static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u,4u,0u,3u,0u};
-static const uint32_t PRESET_GATE_OUT[] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u,0u,0u,7u,0u};
+static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u,4u,0u,3u,0u,1u};
+static const uint32_t PRESET_GATE_OUT[] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u,0u,0u,7u,0u,0u};

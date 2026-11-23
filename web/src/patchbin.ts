@@ -148,7 +148,7 @@ export const GROUP_REC = 4 + 5 * MAX_PARTS + 4;
 /** bytes of the panel section before format 64 (engine.h ENG_PANEL_BYTES): two masks and the labels (since: panelBytes) */
 export const PANEL_BYTES = 4 + PANEL_LABEL_KEYS.length * PANEL_LABEL_MAX;
 export const MAX_CABLES = 255;
-export const VERSION = 65; // 65 (the release after 1.22, FORMAT_1_23): the MIDI learn mappings, the binary's last section (mapRecord, #1067), written only by a patch with MIDI learn; 64 (the release after 1.21, FORMAT_1_22): the EQ module (eq, #1107) appended after the Euclid, written only by patches that use it (ModuleDef.since); and the panel labels by length, the cables grouped by the module they go into, only the Drum map row names off their default (SLIM, D-1025), for a patch that fits no older format; 63 (release 1.20, FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid module (euclid, #1018) appended after the Limiter, Steps notes' timing words, ratchets and micro timing (#675, #677); 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14; ordinary patches retain their lowest format
+export const VERSION = 66; // 66 (the release after 1.26, FORMAT_1_27): the Note Out module (nout, D-1253) appended after the EQ, written only by patches that use it (ModuleDef.since); 65 (the release after 1.22, FORMAT_1_23): the MIDI learn mappings, the binary's last section (mapRecord, #1067), written only by a patch with MIDI learn; 64 (the release after 1.21, FORMAT_1_22): the EQ module (eq, #1107) appended after the Euclid, written only by patches that use it (ModuleDef.since); and the panel labels by length, the cables grouped by the module they go into, only the Drum map row names off their default (SLIM, D-1025), for a patch that fits no older format; 63 (release 1.20, FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid module (euclid, #1018) appended after the Limiter, Steps notes' timing words, ratchets and micro timing (#675, #677); 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14; ordinary patches retain their lowest format
 /**
  * The lowest format the encoder writes: a patch that uses no parameter appended after it (ParamDef.since past it: a value
  * off its default on either morph side, a pin, macro range, input route or card row on it) is written in this format, its
@@ -162,9 +162,9 @@ export const WRITE_FLOOR = 46;
  * fit otherwise, COUNTED; format 59: stored pattern links, flag bit 15; format 60: trig conditions, FORMAT_CONDS; format
  * 61: a cable into a Part's priority input, FORMAT_PRIORITY_CABLE; format 62: the 1.19 module types, FORMAT_1_19; format
  * 63: the 1.20 module types, FORMAT_1_20; format 64: the EQ module, and the shorter panel labels, cables and Drum map row
- * names when the patch would not fit otherwise, FORMAT_1_22, SLIM); every other format past WRITE_FLOOR appends parameters
- * (ParamDef.since) */
-export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase', 59: 'stored pattern links', 60: 'trig conditions', 61: 'note priority on a cable', 62: 'the 1.19 modules', 63: 'the 1.20 features', 64: 'the EQ module and the shorter panel labels, cables and row names', 65: 'MIDI learn mappings' };
+ * names when the patch would not fit otherwise, FORMAT_1_22, SLIM; format 65: the MIDI learn mappings, FORMAT_1_23;
+ * format 66: the Note Out module, FORMAT_1_27); every other format past WRITE_FLOOR appends parameters (ParamDef.since) */
+export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase', 59: 'stored pattern links', 60: 'trig conditions', 61: 'note priority on a cable', 62: 'the 1.19 modules', 63: 'the 1.20 features', 64: 'the EQ module and the shorter panel labels, cables and row names', 65: 'MIDI learn mappings', 66: 'the Note Out module' };
 /** the flag (u16 at offset 6) of the P-locks section (format 49, #524) */
 export const FLAG_LOCKS = 2048;
 
@@ -346,6 +346,15 @@ function uses122(dev: Patch): boolean {
  */
 export const FORMAT_1_23 = 65;
 /**
+ * The format of the release after 1.26 (D-1040): the Note Out module appended after the EQ, written only by a patch that
+ * has one; every other patch keeps its lower format. It has SLIM's layout.
+ */
+export const FORMAT_1_27 = 66;
+/** what a patch uses of FORMAT_1_27 (`dev`: its device form): a module of a type added with it (Note Out) */
+function uses127(dev: Patch): boolean {
+  return dev.modules.some((m) => (DEFS[m.type]?.since ?? 0) >= FORMAT_1_27);
+}
+/**
  * The first format that writes the panel labels by their length (panelBytes), the cables grouped by the module they go
  * into (cablesGrouped) and only the Drum map row names off their default (drumNamed): the same values in fewer bytes
  * (D-1025, engine.h ENG_SLIM). Every binary of this format has that layout.
@@ -426,7 +435,7 @@ export const formatOf = (source: Patch, view: ReturnType<typeof deviceView> = de
 /** the lowest format that holds what this patch uses: VERSION, or WRITE_FLOOR when it uses nothing appended since (`dev`: its device form) */
 export function baseFormat(source: Patch, dev: Patch = deviceView(source, true).patch): number {
   const late = (type: string): ParamDef[] => DEFS[type].params.filter((q) => (q.since ?? 0) > WRITE_FLOOR || (q.grew?.since ?? 0) > WRITE_FLOOR);
-  const floor = source.midiLearn?.length ? FORMAT_1_23 : uses122(dev) ? FORMAT_1_22 : uses120(dev) ? FORMAT_1_20 : uses119(dev) ? FORMAT_1_19 : usesPriorityCable(dev) ? FORMAT_PRIORITY_CABLE : usesConds(dev) ? FORMAT_CONDS : fxRecord(source, dev).length || harmonyLfo(source, dev) ? 55 : originRecord(dev).length ? 54 : chainedHarmonizer(source) ? 53 : uses112(dev) ? FORMAT_1_12 : uses111(source, dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
+  const floor = uses127(dev) ? FORMAT_1_27 : source.midiLearn?.length ? FORMAT_1_23 : uses122(dev) ? FORMAT_1_22 : uses120(dev) ? FORMAT_1_20 : uses119(dev) ? FORMAT_1_19 : usesPriorityCable(dev) ? FORMAT_PRIORITY_CABLE : usesConds(dev) ? FORMAT_CONDS : fxRecord(source, dev).length || harmonyLfo(source, dev) ? 55 : originRecord(dev).length ? 54 : chainedHarmonizer(source) ? 53 : uses112(dev) ? FORMAT_1_12 : uses111(source, dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
   if (!dev.modules.some((m) => late(m.type).length)) return floor;
   let v = floor;
   const rows = new Set<string>();

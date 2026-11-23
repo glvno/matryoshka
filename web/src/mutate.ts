@@ -33,8 +33,9 @@ export const MUTATE_LEAST = 2;
 export const PRESET_DRAW = 0.5;
 
 /** the modules that play, route or show rather than sound: Mutate and Randomize never move them (Main's tempo, the master
- * level, the voices and key range, a pattern's length and rate, the arpeggio, the drum notes, the chords, a Scope) */
-export const MUTATE_SKIP: Record<string, true> = { fm1: true, output: true, alloc: true, steps: true, arp: true, drummap: true, harm: true, scope: true, part: true };
+ * level, the voices and key range, a pattern's length and rate, the arpeggio, the drum notes, the chords, a Scope, the
+ * channel and note a Note Out sends) */
+export const MUTATE_SKIP: Record<string, true> = { fm1: true, output: true, alloc: true, steps: true, arp: true, drummap: true, harm: true, scope: true, part: true, nout: true };
 
 /** the level rows besides `level` itself: the Mixer's inputs, the VCA's gain, the Dynamics' make-up gain, the Limiter's
  * drive and ceiling, the EQ's boost */

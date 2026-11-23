@@ -301,6 +301,10 @@ Right-click the empty canvas and choose **Add comment** (or "Add comment" in Com
 
 - **EQ** is one band of a parametric equalizer, `in` to `out`: `freq` 10 Hz to 22 kHz, `gain` −18 to +18 dB, `q`, and `shape` low shelf, bell, high shelf, low pass, high pass or notch. `q` is a bell's width (0.707 about two octaves), a filter's resonance (0.707 flat) or a shelf's knee (up to 2). Chain several for a multiband EQ: the factory assembly **EQ** is a low shelf, a bell and a high shelf, flat until a gain moves. Its curve keeps its analog shape up to the top of the band: a plain digital EQ squeezes a bell or a shelf near 20 kHz (cramping), this one matches the analog curve's level at chosen points, worked out only when a setting changes, so it costs nothing extra while it plays. Turning a knob or modulating `freq` and `gain` through p1 and p2 neither clicks nor zippers. Mono: for the stereo bus use one per side.
 
+## Note Out
+
+- **Note Out** sends MIDI from the FM-1 only: a rising `gate` sends a note on over USB (`channel` 1..16, 5 as made; `note`, C1 as made; velocity `vel` × 127, 100 with nothing in `vel`), a falling one its note off, each at the moment its sample sounds. It sends whether MENU > MIDI OUT is on or off, and a patch change, a bypass or stopping the transport turns off a note it left on. In the editor it does nothing. Use it for a sidechain across FM-1s: a host forwards the note to another FM-1, where a Voicing on that channel with `low` and `high` both on the note drives a Pulse into a Compressor's `side` (docs/ARCHITECTURE.md "Sidechain across FM-1s").
+
 ## Assemblies: merged ports, placement, nesting
 
 - **Merged ports.** On an expanded assembly, every exposed input has a `merge…` list of the card's other inputs of the same kind. Merging turns two jacks into one that feeds both (the factory `voice` has one `gate` for its two envelopes); the card shows `×2` and a `split` button. A cable into a merged jack goes to every input behind it, and removing it takes them all.

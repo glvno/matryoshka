@@ -764,6 +764,18 @@ kit('eq-sweep', (add, wire) => {
   wire(nz, 'out', b, 'in'); wire(sq, 'out', b, 'p1'); wire(tri, 'out', b, 'p2'); wire(b, 'out', out, 'r');
 });
 for (const k of ['eq-shelves', 'eq-filters', 'eq-sweep']) ends[k] = 128 * 600;
+// Note Out (D-1253): it sounds nothing in either engine (the FM-1 sends MIDI, tools/note_out_test.sh checks that). Two of
+// them, one with vel and its channel and note moved through the pins, beside a keyed voice whose gate one of them shares:
+// the patch (format 66) plays the same in both engines, the Note Outs taking nothing from the sound
+kit('note-out', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+  const o = add('osc', 0, 0, { wave: 2, level: 0.8 }), env = add('adsr', 0, 0, { a: 0.005, d: 0.2, s: 0.5, r: 0.2 }), vca = add('vca', 0, 0);
+  const sq = add('lfo', 0, 0, { wave: 3, rate: 9, depth: 1 }), tri = add('lfo', 0, 0, { wave: 1, rate: 1.3, depth: 1 });
+  const a = add('nout', 0, 0), b = add('nout', 0, 0, { channel: 10, note: 42 }, { map: { p1: ['note'], p2: ['channel'] } });
+  wire(kb, 'pitch', o, 'pitch'); wire(kb, 'gate', env, 'gate'); wire(o, 'out', vca, 'in'); wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', out, 'l'); wire(kb, 'gate', a, 'gate'); wire(sq, 'out', b, 'gate'); wire(tri, 'out', b, 'vel');
+  wire(tri, 'out', b, 'p1'); wire(sq, 'out', b, 'p2'); wire(sq, 'out', out, 'r');
+});
 // modulation scaling (#526): the Range module (a curve, unclamped past its input range; clamped and inverted), its curve
 // moved through p1; a depth past 1 (up to 2) on both pins; a bipolar macro range next to a plain one
 kit('range-curve', (add, wire) => {

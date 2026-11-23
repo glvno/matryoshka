@@ -666,7 +666,7 @@ export function ensureMain(p: Patch, defs: Record<string, ModuleDef>): boolean {
 /** modules that run once even inside a poly assembly: their inputs sum the parts (big state, or the end of the chain) */
 export { STEPS_MAX, STEP_NOTE, STEP_VEL } from './track';
 
-export const SHARED_TYPES = new Set(['delay', 'reverb', 'chorus', 'grain', 'output', 'arp', 'steps', 'drummap', 'harm']);
+export const SHARED_TYPES = new Set(['delay', 'reverb', 'chorus', 'grain', 'output', 'arp', 'steps', 'drummap', 'harm', 'nout']);
 /** module types the editor shows but the engines and the FM-1 never run: poly.ts deviceView drops them and their cables */
 export const EDITOR_ONLY = new Set(['scope']);
 

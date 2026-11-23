@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **New module: Note Out, for a sidechain across FM-1s.** A gate into it sends a MIDI note over USB from the FM-1 as it rises (channel 5, C1 as made; velocity from `vel`), and its note off as it falls, at the moment that sample sounds. A host (a DAW, an iPad, or a USB MIDI host box into the other FM-1's TRS in) passes it on; on the other FM-1, a Voicing on that channel with low and high both on the note can drive a Pulse into a Compressor's `side`, so your kick ducks your pad. It sends whether MENU > MIDI OUT is on or off, and turns its note off when you change patch, bypass it or stop. In the editor it does nothing: it sends MIDI from the FM-1 only. A patch with one needs firmware that plays patch format 66.
+
 ## 1.26.2 — 2026-11-23
 
 - **Adding a sound to the palette now saves on the FM-1 everything it needs to sound as it does in the editor.** A preset you saved in this browser (Mine) is sent to the FM-1 first, or updated there when the FM-1 has other values under that name. The palette points at an FM-1 slot only when that slot holds exactly the editor's patch; a slot with the same name but older values is left alone, and the patch is stored into a free slot as "MY PAD 2". When the FM-1 cannot take a preset (its preset store is full, or its firmware is too old), the patch carries the sound itself and the status line says so. If anything fails, nothing is left half-added.

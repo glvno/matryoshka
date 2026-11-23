@@ -33,7 +33,7 @@ void eng_fpu_probe(uint32_t lane, uint32_t *h);
 
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 65   /* 65 (the release after 1.22, patchbin.ts FORMAT_1_23): the MIDI learn mappings as the binary's last section (eng_maps, ENG_MAPS, #1067); 64 (the release after 1.21, patchbin.ts FORMAT_1_22): the EQ type (T_EQ, #1107) appended after the Euclid, and the shorter panel labels, cables and Drum map row names (ENG_SLIM, D-1025); 63 (release 1.20, patchbin.ts FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid type (T_EUCLID, #1018) appended after the Limiter, and Steps notes' timing words, ratchets and micro timing (ENG_TIME_BIT, #675, #677); 62 (release 1.19, patchbin.ts FORMAT_1_19): the Low pass gate (T_LPG, #1018) and the Limiter (T_LIMIT, #1019) types appended after the Harmonizer; 61: a cable into a Part's priority input (PART_I_PRIORITY, #976); 60: trig conditions, a note's condition word after it (ENG_NOTE_COND, #674); 59: the stored pattern links (ENG_FLAG_LINKS, #901) after the P-locks; 58: the Oscillator's `phase` (where sync restarts the cycle, #691) appended; 57: the ADSR's `ads` (release at the decay's time, D-745) appended; 56: Env L/R's `curve` (a linear fall, #689) appended; 55: optional validated master FX bus after format54 origins and before macro ranges */
+#define ENG_PATCH_VERSION 66   /* 66 (the release after 1.26, patchbin.ts FORMAT_1_27): the Note Out type (T_NOUT, D-1253) appended after the EQ; 65 (the release after 1.22, patchbin.ts FORMAT_1_23): the MIDI learn mappings as the binary's last section (eng_maps, ENG_MAPS, #1067); 64 (the release after 1.21, patchbin.ts FORMAT_1_22): the EQ type (T_EQ, #1107) appended after the Euclid, and the shorter panel labels, cables and Drum map row names (ENG_SLIM, D-1025); 63 (release 1.20, patchbin.ts FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid type (T_EUCLID, #1018) appended after the Limiter, and Steps notes' timing words, ratchets and micro timing (ENG_TIME_BIT, #675, #677); 62 (release 1.19, patchbin.ts FORMAT_1_19): the Low pass gate (T_LPG, #1018) and the Limiter (T_LIMIT, #1019) types appended after the Harmonizer; 61: a cable into a Part's priority input (PART_I_PRIORITY, #976); 60: trig conditions, a note's condition word after it (ENG_NOTE_COND, #674); 59: the stored pattern links (ENG_FLAG_LINKS, #901) after the P-locks; 58: the Oscillator's `phase` (where sync restarts the cycle, #691) appended; 57: the ADSR's `ads` (release at the decay's time, D-745) appended; 56: Env L/R's `curve` (a linear fall, #689) appended; 55: optional validated master FX bus after format54 origins and before macro ranges */
 #define ENG_COUNTED 51                /* the first format whose module records carry their parameter count (patchbin.ts COUNTED, #667) */
 #define ENG_SLIM 64                   /* the first format with the panel labels by their length (eng_panel_bytes), the cables
                                        * grouped by the module they go into (eng_cables_grouped) and only the Drum map row
@@ -723,6 +723,15 @@ int32_t eng_tick_fell(int32_t run_tick);
  * -1 stopped, 0 none). A render that starts the transport has a tick on the start's sample: tick 0, where the tracks'
  * first steps sound, so a device that follows counts its steps from the same tick */
 uint32_t eng_clock_out(uint32_t *off, uint32_t max, int32_t *edge);
+/* Note Out (D-1353, main.c clock_out.h): the MIDI notes the Note Out modules sent in the last eng_render, up to `max`, in
+ * the order of their samples: each one's sample in the render in off[k] and its USB MIDI packet in pkt[k] (code index 9
+ * with Note On 0x9n, note, velocity 1..127; code index 8 with Note Off 0x8n, note, 0). A Note Off the render had no room
+ * for comes in the next one, at sample 0: none is lost. A patch change, a bypass or the transport stopping turns off the
+ * notes a Note Out left on. ENG_NOUT_EV: the most a render reports; a Note On takes one of the first ENG_NOUT_ON of them
+ * only, so the rest are always there for the Note Offs */
+#define ENG_NOUT_EV 8u
+#define ENG_NOUT_ON 4u
+uint32_t eng_note_out(uint32_t *off, uint32_t *pkt, uint32_t max);
 /* The global tempo (GLO > PANEL > TEMPO, D-907; engine.ts tempoGlobal): with one set, every patch plays at it and a load
  * leaves it (Main's tempo parameter shows it; the patch's own value comes back with eng_tempo_global(0)). Main's tempo
  * set with eng_set_param moves it (a knob, PLAY held + PRESET, the editor's PARAM). MIDI clock overrides it as before.

@@ -635,6 +635,7 @@ typedef struct {
         struct { int32_t v, c1; } sh;
         struct { uint32_t rnd, rnd0; uint8_t reg, pat, c1, r1; } shr;   /* Shift register: the flip stream and where a reset restarts it; the stages (s1 in bit 7), the pattern a reset restores, clock / reset high at the previous sample */
         struct { uint8_t hi; } cmp;   /* Comparator: gt is high */
+        struct { uint8_t hi; } nto;   /* Note Out: its gate is high (m_nout) */
         struct { float vac, y1, y2; int32_t t1; } lpg;   /* Low pass gate: the vactrol (0..1), the two one-poles (steps of Q16), strike at the previous sample */
         struct { float s1, s2, c[6]; int32_t key[4]; uint8_t ok; } eq;   /* EQ (#1107): the filter's two states (steps of Q16), its six numbers (eq_design), the shape, freq, gain and q they are for (ok: worked out) */
         struct { int32_t rem, t1; } pls;
@@ -1010,6 +1011,22 @@ static struct { uint32_t at; int32_t half; } click_ev[CLICK_EV];
 /* MIDI clock out (#473, eng_clock_out): the last eng_render's tempo ticks, their samples in it, the transport's edge in it */
 #define CKO_MAX 4u
 static struct { uint8_t n, run; int8_t edge; uint16_t off[CKO_MAX]; } cko;
+/* Note Out (D-1353, eng_note_out): the notes the Note Out modules hold on, all of them (each one's module, MIDI channel
+ * 0..15 and note; module NTO_LOST: its module is gone, the Note Off is due), and the messages of the last eng_render (each
+ * one's sample in it and USB MIDI packet). It lives outside the patch's memory, so a patch change still knows what to
+ * turn off. nto_load: eng_load counts it up, so the next render turns every held note off without reading the modules
+ * (they may be half built) */
+#define NTO_HELD 8u
+#define NTO_LOST 0xFFu
+static struct {
+    uint8_t n, nev;
+    uint16_t blk;                       /* the block's first sample in the render (m_nout's samples are the block's) */
+    uint8_t node[NTO_HELD], ch[NTO_HELD], note[NTO_HELD];
+    uint16_t off[ENG_NOUT_EV];
+    uint32_t pkt[ENG_NOUT_EV];
+} nto;
+static volatile uint8_t nto_load;
+static uint8_t nto_seen;
 static volatile uint16_t tempo_glo;   /* the global tempo (eng_tempo_global): bpm, 0 none, ENG_TEMPO_ADOPT the next patch's */
 static uint8_t tempo_moved;           /* eng_set_param or a load moved it (eng_tempo_moved) */
 static int32_t tempo_own;             /* the running patch's own tempo (Q16) while the global one plays */
@@ -2274,6 +2291,7 @@ int eng_load(const uint8_t *p, uint32_t len)
     fx.count = 0;
     for (i = 0; i < ENG_MAX_MODULES; i++) fx.target[i] = 0;
     load_generation++;
+    nto_load++;                                  /* (the notes a Note Out left on: off in the next render) */
     key_memory = 0;
     E.kev = E.kev_legacy; E.blk_thru = E.blk_legacy; E.rin = E.rin_legacy;
     E.stamp = 0;
@@ -2471,8 +2489,9 @@ int eng_load(const uint8_t *p, uint32_t len)
         }
         nd->ksrc = nd->type == T_DRUMMAP ? p[at] : 0u;   /* (checked once every module is read) */
         at += d->ndata;
-        /* the memories of delay, reverb, chorus, granular and the output exist once (patch.ts SHARED_TYPES) */
-        nd->grp = nd->type == T_DELAY || nd->type == T_REVERB || nd->type == T_CHORUS || nd->type == T_GRAIN || nd->type == T_OUTPUT || nd->type == T_ARP || nd->type == T_STEPS || nd->type == T_DRUMMAP || nd->type == T_HARM ? 0u : member[i];
+        /* the memories of delay, reverb, chorus, granular and the output exist once, and what plays rather than sounds
+         * (patch.ts SHARED_TYPES) */
+        nd->grp = nd->type == T_DELAY || nd->type == T_REVERB || nd->type == T_CHORUS || nd->type == T_GRAIN || nd->type == T_OUTPUT || nd->type == T_ARP || nd->type == T_STEPS || nd->type == T_DRUMMAP || nd->type == T_HARM || nd->type == T_NOUT ? 0u : member[i];
         {                                        /* its copies, from the arena's bottom (the spare until then) */
             int i0 = arena_inst(E.grp[nd->grp].parts);
             if (i0 < 0) {
@@ -12066,6 +12085,122 @@ HOT void apply_flaws(const node_t *nd, inst_t *it, uint32_t v)   /* (v: the part
 #undef FLAW_ENV
 }
 
+/* Note Out (D-1253, D-1353; modules.ts nout): a rising gate sends Note On, a falling one its Note Off, each reported with its
+ * sample (eng_note_out: clock_out.h sends it as that sample sounds). The work is out of line, in the functions below: an
+ * edge is rare, and the audio ISR's code in SRAM has no room for it (see clock_out.h co_transport). */
+/* the sample a message of channel ch's note `note` goes at: `at`, or later when this render already has a message of that
+ * note later (the Note Outs run one after another over the whole block, so a later one can find an earlier one's message
+ * after its own sample: a note's messages keep the order they were made in, the one state they were made from) */
+static uint32_t nto_when(uint32_t ch, uint32_t note, uint32_t at)
+{
+    uint32_t k;
+    for (k = 0; k < nto.nev; k++)
+        if ((nto.pkt[k] >> 8 & 0x0Fu) == ch && (nto.pkt[k] >> 16 & 0x7Fu) == note && nto.off[k] > at)
+            at = nto.off[k];
+    return at;
+}
+/* held note k's Note Off at sample `at` of the render: 1 sent (k is gone: the last one takes its place), 0 no room in
+ * this render (k is marked lost, so the next render's nto_sweep sends it at its first sample) */
+static __attribute__((noinline)) int nto_off(uint32_t k, uint32_t at)
+{
+    if (nto.nev >= ENG_NOUT_EV) {
+        nto.node[k] = NTO_LOST;
+        return 0;
+    }
+    nto.off[nto.nev] = (uint16_t)nto_when(nto.ch[k], nto.note[k], at);
+    nto.pkt[nto.nev++] = 0x08u | (0x80u | nto.ch[k]) << 8 | (uint32_t)nto.note[k] << 16;
+    nto.n--;
+    nto.node[k] = nto.node[nto.n];
+    nto.ch[k] = nto.ch[nto.n];
+    nto.note[k] = nto.note[nto.n];
+    return 1;
+}
+/* the held notes that `m` holds (m < NTO_LOST), or that sound channel ch's note `note` (m = NTO_LOST), off at sample `at`:
+ * 0 when one of them had no room */
+static int nto_off_match(uint32_t m, uint32_t ch, uint32_t note, uint32_t at)
+{
+    uint32_t k = 0;
+    int ok = 1;
+    while (k < nto.n)
+        if (m < NTO_LOST ? nto.node[k] == m : nto.ch[k] == ch && nto.note[k] == note) {
+            if (!nto_off(k, at)) {
+                ok = 0;
+                k++;
+            }
+        } else
+            k++;
+    return ok;
+}
+/* module nd's gate rose (hi) or fell at sample i of the block. A rise turns off what the module still holds and the same
+ * note on the same channel, then sends Note On: while there is room for it in this render's first ENG_NOUT_ON messages
+ * and in the held notes, so a Note Off always finds room. A fall turns off what the module holds. */
+static __attribute__((noinline)) void nto_edge(const node_t *nd, inst_t *it, uint32_t i, uint32_t hi)
+{
+    uint32_t m = (uint32_t)(nd - E.node), at = nto.blk + i, ch, note, vel = NOUT_VEL_DEFAULT;
+    int ok = nto_off_match(m, 0, 0, at);
+    if (!hi)
+        return;
+    ch = (uint32_t)clampi(round_q16(EF(it, NOUT_P_CHANNEL)), 1, 16) - 1u;
+    note = (uint32_t)clampi(round_q16(EF(it, NOUT_P_NOTE)), 0, 127);
+    if ((nd->conn >> NOUT_I_VEL) & 1u)
+        vel = (uint32_t)clampi((int32_t)(((int64_t)it->in[NOUT_I_VEL][i] * 127 + 32768) >> 16), 1, 127);
+    ok &= nto_off_match(NTO_LOST, ch, note, at);
+    if (!ok || nto.nev >= ENG_NOUT_ON || nto.n >= NTO_HELD)
+        return;
+    nto.off[nto.nev] = (uint16_t)nto_when(ch, note, at);
+    nto.pkt[nto.nev++] = 0x09u | (0x90u | ch) << 8 | note << 16 | vel << 24;
+    nto.node[nto.n] = (uint8_t)m;
+    nto.ch[nto.n] = (uint8_t)ch;
+    nto.note[nto.n++] = (uint8_t)note;
+}
+static void m_nout(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *g = it->in[NOUT_I_GATE];
+    uint32_t i, hi = it->s.nto.hi;
+    for (i = 0; i < n; i++)
+        if ((uint32_t)(g[i] >= 32768) != hi) {   /* (the gate inputs' level, as everywhere: 0.5) */
+            hi ^= 1u;
+            nto_edge(nd, it, i, hi);
+        }
+    it->s.nto.hi = (uint8_t)hi;
+}
+/* the render's start, while a Note Out holds a note: after a patch change every held note goes off; else each one whose
+ * module is gone, is no Note Out now or is bypassed, or was lost for room in the render before */
+static __attribute__((noinline)) void nto_sweep(void)
+{
+    uint32_t k = 0, all = nto_load != nto_seen;
+    nto_seen = nto_load;
+    while (k < nto.n) {
+        uint32_t m = nto.node[k];
+        if ((all || m >= E.nmod || E.node[m].type != T_NOUT || E.node[m].bypass) && nto_off(k, 0))
+            continue;
+        k++;
+    }
+}
+/* the transport stopped at sample `at` of the render: every held note off (a gate held high sends nothing more until it
+ * falls and rises again) */
+static __attribute__((noinline)) void nto_stop(uint32_t at)
+{
+    uint32_t k = 0;
+    while (k < nto.n)
+        if (!nto_off(k, at))
+            k++;
+}
+uint32_t eng_note_out(uint32_t *off, uint32_t *pkt, uint32_t max)
+{
+    uint32_t k, j, n = nto.nev < max ? nto.nev : max;
+    for (k = 0; k < n; k++) {                    /* (in the order of their samples; one sample's in the order made) */
+        uint32_t o = nto.off[k], p = nto.pkt[k];
+        for (j = k; j > 0 && off[j - 1u] > o; j--) {
+            off[j] = off[j - 1u];
+            pkt[j] = pkt[j - 1u];
+        }
+        off[j] = o;
+        pkt[j] = p;
+    }
+    return n;
+}
+
 /* a bypassed module: every output carries the through input (the definition's `thru`, e.g. the filter's `in`), or silence
  * for a module without one (an oscillator or envelope is muted). Its state is untouched, so it resumes where it stopped. */
 static void m_bypass(const node_t *nd, inst_t *it, uint32_t n)
@@ -12134,6 +12269,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_LIMIT: m_limit(nd, it, n); break;
     case T_EUCLID: m_euclid(nd, it, n); break;
     case T_EQ: m_eq(nd, it, n); break;
+    case T_NOUT: m_nout(nd, it, n); break;
     case T_ESP: m_esp(nd, it, n); break;
     case T_MATH: m_math(nd, it, n); break;
     case T_LOGIC: m_logic(nd, it, n); break;
@@ -12828,7 +12964,7 @@ static uint32_t sch_plan(sch_build_t *b, int rig, int keep, uint32_t *total)
         const node_t *nd = &E.node[m];
         for (v = 0; v < nd->ninst; v++) {
             uint32_t ix = nd->inst0 + v, best = 0, fin = 0, first = 1;
-            for (l = 0; l < (nd->type == T_STEPS ? 1u : 2u); l++) {
+            for (l = 0; l < (nd->type == T_STEPS || nd->type == T_NOUT ? 1u : 2u); l++) {
                 sch_acc_t a = {b, l, end[l], 0};
                 if (keep && l != LANE_OF(ix))
                     continue;
@@ -13239,6 +13375,12 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
     uint32_t off, i, k, v;
     cko.n = 0;
     cko.edge = 0;
+    nto.nev = 0;
+    nto.blk = 0;
+    if (ENG_RARELY(nto.n))                       /* (Note Out: what is left on and should not be) */
+        nto_sweep();
+    else
+        nto_seen = nto_load;                     /* (a patch change with nothing held: nothing to turn off) */
     click_k0 = click_k;                          /* (eng_click_mix: the click from here) */
     click_h0 = click_half;
     click_nev = 0;
@@ -13266,6 +13408,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         uint32_t n = total - off < ENG_BLOCK ? total - off : ENG_BLOCK;
         int32_t click_at = -1, accent = 0;
         const uint32_t bar = METER_BAR[meter], beat = METER_BEAT[meter];   /* the global time signature's (#1011) */
+        nto.blk = (uint16_t)off;
         ENG_PROF(4, 0, 0);
 #ifdef ENG_POISON
         poi_after(-1);
@@ -13328,6 +13471,8 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 cko.edge = (int8_t)((run ? 1 : -1) * (once_edge ? 2 : 1));
                 if (run && !clk_ext && cko.n < CKO_MAX)
                     cko.off[cko.n++] = (uint16_t)off;
+                if (!run && nto.n)               /* (Note Out: the notes it left on go off with the transport) */
+                    nto_stop(off);
             }
             E.running = run;
             once_edge = 0;
