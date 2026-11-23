@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.26.1 — 2026-11-23
 
 - Turning PRESET with HOME held while the palette overview or the quick start shows no longer leaves pieces of it between the next patch's bars: the screen is drawn whole (#1222).
 - **Halve a pattern: hold SEQ and press OCT- on the FM-1's SEQ page, or press `÷2` on a Steps card.** The shown pattern of every track becomes half as long (16 steps become 8, 15 become 7, down to 1). Its notes and P-locks stay as they are, as when you shorten LAST STEP: those past the new end wait unplayed. Pattern 1 halves the track's length; the track's other patterns keep theirs. The bar says `HALVED: 8 STEPS`; a track already at 1 step leaves everything as it was and the bar says `1 STEP MIN: NOT HALVED`. With Live on, a halve on the FM-1 is one undo step in the editor. Needs the next firmware for the FM-1 part ([D-841](docs/ledger/steps.md#D-841), #1223).
