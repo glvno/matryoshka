@@ -1201,6 +1201,7 @@ async function main() {
       await emu.turn(ENC.k4, -1);
       await check('patterns: K4 left: the editor plays the pattern again', !!(await until(async () => !(await seqOf()).song, 3000)));
       await emu.tap(B.scl);
+      const tracksOf = async () => JSON.parse(await patchJson()).modules.filter((m) => m.type === 'steps');
       // D-838: SEQ held + OCT+ doubles pattern 3 of every track; the editor doubles its copy too (PATTERN_OP op 4)
       await emu.key(B.seq, true);
       await emu.elapse(150);
