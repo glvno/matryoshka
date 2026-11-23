@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "version": "1.26.2",
+  "kind": "web-only release (D-1160), cut from main (D-1173)",
+  "firmware_product": "FM-1_7012601",
+  "source_commit": "e13adda56c8886f8b7111200335da5a7ffaa4db1",
+  "source_branch": "main",
+  "source_tree": "430c7bac78ca768290e3249f94992669eb4de8c9",
+  "status": "automated checks passed; awaiting the owner's go for publication",
+  "release_approval": {
+    "status": "pending",
+    "scope": "Publication of v1.26.2 on e13adda5 + this record and its coverage, with v1.26.1's firmware package, screen font and factory region."
+  },
+  "plan": "D-1173 (owner 2026-11-23: release the palette/preset fix first, ahead of the FX drawer)",
+  "contents": [
+    "Add to palette saves the presets and the exact patch the FM-1 needs (PR #1235, issue #1234, D-1240)",
+    "ARP after a deleted Arpeggiator puts one back where it was, one row per instrument (PR #1231, D-1336)",
+    "Library › Presets names a Hera 6 preset's instrument Hera 6 (PR #1230)",
+    "v1.26.1 listed among the released factory sets (PR #1233)",
+    "freeze: version 1.26.2, CHANGELOG heading, D-1173 (PR #1238)"
+  ],
+  "bundled_firmware": {
+    "release": "v1.26.1",
+    "package": {
+      "name": "web/public/firmware/matryoshka.fwsc",
+      "size": 610628,
+      "sha256": "b2d0c182a43744469610963c7d955fe3663e5e40151c6d35bd0c9983be3177a0"
+    },
+    "check": "D-1160 check 1: matryoshka.fwsc, matryoshka.json, matryoshka-font.bin (528f1926), matryoshka-factory.bin and factory-sets.json are byte-identical to the v1.26.1 tag's (git diff v1.26.1 e13adda5 is empty for each)"
+  },
+  "factory_content": "unchanged from v1.26.1 (version 21, set f81fee, layout 4): the image is byte-identical; no CPU survey, no slot upgrade",
+  "ci_runs": {
+    "web_rc": 45250915601,
+    "freeze_pr": 1238
+  },
+  "full_web": {
+    "rc_run": 45250915601,
+    "run_success": true,
+    "result": "D-1160 check 2: the editor suite in rc mode (test job, the slow-render jobs and the coverage seal, D-1157) passed on e13adda5",
+    "coverage_record": "release/coverage/v1.26.2: current, measured on e13adda5 (D-147)"
+  },
+  "full_scenarios": {
+    "passed": 415,
+    "failed": 0,
+    "seconds": 734,
+    "on_tree": "430c7bac78ca768290e3249f94992669eb4de8c9",
+    "on_bridge_sha256": "afbf8abfb6df4cba38bd1e081cf0ad3486118831f1ff4f35e6b4f769f9fb1d7b",
+    "note": "D-1160 check 3: emu:scenarios on v1.26.1's release bridge (release run 45212769767), the per-PR scenarios of D-1158 left out"
+  },
+  "not_run": "firmware build, emu:smoke, the test rig and the full device check: the firmware is 1.26.1's, already qualified (release/qualification/v1.26.1.json; D-1160)",
+  "owner_checks": {
+    "status": "pending",
+    "steps": "D-1160 check 4: Add to palette with a preset only in this browser onto the rig on 1.26.1, switch to it on the FM-1 and hear it; ARP after deleting Hera 6's Arpeggiator; Library › Presets names Hera 6"
+  }
+}
