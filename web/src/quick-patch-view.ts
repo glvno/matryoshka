@@ -1022,12 +1022,14 @@ export class QuickPatch {
   private settle(): void {
     const ed = this.ed;
     const view = document.getElementById('canvas')?.getBoundingClientRect();
-    if (!view || !this.made.length) return;
-    const away = this.made.some((card) => {
+    // (an effect made in a drawer shows with its instrument: the drawer it went into closes again, so it is not brought in)
+    const made = this.made.filter((card) => cardExists(this.patch, card) && !drawerOfCard(this.patch, card));
+    if (!view || !made.length) return;
+    const away = made.some((card) => {
       const r = ed.cardScreenRect(card);
       return !!r && (r.right < view.left || r.left > view.right || r.bottom < view.top || r.top > view.bottom);
     });
-    if (away) ed.showRects(this.made.flatMap((card) => ed.cardRect(card) ?? []));
+    if (away) ed.showRects(made.flatMap((card) => ed.cardRect(card) ?? []));
   }
 }
 
