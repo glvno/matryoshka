@@ -141,7 +141,7 @@ export interface PalettePorts {
     orderPalette(from: readonly (number | null)[]): Promise<void>;
     goPalette(pos: number | null): Promise<Ack>;
     readBank(): Promise<SlotInfo[]>;
-    uploadSlot(slot: number, name: string, patch: Patch): Promise<void>;
+    uploadSlot(slot: number, name: string, patch: Patch): Promise<unknown>;
   };
   /** this browser's patches that can be an entry's copy (bank.ts bankCandidates) */
   candidates(): Candidate[];
