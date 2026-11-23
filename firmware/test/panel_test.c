@@ -5203,6 +5203,68 @@ int main(void)
         check("patterns fixture loads again", load_fixture("build/panel-fixtures/steps-patterns.m1p") == 0);
         pv_gen++;
     }
+    /* the double (D-838): SEQ held + OCT+ makes the selected pattern of every track twice as long, its steps repeated, on
+     * the press; OCT+'s release changes neither the octave nor the step page, SEQ's leaves the page. Running, the tracks
+     * go on where they are. Refused (the patch's bytes, 64 steps), nothing changes and the editor is not told */
+    {
+        uint32_t told = host_op_told, p, pg;
+        int m0 = eng_steps_module(0), m1 = eng_steps_module(1), l0, l1, n0, oct = octave, pos0, pos1;
+        const uint32_t *w;
+        char want[28];
+        if (page != PAGE_SEQ)
+            page_set(PAGE_SEQ);
+        loop();
+        p = (uint32_t)eng_pattern();
+        l0 = eng_steps_len((uint32_t)m0);
+        l1 = eng_steps_len((uint32_t)m1);
+        n0 = eng_pattern_notes((uint32_t)m0, p, &w);
+        pg = seq_pg;
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        tap(BTN_OCT_UP);
+        loop();
+        check("SEQ held + OCT+: every track's pattern twice as long, the first's notes twice; the editor told (PATTERN_OP "
+              "double)", eng_steps_len((uint32_t)m0) == 2 * l0 && eng_steps_len((uint32_t)m1) == 2 * l1
+              && eng_pattern_notes((uint32_t)m0, p, &w) == 2 * n0 && host_op_told == told + 1u && host_op_last[0] == 4u && host_op_last[1] == p);
+        snprintf(want, sizeof want, "%s%d%s", MSG_DOUBLED, 2 * (l0 > l1 ? l0 : l1), MSG_STEPS_AFTER);
+        check("  the bar: DOUBLED: <the longest track> STEPS", strstr(msg_text, want) != 0);
+        check("  OCT+'s release: the octave and the step page stay", octave == oct && seq_pg == pg);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        loop();
+        check("  SEQ let go: the SEQ page stays", page == PAGE_SEQ);
+        tap(BTN_PLAY);
+        blocks(300);
+        pos0 = eng_steps_pos((uint32_t)m0);
+        told = host_op_told;
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        host_patterns_room = 0;
+        tap(BTN_OCT_UP);
+        loop();
+        host_patterns_room = 1;
+        check("the patch has no room: PATCH FULL: NOT DOUBLED, nothing changes, the editor not told", eng_steps_len((uint32_t)m0) == 2 * l0
+              && strstr(msg_text, MSG_DOUBLE_FULL) != 0 && host_op_told == told);
+        tap(BTN_OCT_UP);
+        blocks(1);
+        pos1 = eng_steps_pos((uint32_t)m0);
+        check("doubled while playing: the transport goes on, the track where it was", eng_transport_running() && eng_steps_len((uint32_t)m0) == 4 * l0
+              && pos0 >= 0 && pos1 >= pos0 && pos1 < 2 * l0);
+        while (eng_steps_len((uint32_t)m0) <= 32 && eng_steps_len((uint32_t)m1) <= 32)
+            tap(BTN_OCT_UP);
+        l0 = eng_steps_len((uint32_t)m0);
+        told = host_op_told;
+        tap(BTN_OCT_UP);
+        loop();
+        check("  past 64 steps: 64 STEPS MAX: NOT DOUBLED, nothing changes", eng_steps_len((uint32_t)m0) == l0
+              && strstr(msg_text, MSG_DOUBLE_STEPS) != 0 && host_op_told == told);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        tap(BTN_PLAY);
+        loop();
+        check("patterns fixture loads again", load_fixture("build/panel-fixtures/steps-patterns.m1p") == 0);
+        pv_gen++;
+    }
     {   /* the demo set (#1179): the factory 808 Kit ships empty; SEQ held + SEL asks, SEL again loads its set */
         uint32_t told;
         const uint32_t *w;

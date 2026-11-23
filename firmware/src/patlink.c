@@ -296,21 +296,18 @@ static const uint8_t *pl_row_more(uint32_t m, uint32_t j)
     return 0;
 }
 
-/* a payload loaded into pattern p of the running patch (pattern-store.ts applyPayload): each track gets the payload's
- * entry for it (notes, and for p >= 1 its length and rate); a track without one no longer has p (pattern 1: no notes).
- * p's locks are replaced, by the payload's only in the same layout. 0 done, 1 done with the locks left out (another
- * layout), -1 malformed, -2 no room for all of it */
-static int pl_apply(uint32_t p, const uint8_t *b, uint32_t len)
+/* the tracks' entries of a checked payload into pattern p (pl_apply's first half): each track gets its entry's notes (and
+ * for p >= 1 its length and rate); a track without one no longer has p (pattern 1: no notes). *at: from the first entry
+ * to the locks' count; *got: the tracks that had an entry (bit t). 0 done, -2 no room for all the notes */
+static int pl_apply_notes(uint32_t p, const uint8_t *b, uint32_t *at, uint32_t *got)
 {
     uint32_t w[TRACK_NOTES_MAX];
-    uint32_t nt = (uint32_t)eng_steps_count(), T, at = 6, t, n, j, k, c, sh, m, got = 0;
+    uint32_t nt = (uint32_t)eng_steps_count(), T = b[5], t, n, j, sh, m;
     int rc = 0;
-    if (pl_check(b, len))
-        return -1;
-    T = b[5];
+    *got = 0;
     for (t = 0; t < T || t < nt; t++) {
         m = (uint32_t)eng_steps_module(t);
-        n = t < T ? b[at++] : 0xFFu;
+        n = t < T ? b[(*at)++] : 0xFFu;
         if (n == 0xFFu) {
             if (t < nt && p)
                 eng_pattern_drop(m, p);
@@ -318,19 +315,32 @@ static int pl_apply(uint32_t p, const uint8_t *b, uint32_t len)
                 (void)eng_pattern_set_notes(m, 0, w, 0);
             continue;
         }
-        sh = b[at] & 0x80u;
+        sh = b[*at] & 0x80u;
         for (j = 0; j < n; j++) {
-            const uint8_t *x = b + at + 2u + j * (sh ? 2u : 4u);
+            const uint8_t *x = b + *at + 2u + j * (sh ? 2u : 4u);
             uint32_t v = sh ? (uint32_t)x[0] | (uint32_t)x[1] << 8 : pl_rd32(x);
             w[j] = sh ? NW(v & 15u, ((v >> 4) & 15u) + 1u, (v >> 8) & 127u, (v & 0x8000u) ? ACCENT_VEL : STEP_VEL, 0u) : v;
         }
         if (t < nt && !eng_pattern_set_notes(m, p, w, n))
             rc = -2;
         else if (t < nt && p)
-            (void)eng_pattern_shape(m, p, b[at] & 0x7Fu, b[at + 1u]);
-        got |= t < 32u ? 1u << t : 0u;
-        at += 2u + n * (sh ? 2u : 4u);
+            (void)eng_pattern_shape(m, p, b[*at] & 0x7Fu, b[*at + 1u]);
+        *got |= t < 32u ? 1u << t : 0u;
+        *at += 2u + n * (sh ? 2u : 4u);
     }
+    return rc;
+}
+
+/* a payload loaded into pattern p of the running patch (pattern-store.ts applyPayload): each track gets the payload's
+ * entry for it (pl_apply_notes). p's locks are replaced, by the payload's only in the same layout. 0 done, 1 done with
+ * the locks left out (another layout), -1 malformed, -2 no room for all of it */
+static int pl_apply(uint32_t p, const uint8_t *b, uint32_t len)
+{
+    uint32_t nt = (uint32_t)eng_steps_count(), at = 6, t, n, j, k, c, m, got;
+    int rc;
+    if (pl_check(b, len))
+        return -1;
+    rc = pl_apply_notes(p, b, &at, &got);
     eng_locks_clear(p);
     n = b[at++];
     if (n && pl_rd32(b + 1) != pl_layout())
@@ -833,6 +843,186 @@ static void pl_clear_all(void)
     (void)m1_patterns_fit();
     m1_origins_drop();
     m1_edited = 1;
+}
+
+/* ---- the SEQ page's double (D-838): web/src/pattern-ops.ts doublePattern on the running patch */
+
+/* the length of pattern p on module m's track: its own, else the track's (pattern 1 has none) */
+static uint32_t pl_len(uint32_t m, uint32_t p)
+{
+    int l = p ? eng_pattern_len(m, p) : 0;
+    return l > 0 ? (uint32_t)l : (uint32_t)clampi(round_q16(eng_get_param(m, STEPS_P_LEN)), 1, TRACK_STEPS);
+}
+/* a pattern's n words on len steps doubled (pattern-ops.ts doubled) into out (0: only counted), their count: steps
+ * len..2len-1 become a copy of steps 0..len-1, the words from step 2len on stay. A note that ran past the end keeps the
+ * length it sounded for (the first copy without its tie, the second with it); a drone stays one. A note's condition and
+ * timing words go with it */
+static uint32_t pl_doubled(const uint32_t *w, uint32_t n, uint32_t len, uint32_t *out)
+{
+    uint32_t i, g, k, o = 0, at, x, e, a, b;
+    for (i = 0; i < n; i += g) {
+        for (g = 1; i + g < n && !NW_VEL(w[i + g]); g++)
+            ;
+        at = NW_AT(w[i]);
+        if (at >= 2u * len || (at < len && eng_note_drone(w[i]))) {
+            for (k = 0; k < g; k++, o++)
+                if (out)
+                    out[o] = w[i + k];
+            continue;
+        }
+        if (at >= len)
+            continue;
+        x = w[i];
+        a = x;
+        b = x + len;                             /* (the start is the low six bits of every word: 2len <= 64) */
+        if (at + NW_LEN(x) > len) {
+            e = (x & ENG_NOTE_WRAP) ? (NW_LEN(x) < len ? NW_LEN(x) : len) : len - at;
+            a = (x & ~(ENG_NOTE_WRAP | 63u << 6)) | (e - 1u) << 6;
+            b = ((x & ~(63u << 6)) | (e - 1u) << 6) + len;
+        }
+        if (out) {
+            out[o] = a;
+            out[o + g] = b;
+            for (k = 1; k < g; k++) {
+                out[o + k] = w[i + k];
+                out[o + g + k] = w[i + k] + len;
+            }
+        }
+        o += 2u * g;
+    }
+    return o;
+}
+/* a double's undoing from the payload b (n bytes) pl_double took before it: each track's notes, length and rate of p
+ * (a track that had not got p loses it), and p's locks on the steps the double wrote (all of them on such a track) gone,
+ * the payload's there back. len[t]: track t's length before, has[t]: it had p, was[t]: its length parameter before,
+ * pin[t]: its patterns that took the track's length as their own (p 0) */
+static void pl_undouble(uint32_t p, const uint8_t *b, const uint8_t *len, const uint8_t *has, const int32_t *was, const uint64_t *pin)
+{
+    uint8_t lk[7u * ENG_PAT_LOCKS];
+    uint32_t nt = (uint32_t)eng_steps_count(), at = 6, got, t, m, q, j, c, k, nl, lo, hi;
+    int r;
+    (void)pl_apply_notes(p, b, &at, &got);
+    nl = b[at++];
+    for (t = 0; t < nt; t++) {
+        m = (uint32_t)eng_steps_module(t);
+        if (!p) {
+            eng_set_param(m, STEPS_P_LEN, was[t]);
+            for (q = 1; q < ENG_PATTERNS; q++)
+                if (pin[t] >> q & 1u) {
+                    r = eng_pattern_rate(m, q);
+                    (void)eng_pattern_shape(m, q, 0, r < 0 ? 0xFFu : (uint32_t)r);
+                }
+        }
+        lo = has[t] ? len[t] : 0u;
+        hi = has[t] ? 2u * len[t] : TRACK_STEPS;
+        c = (uint32_t)eng_locks_list(m, p, lk, sizeof lk);
+        for (j = 0; j < c; j++)
+            if (lk[7u * j] >= lo && lk[7u * j] < hi)
+                (void)eng_lock_set(m, p, lk[7u * j], lk[7u * j + 1u], lk[7u * j + 2u], 0, 0, 0);
+        for (k = 0, q = at; k < nl; k++, q += 2u + 7u * b[q + 1u])   /* (a lock the double dropped comes back last) */
+            for (j = 0; b[q] == t && j < b[q + 1u]; j++) {
+                const uint8_t *x = b + q + 2u + 7u * j;
+                if (x[0] >= lo && x[0] < hi)
+                    (void)eng_lock_set(m, p, x[0], x[1], x[2], pl_row_more(x[1], x[2]), (int32_t)pl_rd32(x + 3), 1);
+            }
+    }
+}
+/* pattern p of every track doubled (pattern-ops.ts doublePattern, D-838) in the engine and the running binary: 0 done
+ * (*longest: the longest new length), -1 a track would pass TRACK_STEPS, -2 a pattern TRACK_NOTES_MAX words or the patch
+ * ENG_MAX_NOTES, -3 a pattern ENG_PAT_LOCKS locks or the patch ENG_MAX_LOCKS, -4 the binary has no room. Refused,
+ * nothing changes. Pattern 1 doubles the track's length, and the track's other patterns on the track's length get it as
+ * their own; a track without p gets it first from its pattern 1 (D-542). Links and origins stay: a linked pattern is no
+ * longer clean (pl_hash), as after an edit. The playhead goes on where it is */
+static int pl_double(uint32_t p, uint32_t *longest)
+{
+    uint32_t w[TRACK_NOTES_MAX];
+    uint8_t lk[7u * ENG_PAT_LOCKS], len[ENG_MAX_TRACKS], has[ENG_MAX_TRACKS];
+    int32_t was[ENG_MAX_TRACKS];
+    uint8_t rn[ENG_MAX_TRACKS];                  /* (each track's record's parameters before: m1_track_fit's undoing) */
+    uint64_t pin[ENG_MAX_TRACKS];
+    uint32_t nt = (uint32_t)eng_steps_count(), t, m, q, j, n, c, k, L, sp, words = 0, locks = (uint32_t)eng_locks_count(), most = 0;
+    uint32_t bad = 0;                            /* (bit 1 notes, bit 2 locks) */
+    const uint32_t *src;
+    pl_out_t s = { m1_up, sizeof m1_up, 0, PT_FNV0 };
+    int ok = 1, r;
+    for (t = 0; t < nt; t++) {
+        m = (uint32_t)eng_steps_module(t);
+        has[t] = (uint8_t)(!p || eng_pattern_has(m, p));
+        len[t] = (uint8_t)pl_len(m, has[t] ? p : 0u);
+        if (2u * len[t] > TRACK_STEPS)
+            return -1;
+        for (q = 0; q < ENG_PATTERNS; q++)
+            if (!q || eng_pattern_has(m, q))
+                words += (uint32_t)eng_pattern_notes(m, q, &src);
+    }
+    for (t = 0; t < nt; t++) {
+        m = (uint32_t)eng_steps_module(t);
+        sp = has[t] ? p : 0u;
+        n = (uint32_t)eng_pattern_notes(m, sp, &src);
+        k = pl_doubled(src, n, len[t], 0);
+        bad |= k > TRACK_NOTES_MAX ? 2u : 0u;
+        words += k - (has[t] ? n : 0u);
+        c = (uint32_t)eng_locks_list(m, sp, lk, sizeof lk);
+        for (j = k = 0; j < c; j++)
+            k += lk[7u * j] >= 2u * len[t] ? 1u : lk[7u * j] < len[t] ? 2u : 0u;
+        bad |= k > ENG_PAT_LOCKS ? 4u : 0u;
+        locks += k - (has[t] ? c : 0u);
+    }
+    if ((bad & 2u) || words > ENG_MAX_NOTES)
+        return -2;
+    if ((bad & 4u) || locks > ENG_MAX_LOCKS)
+        return -3;
+    pl_encode(p, &s);                            /* (what undoes it) */
+    if (s.n > s.cap)
+        return -4;
+    for (t = 0; t < nt; t++) {
+        m = (uint32_t)eng_steps_module(t);
+        L = len[t];
+        sp = has[t] ? p : 0u;
+        r = has[t] && p ? eng_pattern_rate(m, p) : -1;
+        pin[t] = 0;
+        was[t] = eng_get_param(m, STEPS_P_LEN);
+        rn[t] = (uint8_t)m1_track_npar(m);
+        c = (uint32_t)eng_locks_list(m, sp, lk, sizeof lk);
+        n = (uint32_t)eng_pattern_notes(m, sp, &src);
+        n = pl_doubled(src, n, L, w);
+        ok &= eng_pattern_set_notes(m, p, w, n) != 0;
+        if (p)
+            (void)eng_pattern_shape(m, p, 2u * L, r < 0 ? 0xFFu : (uint32_t)r);
+        else {
+            for (q = 1; q < ENG_PATTERNS; q++)
+                if (eng_pattern_has(m, q) && !eng_pattern_len(m, q)) {
+                    r = eng_pattern_rate(m, q);
+                    (void)eng_pattern_shape(m, q, L, r < 0 ? 0xFFu : (uint32_t)r);
+                    pin[t] |= (uint64_t)1u << q;
+                }
+            eng_set_param(m, STEPS_P_LEN, (int32_t)(2u * L) << 16);
+        }
+        for (j = 0; j < c; j++) {                /* the locks: those on L..2L-1 go, those on 0..L-1 copied L steps on */
+            const uint8_t *x = lk + 7u * j;
+            if (has[t] && x[0] >= L && x[0] < 2u * L)
+                (void)eng_lock_set(m, p, x[0], x[1], x[2], 0, 0, 0);
+            else if (!has[t] && (x[0] < L || x[0] >= 2u * L))
+                ok &= eng_lock_set(m, p, x[0], x[1], x[2], 0, (int32_t)pl_rd32(x + 3), 1) == 0;
+        }
+        for (j = 0; j < c; j++)
+            if (lk[7u * j] < L)
+                ok &= eng_lock_set(m, p, lk[7u * j] + L, lk[7u * j + 1u], lk[7u * j + 2u], 0, (int32_t)pl_rd32(lk + 7u * j + 3u), 1) == 0;
+        most = 2u * L > most ? 2u * L : most;
+    }
+    ok = ok && m1_patterns_fit();
+    for (t = 0; ok && !p && t < nt; t++)
+        ok = m1_track_fit((uint32_t)eng_steps_module(t), -1);
+    if (ok) {
+        m1_edited = 1;
+        *longest = most;
+        return 0;
+    }
+    pl_undouble(p, m1_up, len, has, was, pin);
+    (void)m1_patterns_fit();
+    for (t = 0; !p && t < nt; t++)
+        (void)m1_track_fit((uint32_t)eng_steps_module(t), (int)rn[t]);
+    return -4;
 }
 
 /* ---- the demo sets (#1179): a factory patch's patterns, links, songs and pattern 1 origins as it shipped up to 1.24.1,
