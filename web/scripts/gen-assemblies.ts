@@ -12,7 +12,6 @@ import { clap, drum, DRUM1_FM, DRUM1_HZ, DRUM2_FM, DRUM2_HZ, hihat, kick, multi,
 import { columnLabel, rowLabel } from './vcs3-board';
 import { updateLineage } from './lineage-lib';
 import { junoDef } from './xl/hera-6';
-import { masterFxDef } from './master-fx';
 
 const OUT = new URL('../src/assemblies/', import.meta.url);
 /** the touch plates of 8 Lire and Elvira 2: the white keys from F3 (the drum kits' rows, gen-presets.ts KIT_NOTES); their
@@ -5445,8 +5444,6 @@ asm('EQ', 'Effects', (b) => {
   b.param('gain', hi, 'gain', { col: true, head: 'high', inner: 'high gain' });
   b.param('freq', hi, 'freq', { inner: 'high freq' });
 });
-
-defs.push(masterFxDef());
 
 // an exposed pin is offered as the sliders it routes to (the editor has no p1 / p2 jacks): the same migration as on load
 for (const d of defs) {
