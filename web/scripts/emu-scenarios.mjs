@@ -2659,6 +2659,15 @@ async function main() {
       // a clean palette: each full chip's × (one empty PUT each)
       await page.evaluate(() => { for (const x of document.querySelectorAll('#snap-column .pal-x')) x.click(); });
       await check('palette editor: × empties every position', !!(await until(async () => (await pal()).chips.every((c) => c.state === 'empty'), 6000)), JSON.stringify((await pal()).chips.map((c) => c.state)));
+      // another program on the computer asks the FM-1 HELLO (a second editor window, m1_link.py): after any HELLO the FM-1
+      // sends PALETTE_NOW unasked only once asked again, so the editor reads the palette again on the INFO it hears (the
+      // 1.26.3 candidate's gate lost every chip update after such a HELLO, #1196); the checks below need the chips to follow
+      const before = await sentSince(0).then((s) => s.filter((x) => x[0] === 0x1e && x[1] === 0).length);
+      await page.evaluate(async () => {
+        const a = await navigator.requestMIDIAccess({ sysex: true });
+        for (const o of a.outputs.values()) if (/FM-1|Matryoshka/i.test(o.name ?? '')) o.send([0xf0, 0x7d, 0x4d, 0x31, 0x01, 0xf7]);
+      });
+      await check('palette editor: another program\'s HELLO: the editor reads the palette again (GET)', !!(await until(async () => (await sentSince(0)).filter((x) => x[0] === 0x1e && x[1] === 0).length > before, 3000)));
       // Add to palette in Commands: the current patch into position 1
       await page.keyboard.down('Control'); await page.keyboard.press('k'); await page.keyboard.up('Control');
       await page.waitForSelector('#commands[open]', { timeout: 3000 }).catch(() => {});
