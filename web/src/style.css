@@ -1286,6 +1286,8 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .fx-drawer.under .fx-row { flex-wrap: wrap; }
 .fx-row > .module { position: relative; z-index: 2; left: auto; top: auto; flex: none; }
 .fx-card.lifting { z-index: 9; box-shadow: 0 8px 20px var(--shadow); opacity: .92; pointer-events: none; }
+.fx-drawer.dragging { clip-path: none; }
+.fx-drawer.dragging > svg.fx-layer { overflow: visible; }
 .fx-card .mhead { cursor: grab; }
 .fx-card .mhead > .grip { color: var(--muted); letter-spacing: -2px; flex: none; contain: none; overflow: visible; font-size: 13px; }
 .mtag.fx.fx-own { background: color-mix(in srgb, var(--tag-fx) 22%, transparent); }
