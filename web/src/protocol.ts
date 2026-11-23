@@ -166,7 +166,8 @@
 //                                                    op 1 pattern `from` of every track copied to `to` (SEQ held + SAVE), op 2
 //                                                    every pattern and song cleared (SEQ held + HOME); hash 0 for both; op 3
 //                                                    the patch's demo set loaded (SEQ held + SEL, then SEL, #1179,
-//                                                    demo-sets.ts): hash = the set's region record hash, from 0 and to 0
+//                                                    demo-sets.ts): hash = the set's region record hash, from 0 and to 0; op
+//                                                    4 pattern `from` of every track doubled (SEQ held + OCT+, D-838), to 0
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
 //               feature bit 8, bit3 GLO > SYSTEM > EDITOR at IGNORE: with feature bit 19, #702), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
@@ -527,7 +528,7 @@ export function parsePadsNow(payload: number[]): PadMap | null {
 /** INFO feature bit 30 (byte 14 bit 6, #1177, #1178): the FM-1 reports the SEQ page's pattern commands (PATTERN_OP) */
 export const FEATURE_PATTERN_OP = 1 << 30;
 /** PATTERN_OP's id and ops */
-export const PATTERN_OP = { report: 0x65, copy: 1, clearAll: 2, demoSet: 3 } as const;
+export const PATTERN_OP = { report: 0x65, copy: 1, clearAll: 2, demoSet: 3, double: 4 } as const;
 /** a PATTERN_OP payload, null when short */
 export function parsePatternOp(payload: number[]): { op: number; from: number; to: number; hash: number } | null {
   if (payload.length < 7) return null;

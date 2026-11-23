@@ -85,8 +85,9 @@ enum { C_PADS = 0x1D, R_PADS_NOW = 0x64 };                  /* the global pad ma
                                                              * + note u8 (0xFF: none) to set a row, 0xFE to clear every row, 0xFD
                                                              * + on u8 for PAD MAP; -> PADS_NOW on u8, then the 24 rows' notes,
                                                              * also unasked after a change on the FM-1 */
-enum { R_PATTERN_OP = 0x65 };                               /* unasked (#1177, #1178): the SEQ page copied a pattern or cleared every
-                                                             * pattern and song; op u8, from u8, to u8, hash u32 LE (m1_pattern_op_now) */
+enum { R_PATTERN_OP = 0x65 };                               /* unasked (#1177, #1178, #1179, D-838): the SEQ page copied a pattern,
+                                                             * cleared every pattern and song, loaded the demo set or doubled the
+                                                             * pattern; op u8, from u8, to u8, hash u32 LE (m1_pattern_op_now) */
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
 #define M1_FEATURES3 255u                                      /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549), bit 19 = INFO's flags bit 3 says GLO > SYSTEM > EDITOR (#702), bit 20 = ARMS, the editor's armed set (#191), bit 21 = ARMS and ARMS_NOW carry ENG_MSET_WORDS words, modules 0..127 (#721; INFO byte 1 says 128), bit 22 = device settings, bit 23 = explicit factory pattern origins / snapshots */
@@ -767,6 +768,49 @@ static void m1_patch_patterns(void)
 static int m1_patterns_fit(void)
 {
     return m1_steps_sec(ENG_SEC_PATTERNS) && (m1_cur[1] < 49u ? !eng_locks_count() : m1_steps_sec(ENG_SEC_LOCKS));
+}
+/* the parameters a track's record holds (m1_track_fit's npar: what a double that is undone trims it back to) */
+static uint32_t m1_track_npar(uint32_t mod)
+{
+    uint32_t at = m1_record(mod);
+    return at ? eng_rec_npar(m1_cur, at) : 0u;
+}
+/* a track's pattern 1 and its length as the engine has them into the binary (a double of pattern 1, D-838), saying
+ * whether both went in: 0 when it could not hold them (the caller undoes the engine's change and writes it again, with
+ * npar). npar: the parameters the record held before (m1_track_npar), to which a record the double grew goes back, the
+ * ones after them at their defaults again; -1 none */
+static int m1_track_fit(uint32_t mod, int npar)
+{
+    const uint32_t *w;
+    int32_t v = eng_get_param(mod, STEPS_P_LEN);
+    int n = eng_pattern_notes(mod, 0, &w), i;
+    uint32_t at, sec, cnt, k;
+    m1_patch_track(mod);
+    m1_patch_param(mod, STEPS_P_LEN, v);
+    at = m1_record(mod);
+    if (npar >= 0 && at && m1_cur[1] >= ENG_COUNTED && !(m1_cur[6] & 1u) && (k = eng_rec_npar(m1_cur, at)) > (uint32_t)npar) {   /* (no morph B set) */
+        m1_splice(at + 2u + 4u * (uint32_t)npar, 4u * (k - (uint32_t)npar), 0);
+        m1_cur[at + 1u] = (uint8_t)((m1_cur[at + 1u] & ~ENG_REC_COUNT) | (uint32_t)npar);
+        return 1;
+    }
+    if (n < 0 || !at || STEPS_P_LEN >= eng_rec_npar(m1_cur, at))
+        return 0;
+    at += eng_rec_head(m1_cur[1]) + 4u * STEPS_P_LEN;
+    if (((uint32_t)m1_cur[at] | (uint32_t)m1_cur[at + 1u] << 8 | (uint32_t)m1_cur[at + 2u] << 16 | (uint32_t)m1_cur[at + 3u] << 24) != (uint32_t)v)
+        return 0;
+    sec = (m1_cur[6] & 16u) ? m1_notes_at() : 0u;    /* (the notes section's entry for it holds the engine's words) */
+    cnt = sec ? m1_cur[sec++] : 0u;
+    for (; cnt && m1_cur[sec] != mod; cnt--)
+        sec += 2u + 4u * m1_cur[sec + 1u];
+    if (!cnt)
+        return !n;
+    if (m1_cur[sec + 1u] != (uint32_t)n)
+        return 0;
+    for (i = 0; i < n; i++)
+        if (((uint32_t)m1_cur[sec + 2u + 4u * (uint32_t)i] | (uint32_t)m1_cur[sec + 3u + 4u * (uint32_t)i] << 8
+             | (uint32_t)m1_cur[sec + 4u + 4u * (uint32_t)i] << 16 | (uint32_t)m1_cur[sec + 5u + 4u * (uint32_t)i] << 24) != w[i])
+            return 0;
+    return 1;
 }
 
 /* Origin event (0x5A): six bytes, module/pattern/u32 LE identity. Module 255 with

@@ -24,7 +24,7 @@ import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, NAME_MAX, pageLa
 import { cableRole } from './cable-role';
 import { addBreak, fm1Name, layoutOf, moveRows, moveSection, pagesOf, removeBreak, removeHeading, removeRows, renameHeading, rowKey, setLayout, type KnobOf, type Layout, type RowSpot, type Sec } from './arrange';
 import type { ParameterValues } from './engine';
-import { delayRoom, deviceBudget, deviceSection, DEVICE, LINE_TYPES, lineBudget, linesAdvice, mapRecord, mapSource } from './patchbin';
+import { delayRoom, deviceBudget, deviceSection, DEVICE, encodedSize, LINE_TYPES, lineBudget, linesAdvice, mapRecord, mapSource } from './patchbin';
 import { PATTERN_OP, type MapEntry } from './protocol';
 import { applyDemoSet } from './demo-sets';
 import { demoSetFor } from './presets';
@@ -83,7 +83,7 @@ import { SongView } from './song';
 import type { PatternView } from './engine';
 import { fixLocks, fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternLocks as patternLocksOf, patternOf, SONGS_MAX, type Pattern, type PatternLink, type SeqState, type SongEntry, type StepLock, type StepNote } from './track';
 import { applyPayload, type LocksLoaded } from './pattern-store';
-import { clearAllPatterns as clearAllPatternsIn, copyPattern as copyPatternIn, nextEmptyPattern as nextEmptyAfter, patternsEmpty } from './pattern-ops';
+import { clearAllPatterns as clearAllPatternsIn, copyPattern as copyPatternIn, doublePattern as doublePatternIn, nextEmptyPattern as nextEmptyAfter, patternsEmpty, type DoubleRefusal } from './pattern-ops';
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
 import { addPresetOf, applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, rememberedPreset, replaceUserPresets, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset, type Preset } from './device-presets';
 import { snapshotPreset } from './snapshot-presets';
@@ -325,6 +325,9 @@ const DOCK_SHORT: Record<string, string> = { vel: 'vel', at: 'aft' };
 
 /** the status line when the FM-1 loaded a demo set other than the one this editor has for the patch (PATTERN_OP op 3, #1179) */
 export const DEMO_SET_OUTDATED = "The FM-1's factory content needs updating for its demo set: install the factory sounds from the Flash tab.";
+/** the status line when ×2 changes nothing (D-838): the FM-1 bar's words (firmware/src/messages.h MSG_DOUBLE_*) */
+export const DOUBLE_REFUSED: Record<DoubleRefusal, string> = { steps: '64 STEPS MAX: NOT DOUBLED', notes: 'TOO MANY NOTES TO DOUBLE', locks: 'TOO MANY P-LOCKS TO DOUBLE' };
+export const DOUBLE_FULL = 'PATCH FULL: NOT DOUBLED';
 
 export class Editor {
   /** Refreshed from the active device; offline editing uses conservative memory admission. */
@@ -1411,6 +1414,7 @@ export class Editor {
         this.refreshStrips();
       },
       copy: (from, to) => this.copyPattern(from, to),
+      double: () => this.doublePatterns(),
       nextEmpty: (from) => this.nextEmptyPattern(from),
       clearAll: () => this.clearAllPatterns(),
       empty: () => patternsEmpty(this.patch),
@@ -1724,10 +1728,25 @@ export class Editor {
     this.ev.onStructure(this.patch);
     this.patternShown();
   }
-  /** the FM-1's SEQ page ran a pattern command (PATTERN_OP, #1177, #1178, #1179): the same here, an undo step, not sent
-   *  back (main.ts marks it). op 1: pattern `from` copied to `to`, which is selected; op 2: everything cleared; op 3: the
-   *  patch's demo set loaded when the FM-1's (`hash`) is the one this editor has, else the status line says to update the
-   *  FM-1's factory sounds */
+  /** the shown pattern (`p`) of every Steps track doubled (pattern-ops.ts doublePattern, D-838): an undo step, and the
+   *  status line says DOUBLED: 32 STEPS (the longest track). Refused, nothing changes and the status line says why, as the
+   *  FM-1's bar does; a double the FM-1 ran (`fromDevice`) is not checked against the patch bytes (it fitted there) */
+  doublePatterns(p = this.pattern, fromDevice = false): void {
+    const trial = structuredClone(this.patch);
+    const r = doublePatternIn(trial, p);
+    if ('refused' in r) return this.ev.onError(DOUBLE_REFUSED[r.refused]);
+    if (!fromDevice && encodedSize(trial) > Math.max(DEVICE.bytes, encodedSize(this.patch))) return this.ev.onError(DOUBLE_FULL);
+    this.touch();
+    doublePatternIn(this.patch, p);
+    this.ev.onStructure(this.patch);
+    this.rebuild();
+    this.refreshStrips();
+    this.ev.onError(`DOUBLED: ${r.len} STEPS`);
+  }
+  /** the FM-1's SEQ page ran a pattern command (PATTERN_OP, #1177, #1178, #1179, D-838): the same here, an undo step, not
+   *  sent back (main.ts marks it). op 1: pattern `from` copied to `to`, which is selected; op 2: everything cleared; op 3:
+   *  the patch's demo set loaded when the FM-1's (`hash`) is the one this editor has, else the status line says to update
+   *  the FM-1's factory sounds; op 4: pattern `from` of every track doubled */
   patternOpFromDevice(op: number, from: number, to: number, hash = 0): void {
     if (op === PATTERN_OP.copy && from >= 0 && from < PATTERNS_MAX && to > 0 && to < PATTERNS_MAX) {
       this.copyPattern(from, to);
@@ -1736,7 +1755,7 @@ export class Editor {
     else if (op === PATTERN_OP.demoSet) {
       if (demoSetFor(this.patch)?.hash === hash) this.loadDemoSet();
       else this.ev.onError(DEMO_SET_OUTDATED);
-    }
+    } else if (op === PATTERN_OP.double && from >= 0 && from < PATTERNS_MAX) this.doublePatterns(from, true);
   }
   /** the open song drawer (song.ts), if any */
   songView: SongView | null = null;

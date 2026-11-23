@@ -384,6 +384,8 @@ static void m1_pattern_op_now(uint32_t op, uint32_t from, uint32_t to, uint32_t 
 #endif
 static int host_patterns_room = 1;                   /* (panel_test.c: 0, the binary has no room: a copy is refused) */
 static int m1_patterns_fit(void) { return host_patterns_room; }   /* (the preview keeps no patch) */
+static uint32_t m1_track_npar(uint32_t mod) { (void)mod; return 0; }   /* (a double of pattern 1, D-838: the preview keeps no patch) */
+static int m1_track_fit(uint32_t mod, int npar) { (void)mod; (void)npar; return host_patterns_room; }
 static void m1_origins_drop(void)                    /* (clear all, #1178: every origin of the previewed binary cleared) */
 {
     uint32_t at = eng_origins_at(pv_bin, pv_len), end = at ? eng_origins_end(pv_bin, pv_len, at) : 0;
