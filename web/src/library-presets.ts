@@ -5,37 +5,41 @@
 // ← (into this browser) and Delete (on the FM-1, asks first). Moving is explicit: nothing syncs here (D-325).
 import { PRESET_NEEDS_UPDATE, type DeviceLink } from './device';
 import { FACTORY } from './assemblies';
-import { addUserPreset, deletePreset, importPresets, presetsFor, PRESETS_FORMAT, renamePreset, sameName, shortPresetText, userPresets, type Preset } from './device-presets';
+import { addUserPreset, deletePreset, factoryDrawerPresets, importPresets, presetsFor, PRESETS_FORMAT, renamePreset, sameName, shortPresetText, userPresets, type Preset } from './device-presets';
 import { devicePresetName, type DevicePresetEntry } from './protocol';
 import { defStructure, structureOf } from './structure';
 import { showUndo } from './toast';
 import type { LibrarySection } from './bank';
-import { fxPresetStructure } from './fx-preset-format';
-import { soleInstrument } from './fx-preset';
+import { drawerPresetInfo } from './fx-preset-format';
 import { FM1_PRESETS } from './presets';
+import { parentOf } from './assembly';
 
 let engineNames: Map<string, string> | undefined;
 
 /** which factory instrument a structure is, by name; '' when it is the user's own. A factory patch's instrument goes by the
  *  patch's name, as the bank shows it (its library engine may differ: the Hera 6 patch's is the library's Hera 4 at six
- *  voices, one structure, D-873); then each factory assembly by its own. With any master FX rack, "<name> + FX". */
-export function engineOf(structure: string): string {
+ *  voices, one structure, D-873); then each factory assembly by its own. A preset of an instrument with its FX drawer
+ *  (its values end in the FXD1 footer, or it is a factory one) is "<name> with FX". */
+export function engineOf(structure: string, values?: readonly number[]): string {
   if (!engineNames) {
     const names = new Map<string, string>();
-    const add = (base: string, name: string): void => {
-      if (names.has(base)) return;
-      names.set(base, name);
-      for (let mask = 1; mask < 16; mask++) {
-        const scoped = fxPresetStructure(base, mask);
-        if (!names.has(scoped)) names.set(scoped, `${name} + FX`);
-      }
-    };
+    const add = (base: string, name: string): void => void (names.has(base) || names.set(base, name));
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
-      const p = make(), id = soleInstrument(p), a = p.assemblies?.find((x) => x.id === id);
-      if (a) add(structureOf(p, a), name);
+      const p = make();
+      const instruments = (p.assemblies ?? []).filter((a) => !parentOf(p, a.id) && !a.chain && !a.drawer && a.modules.length);
+      if (instruments.length === 1) add(structureOf(p, instruments[0]), name);
     }
     for (const def of FACTORY) add(defStructure(def), def.name);
+    for (const def of FACTORY) for (const pr of factoryDrawerPresets(defStructure(def))) {
+      const fx = drawerPresetInfo(pr), base = fx && names.get(fx.baseStructure);
+      if (base && !names.has(pr.structure)) names.set(pr.structure, `${base} with FX`);
+    }
     engineNames = names;
+  }
+  const fx = values && drawerPresetInfo({ values });
+  if (fx) {
+    const base = engineNames.get(fx.baseStructure);
+    return base ? `${base} with FX` : '';
   }
   return engineNames.get(structure) ?? '';
 }
@@ -69,7 +73,7 @@ export function buildPresetsSection(root: HTMLElement, device: DeviceLink, ev: P
 
   const ready = (): boolean => device.connected && device.hasPresets && !busy && !!onFm1;
   const onDevice = (p: Preset): DevicePresetEntry | undefined => onFm1?.find((e) => e.structure === p.structure && sameName(e.name, devicePresetName(p.name)));
-  const label = (structure: string): string => engineOf(structure) || 'your assembly';
+  const label = (structure: string, values?: readonly number[]): string => engineOf(structure, values) || 'your assembly';
   /** a mark on one of the FM-1's presets with fewer values than its engine has rows (stored before 1.8.2, D-858) */
   const short = (e: DevicePresetEntry): HTMLElement[] => {
     const rows = presetsFor(e.structure).find((x) => x.factory)?.values.length ?? 0;
@@ -102,16 +106,16 @@ export function buildPresetsSection(root: HTMLElement, device: DeviceLink, ev: P
   };
 
   const refresh = (): void => {
-    const by = (a: Preset, b: Preset): number => label(a.structure).localeCompare(label(b.structure)) || a.name.localeCompare(b.name, undefined, { numeric: true });
+    const by = (a: Preset, b: Preset): number => label(a.structure, a.values).localeCompare(label(b.structure, b.values)) || a.name.localeCompare(b.name, undefined, { numeric: true });
     const mine = userPresets().sort(by);
     mineCount.textContent = `${mine.length} preset${mine.length === 1 ? '' : 's'}`;
     mineEl.replaceChildren(...(mine.length ? mine.map((p) => el('div', { class: 'bank-row' },
       el('span', { class: 'grow', textContent: p.name }),
-      el('span', { class: 'muted', textContent: label(p.structure) }),
+      el('span', { class: 'muted', textContent: label(p.structure, p.values) }),
       el('button', { textContent: 'Rename', title: `rename "${p.name}"`, onclick: () => {
         const to = window.prompt(`Rename the preset "${p.name}" to:`, p.name)?.trim();
         if (!to || to === p.name) return;
-        status.textContent = renamePreset(p.structure, p.name, to) ? `"${p.name}" is now "${to}"` : `"${to}" is taken for this ${label(p.structure)}`;
+        status.textContent = renamePreset(p.structure, p.name, to) ? `"${p.name}" is now "${to}"` : `"${to}" is taken for this ${label(p.structure, p.values)}`;
         ev.changed();
         refresh();
       } }),
@@ -129,7 +133,7 @@ export function buildPresetsSection(root: HTMLElement, device: DeviceLink, ev: P
             return;
           }
           const had = onDevice(p);
-          if (had && !window.confirm(`The FM-1 has a preset "${had.name}" for ${label(p.structure)}. Replace it with this browser's?`)) return;
+          if (had && !window.confirm(`The FM-1 has a preset "${had.name}" for ${label(p.structure, p.values)}. Replace it with this browser's?`)) return;
           void run('Sending', async () => {
             await device.putPreset(p.structure, p.name, p.values);
             onFm1 = await device.listPresets();
@@ -188,7 +192,7 @@ export function buildPresetsSection(root: HTMLElement, device: DeviceLink, ev: P
     el('div', { class: 'lib-cols' },
       el('section', { class: 'card lib-col', ariaLabel: 'In this browser' },
         el('h2', {}, el('span', { class: 'mtag src', textContent: 'MINE' }), 'In this browser', mineCount),
-        el('p', { class: 'muted', textContent: 'Your saved sounds. A sole instrument with a master FX rack also stores the rack’s controls and on/off states. Those presets require the same instrument structure and rack stages.' }),
+        el('p', { class: 'muted', textContent: 'Your saved sounds. A preset of an instrument with an FX drawer holds the drawer too: its effects in order, their controls and whether each is on. The FM-1 offers one only where the instrument and its drawer match.' }),
         mineEl,
       ),
       el('section', { class: 'card lib-col', ariaLabel: 'FM-1' },
