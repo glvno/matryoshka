@@ -133,7 +133,7 @@ enum { C_FONT = 0x1F, R_FONT_SUM = 0x68 };                  /* the font area (#6
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
 #define M1_FEATURES3 255u                                      /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549), bit 19 = INFO's flags bit 3 says GLO > SYSTEM > EDITOR (#702), bit 20 = ARMS, the editor's armed set (#191), bit 21 = ARMS and ARMS_NOW carry ENG_MSET_WORDS words, modules 0..127 (#721; INFO byte 1 says 128), bit 22 = device settings, bit 23 = explicit factory pattern origins / snapshots */
 #define M1_FEATURES4 253u                                     /* INFO byte 14, feature bits 24..31: bit 24 = complete FX-scoped preset recall; bit 25 = the pattern store is on (#901: PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW, format 59's links; m1_pat_info sets it); bit 26 = the factory region (#915, D-490: FACT_INFO, FACT_BEGIN, FACT_WRITE, FACT_SUM, FACT_READ, FACT_COMMIT); bit 27 = MASTER_EQ (#1107); bit 28 = MIDI learn (#1067: MAP, MAP_NOW, the mapping section after the macro ranges); bit 29 = the global pad map (#1067: PADS, PADS_NOW); bit 30 = PATTERN_OP (#1177, #1178: the SEQ page's copy and clear all); bit 31 = the palette (#1196: PALETTE, PALETTE_NOW, PALETTE_ENTRY; the last free bit: later features go in M1_FEATURES5) */
-#define M1_FEATURES5 5u                                       /* INFO byte 25, the feature bits from 1.26 on (bytes 20..24 are the font area's, #1203): bit 0 = a top-level card with a Steps track inside is that track's device (the device extras name the card itself: SEQ, the environment, P-locks and SEL treat it as the track, pages_ui.c pg_track_mod; #1202 K2, D-1062); bit 1 = every saved patch keeps its patterns 2..64 in the store (m1_pat_info sets it, #1202); bit 2 = SLOT_GET and PAT's kept flag (flags bit 1; #1202 P2) */
+#define M1_FEATURES5 13u                                      /* INFO byte 25, the feature bits from 1.26 on (bytes 20..24 are the font area's, #1203): bit 0 = a top-level card with a Steps track inside is that track's device (the device extras name the card itself: SEQ, the environment, P-locks and SEL treat it as the track, pages_ui.c pg_track_mod; #1202 K2, D-1062); bit 1 = every saved patch keeps its patterns 2..64 in the store (m1_pat_info sets it, #1202); bit 2 = SLOT_GET and PAT's kept flag (flags bit 1; #1202 P2); bit 3 = format 66's FX rack and the FX drawer presets (FXD1, #1214) */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_INFO_EDITOR_IGNORE 8u                             /* INFO byte 3 (flags) bit 3: GLO > SYSTEM > EDITOR is at IGNORE, the
                                                               * editor leaves this FM-1 alone (with feature bit 19, #702) */
@@ -234,7 +234,8 @@ static void m1_slot_now(uint32_t slot, const char *name)
  * from it (the FONT command), bit 1 the area holds that font, bit 2 an install began and did not commit, bit 3 no room for
  * it (a bank of more than 48 patches keeps its sectors); bytes 21..24: the id of the font it needs (u32 LE, the image's
  * CRC-32). Byte 25: feature bits 32..39 (M1_FEATURES5; bit 33: every saved patch keeps its patterns 2..64 in the store,
- * #1202; bit 34: SLOT_GET and PAT's kept flag). Older firmware ends at byte 19 and has its type compiled in. */
+ * #1202; bit 34: SLOT_GET and PAT's kept flag; bit 35: the FX rack and FX drawer presets, #1214). Older firmware ends at
+ * byte 19 and has its type compiled in. */
 static void m1_info(void)
 {
     uint8_t p[26] = { 0 };
@@ -542,14 +543,11 @@ static void m1_patch_bypass(uint32_t mod, int on)
     m1_edited = 1;
 }
 
-/* where the macro ranges start in binary p, or would start (past the master FX bus), 0 if a section before is malformed */
+/* where the macro ranges start in binary p, or would start (past the FX rack or master FX bus), 0 if a section before is malformed */
 static uint32_t m1_ranges_at(const uint8_t *p, uint32_t len)
 {
     uint32_t at = eng_section_at(p, len, ENG_SEC_FX);
-    const uint8_t *next;
-    if (!at || at > len || !(next = eng_skip_fx(p + at, p + len, (uint16_t)((uint16_t)p[6] | (uint16_t)p[7] << 8))))
-        return 0;
-    return (uint32_t)(next - p);
+    return at && at <= len ? eng_rack_end(p, len, at) : 0u;
 }
 
 /* a patch binary that eng_load would at least not reject for its framing: header, record sizes add up to the length */
