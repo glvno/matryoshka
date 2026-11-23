@@ -7,7 +7,7 @@ import { resizeHandle } from './resize-handle';
 import { FINE, parseValue, stepOf, stepToward, wholeSteps } from './value-input';
 import { isTextEntry } from './input';
 import { lockOf } from './relevance';
-import { clearAround, isPile, tidy, tidyAssembly } from './tidy';
+import { clearAround, isPile, pushAside, tidy, tidyAssembly } from './tidy';
 import { breedPatch, cardScope, ENVELOPES, isLocked, MUTATE_DEFAULT, MUTATE_SKIP, mutatePatch, setParamLock, type Category, type MutateMode, type MutateOptions, type MutateScope } from './mutate';
 import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS, rowRange } from './modules';
 import { FIXED_BUTTONS, setBy, type Range } from './patch';
@@ -116,6 +116,7 @@ import { EXCLUDED_TYPES,
   demote,
   depthOf,
   descendants,
+  deviceModules,
   exposePort,
   findRef,
   fixAssemblies,
@@ -1011,7 +1012,7 @@ export class Editor {
     // an assembly's badge: the voice count of the poly assembly it is (or is inside), else none
     const voicesOf = new Map(polyGroups(this.patch).map((g) => [g.asm.id, g.cfg.parts]));
     const perVoice = (a: AssemblyInst): number => {
-      const first = allModules(this.patch, a)[0];
+      const first = deviceModules(this.patch, a)[0];
       const root = first === undefined ? undefined : polyOfModule(this.patch, first);
       return root ? voicesOf.get(root.id) ?? 0 : 0;
     };
@@ -3518,7 +3519,7 @@ export class Editor {
     const levels = (b: AssemblyInst): number => (b.open ? 1 + Math.max(0, ...childrenOf(this.patch, b).map(levels)) : 0);
     const n = levels(top);
     if (!n) return;
-    const ms = allModules(this.patch, top).map((id) => this.patch.modules.find((m) => m.id === id)).filter((m): m is ModuleInst => !!m);
+    const ms = deviceModules(this.patch, top).map((id) => this.patch.modules.find((m) => m.id === id)).filter((m): m is ModuleInst => !!m);
     if (!ms.length) return;
     const room = n * (FRAME_PAD + FRAME_HEAD) + 8;
     const ys = Math.min(...ms.map((m) => m.y));
@@ -5455,7 +5456,7 @@ export class Editor {
     // an effect's chain jacks in a drawer: the drawer wires them (dashed purple), a cable onto one is refused
     if (inDrawer && a.chain) {
       const mark = (refs: PortRef[], idx: readonly number[], dir: 'in' | 'out'): void => {
-        for (const i of idx) if (refs[i]) el.querySelector(`.dot[data-mod="${refs[i].module}"][data-port="${refs[i].port}"][data-dir="${dir}"]`)?.classList.add('chain');
+        for (const i of idx) if (refs[i]) body.querySelector(`.dot[data-mod="${refs[i].module}"][data-port="${refs[i].port}"][data-dir="${dir}"]`)?.classList.add('chain');
       };
       mark(a.inputs, a.chain.ins, 'in');
       mark(a.outputs, a.chain.outs, 'out');
@@ -5626,6 +5627,7 @@ export class Editor {
     const open = (): void => {
       this.setDrawerOpen(v.d.id, true);
       this.ev.onLayout(this.patch);
+      this.clearForDrawer(v.d.id);
     };
     p.addEventListener('pointerdown', (e) => e.stopPropagation());   // (no rubber band from it)
     p.addEventListener('click', (e) => {
@@ -5901,6 +5903,35 @@ export class Editor {
     if (!el || still) return this.rebuild();
     el.classList.add('shut');
     window.setTimeout(() => { if (!assemblyById(this.patch, drawerId)?.open) this.rebuild(); }, FX_SLIDE_MS + 10);
+  }
+
+  /** once a drawer the user opened has slid out: the cards it covers move aside (as an expanded assembly's frame pushes
+   *  them, tidy.ts pushAside), so their jacks stay in reach; one undo step */
+  private clearForDrawer(drawerId: number): void {
+    window.setTimeout(() => {
+      const v = this.drawerViews.get(drawerId);
+      if (!v?.drawer?.isConnected) return;
+      const before = this.mark();
+      const own = ownerOf(this.patch, v.d);
+      const inAsm = new Set(assembliesOf(this.patch).flatMap((a) => a.modules));
+      const docked = this.docked();
+      const rect = (el: HTMLElement): Rect => ({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight });
+      const items: { r: Rect; move: (dx: number, dy: number) => void }[] = [];
+      for (const m of this.patch.modules) {
+        const el = this.cards.get(m.id);
+        if (el && el !== v.host && m !== docked && !inAsm.has(m.id)) items.push({ r: rect(el), move: (dx, dy) => { m.x += dx; m.y += dy; } });
+      }
+      for (const a of assembliesOf(this.patch)) {
+        const el = a.open ? this.frames.get(a.id) : this.containers.get(a.id);
+        if (el && a !== own && !a.drawer && !parentOf(this.patch, a.id)) items.push({ r: rect(el), move: (dx, dy) => moveAssembly(this.patch, a, dx, dy) });
+      }
+      pushAside(rect(v.drawer), items.map((it) => it.r)).forEach((r, k) => {
+        if (r.x !== items[k].r.x || r.y !== items[k].r.y) items[k].move(r.x - items[k].r.x, r.y - items[k].r.y);
+      });
+      if (!this.commit(before)) return;
+      this.rebuild();
+      this.ev.onLayout(this.patch);
+    }, FX_SLIDE_MS + 40);
   }
 
   /** what a card drag can put into a drawer: one audio effect on its own (a module, or an assembly at the top level) */
@@ -7748,7 +7779,7 @@ export class Editor {
     for (const v of armDrawing(this.patch, this.armedSet).virtual) {
       const jack = this.inputJack(v.to);
       // (the jack on a collapsed card, else the device's card: a Steps track's grid, a module's or an assembly's card)
-      const card = this.containers.get(assembliesOf(this.patch).find((a) => allModules(this.patch, a).includes(v.to.module))?.id ?? -1)
+      const card = (this.containers.get(assembliesOf(this.patch).find((a) => deviceModules(this.patch, a).includes(v.to.module))?.id ?? -1) ?? this.embeds.get(drawers(this.patch).flatMap((d) => effectsOf(this.patch, d)).find((e) => allModules(this.patch, e).includes(v.to.module))?.id ?? -1))
         ?? this.stepGrids.get(v.to.module)?.el ?? this.cards.get(v.to.module);
       const to = [jack, card].find((e) => e?.isConnected && e.offsetParent !== null);
       if (!to) continue;
@@ -8138,8 +8169,9 @@ export class Editor {
       // (a closed drawer's effects: their cables end on its plug)
       const a = this.outputJack(c.from, c.to) ?? this.fxAnchors.get(c.from.module);
       const b = this.inputJack(c.to) ?? (thumbs.length ? undefined : this.fxAnchors.get(c.to.module));
-      if (a && a === b) continue;
-      a?.classList.add('connected'); b?.classList.add('connected');
+      // (both ends inside the same closed drawer: its own wiring, hidden with it)
+      if ((a && a === b) || (this.fxAnchors.has(c.from.module) && this.fxAnchors.get(c.from.module) === this.fxAnchors.get(c.to.module))) continue;
+      for (const j of [a, b]) if (j?.classList.contains('dot')) j.classList.add('connected');
       for (const { jack } of thumbs) jack.classList.add('connected');
       if (!a) continue;
       const src = this.patch.modules.find((m) => m.id === c.from.module)!;

@@ -1287,7 +1287,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .fx-row > .module { position: relative; z-index: 2; left: auto; top: auto; flex: none; }
 .fx-card.lifting { z-index: 9; box-shadow: 0 8px 20px var(--shadow); opacity: .92; pointer-events: none; }
 .fx-card .mhead { cursor: grab; }
-.fx-card .mhead .grip { color: var(--muted); letter-spacing: -2px; flex: none; }
+.fx-card .mhead > .grip { color: var(--muted); letter-spacing: -2px; flex: none; contain: none; overflow: visible; font-size: 13px; }
 .mtag.fx.fx-own { background: color-mix(in srgb, var(--tag-fx) 22%, transparent); }
 .fx-slot { position: relative; z-index: 2; align-self: flex-end; width: 150px; height: 38px; display: flex; align-items: center; justify-content: center; gap: 6px; flex: none;
   border: 1.5px dashed color-mix(in srgb, var(--tag-fx) 65%, transparent); border-radius: 8px; background: transparent; color: var(--tag-fx); cursor: pointer;
@@ -2415,6 +2415,8 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .qp-sec.off { opacity: .28; cursor: default; }
 .qp-sec text { fill: var(--ink); font: 500 11.5px/1 'Barlow', system-ui, sans-serif; text-anchor: middle; pointer-events: none; }
 .qp-sec.more text { fill: var(--muted); }
+/* under a jack's name: `chain` for an FX drawer's chain jack, `after FX` / `into FX` for a jack its drawer stands behind */
+.qp-sec text.qp-sub { font-size: 9.5px; fill: var(--muted); }
 .qp-kind { fill: none; stroke: var(--audio); stroke-width: 1.4; }
 .qp-kind.control { stroke: var(--control); } .qp-kind.gate { stroke: var(--gate); } .qp-kind.keys { stroke: var(--ink); }
 .qp-kind.cabled { fill: currentColor; color: var(--audio); }
