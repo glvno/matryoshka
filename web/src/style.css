@@ -2490,11 +2490,12 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fxlib-panel .sbody { gap: 4px; }
 .fxlib-chip-group { font: var(--cap); font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-top: 2px; }
 .fxlib-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.fxlib-chips .fxlib-chip { min-height: 22px; padding: 1px 8px; border-radius: 11px; border: 1px solid color-mix(in srgb, var(--tag-fx) 45%, var(--line)); background: transparent; font-size: 12px; cursor: grab; touch-action: none; }
-.fxlib-chip:hover { background: color-mix(in srgb, var(--tag-fx) 12%, transparent); }
+.sidebar .fxlib-chips button.fxlib-chip { min-height: 22px; padding: 1px 8px; border-radius: 11px; border: 1px solid color-mix(in srgb, var(--tag-fx) 55%, var(--line)); background: transparent; color: var(--ink); font-size: 12px; cursor: grab; touch-action: none; }
+.sidebar .fxlib-chips button.fxlib-chip:hover { background: color-mix(in srgb, var(--tag-fx) 16%, transparent); border-color: var(--tag-fx); color: var(--ink); filter: none; }
 .fxlib-hint { margin: 2px 0 0; font-size: 11.5px; }
 .fxlib-drag-label { background: var(--tag-fx); }
 dialog.commands li.cmd-also { padding: 5px 10px 5px 86px; color: var(--muted); font-size: 12.5px; }
 dialog.commands li.cmd-also kbd { margin-left: auto; color: var(--muted); font: 11px/1 'Barlow', system-ui, sans-serif; }
 dialog.commands li.cmd-also:hover { background: var(--surface-tint); color: var(--ink); }
 @media (max-width: 700px) { dialog.commands li.cmd-also { padding-left: 24px; } }
+.commands-filters[hidden] { display: none; }

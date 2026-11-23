@@ -2340,6 +2340,7 @@ const openCommands = (query = '', scope: { drawer: number; at: number } | null =
   const drawer = scope && assembliesOf(editor.patch).find((a) => a.id === scope.drawer);
   cmdScope = drawer ? scope : null;
   cmdInput.placeholder = drawer ? `Add an effect to ${drawerName(editor.patch, ownerTarget(editor.patch, drawer))}` : cmdPlaceholder;
+  cmdDialog.querySelector<HTMLElement>('.commands-filters')!.hidden = !!drawer;   // (scoped to a drawer: effects only)
   cmdDialog.showModal();
   prefill(query);
 };
