@@ -2,13 +2,13 @@
 // @vitest-environment jsdom
 // #1054: with Live on, the FM-1's LFO (a switching Toggle on Monolith D's Harmony, D-888) striped the Harmony card's header
 // but left its ⏻ as it was: a press from the FM-1 (main.ts mirrorInput), the dock or MIDI CC 80..86 toggled only the card's
-// class, and the card's own ⏻ left the dock's light alone. Every bypass now goes through Editor.setBypass (or setFxStage),
-// which changes the patch and redraws every view of it: each card's stripes and ⏻, each assembly's, the master FX bus
-// card's stage switches and dimmed rows, and the dock's Toggle lights.
+// class, and the card's own ⏻ left the dock's light alone. Every bypass now goes through Editor.setBypass, which changes
+// the patch and redraws every view of it: each card's stripes and ⏻, each assembly's, the effect cards in an open FX drawer
+// and the drawer's own ⏻, and the dock's Toggle lights.
 import { describe, expect, it, vi } from 'vitest';
 import { setSwitches, setTarget } from './buttons';
 import { Editor, type EditorEvents } from './editor';
-import { fxBusOf } from './fx-bus';
+import { drawers } from './fx-drawer';
 import { editorCc } from './input';
 import { PANEL_BUTTONS } from './modules';
 import type { Patch } from './patch';
@@ -108,21 +108,25 @@ describe('a bypass from the FM-1 changes the card’s ⏻ with its stripes (#105
     expect(light('lfo')).toBe('false');
   });
 
-  it('an FX stage as the Toggle’s target: the bus card’s stage switch and rows follow, and the FM-1’s FX page the same', () => {
-    const { editor } = setup((p) => setTarget(p, 'lfo', { asm: asmNamed(p, 'Delay').id }));
+  it('an effect in an FX drawer as the Toggle’s target: its card in the open drawer follows, and the drawer’s ⏻ keeps it', () => {
+    const { editor } = setup((p) => {
+      setTarget(p, 'lfo', { asm: asmNamed(p, 'Delay').id });
+      for (const d of drawers(p)) d.open = true;
+    });
     const delay = asmNamed(editor.patch, 'Delay');
-    const bus = fxBusOf(editor.patch)!;
-    const sw = () => document.querySelector(`.fx-stages button.fx-stage[data-asm="${delay.id}"]`)!;
-    const rows = () => [...document.querySelectorAll<HTMLElement>(`.module.assembly[data-asm="${bus.assembly}"] .param[data-mod]`)].filter((r) => delay.modules.includes(Number(r.dataset.mod)));
-    expect(rows().length).toBeGreaterThan(0);
-    expect([sw().getAttribute('aria-pressed'), rows().every((r) => r.classList.contains('stage-off'))]).toEqual(['false', true]);
+    const drawer = drawers(editor.patch)[0];
+    const pw = () => document.querySelector(`.fx-drawer[data-drawer="${drawer.id}"] > .fx-dh button.pw`)!;
+    expect(container(delay.id)!.closest('.fx-drawer')).not.toBeNull();
+    const before = shown(container(delay.id));
     fromFm1(editor, LFO);
-    expect(delay.bypass).toBeFalsy();
-    expect([sw().getAttribute('aria-pressed'), sw().classList.contains('on'), rows().some((r) => r.classList.contains('stage-off'))]).toEqual(['true', true, false]);
-    const was = sw();
-    editor.setFxStage(bus.stages.find((s) => s.kind === 'delay')!, false);   // (main.ts: the FM-1's FX page, D-966)
-    expect(sw()).toBe(was);
-    expect([sw().getAttribute('aria-pressed'), rows().every((r) => r.classList.contains('stage-off'))]).toEqual(['false', true]);
+    expect(shown(container(delay.id))).toEqual(before.off ? onView : offView);
+    // the drawer's ⏻ off and on again: the effect's own state comes back
+    const mid = shown(container(delay.id));
+    editor.setBypass([], true, drawer);
+    expect(pw().getAttribute('aria-pressed')).toBe('false');
+    editor.setBypass([], false, drawer);
+    expect(pw().getAttribute('aria-pressed')).toBe('true');
+    expect(shown(container(delay.id))).toEqual(mid);
   });
 
   it('a Toggle that acts while held shows its target off while it is down, ⏻ and all', () => {
