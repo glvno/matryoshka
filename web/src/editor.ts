@@ -87,7 +87,7 @@ import { addPresetOf, applyPreset, capturePreset, deletePreset, drawerChangeText
 import { snapshotPreset } from './snapshot-presets';
 import { engineOf } from './library-presets';
 import { drawerScope } from './fx-preset';
-import { effectsOf as drawerEffects, outputDrawer } from './fx-drawer';
+import { effectsOf, outputDrawer } from './fx-drawer';
 import { PRESET_VALUES_MAX } from './protocol';
 import { fxBusOf, type FxBus, type FxStage } from './fx-bus';
 import { setFxStageEnabled } from './fx-preset';
@@ -5224,8 +5224,9 @@ export class Editor {
     const items: MenuItem[] = list.map(pr => {
       const view = presetView(this.patch, a, pr, scope);
       const change = view && !view.noFx ? drawerChangeText(view.adds, view.removes) : '';
-      const tail = !view ? '' : view.noFx ? ' · no FX: instrument only, your drawer stays'
-        : ` · ${view.chain.length ? view.chain.join(', ') : 'no effects'}${change ? ` · ${change}` : ''}`;
+      const lit = view ? view.chain.filter((_, i) => view.on[i]) : [];
+      const tail = !view ? '' : view.noFx ? ' · no FX · instrument only, your drawer stays'
+        : ` · ${!view.chain.length ? 'empty drawer' : lit.length ? lit.join(', ') : 'all effects off'}${change ? ` · ${change}` : ''}`;
       return { text: `${pr === cur ? '● ' : ''}${pr.name}${pr.factory ? ' (factory)' : ''}${tail}`, run: () => this.loadPreset(a, pr) };
     });
     for (const u of unloadable) items.push({ text: `${u.preset.name} · cannot be loaded`, run: () => this.ev.onError(`${a.label}: preset "${u.preset.name}" cannot be loaded. ${u.reason}.`) });
@@ -5276,7 +5277,7 @@ export class Editor {
       what.push(el('p', `This ${named(a)}’s controls only.`), el('p', `Loads onto any ${a.name || named(a)}, in any FX drawer or on the canvas. Leaves the instrument and the rest of the chain alone.`, 'muted'));
     } else if (scope) {
       const out = outputDrawer(p);
-      const shared = out ? drawerEffects(p, out).map(named) : [];
+      const shared = out ? effectsOf(p, out).map(named) : [];
       what.push(el('p', `${a.label} with its FX drawer, as one sound.`),
         el('p', scope.effects.length ? `The drawer: ${scope.effects.map(named).join(', ')}.` : 'The drawer is empty, and loading this preset empties it again.'),
         el('p', `${out ? `Not stored: the Output drawer${shared.length ? ` (${shared.join(', ')})` : ''}, which belongs to the patch. ` : ''}${values} of ${PRESET_VALUES_MAX} values.${tooMany ? ' That is too many to store: take an effect out of the drawer first.' : ''}`, 'muted'));

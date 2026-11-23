@@ -13,7 +13,7 @@ import { applyPresetPattern, clearPresetPattern } from './preset-patterns';
 import { migrationRank, movePreset } from './preset-migrate';
 import { rowOrder, structureOf } from './structure';
 import { applyDrawerValues, checkDrawerPreset, currentDrawerValues, drawerChange, drawerScope, fxp1ToFxd1, presetEffects, rebuildDrawer, resolveEffects, setRows, type DrawerScope } from './fx-preset';
-import { drawerPresetInfo, fxPresetInfo } from './fx-preset-format';
+import { drawerPresetInfo, fxPresetInfo, splitDrawerValues } from './fx-preset-format';
 import { PRESET_VALUES_MAX } from './protocol';
 
 /** an effect of an FX drawer preset, kept with it in the editor so loading can add a copy back */
@@ -213,14 +213,27 @@ export function presetChoices(p: Patch, a: AssemblyInst): { list: Preset[]; unlo
 /** The presets this assembly can load (presetChoices). */
 export const presetsOf = (p: Patch, a: AssemblyInst): Preset[] => presetChoices(p, a).list;
 
-/** How a preset of an instrument with a drawer reads in its menu: whether it is instrument-only ("no FX"), its chain by
- *  name, and what loading adds to and removes from the drawer. Null for an assembly without a drawer. */
-export function presetView(p: Patch, a: AssemblyInst, preset: Preset, scope = drawerScope(p, a)): { noFx: boolean; chain: string[]; adds: string[]; removes: string[] } | null {
+/** how a preset reads in the menu of an instrument with a drawer */
+export interface PresetView {
+  /** instrument-only: loading leaves the drawer as it is */
+  noFx: boolean;
+  /** its effects by name, in chain order, and whether each is on */
+  chain: string[];
+  on: boolean[];
+  /** what loading adds to and removes from the drawer, by name */
+  adds: string[];
+  removes: string[];
+}
+
+/** How a preset of an instrument with a drawer reads in its menu; null for an assembly without a drawer (or a preset
+ *  whose effects cannot be found). */
+export function presetView(p: Patch, a: AssemblyInst, preset: Preset, scope = drawerScope(p, a)): PresetView | null {
   if (!scope) return null;
-  if (!drawerPresetInfo(preset)) return { noFx: true, chain: [], adds: [], removes: [] };
+  if (!drawerPresetInfo(preset)) return { noFx: true, chain: [], on: [], adds: [], removes: [] };
   const r = resolveEffects(p, a, preset, scope);
   if (typeof r === 'string') return null;
-  return { noFx: false, chain: r.map((e) => e.name), ...drawerChange(scope, r) };
+  const split = splitDrawerValues(preset.values, rowOrder(p, a).length, r.map((e) => e.rows));
+  return { noFx: false, chain: r.map((e) => e.name), on: split?.effects.map((e) => e.on) ?? r.map(() => true), ...drawerChange(scope, r) };
 }
 
 /** names in a sentence: "Drive", "Drive and Delay", "Drive, Chorus and Delay" */

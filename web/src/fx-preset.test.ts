@@ -146,7 +146,7 @@ describe('loading rebuilds the drawer (one undo step in the editor)', () => {
     const reverb = effect(patch, a, 'Reverb');
     moveEffect(patch, scope.drawer, reverb.id, 0);
     const view = presetView(patch, a, presetsOf(patch, a).find(p => p.name === 'Full')!)!;
-    expect(view).toEqual({ noFx: false, chain: ['Drive', 'Chorus', 'Delay', 'Reverb'], adds: ['Chorus'], removes: [] });
+    expect(view).toEqual({ noFx: false, chain: ['Drive', 'Chorus', 'Delay', 'Reverb'], on: [true, true, true, true].map((_, i) => full.values[rowOrder(patch, a).length + [0, 5, 9, 16][i]] === 1), adds: ['Chorus'], removes: [] });
     expect(applyPreset(patch, a, full)).toBe(false);   // (as the FM-1: never a partial load)
     expect(applyPreset(patch, a, full, true)).toBe(true);
     expect(drawerScope(patch, a)!.structure).toBe(full.structure);
@@ -189,7 +189,7 @@ describe('instrument-only presets ("no FX")', () => {
     const before = currentValues(patch, a);
     const init = sound(patch, a, 'Init').values.slice(0, rowOrder(patch, a).length);
     const legacy = { structure: structureOf(patch, a), name: 'Old', values: init.slice(0, 88) };
-    expect(presetView(patch, a, legacy)).toEqual({ noFx: true, chain: [], adds: [], removes: [] });
+    expect(presetView(patch, a, legacy)).toEqual({ noFx: true, chain: [], on: [], adds: [], removes: [] });
     expect(applyPreset(patch, a, legacy, true)).toBe(true);
     expect(currentValues(patch, a).slice(0, 88)).toEqual(legacy.values);
     expect(currentValues(patch, a).slice(88)).toEqual(before.slice(88));
