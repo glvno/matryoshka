@@ -1223,18 +1223,89 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 :is(.mhead, .fhead) button.vc-btn:hover { color: var(--ink); border-color: var(--secondary); }
 :is(.mhead, .fhead) button.vc-btn.set { color: var(--gate); }
 :is(.mhead, .fhead) button.vc-btn.over { color: var(--danger); border-color: var(--danger); }
-/* the collapsed master FX bus card's stage switches, under its header: poly's small capitals, filled in the ⏻'s colour when on */
-.module .fx-stages { position: relative; z-index: 2; display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 6px; border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
-.fx-stages button.fx-stage { height: 18px; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer;
-  font: 600 10px/1 'Barlow Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .08em; }
-.fx-stages button.fx-stage:hover { color: var(--ink); border-color: var(--accent); }
-.fx-stages button.fx-stage.on { color: var(--panel); background: var(--accent); border-color: var(--accent); }
-.fx-stages button.fx-stage:focus-visible { outline: 2px solid var(--secondary); outline-offset: 1px; }
-/* its rows (and their heading) while that stage is off: dimmed, still editable */
-.module.assembly .stage-off { opacity: .45; }
+/* FX drawers (the fxdrawer3 / fxdrawer4 designs): purple, under their card (the editor gives them the card's layer, before
+   it), starting 18 px under its edge. Closed: the plug over the jacks the chain takes; open: the drawer with the effects. */
+.fx-plug, .fx-drawer { position: absolute; box-sizing: border-box; --fx-fill: color-mix(in srgb, var(--tag-fx) 26%, var(--bg)); }
+.fx-plug { cursor: pointer; touch-action: none; }
+.fx-plug > svg { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+.fx-plug > svg path { fill: var(--fx-fill); stroke: var(--tag-fx); stroke-width: 1.5; fill-rule: evenodd; }
+.fx-plug.empty > svg path { stroke-dasharray: 4 3; --fx-fill: color-mix(in srgb, var(--tag-fx) 14%, var(--bg)); }
+.fx-plug:hover > svg path { fill: color-mix(in srgb, var(--tag-fx) 38%, var(--bg)); }
+.fx-plug.hot > svg path { fill: color-mix(in srgb, var(--tag-fx) 45%, var(--bg)); }
+.fx-plug.hot > svg { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--tag-fx) 70%, transparent)); }
+.fx-plug:focus-visible { outline: none; }
+.fx-plug:focus-visible > svg path { stroke-width: 2.5; }
+.fx-plug.off { opacity: .55; }
+.fx-pl { position: absolute; transform: translate(-50%, -50%); text-align: center; pointer-events: none; white-space: nowrap;
+  font: 700 12.5px/1 'Barlow Condensed', sans-serif; letter-spacing: .08em; color: var(--tag-fx); }
+.fx-pl[hidden] { display: none; }
+.fx-pl small { display: none; font-size: 9.5px; font-weight: 600; opacity: .85; margin-top: 2px; }
+.fx-pl.roomy small { display: block; }
+.fx-plug.empty .fx-pl { font-size: 10.5px; letter-spacing: .04em; }
+.fx-badge { display: none; position: absolute; left: calc(100% + 12px); top: 50%; transform: translateY(-50%); padding: 3px 7px; border-radius: 4px; background: var(--tag-fx); color: var(--panel);
+  font: 600 11px/1.2 'Barlow Condensed', sans-serif; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; pointer-events: none; }
+.fx-plug.side-l .fx-badge { left: auto; right: calc(100% + 12px); }
+.fx-plug.hot .fx-badge { display: block; }
+/* the drawer's own jacks, half outside its far edge */
+.fx-jack { position: absolute; z-index: 3; display: flex; transform: translate(-50%, -50%); }
+.fx-jack > .dot { margin: 0; }
+/* the instrument's jacks the plug takes: plugged (purple) */
+.module .dot.plugged { color: var(--tag-fx); background: var(--tag-fx); box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--tag-fx) 30%, var(--panel)); }
+.module .port:has(> .dot.plugged) > span { color: var(--tag-fx); }
+/* an effect's chain jacks in a drawer: the drawer wires them */
+.fx-card .dot.chain { color: var(--tag-fx); background: var(--tag-fx); cursor: not-allowed; }
+.fx-drawer { padding: 40px var(--fx-tail, 58px) 14px var(--fx-lead, 62px); display: flex; transition: clip-path .2s ease-out, transform .2s ease-out;
+  clip-path: inset(-20px -40px -40px -20px); }
+.fx-drawer.side-l { padding-left: 30px; padding-right: var(--fx-lead, 38px); }
+.fx-drawer.shut { clip-path: inset(-20px 100% -40px -20px); transform: translateX(-26px); }
+.fx-drawer.side-l.shut { clip-path: inset(-20px -20px -40px 100%); transform: translateX(26px); }
+.fx-drawer.under { padding: calc(var(--fx-band, 54px) + 40px) 58px 14px 30px; }
+.fx-drawer.under.shut { clip-path: inset(-20px -40px 100% -20px); transform: translateY(-26px); }
+@media (prefers-reduced-motion: reduce) { .fx-drawer { transition: none; } }
+.fx-drawer > svg.fx-shape { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.fx-shape .body { fill: color-mix(in srgb, var(--tag-fx) 9%, var(--bg)); stroke: none; }
+.fx-shape .gut { fill: color-mix(in srgb, var(--tag-fx) 16%, var(--bg)); }
+.fx-shape .gutl { fill: none; stroke: color-mix(in srgb, var(--tag-fx) 45%, transparent); stroke-width: 1; stroke-dasharray: 3 3; }
+.fx-shape .edge { fill: none; stroke: var(--tag-fx); stroke-width: 1.5; }
+.fx-drawer.hot .fx-shape .edge { stroke-width: 2.5; }
+.fx-drawer.off > :is(.fx-row, .fx-layer) { opacity: .55; }
+/* the chain's wires and the copies of the cables over the drawer, clipped to it, under the effect cards */
+.fx-drawer > svg.fx-layer { z-index: 1; overflow: hidden; }
+.cable.chain { stroke: var(--tag-fx); stroke-width: 2.5; stroke-dasharray: 6 4; opacity: 1; pointer-events: none; cursor: default; }
+.fx-dh { position: absolute; top: 0; left: var(--fx-lead, 62px); right: 0; z-index: 2; height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 6px 0 8px; box-sizing: border-box;
+  border-bottom: 1px solid color-mix(in srgb, var(--tag-fx) 40%, transparent); font: 600 13.5px/1 'Barlow Condensed', sans-serif; text-transform: uppercase; letter-spacing: .08em; color: var(--tag-fx); }
+.fx-drawer.side-l .fx-dh { left: 0; right: var(--fx-lead, 38px); }
+.fx-drawer.under .fx-dh { top: var(--fx-band, 54px); left: 0; }
+.fx-dh .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fx-dh button { display: grid; place-items: center; width: 22px; height: 22px; min-height: 0; padding: 0; border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; }
+.fx-dh button.pw { color: var(--muted); font-size: 14px; } .fx-dh button.pw.on { color: var(--accent); }
+.fx-dh button:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); }
+.fx-dh .mcpu { font: 500 10px/1 'Barlow', system-ui, sans-serif; font-variant-numeric: tabular-nums; color: var(--muted); letter-spacing: 0; text-transform: none; cursor: help; }
+.fx-dh .mcpu[hidden] { display: none; }
+.fx-row { display: flex; align-items: flex-start; gap: 30px; z-index: 2; }
+.fx-drawer.under .fx-row { flex-wrap: wrap; }
+.fx-row > .module { position: relative; z-index: 2; left: auto; top: auto; flex: none; }
+.fx-card.lifting { z-index: 9; box-shadow: 0 8px 20px var(--shadow); opacity: .92; pointer-events: none; }
+.fx-card .mhead { cursor: grab; }
+.fx-card .mhead .grip { color: var(--muted); letter-spacing: -2px; flex: none; }
+.mtag.fx.fx-own { background: color-mix(in srgb, var(--tag-fx) 22%, transparent); }
+.fx-slot { position: relative; z-index: 2; align-self: flex-end; width: 150px; height: 38px; display: flex; align-items: center; justify-content: center; gap: 6px; flex: none;
+  border: 1.5px dashed color-mix(in srgb, var(--tag-fx) 65%, transparent); border-radius: 8px; background: transparent; color: var(--tag-fx); cursor: pointer;
+  font: var(--cap, 600 11.5px/1 'Barlow Condensed', sans-serif); font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em; }
+.fx-slot b { font-size: 15px; }
+.fx-slot.empty { align-self: stretch; width: 160px; height: auto; min-height: 120px; flex-direction: column; }
+.fx-slot:hover, .fx-drawer.hot .fx-slot { background: color-mix(in srgb, var(--tag-fx) 16%, transparent); border-color: var(--tag-fx); }
+.fx-mark { position: absolute; z-index: 8; width: 4px; border-radius: 2px; background: var(--tag-fx); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tag-fx) 28%, transparent); pointer-events: none; }
+.fx-mark[hidden] { display: none; }
+/* a child shown whole on its parent's card (spec Model 6), and Arrange mode's switches for it */
+.module .embed-cards { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 10px 10px; position: relative; }
+.embed-cards > .module.embedded { position: relative; z-index: 2; left: auto; top: auto; box-shadow: 0 1px 3px var(--shadow); }
+.module > svg.embed-cables { position: absolute; inset: 0; z-index: 1; overflow: hidden; pointer-events: none; }
+.module > svg.embed-cables .cable { pointer-events: stroke; }
+.embed-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 8px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.embed-pick button[aria-pressed="true"] { color: var(--panel); background: var(--accent); border-color: var(--accent); }
 .flaw-note { padding: 6px 8px 0; color: var(--muted); font-size: 12px; }
-@media (pointer: coarse) { :is(.mhead, .fhead) :is(button.chev, button.more, button.pw, button.out) { width: 30px; height: 30px; } :is(.mhead, .fhead) :is(button.poly-btn, button.vc-btn), .fx-stages button.fx-stage { height: 24px; } }
+@media (pointer: coarse) { :is(.mhead, .fhead) :is(button.chev, button.more, button.pw, button.out), .fx-dh button { width: 30px; height: 30px; } :is(.mhead, .fhead) :is(button.poly-btn, button.vc-btn) { height: 24px; } }
 /* the card's menu */
 .ctx { min-width: 190px; gap: 0; }
 .ctx button { display: flex; justify-content: space-between; gap: 16px; padding: 6px 12px; border-radius: 5px; font-size: 13px; }
