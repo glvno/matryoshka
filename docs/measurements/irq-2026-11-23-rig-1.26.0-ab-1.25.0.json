@@ -1,0 +1,245 @@
+{
+ "method": "D-1165: one session; 1.25.0 installed fresh with its region and measured, then 1.26.0 installed and measured; tools/m1_link.py --rig blocktime 4 --notes 8, three windows per patch; slots by program change whose bytes are the same on both (Cassia 1 18, Algo Four 6, the edited Oracle V 1), then 1.22.0 qualification FX patches uploaded live (same bytes on both)",
+ "1.25.0": {
+  "program 18": [
+   {
+    "mean_us": 1941.2,
+    "most_us": 2033.8,
+    "timer5_body_us": 3.68
+   },
+   {
+    "mean_us": 1940.5,
+    "most_us": 2024.8,
+    "timer5_body_us": 3.67
+   },
+   {
+    "mean_us": 1940.4,
+    "most_us": 2027.3,
+    "timer5_body_us": 3.67
+   }
+  ],
+  "program 6": [
+   {
+    "mean_us": 1820.5,
+    "most_us": 1909.4,
+    "timer5_body_us": 3.5
+   },
+   {
+    "mean_us": 1822.3,
+    "most_us": 1921.4,
+    "timer5_body_us": 3.5
+   },
+   {
+    "mean_us": 1821.7,
+    "most_us": 1927.4,
+    "timer5_body_us": 3.5
+   }
+  ],
+  "program 1": [
+   {
+    "mean_us": 2166.2,
+    "most_us": 2276.2,
+    "timer5_body_us": 3.78
+   },
+   {
+    "mean_us": 2169.7,
+    "most_us": 2274.8,
+    "timer5_body_us": 3.78
+   },
+   {
+    "mean_us": 2165.3,
+    "most_us": 2273.2,
+    "timer5_body_us": 3.78
+   }
+  ],
+  "18 Cassia 1 fx": [
+   {
+    "mean_us": 2120.9,
+    "most_us": 2224.6,
+    "timer5_body_us": 3.67
+   },
+   {
+    "mean_us": 2125.1,
+    "most_us": 2219.1,
+    "timer5_body_us": 3.67
+   },
+   {
+    "mean_us": 2127.6,
+    "most_us": 2221.6,
+    "timer5_body_us": 3.68
+   }
+  ],
+  "05 Expander S fx": [
+   {
+    "mean_us": 2324.6,
+    "most_us": 2404.8,
+    "timer5_body_us": 3.87
+   },
+   {
+    "mean_us": 2325.2,
+    "most_us": 2399.8,
+    "timer5_body_us": 3.87
+   },
+   {
+    "mean_us": 2324.1,
+    "most_us": 2401.7,
+    "timer5_body_us": 3.88
+   }
+  ],
+  "03 Hera 6 fx": [
+   {
+    "mean_us": 2071.4,
+    "most_us": 2165.5,
+    "timer5_body_us": 3.74
+   },
+   {
+    "mean_us": 2071.8,
+    "most_us": 2160.7,
+    "timer5_body_us": 3.73
+   },
+   {
+    "mean_us": 2072.1,
+    "most_us": 2159.2,
+    "timer5_body_us": 3.72
+   }
+  ],
+  "06 Algo Four fx": [
+   {
+    "mean_us": 2176.1,
+    "most_us": 2248.5,
+    "timer5_body_us": 3.58
+   },
+   {
+    "mean_us": 2176.6,
+    "most_us": 2261.9,
+    "timer5_body_us": 3.58
+   },
+   {
+    "mean_us": 2177.6,
+    "most_us": 2263.0,
+    "timer5_body_us": 3.58
+   }
+  ]
+ },
+ "1.26.0": {
+  "program 18": [
+   {
+    "mean_us": 1939.3,
+    "most_us": 2021.0,
+    "timer5_body_us": 3.2
+   },
+   {
+    "mean_us": 1938.3,
+    "most_us": 2028.8,
+    "timer5_body_us": 3.21
+   },
+   {
+    "mean_us": 1937.8,
+    "most_us": 2026.8,
+    "timer5_body_us": 3.22
+   }
+  ],
+  "program 6": [
+   {
+    "mean_us": 1829.9,
+    "most_us": 1907.1,
+    "timer5_body_us": 3.11
+   },
+   {
+    "mean_us": 1828.9,
+    "most_us": 1919.0,
+    "timer5_body_us": 3.11
+   },
+   {
+    "mean_us": 1827.2,
+    "most_us": 1914.8,
+    "timer5_body_us": 3.1
+   }
+  ],
+  "program 1": [
+   {
+    "mean_us": 2172.1,
+    "most_us": 2250.9,
+    "timer5_body_us": 3.25
+   },
+   {
+    "mean_us": 2175.4,
+    "most_us": 2263.2,
+    "timer5_body_us": 3.23
+   },
+   {
+    "mean_us": 2179.4,
+    "most_us": 2260.8,
+    "timer5_body_us": 3.24
+   }
+  ],
+  "18 Cassia 1 fx": [
+   {
+    "mean_us": 2125.1,
+    "most_us": 2173.4,
+    "timer5_body_us": 3.25
+   },
+   {
+    "mean_us": 2123.7,
+    "most_us": 2172.4,
+    "timer5_body_us": 3.25
+   },
+   {
+    "mean_us": 2125.2,
+    "most_us": 2166.3,
+    "timer5_body_us": 3.26
+   }
+  ],
+  "05 Expander S fx": [
+   {
+    "mean_us": 2328.3,
+    "most_us": 2382.0,
+    "timer5_body_us": 3.3
+   },
+   {
+    "mean_us": 2327.2,
+    "most_us": 2383.6,
+    "timer5_body_us": 3.3
+   },
+   {
+    "mean_us": 2327.9,
+    "most_us": 2387.4,
+    "timer5_body_us": 3.31
+   }
+  ],
+  "03 Hera 6 fx": [
+   {
+    "mean_us": 2078.6,
+    "most_us": 2137.1,
+    "timer5_body_us": 3.24
+   },
+   {
+    "mean_us": 2079.0,
+    "most_us": 2140.2,
+    "timer5_body_us": 3.24
+   },
+   {
+    "mean_us": 2079.0,
+    "most_us": 2133.8,
+    "timer5_body_us": 3.24
+   }
+  ],
+  "06 Algo Four fx": [
+   {
+    "mean_us": 2176.2,
+    "most_us": 2238.3,
+    "timer5_body_us": 3.11
+   },
+   {
+    "mean_us": 2177.5,
+    "most_us": 2240.4,
+    "timer5_body_us": 3.11
+   },
+   {
+    "mean_us": 2177.6,
+    "most_us": 2234.6,
+    "timer5_body_us": 3.11
+   }
+  ]
+ }
+}

@@ -1,0 +1,190 @@
+{
+  "schema": 1,
+  "version": "1.26.0",
+  "firmware_product": "FM-1_7012600",
+  "source_commit": "1fbb30112cce31d8464a5f593f6f5eb0e1767249",
+  "source_tree": "e30e3a355d931376fa77ecb55750dd8ecc2c8992",
+  "frozen_commit": "1fbb30112cce31d8464a5f593f6f5eb0e1767249",
+  "affected_revalidation": "D-144: first frozen at 91f04399 (#1217); the record PR's build found tools/fm1_install.py refusing the web bundle's package (its matryoshka.json names the font as a number); fixed in #1219 (tools/ only) and refrozen at 1fbb3011. Release run 45137521119 on 1fbb3011 is byte-identical to 45127105150 on 91f04399 (package, app, elf, sidecar, font, emu-midi; firmware/ and the factory content unchanged), so the emulator suites, rig checks and the 1.25.0 baseline carry over; fm1_install_test passes and the rig was reinstalled through web/public/firmware/matryoshka.fwsc --rig.",
+  "status": "automated and rig checks passed; owner's device check and the go for publication pending",
+  "release_approval": {
+    "status": "pending",
+    "scope": "Publication of v1.26.0 from the tag on release/1.26: the frozen commit plus only this record, the qualified package and its screen font in web/public/firmware/, the coverage record and the rig measurements (D-1163); its firmware/ and tools/ equal the qualified source (D-105)."
+  },
+  "plan": "D-1171 (prep PR #1217, fix #1219)",
+  "patch_format": 65,
+  "factory_content": {
+    "version": 21,
+    "set": "f81fee",
+    "layout": 4,
+    "frozen_for_1.25.x": "factory/matryoshka-factory-v20-665d4c.bin (layout 2)"
+  },
+  "artifacts": {
+    "package": {
+      "name": "matryoshka-1.26.0.fwsc",
+      "size": 610628,
+      "sha256": "7d9f4fe3311fcdfeebe2b9b50590a794a2267f84444f14003272efdf0888e356"
+    },
+    "screen_font": {
+      "name": "matryoshka-1.26.0-font.bin",
+      "size": 40946,
+      "sha256": "765b681ae53c51855791860e8f1c6b7eb8113fdb8e6d8aec96261f4d8a7cc3fa",
+      "id": "528f1926"
+    },
+    "normal": {
+      "name": "matryoshka-1.26.0-app.bin",
+      "size": 553564,
+      "sha256": "6fd91fc089374e7368d695af4feb3811ced47369b8daf5a9e1156602fee28398"
+    },
+    "normal_elf": {
+      "name": "matryoshka-1.26.0-app.elf",
+      "size": 626148,
+      "sha256": "6e1e80f9fada82500bd37f072ec1ffbbb0dde515ca37aa9b5d37db7e9d191636"
+    },
+    "normal_sidecar": {
+      "name": "matryoshka-1.26.0.json",
+      "size": 431,
+      "sha256": "9913d1265e7e446aba7666390803453c777eafdc46c67f7ed6ad6df3be0b8ff3"
+    },
+    "bridge": {
+      "name": "matryoshka-emu.bin",
+      "size": 550616,
+      "sha256": "5af5c572fc6c2f37c349dcd337579917c813b19da3aa2d12a853402ea4ded379"
+    }
+  },
+  "build_manifest_sha256": "6afdab79ff82f10c6b7f659d7e36a26292cd19811c6851ce613ad0bcfcf5083c",
+  "build": "release run 45137521119 (byte-identical to 45127105150): image 553564 B; RAM .data+.bss 18896 B of 24576 (5680 B free); pool 409564 B of 417792 (8228 B headroom, the floor 8192); no compiler warnings",
+  "ci_runs": {
+    "release": 45137521119,
+    "release_first_freeze": 45127105150,
+    "web_rc": 45127108376,
+    "prep_pr": 1217,
+    "fix_pr": 1219
+  },
+  "full_scenarios": "410 of 410 checks passed",
+  "smoke": [
+    "emu:smoke on /Users/mg/projects/music/fm1/modular-1/build/release-1.26.0/dl/matryoshka-release-1.26.0/matryoshka-1.26.0-app.bin beside the scenarios (/Users/mg/projects/music/fm1/wt/rel126/build/emu/smoke.log)"
+  ],
+  "per_pr_scenarios": "not run (D-1158; D-1171)",
+  "boot": "boot check: PASS (49 checks, 0 failed; the editor link and the update handshake checked on the M1_EMU_MIDI build; 82.4 s emulated in 69.7 s; snapshots in /Users",
+  "old_format": "older format ok: 672 binaries load, upgrade and render bit-identically; 0 upgraded as today's encoder writes them, 332 differ, 339 too big to upgrade, 1 already in today's format; 2245 records grown to all their parameters render the same; 1 over a slot skipped",
+  "hardware": {
+    "install": [
+      "screen font: /Users/mg/projects/music/fm1/modular-1/build/release-1.26.0/dl/matryoshka-release-1.26.0/matryoshka-1.26.0-font.bin (font 528f1926)",
+      "Firmware 1.26 has 48 slots. At its first start the FM-1 moves the patches in slots 49 HIGH 8 LIRE, 60 HIGH SILVER to free slots below 49.",
+      "done: the FM-1 runs FM-1_7012600",
+      "screen font: installing font 528f1926 from /Users/mg/projects/music/fm1/modular-1/build/release-1.26.0/dl/matryoshka-release-1.26.0/matryoshka-1.26.0-font.bin",
+      "screen font committed",
+      "screen font: installed, font 528f1926",
+      "factory region: valid; layout 4 (the firmware reads 4), format 55, version 21, set f81fee, 57987 of 73728 bytes, 12 patches; the firmware tier: version 21, 11 patches; 21 factory patches in all"
+    ],
+    "upgrade_from_1.25.0": {
+      "checks": "70 of 70",
+      "method": "build/release-1.26.0/prep/bank125.py on 1.25.0 (installed fresh this session): the 21 factory slots, an edited Oracle V, MY 808 KIT (v1.24.1, links 23 factory patterns), MY SCROUNGE (v1.24.1, 10 patterns inline), a user patch three times (slots 24, 25 under SILVER BOX, 60), 1.25.0 8 Lire in slot 49, the user store emptied; the sounds rendered (TEST_PEAK per 250 ms). upgrade126.py after the 1.26.0 install: INFO, the font, the region, 48 slots, the moves, the factory upgrades (D-887), the store entries (D-1031, D-1033), each sound as on 1.25.0"
+    },
+    "palette": {
+      "checks": "9 of 9",
+      "landings": [
+        {
+          "t": 4.46,
+          "tick": 192,
+          "bar": 96,
+          "switches": 2
+        },
+        {
+          "t": 6.52,
+          "tick": 288,
+          "bar": 96,
+          "switches": 3
+        },
+        {
+          "t": 8.52,
+          "tick": 384,
+          "bar": 96,
+          "switches": 4
+        },
+        {
+          "t": 10.57,
+          "tick": 480,
+          "bar": 96,
+          "switches": 5
+        },
+        {
+          "t": 12.55,
+          "tick": 576,
+          "bar": 96,
+          "switches": 6
+        },
+        {
+          "t": 14.62,
+          "tick": 672,
+          "bar": 96,
+          "switches": 7
+        },
+        {
+          "t": 16.6,
+          "tick": 768,
+          "bar": 96,
+          "switches": 8
+        },
+        {
+          "t": 18.67,
+          "tick": 864,
+          "bar": 96,
+          "switches": 9
+        }
+      ],
+      "longest_silent_run_ms": 102.7,
+      "method": "build/release-1.26.0/prep/palette_rig.py: PALETTE put of four entries and read back; the transport running, 8 switches with the fades on, DIAG 202 (each switch tick a multiple of the bar), USB audio recorded at the fixed level (no silent run of 250 ms or more); stopped, a switch at once"
+    },
+    "older_firmware_refused": {
+      "refused": true,
+      "text": [
+        "error: nothing was sent. This FM-1 runs firmware 1.26 or later, which keeps patterns 2 to 64 of its patches in the pattern store. Firmware older than 1.26 cannot read them. Back up the bank first (the editor's Install firmware > Install another package offers a backup for this package), then run again with --force.",
+        "downgrade refused 11 (11 expected)",
+        "protocol 1, max modules 128, max cables 255, flash ok, patch loaded, delays 255, firmware 1.26.0"
+      ]
+    },
+    "midi_endpoint_names": {
+      "1.25.0": "all pass (serial 415035443333360F105D4C5C0720DA78-F0821BA7, CoreMIDI uid 0x8644a493)",
+      "1.26.0": "all pass (serial 415035443333360F105D4C5C0720DA78-F0821BA7, CoreMIDI uid 0x8644a493)"
+    },
+    "irq_vs_1.25.0": "D-1165, one session, both installed fresh, TIMER5 body 3.1..3.88 us, traffic notes 0: program 18 1940.7 -> 1938.5 us; program 6 1821.5 -> 1828.7 us; program 1 2167.1 -> 2175.6 us; 18 Cassia 1 fx 2124.5 -> 2124.7 us; 05 Expander S fx 2324.6 -> 2327.8 us; 03 Hera 6 fx 2071.8 -> 2078.9 us; 06 Algo Four fx 2176.8 -> 2177.1 us; differences -2.2..8.5 us (spread about 50: none if inside)",
+    "clock_in_at_0": "as 1.25.0: raw steady offset 39.44 ms against 1.25.0's 39.44 ms (difference 0.0 ms), MY 808 KIT with its patterns now in the store",
+    "guide_now": "== GUIDE_NOW rate\nAlgo Four, after HELLO, idle: {} in 2 s\n808 Kit, after HELLO, idle: {} in 2 s\n909 Kit, after HELLO, idle: {} in 2 s\n808 Kit: SEL (arms the kit): {'0x54': 1, '0x58': 1} in 2 s\n808 Kit: ENV (environment): {'0x58': 2} in 2 s\n808 Kit: SEQ (drum grid): {'0x58': 1} in 2 s\n",
+    "rig_scenarios": [
+      "55 of 58 checks passed, 3 skipped (1.2 output: MONO, both sounds on both sides, each a bit quieter: the rig's USB audio is taken before OUTPUT's mix (audio.c): the emulator's I2S proves it, the owner hears it; 1.3 output: MONO L, both sounds on the left, the right silent: the rig's USB audio is take"
+    ],
+    "midi_learn": "22 of 22",
+    "pad_map": "24 of 24",
+    "cpu_survey": "every FX stage on (the frozen commit's patches; the folded kits, Verona Drum 1, Scrounge and Silver Box with their 1.24.1 patterns): worst 81.6 % stopped, 83.4 % running (bar 85 %), dropped 0; as shipped 75.2 / 78.1 %; vs 1.25.0 same session (1.22.0's FX patches, stopped) [-1.9, 0.4] mean -0.75",
+    "cpu_near_the_bar": {
+      "Scrounge p10": "64.6 % stopped, 82.5 % running (under 85 %)",
+      "808 Kit fx": "77.2 % stopped, 82.0 % running (under 85 %)",
+      "909 Kit": "69.0 % stopped, 76.1 % running (under 85 %)"
+    },
+    "master_eq_cost": {
+      "0-0-0": [
+        81.6,
+        83.1
+      ],
+      "6-6-6": [
+        87.8,
+        89.6
+      ]
+    },
+    "fpucheck": [
+      "all equal",
+      "all equal"
+    ],
+    "cores": [
+      "2 CORES; barred no; trace 0xc1000002; split on",
+      "self-test passed 28523, failed 0; refused jobs 0; jobs done 1035529; core 1 stack 2484 B used; longest wait 2488 us since the last read"
+    ],
+    "format_65_loads": "== eq-shelves\n  awake parts per job: core 0 4.00, core 1 4.00 (in all, core 0 1396, core 1 1396)\n== eq-filters\n  awake parts per job: core 0 6.00, core 1 2.00 (in all, core 0 2082, core 1 694)\n== elvira-seq-slim\n  awake parts per job: core 0 47.00, core 1 36.00 (in all, core 0 16450, core 1 12600)\n== midi-learn\n  awake parts per job: core 0 5.00, core 1 4.00 (in all, core 0 1745, core 1 1396)\n"
+  },
+  "owner_checks": {
+    "status": "pending",
+    "steps": "in the record pull request's body and https://lighght-3.tail5744df.ts.net:8443/crate/ (D-139, D-1171)"
+  }
+}
