@@ -216,7 +216,7 @@ class MidiLog(unittest.TestCase):
         self.assertIn("3 queue events not logged", text)
         self.assertIn("USB: SET_INTERFACE recording (FM-1 -> host, EP4 IN) alt 1; queue 256 frames", text)
         self.assertIn("Queue 180..280 frames (4.1..6.3 ms) over 500 ms, playing, recording interface at alt 1", text)
-        self.assertIn("Feedback 44.0817 frames/ms (44081.7 Hz; -300), the host took 100 in 100 ms", text)
+        self.assertIn("Feedback 44.0817 frames/ms (44081.7 Hz; -300; mean of 100 ms), the host took 100 in 100 ms", text)
         self.assertIn("Queue: UNDERRUN x2: the queue ran dry; playback waits for 256 frames again; queue 6 frames", text)
         self.assertIn("recording interface at alt 1: 1 onsets, from the beat mean +1.50 ms", text)
         self.assertIn("recording interface at alt 0: 1 onsets, from the beat mean +72.00 ms", text)

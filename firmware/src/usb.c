@@ -67,7 +67,8 @@ static uint8_t ur_paused;
 #define UR_EV_Q 0x11u                /* a playback queue event: v = UQ_* | a count << 8, fl = the queue's fill / 2 */
 #define UR_EV_WIN 0x20u              /* 100 ms of the queue: v = its lowest fill / 2 | its highest / 2 << 8; fl = bit 0
                                       * playing, bit 1 the recording interface at alt 1, bit 2 the host reads it */
-#define UR_EV_FB 0x21u               /* the feedback: v = its value - UR_NOMINAL (signed), fl = feedback packets taken */
+#define UR_EV_FB 0x21u               /* the feedback: v = its mean over the window - UR_NOMINAL (signed), fl = feedback
+                                      * packets the host took in the window */
 enum { UE_REC_ALT = 1,               /* SET_INTERFACE on the recording interface (EP4 IN): the alt setting */
        UE_PLAY_ALT,                  /* on the playback interface (EP2 OUT): the alt setting (fl: the queue it drops) */
        UE_CONFIG,                    /* SET_CONFIGURATION: the configuration (1 restarts both streams) */
@@ -93,7 +94,8 @@ static struct {
     uint8_t playing;                 /* ur_playing at the last poll */
     uint8_t fresh;                   /* no feedback entry since the stream started */
     uint8_t fb_n, fb_n_log;          /* feedback packets the host took in the window; in the last feedback entry */
-    uint32_t fb, fb_log;             /* the feedback computed last; in the last feedback entry */
+    uint8_t fb_frames;               /* frames (feedback values) in the window */
+    uint32_t fb_sum, fb_log;         /* their sum; the mean in the last feedback entry */
     uint32_t under, over;            /* ur_underruns, ur_overruns at the last poll */
     uint32_t alive;                  /* fm1_ms when the frame number last moved (0: not since boot) */
 } ur_dg;
@@ -869,6 +871,8 @@ static void ur_config(void)
     ur_dg.lo = 0xFFFFu;
     ur_dg.hi = 0;
     ur_dg.fb_n = 0;
+    ur_dg.fb_frames = 0;
+    ur_dg.fb_sum = 0;
     ur_dg.fresh = 1;
     ur_dg.playing = ur_playing;
     ur_dg.under = ur_underruns;
@@ -901,19 +905,24 @@ static void ur_dg_poll(void)
         ur_dg.over = o;
     }
     if (++ur_dg.polls >= 200u) {
-        int32_t df = (int32_t)(ur_dg.fb - ur_dg.fb_log), dn = (int32_t)ur_dg.fb_n - (int32_t)ur_dg.fb_n_log;
         uint32_t lo = ur_dg.lo >= 510u ? 255u : ur_dg.lo / 2u, hi = ur_dg.hi >= 510u ? 255u : ur_dg.hi / 2u;
         UAC_EV(UR_EV_WIN, lo | hi << 8, p | (uac.alt ? 2u : 0u) | (uac.flowing ? 4u : 0u));
-        if (ur_dg.fresh || df > 31 || df < -31 || dn > 2 || dn < -2) {   /* (2 frames of the servo's fill; reads) */
-            UAC_EV(UR_EV_FB, (uint16_t)(int16_t)((int32_t)ur_dg.fb - (int32_t)UR_NOMINAL), ur_dg.fb_n);
-            ur_dg.fb_log = ur_dg.fb;
-            ur_dg.fb_n_log = ur_dg.fb_n;
-            ur_dg.fresh = 0;
+        if (ur_dg.fb_frames) {                          /* (its mean: frame by frame it ripples by +-150, the rig on macOS) */
+            uint32_t fb = ur_dg.fb_sum / ur_dg.fb_frames;
+            int32_t df = (int32_t)(fb - ur_dg.fb_log), dn = (int32_t)ur_dg.fb_n - (int32_t)ur_dg.fb_n_log;
+            if (ur_dg.fresh || df > 63 || df < -63 || dn > 2 || dn < -2) {   /* (4 frames of the servo's fill; reads) */
+                UAC_EV(UR_EV_FB, (uint16_t)(int16_t)((int32_t)fb - (int32_t)UR_NOMINAL), ur_dg.fb_n);
+                ur_dg.fb_log = fb;
+                ur_dg.fb_n_log = ur_dg.fb_n;
+                ur_dg.fresh = 0;
+            }
         }
         ur_dg.polls = 0;
         ur_dg.lo = 0xFFFFu;
         ur_dg.hi = 0;
         ur_dg.fb_n = 0;
+        ur_dg.fb_frames = 0;
+        ur_dg.fb_sum = 0;
     }
 }
 #endif
@@ -940,7 +949,10 @@ static void ur_service(void)
         ur_frame = frame;
         uint32_t feedback = ur_feedback();
 #if UR_DG
-        ur_dg.fb = feedback;
+        if (ur_dg.fb_frames < 255u) {
+            ur_dg.fb_sum += feedback;
+            ur_dg.fb_frames++;
+        }
 #endif
         sie_wr(S_INDEX, 3);
         if (!(sie_rd(S_TXCSR1) & 1u)) {

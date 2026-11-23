@@ -1053,7 +1053,7 @@ def print_midilog(h, ents, out=print):
         if ev and st == MIDILOG_FB:
             corr = v - 0x10000 if v & 0x8000 else v
             fpm = 44.1 + corr / 16384
-            out(f"  {t / 1e6:9.4f} s  {'':12}  Feedback {fpm:.4f} frames/ms ({fpm * 1000:.1f} Hz; {corr:+d}), the host took {f}"
+            out(f"  {t / 1e6:9.4f} s  {'':12}  Feedback {fpm:.4f} frames/ms ({fpm * 1000:.1f} Hz; {corr:+d}; mean of 100 ms), the host took {f}"
                 f" in 100 ms")
             continue
         prev_end = t + (v * 100 if st == 0xF8 else 0)

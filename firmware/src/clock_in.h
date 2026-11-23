@@ -49,8 +49,9 @@
  *   code | its value << 8), CIN_EV_Q a playback queue event (v: its code | a count << 8), both with the playback queue's
  *   fill / 2 in fl; CIN_EV_WIN the queue's lowest and highest fill / 2 over 100 ms (v: lowest | highest << 8; fl: bit 0
  *   playing, bit 1 the recording interface at alt 1, bit 2 the host reads it, bits 3..7 the windows like it folded into
- *   it after it, each within 2 of its lowest and highest); CIN_EV_FB the explicit feedback sent (v: its value - 44.1
- *   frames a millisecond, in 1/16384 frames, signed; fl: the feedback packets the host took in the window). The codes:
+ *   it after it, each within CIN_EV_WIN_NEAR of its lowest and highest); CIN_EV_FB the explicit feedback sent (v: its
+ *   mean over the window - 44.1 frames a millisecond, in 1/16384 frames, signed; fl: the feedback packets the host took
+ *   in the window; logged when it moved by 4 frames of the servo's fill, or the reads changed). The codes:
  *   usb.c UE_* and UQ_*. At most CIN_EV_Q_MAX queue events a window; the rest are only counted (DIAG 145 word 6).
  * A message's time is when it came into the MIDI ring (midi_in_at), not when the main loop took it. Steady clocks fold
  * into the newest clock entry and like windows into the newest window entry, whatever came between. After a Stop,
@@ -80,6 +81,9 @@
 #define CIN_EV_RESET 4u                         /* CIN_EV_USB's code for a bus reset (usb.c UE_RESET); value 1: after > 2 s
                                                  * with no host */
 #define CIN_EV_Q_MAX 8u                         /* queue events logged a window */
+#define CIN_EV_WIN_NEAR 8u                      /* windows alike: lowest and highest each within 8 (16 frames, 0.36 ms) of
+                                                 * the run's first (the rig on macOS: 170..194 and 320..346 frames over
+                                                 * seconds of steady playback) */
 #ifdef UR_EV_USB
 _Static_assert(UR_EV_USB == CIN_EV_USB && UR_EV_Q == CIN_EV_Q && UR_EV_WIN == CIN_EV_WIN && UR_EV_FB == CIN_EV_FB &&
                UE_RESET == CIN_EV_RESET, "usb.c's event kinds and reset code are the log's");
@@ -238,8 +242,8 @@ static void cin_ev(uint32_t st, uint32_t v, uint32_t fl)
     if (st == CIN_EV_WIN) {
         cin_log_qn = 0;                         /* (a window: the next one's queue events start counting) */
         e = cin_log_kept(cin_log_kwin);
-        if (e && !((e->fl ^ fl) & 7u) && (e->fl >> 3) < 31u && (v & 0xFFu) + 2u - (e->v & 0xFFu) <= 4u &&
-            (v >> 8) + 2u - (e->v >> 8) <= 4u) {
+        if (e && !((e->fl ^ fl) & 7u) && (e->fl >> 3) < 31u && (v & 0xFFu) + CIN_EV_WIN_NEAR - (e->v & 0xFFu) <=
+            2u * CIN_EV_WIN_NEAR && (v >> 8) + CIN_EV_WIN_NEAR - (e->v >> 8) <= 2u * CIN_EV_WIN_NEAR) {
             e->fl = (uint8_t)(e->fl + 8u);      /* (a window like the newest one's: folded into it) */
             return;
         }
