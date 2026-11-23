@@ -4,6 +4,8 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 
 **`docs/ledger/`** holds every decision as a row (see "Decisions" at the end of this file). Search it before changing an area; this file only keeps what applies everywhere. Before scheduling firmware checks, read the current [validation stages](docs/EMULATOR.md#choosing-checks): use the branch roles in [D-145](docs/ledger/releases.md#D-145), candidate qualification and the reuse of checks that already passed (never re-run a passed check unless something that could change its result changed) in [D-144](docs/ledger/releases.md#D-144), and rig installation rules in [D-123](docs/ledger/releases.md#D-123).
 
+**Emulator checks on a pull request.** A pull request runs only the checks its change touches: CI, the host tests and vitest files it changes or depends on, and `npm run emu:scenarios -- --only NAME` for each scenario it adds or changes. It never runs the full `emu:smoke` or a full `emu:scenarios` (one without `--only`). Those full suites run once, on the frozen release candidate ([D-144](docs/ledger/releases.md#D-144)). The only exceptions are installs: `emu:boot` before a build goes on the test rig ([D-123](docs/ledger/releases.md#D-123)), and `emu:smoke` before a build goes on any other FM-1 ([D-153](docs/ledger/firmware-install.md#D-153)). When a task brief asks for "the emulator gates", it means this targeted set, unless it names the full suites and says why.
+
 ## Decisions made with the user
 
 - **No FM engine and no Felucca features.** Only Felucca's flashing path and hardware layer (HAL, USB, update loader) are reused. GPL-3.0-only for the whole repo; keep Felucca's SPDX / copyright headers on copied files.
