@@ -6068,6 +6068,7 @@ export class Editor {
       const lift = (ev: PointerEvent): void => {
         const el = this.embeds.get(a.id) ?? card;   // (a drawer springing open draws it again)
         el.classList.add('lifting');
+        el.closest('.fx-drawer')?.classList.add('dragging');   // (shown past the drawer's edge on its way out)
         el.style.transform = `translate(${(ev.clientX - x0) / this.zoom}px, ${(ev.clientY - y0) / this.zoom}px)`;
       };
       const move = (ev: PointerEvent): void => {
