@@ -19,7 +19,7 @@ import { DEFS } from './modules';
 import { devicesOf } from './pages';
 import { layout } from './patchbin';
 import { encodePayload } from './pattern-store';
-import { factoryWithDemoSet, FM1_PRESETS } from './presets';
+import { factoryWithPatterns, FM1_PRESETS } from './presets';
 import { connect, type Patch } from './patch';
 import { STEPS_RATE_HT, STEPS_RATES } from './track';
 
@@ -74,7 +74,7 @@ const identical = (a: Float32Array, b: Float32Array): boolean => a.length === b.
 const loud = (x: Float32Array): boolean => x.some((v) => Math.abs(v) > 0.01);
 
 describe.each(FACTORY_KITS.map((k) => k.patch))('%s: its Drum maps (D-1059) and its DRUMS track (#1202 K2) inside its card', (name) => {
-  const kit = (): Patch => factoryWithDemoSet(name);   // (with its demo set: its patterns and song, #1179)
+  const kit = (): Patch => factoryWithPatterns(name);   // (with its 1.24.1 patterns and song)
   const kitDef = FACTORY_KITS.find((k) => k.patch === name)!;
   const secs = kitDef.patterns.length * 2 + 1;
 

@@ -1572,35 +1572,24 @@ static void seq_clear_cancel(void)
     seq_msg_ms = 0;
 }
 
-/* the pattern commands of the SEQ page (#1177, #1178), as the editor's: what the device link's PATTERN_OP says ran */
+/* the pattern commands of the SEQ page (#1177, #1178, D-838), as the editor's: what the device link's PATTERN_OP says ran
+ * (op 3 is retired) */
 #define PATTERN_OP_COPY 1u
 #define PATTERN_OP_CLEAR_ALL 2u
-#define PATTERN_OP_DEMO_SET 3u
 #define PATTERN_OP_DOUBLE 4u
-/* the running patch has a demo set (#1179: factory.c fc_demo by its layout, looked up once a patch) */
-static uint32_t seq_demo_seen;          /* (pages_gen() << 8 | factory.c fc_scans) + 1 of the lookup, 0 none yet: another patch
-                                         * or new factory content looks again */
-static uint8_t seq_demo_found;
-static int seq_demo_has(void)
-{
-    uint32_t at, len, cost, hash;
-    if (seq_demo_seen != (pages_gen() << 8 | fc_scans) + 1u) {
-        seq_demo_seen = (pages_gen() << 8 | fc_scans) + 1u;
-        seq_demo_found = !fc_demo(pl_demo_layout(), &at, &len, &cost, &hash);
-    }
-    return seq_demo_found;
-}
-/* the EMPTY hint's patch (#1179, D-836): it has a demo set and no pattern of any track has a note (Silver Box's set leaves
- * pattern 1 empty, so the pattern shown alone would not do) */
+/* the stored patterns' browser (seq_br_open, below): the cursor's entry (0: closed), the one drawn (0: none), the patch
+ * it opened on (pages_gen's low byte) */
+static uint16_t seq_br_at, seq_br_shown;
+static uint8_t seq_br_gen;
+static int seq_br_draw(int full);
+/* the EMPTY hint's patch (#1202 G8, D-836): no pattern of any track has a note, and the store holds an entry to load */
 static int seq_patch_empty(void)
 {
     uint32_t p;
-    if (!seq_demo_has())
-        return 0;
     for (p = 0; p < ENG_PATTERNS; p++)
         if (pl_has_notes(p))
             return 0;
-    return 1;
+    return pt_on && pl_step(0, 1) != 0u;
 }
 /* SEQ held + SAVE (#1177): the selected pattern of every track copied to the first empty number after it (round from
  * P02), which is then selected (running: at the end of each track's pass, as PRESET). A key handler: state only, the bar
@@ -1634,7 +1623,7 @@ static void seq_copy_press(void)
     }
     eng_pattern_set(q);
     m1_patch_patterns();
-    m1_pattern_op_now(PATTERN_OP_COPY, (uint32_t)p, q, 0);
+    m1_pattern_op_now(PATTERN_OP_COPY, (uint32_t)p, q);
     m1_pattern_now();
     put2(put(put(put2(put(m, "P"), p + 1), MSG_COPIED_TO), "P"), (int32_t)q + 1);
     seq_msg_due = m;
@@ -1659,7 +1648,7 @@ static void seq_double_press(void)
         return;
     }
     seq_held = -1;
-    m1_pattern_op_now(PATTERN_OP_DOUBLE, (uint32_t)p, 0, 0);
+    m1_pattern_op_now(PATTERN_OP_DOUBLE, (uint32_t)p, 0);
     fmt_int(num, (int32_t)most);
     put(put(put(seq_msg_buf, MSG_DOUBLED), num), MSG_STEPS_AFTER)[0] = 0;
     seq_msg_due = seq_msg_buf;
@@ -1680,7 +1669,7 @@ static void seq_clear_all_press(void)
         sr_stop();                               /* (the pattern it wrote is gone) */
         seq_held = -1;
         pl_clear_all();
-        m1_pattern_op_now(PATTERN_OP_CLEAR_ALL, 0, 0, 0);
+        m1_pattern_op_now(PATTERN_OP_CLEAR_ALL, 0, 0);
         m1_pattern_now();
         seq_msg_due = MSG_ALL_CLEARED;
         seq_msg_ms = 1200;
@@ -1706,61 +1695,14 @@ static void seq_all_cancel(void)
     seq_msg_due = MSG_NOT_CLEARED;
     seq_msg_ms = 0;
 }
-/* SEQ held + SEL (#1179): the patch's demo set loaded (patlink.c pl_demo_set: every pattern and song replaced by the
- * set's), asked first as clear all asks: SEL again within 3 s, SEQ still held and nothing else pressed or turned meanwhile
- * (seq_demo_cancel). No question for a patch without a demo set, or one that has no room for it */
-static uint32_t seq_demo_at;            /* fm1_ms | 1 of the press that asked, 0 none */
-static uint32_t seq_demo_gen;           /* ... the patch then */
-static void seq_demo_press(void)
-{
-    uint32_t hash;
-    int rc;
-    if (!eng_steps_count()) {
-        seq_msg_due = MSG_NO_STEPS;
-        return;
-    }
-    seq_msg_ms = 1500;
-    if (!seq_demo_has()) {
-        seq_demo_at = 0;
-        seq_msg_due = MSG_NO_DEMO_SET;
-        return;
-    }
-    if (!(seq_demo_at && seq_demo_gen == pages_gen() && fm1_ms - (seq_demo_at & ~1u) < SEQ_CLEAR_MS)) {
-        seq_demo_at = fm1_ms | 1u;
-        seq_demo_gen = pages_gen();
-        seq_msg_due = MSG_DEMO_ASK;
-        seq_msg_ms = SEQ_CLEAR_MS;
-        return;
-    }
-    seq_demo_at = 0;
-    sr_stop();                                   /* (the pattern it wrote is gone) */
-    seq_held = -1;
-    rc = pl_demo_set(&hash);
-    if (rc) {
-        seq_msg_due = rc == -2 ? MSG_FULL_NOT_LOADED : MSG_NO_DEMO_SET;
-        return;
-    }
-    m1_pattern_op_now(PATTERN_OP_DEMO_SET, 0, 0, hash);
-    m1_pattern_now();
-    seq_msg_due = MSG_DEMO_LOADED;
-    seq_msg_ms = 1200;
-    ui_dirty = ui_dirty ? ui_dirty : 1;
-}
-/* anything but SEL pressed, anything turned, or SEQ let go, while the demo set asks: not loaded */
-static void seq_demo_cancel(void)
-{
-    if (!seq_demo_at)
-        return;
-    seq_demo_at = 0;
-    seq_msg_due = MSG_NOT_LOADED;
-    seq_msg_ms = 0;
-}
 
-/* the page is left: the roll's keyboard forgets its keys (REC goes on: it is global, #395); step record ends */
+/* the page is left: the roll's keyboard forgets its keys (REC goes on: it is global, #395); step record ends; the stored
+ * patterns' browser closes */
 static void seq_leave(void)
 {
     ent_keys = 0;
     sr_stop();
+    seq_br_at = seq_br_shown = 0;
     if (seq_page_armed && page != PAGE_SONG) {   /* the page armed its track (#582): on the way out the bar says it stays so,
                                                   * the footer's ARM name has a reason (not on the way to the SONG page,
                                                   * the SEQ page's own: said when that is left for another) */
@@ -2339,9 +2281,9 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
     else
         seq_grid_line(1, 202, line, C_DIM, 224);
     /* the hint line (FONT_S, at most 228 px: export-defs checks it), in the controls table's words (controls.ts HINTS,
-     * #553): a step held, its knobs; a patch with a demo set and no notes in any pattern, how to fill it (#1179: before the
-     * roll's, not before step record's, a live take's or a held step's); a track of more than 16 steps, OCT's pages (#490);
-     * else SEL's SONG page */
+     * #553): a step held, its knobs; a patch with no notes in any pattern while the store holds an entry, how to fill it
+     * (#1202 G8: before the roll's, not before step record's, a live take's or a held step's); a track of more than 16
+     * steps, OCT's pages (#490); else SEL's SONG page */
     if (sr_on)
         hint = map < 0 && !sr_preview ? HINT_STEP_SILENT : HINT_STEP_RECORD;
     else if (seq_play_keys() && (seq_kbd() || seq_held >= 0 || !seq_patch_empty()))
@@ -2353,7 +2295,7 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
     else if (map >= 0 && seq_rec && seq_mod_armed(mod))
         hint = len > 16 ? HINT_DRUM_REC_LONG : HINT_DRUM_REC;
     else if (seq_patch_empty())
-        hint = pt_on ? HINT_EMPTY : HINT_EMPTY_NO_STORE;
+        hint = HINT_EMPTY;
     else if (map >= 0)
         hint = len > 16 ? HINT_DRUM_LONG : HINT_DRUM;
     else
@@ -2370,6 +2312,11 @@ static void seq_draw(int full)
     int mod = seq_module(), map = seq_map();
     int32_t len;
     seq_clamp();
+    if (seq_br_at) {                             /* the stored patterns' browser instead of the grid */
+        if (seq_br_draw(full))
+            return;
+        full = 1;                                /* (it closed: the grid over it) */
+    }
     if (mod < 0) {
         seq_grid_ok = 0;
         if (full) {
@@ -2491,24 +2438,17 @@ static void seq_pattern_keep(void)
     if (p < 0)
         return;
     rc = pl_keep((uint32_t)p, got);
-    q = put(m, pt_on ? SEQ_PL_KEPT[rc + 2] : "NO PATTERN STORE");
+    q = put(m, pt_on ? SEQ_PL_KEPT[rc + 2] : MSG_NO_PATTERN_STORE);
     if (rc > 0)
         q = put(q, got);
     q[0] = 0;
     ui_msg(m, 1500);
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
-static void seq_pattern_load(int32_t d)
+/* the bar after stored entry `got` loaded into pattern p (pl_load_entry's rc) */
+static void seq_pl_said(int p, int rc, const char *got)
 {
-    char got[PT_NAME + 1u], m[40], num[8], *q;
-    int p = seq_pl_pattern(), rc;
-    if (p < 0)
-        return;
-    if (!seq_pl_at)
-        seq_pl_at = (uint16_t)pl_link((uint32_t)p);
-    for (; d; d += d > 0 ? -1 : 1)
-        seq_pl_at = (uint16_t)pl_step(seq_pl_at, d);
-    rc = pl_load_entry((uint32_t)p, seq_pl_at, got);
+    char m[40], num[8], *q;
     seq_held = -1;
     fmt_int(num, p + 1);
     q = rc == 1 ? m : put(put(put(m, "P"), num), ": ");
@@ -2516,6 +2456,127 @@ static void seq_pattern_load(int32_t d)
     q[0] = 0;
     ui_msg(m, 1500);
     ui_dirty = ui_dirty ? ui_dirty : 1;          /* (the cells of the pattern loaded) */
+}
+static void seq_pattern_load(int32_t d)
+{
+    char got[PT_NAME + 1u];
+    int p = seq_pl_pattern();
+    if (p < 0)
+        return;
+    if (!seq_pl_at)
+        seq_pl_at = (uint16_t)pl_link((uint32_t)p);
+    for (; d; d += d > 0 ? -1 : 1)
+        seq_pl_at = (uint16_t)pl_step(seq_pl_at, d);
+    seq_pl_said(p, pl_load_entry((uint32_t)p, seq_pl_at, got), got);
+}
+
+/* the stored patterns' browser (#1202 G8): SEQ held + SEL on the SEQ page opens it (no store: NO PATTERN STORE; an empty
+ * one: NO STORED PATTERNS). The page shows the store's entries in the store's order (pl_step: by id) instead of the grid,
+ * from the one the selected pattern links (else the first): the pattern it loads into and the cursor's place (LOAD INTO
+ * P03  3/12), then a row an entry, as the store names it (KEPT after a kept copy), the cursor's row highlighted, eight
+ * rows a page. PRESET moves the cursor (round), SEL loads its entry into the selected pattern (pl_load_entry: patterns 2..64
+ * link it, pattern 1 copies it; the bar as SEL held + PRESET's: P03: NAME, PATCH FULL, LOCKS LEFT OUT: OTHER LAYOUT), HOME
+ * closes it without loading. Any other button, a key or another knob closes it without loading and then does its own job
+ * (panel.c), as do leaving the page and another patch. The releases of the buttons it took do nothing */
+static void seq_br_close(void)
+{
+    if (!seq_br_at)
+        return;
+    seq_br_at = seq_br_shown = 0;
+    ui_dirty = 2;
+}
+static void seq_br_open(void)
+{
+    pt_info_t in;
+    int p = seq_pl_pattern();
+    uint32_t id;
+    if (p < 0)
+        return;
+    if (!pt_on) {
+        seq_msg_due = MSG_NO_PATTERN_STORE;
+        return;
+    }
+    id = pl_link((uint32_t)p);
+    if (!id || id > PT_ID_MAX || pt_stat(id, &in))
+        id = pl_step(0, 1);
+    if (!id) {
+        seq_msg_due = MSG_NO_STORED_PATTERNS;
+        seq_msg_ms = 1500;
+        return;
+    }
+    sr_stop();
+    seq_held = -1;
+    seq_br_at = (uint16_t)id;
+    seq_br_shown = 0;
+    seq_br_gen = (uint8_t)pages_gen();
+    ui_dirty = 2;
+}
+static void seq_br_step(int32_t d)
+{
+    for (; d && seq_br_at; d += d > 0 ? -1 : 1)
+        seq_br_at = (uint16_t)pl_step(seq_br_at, d);
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+static void seq_br_load(void)
+{
+    char got[PT_NAME + 1u];
+    uint32_t id = seq_br_at;
+    int p;
+    seq_br_close();
+    if (!id || (p = seq_pl_pattern()) < 0)
+        return;
+    seq_pl_at = (uint16_t)id;                    /* (SEL held + PRESET goes on from it) */
+    seq_pl_said(p, pl_load_entry((uint32_t)p, id, got), got);
+}
+/* the browser on the SEQ page (seq_draw): whole, or nothing when the cursor is as drawn. 0: it closed (another patch, the
+ * store emptied) */
+static int seq_br_draw(int full)
+{
+    char t[48], num[8], *q;
+    pt_info_t in;
+    pt_hdr_t h;
+    uint32_t loc, n = 0, k = 0, row, id;
+    int p = eng_pattern();
+    if (seq_br_gen != (uint8_t)pages_gen() || p < 0 || !pt_on
+        || (pt_stat(seq_br_at, &in) && !(seq_br_at = (uint16_t)pl_step(seq_br_at, 1)))) {
+        seq_br_at = seq_br_shown = 0;
+        return 0;
+    }
+    if (!full && seq_br_shown == seq_br_at)
+        return 1;
+    if (full || !seq_br_shown)
+        lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+    pt_ensure();
+    for (loc = 0; !pt_iter(&loc, &h); loc += pt_size(h.len))   /* (the entries, and those before the cursor: one walk) */
+        if (PT_LIVE(h.magic)) {
+            n++;
+            k += h.id < seq_br_at;
+        }
+    q = put2(put(t, MSG_BR_INTO), p + 1);
+    fmt_int(num, (int32_t)k + 1);
+    q = put(put(q, "  "), num);
+    fmt_int(num, (int32_t)n);
+    q = put(put(q, "/"), num);
+    q[0] = 0;
+    text_bc(&FONT_S, 8, 26, t, C_FG, C_BG, 224, TA_LEFT);
+    for (id = seq_br_at, row = k % SONG_ROWS; row && id; row--)   /* (the page's first entry) */
+        id = pl_before(id);
+    for (row = 0; row < SONG_ROWS; row++, id = id ? pl_after(id) : 0u) {
+        uint32_t y = SONG_Y + SONG_RH * row;
+        if (!id || pt_stat(id, &in)) {
+            lcd_fill(0, y, 240, SONG_RH, C_BG);
+            continue;
+        }
+        q = put(t, in.name);
+        if (in.kept)
+            q = put(q, MSG_BR_KEPT);
+        q[0] = 0;
+        text_bc(&FONT_S, 8, y, t, id == seq_br_at ? C_BG : C_FG, id == seq_br_at ? C_ACC : C_BG, 224, TA_LEFT);
+    }
+    text_bc(&FONT_S, 8, 222, HINT_BROWSE, C_HINT, C_BG, 228, TA_LEFT);
+    seq_br_shown = seq_br_at;
+    seq_grid_ok = 0;                             /* (the grid is not on the LCD) */
+    return 1;
 }
 /* PRESET on the SEQ or SONG page: the patch's pattern, d patterns on (SEL held on the SEQ page with the store on: a stored
  * pattern into it) */
@@ -2778,8 +2839,6 @@ static void seq_poll(void)
         seq_clear_at = 0;                        /* (the clear asked in vain: its message ends with it) */
     if (seq_all_at && fm1_ms - (seq_all_at & ~1u) >= SEQ_CLEAR_MS)
         seq_all_at = 0;                          /* (clear all asked in vain) */
-    if (seq_demo_at && fm1_ms - (seq_demo_at & ~1u) >= SEQ_CLEAR_MS)
-        seq_demo_at = 0;                         /* (the demo set asked in vain) */
     song_poll();
     if (page == PAGE_SEQ && eng_steps_count()) {
         static uint8_t seq_cells_pl = 0xFFu;     /* the playing pattern the cells were last asked to show */

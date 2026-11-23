@@ -13,7 +13,7 @@ import { factoryPresets } from './factory-presets';
 import { PRESET_MIGRATIONS, migrateValues } from './preset-migrate';
 import { structureOf } from './structure';
 import { readLineage } from '../scripts/lineage-lib';
-import { factoryWithDemoSet, FM1_PRESETS } from './presets';
+import { factoryWithPatterns, FM1_PRESETS } from './presets';
 import { relocatedPatches } from './community-factory';
 
 const SR = 44118;
@@ -80,8 +80,8 @@ function playHeld(p: Patch, evs: [number, number, boolean][], ms: number, from =
 }
 
 describe('Verona Drum 1 (#613)', () => {
-  // (with its demo set loaded, as it shipped up to 1.24.1: its patterns, #1179)
-  const fm1 = (): Patch => factoryWithDemoSet('Verona Drum 1');
+  // (as it shipped up to 1.24.1: with its patterns)
+  const fm1 = (): Patch => factoryWithPatterns('Verona Drum 1');
   it('fits the FM-1 and is a factory patch, with all eight channels of the original\'s knobs, PAN and VOLUME each, and MASTER (D-899)', () => {
     expect(Object.keys(FM1_PRESETS)).toContain('Verona Drum 1');
     expect(deviceBudget(fm1()).fits).toBe(true);

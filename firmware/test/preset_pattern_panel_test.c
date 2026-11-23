@@ -9,21 +9,21 @@ int host_default_pattern(uint8_t *, uint32_t *, uint32_t, uint32_t, const uint32
 #undef main
 #include "pattern_cases.h"
 
-/* factory patch i running, the 808 and 909 Kits with their demo sets loaded as the editor loads them (pattern_cases.h
- * DEMO_CASES; #1179: they ship without pattern 1's notes and origin) */
+/* factory patch i running, the 808 and 909 Kits with the patterns 1.25 gave them (pattern_cases.h PATTERNED_CASES: pattern
+ * 1's notes and origin, links to the legacy factory patterns) */
 static int load_kit(uint32_t i)
 {
-    const char *demo = !strcmp(PRESET_LIST[i].name, "808 KIT") ? "808 Kit" : !strcmp(PRESET_LIST[i].name, "909 KIT") ? "909 Kit" : 0;
+    const char *kit = !strcmp(PRESET_LIST[i].name, "808 KIT") ? "808 Kit" : !strcmp(PRESET_LIST[i].name, "909 KIT") ? "909 Kit" : 0;
     static int32_t l[128], r[128];
     uint32_t k;
-    if (!demo)
+    if (!kit)
         return load_at(i);
-    for (k = 0; k < N_DEMO_CASES && strcmp(DEMO_CASES[k].name, demo); k++)
+    for (k = 0; k < N_PATTERNED_CASES && strcmp(PATTERNED_CASES[k].name, kit); k++)
         ;
-    if (k == N_DEMO_CASES || !DEMO_CASES[k].loaded || DEMO_CASES[k].loaded_len > sizeof pv_bin)
+    if (k == N_PATTERNED_CASES || PATTERNED_CASES[k].patch_len > sizeof pv_bin)
         return -1;
-    memcpy(pv_bin, DEMO_CASES[k].loaded, DEMO_CASES[k].loaded_len);
-    pv_len = DEMO_CASES[k].loaded_len;
+    memcpy(pv_bin, PATTERNED_CASES[k].patch, PATTERNED_CASES[k].patch_len);
+    pv_len = PATTERNED_CASES[k].patch_len;
     if (eng_load(pv_bin, pv_len))
         return -1;
     m1_pat_load();

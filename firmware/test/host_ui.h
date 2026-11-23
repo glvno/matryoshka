@@ -374,9 +374,8 @@ static void m1_locks_now(uint32_t mod, uint32_t pat) { (void)mod; (void)pat; hos
 #endif
 #ifndef HOST_STEP_HOOKS                     /* (the wasm build tells the page instead) */
 static uint32_t host_op_told, host_op_last[3];       /* (panel_test.c: PATTERN_OP sent, and its op, from, to) */
-static void m1_pattern_op_now(uint32_t op, uint32_t from, uint32_t to, uint32_t hash)
+static void m1_pattern_op_now(uint32_t op, uint32_t from, uint32_t to)
 {
-    (void)hash;
     host_op_told++;
     host_op_last[0] = op;
     host_op_last[1] = from;
@@ -400,18 +399,6 @@ static int m1_steps_write(uint32_t s, uint64_t omit) { (void)s; (void)omit; retu
 static int32_t m1_steps_cost(uint32_t s, uint64_t omit) { (void)s; (void)omit; return 0; }
 static const char *m1_patch_name(void) { return "PREVIEW"; }
 static int m1_patch_links(const uint8_t *s, uint32_t n) { (void)s; (void)n; return 1; }   /* (no links in the preview) */
-static uint32_t m1_sec_at(uint32_t sec)               /* (proto.c's, on the previewed binary: the demo set's room, #1179) */
-{
-    uint32_t at = eng_section_at(pv_bin, pv_len, sec);
-    return at <= pv_len ? at : 0;
-}
-static int m1_origins_put(const uint8_t *s, uint32_t n)   /* (a demo set's origins, #1179: those the previewed binary has) */
-{
-    uint32_t k;
-    for (k = 0; k < n; k++, s += 6)
-        host_set_origin(s[0], s[1], (uint32_t)s[2] | (uint32_t)s[3] << 8 | (uint32_t)s[4] << 16 | (uint32_t)s[5] << 24);
-    return 1;
-}
 static uint32_t host_link_told;             /* (panel_test.c: PAT_LINK_NOW sent) */
 static void m1_pat_link_now(uint32_t p, uint32_t id, uint32_t hash) { (void)p; (void)id; (void)hash; host_link_told++; }
 static void m1_track_pattern_now(uint32_t mod, uint32_t pattern) { (void)pattern; m1_track_now(mod); }

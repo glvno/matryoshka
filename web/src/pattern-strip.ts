@@ -4,10 +4,8 @@
 // track takes it at the end of its pass, and the strip shows the one playing → the one waiting, blinking). Then this
 // track's pattern: its own length and rate or the track's, Copy (every track's pattern to the first empty number after it,
 // or one asked for, #1177), ×2 (every track's pattern twice as long, its steps repeated, D-838), Clear (its notes go: the
-// pattern stays, silent), Clear all (every pattern and song, #1178; not
-// on the compact strip), Demo set (the patch's demo set in place of every pattern and song, demo-sets.ts, #1179: only on
-// a patch that has one, not on the compact strip) and SONG, which opens the song drawer (song.ts). The editor owns the
-// patch: the strip only reports through `ops`.
+// pattern stays, silent), Clear all (every pattern and song, #1178; not on the compact strip) and SONG, which opens the
+// song drawer (song.ts). The editor owns the patch: the strip only reports through `ops`.
 import { patternName, PATTERNS_MAX, STEPS_MAX, STEPS_RATES } from './track';
 
 export interface PatternStripOps {
@@ -29,9 +27,6 @@ export interface PatternStripOps {
   /** clear every pattern of every track and every song (an undo step), and whether there is nothing to clear */
   clearAll(): void;
   empty(): boolean;
-  /** the name of the factory patch whose demo set this patch has (undefined: none), and load it (an undo step) */
-  demoSet(): string | undefined;
-  loadDemoSet(): void;
   /** open / close the song drawer, and the song that plays (0: none) */
   song(): void;
   playing(): number;
@@ -98,12 +93,8 @@ export function patternStrip(ops: PatternStripOps, opts: { compact?: boolean } =
   const clearAll = btn('clear all', 'pat-act', 'clear every pattern of every track and every song: pattern 1 stays, empty (on the FM-1: SEQ held + HOME, then HOME again); asks first, undo brings them back', () => {
     if (window.confirm('Clear every pattern of every track (1–64) and all 8 songs? Pattern 1 stays, empty. Undo brings them back.')) ops.clearAll();
   });
-  const demo = btn('demo set', 'pat-act', '', () => {
-    const name = ops.demoSet();
-    if (name && (ops.empty() || window.confirm(`Replace every pattern and song with the ${name}’s demo set? Undo brings them back.`))) ops.loadDemoSet();
-  });
   const song = btn('song', 'pat-act pat-song', 'SONG: the patch’s songs, patterns in a row with a shift each (on the FM-1: SEL tapped on the SEQ page)', () => ops.song());
-  el.append(prev, label, pick, next, lenSel, rateSel, copy, double, clear, ...(opts.compact ? [] : [clearAll, demo]), song);
+  el.append(prev, label, pick, next, lenSel, rateSel, copy, double, clear, ...(opts.compact ? [] : [clearAll]), song);
 
   let playing = -1, waiting = -1;
   const fill = (s: HTMLSelectElement, items: [string, string][], value: string): void => {
@@ -127,9 +118,6 @@ export function patternStrip(ops: PatternStripOps, opts: { compact?: boolean } =
     song.classList.toggle('on', ops.playing() > 0);
     song.textContent = ops.playing() > 0 ? `song ${ops.playing()}` : 'song';
     clearAll.disabled = ops.empty();
-    const demoName = opts.compact ? undefined : ops.demoSet();
-    demo.hidden = !demoName;
-    demo.title = demoName ? `Load the ${demoName}’s demo set: its patterns, links and songs, as the patch shipped (FM-1: SEQ held + SEL)` : '';
   };
   refresh();
   return {

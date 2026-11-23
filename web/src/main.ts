@@ -45,7 +45,8 @@ import { PaletteView, renderPaletteRail, type PaletteActions, type PaletteMode }
 import { patchDragSource } from './patch-drag';
 import { buildPresetsSection } from './library-presets';
 import { buildPatternsSection } from './pattern-library';
-import { factoryEntries, payloadHash, portablePatch } from './pattern-store';
+import { legacyFactoryStore, payloadHash, portablePatch } from './pattern-store';
+import { restoreBankBackup, savedSlots } from './bank-backup';
 import { PATTERNS_MAX, READ_ONLY_ID, type PatternLink } from './track';
 import { bindPatchPresetTransfer } from './patch-presets';
 import { buildCommunitySection } from './library-community';
@@ -575,9 +576,9 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     } finally { mark(false); }
     return;
   }
-  if (e.kind === 'patternOp') {   // SEQ held + SAVE / HOME / SEL on the SEQ page (#1177, #1178, #1179): the same command here, an undo step
+  if (e.kind === 'patternOp') {   // SEQ held + SAVE / HOME / OCT+ on the SEQ page (#1177, #1178, D-838): the same command here, an undo step
     mark(true);
-    try { editor.patternOpFromDevice(e.op, e.from, e.to, e.hash); } finally { mark(false); }
+    try { editor.patternOpFromDevice(e.op, e.from, e.to); } finally { mark(false); }
     return;
   }
   if (e.kind === 'param') {   // K1..K4 turned on a device page of the FM-1 tab's emulator
@@ -2066,6 +2067,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Import presets from .json', keywords: 'load file library device', run: () => $('load-file').click() },
     { kind: 'command', label: 'Save browser backup', detail: 'everything this browser keeps here, as .json', keywords: 'export download file backup patches bank library settings move', run: saveBrowserBackup },
     { kind: 'command', label: 'Import browser backup', detail: 'a backup .json', keywords: 'restore migrate moved glvno github pages patches bank library', run: () => $('load-file').click() },
+    ...(device.connected && savedSlots().length ? [{ kind: 'command' as const, label: 'Restore FM-1 bank backup', detail: 'the slots the Flash tab backed up, into the FM-1', keywords: 'restore bank backup slots downgrade older firmware', run: async () => showToast(await restoreBankBackup(device)) }] : []),
     ...(onPagesDev() ? [{ kind: 'command' as const, label: 'Move to matryoshka.lol', detail: 'your patches, bank, library and settings', keywords: 'migrate moved address domain pages.dev bring', run: () => move.open() }] : []),
     { kind: 'command', label: 'Share patch\u2026', keywords: 'link copy url clipboard reddit post card notes', run: () => shareSheet.open() },
     { kind: 'command', label: 'Save patch card (PNG)', keywords: 'image picture share post export download', run: () => void saveCard() },
@@ -2831,9 +2833,9 @@ function emuLoad(): void {
   const over = b.over.map((i) => i.key === 'cpu' || i.key === 'browser' ? overText(i) : i.key === 'memory' ? linesAdvice(editor.patch, undefined, device.bufferAllocation) : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
   let err = 0;
   try {
-    // (the emulator keeps no pattern store; its firmware has the factory patches' patterns, #923)
-    const factoryStore = new Map(factoryEntries().filter((e) => e.kit).map((e) => [e.id, e.hash]));
-    err = ui.load(encodePatch(editor.patch, true, 0, 0, factoryStore), editor.patch.name.toUpperCase(), { fresh: emuFresh });
+    // (the emulator keeps no pattern store: every pattern goes inside the binary, but a link to a legacy factory pattern,
+    // which its firmware holds compiled in)
+    err = ui.load(encodePatch(editor.patch, true, 0, 0, legacyFactoryStore()), editor.patch.name.toUpperCase(), { fresh: emuFresh });
   } catch {
     err = -1;
   }
@@ -4053,10 +4055,11 @@ if (import.meta.env.DEV) {
       return !!d;
     },
     // the preset demo (npm run demo, web/demo/README.md): a factory patch opened as the FM-1's PRESET opens it (the view
-    // stays, no Undo toast), what the emulated FM-1 shows, and which factory preset an assembly's card values match now
-    openFactory: (name: string): boolean => {
+    // stays, no Undo toast), what the emulated FM-1 shows, and which factory preset an assembly's card values match now.
+    // `json`: the patch to open in its place (a factory patch with the patterns it shipped with up to 1.24.1)
+    openFactory: (name: string, json?: string): boolean => {
       const o = openableByValue(name);
-      if (o) loadNamed(o.load(), { from: o.from, stay: true, quiet: true });
+      if (o) loadNamed(json ? JSON.parse(json) as Patch : o.load(), { from: o.from, stay: true, quiet: true });
       return !!o;
     },
     emu: () => ({ loaded: emuLoaded, device: emu.ui?.focusDevice ?? -1, page: emu.ui?.page ?? -1, octave: emu.ui?.octave ?? 0 }),

@@ -30,7 +30,7 @@ it.each([
 
 it.each([DEVICE_SR, 48000])('keeps held Hera Bass and the untrimmed 909 Kit within headroom at %s Hz', sr => {
   for (const instrument of ['Hera 6', '909 Kit']) {
-    // (the bank in full: the 909 Kit with its demo set loaded, its 12 patterns, #1179)
+    // (the bank in full: the 909 Kit with the 12 patterns it shipped with up to 1.24.1)
     const p = buildSelectedFactoryBank({ full: true }).find(entry => entry.name === instrument)!.patch;
     let variants: Play[];
     if (instrument === 'Hera 6') {

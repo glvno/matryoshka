@@ -9,6 +9,12 @@
  *   static int  m1_slot_write(uint32_t slot, const char *name, const uint8_t *p, uint32_t len);   preset bank: 0 = ok
  *   static int  m1_slot_erase(uint32_t slot);
  *   static int  m1_slot_info(uint32_t slot, char *name, uint32_t *len);                          1 = the slot holds a preset
+ *   static const uint8_t *m1_slot_get(uint32_t slot, uint32_t mode, uint32_t off, uint32_t *len);   SLOT_GET: the slot's
+ *                                                               patch binary (mode 0 as stored, mode 1 with every pattern
+ *                                                               inside, borrowing the running patch), *len its bytes, else 0
+ *                                                               and *len a status (R_SLOT_DATA's totals)
+ *   static void m1_slot_back(void);                             the running patch back after a mode 1 SLOT_GET (none borrowed:
+ *                                                               nothing)
  *   static uint32_t m1_diag(uint32_t page, uint8_t *out);       DIAG: up to 32 bytes of page n of the diagnostics, 0 = past the end
  *   static void m1_ui_rows(void);                               a live parameter changed: the page's rows need a redraw
  *   static void m1_live(uint32_t paused);                       LIVE: the editor drives the FM-1 (PRESET and program change wait);
@@ -92,9 +98,24 @@ enum { C_PADS = 0x1D, R_PADS_NOW = 0x64 };                  /* the global pad ma
                                                              * + note u8 (0xFF: none) to set a row, 0xFE to clear every row, 0xFD
                                                              * + on u8 for PAD MAP; -> PADS_NOW on u8, then the 24 rows' notes,
                                                              * also unasked after a change on the FM-1 */
-enum { R_PATTERN_OP = 0x65 };                               /* unasked (#1177, #1178, #1179, D-838): the SEQ page copied a pattern,
-                                                             * cleared every pattern and song, loaded the demo set or doubled the
-                                                             * pattern; op u8, from u8, to u8, hash u32 LE (m1_pattern_op_now) */
+enum { R_PATTERN_OP = 0x65 };                               /* unasked (#1177, #1178, D-838): the SEQ page copied a pattern,
+                                                             * cleared every pattern and song or doubled the pattern; op u8, from
+                                                             * u8, to u8, hash u32 LE (always 0: op 3 is retired; m1_pattern_op_now) */
+enum { C_SLOT_GET = 0x02, R_SLOT_DATA = 0x69 };            /* #1202 P2: slot u8, offset u16 LE, mode u8 (absent: 0) -> SLOT_DATA
+                                                             * slot u8, total u16 LE, offset u16 LE, up to 256 bytes from there.
+                                                             * Mode 0: the slot's patch binary as stored (SLOT_INFO's length:
+                                                             * pattern 1, songs and links, the links not resolved). Mode 1: the
+                                                             * binary as 1.25 reads it, every pattern inside and no links: offset
+                                                             * 0 loads the slot in place of the running patch (muted, the bar says
+                                                             * BACKING UP SLOT 3), its links resolved, then the patterns inline
+                                                             * (main.c m1_slot_get); later offsets of that slot read it; the chunk
+                                                             * that reaches the end, any other command, a panel control or 2 s
+                                                             * without a chunk bring the running patch back (m1_slot_back).
+                                                             * Totals past the bytes: 0xFFFF the slot empty, out of range or
+                                                             * unreadable, 0xFFFE (mode 1) the patch with every pattern inside
+                                                             * would pass M1_PATCH_MAX, 0xFFFD (mode 1) the running patch has
+                                                             * unsaved edits, the editor's Live holds it or a palette switch
+                                                             * waits, 0xFFFC (mode 1) the transport runs; nothing sent then */
 enum { C_PALETTE = 0x1E, R_PALETTE_NOW = 0x66, R_PALETTE_ENTRY = 0x67 };   /* the palette (#1196, palette.c m1_palette): op u8
                                                              * (0 GET, 1 ENTRY_GET pos, 2 PUT pos + ENTRY, 3 ORDER from[8], 4 GO
                                                              * pos, 5 NAME name[20]) -> PALETTE_NOW, PALETTE_ENTRY pos + ENTRY,
@@ -111,7 +132,7 @@ enum { C_FONT = 0x1F, R_FONT_SUM = 0x68 };                  /* the font area (#6
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
 #define M1_FEATURES3 255u                                      /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549), bit 19 = INFO's flags bit 3 says GLO > SYSTEM > EDITOR (#702), bit 20 = ARMS, the editor's armed set (#191), bit 21 = ARMS and ARMS_NOW carry ENG_MSET_WORDS words, modules 0..127 (#721; INFO byte 1 says 128), bit 22 = device settings, bit 23 = explicit factory pattern origins / snapshots */
 #define M1_FEATURES4 253u                                     /* INFO byte 14, feature bits 24..31: bit 24 = complete FX-scoped preset recall; bit 25 = the pattern store is on (#901: PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW, format 59's links; m1_pat_info sets it); bit 26 = the factory region (#915, D-490: FACT_INFO, FACT_BEGIN, FACT_WRITE, FACT_SUM, FACT_READ, FACT_COMMIT); bit 27 = MASTER_EQ (#1107); bit 28 = MIDI learn (#1067: MAP, MAP_NOW, the mapping section after the macro ranges); bit 29 = the global pad map (#1067: PADS, PADS_NOW); bit 30 = PATTERN_OP (#1177, #1178: the SEQ page's copy and clear all); bit 31 = the palette (#1196: PALETTE, PALETTE_NOW, PALETTE_ENTRY; the last free bit: later features go in M1_FEATURES5) */
-#define M1_FEATURES5 1u                                       /* INFO byte 25, the feature bits from 1.26 on (bytes 20..24 are the font area's, #1203): bit 0 = a top-level card with a Steps track inside is that track's device (the device extras name the card itself: SEQ, the environment, P-locks and SEL treat it as the track, pages_ui.c pg_track_mod; #1202 K2, D-1062); bit 1 = every saved patch keeps its patterns 2..64 in the store (m1_pat_info sets it, #1202) */
+#define M1_FEATURES5 5u                                       /* INFO byte 25, the feature bits from 1.26 on (bytes 20..24 are the font area's, #1203): bit 0 = a top-level card with a Steps track inside is that track's device (the device extras name the card itself: SEQ, the environment, P-locks and SEL treat it as the track, pages_ui.c pg_track_mod; #1202 K2, D-1062); bit 1 = every saved patch keeps its patterns 2..64 in the store (m1_pat_info sets it, #1202); bit 2 = SLOT_GET and PAT's kept flag (flags bit 1; #1202 P2) */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_INFO_EDITOR_IGNORE 8u                             /* INFO byte 3 (flags) bit 3: GLO > SYSTEM > EDITOR is at IGNORE, the
                                                               * editor leaves this FM-1 alone (with feature bit 19, #702) */
@@ -212,7 +233,7 @@ static void m1_slot_now(uint32_t slot, const char *name)
  * from it (the FONT command), bit 1 the area holds that font, bit 2 an install began and did not commit, bit 3 no room for
  * it (a bank of more than 48 patches keeps its sectors); bytes 21..24: the id of the font it needs (u32 LE, the image's
  * CRC-32). Byte 25: feature bits 32..39 (M1_FEATURES5; bit 33: every saved patch keeps its patterns 2..64 in the store,
- * #1202). Older firmware ends at byte 19 and has its type compiled in. */
+ * #1202; bit 34: SLOT_GET and PAT's kept flag). Older firmware ends at byte 19 and has its type compiled in. */
 static void m1_info(void)
 {
     uint8_t p[26] = { 0 };
@@ -878,29 +899,6 @@ static void m1_origins_drop(void)
     }
     m1_origin_snapshot();
 }
-/* pattern origins into a binary that has none (#1179: a demo set's pattern 1 origins, after clear all dropped the
- * section): s holds n records of 6 bytes (u8 Steps module, u8 pattern, u32 LE identity), sorted. A binary older than
- * ENG_COUNTED keeps none (too old to upgrade); one older than the origins' format is written as ENG_UPGRADED (the formats
- * since ENG_COUNTED read the same as it otherwise, as m1_patch_links). 1 done, 0 not (no room, or the binary has some) */
-static int m1_origins_put(const uint8_t *s, uint32_t n)
-{
-    uint32_t at, k;
-    if (!n)
-        return 1;
-    if ((m1_cur[7] & ENG_FLAG_ORIGINS) || m1_cur[1] < ENG_COUNTED || !(at = m1_sec_at(ENG_SEC_ORIGINS))
-        || m1_cur_len + 2u + 6u * n > M1_PATCH_MAX)
-        return 0;
-    m1_splice(at, 0, 2u + 6u * n);
-    m1_cur[at] = (uint8_t)n;
-    m1_cur[at + 1u] = (uint8_t)(n >> 8);
-    for (k = 0; k < 6u * n; k++)
-        m1_cur[at + 2u + k] = s[k];
-    m1_cur[7] |= ENG_FLAG_ORIGINS;
-    if (m1_cur[1] < ENG_UPGRADED)
-        m1_cur[1] = ENG_UPGRADED;
-    m1_edited = 1;
-    return 1;
-}
 /* Only called for two known, nonempty factory defaults whose notes fit compact words. No other track or
  * pattern moves. Refuse growth before the engine changes, so SAVE and the live track always agree. */
 static int m1_default_pattern(uint32_t mod, uint32_t pattern, const uint32_t *words, uint32_t n, uint32_t identity)
@@ -970,16 +968,13 @@ static void m1_pat_link_now(uint32_t p, uint32_t id, uint32_t hash)
     m1_reply(R_PAT_LINK_NOW, b, sizeof b);
 }
 /* unasked (#1177, #1178): the SEQ page ran a pattern command the editor runs on its copy too, as one undo step there:
- * op u8 (seq_ui.c PATTERN_OP_*), from u8, to u8, hash u32 LE (0 unless the op names a set) */
-static void m1_pattern_op_now(uint32_t op, uint32_t from, uint32_t to, uint32_t hash)
+ * op u8 (seq_ui.c PATTERN_OP_*), from u8, to u8, hash u32 LE (0) */
+static void m1_pattern_op_now(uint32_t op, uint32_t from, uint32_t to)
 {
-    uint8_t b[7];
-    uint32_t k;
+    uint8_t b[7] = { 0 };
     b[0] = (uint8_t)op;
     b[1] = (uint8_t)from;
     b[2] = (uint8_t)to;
-    for (k = 0; k < 4u; k++)
-        b[3u + k] = (uint8_t)(hash >> (8u * k));
     m1_reply(R_PATTERN_OP, b, sizeof b);
 }
 /* the answer to PAT_PUT and PAT_DEL (#901): u16 id, u8 status, u8 count (PAT_DEL's S_USED: the slots that link it) */
@@ -1142,6 +1137,8 @@ static int m1_handle(const uint8_t *f, uint32_t n)
     len = m1_unpack7(f + 4, n - 4u, d, sizeof d);
     if (len > sizeof d)
         return 1;                                            /* more than any of our frames carries */
+    if (f[3] != C_SLOT_GET)
+        m1_slot_back();                                      /* (a mode 1 SLOT_GET cut off: the running patch back first) */
     switch (f[3]) {
     case C_DEVICE_SETTINGS: {
         uint8_t out[34];
@@ -1313,6 +1310,29 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         m1_reply(R_SLOT, r, sizeof r);
         break;
     }
+    case C_SLOT_GET: {                                       /* #1202 P2 (C_SLOT_GET's comment) */
+        uint8_t p[5u + 256u];
+        uint32_t off, mode, total = 0xFFFFu, n = 0, i;
+        const uint8_t *b;
+        if (len < 3u)
+            break;
+        off = (uint32_t)d[1] | (uint32_t)d[2] << 8;
+        mode = len > 3u ? d[3] : 0u;
+        b = mode <= 1u ? m1_slot_get(d[0], mode, off, &total) : 0;
+        if (b && off < total)
+            n = total - off < 256u ? total - off : 256u;
+        p[0] = d[0];
+        p[1] = (uint8_t)total;
+        p[2] = (uint8_t)(total >> 8);
+        p[3] = d[1];
+        p[4] = d[2];
+        for (i = 0; i < n; i++)
+            p[5u + i] = b[off + i];
+        m1_reply_long(R_SLOT_DATA, p, 5u + n);
+        if (mode == 1u && b && off + n >= total)
+            m1_slot_back();                                  /* (the last chunk sent: the running patch back) */
+        break;
+    }
     case C_ATT:
         if (len >= 6u) {
             int32_t v = (int32_t)((uint32_t)d[2] | (uint32_t)d[3] << 8 | (uint32_t)d[4] << 16 | (uint32_t)d[5] << 24);
@@ -1445,9 +1465,9 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         m1_ack(C_PRESET_DEL, 0, m1_preset_del(m1_pkey_get(d, name), name) ? S_MISSING : S_OK, 0);
         break;
     }
-    case C_PATS: {                                           /* #901: one PAT frame per stored pattern, the user entries by id,
-                                                              * then the factory ones: k u16, count u16, then PAT's 30 bytes
-                                                              * (count 0: one frame of 4 bytes, none) */
+    case C_PATS: {                                           /* #901: one PAT frame per stored pattern (the user entries, kept
+                                                              * copies among them, in the store's order): k u16, count u16, then
+                                                              * PAT's 30 bytes (count 0: one frame of 4 bytes, none) */
         uint8_t p[4u + 30u];
         uint32_t cnt = m1_pat_list(0, 0), k, id = 0;
         for (k = 0; k == 0u || k < cnt; k++) {

@@ -25,8 +25,8 @@ import { rowOrder } from '../src/structure';
 import { instIsEngine } from '../src/engines';
 import '../src/factory-presets';
 import { binaryPage } from '../src/patchbin';
-import { DEMO_SET_PATCHES } from '../src/demo-sets';
-import { factoryWithDemoSet, FM1_PRESETS } from '../src/presets';
+import { UNSHIPPED_PATTERNS } from '../src/factory-bank';
+import { factoryWithPatterns, FM1_PRESETS } from '../src/presets';
 
 const WEB = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = resolve(WEB, '..');
@@ -65,9 +65,6 @@ const LEAD_MS = 80;
  *  in it is left out (the offline render does the same, so its loudness matches) */
 const OPEN_LEAD_MS = 350;
 const PATTERN_OPEN_LEAD_MS = 450;
-/** ms more for a pattern patch with a demo set (#1179: it ships without its patterns): SEQ, SEQ held + SEL, SEL again,
- *  SEQ, and the editor taking the set */
-const DEMO_SET_LEAD_MS = 1200;
 
 // ---- notes and the keybed
 const SEMI: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
@@ -188,7 +185,7 @@ const left: string[] = [];
 for (const name of Object.keys(FM1_PRESETS)) {
   if (ONLY && !ONLY.includes(name.toLowerCase())) continue;
   if (SKIP.includes(name.toLowerCase())) continue;
-  const p = factoryWithDemoSet(name);   // (a patch with a demo set as it plays with it loaded, #1179)
+  const p = factoryWithPatterns(name);   // (a factory patch that shipped with patterns up to 1.24.1: with them)
   // a patch plays from its pattern when the pattern its Steps track plays on PLAY (pattern 1) has notes
   const pattern = p.modules.some((m) => m.type === 'steps' && (m.notes?.length ?? 0) > 0);
   // its engine: the first top-level engine assembly with factory presets (the device the FM-1's PRESET steps)
@@ -238,7 +235,7 @@ const beatMs = 60000 / tempo;
 const totalS = (beats * beatMs) / 1000;
 // a patch change: the next patch is opened its lead before its first bar line. What of that lead the load beats do not
 // cover is cut from the end of the patch's last bar: its notes there are let go before the open (and a pattern stopped)
-const leadOf = (it: Item): number => (drums.includes(it) ? PATTERN_OPEN_LEAD_MS + (DEMO_SET_PATCHES.includes(it.name) ? DEMO_SET_LEAD_MS : 0) : OPEN_LEAD_MS);
+const leadOf = (it: Item): number => (drums.includes(it) ? PATTERN_OPEN_LEAD_MS : OPEN_LEAD_MS);
 const order = [...keyboard, ...drums];
 /** ms cut from the end of each patch's last bar for the next patch's open (0 for the last patch) */
 const tailOf = new Map(order.map((it, i) => [it, i + 1 < order.length ? Math.max(0, leadOf(order[i + 1]) - LOAD_BEATS * beatMs) : 0]));
@@ -330,7 +327,7 @@ interface Bar0 { preset: string | null; events: Ev[]; oct: number; beats: number
  */
 function loudnessOfPatch(it: Item, bars: Bar0[], pattern: boolean): number[] {
   const make = (preset: string | null): ReturnType<(typeof FM1_PRESETS)[string]> => {
-    const p = factoryWithDemoSet(it.name);
+    const p = factoryWithPatterns(it.name);
     if (preset) {
       const a = (p.assemblies ?? []).find((x) => x?.id === it.aid);
       const pr = a && presetsOf(p, a).find((x) => x.factory && x.name === preset);
@@ -709,34 +706,13 @@ async function main(): Promise<void> {
   const peak = (): Promise<unknown> => page.evaluate(() => (window as unknown as { __demoLevel?: () => unknown }).__demoLevel?.());
 
   const open = async (it: Item): Promise<void> => {
-    // (the caption stays on the bar before: the first preset's click names the patch and the preset together)
-    if (!(await call<boolean>('openFactory', it.name))) throw new Error(`the page has no factory patch ${it.name}`);
+    // (the caption stays on the bar before: the first preset's click names the patch and the preset together; a patch of
+    // UNSHIPPED_PATTERNS opens with the patterns it shipped with up to 1.24.1, which the editor sends the emulated FM-1)
+    const json = UNSHIPPED_PATTERNS.includes(it.name) ? JSON.stringify(factoryWithPatterns(it.name)) : undefined;
+    if (!(await call<boolean>('openFactory', it.name, json))) throw new Error(`the page has no factory patch ${it.name}`);
     const want = it.name.toUpperCase();
     for (let t = Date.now(); (await emuState()).loaded !== want && Date.now() - t < 5000; ) await sleep(20);
     if ((await emuState()).loaded !== want) console.log(`  warning: the emulated FM-1 did not take ${it.name}`);
-    if (drums.includes(it) && DEMO_SET_PATCHES.includes(it.name)) {
-      // its demo set loaded on the panel, as a hand would (#1179: SEQ, SEQ held + SEL, SEL again, SEQ), and the editor's
-      // copy of the patch with it
-      await page.evaluate(async () => {
-        const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
-        const press = (label: string, type: string, id: number): void => {
-          const b = [...document.querySelectorAll('#fm1-view .fm1-btn')].find((x) => x.textContent === label);
-          b?.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, pointerType: 'touch', isPrimary: false }));
-        };
-        const tap = async (label: string, id: number): Promise<void> => { press(label, 'pointerdown', id); await wait(80); press(label, 'pointerup', id); await wait(150); };
-        await tap('SEQ', 97);
-        press('SEQ', 'pointerdown', 97);
-        await wait(150);
-        await tap('SEL', 98);
-        await tap('SEL', 98);
-        press('SEQ', 'pointerup', 97);
-        await wait(150);
-        await tap('SEQ', 97);
-      });
-      const loaded = async (): Promise<boolean> => (JSON.parse(await call<string>('patchJson')) as { modules: { type: string; notes?: unknown[] }[] }).modules.some((m) => m.type === 'steps' && !!m.notes?.length);
-      for (let t = Date.now(); !(await loaded()) && Date.now() - t < 2000; ) await sleep(20);
-      if (!(await loaded())) console.log(`  warning: ${it.name}'s demo set did not load`);
-    }
     // the engine's device in focus (a fresh patch starts on its first instrument, which is it in every factory patch)
     for (let i = 0; i < 8 && it.device >= 0; i++) {
       const d = (await emuState()).device;

@@ -4,7 +4,7 @@
  * clock, Start, Continue, Stop and Song Position at a tempo other than the FM-1's, as a looper does (Reel at a loop's
  * record-to-playback turn: the clock stalls, sends the missed ticks in a burst or not, then Stop / Start or Song Position
  * + Continue). The messages reach clock_in.h at the half buffer they arrive in, the engine renders half buffers as the
- * audio ISR does, and the test checks that the 808 Kit's first Steps track (its demo set loaded, #1179) steps on the host's
+ * audio ISR does, and the test checks that the 808 Kit's first Steps track (with the patterns 1.25 gave it) steps on the host's
  * tick 6k after its Start, tick 0 being the first clock after it (the FM-1's own clock out counts the same,
  * clock_out.h), and after a Song Position n step n on the first clock after its Continue. A Song Position + Continue
  * must land every Steps track (its step, its song entry, its passes) where playing from the top puts it, in a pattern,
@@ -192,18 +192,17 @@ static void reset(void)
     check("  (stopped, MIDI clock let go)", !eng_transport_running() && !eng_clock_is_external());
 }
 
-/* factory patch `name` with its demo set loaded (#1179: it ships without its patterns and songs), as the editor loads
- * it (pattern_cases.h DEMO_CASES) */
+/* factory patch `name` with the patterns and songs 1.25 gave it (pattern_cases.h PATTERNED_CASES) */
 static int factory_load(const char *name)
 {
     static uint8_t bin[4096];
     uint32_t k;
-    for (k = 0; k < N_DEMO_CASES && (strcmp(DEMO_CASES[k].name, name) || !DEMO_CASES[k].loaded); k++)
+    for (k = 0; k < N_PATTERNED_CASES && strcmp(PATTERNED_CASES[k].name, name); k++)
         ;
-    if (k == N_DEMO_CASES || DEMO_CASES[k].loaded_len > sizeof bin)
+    if (k == N_PATTERNED_CASES || PATTERNED_CASES[k].patch_len > sizeof bin)
         return -1;
-    memcpy(bin, DEMO_CASES[k].loaded, DEMO_CASES[k].loaded_len);
-    return eng_load(bin, DEMO_CASES[k].loaded_len) ? -1 : 0;
+    memcpy(bin, PATTERNED_CASES[k].patch, PATTERNED_CASES[k].patch_len);
+    return eng_load(bin, PATTERNED_CASES[k].patch_len) ? -1 : 0;
 }
 
 /* the host plays: some clock first (Reel's Send clock), Start with the first tick, `ticks` ticks */

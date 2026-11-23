@@ -12,7 +12,7 @@ import { PRESET_MIGRATIONS, migrateValues } from './preset-migrate';
 import { structureOf } from './structure';
 import { readLineage } from '../scripts/lineage-lib';
 import { presetsHPatches } from '../scripts/factory-lz';
-import { factoryWithDemoSet, FM1_PRESETS } from './presets';
+import { factoryWithPatterns, FM1_PRESETS } from './presets';
 import { assembliesOf } from './assembly';
 import { patternNotes, type StepNote } from './track';
 import type { ModuleInst, Patch } from './patch';
@@ -22,8 +22,8 @@ const SR = 48000;
 const KEYS = [53, 55, 57, 59, 60, 62, 64];
 const SCROUNGE_TRACKS = ['VOICE 1', 'VOICE 2', 'VOICE 3', 'VOICE 4', 'VOICE 5', 'MOD X', 'MOD Y', 'LEN GLB'];
 const scrounge = (): Patch => FM1_PRESETS.Scrounge();
-/** Scrounge with its demo set loaded (#1179): its grooves, songs and LEN GLB's resets, as it shipped up to 1.24.1 */
-const scroungeSet = (): Patch => factoryWithDemoSet('Scrounge');
+/** Scrounge with its grooves, songs and LEN GLB's resets, as it shipped up to 1.24.1 */
+const scroungeSet = (): Patch => factoryWithPatterns('Scrounge');
 const track = (p: Patch, name: string): ModuleInst => p.modules.find((m) => m.type === 'steps' && m.name === name)!;
 /** every track empty but LEN GLB, so a test plays only what it puts there */
 const silence = (p: Patch): Patch => {

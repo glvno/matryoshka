@@ -85,8 +85,8 @@ describe('owner-selected factory defaults', () => {
     const protectedEntries = SOURCE.filter(entry => !factoryFxAudit.some(audit => audit.name === entry.name));
     expect(bank).toHaveLength(SOURCE.length);
     expect(bank.map(entry => entry.name)).toEqual(SOURCE.map(entry => selectedFactoryProfile[entry.name]?.bankName ?? entry.name));
-    // (the patches with a demo set ship without it, #1179: the shipped bank is the full one without them, and the full
-    // one holds the protected patches to their source)
+    // (the patches of UNSHIPPED_PATTERNS ship without their patterns: the shipped bank is the full one without them, and
+    // the full one holds the protected patches to their source)
     const full = buildSelectedFactoryBank({ full: true });
     expect(bank).toEqual(shippedFactoryBank(full));
     for (const source of protectedEntries) {

@@ -57,12 +57,12 @@ export const EFFECTS = [
   'tab', 'scroll', 'set', 'save_close', 'run_row',
   'editor', 'analog_out', 'chord_button', 'fx_page', 'fx_toggle', 'fx_row',
   'pattern_new', 'pattern_load', 'condition', 'fill', 'ratchet', 'micro', 'drum_bank', 'learn_row', 'learn_mode', 'learn_end',
-  'pattern_copy', 'clear_all', 'demo_set', 'pattern_double', 'palette_go', 'palette_save',
+  'pattern_copy', 'clear_all', 'pattern_browse', 'pattern_double', 'palette_go', 'palette_save',
 ] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 /** the conditions a row can show under (help_ui.c hc_<name>); '!name': when it is false */
-export const CONDITIONS = ['list', 'dev_presets', 'dev_store', 'dev_keys', 'long_track', 'tracks', 'menu_guide', 'menu_page', 'menu_system', 'roll', 'harm', 'roll_preview', 'roll_silent', 'fx_bank', 'pattern_store', 'oct_banks', 'drum_banks', 'learning', 'demo_set'] as const;
+export const CONDITIONS = ['list', 'dev_presets', 'dev_store', 'dev_keys', 'long_track', 'tracks', 'menu_guide', 'menu_page', 'menu_system', 'roll', 'harm', 'roll_preview', 'roll_silent', 'fx_bank', 'pattern_store', 'oct_banks', 'drum_banks', 'learning'] as const;
 export type Condition = (typeof CONDITIONS)[number];
 
 export interface ControlRow {
@@ -258,7 +258,7 @@ export const CONTROLS: ControlRow[] = [
   { id: 'pattern-new', gesture: { hold: 'FX', do: [B('SAVE')] }, does: 'keep pattern copy', when: 'pattern_store', sheet: { drum: 74, roll: 64 }, effect: 'pattern_new',
     help: 'a copy of the selected pattern into the pattern store as a new entry named after the patch and the pattern (SCROUNGE P3), kept: no patch links it, the FM-1 never deletes it and SAVE never writes over it; the pattern’s own link stays (SAVE puts the patterns into the store). The bar says KEPT AS and the name, PATTERN STORE FULL when there is no room' },
   { id: 'pattern-load', gesture: { hold: 'SEL', do: [E('PRESET')] }, does: 'load stored pattern', when: 'pattern_store', sheet: { drum: 76, roll: 66 }, effect: 'pattern_load',
-    help: 'steps through the pattern store, your patterns first, then the factory ones, each click loading one into the selected pattern: one of yours is linked (pattern 1 and the factory ones are copied). The bar names it (P3: SCROUNGE P3); its P-locks load only into a patch of the layout they were saved in, else the bar says LOCKS LEFT OUT: OTHER LAYOUT' },
+    help: 'steps through the pattern store in its order, each click loading the next entry into the selected pattern, which links it (pattern 1 gets a copy). The bar names it (P3: SCROUNGE P3); its P-locks load only into a patch of the layout they were saved in, else the bar says LOCKS LEFT OUT: OTHER LAYOUT' },
   // (the pattern commands, #1177 and #1178: the editor's copy and clear all, D-544)
   { id: 'pattern-copy', gesture: { hold: 'SEQ', do: [B('SAVE')] }, does: 'copy pattern', sheet: { drum: 78, roll: 68 }, effect: 'pattern_copy',
     help: 'the selected pattern of every track (notes, P-locks, its own length and rate) to the first empty number after it, round from P02 when there is none after it; the copy is selected and linked to nothing. The bar says P03 COPIED TO P04, ALL 64 PATTERNS USED when no number is empty, P03 EMPTY: NOT COPIED when it has no notes, PATCH FULL: NOT COPIED when the patch has no room' },
@@ -266,9 +266,9 @@ export const CONTROLS: ControlRow[] = [
     help: 'the bar asks first; REC again within 3 s, SEQ still held, clears the selected track' },
   { id: 'clear-all', gesture: { hold: 'SEQ', do: [B('HOME')] }, does: 'clear all patterns', sheet: { drum: 82, roll: 202 }, effect: 'clear_all',
     help: 'the bar asks first (CLEAR ALL? HOME AGAIN); HOME again within 3 s, SEQ still held, clears every pattern of every track (1 to 64, their links and P-locks) and every song: pattern 1 stays, empty and selected (PATTERNS + SONGS CLEARED). The pattern store keeps its patterns' },
-  // (the demo set, #1179: the patterns and songs a factory patch shipped with up to 1.24.1)
-  { id: 'demo-set', gesture: { hold: 'SEQ', do: [B('SEL')] }, does: 'load demo set', when: 'demo_set', sheet: { drum: 84, roll: 204 }, effect: 'demo_set', hint: 'SEQ+SEL demo set',
-    help: 'only on a patch with a demo set: the 808 Kit, 909 Kit, Verona Drum 1, Scrounge or Silver Box, or a copy of one with the same modules. The bar asks first (LOAD DEMO SET? SEL AGAIN); SEL again within 3 s, SEQ still held, replaces every pattern, link and song with the patterns and songs that factory patch shipped with, pattern 1 selected (DEMO SET LOADED). PATCH FULL: NOT LOADED when the patch has no room for them (nothing changes); NO DEMO SET when the FM-1 lacks the factory sounds' },
+  // (the stored patterns' browser, #1202 G8)
+  { id: 'pattern-browse', gesture: { hold: 'SEQ', do: [B('SEL')] }, does: 'stored patterns', when: 'pattern_store', sheet: { drum: 84, roll: 204 }, effect: 'pattern_browse', hint: 'SEQ+SEL load a pattern',
+    help: 'the pattern store’s entries as a list in place of the steps, named as the store names them (909 KIT P03; KEPT after a kept copy), from the one the selected pattern links, with the pattern they load into and the place in the list (LOAD INTO P03  3/12). PRESET moves through them; SEL loads the one shown into the selected pattern, which links it (pattern 1 gets a copy), and closes the list; HOME closes it without loading. Any other button, a key or another knob closes it without loading and does its own job. NO STORED PATTERNS when the store is empty' },
   // (the double, D-838: the editor's ×2)
   { id: 'pattern-double', gesture: { hold: 'SEQ', do: [B('OCT+')] }, does: 'double pattern', sheet: { drum: 79, roll: 69 }, effect: 'pattern_double',
     help: 'the selected pattern of every track twice as long (16 steps become 32), its steps copied into the new half: notes, ties, velocities, chance, conditions, ratchets, micro timing and P-locks, so it plays the same twice; again doubles it again, up to 64 steps. Pattern 1 doubles the track’s length (its other patterns keep theirs). While playing it goes on in the first half. The bar says DOUBLED: 32 STEPS (the longest track); nothing changes when a track would pass 64 steps (64 STEPS MAX: NOT DOUBLED), a pattern 128 notes or the patch 1536 (TOO MANY NOTES TO DOUBLE), a pattern 64 P-locks or the patch 256 (TOO MANY P-LOCKS TO DOUBLE), or the patch its bytes (PATCH FULL: NOT DOUBLED)' },
@@ -373,7 +373,7 @@ const STRIP: Record<string, string | ({ _: string } & Partial<Record<HelpState, 
   'pattern-load': 'load stored patterns into this pattern as you turn',
   clear: 'clear the whole track (press REC again to confirm)', 'steps-page': 'show the next or previous 16 steps',
   'pattern-copy': 'copy this pattern to the next empty number', 'clear-all': 'clear every pattern and song (press HOME again to confirm)',
-  'demo-set': "load the patch's demo patterns and songs back (press SEL again to confirm)",
+  'pattern-browse': 'pick a stored pattern from a list and load it',
   'drum-bank': 'play the next or previous 8 drum sounds from the black keys', 'drum-bank-seq': 'show the next or previous 8 drum sounds',
   tie: 'tie the note on through that step (on its own step: a drone)', 'row-drone': 'make the selected row one long held note (a drone)', 'held-pitch': "change this step's pitch", 'held-velocity': "change this step's velocity",
   'held-chance': 'change the chance this step plays', 'held-chance-select': 'change the chance this step plays', 'held-cond': 'choose when this step plays: FILL, 1ST, every Nth pass',
@@ -427,9 +427,10 @@ export const HINTS: HintLine[] = [
   { id: 'drum_long', items: [{ row: ['row-key', 'row-select'], text: 'BLACK/SELECT row' }, 'step', 'accent', 'steps-page'], width: 228 },
   { id: 'drum', items: ['row-key', 'step', 'accent', 'song-page'], width: 228 },
   { id: 'roll', items: ['roll-keys', 'roll-view', 'octave', 'song-page'], width: 228 },
-  // (an empty pattern of a patch with a demo set, #1179: how to fill it; without the pattern store, the demo set alone)
-  { id: 'empty', lead: 'EMPTY ', items: ['demo-set', { row: 'pattern-load', text: 'SEL+PRESET pat' }], width: 228 },
-  { id: 'empty_no_store', lead: 'EMPTY ', items: [{ row: 'demo-set', text: 'SEQ+SEL loads the demo set' }], width: 228 },
+  // (a patch without a note in any pattern while the store holds patterns, #1202 G8: how to fill it)
+  { id: 'empty', lead: 'EMPTY ', items: ['pattern-browse'], width: 228 },
+  // (the stored patterns' browser, seq_ui.c seq_br_draw)
+  { id: 'browse', items: [{ row: 'pattern-browse', text: 'PRESET choose  SEL load  HOME cancel' }], width: 228 },
   { id: 'no_track', items: ['seq-back'], width: 224 },
   // the SONG page's two lines (seq_ui.c song_draw)
   { id: 'song_1', items: ['song-entry', 'song-pattern', 'song-shift', 'song-dup'], width: 224 },
@@ -532,7 +533,6 @@ export const CONDITION_TEXT: Record<Condition, string> = {
   fx_bank: 'a patch with a recognized master FX bus', pattern_store: 'while the pattern store is on',
   oct_banks: 'the keys on a drum track of more than 8 rows', drum_banks: 'a drum track of more than 8 rows',
   learning: 'while MIDI learn mode waits for a knob or a drum key (HOME + SEL)',
-  demo_set: 'a patch with a demo set (the 808 Kit, 909 Kit, Verona Drum 1, Scrounge, Silver Box, or a copy with the same modules)',
 };
 
 /** a gesture in words: "HOME held + PRESET", "a held step + K2", "OCT- / OCT+" */

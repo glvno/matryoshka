@@ -87,6 +87,20 @@ static int m1_slot_info(uint32_t slot, char *name, uint32_t *len)
     *len = last_len;
     return 1;
 }
+#ifndef PROTO_TEST_PATLINK                                    /* (patlink_test.c brings main.c's SLOT_GET, slot_get.h) */
+static uint8_t slot_bytes[300];                       /* (SLOT_GET: slot 5's binary, 300 bytes: two chunks) */
+static uint32_t slot_backs;                           /* (m1_slot_back calls) */
+static const uint8_t *m1_slot_get(uint32_t slot, uint32_t mode, uint32_t off, uint32_t *len)
+{
+    (void)off;
+    *len = slot == 5u && mode <= 1u ? sizeof slot_bytes : 0xFFFFu;
+    return slot == 5u && mode <= 1u ? slot_bytes : 0;
+}
+static void m1_slot_back(void) { slot_backs++; }
+#else
+static const uint8_t *m1_slot_get(uint32_t slot, uint32_t mode, uint32_t off, uint32_t *len);
+static void m1_slot_back(void);
+#endif
 static uint32_t m1_diag(uint32_t page, uint8_t *out)   /* two pages of 32, 7 */
 {
     uint32_t i, n = page == 0u ? 32u : page == 1u ? 7u : 0u;
@@ -1093,6 +1107,38 @@ int main(int argc, char **argv)
                   pal_got[1] == 2u && m1_pal_asked == 0u);
             printf("palette: feature bit 31, PALETTE handed to palette.c\n");
         }
+#ifndef PROTO_TEST_PATLINK                                    /* (the stand-in m1_slot_get above) */
+        {                                                    /* #1202 P2: feature bit 34 (INFO byte 25 bit 2) and SLOT_GET (0x02)
+                                                              * -> SLOT_DATA (0x69) in chunks of 256 from the offset asked; mode
+                                                              * 1's last chunk and any other command bring the running patch
+                                                              * back (m1_slot_back), mode 0's do not */
+            uint8_t g[16] = {0x7D, 0x4D, 0x31, C_SLOT_GET}, a[4] = {5, 0, 0, 1}, r[300];
+            uint32_t backs = slot_backs, k, m;
+            for (k = 0; k < sizeof slot_bytes; k++)
+                slot_bytes[k] = (uint8_t)(k * 7u);
+            CHECK((p[25] & 4u) && C_SLOT_GET == 0x02u && R_SLOT_DATA == 0x69u);
+            nreplies = 0;
+            CHECK(m1_handle(g, 4u + m1_pack7(a, 4, g + 4)) == 1 && nreplies == 1 && replies[0][4] == R_SLOT_DATA);
+            m = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, r, sizeof r);
+            CHECK(m == 5u + 256u && r[0] == 5u && (r[1] | r[2] << 8) == 300 && !r[3] && !r[4] && !memcmp(r + 5, slot_bytes, 256)
+                  && slot_backs == backs);
+            a[2] = 1;                                        /* (offset 256: the last 44 bytes, then back) */
+            nreplies = 0;
+            CHECK(m1_handle(g, 4u + m1_pack7(a, 4, g + 4)) == 1 && nreplies == 1);
+            m = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, r, sizeof r);
+            CHECK(m == 5u + 44u && (r[3] | r[4] << 8) == 256 && !memcmp(r + 5, slot_bytes + 256, 44) && slot_backs == backs + 1u);
+            a[3] = 0;                                        /* (mode 0, the 3-byte form too: nothing borrowed) */
+            nreplies = 0;
+            CHECK(m1_handle(g, 4u + m1_pack7(a, 3, g + 4)) == 1 && slot_backs == backs + 1u);
+            a[0] = 6;
+            nreplies = 0;
+            CHECK(m1_handle(g, 4u + m1_pack7(a, 4, g + 4)) == 1 && nreplies == 1);
+            m = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, r, sizeof r);
+            CHECK(m == 5u && (r[1] | r[2] << 8) == 0xFFFF);  /* (an empty slot: 0xFFFF, no bytes) */
+            CHECK(m1_handle(q, sizeof q) == 1 && slot_backs == backs + 2u);   /* (another command: back first) */
+            printf("SLOT_GET: feature bit 34, chunks of 256, the running patch back after mode 1's last chunk and at another command\n");
+        }
+#endif
         return 0;
     }
     if (argc >= 2 && !strcmp(argv[1], "--old"))

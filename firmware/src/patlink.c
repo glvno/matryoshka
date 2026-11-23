@@ -20,29 +20,23 @@
  * every pattern 2..64 into the store: a saved slot holds pattern 1, its songs and its links. An edited pattern that
  * another slot or another pattern of the patch links gets an entry of its own then (shared until edited); an entry no
  * slot and not the running patch links goes (pl_gc). When the binary cannot hold the inline ones, they go to entries
- * only the running patch links (m1_pat_spill, #1199). Two kinds of read-only factory entries follow the user's (ids
- * 1..PT_ID_MAX), in id order: the factory
- * patches' patterns (factory_tier.h KIT_GROUPS, compiled in with the firmware tier, #915: from PL_KIT, a patch's block
- * from its own first id in one or more groups of consecutive ids, #852; any number of tracks, in the payload layout
- * above, a group packed together by lz_unpack.h and unpacking into m1_up), which
- * a factory patch links like a user entry, and the factory demonstration patterns (factory.c fc_pattern, ids PL_FACTORY +
- * index: one track, no locks). Loading either on the SEQ page copies it and links nothing. A link to a read-only entry
- * needs no store; SAVE of an edited one stores it as a new user entry, which it then links.
+ * only the running patch links (m1_pat_spill, #1199). The store holds user entries only (ids 1..PT_ID_MAX, kept copies
+ * among them). The legacy factory patterns (the 808 Kit's and 909 Kit's patterns that were read-only store entries up to
+ * 1.25: factory_tier.h KIT_GROUPS from PL_KIT, a kit's block in one or more groups of consecutive ids packed by
+ * lz_unpack.h, each unpacking into m1_up) stay compiled in only so a patch that still links one plays it (pl_read): SAVE
+ * stores such a pattern as a user entry and links that (pl_commit, which main.c's boot runs on every slot that links one,
+ * #1202 G8). They are never listed, browsed or loaded on their own.
  *
  * The payloads go through m1_up (proto.c's upload buffer: the store works in sl_buf, and the editor sends no patch upload
  * while it talks to the store). Needs, after proto.c and patstore.c: m1_cur, m1_cur_len, m1_edited, m1_up,
  * m1_patch_patterns, m1_patch_locks, m1_patch_links, m1_steps_write, m1_steps_cost, m1_pat_link_now,
  * m1_track_pattern_now, m1_locks_now, m1_patch_name, bank_slots, bank_mask, sl_head / sl_buf (slotstore.c), KIT_GROUPS
- * (factory_tier.h), fc_pattern / fc_npatterns (factory.c). */
-#define PL_KIT (PT_ID_MAX + 1u)            /* the first factory patch pattern's id: 0xE000 */
-#define PL_FACTORY 0xFF00u                 /* the first factory demonstration pattern's id */
-#define PL_END (PL_FACTORY + 256u)         /* one above every 16-bit id */
-#define PL_DEMO_TRACKS 16u                 /* a demo set's origins at most: a patch's Steps tracks (engine.c ENG_MAX_TRACKS) */
+ * (factory_tier.h). */
+#define PL_KIT (PT_ID_MAX + 1u)            /* the first legacy factory pattern's id: 0xE000 */
 
 static uint32_t pl_hash[ENG_PATTERNS];     /* each link's payload hash as the store gave it to this patch */
 static uint64_t pl_priv;                   /* bit p: pattern p links an entry m1_pat_spill made since the load or SAVE, which
                                            * only the running patch links */
-static int pl_is_factory(uint32_t id);
 
 /* the running patch's links (m1_cur's format 59 section): its entries (3 bytes each), their count in *n */
 static const uint8_t *pl_links(uint32_t *n)
@@ -169,17 +163,7 @@ static uint32_t pl_hash_of(uint32_t p)
     return s.h;
 }
 
-/* factory pattern f as a payload: track 0 alone, its own length and rate, no locks */
-static void pl_factory(const fc_pattern_t *f, pl_out_t *s)
-{
-    pl_b(s, 1);
-    pl_w(s, 0, 4);
-    pl_b(s, 1);
-    pl_words(s, f->notes, f->n, f->len, f->rate);
-    pl_b(s, 0);
-}
-
-/* the factory patch pattern group (factory_tier.h KIT_GROUPS) that holds id, N_KIT_GROUPS none */
+/* the legacy factory pattern group (factory_tier.h KIT_GROUPS) that holds id, N_KIT_GROUPS none */
 static uint32_t pl_kit(uint32_t id)
 {
     uint32_t g;
@@ -187,47 +171,51 @@ static uint32_t pl_kit(uint32_t id)
         ;
     return g;
 }
+/* id is a legacy factory pattern this firmware holds */
+static int pl_legacy(uint32_t id) { return id > PT_ID_MAX && pl_kit(id) < N_KIT_GROUPS; }
+/* a slot's patch binary that boot moves into the store (main.c bank_patterns, #1202): it holds patterns 2..64 of its own
+ * (format 48's patterns section names a track: a binary of 1.25 or before, or one an older editor wrote), or it links a
+ * legacy factory pattern this firmware holds (a factory patch's link of 1.25 or before, G8) */
+static int pl_slot_due(const uint8_t *b, uint32_t len)
+{
+    uint32_t at = len >= 8u && b[1] >= 48u && (b[7] & ENG_FLAG_PATTERNS) ? eng_section_at(b, len, ENG_SEC_PATTERNS) : 0u, k;
+    if (at && at + 2u < len && b[at + 2u] != 0u)
+        return 1;
+    at = len >= 8u && (b[7] & ENG_FLAG_LINKS) ? eng_links_at(b, len) : 0u;
+    for (k = 0; at && k < b[at]; k++)
+        if (pl_legacy((uint32_t)b[at + 2u + 3u * k] | (uint32_t)b[at + 3u + 3u * k] << 8))
+            return 1;
+    return 0;
+}
 
-/* stored pattern id (a user entry or a factory one) into buf (cap bytes), its record in *in: 0, -1 none. A factory patch
- * pattern's group is unpacked into buf, each entry there its name (NUL ended), u16 payload length, payload; the entry's
- * payload then moves to buf's start */
+/* stored pattern id (a user entry, or a legacy factory pattern) into buf (cap bytes), its record in *in: 0, -1 none. A
+ * legacy pattern's group is unpacked into buf, each entry there its name (NUL ended), u16 payload length, payload; the
+ * entry's payload then moves to buf's start */
 static int pl_read(uint32_t id, uint8_t *buf, uint32_t cap, pt_info_t *in)
 {
     pl_out_t s = { buf, cap, 0, PT_FNV0 };
-    const uint8_t *src = 0;
-    const char *name;
-    fc_pattern_t f;
+    const uint8_t *src;
     uint32_t i, n = 0, k, g = pl_kit(id);
     if (id <= PT_ID_MAX)
         return pt_read(id, buf, cap, in) ? -1 : 0;
-    if (g < N_KIT_GROUPS) {
-        if (lz_unpack(KIT_GROUPS[g].lz, KIT_GROUPS[g].lz_len, buf, cap) != (int32_t)KIT_GROUPS[g].len)
-            return -1;
-        for (src = buf, k = id - KIT_GROUPS[g].first;; k--, src += i + 3u + n) {
-            for (i = 0; src[i]; i++)
-                ;
-            n = (uint32_t)src[i + 1u] | (uint32_t)src[i + 2u] << 8;
-            if (!k)
-                break;
-        }
-        name = (const char *)src;
-        src += i + 3u;
-    } else if (id >= PL_FACTORY && !fc_pattern(id - PL_FACTORY, &f)) {
-        name = f.name;
-    } else {
+    if (g >= N_KIT_GROUPS || lz_unpack(KIT_GROUPS[g].lz, KIT_GROUPS[g].lz_len, buf, cap) != (int32_t)KIT_GROUPS[g].len)
         return -1;
+    for (src = buf, k = id - KIT_GROUPS[g].first;; k--, src += i + 3u + n) {
+        for (i = 0; src[i]; i++)
+            ;
+        n = (uint32_t)src[i + 1u] | (uint32_t)src[i + 2u] << 8;
+        if (!k)
+            break;
     }
-    for (i = 0; i < PT_NAME && name[i]; i++)          /* (the name first: the payload may move over it) */
-        in->name[i] = name[i];
-    in->name[i] = 0;
-    if (src)
-        for (i = 0; i < n; i++)
-            pl_b(&s, src[i]);
-    else
-        pl_factory(&f, &s);
+    for (k = 0; k < PT_NAME && src[k]; k++)           /* (the name first: the payload moves over it) */
+        in->name[k] = (char)src[k];
+    in->name[k] = 0;
+    for (src += i + 3u, i = 0; i < n; i++)
+        pl_b(&s, src[i]);
     in->id = (uint16_t)id;
     in->len = (uint16_t)s.n;
     in->hash = s.h;
+    in->kept = 0;
     return s.n <= cap ? 0 : -1;
 }
 
@@ -379,7 +367,7 @@ static int pl_has(uint32_t p)
 }
 
 /* proto.c m1_set_current: the links of the patch just loaded (m1_cur, the engine has it). A linked pattern no track has
- * comes from the store or the factory entries (none there, or no store for a user entry: it stays absent, the link
+ * comes from the store or the legacy factory patterns (none there, or no store for a user entry: it stays absent, the link
  * stays); one with inline content is an edited copy, dirty unless it equals the stored one. The user entries are found in
  * one walk over the store (pt_find_many) */
 static void m1_pat_load(void)
@@ -511,13 +499,14 @@ static uint64_t pl_shared(const uint16_t *ids, uint32_t self)
 }
 
 /* SAVE (main.c m1_store, before the running patch goes into slot self; main.c's boot for each slot that holds patterns
- * 2..64 in its binary, #1202): every pattern 2..64 the running patch has goes to the store and the patch links it, so the
- * slot keeps pattern 1, the songs and the links. A pattern whose link is clean keeps it. Any other takes an entry whose
- * bytes are the same (by hash and length: shared), else is written over the entry it links when no other slot and no
- * other pattern of this patch links that one, else into a new entry named after the patch (`patch`, pl_name): an edited
- * shared pattern splits off its own copy. A link to a pattern no track has goes. The store full (or a pattern larger than
- * an entry, or the ids used up): that pattern stays in the binary. 0 done, -2 some pattern stayed in the binary, -3 the
- * binary could not take the links (it is as it was) */
+ * 2..64 in its binary or links a legacy factory pattern, #1202): every pattern 2..64 the running patch has goes to the
+ * store and the patch links it, so the slot keeps pattern 1, the songs and the links. A pattern whose link to a user
+ * entry is clean keeps it. Any other (a legacy factory pattern's too) takes an entry whose bytes are the same (by hash
+ * and length: shared), else is written over the user entry it links when no other slot and no other pattern of this
+ * patch links that one, else into a new entry named after the patch (`patch`, pl_name): an edited shared pattern splits
+ * off its own copy. A link to a pattern no track has goes (one this FM-1 cannot resolve stays). The store full (or a
+ * pattern larger than an entry, or the ids used up): that pattern stays in the binary. 0 done, -2 some pattern stayed in
+ * the binary, -3 the binary could not take the links (it is as it was) */
 static int pl_commit(const char *patch, uint32_t self)
 {
     uint16_t ids[ENG_PATTERNS], uids[ENG_PATTERNS];
@@ -538,14 +527,14 @@ static int pl_commit(const char *patch, uint32_t self)
     pt_find_many(uids, ENG_PATTERNS, at, hash);
     for (p = 1; p < ENG_PATTERNS; p++) {
         if (!pl_has(p)) {                             /* (a link this FM-1 cannot resolve stays, as at load) */
-            if (!ids[p] || (ids[p] <= PT_ID_MAX ? at[p] >= 0 : pl_is_factory(ids[p])))
+            if (!ids[p] || (ids[p] <= PT_ID_MAX ? at[p] >= 0 : pl_legacy(ids[p])))
                 ids[p] = 0;
             continue;
         }
         s = (pl_out_t){ 0, 0, 0, PT_FNV0 };
         pl_encode(p, &s);
-        if (ids[p] && (ids[p] > PT_ID_MAX ? s.h == pl_hash[p] : at[p] >= 0 && (s.h == pl_hash[p] || s.h == hash[p]))) {
-            pl_hash[p] = s.h;                         /* (clean: the link stays) */
+        if (ids[p] && ids[p] <= PT_ID_MAX && at[p] >= 0 && (s.h == pl_hash[p] || s.h == hash[p])) {
+            pl_hash[p] = s.h;                         /* (clean: the link stays; a legacy factory link never does) */
             continue;
         }
         if (s.n > PT_MAX) {
@@ -734,20 +723,20 @@ static int pl_keep(uint32_t p, char *got)
     return !rc ? 1 : rc == -1 ? -1 : -2;
 }
 
-/* stored entry id loaded into pattern p: a user entry into p >= 1 links it, a factory one or p 0 is a copy (an older
- * link of p goes). got: its name. 0 done, 1 done with the locks left out (another layout), -1 none, -2 no room */
+/* stored entry id (a user entry: a legacy factory pattern is never loaded on its own) loaded into pattern p: p >= 1 links
+ * it, p 0 is a copy (an older link of p goes). got: its name. 0 done, 1 done with the locks left out (another layout),
+ * -1 none, -2 no room */
 static int pl_load_entry(uint32_t p, uint32_t id, char *got)
 {
     pt_info_t in;
     uint32_t t, i, m;
     int rc;
-    if (pl_read(id, m1_up, sizeof m1_up, &in) || (rc = pl_apply(p, m1_up, in.len)) == -1)
+    if (id > PT_ID_MAX || pl_read(id, m1_up, sizeof m1_up, &in) || (rc = pl_apply(p, m1_up, in.len)) == -1)
         return -1;
     for (i = 0; i <= PT_NAME; i++)
         got[i] = in.name[i];
     if (p) {
-        id = id <= PT_ID_MAX ? id : 0u;
-        pl_hash[p] = id ? pl_hash_of(p) : 0u;
+        pl_hash[p] = pl_hash_of(p);
         (void)pl_set_link(p, id);
     }
     pl_rewrite();
@@ -817,7 +806,7 @@ static int pl_all_empty(void)
     return 1;
 }
 /* every pattern of every track and every song cleared (#1178): pattern 1 empty and selected, no other pattern, no link,
- * no P-lock, no pattern origin, no song entry and none playing. The stored and factory patterns stay in the store */
+ * no P-lock, no pattern origin, no song entry and none playing. The stored patterns stay in the store */
 static void pl_clear_all(void)
 {
     static const uint32_t none[1];
@@ -1025,135 +1014,24 @@ static int pl_double(uint32_t p, uint32_t *longest)
     return -4;
 }
 
-/* ---- the demo sets (#1179): a factory patch's patterns, links, songs and pattern 1 origins as it shipped up to 1.24.1,
- * kept in the factory region (factory.c fc_demo, web/src/demo-sets.ts) and found by the running patch's layout. A set's
- * body: u8 items, each u8 pattern, u8 kind (0: u16 length and a stored pattern's payload; 1: u16 the factory entry it
- * links), u8 origins, each u8 track and u32 its pattern 1's origin, u8 songs, each u8 entries and per entry u8 pattern,
- * i8 shift */
-
-/* the running patch's layout as its binary has it (web/src/pattern-store.ts layoutOf: FNV-1a over its module count and
- * each module's type, 0 made 1), which finds its demo set: every module of the binary, whether the engine runs it or
- * not. 0: a malformed binary */
-static uint32_t pl_demo_layout(void)
-{
-    pl_out_t s = { 0, 0, 0, PT_FNV0 };
-    uint32_t m, n = m1_cur_len >= 8u ? m1_cur[2] : 0u, at = eng_records_at(m1_cur, m1_cur_len);
-    pl_b(&s, n);
-    for (m = 0; m < n && at && eng_rec_ok(m1_cur, m1_cur_len, at); m++, at += eng_rec_size(m1_cur, at))
-        pl_b(&s, m1_cur[at] & 0x7Fu);
-    return m < n ? 0u : s.h ? s.h : 1u;
-}
-/* the running patch's demo set at region offset at (len bytes) walked: checked (apply 0), or loaded into the patch, which
- * clear all has just emptied (apply 1). 0 done (well formed), -1 malformed or (loading) not all of it went in */
-static int pl_demo_walk(uint32_t at, uint32_t len, int apply)
-{
-    uint8_t b[5], lk[1u + 3u * (ENG_PATTERNS - 1u)], og[6u * PL_DEMO_TRACKS];
-    uint32_t end = at + len, n, k, j, c, l, nl = 0, no = 0, nt = (uint32_t)eng_steps_count();
-    if (fc_rd(1, at++, b, 1u))
-        return -1;
-    for (n = b[0], k = 0; k < n; k++) {             /* the patterns */
-        if (at + 4u > end || fc_rd(1, at, b, 4u) || b[0] >= ENG_PATTERNS || b[1] > 1u || nl == ENG_PATTERNS - 1u)
-            return -1;
-        l = (uint32_t)b[2] | (uint32_t)b[3] << 8;
-        at += 4u;
-        if (b[1]) {                                  /* a link: its content comes from the factory entry (m1_pat_load) */
-            lk[1u + 3u * nl] = b[0];
-            lk[2u + 3u * nl] = b[2];
-            lk[3u + 3u * nl++] = b[3];
-            continue;
-        }
-        if (l > sizeof m1_up || at + l > end)
-            return -1;
-        if (apply && (fc_rd(1, at, m1_up, l) || pl_apply(b[0], m1_up, l) < 0))
-            return -1;
-        at += l;
-    }
-    lk[0] = (uint8_t)nl;
-    if (at + 1u > end || fc_rd(1, at++, b, 1u) || b[0] > PL_DEMO_TRACKS)
-        return -1;
-    for (n = b[0], k = 0; k < n; k++, at += 5u) {   /* pattern 1's origins (D-882) */
-        if (at + 5u > end || fc_rd(1, at, b, 5u))
-            return -1;
-        if (b[0] >= nt)
-            continue;
-        og[6u * no] = (uint8_t)eng_steps_module(b[0]);
-        og[6u * no + 1u] = 0;
-        for (j = 0; j < 4u; j++)
-            og[6u * no + 2u + j] = b[1u + j];
-        no++;
-    }
-    if (at + 1u > end || fc_rd(1, at++, b, 1u) || b[0] > ENG_SONGS)
-        return -1;
-    for (n = b[0], k = 0; k < n; k++) {             /* the songs */
-        if (at + 1u > end || fc_rd(1, at++, b, 1u) || at + 2u * b[0] > end)
-            return -1;
-        for (c = b[0], j = 0; j < c; j++, at += 2u)
-            if (fc_rd(1, at, b, 2u) || b[0] >= ENG_PATTERNS || (apply && eng_song_put(k, j, b[0], (int8_t)b[1])))
-                return -1;
-    }
-    if (at != end)
-        return -1;
-    if (!apply)
-        return 0;
-    if (!m1_patch_links(lk, nl ? 1u + 3u * nl : 0u) || !m1_origins_put(og, no))
-        return -1;
-    m1_pat_load();                                   /* (the links' patterns from their entries, clean: as a patch load) */
-    for (k = 0; k < nt; k++)
-        m1_patch_notes((uint32_t)eng_steps_module(k));
-    return m1_patterns_fit() ? 0 : -1;
-}
-/* the running patch's demo set loaded (seq_ui.c: SEQ held + SEL, then SEL): clear all (pl_clear_all), then the set's
- * patterns (a payload loaded as the store's are, or a link to a factory patch's pattern), its pattern 1 origins and its
- * songs; pattern 1 selected, no song playing. The patch as the factory patch shipped up to 1.24.1, but for its sound. All
- * or nothing: the room (the bytes the patch's notes, patterns and songs, P-locks, links and origins take now, against
- * the set's) and the set are checked before anything changes. *hash: the set's (PATTERN_OP). 0 done, -1 no demo set
- * (none of this layout, no region, a malformed one), -2 the patch has no room */
-static int pl_demo_set(uint32_t *hash)
-{
-    uint32_t at, len, cost, notes = m1_sec_at(ENG_SEC_NOTES), links = m1_sec_at(ENG_SEC_DEVICES);
-    uint32_t og = eng_origins_at(m1_cur, m1_cur_len), used;
-    if (fc_demo(pl_demo_layout(), &at, &len, &cost, hash) || pl_demo_walk(at, len, 0))
-        return -1;
-    used = (notes && links >= notes ? links - notes : 0u) + (og ? eng_origins_end(m1_cur, m1_cur_len, og) - og : 0u);
-    if (!notes || !links || m1_cur_len - used + cost > M1_PATCH_MAX)
-        return -2;
-    pl_clear_all();
-    if (!pl_demo_walk(at, len, 1))
-        return 0;
-    pl_clear_all();                                  /* (never: the room was checked; not half a set) */
-    return -2;
-}
-
-/* the entry is a factory one (factory_tier.h KIT_GROUPS, factory.c's patterns) */
-static int pl_is_factory(uint32_t id) { return pl_kit(id) < N_KIT_GROUPS || id - PL_FACTORY < fc_npatterns(); }
-
-/* the entry after stored id `from` in the store's order (by id: the user entries, then the factory patches' patterns,
- * then the demonstration patterns), 0 none */
+/* the entry after stored id `from` in the store's order (by id), 0 none */
 static uint32_t pl_after(uint32_t from)
 {
     pt_info_t in;
-    if (from < PL_KIT && !pt_next(from, &in))
-        return in.id;
-    for (from = from < PL_KIT ? PL_KIT : from + 1u; from < PL_FACTORY + fc_npatterns(); from++)
-        if (pl_is_factory(from))
-            return from;
-    return 0;
+    return pt_next(from, &in) ? 0u : in.id;
 }
-/* the entry before stored id `from` (at most PL_END) in the store's order, 0 none */
+/* the entry before stored id `from` (at most PL_KIT) in the store's order, 0 none */
 static uint32_t pl_before(uint32_t from)
 {
     pt_info_t in;
-    while (from > PL_KIT)
-        if (pl_is_factory(--from))
-            return from;
     return pt_prev(from, &in) ? 0u : in.id;
 }
 
 /* the entry after (dir > 0) or before stored id `from` in the store's order, round; from 0: the first or the last */
 static uint32_t pl_step(uint32_t from, int dir)
 {
-    uint32_t id = dir > 0 ? pl_after(from) : pl_before(from ? from : PL_END);
-    return id ? id : dir > 0 ? pl_after(0) : pl_before(PL_END);
+    uint32_t id = dir > 0 ? pl_after(from) : pl_before(from ? from : PL_KIT);
+    return id ? id : dir > 0 ? pl_after(0) : pl_before(PL_KIT);
 }
 
 /* ---- the editor link (proto.c) */
@@ -1173,36 +1051,28 @@ static void m1_pat_info(uint8_t *p)
 }
 
 /* the entries (e 0: how many); else the one after cursor `after` (0: the first) as PAT's bytes from its id on, and the
- * next cursor (0: none after). The user entries come in the store's order (cursor PL_CUR_USER | the store offset past the
- * entry: one walk over the store lists them all), then the factory ones in id order (PL_CUR_KIT | the id) */
+ * next cursor (0: none after): the user entries, kept copies among them, in the store's order (cursor PL_CUR_USER | the
+ * store offset past the entry: one walk over the store lists them all). PAT's flags byte: bit 1 a kept copy */
 #define PL_CUR_USER 0x100000u
-#define PL_CUR_KIT 0x200000u
 static uint32_t m1_pat_list(uint32_t after, uint8_t *e)
 {
     pt_info_t in;
     pt_hdr_t r;
     uint8_t b[6];
-    uint32_t id, i, k, loc, next = 0;
+    uint32_t i, k, loc, next = 0;
     if (!e)
-        return pt_count() + N_KIT_PATTERNS + fc_npatterns();
-    if (!(after & PL_CUR_KIT) && pt_on) {
-        pt_ensure();
-        for (loc = after & 0xFFFFFu; !pt_iter(&loc, &r); loc += pt_size(r.len))
-            if (PT_LIVE(r.magic) && !st_read(PT_BASE + loc + PT_HDR, b, sizeof b)) {
-                pt_fill(&r, &in);
-                next = PL_CUR_USER | (loc + pt_size(r.len));
-                break;
-            }
-    }
-    if (!next) {
-        for (id = after & PL_CUR_KIT ? (after & 0xFFFFu) + 1u : PL_KIT; id < PL_FACTORY + fc_npatterns() && !pl_is_factory(id); id++)
-            ;
-        if (id >= PL_FACTORY + fc_npatterns() || pl_read(id, m1_up, sizeof m1_up, &in))
-            return 0;
-        for (k = 0; k < sizeof b; k++)
-            b[k] = m1_up[k];
-        next = PL_CUR_KIT | id;
-    }
+        return pt_count();
+    if (!pt_on)
+        return 0;
+    pt_ensure();
+    for (loc = after & 0xFFFFFu; !pt_iter(&loc, &r); loc += pt_size(r.len))
+        if (PT_LIVE(r.magic) && !st_read(PT_BASE + loc + PT_HDR, b, sizeof b)) {
+            pt_fill(&r, &in);
+            next = PL_CUR_USER | (loc + pt_size(r.len));
+            break;
+        }
+    if (!next)
+        return 0;
     for (k = 0; k < 30u; k++)
         e[k] = 0;
     e[0] = (uint8_t)in.id;
@@ -1214,7 +1084,7 @@ static uint32_t m1_pat_list(uint32_t after, uint8_t *e)
         e[8u + k] = b[1u + k];                        /* (the layout) */
     }
     e[12] = b[5];
-    e[13] = in.id > PT_ID_MAX ? 1u : 0u;
+    e[13] = in.kept ? 2u : 0u;
     for (i = 0; i < PT_NAME && in.name[i]; i++)
         e[14u + i] = (uint8_t)in.name[i];
     return next;
@@ -1223,7 +1093,7 @@ static uint32_t m1_pat_list(uint32_t after, uint8_t *e)
 static const uint8_t *m1_pat_get(uint32_t id, uint32_t *len)
 {
     pt_info_t in;
-    if (pl_read(id, m1_up, sizeof m1_up, &in))
+    if (id > PT_ID_MAX || pl_read(id, m1_up, sizeof m1_up, &in))
         return 0;
     *len = in.len;
     return m1_up;

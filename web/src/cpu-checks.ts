@@ -6,7 +6,7 @@ import { insertAssembly } from './assembly';
 import { DEFS } from './modules';
 import { connect, newPatch, type Patch } from './patch';
 import { deviceBudget } from './patchbin';
-import { factoryWithDemoSet, FM1_PRESETS } from './presets';
+import { factoryWithPatterns, FM1_PRESETS } from './presets';
 import { deviceView } from './poly';
 import { withParts } from './test-poly';
 import { acid } from './test-patches';
@@ -28,10 +28,10 @@ export function cpuChecks(note: number): { name: string; patch: Patch; notes: nu
     return Array.from({ length: n }, (_, i) => note + [0, 4, 7, 11, 14, 17, 21, 24][i % 8] - (i >= 8 ? 12 : 0));
   };
   // Candidate banks may contain patches that cannot be loaded. As for assemblies below, keep CPU-over-budget checks
-  // but omit structural or memory failures that the counter cannot execute. A patch with a demo set counts with it loaded
-  // (#1179): its pattern 1 playing, the work it does after SEQ+SEL
+  // but omit structural or memory failures that the counter cannot execute. A factory patch counts with the patterns it
+  // shipped with up to 1.24.1 (factory-bank.ts UNSHIPPED_PATTERNS): its pattern 1 playing
   const out = Object.keys(FM1_PRESETS).flatMap((name) => {
-    const patch = factoryWithDemoSet(name);
+    const patch = factoryWithPatterns(name);
     return deviceBudget(patch).over.every((i) => i.key === 'cpu') ? [{ name, patch, notes: voices(patch) }] : [];
   });
   out.push({ name: 'Acid, 4 parts', patch: withParts(acid(), 4), notes: chord });

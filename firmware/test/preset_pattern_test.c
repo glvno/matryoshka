@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Focused #833 host check. Reuse protocol stubs; do not run the broad protocol/panel suites. The factory patterns come
  * from the factory region (factory.c over factory_host.h's RAM region holding today's image, #915). The factory patches,
- * then those with a demo set with it loaded (pattern_cases.h DEMO_CASES, #1179: they ship without pattern 1's notes and
- * origin). */
+ * then those 1.25 gave patterns with them (pattern_cases.h PATTERNED_CASES: pattern 1's notes and origin). */
 #define PROTO_TEST_FACTORY
 #define main unused_proto_main
 #include "proto_test.c"
@@ -53,7 +52,7 @@ int main(void)
 {
     static uint8_t bin[4096];
     uint32_t i, seen = 0;
-    for (i = 0; i < N_PRESETS + N_DEMO_CASES; i++) {
+    for (i = 0; i < N_PRESETS + N_PATTERNED_CASES; i++) {
         int mod, tr;
         uint32_t j, len;
         static fc_pattern_t a, b, got;
@@ -62,10 +61,9 @@ int main(void)
             len = PRESET_LIST[i].len;
             CHECK(lz_unpack(PRESET_LIST[i].lz, PRESET_LIST[i].lz_len, bin, sizeof bin) == (int32_t)len);
         } else {
-            if (!DEMO_CASES[i - N_PRESETS].loaded) continue;
-            len = DEMO_CASES[i - N_PRESETS].loaded_len;
+            len = PATTERNED_CASES[i - N_PRESETS].patch_len;
             CHECK(len <= sizeof bin);
-            memcpy(bin, DEMO_CASES[i - N_PRESETS].loaded, len);
+            memcpy(bin, PATTERNED_CASES[i - N_PRESETS].patch, len);
         }
         CHECK(m1_set_current(bin, len) == 0);
         CHECK(eng_load(m1_cur, m1_cur_len) == 0);
@@ -110,7 +108,7 @@ int main(void)
         CHECK(preset_pattern_untouched((uint32_t)mod, 0, init));
         seen++;
     }
-    CHECK(seen >= 4);   /* Meridian 8; the 808 Kit, the 909 Kit, Verona Drum 1 with their demo sets (and the copies) (D-1201) */
+    CHECK(seen >= 4);   /* Meridian 8; the 808 Kit, the 909 Kit, Verona Drum 1 with the patterns 1.25 gave them (D-1201) */
     printf("factory default patterns: %u kits, compare/swap/save-reload/unrelated tracks passed\n", seen);
     return 0;
 }

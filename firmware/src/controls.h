@@ -26,9 +26,8 @@ static int hc_pattern_store(void);
 static int hc_oct_banks(void);
 static int hc_drum_banks(void);
 static int hc_learning(void);
-static int hc_demo_set(void);
-enum { HC_NONE, HC_LIST, HC_DEV_PRESETS, HC_DEV_STORE, HC_DEV_KEYS, HC_LONG_TRACK, HC_TRACKS, HC_MENU_GUIDE, HC_MENU_PAGE, HC_MENU_SYSTEM, HC_ROLL, HC_HARM, HC_ROLL_PREVIEW, HC_ROLL_SILENT, HC_FX_BANK, HC_PATTERN_STORE, HC_OCT_BANKS, HC_DRUM_BANKS, HC_LEARNING, HC_DEMO_SET, HC_COUNT };
-static int (*const HC_FN[HC_COUNT])(void) = {0, hc_list, hc_dev_presets, hc_dev_store, hc_dev_keys, hc_long_track, hc_tracks, hc_menu_guide, hc_menu_page, hc_menu_system, hc_roll, hc_harm, hc_roll_preview, hc_roll_silent, hc_fx_bank, hc_pattern_store, hc_oct_banks, hc_drum_banks, hc_learning, hc_demo_set};
+enum { HC_NONE, HC_LIST, HC_DEV_PRESETS, HC_DEV_STORE, HC_DEV_KEYS, HC_LONG_TRACK, HC_TRACKS, HC_MENU_GUIDE, HC_MENU_PAGE, HC_MENU_SYSTEM, HC_ROLL, HC_HARM, HC_ROLL_PREVIEW, HC_ROLL_SILENT, HC_FX_BANK, HC_PATTERN_STORE, HC_OCT_BANKS, HC_DRUM_BANKS, HC_LEARNING, HC_COUNT };
+static int (*const HC_FN[HC_COUNT])(void) = {0, hc_list, hc_dev_presets, hc_dev_store, hc_dev_keys, hc_long_track, hc_tracks, hc_menu_guide, hc_menu_page, hc_menu_system, hc_roll, hc_harm, hc_roll_preview, hc_roll_silent, hc_fx_bank, hc_pattern_store, hc_oct_banks, hc_drum_banks, hc_learning};
 
 /* a line of the sheet: its spec (help_ui.c help_part), the row it belongs to (CTL_ROW; CTL_PATCH: no spec, the patch
  * buttons go here), shown when HC_FN[cond]() is not neg */
@@ -110,7 +109,7 @@ static const ctl_line_t CTL_LINE[112] = {
     {"k:SEQ|t:+|k:SAVE~copy pattern", 70, 0, 0},   /* pattern-copy */
     {"k:SEQ|t:+|k:REC~clear track", 71, 0, 0},   /* clear */
     {"k:SEQ|t:+|k:HOME~clear all patterns", 72, 0, 0},   /* clear-all */
-    {"k:SEQ|t:+|k:SEL~load demo set", 73, 19, 0},   /* demo-set */
+    {"k:SEQ|t:+|k:SEL~stored patterns", 73, 15, 0},   /* pattern-browse */
     {"k:SEQ|t:+|k:OCT+~double pattern", 74, 0, 0},   /* pattern-double */
     {"m:KEYS~play, let go: write", 75, 0, 0},   /* sr-keys */
     {"k:SEL|t:+|k:FX~preview off", 76, 12, 0},   /* sr-preview-off */
@@ -189,8 +188,8 @@ static const uint8_t CTL_SHEET[2][10][27] = {
 #define HINT_DRUM_LONG "BLACK/SELECT row  WHITE step  FX acc  OCT 17+"   /* 228 of 228 px */
 #define HINT_DRUM "BLACK row  WHITE step  FX acc  SEL song"   /* 195 of 228 px */
 #define HINT_ROLL "KEYS play  SELECT view  OCT octave  SEL song"   /* 221 of 228 px */
-#define HINT_EMPTY "EMPTY  SEQ+SEL demo set  SEL+PRESET pat"   /* 210 of 228 px */
-#define HINT_EMPTY_NO_STORE "EMPTY  SEQ+SEL loads the demo set"   /* 174 of 228 px */
+#define HINT_EMPTY "EMPTY  SEQ+SEL load a pattern"   /* 150 of 228 px */
+#define HINT_BROWSE "PRESET choose  SEL load  HOME cancel"   /* 185 of 228 px */
 #define HINT_NO_TRACK "SEQ back"   /* 44 of 224 px */
 #define HINT_SONG_1 "SELECT entry  K1 pat  K2 shift  FX+K1 copy"   /* 199 of 224 px */
 #define HINT_SONG_2 "ALGO song  PRESET pat  SEQ+REC del  SEL back"   /* 225 of 228 px */
@@ -232,7 +231,7 @@ static const uint8_t CTL_UNLISTED[2][10][2] = {
     },
 };
 /* what each row does (firmware/test/controls_test.h checks it) */
-enum { CE_TRANSPORT, CE_PLAY_ONCE, CE_RECORD, CE_SAVE, CE_BACK, CE_MENU, CE_ENV, CE_SEQ, CE_OCTAVE, CE_TEMPO, CE_PATCH, CE_STORE, CE_ARM, CE_MUTE, CE_FOCUS, CE_DEVICE_PAGE, CE_LIST_BACK, CE_LIST_PAGE, CE_PRESET, CE_PARAM, CE_FINE, CE_STEP, CE_ROW, CE_ROLL_VIEW, CE_ROLL_PITCH, CE_JUMP, CE_TRACK, CE_PATTERN, CE_ACCENT, CE_TIE, CE_STEP_RECORD, CE_STEP_RECORD_AT, CE_VELOCITY, CE_CHANCE, CE_PITCH, CE_LOCK_PAGE, CE_LOCK, CE_SONG_PAGE, CE_CLEAR, CE_STEPS_PAGE, CE_KEYS_OCTAVE, CE_WRITE, CE_CHORD, CE_REST, CE_CURSOR, CE_BACK_CLEAR, CE_LIVE, CE_END, CE_TAKE, CE_TAKE_ACCENT, CE_DRONE, CE_PLAY_NOTES, CE_PREVIEW, CE_ENTRY, CE_ENTRY_PATTERN, CE_ADD_ENTRY, CE_DUP_ENTRY, CE_TRANSPOSE, CE_SONG_PLAY, CE_SONG, CE_DELETE_ENTRY, CE_BACK_STEPS, CE_TAB, CE_SCROLL, CE_SET, CE_SAVE_CLOSE, CE_RUN_ROW, CE_EDITOR, CE_ANALOG_OUT, CE_CHORD_BUTTON, CE_FX_PAGE, CE_FX_TOGGLE, CE_FX_ROW, CE_PATTERN_NEW, CE_PATTERN_LOAD, CE_CONDITION, CE_FILL, CE_RATCHET, CE_MICRO, CE_DRUM_BANK, CE_LEARN_ROW, CE_LEARN_MODE, CE_LEARN_END, CE_PATTERN_COPY, CE_CLEAR_ALL, CE_DEMO_SET, CE_PATTERN_DOUBLE, CE_PALETTE_GO, CE_PALETTE_SAVE, CE_COUNT };
+enum { CE_TRANSPORT, CE_PLAY_ONCE, CE_RECORD, CE_SAVE, CE_BACK, CE_MENU, CE_ENV, CE_SEQ, CE_OCTAVE, CE_TEMPO, CE_PATCH, CE_STORE, CE_ARM, CE_MUTE, CE_FOCUS, CE_DEVICE_PAGE, CE_LIST_BACK, CE_LIST_PAGE, CE_PRESET, CE_PARAM, CE_FINE, CE_STEP, CE_ROW, CE_ROLL_VIEW, CE_ROLL_PITCH, CE_JUMP, CE_TRACK, CE_PATTERN, CE_ACCENT, CE_TIE, CE_STEP_RECORD, CE_STEP_RECORD_AT, CE_VELOCITY, CE_CHANCE, CE_PITCH, CE_LOCK_PAGE, CE_LOCK, CE_SONG_PAGE, CE_CLEAR, CE_STEPS_PAGE, CE_KEYS_OCTAVE, CE_WRITE, CE_CHORD, CE_REST, CE_CURSOR, CE_BACK_CLEAR, CE_LIVE, CE_END, CE_TAKE, CE_TAKE_ACCENT, CE_DRONE, CE_PLAY_NOTES, CE_PREVIEW, CE_ENTRY, CE_ENTRY_PATTERN, CE_ADD_ENTRY, CE_DUP_ENTRY, CE_TRANSPOSE, CE_SONG_PLAY, CE_SONG, CE_DELETE_ENTRY, CE_BACK_STEPS, CE_TAB, CE_SCROLL, CE_SET, CE_SAVE_CLOSE, CE_RUN_ROW, CE_EDITOR, CE_ANALOG_OUT, CE_CHORD_BUTTON, CE_FX_PAGE, CE_FX_TOGGLE, CE_FX_ROW, CE_PATTERN_NEW, CE_PATTERN_LOAD, CE_CONDITION, CE_FILL, CE_RATCHET, CE_MICRO, CE_DRUM_BANK, CE_LEARN_ROW, CE_LEARN_MODE, CE_LEARN_END, CE_PATTERN_COPY, CE_CLEAR_ALL, CE_PATTERN_BROWSE, CE_PATTERN_DOUBLE, CE_PALETTE_GO, CE_PALETTE_SAVE, CE_COUNT };
 /* a gesture part: a button (id: its matrix id), an encoder (id: panel_encoders' index), K1..K4 (id: a mask, bit 0 K1), a
  * white key, a black key (n: black key n, 0 any), any key, the keys played, keys together */
 enum { CK_BUTTON, CK_ENCODER, CK_KNOBS, CK_WHITE, CK_BLACK, CK_ANY, CK_KEYS, CK_CHORD };
@@ -318,7 +317,7 @@ static const ctl_row_t CTL_ROW[CTL_NROWS] = {
     {"pattern-copy", CE_PATTERN_COPY, CH_NONE, 11, CW_PRESS, 0, 1, 0, {{CK_BUTTON, 9, 0}}},
     {"clear", CE_CLEAR, CH_NONE, 11, CW_PRESS, 0, 1, 0, {{CK_BUTTON, 13, 0}}},
     {"clear-all", CE_CLEAR_ALL, CH_NONE, 11, CW_PRESS, 0, 1, 0, {{CK_BUTTON, 8, 0}}},
-    {"demo-set", CE_DEMO_SET, CH_NONE, 11, CW_PRESS, 0, 1, 0, {{CK_BUTTON, 3, 0}}},
+    {"pattern-browse", CE_PATTERN_BROWSE, CH_NONE, 11, CW_PRESS, 0, 1, 0, {{CK_BUTTON, 3, 0}}},
     {"pattern-double", CE_PATTERN_DOUBLE, CH_NONE, 11, CW_PRESS, 0, 1, 0, {{CK_BUTTON, 1, 0}}},
     {"sr-keys", CE_WRITE, CH_NONE, CH_NONE, CW_PRESS, 0, 1, 0, {{CK_KEYS, 0, 0}}},
     {"sr-preview-off", CE_PREVIEW, CH_NONE, 3, CW_PRESS, 0, 1, 0, {{CK_BUTTON, 2, 0}}},

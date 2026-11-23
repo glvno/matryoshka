@@ -707,8 +707,8 @@ export function checkScenarios(h) {
 
     // ---- 6. a patch with a pattern stored on 1.9 plays as it did (D-297), step 6.5: Silver Box's bytes as 1.9.1 wrote them
     // into the bank (format 48, with its patterns section) in a slot of its own, against today's Silver Box from the editor
-    // with its demo set loaded (it ships without its patterns, #1179: SEQ held + SEL, SEL again). Its pattern 1 is empty:
-    // PRESET on the SEQ page picks pattern 2, which has notes, as a hand would
+    // with the patterns it shipped with up to 1.24.1 (it ships without them). Its pattern 1 is empty: PRESET on the SEQ
+    // page picks pattern 2, which has notes, as a hand would
     async checkOldPattern() {
       const old = oldPatch();
       const pass = async (tag) => {
@@ -727,19 +727,11 @@ export function checkScenarios(h) {
         console.log(`  ${tag}, pattern 2, peaks per 25 ms: ${prof(w)}`);
         return { p2, run, top: Math.max(0, ...w.map((x) => x[1])), loud: w.filter((x) => x[1] > LOUD).length };
       };
-      await check('6.5 old pattern: Silver Box opens, synced', await openSynced(old.factory));
-      await emu.tap(B.seq, 120);
-      await emu.waitText('ALGO track', 3000);
-      await emu.key(B.seq, true);
-      await emu.elapse(150);
-      await emu.tap(B.scl);
-      await emu.elapse(200);
-      await emu.tap(B.scl);
-      await check('6.5 old pattern: today\'s Silver Box loads its demo set (SEQ held + SEL, SEL again)', await emu.waitText('DEMO SET LOADED', 2000));
-      await emu.key(B.seq, false);
-      await emu.elapse(300);
-      await emu.tap(B.seq, 120);
-      await emu.waitOwnPage(3000);
+      const patterned = (name) => page().evaluate(async (n) => {
+        const { factoryWithPatterns } = await import('/src/presets.ts');
+        return window.__m1test.openFactory(n, JSON.stringify(factoryWithPatterns(n)));
+      }, name);
+      await check('6.5 old pattern: today\'s Silver Box with its patterns opens, synced', await openSynced(old.factory, patterned));
       const now = await pass('today\'s Silver Box');
       const slot = await firstEmpty();
       if (slot < 0) return skip('6.5 old pattern: a 1.9 patch from the bank', 'the FM-1\'s bank has no empty slot');

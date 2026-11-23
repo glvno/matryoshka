@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import EXAMPLES from '../factory/examples.json';
-import { DEMO_SET_PATCHES, demoLayout, demoSetOf, type DemoSet } from './demo-sets';
 import { buildSelectedFactoryBank, selectedFactoryNames, shippedFactoryBank, type FactoryCandidate } from './factory-bank';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type Patch, type Source } from './patch';
@@ -45,7 +44,7 @@ export const factoryShape = (name: string): string | undefined => {
 const makers = (es: Entry[]): Record<string, () => Patch> => Object.fromEntries(es.map((e): [string, () => Patch] => [e.name, () => structuredClone(e.patch())]));
 
 /** Approved defaults, built once on first open. Generated JSON is an export, not the provider. The bank is built in full
- *  (the patches with a demo set holding it, as bank.json does) and shipped without the demo sets (demo-sets.ts, #1179) */
+ *  (factory-bank.ts UNSHIPPED_PATTERNS holding their patterns, as bank.json does) and shipped without them */
 let full: FactoryCandidate[] | undefined, bank: FactoryCandidate[] | undefined;
 const fullBank = (): FactoryCandidate[] => (full ??= buildSelectedFactoryBank({ full: true }));
 const FM1_LIST: Entry[] = selectedFactoryNames.map((name, index) => ({
@@ -53,19 +52,9 @@ const FM1_LIST: Entry[] = selectedFactoryNames.map((name, index) => ({
 }));
 export const FM1_PRESETS: Record<string, () => Patch> = makers(FM1_LIST);
 
-/** factory patch `name` with its demo set loaded: as it shipped up to 1.24.1 (the patches without a demo set: as they ship) */
-export const factoryWithDemoSet = (name: string): Patch => structuredClone(fullBank().find((c) => c.name === name)!.patch);
-
-let demoSets: Map<number, DemoSet> | undefined;
-/** the demo set of a patch: the one whose factory patch has its module layout (a renamed or saved copy, one sent from the
- *  editor, one whose parameters changed), undefined when none has */
-export function demoSetFor(patch: Patch): DemoSet | undefined {
-  demoSets ??= new Map(DEMO_SET_PATCHES.map((name) => {
-    const set = demoSetOf(fullBank().find((c) => c.name === name)!.patch);
-    return [set.layout, set];
-  }));
-  return demoSets.get(demoLayout(patch));
-}
+/** factory patch `name` with the patterns and songs it shipped with up to 1.24.1 (factory-bank.ts UNSHIPPED_PATTERNS: test
+ *  and measurement material only; the other patches: as they ship) */
+export const factoryWithPatterns = (name: string): Patch => structuredClone(fullBank().find((c) => c.name === name)!.patch);
 
 /** Original editor/assembly examples never enter the hardware defaults. */
 export const EXAMPLE_PRESETS: Record<string, () => Patch> = makers(EXAMPLES.map(({ name, patch }) => {

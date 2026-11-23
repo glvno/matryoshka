@@ -8,6 +8,12 @@
 //
 // host -> device
 //   01 HELLO    -                                    device answers INFO
+//   02 SLOT_GET slot u8, offset u16, mode u8 (absent: 0)   device answers SLOT_DATA (69): from offset, mode 0 the slot's
+//                                                    patch binary as stored (pattern 1, songs and links, links not
+//                                                    resolved), mode 1 the patch with every linked pattern inside and no
+//                                                    links, as firmware before 1.26 reads it (offset 0 borrows the running
+//                                                    patch, which the FM-1 takes back after the last chunk, another
+//                                                    command or 2 s: read the chunks back to back) (INFO byte 25 bit 2)
 //   10 CHUNK    seq u8, offset u16, total u16, data  a piece of the binary patch (patchbin.ts), in order; ACK each
 //   11 COMMIT   total u16, crc16 u16                 check the assembled patch and switch to it; ACK
 //   12 STORE    -                                    write the current patch to flash; ACK
@@ -99,7 +105,7 @@
 //   34 TEST_SCREEN (none)                            device answers SCREEN (50): the head, then one per text on the LCD
 //   35 TEST_PEAK   (none)                            device answers PEAK (51): the output's peak since the last TEST_PEAK
 //   3B PATS     (none)                               the FM-1's pattern store (#901, feature bit 25): one PAT (5B) per entry, the
-//                                                    user's in id order, then the read-only factory ones
+//                                                    user's in id order (firmware before 1.26: then its read-only factory ones)
 //   3C PAT_GET  id u16, offset u16                   device answers PAT_DATA (5C): the payload from offset, 256 bytes at most
 //   3D PAT_PUT  id u16 (0 new), total u16, offset u16, name 16 bytes, then up to 256 payload bytes (pattern-store.ts)
 //                                                    the chunks gather on the FM-1 (offset 0 starts a put); each chunk but the
@@ -160,7 +166,8 @@
 //      queued uploads and reconnects invalidate it too; uploads accept a new snapshot only after COMMIT succeeds.
 //      HELLO and successful COMMIT send a complete snapshot. Panel factory/USER selections emit changed records.
 //   5B PAT      k u16, count u16 (0: no entries, nothing follows), id u16, len u16, hash u32, layout u32, tracks u8, flags u8
-//               (bit0 read-only factory), name 16 bytes   one entry of the pattern store (an answer to PATS)
+//               (bit0 read-only, which no 1.26 entry is; bit1 a kept copy, INFO byte 25 bit 2), name 16 bytes   one entry of
+//                                                    the pattern store (an answer to PATS)
 //   5C PAT_DATA  id u16, total u16 (0xFFFF: no such id), offset u16, then the payload's bytes from offset (256 at most)
 //   5D PAT_STORED  id u16 (0xFFFF: a chunk taken), status u8 (PAT_STATUS), count u8 (with S_USED: the slots that link it)
 //   5E PAT_LINK_NOW  pattern u8, id u16 (0 none), hash u32   unasked: the running patch's link of that pattern changed on
@@ -178,10 +185,9 @@
 //   65 PATTERN_OP  op u8, from u8, to u8, hash u32   unasked (feature bit 30, #1177, #1178): the FM-1's SEQ page ran a
 //                                                    pattern command, which the editor runs on its patch too (pattern-ops.ts):
 //                                                    op 1 pattern `from` of every track copied to `to` (SEQ held + SAVE), op 2
-//                                                    every pattern and song cleared (SEQ held + HOME); hash 0 for both; op 3
-//                                                    the patch's demo set loaded (SEQ held + SEL, then SEL, #1179,
-//                                                    demo-sets.ts): hash = the set's region record hash, from 0 and to 0; op
-//                                                    4 pattern `from` of every track doubled (SEQ held + OCT+, D-838), to 0
+//                                                    every pattern and song cleared (SEQ held + HOME); hash 0 for both; op
+//                                                    4 pattern `from` of every track doubled (SEQ held + OCT+, D-838), to 0.
+//                                                    Op 3 is retired (the editor ignores it)
 //   66 PALETTE_NOW  version u8 (1), cur u8, next u8 (0xFF none), flags u8 (bit0 edited), seq u16, then 8 × {state u8 (0
 //                                                    empty, 1 ok, 2 missing), slot u8, pattern u8, hash u16 (the entry's
 //                                                    CRC-16), len u16 (the slot's binary now), name[20]}: the answer to GET,
@@ -189,6 +195,11 @@
 //   67 PALETTE_ENTRY  pos u8, then the ENTRY bytes (none: empty)   the answer to ENTRY_GET
 //   68 FONT_SUM  sector u8, ok u8, CRC-16 u16          the CRC-16 of a sector of the font area (#602): the install skips one
 //                                                    that holds its bytes already
+//   69 SLOT_DATA  slot u8, total u16, offset u16, then the slot's binary from offset (256 bytes at most): the answer to
+//                                                    SLOT_GET. total 0xFFFF: the slot is empty, out of range or unreadable;
+//                                                    mode 1 only: 0xFFFE the patch with every pattern inside passes 3,840
+//                                                    bytes, 0xFFFD the running patch has unsaved edits, the editor's Live
+//                                                    holds it or a palette switch waits, 0xFFFC the transport runs
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
 //               feature bit 8, bit3 GLO > SYSTEM > EDITOR at IGNORE: with feature bit 19, #702), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
@@ -207,7 +218,7 @@
 //               48 patches: FONT BEGIN answers status 10); bytes21..24 the font's id, u32 LE],
 //               [byte25 features from 1.26 on: bit0 a card holding its Steps track is that track's device (#1202 K2),
 //               bit1 every pattern 2..64 lives in the pattern store (#1202: SAVE stores and links them, the editor sends
-//               them as stored entries)]. Also unasked
+//               them as stored entries), bit2 SLOT_GET and PAT's kept flag (#1202 G8)]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8), and when EDITOR changed after
 //               a HELLO (feature bit 19)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
@@ -218,7 +229,7 @@ import { ARM_WORDS, type Range } from './patch';
 import { noteWords, PATTERNS_MAX, SHIFT_MAX, SONG_LEN_MAX, SONGS_MAX, TRACK_NOTES_MAX, wordsNotes, type SongEntry, type StepNote } from './track';
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
-export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51, pattern: 0x36, song: 0x37, patternNow: 0x52, songNow: 0x53, armsNow: 0x54, arms: 0x39, tempo: 0x38, tempoNow: 0x55, locksNow: 0x56, keysNow: 0x57, guideNow: 0x58, deviceSettings: 0x3a, deviceSettingsReply: 0x59, originNow: 0x5a, pats: 0x3b, pat: 0x5b, patGet: 0x3c, patData: 0x5c, patPut: 0x3d, patStored: 0x5d, patDel: 0x3e, patLinkNow: 0x5e } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
+export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51, pattern: 0x36, song: 0x37, patternNow: 0x52, songNow: 0x53, armsNow: 0x54, arms: 0x39, tempo: 0x38, tempoNow: 0x55, locksNow: 0x56, keysNow: 0x57, guideNow: 0x58, deviceSettings: 0x3a, deviceSettingsReply: 0x59, originNow: 0x5a, pats: 0x3b, pat: 0x5b, patGet: 0x3c, patData: 0x5c, patPut: 0x3d, patStored: 0x5d, patDel: 0x3e, patLinkNow: 0x5e, slotGet: 0x02, slotData: 0x69 } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store', 'the preset store is full', 'no such preset', 'still in use', 'the bank holds more than 48 patches'];
@@ -328,6 +339,37 @@ export const parseSlot = (p: Parsed): SlotInfo | null =>
   p.cmd === CMD.slotReply && p.payload.length >= 4 + NAME_BYTES
     ? { slot: p.payload[0], used: !!p.payload[1], length: p.payload[2] | (p.payload[3] << 8), name: String.fromCharCode(...p.payload.slice(4, 4 + NAME_BYTES).filter((c) => c >= 32 && c < 127)) }
     : null;
+/** SLOT_GET's modes: the binary as stored, or with every linked pattern inside and no links (what firmware before 1.26 reads) */
+export const SLOT_STORED = 0, SLOT_INLINE = 1;
+export const slotGetFrame = (slot: number, offset: number, mode = SLOT_STORED): Uint8Array => frame(CMD.slotGet, [slot, offset & 0xff, (offset >> 8) & 0xff, mode]);
+/** why a SLOT_GET sends no binary, by SLOT_DATA's total: the slot is empty (or unreadable), and with SLOT_INLINE the patch
+ *  is too big with every pattern inside, the FM-1's running patch is edited (or Live holds it, or a palette switch waits),
+ *  or its transport runs */
+export type SlotRefusal = 'empty' | 'too big' | 'edited' | 'running';
+const SLOT_REFUSALS: Record<number, SlotRefusal> = { 0xffff: 'empty', 0xfffe: 'too big', 0xfffd: 'edited', 0xfffc: 'running' };
+/** a SLOT_DATA: the slot, the binary's whole length (or why there is none), the offset and the bytes from it */
+export function parseSlotData(p: Parsed): { slot: number; total: number | SlotRefusal; offset: number; bytes: number[] } | null {
+  const x = p.payload;
+  if (p.cmd !== CMD.slotData || x.length < 5) return null;
+  const total = x[1] | (x[2] << 8);
+  return { slot: x[0], total: SLOT_REFUSALS[total] ?? total, offset: x[3] | (x[4] << 8), bytes: x.slice(5) };
+}
+/** a slot's patch binary (`mode`: SLOT_STORED or SLOT_INLINE), read with SLOT_GET in pieces over `ask` (a request that
+ *  resends until an answer matches), the chunks back to back; or why the FM-1 sends none. Firmware with FEATURE25_SLOT_GET
+ *  only */
+export async function readSlotBinary(ask: (frame: Uint8Array, match: (p: Parsed | null) => boolean) => Promise<Parsed>, slot: number, mode = SLOT_STORED): Promise<Uint8Array | SlotRefusal> {
+  const out: number[] = [];
+  let total = Infinity;
+  while (out.length < total) {
+    const at = out.length;
+    const d = parseSlotData(await ask(slotGetFrame(slot, at, mode), (x) => { const r = x && parseSlotData(x); return !!r && r.slot === slot && (typeof r.total === 'string' || r.offset === at); }))!;
+    if (typeof d.total === 'string') return d.total;
+    if (!d.bytes.length && at < d.total) throw new Error(`the FM-1 sent slot ${slotLabel(slot)} short`);
+    total = d.total;
+    out.push(...d.bytes);
+  }
+  return Uint8Array.from(out.slice(0, total));
+}
 
 export const attFrame = (module: number, input: number, q16: number): Uint8Array => {
   const v = q16 | 0;
@@ -478,6 +520,9 @@ export const FEATURE_PATTERN_STORE = 1 << 25;
  *  stores and links each one with content, the editor sends each as a stored entry (device.ts) and counts only pattern 1,
  *  the songs and the links against the patch's bytes (patchbin.ts LinkStore 'every') */
 export const FEATURE25_PATTERNS_STORED = 2;
+/** INFO byte 25 bit 2 (1.26, #1202 G8): SLOT_GET reads a slot's binary back, and PAT's flags bit 1 marks a kept copy (the
+ *  Flash tab's backup before older firmware takes every slot and kept copy from the FM-1 itself) */
+export const FEATURE25_SLOT_GET = 4;
 /** INFO feature bit 26 (byte 14 bit 2, #915, D-490): the factory region's commands (firmware/src/factory.c) */
 export const FEATURE_FACTORY = 1 << 26;
 /** INFO feature bit 27 (byte 14 bit 3, #1107): MASTER_EQ, the FM-1's master EQ (GLO › EQ) over the link */
@@ -556,7 +601,7 @@ export function parsePadsNow(payload: number[]): PadMap | null {
 /** INFO feature bit 30 (byte 14 bit 6, #1177, #1178): the FM-1 reports the SEQ page's pattern commands (PATTERN_OP) */
 export const FEATURE_PATTERN_OP = 1 << 30;
 /** PATTERN_OP's id and ops */
-export const PATTERN_OP = { report: 0x65, copy: 1, clearAll: 2, demoSet: 3, double: 4 } as const;
+export const PATTERN_OP = { report: 0x65, copy: 1, clearAll: 2, double: 4 } as const;
 /** a PATTERN_OP payload, null when short */
 export function parsePatternOp(payload: number[]): { op: number; from: number; to: number; hash: number } | null {
   if (payload.length < 7) return null;
@@ -677,8 +722,9 @@ export const parsePresetStored = (p: Parsed): { structure: string; name: string 
 // ---- the pattern store (#901, feature bit 25): stored patterns by id (pattern-store.ts has the payload)
 
 /** one entry of the store as PAT lists it: id, payload bytes, payload hash, layout fingerprint (0: no locks), tracks,
- *  read-only (a factory pattern), name */
-export interface StoredPatternEntry { id: number; len: number; hash: number; layout: number; tracks: number; readOnly: boolean; name: string }
+ *  read-only (a factory pattern, which only firmware before 1.26 lists), kept (a kept copy, which no patch links and the
+ *  FM-1 never frees: FEATURE25_SLOT_GET firmware says so), name */
+export interface StoredPatternEntry { id: number; len: number; hash: number; layout: number; tracks: number; readOnly: boolean; kept: boolean; name: string }
 /** PAT_STORED's statuses (proto.c S_*) and what they mean for a stored pattern */
 export const PAT_OK = 0, PAT_RANGE = 1, PAT_FLASH = 4, PAT_FULL = 7, PAT_MISSING = 8, PAT_USED = 9;
 export const PAT_STATUS: Record<number, string> = { [PAT_OK]: 'ok', [PAT_RANGE]: 'refused (a read-only pattern, or out of range)', [PAT_FLASH]: 'flash error', [PAT_FULL]: 'the pattern store is full', [PAT_MISSING]: 'no such pattern', [PAT_USED]: 'patches use it' };
@@ -711,7 +757,7 @@ export function parsePatEntry(p: Parsed): PatListItem | null {
   const k = x[0] | (x[1] << 8), count = x[2] | (x[3] << 8);
   if (!count) return { k, count, entry: null };
   if (x.length < 34) return null;
-  return { k, count, entry: { id: x[4] | (x[5] << 8), len: x[6] | (x[7] << 8), hash: u32at(x, 8), layout: u32at(x, 12), tracks: x[16], readOnly: !!(x[17] & 1),
+  return { k, count, entry: { id: x[4] | (x[5] << 8), len: x[6] | (x[7] << 8), hash: u32at(x, 8), layout: u32at(x, 12), tracks: x[16], readOnly: !!(x[17] & 1), kept: !!(x[17] & 2),
     name: String.fromCharCode(...x.slice(18, 34).filter((c) => c >= 32 && c < 127)).trim() } };
 }
 /** a PAT_DATA: the id, the payload's whole length (null: no such id), the offset and the bytes from it */

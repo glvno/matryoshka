@@ -5281,8 +5281,8 @@ int main(void)
         check("  SEQ held + HOME on an empty patch: NOTHING TO CLEAR, no question", !seq_all_at && strstr(msg_text, MSG_NOTHING_TO_CLEAR) != 0);
         tap(BTN_SEL);
         loop();
-        check("  SEQ held + SEL on a patch without a demo set: NO DEMO SET, no question, no SONG page (#1179)", !seq_demo_at
-              && strstr(msg_text, MSG_NO_DEMO_SET) != 0 && page == PAGE_SEQ);
+        check("  SEQ held + SEL without a pattern store: NO PATTERN STORE, no browser, no SONG page (#1202 G8)", !seq_br_at
+              && strstr(msg_text, MSG_NO_PATTERN_STORE) != 0 && page == PAGE_SEQ);
         panel_held &= ~(1u << BTN_SEQ);
         panel_edges(0, 1u << BTN_SEQ);
         loop();
@@ -5352,76 +5352,113 @@ int main(void)
         check("patterns fixture loads again", load_fixture("build/panel-fixtures/steps-patterns.m1p") == 0);
         pv_gen++;
     }
-    {   /* the demo set (#1179): the factory 808 Kit ships empty; SEQ held + SEL asks, SEL again loads its set */
-        uint32_t told;
-        const uint32_t *w;
-        check("(the factory 808 Kit, empty, on its SEQ page)", ct_load_factory("808 KIT") == 0);
+    {   /* the stored patterns' browser and the EMPTY hint (#1202 G8): SEQ held + SEL lists the store's entries, PRESET moves
+         * through them, SEL loads one (linked), HOME closes it; the hint says EMPTY  SEQ+SEL load a pattern on a patch
+         * without a note while the store holds an entry */
+        const uint32_t one = NW(0, 1, 36, STEP_VEL, 0);
+        char got[PT_NAME + 8u];
+        pt_info_t first, second;
+        pl_out_t s = { m1_up, sizeof m1_up, 0, PT_FNV0 };
+        uint32_t id = 0, told;
+        check("(the factory 808 Kit on its SEQ page, every pattern cleared)", ct_load_factory("808 KIT") == 0);
+        host_pt_init();
+        pl_clear_all();
         ct_seq(0, 0, 1);
+        check("(a note in P03, stored as an entry and as a kept copy)", eng_pattern_set_notes((uint32_t)seq_module(), 2, &one, 1) != 0);
+        pl_encode(2, &s);
+        check("  (stored)", pt_put(&id, "AAA P03", m1_up, s.n, 0) == 0 && pl_keep(2, got) == 1);
         ui_dirty = 2;
         loop();
-        check("an empty drum kit with a demo set: the hint line says so (EMPTY  SEQ+SEL demo set  SEL+PRESET pat)",
-              ct_shows(pt_on ? HINT_EMPTY : HINT_EMPTY_NO_STORE));
-        {   /* the rule is the whole patch's (D-836): notes in P03 only, P01 shown, is not empty */
-            const uint32_t one = NW(0, 1, 36, STEP_VEL, 0);
-            check("(a note in the kit's P03 only)", eng_pattern_set_notes((uint32_t)seq_module(), 2, &one, 1) != 0);
-            ui_dirty = 2;
-            loop();
-            check("  P01 shown, notes only in P03: no EMPTY hint", eng_pattern() == 0 && !ct_shows(HINT_EMPTY)
-                  && !ct_shows(HINT_EMPTY_NO_STORE));
-            eng_pattern_drop((uint32_t)seq_module(), 2);
-            ui_dirty = 2;
-            loop();
-            check("  P03 dropped again: EMPTY again", ct_shows(pt_on ? HINT_EMPTY : HINT_EMPTY_NO_STORE));
-        }
+        check("  P01 shown, notes only in P03: no EMPTY hint", eng_pattern() == 0 && !ct_shows(HINT_EMPTY));
+        eng_pattern_drop((uint32_t)seq_module(), 2);
+        ui_dirty = 2;
+        loop();
+        check("no note in any pattern, entries in the store: EMPTY  SEQ+SEL load a pattern", ct_shows("EMPTY  SEQ+SEL load a pattern")
+              && !strcmp(HINT_EMPTY, "EMPTY  SEQ+SEL load a pattern"));
+        pt_clear_all();
+        ui_dirty = 2;
+        loop();
+        check("  the store empty: no EMPTY hint", !ct_shows(HINT_EMPTY));
         panel_held |= 1u << BTN_SEQ;
         panel_edges(1u << BTN_SEQ, 0);
         tap(BTN_SEL);
         loop();
-        check("SEQ held + SEL: it asks first (LOAD DEMO SET? SEL AGAIN), nothing loaded, no SONG page", seq_demo_at != 0u
-              && strstr(msg_text, MSG_DEMO_ASK) != 0 && eng_pattern_notes((uint32_t)seq_module(), 0, &w) == 0 && page == PAGE_SEQ);
+        check("  SEQ held + SEL: NO STORED PATTERNS, no browser", !seq_br_at && strstr(msg_text, MSG_NO_STORED_PATTERNS) != 0);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        loop();
+        id = 0;
+        check("(the two entries again)", eng_pattern_set_notes((uint32_t)seq_module(), 2, &one, 1) != 0
+              && pt_put(&id, "AAA P03", m1_up, s.n, 0) == 0 && pl_keep(2, got) == 1 && !pt_next(0, &first) && !pt_next(first.id, &second));
+        eng_pattern_drop((uint32_t)seq_module(), 2);
+        eng_pattern_set(2);
+        check("(P03 selected, empty)", eng_pattern() == 2 && !pl_link(2));
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        tap(BTN_SEL);
+        loop();
+        check("SEQ held + SEL: the browser opens on the store's first entry, the SEQ page stays", seq_br_at == first.id && page == PAGE_SEQ);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        loop();
+        check("  SEL's and SEQ's releases: no SONG page, still open", page == PAGE_SEQ && seq_br_at == first.id);
+        check("  it shows the pattern it loads into, its place, the entries' names, the kept copy marked, the hint",
+              on_screen("LOAD INTO P03  1/2") && on_screen("AAA P03") && on_screen("KEPT") && ct_shows(HINT_BROWSE));
+        enc(6, 1);
+        check("  PRESET: the cursor on the next entry (2/2)", seq_br_at == second.id && on_screen("LOAD INTO P03  2/2"));
+        enc(6, 1);
+        check("  PRESET again: round to the first", seq_br_at == first.id);
+        enc(6, -1);
+        check("  PRESET back: round to the last", seq_br_at == second.id);
+        tap(BTN_HOME);
+        loop();
+        check("  HOME: closed, nothing loaded, the page stays (HOME's release did nothing)", !seq_br_at && !pl_link(2) && page == PAGE_SEQ
+              && !eng_pattern_has((uint32_t)seq_module(), 2));
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        tap(BTN_SEL);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        loop();
+        told = host_link_told;
+        tap(BTN_SEL);
+        loop();
+        snprintf(got, sizeof got, "P3: %s", first.name);
+        check("SEL in the browser: the entry loaded into P03 (its link told), the bar names it, closed, no SONG page",
+              !seq_br_at && host_link_told == told + 1u && eng_pattern_has((uint32_t)seq_module(), 2) && strstr(msg_text, got) != 0
+              && page == PAGE_SEQ);
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        tap(BTN_SEL);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        loop();
+        enc(6, 1);
+        check("  opened again, PRESET moves on", seq_br_at == second.id);
         panel_keys(1u << 3);
         panel_keys(0);
         loop();
-        check("  a key meanwhile: NOT LOADED", !seq_demo_at && strstr(msg_text, MSG_NOT_LOADED) != 0);
-        tap(BTN_SEL);
-        later(3100);
-        tap(BTN_SEL);
-        loop();
-        check("  SEL again after 3 s: only asks again", seq_demo_at != 0u && strstr(msg_text, MSG_DEMO_ASK) != 0);
-        told = host_op_told;
-        tap(BTN_SEL);
-        loop();
-        check("  SEL again within 3 s: the demo set loaded, pattern 1 selected, its song there; the editor told (PATTERN_OP 3)",
-              !seq_demo_at && strstr(msg_text, MSG_DEMO_LOADED) != 0 && eng_pattern() == 0 && !eng_song() && eng_song_len(0) > 0
-              && eng_pattern_notes((uint32_t)seq_module(), 0, &w) > 0 && host_op_told == told + 1u && host_op_last[0] == 3u);
-        panel_held &= ~(1u << BTN_SEQ);
-        panel_edges(0, 1u << BTN_SEQ);
-        ui_dirty = 2;
-        loop();
-        check("  SEQ let go: the SEQ page stays, the hint line no longer says EMPTY", page == PAGE_SEQ && !ct_shows(HINT_EMPTY));
-    }
-    {   /* Silver Box (D-836): its keys play, but an empty patch shows EMPTY before the roll's hint; its demo set leaves P01
-         * empty and the hint goes */
-        check("(the factory Silver Box, empty, on its SEQ page)", ct_load_factory("SILVER BOX") == 0);
-        ct_seq(0, 0, 1);
-        ui_dirty = 2;
-        loop();
-        check("Silver Box empty: the keys play, and the hint line says EMPTY, not the roll's", seq_play_keys()
-              && ct_shows(pt_on ? HINT_EMPTY : HINT_EMPTY_NO_STORE) && strcmp(seq_grid_text[2], HINT_ROLL) != 0);
+        check("  a key: closed, nothing loaded", !seq_br_at && host_link_told == told + 1u);
         panel_held |= 1u << BTN_SEQ;
         panel_edges(1u << BTN_SEQ, 0);
         tap(BTN_SEL);
-        loop();
-        tap(BTN_SEL);
-        loop();
-        check("  SEQ held + SEL, SEL: its demo set loaded, P01 selected (empty)", strstr(msg_text, MSG_DEMO_LOADED) != 0
-              && eng_pattern() == 0);
         panel_held &= ~(1u << BTN_SEQ);
         panel_edges(0, 1u << BTN_SEQ);
+        loop();
+        enc(0, 1);
+        check("  another knob: closed", !seq_br_at);
+        check("(the factory Silver Box, every pattern cleared)", ct_load_factory("SILVER BOX") == 0);
+        pl_clear_all();
+        ct_seq(0, 0, 1);
         ui_dirty = 2;
         loop();
-        check("  on P01 after its demo set: no EMPTY hint, the roll's", !ct_shows(HINT_EMPTY) && !ct_shows(HINT_EMPTY_NO_STORE)
-              && !strcmp(seq_grid_text[2], HINT_ROLL));
+        check("Silver Box empty, entries stored: the keys play, and the hint line says EMPTY, not the roll's (D-836)", seq_play_keys()
+              && ct_shows(HINT_EMPTY) && strcmp(seq_grid_text[2], HINT_ROLL) != 0);
+        (void)eng_pattern_set_notes((uint32_t)seq_module(), 0, &one, 1);
+        ui_dirty = 2;
+        loop();
+        check("  a note in P01: the roll's hint", !ct_shows(HINT_EMPTY) && !strcmp(seq_grid_text[2], HINT_ROLL));
+        pt_on = 0;
     }
     {   /* The SEQ page drawn whole: once when SEQ opens it from a Steps track's device page (seq_select drew it a second
          * time after page_show, and the device page's header before it), and its ground cleared around the cells only

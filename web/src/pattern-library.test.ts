@@ -6,7 +6,8 @@ import type { DeviceLink } from './device';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
 import { buildPatternsSection, LOCKS_LEFT_OUT } from './pattern-library';
-import { applyPayload, encodePayload, entryName, factoryEntries, fnv, FNV0 } from './pattern-store';
+import { applyPayload, encodePayload, entryName, fnv, FNV0 } from './pattern-store';
+import { KEPT_PATTERNS_KEY, keptJson, savedKept } from './bank-backup';
 import type { StoredPatternEntry } from './protocol';
 import type { PatternLink } from './track';
 
@@ -24,13 +25,15 @@ function patch(): Patch {
 function fakeDevice(connected: boolean, every = false) {
   const store = new Map<number, { name: string; payload: Uint8Array; kept?: boolean }>();
   let next = 1, used = 0;
-  const list = (): StoredPatternEntry[] => [...store].map(([id, e]) => ({ id, name: e.name, len: e.payload.length, hash: fnv(FNV0, e.payload), layout: 0, tracks: 1, readOnly: false }));
+  const list = (): StoredPatternEntry[] => [...store].map(([id, e]) => ({ id, name: e.name, len: e.payload.length, hash: fnv(FNV0, e.payload), layout: 0, tracks: 1, readOnly: false, kept: !!e.kept }));
+  /** a read-only factory entry, as firmware before 1.26 lists one after the user's */
+  const factory: StoredPatternEntry = { id: 0xe000, name: '808 KIT ELECTRO B', len: 9, hash: 1, layout: 0, tracks: 1, readOnly: true, kept: false };
   const dev = {
     get connected() { return connected; },
     hasPatternStore: connected,
     patternsStored: connected && every,
     info: { store: { free: 9000, total: 12000 } },
-    listPatterns: async () => [...list(), ...factoryEntries().slice(0, 2)],
+    listPatterns: async () => [...list(), factory],
     getPattern: async (id: number) => store.get(id)?.payload ?? null,
     putPattern: async (id: number, name: string, payload: Uint8Array, kept = false) => { const at = id || next++; store.set(at, { name, payload, kept }); return at; },
     deletePattern: async (id: number, force: boolean) => (used && !force ? { deleted: false, used } : (store.delete(id), { deleted: true, used: 0 })),
@@ -68,14 +71,31 @@ beforeEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('without an FM-1 it lists the factory patterns, which load as copies; saving waits for an FM-1', () => {
-  const { root, loads } = section(false);
-  const listed = rows(root, 1);
-  expect(listed).toHaveLength(factoryEntries().length);
-  expect(listed[0].textContent).toContain('factory');
+it('without an FM-1 it lists nothing; saving waits for an FM-1', () => {
+  const { root } = section(false);
+  expect(rows(root, 1)).toHaveLength(0);
   expect(button(root, 'Save to FM-1').disabled).toBe(true);
-  button(listed[0], 'Load').click();
-  return flush().then(() => expect(loads).toEqual([[2, null]]));
+});
+
+it('lists only the user’s entries, kept copies marked, and puts this browser’s kept copies back (#1202 G8)', async () => {
+  const payload = encodePayload(patch(), 2);
+  const other = Uint8Array.from([1, 0, 0, 0, 0, 1, 0xff, 0]);
+  localStorage.setItem(KEPT_PATTERNS_KEY, keptJson([{ name: 'MY KEEP', payload }, { name: 'OTHER', payload: other }]));
+  const { root, pane, store } = section(true, 2, true);
+  store.set(40, { name: 'A KEPT ONE', payload, kept: true });
+  pane.enter();
+  await flush();
+  expect(rows(root, 1).map((r) => r.textContent)).toEqual([expect.stringContaining('A KEPT ONE')]);
+  expect(rows(root, 1)[0].textContent).toContain('kept');
+  const restore = button(root, 'Restore 2 kept copies');
+  expect(restore.hidden).toBe(false);
+  restore.click();
+  await flush();
+  // (MY KEEP's payload is on the FM-1 as a kept copy already; OTHER goes in as a new kept copy)
+  expect([...store.values()].map((e) => [e.name, e.kept])).toEqual([['A KEPT ONE', true], ['OTHER', true]]);
+  expect(savedKept()).toEqual([]);
+  expect(root.textContent).toContain('2 kept copies are back on the FM-1');
+  localStorage.removeItem(KEPT_PATTERNS_KEY);
 });
 
 it('Save as new stores the selected pattern under the name given and links it; Save then writes over that entry', async () => {
@@ -139,7 +159,6 @@ it('a 1.26 FM-1 offers Load, Keep a copy and Load file; Keep a copy stores a kep
   pane.enter();
   await flush();
   expect(foot(root)).toEqual(['Keep a copy', 'Load file…']);
-  expect(button(rows(root, 1)[0], 'Load')).toBeTruthy();
   let offered = '';
   vi.stubGlobal('prompt', (_q: string, name: string) => ((offered = name), name));
   button(root, 'Keep a copy').click();

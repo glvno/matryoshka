@@ -1081,6 +1081,7 @@ static int preset_load(uint32_t n)
 {
     uint32_t len = 0;
     char slot_name[M1_NAME + 1];
+    m1_slot_back();                             /* (a mode 1 SLOT_GET's borrow ends first: a program change meanwhile) */
     if (!slot_used(n) || sl_read(n, bank_buf, &len, slot_name) || m1_apply(bank_buf, len) || m1_set_current(bank_buf, len)) {
         fallback_boot();
         cur_preset = n < bank_slots ? n : 0u;
@@ -1189,6 +1190,8 @@ static int m1_slot_info(uint32_t slot, char *name, uint32_t *len)
         name[i] = h.name[i];
     return 1;
 }
+
+#include "slot_get.h"                               /* SLOT_GET: a slot's binary for the editor's backup (#1202 P2) */
 
 /* The loading screen (splash.c): the logo, then what is being loaded and a bar, from the first LCD write until the patches
  * are up */
@@ -1368,19 +1371,13 @@ static void fallback_boot(void)
     screen_idle();
 }
 
-/* a patch binary holds patterns 2..64 of its own (format 48's patterns section names a track): a binary of 1.25 or
- * before, or one an older editor wrote (#1202) */
-static int bank_inline(const uint8_t *b, uint32_t len)
-{
-    uint32_t at = len >= 8u && b[1] >= 48u && (b[7] & ENG_FLAG_PATTERNS) ? eng_section_at(b, len, ENG_SEC_PATTERNS) : 0u;
-    return at && at + 2u < len && b[at + 2u] != 0u;
-}
-
-/* boot, with the bank as it is (#1202): each slot whose binary holds patterns 2..64 gets them into the pattern store, as
- * SAVE does (patlink.c pl_commit: loaded, its patterns stored and linked, the slot written again), so the patterns two
- * patches linked or held alike stay shared. Then the entries no slot links go (pl_gc: a cut after a SAVE, or edits never
- * saved). The store full: what it cannot take stays in its binary, and every boot tries again. What the bar says, 0
- * nothing (*then: what it says next) */
+/* boot, with the bank as it is (#1202): each slot whose binary holds patterns 2..64, or links a legacy factory pattern,
+ * gets them into the pattern store as user entries, as SAVE does (patlink.c pl_commit: loaded, its patterns stored and
+ * linked, the slot written again), so the patterns two patches linked or held alike stay shared. Then the entries no slot
+ * links go (pl_gc: a cut after a SAVE, or edits never saved). An entry is written before its slot: a cut between them
+ * leaves the slot as it was, and the next boot does it again, finding that entry by its bytes. The store full: what it
+ * cannot take stays in its binary (a legacy link stays), and every boot tries again. What the bar says, 0 nothing (*then:
+ * what it says next) */
 static const char *bank_patterns(const char **then)
 {
     char name[M1_NAME + 1];
@@ -1388,7 +1385,7 @@ static const char *bank_patterns(const char **then)
     if (!pt_on)
         return 0;
     for (s = 0; s < bank_slots; s++) {
-        if (!slot_used(s) || sl_read(s, bank_buf, &len, name) || !bank_inline(bank_buf, len))
+        if (!slot_used(s) || sl_read(s, bank_buf, &len, name) || !pl_slot_due(bank_buf, len))
             continue;
         if (!moved && !full)
             boot_step("PATTERNS");
@@ -1625,9 +1622,11 @@ static int encs_waiting(void)
 static void knobs_poll(void)
 {
     int32_t st[7];
-    uint32_t k;
+    uint32_t k, any = 0;
     for (k = 0; k < 7u; k++)
-        st[k] = fm1_enc_take(k);
+        any |= (uint32_t)(st[k] = fm1_enc_take(k));
+    if (any)
+        m1_slot_back();                         /* (a mode 1 SLOT_GET's borrow ends before a control acts) */
     panel_held = fm1_in.buttons;
     panel_encoders(st);
 }
@@ -1637,6 +1636,8 @@ static void knobs_poll(void)
  * (panel_draw's yield), only the edges, and only those that draw nothing (panel_key quick); the rest waits for keys_poll */
 static void keys_poll(void)
 {
+    if (fm1_input_key_peek() >= 0)
+        m1_slot_back();
     panel_held = fm1_in.buttons;
     panel_key_queue(fm1_input_key_peek, fm1_input_key_pop, 0);
     panel_keys(fm1_in.notes);
@@ -1645,6 +1646,7 @@ static void keys_yield(void)
 {
     if (fm1_input_key_peek() < 0)
         return;
+    m1_slot_back();
     panel_held = fm1_in.buttons;
     panel_key_queue(fm1_input_key_peek, fm1_input_key_pop, 1);
 }
@@ -1706,6 +1708,8 @@ static void guide_poll(void)
 static void buttons_poll(void)
 {
     uint32_t rel, p = fm1_input_edges(&rel);
+    if (p | rel)
+        m1_slot_back();
     panel_held = fm1_in.buttons;
     panel_edges(p, rel);
 }
@@ -2091,6 +2095,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         keys_poll();
         keys_report();
         buttons_poll();
+        slot_bk_poll();                                 /* (a mode 1 SLOT_GET cut off: the running patch back) */
         knobs_poll();
         batt_poll();
         master_poll();
