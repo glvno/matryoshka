@@ -14,7 +14,8 @@ import {
   factoryQualificationTargetSeconds, validateFactoryQualification,
   type ExpectedFactoryQualificationCase, type FactoryQualificationContext,
 } from '../src/factory-bank-qualification';
-import { fxBusOf } from '../src/fx-bus';
+import { assemblyById } from '../src/assembly';
+import { rackOf } from '../src/fx-drawer';
 import { backupFile } from '../src/migrate';
 import { DEVICE, deviceBudget, encodePatch } from '../src/patchbin';
 import '../src/factory-presets';
@@ -213,7 +214,7 @@ export function exportSelectedFactoryAudition(options: AuditionExportOptions) {
       throw new Error(`${sourceName}: protected source changed`);
     if (audit && (!selected || name !== (selected.bankName ?? sourceName)))
       throw new Error(`${sourceName}: selected source/bank name mismatch`);
-    const addedFx = fxBusOf(patch)?.stages.map(stage => stage.kind) ?? [];
+    const addedFx = rackOf(patch).drawers.flatMap(d => d.effects).map(id => assemblyById(patch, id)!.label.toLowerCase());
     const allocations = patch.modules.filter(module => module.type === 'alloc').map(module => ({ id: module.id, voices: module.params.voices }));
     const paraphonic = ['Wanderer', 'Vernon 100'].includes(sourceName);
     const configurationId = selected?.configurationId ?? null;

@@ -5,7 +5,7 @@ import { FEATURE_PATTERN_ORIGINS, PatternOrigins, type OriginUpdate } from './pa
 import { DEFS } from './modules';
 import type { Patch, Range } from './patch';
 import { patternName, READ_ONLY_ID, type SongEntry, type StepNote } from './track';
-import { DEVICE, deviceSection, encodePatch, FLAG_FX_BUS, FLAG_LINKS, FLAG_PATTERN_ORIGINS, layout, mapRecord, toQ16, VERSION, type LinkStore } from './patchbin';
+import { DEVICE, deviceSection, encodePatch, FLAG_LINKS, FLAG_PATTERN_ORIGINS, FLAG_RACK, FORMAT_RACK, layout, mapRecord, toQ16, VERSION, type LinkStore } from './patchbin';
 import { FNV0, fnv, PAYLOAD_MAX, storePlan, withLinks } from './pattern-store';
 import { deviceView } from './poly';
 import type { HostMsg } from './worklet';
@@ -650,8 +650,8 @@ export class DeviceLink {
 
   private async sendChunks(bin: Uint8Array): Promise<void> {
     const flags = bin[6] | bin[7] << 8;
-    if ((flags & FLAG_FX_BUS) && (!this.info?.patchFormats || this.info.patchFormats.max < 55))
-      throw new Error('This patch carries master FX controls. Update the FM-1 firmware before sending it.');
+    if ((flags & FLAG_RACK) && bin[1] >= FORMAT_RACK && (!this.info?.patchFormats || this.info.patchFormats.max < FORMAT_RACK))
+      throw new Error('This patch has FX drawers or effects. Update the FM-1 firmware before sending it.');
     if ((flags & FLAG_PATTERN_ORIGINS) && (!this.info?.patchFormats || bin[1] > this.info.patchFormats.max || !(this.info.features & FEATURE_PATTERN_ORIGINS)))
       throw new Error('This patch carries factory pattern origins. Update the FM-1 firmware before sending it; its origins cannot be removed automatically.');
     if ((flags & FLAG_LINKS) && !this.hasPatternStore) throw new Error('This patch links stored patterns, and this FM-1 has no pattern store.');

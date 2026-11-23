@@ -17,7 +17,7 @@ import { deviceView, type DeviceGroup } from '../src/poly';
 import { FM1_PRESETS } from '../src/presets';
 import { schedule, scheduleTime, scheduleWork, SCH_FORK, SCH_RV_MIX, SCH_SYNC, type PlanCosts, type Schedule } from '../src/schedule';
 import { CPU, planCosts } from '../src/cpu';
-import { fxHelperIds } from '../src/fx-bus';
+import { chainHelpers } from '../src/fx-drawer';
 import type { Patch } from '../src/patch';
 
 const args = process.argv.slice(2);
@@ -38,7 +38,7 @@ function load(name: string): Row | undefined {
     const j = JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')) as { modules_ns: { core0: number; core1: number }[] };
     const src = presets[name]?.() ?? (JSON.parse(readFileSync(`${bench}/${name}.json`, 'utf8')) as Patch);
     const { patch: p, groups } = deviceView(src, true);
-    return { name, p, groups, helpers: fxHelperIds(src), ns: j.modules_ns.map((m) => m.core0 + m.core1) };
+    return { name, p, groups, helpers: chainHelpers(src), ns: j.modules_ns.map((m) => m.core0 + m.core1) };
   }
   return undefined;
 }

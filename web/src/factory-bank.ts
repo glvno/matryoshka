@@ -2,8 +2,10 @@
 // Hardware-derived candidates; editor examples live separately in factory/examples.json.
 import SOURCE from '../factory/bank.json';
 import AUDIT from '../factory/fx-audit.json';
-import { kindOf, setKind, setPages, setSwitches, setTarget, switches } from './buttons';
-import { fxBusOf, withFxBus, type FxStageKind } from './fx-bus';
+import { setKind, kindOf, setSwitches, setTarget, switches } from './buttons';
+import { convertLegacyBus } from './fx-drawer';
+import { fxBusOf, LEGACY_STAGE_ROWS, type FxStageKind } from './fx-legacy';
+import { exposePort, makeAssembly, mergeRows, promote, type AssemblyInst, type RowTarget } from './assembly';
 import { sharedFilterFactory } from './factory-paraphony';
 import { sharedCassiaContours } from './factory-cassia-sharing';
 import { sharedAlgoContours } from './factory-algo-sharing';
@@ -12,8 +14,7 @@ import { fitCanvasFactory } from './factory-canvas-fit';
 import { FACTORY_KITS, withKitPatterns } from './factory-kit-patterns';
 import { clearAllPatterns } from './pattern-ops';
 import { DEFS } from './modules';
-import { devicesOf } from './pages';
-import { addModule, connect, disconnect, removeModule, type Patch } from './patch';
+import { addModule, connect, disconnect, removeModule, type Endpoint, type Patch } from './patch';
 
 /** Original card bindings, including selectors controlling an existing effect. Row indices are zero-based. */
 export const factoryFxAudit = AUDIT;
@@ -172,8 +173,8 @@ export function buildFactoryBank(profile: FactoryMeasurementProfile = {}): Facto
     if (options?.canvasCaptions && name !== 'Canvas') throw new Error(`${name}: Canvas captions require Canvas`);
     if (options?.voices !== undefined) reduceVoices(p, options.voices, name === 'Expander S' ? 1 : 3);
     // Protected drums/drones never pass through validation, FX, player or button rewriting; a drum kit gets its pattern set
-    // and, when selected, the master FX bus on its FX button (nothing else of the kit changes).
-    if (!audit) return { name, patch: options?.drumRack ? withFxPage(withKitPatterns(p), options.omit ?? []) : withKitPatterns(p) };
+    // and, when selected, the factory FX drawer (nothing else of the kit changes).
+    if (!audit) return { name, patch: options?.drumRack ? withFxDrawer(withKitPatterns(p), options.omit ?? []) : withKitPatterns(p) };
     if (options?.paraphony === 'shared-filter') p = sharedFilterFactory(p);
     else if (options?.paraphony === 'shared-articulation') p = sharedArticulationFactory(p);
     else if (options?.paraphony === 'shared-contours' && name === 'Cassia 1') p = sharedCassiaContours(p);
@@ -215,7 +216,7 @@ export function buildFactoryBank(profile: FactoryMeasurementProfile = {}): Facto
     setTarget(p, 'lfo', { module: harmony.id });
     setSwitches(p, 'lfo', true);
     main.panel!.labels = { ...main.panel?.labels, lfo: 'BYP HARM' };
-    // Preserve Sallen's SWITCH and Canvas's PULSER gate on EDIT; FX always opens the bus.
+    // Preserve Sallen's SWITCH and Canvas's PULSER gate on EDIT; FX always opens the FX drawer.
     const fxCables = p.cables.filter(c => c.from.module === main.id && c.from.port === 'fx');
     if (fxCables.length) {
       setKind(p, 'edit', kindOf(main.panel, 'fx'));
@@ -225,7 +226,7 @@ export function buildFactoryBank(profile: FactoryMeasurementProfile = {}): Facto
       delete main.panel!.labels!.fx;
       for (const cable of fxCables) cable.from.port = 'edit';
     }
-    p = withFxPage(p, [...new Set([...(audit.omit as FxStageKind[]), ...(options?.omit ?? [])])]);
+    p = withFxDrawer(p, [...new Set([...(audit.omit as FxStageKind[]), ...(options?.omit ?? [])])]);
     if (options?.harmonizer === 'removed') removeHarmony(p);
     if (options?.canvasCaptions) p = fitCanvasFactory(p, options.canvasCaptions);
     if (options?.bankName) {
@@ -236,16 +237,127 @@ export function buildFactoryBank(profile: FactoryMeasurementProfile = {}): Facto
   });
 }
 
-/** The master FX bus without the omitted stages, every stage bypassed, its pages on the FX button (D-888). */
-function withFxPage(source: Patch, omit: readonly FxStageKind[]): Patch {
+/** The factory FX (D-888): the master FX bus without the omitted stages, every stage bypassed, made into an FX drawer
+ * (fx-drawer.ts convertLegacyBus), so the patch plays sample for sample as the bus did; the FM-1's FX button opens it. */
+function withFxDrawer(source: Patch, omit: readonly FxStageKind[]): Patch {
   const main = source.modules.find(m => m.type === 'fm1')!;
   if (source.cables.some(c => c.from.module === main.id && c.from.port === 'fx')) throw new Error(`${source.name}: FX is cabled`);
-  const p = withFxBus(source, { omit });
-  const bus = fxBusOf(p);
-  if (bus) {
-    const device = devicesOf(p, DEFS).find(d => d.asm === bus.assembly)!;
-    setKind(p, 'fx', 'page');
-    setPages(p, 'fx', device.pages.map((_, page) => ({ device: device.key, page })));
+  return convertLegacyBus(withFxBus(source, { omit }));
+}
+
+const BUS_KINDS: readonly FxStageKind[] = ['drive', 'chorus', 'delay', 'reverb'];
+const busName = (kind: FxStageKind): string => kind === 'drive' ? 'Drive' : kind[0].toUpperCase() + kind.slice(1);
+
+function promoteRows(p: Patch, a: AssemblyInst, rows: RowTarget[][], kind: FxStageKind): void {
+  rows.forEach((targets, i) => {
+    for (const t of targets) promote(a, t.module, t.param, p);
+    for (const t of targets.slice(1)) mergeRows(p, a, DEFS, targets[0], t);
+    a.params.find((r) => r.module === targets[0].module && r.param === targets[0].param)!.label = LEGACY_STAGE_ROWS[kind][i];
+  });
+}
+
+/**
+ * The factory master FX bus of D-888 as the releases before 1.26.2 built it (the stages but the omitted ones, every
+ * stage bypassed; omit all four to leave the graph unchanged). The factory patches and the golden kits that had one make
+ * it, then turn it into an FX drawer (fx-drawer.ts convertLegacyBus): the same modules in the same order with the same
+ * cables, so they play sample for sample as before (scripts/fxdrawer-proof.ts).
+ */
+export function withFxBus(source: Patch, options: { omit?: readonly FxStageKind[] } = {}): Patch {
+  const p: Patch = structuredClone(source);
+  if (fxBusOf(p, DEFS)) return p;
+  const kinds = BUS_KINDS.filter((kind) => !options.omit?.includes(kind));
+  if (!kinds.length) return p;
+  const outputs = p.modules.filter((m) => m.type === 'output');
+  if (outputs.length !== 1) throw new Error('FX bus needs exactly one master Output');
+  const output = outputs[0];
+  const original = p.cables.filter((c) => c.to.module === output.id && (c.to.port === 'l' || c.to.port === 'r'));
+  const left = original.filter((c) => c.to.port === 'l');
+  const right = original.filter((c) => c.to.port === 'r');
+  if (!left.length && !right.length) throw new Error('FX bus needs a connected master Output');
+  const x = Math.max(...p.modules.map((m) => m.x), 0) + 320;
+  const y = Math.min(...p.modules.map((m) => m.y), 20);
+  const end = (module: number, port: string): Endpoint => ({ module, port });
+  // Direct members precede stage members, preserving one contiguous allModules device-member run.
+  const corrections = new Map<FxStageKind, number>();
+  for (const kind of kinds.filter((k) => k === 'chorus' || k === 'delay')) {
+    const m = addModule(p, DEFS.math, x + corrections.size * 320, y + 1680);
+    Object.assign(m.params, { ka: 0.25, kb: 0.25, off: 0 });
+    corrections.set(kind, m.id);
   }
+  const wire = (from: Endpoint, to: Endpoint): void => {
+    if (!connect(p, DEFS, from, to)) throw new Error(`Cannot connect FX bus ${from.module}:${from.port} to ${to.module}:${to.port}`);
+  };
+  const stages: { kind: FxStageKind; members: number[]; inputs: Endpoint[]; rows: RowTarget[][] }[] = [];
+  let previous: Endpoint[][] = [];
+  for (const [i, kind] of kinds.entries()) {
+    let members: number[];
+    let inputs: Endpoint[];
+    let rows: RowTarget[][];
+    let next: Endpoint[][];
+    if (kind === 'reverb') {
+      const kernel = addModule(p, DEFS.reverb, x + i * 320, y);
+      kernel.params.mix = 1;
+      const dry = [0, 1].map((ch) => addModule(p, DEFS.scale, x + i * 320, y + (ch + 1) * 280));
+      const send = addModule(p, DEFS.math, x + i * 320, y + 840);
+      Object.assign(send.params, { ka: 0.5, kb: 0.5, off: 0 });
+      const mix = addModule(p, DEFS.macro, x + i * 320, y + 1120);
+      mix.params.value = DEFS.reverb.params.find((pd) => pd.name === 'mix')!.default;
+      const wet = addModule(p, DEFS.math, x + i * 320, y + 1400);
+      Object.assign(wet.params, { ka: 1, kb: 1, off: 0 });
+      members = [kernel.id, ...dry.map((m) => m.id), send.id, mix.id, wet.id];
+      for (const id of members) p.modules.find((m) => m.id === id)!.bypass = true;
+      dry.forEach((m, ch) => wire(end(m.id, 'out'), end(send.id, ch ? 'b' : 'a')));
+      wire(end(send.id, 'add'), end(kernel.id, 'in'));
+      wire(end(kernel.id, 'out'), end(wet.id, 'a'));
+      wire(end(mix.id, 'out'), end(wet.id, 'b'));
+      inputs = dry.map((m) => end(m.id, 'in'));
+      // The dry channels never collapse or depend on the wet control. Generic Math bypass silences the wet return.
+      next = dry.map((m) => [end(m.id, 'out'), end(wet.id, 'mul')]);
+      rows = LEGACY_STAGE_ROWS.reverb.map((param) => [{ module: param === 'mix' ? mix.id : kernel.id, param: param === 'mix' ? 'value' : param }]);
+    } else {
+      const targets = [0, 1].map((ch) => {
+        const m = addModule(p, DEFS[kind === 'drive' ? 'shape' : kind], x + i * 320, y + ch * 560);
+        m.bypass = true;
+        if (kind === 'drive') Object.assign(m.params, { drive: 1, level: 1 });
+        if (kind === 'delay') Object.assign(m.params, { length: 500, rate: 0 });
+        return m.id;
+      });
+      members = targets;
+      inputs = targets.map((id) => end(id, 'in'));
+      rows = LEGACY_STAGE_ROWS[kind].map((param) => targets.map((module) => ({ module, param })));
+      if (kind === 'chorus' || kind === 'delay') {
+        // C=.25*(Ar+Bl-Al-Br); L=Al+C, R=Br+C. Native stereo on mono, identity at every bypassed mix.
+        const [first, second] = kind === 'chorus' ? ['l', 'r'] : ['out', 'r'];
+        const [a, b] = targets;
+        const taps = [end(a, first), end(a, second), end(b, first), end(b, second)];
+        const helper = corrections.get(kind)!;
+        for (const tap of [taps[1], taps[2]]) wire(tap, end(helper, 'a'));
+        for (const tap of [taps[0], taps[3]]) wire(tap, end(helper, 'b'));
+        next = [[taps[0], end(helper, 'sub')], [taps[3], end(helper, 'sub')]];
+      } else next = targets.map((id) => [end(id, 'out')]);
+    }
+    if (previous.length) inputs.forEach((to, ch) => previous[ch].forEach((from) => wire(from, to)));
+    else [left, right.length ? right : left].forEach((cables, ch) => cables.forEach((c) => wire(c.from, inputs[ch])));
+    previous = next;
+    stages.push({ kind, members, inputs, rows });
+  }
+  for (const c of original) disconnect(p, c);
+  previous.forEach((sources, ch) => sources.forEach((from) => wire(from, end(output.id, ch ? 'r' : 'l'))));
+  const children = stages.map((stage) => {
+    const a = makeAssembly(p, stage.members, busName(stage.kind));
+    promoteRows(p, a, stage.rows, stage.kind);
+    for (const input of stage.inputs) exposePort(a, 'in', input.module, input.port);
+    // The group switch's own form (bypassAssembly): no member was off before it, so all come back on with it.
+    a.bypass = true;
+    a.kept = [];
+    return a;
+  });
+  const root = makeAssembly(p, [...corrections.values()], 'FX', children.map((a) => a.id));
+  for (const input of stages[0].inputs) exposePort(root, 'in', input.module, input.port, undefined, p);
+  for (const stage of stages) {
+    promoteRows(p, root, stage.rows, stage.kind);
+    root.params.find((r) => r.module === stage.rows[0][0].module)!.head = busName(stage.kind);
+  }
+  if (!fxBusOf(p, DEFS)) throw new Error('FX bus construction did not produce a proven stereo master insert');
   return p;
 }
