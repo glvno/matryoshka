@@ -81,7 +81,7 @@ import { SongView } from './song';
 import type { PatternView } from './engine';
 import { fixLocks, fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternLocks as patternLocksOf, patternOf, SONGS_MAX, type Pattern, type PatternLink, type SeqState, type SongEntry, type StepLock, type StepNote } from './track';
 import { applyPayload, type LocksLoaded } from './pattern-store';
-import { clearAllPatterns as clearAllPatternsIn, copyPattern as copyPatternIn, doublePattern as doublePatternIn, nextEmptyPattern as nextEmptyAfter, patternsEmpty, type DoubleRefusal } from './pattern-ops';
+import { clearAllPatterns as clearAllPatternsIn, copyPattern as copyPatternIn, doublePattern as doublePatternIn, halvePattern as halvePatternIn, nextEmptyPattern as nextEmptyAfter, patternsEmpty, type ResizeRefusal } from './pattern-ops';
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
 import { addPresetOf, applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, rememberedPreset, replaceUserPresets, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset, type Preset } from './device-presets';
 import { snapshotPreset } from './snapshot-presets';
@@ -321,9 +321,12 @@ const LONG_PRESS_MS = 500;
 /** Main's jack captions on the dock that are shortened */
 const DOCK_SHORT: Record<string, string> = { vel: 'vel', at: 'aft' };
 
-/** the status line when ×2 changes nothing (D-838): the FM-1 bar's words (firmware/src/messages.h MSG_DOUBLE_*) */
-export const DOUBLE_REFUSED: Record<DoubleRefusal, string> = { steps: '64 STEPS MAX: NOT DOUBLED', notes: 'TOO MANY NOTES TO DOUBLE', locks: 'TOO MANY P-LOCKS TO DOUBLE' };
-export const DOUBLE_FULL = 'PATCH FULL: NOT DOUBLED';
+/** the status line when ×2 or ÷2 changes nothing (D-838, D-841): the FM-1 bar's words (firmware/src/messages.h
+ *  MSG_DOUBLE_*, MSG_HALVE_*); `full`: the patch's bytes */
+export const RESIZE_REFUSED: Record<'double' | 'halve', Record<ResizeRefusal | 'full', string>> = {
+  double: { steps: '64 STEPS MAX: NOT DOUBLED', notes: 'TOO MANY NOTES TO DOUBLE', locks: 'TOO MANY P-LOCKS TO DOUBLE', full: 'PATCH FULL: NOT DOUBLED' },
+  halve: { steps: '1 STEP MIN: NOT HALVED', notes: 'TOO MANY NOTES TO HALVE', locks: 'TOO MANY P-LOCKS TO HALVE', full: 'PATCH FULL: NOT HALVED' },
+};
 
 export class Editor {
   /** Refreshed from the active device; offline editing uses conservative memory admission. */
@@ -1410,7 +1413,8 @@ export class Editor {
         this.refreshStrips();
       },
       copy: (from, to) => this.copyPattern(from, to),
-      double: () => this.doublePatterns(),
+      double: () => this.resizePatterns('double'),
+      halve: () => this.resizePatterns('halve'),
       nextEmpty: (from) => this.nextEmptyPattern(from),
       clearAll: () => this.clearAllPatterns(),
       empty: () => patternsEmpty(this.patch),
@@ -1712,30 +1716,32 @@ export class Editor {
     this.ev.onStructure(this.patch);
     this.patternShown();
   }
-  /** the shown pattern (`p`) of every Steps track doubled (pattern-ops.ts doublePattern, D-838): an undo step, and the
-   *  status line says DOUBLED: 32 STEPS (the longest track). Refused, nothing changes and the status line says why, as the
-   *  FM-1's bar does; a double the FM-1 ran (`fromDevice`) is not checked against the patch bytes (it fitted there) */
-  doublePatterns(p = this.pattern, fromDevice = false): void {
+  /** the shown pattern (`p`) of every Steps track doubled or halved (pattern-ops.ts doublePattern, halvePattern; D-838,
+   *  D-841): an undo step, and the status line says DOUBLED: 32 STEPS or HALVED: 8 STEPS (the longest track). Refused,
+   *  nothing changes and the status line says why, as the FM-1's bar does; one the FM-1 ran (`fromDevice`) is not checked
+   *  against the patch bytes (it fitted there) */
+  resizePatterns(how: 'double' | 'halve', p = this.pattern, fromDevice = false): void {
+    const run = how === 'double' ? doublePatternIn : halvePatternIn;
     const trial = structuredClone(this.patch);
-    const r = doublePatternIn(trial, p);
-    if ('refused' in r) return this.ev.onError(DOUBLE_REFUSED[r.refused]);
-    if (!fromDevice && encodedSize(trial) > Math.max(DEVICE.bytes, encodedSize(this.patch))) return this.ev.onError(DOUBLE_FULL);
+    const r = run(trial, p);
+    if ('refused' in r) return this.ev.onError(RESIZE_REFUSED[how][r.refused]);
+    if (!fromDevice && encodedSize(trial) > Math.max(DEVICE.bytes, encodedSize(this.patch))) return this.ev.onError(RESIZE_REFUSED[how].full);
     this.touch();
-    doublePatternIn(this.patch, p);
+    run(this.patch, p);
     this.ev.onStructure(this.patch);
     this.rebuild();
     this.refreshStrips();
-    this.ev.onError(`DOUBLED: ${r.len} STEPS`);
+    this.ev.onError(`${how === 'double' ? 'DOUBLED' : 'HALVED'}: ${r.len} ${r.len === 1 ? 'STEP' : 'STEPS'}`);
   }
-  /** the FM-1's SEQ page ran a pattern command (PATTERN_OP, #1177, #1178, D-838): the same here, an undo step, not sent
-   *  back (main.ts marks it). op 1: pattern `from` copied to `to`, which is selected; op 2: everything cleared; op 4:
-   *  pattern `from` of every track doubled. Any other op (3, retired) does nothing */
+  /** the FM-1's SEQ page ran a pattern command (PATTERN_OP, #1177, #1178, D-838, D-841): the same here, an undo step, not
+   *  sent back (main.ts marks it). op 1: pattern `from` copied to `to`, which is selected; op 2: everything cleared; op 4:
+   *  pattern `from` of every track doubled; op 5: halved. Any other op (3, retired) does nothing */
   patternOpFromDevice(op: number, from: number, to: number): void {
     if (op === PATTERN_OP.copy && from >= 0 && from < PATTERNS_MAX && to > 0 && to < PATTERNS_MAX) {
       this.copyPattern(from, to);
       this.selectPattern(to);
     } else if (op === PATTERN_OP.clearAll) this.clearAllPatterns();
-    else if (op === PATTERN_OP.double && from >= 0 && from < PATTERNS_MAX) this.doublePatterns(from, true);
+    else if ((op === PATTERN_OP.double || op === PATTERN_OP.halve) && from >= 0 && from < PATTERNS_MAX) this.resizePatterns(op === PATTERN_OP.double ? 'double' : 'halve', from, true);
   }
   /** the open song drawer (song.ts), if any */
   songView: SongView | null = null;

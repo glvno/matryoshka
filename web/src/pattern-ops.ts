@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The pattern commands (#1177, #1178, D-544, D-838): copy a pattern of every Steps track to the first empty number after
-// it, clear every pattern and song, and double the shown pattern of every track. The editor's Steps card runs them
-// (editor.ts), and so does the FM-1's SEQ page (SEQ held + SAVE, SEQ held + HOME, SEQ held + OCT+; firmware/src/patlink.c
-// pl_copy, pl_clear_all, pl_double), which tells the editor with PATTERN_OP so its copy runs the same command. The FM-1's
-// host test compares what both write (scripts/pattern-vectors.ts).
-import type { Patch } from './patch';
+// The pattern commands (#1177, #1178, D-544, D-838, D-841): copy a pattern of every Steps track to the first empty number
+// after it, clear every pattern and song, and double or halve the shown pattern of every track. The editor's Steps card
+// runs them (editor.ts), and so does the FM-1's SEQ page (SEQ held + SAVE, SEQ held + HOME, SEQ held + OCT+, SEQ held +
+// OCT-; firmware/src/patlink.c pl_copy, pl_clear_all, pl_double, pl_halve), which tells the editor with PATTERN_OP so its
+// copy runs the same command. The FM-1's host test compares what both write (scripts/pattern-vectors.ts).
+import type { ModuleInst, Patch } from './patch';
 import { PATCH_LOCKS_MAX } from './locks';
 import { fixLocks, fixNotes, fixPatterns, fixSeq, isDrone, LOCKS_MAX, patternOf, PATTERNS_MAX, STEPS_MAX, TRACK_NOTES_MAX, wordCount, type Pattern, type SeqState, type StepNote } from './track';
 
@@ -100,9 +100,17 @@ function doubled(notes: readonly StepNote[] | undefined, len: number): StepNote[
   return out;
 }
 
-/** why a double changed nothing: a track would pass 64 steps (D-505), a pattern 128 note words or the patch 1536 (D-542),
- *  a pattern 64 P-locks or the patch 256 (D-813) */
-export type DoubleRefusal = 'steps' | 'notes' | 'locks';
+/** why a double or a halve changed nothing: a track would pass 64 steps (D-505) or go under 1, a pattern 128 note words or
+ *  the patch 1536 (D-542), a pattern 64 P-locks or the patch 256 (D-813) */
+export type ResizeRefusal = 'steps' | 'notes' | 'locks';
+
+/** a track's note words and P-locks, every pattern */
+function trackWords(m: ModuleInst): number {
+  return wordCount(m.notes) + (m.patterns ?? []).reduce((k, x) => k + wordCount(x?.notes), 0);
+}
+function trackLocks(m: ModuleInst): number {
+  return (m.locks?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.locks?.length ?? 0), 0);
+}
 
 /** the pattern p (0-based) of every Steps track doubled (D-838): twice its length, its steps copied into the new second
  *  half (doubled), so it plays the same twice. Pattern p's own length doubles; one on the track's length gets its own,
@@ -110,7 +118,7 @@ export type DoubleRefusal = 'steps' | 'notes' | 'locks';
  *  length get it as their own, so they do not change. A track without pattern p gets it first, from its pattern 1 (notes
  *  and P-locks, D-542). All or nothing: the refusal when a limit would be passed. Links and pattern origins stay (the
  *  link's hash tells the content changed, as after any edit). Returns the longest new length */
-export function doublePattern(patch: Patch, p: number): { len: number } | { refused: DoubleRefusal } {
+export function doublePattern(patch: Patch, p: number): { len: number } | { refused: ResizeRefusal } {
   const ts = tracks(patch);
   const plan = ts.map((m) => {
     const x = p > 0 ? m.patterns?.[p - 1] ?? null : null;
@@ -120,12 +128,10 @@ export function doublePattern(patch: Patch, p: number): { len: number } | { refu
     const twice = (locks ?? []).flatMap((l) => (l.at >= 2 * len ? [l] : l.at < len ? [l, { ...l, at: l.at + len }] : []));
     return { m, len, notes: doubled(notes, len), locks: twice, was: p === 0 || x ? { n: wordCount(notes), l: locks?.length ?? 0 } : { n: 0, l: 0 } };
   });
-  const words = (m: (typeof ts)[number]): number => wordCount(m.notes) + (m.patterns ?? []).reduce((k, x) => k + wordCount(x?.notes), 0);
-  const nlocks = (m: (typeof ts)[number]): number => (m.locks?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.locks?.length ?? 0), 0);
   const sum = (f: (t: (typeof plan)[number]) => number): number => plan.reduce((k, t) => k + f(t), 0);
   if (plan.some((t) => 2 * t.len > STEPS_MAX)) return { refused: 'steps' };
-  if (plan.some((t) => wordCount(t.notes) > TRACK_NOTES_MAX) || sum((t) => words(t.m) - t.was.n + wordCount(t.notes)) > PATCH_NOTES_MAX) return { refused: 'notes' };
-  if (plan.some((t) => t.locks.length > LOCKS_MAX) || sum((t) => nlocks(t.m) - t.was.l + t.locks.length) > PATCH_LOCKS_MAX) return { refused: 'locks' };
+  if (plan.some((t) => wordCount(t.notes) > TRACK_NOTES_MAX) || sum((t) => trackWords(t.m) - t.was.n + wordCount(t.notes)) > PATCH_NOTES_MAX) return { refused: 'notes' };
+  if (plan.some((t) => t.locks.length > LOCKS_MAX) || sum((t) => trackLocks(t.m) - t.was.l + t.locks.length) > PATCH_LOCKS_MAX) return { refused: 'locks' };
   for (const { m, len, notes, locks } of plan) {
     const n = fixNotes(notes), l = fixLocks(locks);
     if (p === 0) {
@@ -148,6 +154,35 @@ export function doublePattern(patch: Patch, p: number): { len: number } | { refu
     m.patterns = fixPatterns(pats);
   }
   return { len: Math.max(0, ...plan.map((t) => 2 * t.len)) };
+}
+
+/** the pattern p (0-based) of every Steps track halved (D-841): its length halved, rounded down (15 steps become 7), as
+ *  the length box shortens it: its notes and P-locks stay as they are, those past the new end unplayed, and a note that
+ *  crosses it plays as in any shortened pattern. Which length follows the double's rules: pattern p's own halves; one on
+ *  the track's length gets its own, half that; pattern 1 halves the track's length, and the track's other patterns on the
+ *  track's length get it as their own, so they do not change. A track without pattern p gets it first, from its pattern
+ *  1 (notes and P-locks, D-542). All or nothing: a track of 1 step, or that first copy passing the patch's 1536 notes or
+ *  256 P-locks, refuses. Returns the longest new length */
+export function halvePattern(patch: Patch, p: number): { len: number } | { refused: ResizeRefusal } {
+  const plan = tracks(patch).map((m) => ({ m, len: patternOf(m, p).len, has: p === 0 || !!m.patterns?.[p - 1] }));
+  const sum = (f: (t: (typeof plan)[number]) => number): number => plan.reduce((k, t) => k + f(t), 0);
+  if (plan.some((t) => t.len < 2)) return { refused: 'steps' };
+  if (sum((t) => trackWords(t.m) + (t.has ? 0 : wordCount(t.m.notes))) > PATCH_NOTES_MAX) return { refused: 'notes' };
+  if (sum((t) => trackLocks(t.m) + (t.has ? 0 : t.m.locks?.length ?? 0)) > PATCH_LOCKS_MAX) return { refused: 'locks' };
+  for (const { m, len, has } of plan) {
+    const half = Math.floor(len / 2);
+    if (p === 0) {
+      for (const x of m.patterns ?? []) if (x && x.len === undefined) x.len = len;
+      m.params.len = half;
+      continue;
+    }
+    const pats: (Pattern | null)[] = [...(m.patterns ?? [])];
+    while (pats.length < p) pats.push(null);
+    const first: Pattern = { ...(m.notes?.length ? { notes: structuredClone(m.notes) } : {}), ...(m.locks?.length ? { locks: structuredClone(m.locks) } : {}) };
+    pats[p - 1] = { ...(has ? pats[p - 1]! : first), len: half };
+    m.patterns = fixPatterns(pats);
+  }
+  return { len: Math.max(0, ...plan.map((t) => Math.floor(t.len / 2))) };
 }
 
 /** the patch has nothing clear all would clear */

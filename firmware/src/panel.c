@@ -1174,12 +1174,16 @@ static void panel_edges(uint32_t p, uint32_t rel)
         else
             seq_clear_press();
     }
-    if (page == PAGE_SEQ && (p >> BTN_OCT_UP & 1u) && (panel_held >> BTN_SEQ & 1u)) {   /* SEQ held + OCT+ (D-838): the
-                                                     * selected pattern of every track doubled, on the press; neither SEQ's
-                                                     * nor OCT+'s release does its own job (no step page, no octave) */
+    if (page == PAGE_SEQ && (p & OCT_BTNS) && (panel_held >> BTN_SEQ & 1u)) {   /* SEQ held + OCT+ (D-838) / OCT- (D-841):
+                                                     * the selected pattern of every track doubled / halved, on the press;
+                                                     * neither SEQ's nor the OCT's release does its own job (no step page,
+                                                     * no octave) */
         seq_held_used = 1;
-        oct_used |= (uint8_t)(1u << BTN_OCT_UP);
-        seq_double_press();
+        oct_used |= (uint8_t)(p & OCT_BTNS);
+        if (p >> BTN_OCT_UP & 1u)
+            seq_resize_press(0);
+        if (p >> BTN_OCT_DOWN & 1u)
+            seq_resize_press(1);
     }
     if (page == PAGE_MENU)                          /* the menu: OCT- / OCT+ do nothing there (#395) */
         oct_rel = 0;

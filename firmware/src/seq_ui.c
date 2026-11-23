@@ -1572,11 +1572,12 @@ static void seq_clear_cancel(void)
     seq_msg_ms = 0;
 }
 
-/* the pattern commands of the SEQ page (#1177, #1178, D-838), as the editor's: what the device link's PATTERN_OP says ran
- * (op 3 is retired) */
+/* the pattern commands of the SEQ page (#1177, #1178, D-838, D-841), as the editor's: what the device link's PATTERN_OP
+ * says ran (op 3 is retired) */
 #define PATTERN_OP_COPY 1u
 #define PATTERN_OP_CLEAR_ALL 2u
 #define PATTERN_OP_DOUBLE 4u
+#define PATTERN_OP_HALVE 5u
 /* the stored patterns' browser (seq_br_open, below): the cursor's entry (0: closed), the one drawn (0: none), the patch
  * it opened on (pages_gen's low byte) */
 static uint16_t seq_br_at, seq_br_shown;
@@ -1629,11 +1630,15 @@ static void seq_copy_press(void)
     seq_msg_due = m;
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
-/* SEQ held + OCT+ (D-838): the selected pattern of every track doubled (pl_double): twice as long, its steps repeated in
- * the new half. Running, it goes on playing (the playhead in the first half). The bar says DOUBLED: 32 STEPS (the longest
- * track), or why nothing changed. A key handler: state only, the bar is the loop's (D-228) */
-static void seq_double_press(void)
+/* SEQ held + OCT+ (D-838) / OCT- (D-841, halve): the selected pattern of every track doubled (pl_double: twice as long,
+ * its steps repeated in the new half) or halved (pl_halve: half as long, rounded down, its notes as they were). Running,
+ * it goes on playing (doubled: the playhead in the first half; halved: as after LAST STEP). The bar says DOUBLED: 32 STEPS
+ * or HALVED: 8 STEPS (the longest track), or why nothing changed. A key handler: state only, the bar is the loop's
+ * (D-228) */
+static void seq_resize_press(int halve)
 {
+    static const char *const why[2][4] = { { MSG_DOUBLE_STEPS, MSG_DOUBLE_NOTES, MSG_DOUBLE_LOCKS, MSG_DOUBLE_FULL },
+                                           { MSG_HALVE_STEPS, MSG_HALVE_NOTES, MSG_HALVE_LOCKS, MSG_HALVE_FULL } };
     int p = eng_pattern(), rc;
     uint32_t most = 0;
     char num[8];
@@ -1642,17 +1647,17 @@ static void seq_double_press(void)
         return;
     }
     seq_msg_ms = 1500;
-    rc = pl_double((uint32_t)p, &most);
+    rc = halve ? pl_halve((uint32_t)p, &most) : pl_double((uint32_t)p, &most);
     if (rc) {
-        seq_msg_due = rc == -1 ? MSG_DOUBLE_STEPS : rc == -2 ? MSG_DOUBLE_NOTES : rc == -3 ? MSG_DOUBLE_LOCKS : MSG_DOUBLE_FULL;
+        seq_msg_due = why[halve != 0][-rc - 1];
         return;
     }
     seq_held = -1;
-    m1_pattern_op_now(PATTERN_OP_DOUBLE, (uint32_t)p, 0);
+    m1_pattern_op_now(halve ? PATTERN_OP_HALVE : PATTERN_OP_DOUBLE, (uint32_t)p, 0);
     fmt_int(num, (int32_t)most);
-    put(put(put(seq_msg_buf, MSG_DOUBLED), num), MSG_STEPS_AFTER)[0] = 0;
+    put(put(put(seq_msg_buf, halve ? MSG_HALVED : MSG_DOUBLED), num), most == 1u ? MSG_STEP_AFTER : MSG_STEPS_AFTER)[0] = 0;
     seq_msg_due = seq_msg_buf;
-    ui_dirty = 2;                                /* (the grid has more pages of steps now) */
+    ui_dirty = 2;                                /* (the grid has more or fewer pages of steps now: seq_draw clamps) */
 }
 /* SEQ held + HOME (#1178): every pattern and song cleared, asked first as the track's clear asks (D-534): HOME again
  * within 3 s, SEQ still held and nothing else pressed or turned meanwhile (seq_all_cancel) */
