@@ -93,6 +93,10 @@ jobs:
         run: |
           npm run export-defs
           git diff --exit-code ../firmware/src/defs.h ../firmware/src/presets.h ../firmware/src/factory_tier.h ../firmware/src/controls.h ../firmware/src/aot_gen.h ../firmware/test/pmig_cases.h ../firmware/test/factory_region.h public/firmware/matryoshka-factory.bin public/firmware/factory-sets.json ../README.md || { echo "::error::defs.h / presets.h / factory_tier.h / controls.h / aot_gen.h / test/pmig_cases.h / test/factory_region.h / the factory region's image and manifest / the README's controls are stale: run 'npm run export-defs' and commit"; exit 1; }
+      - name: the screen type and the font area's image are current (#602)
+        run: |
+          python3 tools/gen_font.py
+          git diff --exit-code firmware/src/font_bc.h web/public/firmware/matryoshka-font.bin || { echo "::error::font_bc.h / the font area's image are stale: run 'python3 tools/gen_font.py' and commit"; exit 1; }
       - name: build the firmware, no warnings, pool headroom >= 8 KB
         run: |
           export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
@@ -109,6 +113,7 @@ jobs:
             build/matryoshka.fwsc
             build/matryoshka.json
             build/matryoshka.bin
+            build/matryoshka-font.bin
             build/ui-preview.png
           if-no-files-found: error
       - uses: actions/upload-artifact@v4

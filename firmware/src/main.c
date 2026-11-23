@@ -1425,6 +1425,7 @@ static void patch_boot(void)                    /* the slot the settings record 
     pt_claim();                                  /* (the pattern store's sectors, before any factory patch is placed: #901) */
     if (pt_on)
         pt_scan();                               /* (before anything else uses m1_up and sl_buf, its table) */
+    fa_scan();                                   /* (the font area, once the claim says whose its bank-range sectors are, #602) */
     boot_step("FACTORY");
     fc_scan();                                   /* (the firmware tier, and the factory region when valid, #915) */
     if (!bank_mask && sl_sec[SL_SETTINGS] == SL_NONE) {          /* an empty store: the first boot (or after a reset) */
@@ -1456,6 +1457,11 @@ static void patch_boot(void)                    /* the slot the settings record 
     }
     if (!fc_region) {                            /* (no factory region: the firmware tier alone plays, #915) */
         boot_msg = "FACTORY SOUNDS MISSING:";
+        boot_msg_ms = 3000;
+        boot_msg_then = "CONNECT TO MATRYOSHKA.LOL";
+    }
+    if (!font_ok) {                              /* (the font area lacks this firmware's font: FONT_S's letters at every size, #602) */
+        boot_msg = "SCREEN FONT MISSING:";
         boot_msg_ms = 3000;
         boot_msg_then = "CONNECT TO MATRYOSHKA.LOL";
     }
@@ -1807,6 +1813,7 @@ static void m1_focus(uint32_t dev, uint32_t pg)
         ui_dirty = 2;
 }
 static void m1_ui_changed(void) { ui_dirty = 2; }    /* proto.c: the editor bypassed a module: title and picture */
+static void m1_font_changed(void) { ui_full = 1; }   /* font_area.c: an install began or committed: the whole screen anew */
 /* ARMS from the editor (proto.c, #191): its armed set becomes the FM-1's, so the panel's keys and the editor's notes play
  * the same devices; REC records into it from now on (seq_rec_sync). Not reported back (no ARMS_NOW) */
 static void m1_arms(eng_mset_t mask)
@@ -2015,6 +2022,8 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         update_only("TWO BOOTS IN A ROW FAILED");
     if ((fm1_in.buttons & 3u) == 3u)                    /* OCT- + OCT+ held at power-on */
         update_only("OCT- + OCT+ HELD AT POWER-ON");
+    fl_plain_window_init();                             /* the flash's data area reads plain through the read window, where
+                                                         * patch_boot's fa_scan checks the font area (#602) */
     boot_step("HOST");
     {                                                   /* a second for a flasher before any patch loads (#70) */
         uint32_t t0 = fm1_ms;

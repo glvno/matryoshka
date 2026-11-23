@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The dev server's Flash tab installs this checkout's firmware, not the package the app bundles: firmware/matryoshka.json
-// and .fwsc are answered with the firmware CI build of the checked-out commit (scripts/branch-firmware.mjs: never an
-// older firmware), after emu:smoke passed on it (started on the first request, about four minutes; the tab polls). The
-// published site and `npm run build` are unchanged. MATRYOSHKA_BUNDLED_FIRMWARE=1 npm run dev serves the bundled one.
-import { readFileSync } from 'node:fs';
+// The dev server's Flash tab installs this checkout's firmware, not the package the app bundles: firmware/matryoshka.json,
+// .fwsc and the screen font that goes with it (matryoshka-font.bin, #602) are answered with the firmware CI build of the
+// checked-out commit (scripts/branch-firmware.mjs: never an older firmware), after emu:smoke passed on it (started on the
+// first request, about four minutes; the tab polls); the font is a 404 when the run has none. The published site and
+// `npm run build` are unchanged. MATRYOSHKA_BUNDLED_FIRMWARE=1 npm run dev serves the bundled one.
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
@@ -33,7 +34,8 @@ export function branchFirmware(): Plugin {
       server.middlewares.use(async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
         const path = (req.url ?? '').split('?')[0];
         const isJson = path.endsWith('/firmware/matryoshka.json');
-        if (!isJson && !path.endsWith('/firmware/matryoshka.fwsc')) return next();
+        const isFont = path.endsWith('/firmware/matryoshka-font.bin');
+        if (!isJson && !isFont && !path.endsWith('/firmware/matryoshka.fwsc')) return next();
         try {
           const b = await build();
           const label = b.id
@@ -52,13 +54,20 @@ export function branchFirmware(): Plugin {
             state = 'running';
           }
           if (isJson) {
-            const side = JSON.parse(readFileSync(join(dir, 'matryoshka.json'), 'utf8')) as object;
+            const side = JSON.parse(readFileSync(join(dir, 'matryoshka.json'), 'utf8')) as { font?: string | number };
+            // (build.py names the font in hex; the Install panel takes the number, as sync-firmware.mjs writes it)
+            if (typeof side.font === 'string') side.font = Number.parseInt(side.font, 16);
             const wait = state === 'running' ? 'emu:smoke is running on it (about four minutes); installing opens when it passes.'
               : state === 'failed' ? `emu:smoke failed on this build: nothing to install (${join(dir, 'smoke.log')}; delete smoke.failed there to run it again).`
               : undefined;
             return json(res, { ...side, dev: `dev server: ${label}`, ...(wait ? { wait } : {}) });
           }
           if (state !== 'passed') return send(res, 409, 'text/plain', 'emu:smoke has not passed on this build');
+          if (isFont) {
+            const font = join(dir, 'matryoshka-font.bin');
+            if (!existsSync(font)) return send(res, 404, 'text/plain', `run ${b.id} has no screen font`);
+            return send(res, 200, 'application/octet-stream', readFileSync(font));
+          }
           return send(res, 200, 'application/octet-stream', readFileSync(join(dir, 'matryoshka.fwsc')));
         } catch (e) {
           if (isJson) return json(res, { version: '?', product: '?', size: 0, sha256: '', dev: `dev server: ${(e as Error).message}`, wait: 'Nothing to install.' });
