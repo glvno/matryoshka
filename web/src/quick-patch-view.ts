@@ -859,7 +859,7 @@ export class QuickPatch {
       g.append(node('text', { class: 'qp-name', x: String(tx), y: String(ty + 5) }, `${ends.length ? '⤳' : ''}${text}${same(first, q) ? ' ⏎' : ''}`));
       // under the name: `chain` for a drawer's chain jack, `after FX` / `into FX` for a jack the drawer stands behind
       const sub = q.chain ? 'chain' : q.note;
-      if (sub) g.append(node('text', { class: 'qp-sub', x: String(tx), y: String(ty + 17), style: 'font-size:9.5px;fill:var(--muted)' }, sub));
+      if (sub) g.append(node('text', { class: 'qp-sub', x: String(tx), y: String(ty + 17) }, sub));
       g.addEventListener('click', (e) => {
         // (a chain jack is picked anyway: picking it says why not)
         if (g.classList.contains('off') && !q.chain) return;
