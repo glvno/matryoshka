@@ -1,19 +1,19 @@
-//! Reading text off the emulated LCD: the firmware's own 5x7 font (firmware/src/font5x7.c,
-//! parsed at compile time) drawn as `text_dots` draws it, and searched for in the frame.
+//! Reading text off the emulated LCD: the firmware's own 5x7 font (the checkout's firmware/src/font5x7.c, parsed when
+//! m1emu runs: repo.rs) drawn as `text_dots` draws it, and searched for in the frame.
 //! `text_dots` paints a solid block (n characters x `3 * size2` px, `(7 * size2 + 1) / 2`
 //! rows) in exactly two colours, so a match is exact: every set dot one colour, every other
 //! pixel of the block another.
 
-use std::sync::OnceLock;
+use std::sync::{LazyLock, OnceLock};
 
-const SRC: &str = include_str!("../../../firmware/src/font5x7.c");
 const W: usize = 240;
 const H: usize = 240;
 
 fn font() -> &'static Vec<[u8; 5]> {
     static F: OnceLock<Vec<[u8; 5]>> = OnceLock::new();
     F.get_or_init(|| {
-        let body = &SRC[SRC.find("FONT5X7[").expect("FONT5X7 in font5x7.c")..];
+        let src = crate::repo::text("firmware/src/font5x7.c");
+        let body = &src[src.find("FONT5X7[").expect("FONT5X7 in font5x7.c")..];
         let body = &body[..body.find("};").unwrap()];
         let mut out = Vec::new();
         for line in body.lines().skip(1) {
@@ -109,7 +109,7 @@ pub fn on_screen(fb: &[u16], s: &str) -> bool {
 // ---- the brand type: firmware/src/font_bc.h (tools/gen_font.py), 4-bit coverage blended from paper to ink. A glyph's
 // fully covered pixels are the ink, its empty ones the paper; the blended edge pixels are left out of the match.
 
-const BC: &str = include_str!("../../../firmware/src/font_bc.h");
+static BC: LazyLock<String> = LazyLock::new(|| crate::repo::text("firmware/src/font_bc.h"));
 
 pub struct BcFont {
     h: usize,

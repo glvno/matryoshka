@@ -92,7 +92,9 @@ if (boot) {
   console.log(link ? `link build: ${link}` : 'link build: none (no M1_EMU_MIDI=1 build found: HELLO / INFO and the update handshake are not checked; pass --link)');
   const out = join(OUT, 'boot');
   rmSync(out, { recursive: true, force: true });
-  process.exit(await runEmulatorProcess(join(EMU, 'target/release/m1emu'), ['boot', fw, ...(link ? ['--link', link] : []), '--out', out], { cwd: ROOT, timeoutMs: 300000 }));
+  // (this checkout's factory region: m1emu reads it when it runs, as the shared tools/emu/target may hold another
+  // checkout's build, D-074)
+  process.exit(await runEmulatorProcess(join(EMU, 'target/release/m1emu'), ['boot', fw, ...(link ? ['--link', link] : []), '--out', out, '--factory', join(ROOT, 'web/public/firmware/matryoshka-factory.bin')], { cwd: ROOT, timeoutMs: 300000 }));
 }
 const live = join(EMU, 'live/bin', process.platform === 'win32' ? 'fm1-live.exe' : 'fm1-live');
 // (built from a patched copy of fm1-emu, tools/emu/live_build.sh: a cargo patch does not reach it. Builds made before

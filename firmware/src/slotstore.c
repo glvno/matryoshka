@@ -8,15 +8,23 @@
  * erases the sector of the record it replaces: a cut at any point leaves the old record or the new one (both valid: the
  * higher sequence number wins at the next scan, the other is erased). Records of the 32-slot bank before (magic "M1SL",
  * slot = id) are read as they are.
- * The pattern store (patstore.c, #901) takes the last 4 sectors (62..65, 0xDC000 .. 0xDFFFF): at boot pt_claim moves
- * the bank out of them, and from then on the bank has bank_slots = 60 slots (ids 0..59) and writes into sectors 0..61
- * only (at most 61 records there, so one is always free). The scan still reads all 66 (records an older firmware wrote
- * there move at the next claim). A bank of more than 60 patches keeps the 64 slots and the 66 sectors (65 records at
- * most), and the store stays off until slots are freed. The ids stay 0..63 (M1_SLOTS) for the records of before.
+ * The pattern store (patstore.c, #901, #1202) takes the bank's last sectors, and the bank keeps its first ones: in the
+ * layout of 1.26 (SL_L48) 48 slots in sectors 0..49 and the store in the last 13 (53..65, 0xD3000 .. 0xDFFFF), sectors
+ * 50..52 (0xD0000 .. 0xD2FFF) the screen font's (#602, #1203: neither the bank's nor the store's; the claim moves the
+ * bank's records out of them, and only then does INFO say 48 slots); in the
+ * layout of 1.16 .. 1.25 (SL_L60) 60 slots in sectors 0..61 and the store in the last 4 (62..65, 0xDC000 .. 0xDFFFF). At
+ * boot pt_claim takes the 48-slot layout when the bank holds 48 patches or fewer, else the 60-slot one when it holds 60
+ * or fewer: the patches of the ids at and above the layout's slots move into the first empty slots below, and the
+ * records in the store's sectors move into the bank's. A write takes only the bank's sectors (at most one record more
+ * than the slots and the settings record: one is always free). The scan still reads all 66 (records an older firmware
+ * wrote there move at the next claim). A bank of more than 60 patches keeps the 64 slots and the 66 sectors (65 records
+ * at most), and the store stays off until slots are freed. The ids stay 0..63 (M1_SLOTS) for the records of before.
  * Needs st_read / st_erase / st_prog (storage_hw.c), m1_crc16 (proto.c), and patstore.c after it. */
 #define SL_NSEC 66u
-#define SL_BANK_NSEC 62u                /* the bank's sectors once the pattern store has the others */
-#define SL_BANK_SLOTS 60u               /* bank_slots then */
+typedef struct { uint8_t slots, nsec, pt_nsec; } sl_layout_t;   /* the slots, the bank's sectors (from 0), the store's
+                                                                  * sectors (the last of the 66) */
+static const sl_layout_t SL_L48 = { 48u, 50u, 13u };            /* 1.26 (#1202): about 49 KB of patterns */
+static const sl_layout_t SL_L60 = { 60u, 62u, 4u };             /* 1.16 .. 1.25 (#901): 16 KB of patterns */
 #define SL_MAGIC 0x3253314Du            /* "M1S2" */
 #define SL_MAGIC_V1 0x4C53314Du         /* "M1SL": the 32-slot bank (slot n at 0xA0000 + n x 4 KiB) */
 #define SL_PAYLOAD 256u
@@ -42,16 +50,43 @@ static uint8_t sl_live[SL_NSEC];                 /* the sector holds a live reco
 static uint32_t sl_seq;                          /* the next sequence number */
 static uint32_t sl_next;                         /* where the search for a free sector starts (spreads the wear) */
 static uint64_t bank_mask;                       /* bit n: slot n holds a patch */
-static uint32_t bank_slots;                      /* the slots there are: 60 when the pattern store is on, else 64 (proto.c
-                                                  * defines it, 64 until pt_claim, ahead of its slot checks) */
+static uint32_t bank_slots;                      /* the slots there are: 48 (60 in the layout of 1.25) when the pattern
+                                                  * store is on, else 64 (proto.c defines it, 64 until pt_claim, ahead of its
+                                                  * slot checks) */
+static uint32_t sl_nbank = SL_NSEC;              /* the sectors a write may take: the bank's (pt_claim) */
 static uint8_t pt_on;                            /* patstore.c's: the pattern store is claimed (pt_claim) */
+static uint32_t pt_nsec;                         /* patstore.c's: its sectors, the last pt_nsec of the 66 (pt_claim) */
 static int pt_sec_ok(uint32_t sec);              /* patstore.c: store sector sec has a valid header */
 static int pt_format(uint32_t sec);              /* patstore.c: erase and format store sector sec */
 
-/* the sectors a write may take: not the pattern store's once the bank has 60 slots */
-static uint32_t sl_nalloc(void) { return bank_slots < M1_SLOTS ? SL_BANK_NSEC : SL_NSEC; }
+static uint32_t sl_nalloc(void) { return sl_nbank; }
+/* the layout l from now on (its slots, the sectors a write may take, the store's sectors; the store stays off until the
+ * claim sets pt_on), 0 the 64 slots without a store */
+static void sl_layout(const sl_layout_t *l)
+{
+    bank_slots = l ? l->slots : M1_SLOTS;
+    sl_nbank = l ? l->nsec : SL_NSEC;
+    pt_nsec = l ? l->pt_nsec : 0u;
+}
 
 static uint32_t sl_sector_addr(uint32_t i) { return i < 2u ? 0x97000u + i * 0x1000u : 0xA0000u + (i - 2u) * 0x1000u; }
+
+/* the screen font's sectors (#602, #1203) in the 48-slot layout: between the bank's and the store's, neither's */
+#define SL_FONT_LO 0xD0000u
+#define SL_FONT_N 3u
+_Static_assert(SL_FONT_LO == 0xA0000u + (50u - 2u) * 0x1000u && 50u + SL_FONT_N + 13u == SL_NSEC, "the font area: sectors 50..52");
+/* the font may live in its sectors: the claim of the 48-slot layout got through (the store on), and no bank record is
+ * left there. 0 in the 60- and 64-slot layouts, whose bank may write there */
+static int sl_font_room(void)
+{
+    uint32_t s;
+    if (!pt_on || bank_slots != SL_L48.slots)
+        return 0;
+    for (s = SL_L48.nsec; s < SL_L48.nsec + SL_FONT_N; s++)
+        if (sl_live[s])
+            return 0;
+    return 1;
+}
 
 /* the header of sector i as a record of this store (a 32-slot bank record converted), with check != 0 also its data's
  * CRC (the data go to sl_buf); 0 = a valid record */
@@ -234,8 +269,9 @@ static int sl_erase(uint32_t id)
     return rc;
 }
 
-/* the bank's sectors erased (FACTORY RESET): about three seconds. The bank is empty then, so the pattern store has its
- * sectors (main.c's pt_clear_all formats them next); while it was off they held bank records and are erased here too */
+/* the bank's sectors erased (FACTORY RESET): about three seconds. The bank is empty then, so the pattern store takes the
+ * sectors of the 48-slot layout (main.c's pt_clear_all formats them next); while the store was off or smaller they held
+ * bank records and are erased here too */
 static void sl_clear_all(void)
 {
     uint32_t i, n = sl_nalloc();
@@ -247,11 +283,11 @@ static void sl_clear_all(void)
     for (i = 0; i <= SL_SETTINGS; i++)
         sl_sec[i] = SL_NONE;
     bank_mask = 0;
-    bank_slots = SL_BANK_SLOTS;
+    sl_layout(&SL_L48);
     pt_on = 1;
 }
 
-/* record `from` written again as id `to` (into a free sector of 0..61 while bank_slots is 60), then the old one erased */
+/* record `from` written again as id `to` (into a free sector of the bank's), then the old one erased */
 static int sl_move(uint32_t from, uint32_t to)
 {
     uint32_t len;
@@ -261,13 +297,13 @@ static int sl_move(uint32_t from, uint32_t to)
     return from == to ? 0 : sl_erase(from);
 }
 
-/* the slot below 60 that holds the same patch as h (length, CRC and name: a cut moved it but left the old id), else the
- * first empty one; SL_BANK_SLOTS none */
-static uint32_t sl_twin(const sl_hdr_t *h)
+/* the slot below `below` that holds the same patch as h (length, CRC and name: a cut moved it but left the old id), else
+ * the first empty one; `below` none */
+static uint32_t sl_twin(const sl_hdr_t *h, uint32_t below)
 {
     sl_hdr_t o;
     uint32_t s, k;
-    for (s = 0; s < SL_BANK_SLOTS; s++) {
+    for (s = 0; s < below; s++) {
         if (sl_head(s, &o, 0) || o.len != h->len || o.crc != h->crc)
             continue;
         for (k = 0; k < M1_NAME && o.name[k] == h->name[k]; k++)
@@ -275,44 +311,54 @@ static uint32_t sl_twin(const sl_hdr_t *h)
         if (k == M1_NAME)
             return s;
     }
-    for (s = 0; s < SL_BANK_SLOTS && (bank_mask >> s & 1u); s++)
+    for (s = 0; s < below && (bank_mask >> s & 1u); s++)
         ;
     return s;
 }
 
-/* boot, after sl_scan and before the factory patches are placed (main.c): the pattern store takes sectors 62..65 (its
- * header comment, patstore.c). The patches of ids 60..63 move into the first empty slots below 60 (a twin there: a cut
- * after the copy; only the old id is erased), the records in sectors 62..65 move into 0..61, and each store sector that
- * holds no bank record and no valid store header is formatted. Every step is an sl_write and an erase, so a cut leaves
- * what this finishes at the next boot. More than 60 patches: nothing moves, the store stays off (bank_slots 64) */
-static void pt_claim(void)
+/* the patches the bank holds, with layout l's slots (one at or above them with a twin below counts once) */
+static uint32_t sl_count(uint32_t slots)
 {
     sl_hdr_t h;
     uint32_t id, s, n = 0;
-    pt_on = 0;
-    bank_slots = M1_SLOTS;
-    for (id = 0; id < M1_SLOTS; id++)                    /* the patches (one of 60..63 with a twin below 60 counts once) */
-        if ((bank_mask >> id & 1u) && (id < SL_BANK_SLOTS || sl_head(id, &h, 0) || (s = sl_twin(&h)) == SL_BANK_SLOTS
+    for (id = 0; id < M1_SLOTS; id++)
+        if ((bank_mask >> id & 1u) && (id < slots || sl_head(id, &h, 0) || (s = sl_twin(&h, slots)) == slots
                                        || !(bank_mask >> s & 1u)))
             n++;
-    if (n > SL_BANK_SLOTS)
+    return n;
+}
+
+/* boot, after sl_scan and before the factory patches are placed (main.c): the layout the bank's patches fit, 48 slots or
+ * else 60 (the header comment). The patches of the ids at and above its slots move into the first empty slots below (a
+ * twin there: a cut after the copy; only the old id is erased), the records in the sectors past the bank's move into
+ * the bank's, and each store sector that holds no bank record and no valid store header is formatted (a store of 1.25
+ * keeps its 4 sectors and their records: they are the last 4 of the larger store). Every step is an sl_write and an
+ * erase, so a cut leaves what this finishes at the next boot. More than 60 patches: nothing moves, the store stays off
+ * (bank_slots 64) */
+static void pt_claim(void)
+{
+    const sl_layout_t *l = sl_count(SL_L48.slots) <= SL_L48.slots ? &SL_L48 : sl_count(SL_L60.slots) <= SL_L60.slots ? &SL_L60 : 0;
+    sl_hdr_t h;
+    uint32_t id, s;
+    pt_on = 0;
+    sl_layout(l);                                        /* (from here sl_write takes the bank's sectors only) */
+    if (!l)
         return;
-    bank_slots = SL_BANK_SLOTS;                          /* (from here sl_write takes sectors 0..61 only) */
-    for (id = SL_BANK_SLOTS; id < M1_SLOTS; id++) {
+    for (id = l->slots; id < M1_SLOTS; id++) {
         if (sl_head(id, &h, 0))
             continue;
-        s = sl_twin(&h);
-        if (s == SL_BANK_SLOTS || ((bank_mask >> s & 1u) ? sl_erase(id) : sl_move(id, s)))
+        s = sl_twin(&h, l->slots);
+        if (s == l->slots || ((bank_mask >> s & 1u) ? sl_erase(id) : sl_move(id, s)))
             goto off;
     }
     for (id = 0; id <= SL_SETTINGS; id++)
-        if (sl_sec[id] != SL_NONE && sl_sec[id] >= SL_BANK_NSEC && sl_move(id, id))
+        if (sl_sec[id] != SL_NONE && sl_sec[id] >= l->nsec && sl_move(id, id))
             goto off;
-    for (s = SL_BANK_NSEC; s < SL_NSEC; s++)
-        if (!sl_live[s] && !pt_sec_ok(s - SL_BANK_NSEC) && pt_format(s - SL_BANK_NSEC))
+    for (s = SL_NSEC - l->pt_nsec; s < SL_NSEC; s++)
+        if (!sl_live[s] && !pt_sec_ok(s - (SL_NSEC - l->pt_nsec)) && pt_format(s - (SL_NSEC - l->pt_nsec)))
             goto off;
     pt_on = 1;
     return;
 off:
-    bank_slots = M1_SLOTS;
+    sl_layout(0);
 }

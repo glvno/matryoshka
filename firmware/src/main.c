@@ -1027,23 +1027,29 @@ static void m1_tempo(uint32_t patch, uint32_t bpm, uint32_t meter)
 
 static char label_buf[M1_NAME + 1];              /* the running patch's name (its slot's) */
 
-static int m1_store(const uint8_t *patch, uint32_t len)        /* SAVE, the editor's STORE: the running patch into its slot */
+/* SAVE, the editor's STORE: the running patch into its slot, its patterns 2..64 into the pattern store first (patlink.c
+ * pl_commit, #1202), then the entries no patch links any more go (pl_gc). 0 saved; 1 saved with some pattern left in the
+ * patch (the store full: STORE_FULL), 2 saved as it was before the patterns went (the patch could not take the links:
+ * PATCH FULL); -1 / -2 not saved */
+static int m1_store(const uint8_t *patch, uint32_t len)
 {
     uint8_t set[SET_LEN];
-    char name[M1_NAME];
+    char name[M1_NAME + 1];
     uint32_t i;
     const char *src = label_buf[0] ? label_buf : patch_label ? patch_label : "PATCH";
+    int rc;
     (void)patch;
     (void)len;
     if (!flash_ok || !m1_cur_len || cur_preset >= M1_SLOTS)
         return -1;
-    for (i = 0; i < M1_NAME; i++)                /* the slot keeps its name; a patch from the editor or the fallback brings its own */
+    for (i = 0; i <= M1_NAME; i++)               /* the slot keeps its name; a patch from the editor or the fallback brings its own */
         name[i] = 0;
     for (i = 0; i < M1_NAME && src[i]; i++)
         name[i] = src[i];
-    pl_writeback();                              /* the edited linked patterns over their stored entries first (#901) */
+    rc = pl_commit(name, cur_preset);
     if (store_write(cur_preset, name, m1_cur, m1_cur_len))
         return -2;
+    pl_gc();
     settings_pack(set);
     if (store_write(SL_SETTINGS, 0, set, SET_LEN))
         return -2;
@@ -1056,8 +1062,13 @@ static int m1_store(const uint8_t *patch, uint32_t len)        /* SAVE, the edit
     cur_from_editor = 0;                         /* (in a slot now) */
     m1_slot_now(cur_preset, label_buf);
     pal_bank_changed();                          /* (the palette's entries of this slot: its length, its name) */
-    return 0;
+    return rc == -2 ? 1 : rc == -3 ? 2 : 0;
 }
+
+/* proto.c (#1199): an edit the patch had no room for was refused */
+static void m1_patch_full(void) { ui_msg("PATCH FULL", 1500); }
+/* patlink.c: the running patch's name, which its stored patterns are named after */
+static const char *m1_patch_name(void) { return label_buf[0] ? label_buf : patch_label ? patch_label : "PATCH"; }
 
 static void fallback_boot(void);
 
@@ -1146,9 +1157,13 @@ static int m1_preset_del(uint32_t structure, const char *name)
     return rc;
 }
 
+/* the editor's SLOT and SLOT_ERASE; then the stored patterns no patch links any more go (patlink.c pl_gc, #1202: p, in
+ * m1_up, is written by then) */
 static int m1_slot_write(uint32_t slot, const char *name, const uint8_t *p, uint32_t len)
 {
     int rc = store_write(slot, name, p, len);
+    if (!rc)
+        pl_gc();
     pal_bank_changed();
     return rc;
 }
@@ -1158,6 +1173,8 @@ static int m1_slot_erase(uint32_t slot)
     if (!flash_ok)
         return -1;
     rc = sl_erase(slot);
+    if (!rc)
+        pl_gc();
     pal_bank_changed();
     return rc;
 }
@@ -1351,6 +1368,45 @@ static void fallback_boot(void)
     screen_idle();
 }
 
+/* a patch binary holds patterns 2..64 of its own (format 48's patterns section names a track): a binary of 1.25 or
+ * before, or one an older editor wrote (#1202) */
+static int bank_inline(const uint8_t *b, uint32_t len)
+{
+    uint32_t at = len >= 8u && b[1] >= 48u && (b[7] & ENG_FLAG_PATTERNS) ? eng_section_at(b, len, ENG_SEC_PATTERNS) : 0u;
+    return at && at + 2u < len && b[at + 2u] != 0u;
+}
+
+/* boot, with the bank as it is (#1202): each slot whose binary holds patterns 2..64 gets them into the pattern store, as
+ * SAVE does (patlink.c pl_commit: loaded, its patterns stored and linked, the slot written again), so the patterns two
+ * patches linked or held alike stay shared. Then the entries no slot links go (pl_gc: a cut after a SAVE, or edits never
+ * saved). The store full: what it cannot take stays in its binary, and every boot tries again. What the bar says, 0
+ * nothing (*then: what it says next) */
+static const char *bank_patterns(const char **then)
+{
+    char name[M1_NAME + 1];
+    uint32_t s, len, moved = 0, full = 0;
+    if (!pt_on)
+        return 0;
+    for (s = 0; s < bank_slots; s++) {
+        if (!slot_used(s) || sl_read(s, bank_buf, &len, name) || !bank_inline(bank_buf, len))
+            continue;
+        if (!moved && !full)
+            boot_step("PATTERNS");
+        fm1_wdt_feed();
+        if (m1_apply(bank_buf, len) || m1_set_current(bank_buf, len))
+            continue;
+        full |= pl_commit(name, s) != 0;
+        if (m1_edited && !store_write(s, name, m1_cur, m1_cur_len))
+            moved = 1;
+    }
+    pl_gc();
+    if (full) {
+        *then = "SOME STAYED IN THEIR PATCHES";
+        return "PATTERN STORE FULL:";
+    }
+    return moved ? "PATTERNS MOVED TO THE STORE" : 0;
+}
+
 static void patch_boot(void)                    /* the slot the settings record names (the first boot: the factory bank first) */
 {
     static uint8_t set[SET_LEN + 4u];
@@ -1367,6 +1423,8 @@ static void patch_boot(void)                    /* the slot the settings record 
     boot_step("BANK");
     sl_scan();
     pt_claim();                                  /* (the pattern store's sectors, before any factory patch is placed: #901) */
+    if (pt_on)
+        pt_scan();                               /* (before anything else uses m1_up and sl_buf, its table) */
     boot_step("FACTORY");
     fc_scan();                                   /* (the firmware tier, and the factory region when valid, #915) */
     if (!bank_mask && sl_sec[SL_SETTINGS] == SL_NONE) {          /* an empty store: the first boot (or after a reset) */
@@ -1384,8 +1442,17 @@ static void patch_boot(void)                    /* the slot the settings record 
             boot_msg = msg;
             boot_msg_ms = 4000;
         }
+        if ((msg = bank_patterns(&boot_msg_then)) != 0) {   /* (#1202: after the factory slots it may rewrite) */
+            boot_msg = msg;
+            boot_msg_ms = 4000;
+        }
         leds_avail();
         leds_octave();
+    }
+    if (bank_slots > SL_L48.slots) {             /* (#1202: more patches than 48 slots hold keep the smaller store) */
+        boot_msg = "MORE THAN 48 PATCHES:";
+        boot_msg_ms = 4000;
+        boot_msg_then = "FREE SLOTS FOR MORE PATTERNS";
     }
     if (!fc_region) {                            /* (no factory region: the firmware tier alone plays, #915) */
         boot_msg = "FACTORY SOUNDS MISSING:";
@@ -1468,7 +1535,12 @@ static int poly_reload(const uint8_t *bin, uint32_t len)
 }
 static int poly_row_set(uint32_t mod, uint32_t field, int32_t v)
 {
-    if (poly_patch_set(m1_cur, m1_cur_len, mod, field, v, poly_reload)) {
+    uint64_t priv = pl_priv;
+    int rc = poly_patch_set(m1_cur, m1_cur_len, mod, field, v, poly_reload);
+    m1_pat_load();                               /* (the engine loaded the binary again: its linked patterns from the
+                                                  * store again, #1202; the entries only it links stay its own) */
+    pl_priv = priv;
+    if (rc) {
         ui_msg("NO ROOM", 1500);
         ui_dirty = 2;
         return -1;
@@ -1697,7 +1769,11 @@ static void save_state(void)
         return;
     }
     ui_msg("SAVING", 5000);
-    ui_msg(m1_store(m1_cur, m1_cur_len) ? "ERROR" : "SAVED", 1500);
+    {
+        static const char *const SAVED[] = { "SAVED", "SAVED: PATTERN STORE FULL", "SAVED: PATCH FULL" };
+        int rc = m1_store(m1_cur, m1_cur_len);
+        ui_msg(rc < 0 ? "ERROR" : SAVED[rc], rc > 0 ? 3000 : 1500);
+    }
 }
 
 static void led_glow(uint32_t id, int on)           /* the HAL's dim glow (~1/30 of lit) for a button's LED */

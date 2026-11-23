@@ -56,7 +56,8 @@ def run_cpu(build, args, timing_text):
         env["M1EMU_TIMING"] = os.path.join(tmp, "timing.txt")
         open(env["M1EMU_TIMING"], "w").write(timing_text)
     out = os.path.join(tmp, "out.json")
-    r = subprocess.run([M1EMU, "cpu", f"{build}/matryoshka.bin", "--elf", f"{build}/matryoshka.elf", *args, "--out", out],
+    r = subprocess.run([M1EMU, "cpu", f"{build}/matryoshka.bin", "--elf", f"{build}/matryoshka.elf", *args, "--out", out,
+                        "--factory", os.path.join(ROOT, "web/public/firmware/matryoshka-factory.bin")],
                        capture_output=True, text=True, env=env)
     if r.returncode != 0:
         raise RuntimeError(f"m1emu cpu {' '.join(args)} failed: {r.stderr[-2000:]}")

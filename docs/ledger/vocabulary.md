@@ -282,6 +282,10 @@ A part of a poly group that is released, has finished its envelopes and stayed s
 
 The editor's firmware install page, shown as a panel over the main area and closed with its Close button (`#flash`). It is not a view of the top switch. Also called the Flash view or the Flash tab.
 
+### Kept copy
+
+A stored pattern in the [pattern store](#pattern-store) that the user keeps under its own name, made by FX + SAVE on the FM-1 or Keep a copy in the editor (firmware 1.26). No patch has to link it. The FM-1 never frees it and never writes over it; only Delete removes it.
+
 ### Key source
 
 What feeds an engine its keys from outside it: Main (the panel keys and MIDI), a Steps track, an Arpeggiator, a Harmonizer. Never part of an engine. Avoid: driver, controller.

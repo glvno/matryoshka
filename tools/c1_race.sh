@@ -23,7 +23,7 @@ word() { printf '%x' $(( 0x$1 & ~3 )); }
 OUT=$(tools/emu/target/release/m1emu run "$D/matryoshka.bin" --ms 12000 \
   --keys "2000:mc001,3000:m903c64,3000:m904064,3000:m904364,3000:m904764" \
   --poke "$RACE=$(printf '%x' "$TICKS")@4000" \
-  --peek "$(word $ON),$(word $GAVE),$PASS,$FAIL" 2>&1)
+  --peek "$(word $ON),$(word $GAVE),$PASS,$FAIL" --factory web/public/firmware/matryoshka-factory.bin 2>&1)
 echo "$OUT" | grep -E "emulated|peek" 
 python3 - "$OUT" "$ON" "$GAVE" <<'PY'
 import re, sys

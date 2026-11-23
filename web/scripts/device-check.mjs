@@ -646,7 +646,7 @@ export function checkScenarios(h) {
       };
       let d = await heldDrone('store, before');
       await loudCheck('6.1 store: PLAY: C3 holds through the loop point (every window after its attack keeps 80 %)', d.top, d.ok, `peak ${d.top}, lowest ${d.low}`);
-      // the store dialog: the FM-1's slots (60 with the pattern store, 64 without; D-959), a used one says what it holds (Replace), the first empty one Store
+      // the store dialog: the FM-1's slots (48 with 1.26's pattern store, 60 with the older one or a bank too full for 48, 64 without; D-959, D-1016), a used one says what it holds (Replace), the first empty one Store
       await page().keyboard.press('/');
       await page().waitForSelector('#palette[open]', { timeout: 2000 });
       await page().fill('#palette-input', 'Store to an FM-1 slot');
@@ -659,8 +659,8 @@ export function checkScenarios(h) {
       const pick = (v) => page().evaluate((x) => { const s = document.getElementById('store-slot-list'); s.value = String(x); s.dispatchEvent(new Event('change')); }, v);
       const d0 = shown ? await dlg() : { texts: [] };
       const empty = d0.texts.findIndex((x) => / {2}EMPTY$/.test(x)), used = d0.texts.findIndex((x) => !/ {2}EMPTY$/.test(x));
-      await check('6.2 store: "Store to an FM-1 slot…": the FM-1\'s 60 or 64 slots, each with its patch\'s name or EMPTY, the first empty one chosen',
-        shown && (d0.texts.length === 60 || d0.texts.length === 64) && (empty < 0 || (Number(d0.value) === empty && d0.button === 'Store')), `${d0.texts.length} slots, chosen ${d0.value}, first empty ${empty}`);
+      await check('6.2 store: "Store to an FM-1 slot…": the FM-1\'s 48, 60 or 64 slots, each with its patch\'s name or EMPTY, the first empty one chosen',
+        shown && [48, 60, 64].includes(d0.texts.length) && (empty < 0 || (Number(d0.value) === empty && d0.button === 'Store')), `${d0.texts.length} slots, chosen ${d0.value}, first empty ${empty}`);
       let slot = -1;
       if (shown && used >= 0) {
         await pick(used);

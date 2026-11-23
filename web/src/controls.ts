@@ -56,7 +56,7 @@ export const EFFECTS = [
   'entry', 'entry_pattern', 'add_entry', 'dup_entry', 'transpose', 'song_play', 'song', 'delete_entry', 'back_steps',
   'tab', 'scroll', 'set', 'save_close', 'run_row',
   'editor', 'analog_out', 'chord_button', 'fx_page', 'fx_toggle', 'fx_row',
-  'pattern_save', 'pattern_new', 'pattern_load', 'condition', 'fill', 'ratchet', 'micro', 'drum_bank', 'learn_row', 'learn_mode', 'learn_end',
+  'pattern_new', 'pattern_load', 'condition', 'fill', 'ratchet', 'micro', 'drum_bank', 'learn_row', 'learn_mode', 'learn_end',
   'pattern_copy', 'clear_all', 'demo_set', 'palette_go', 'palette_save',
 ] as const;
 export type Effect = (typeof EFFECTS)[number];
@@ -255,10 +255,8 @@ export const CONTROLS: ControlRow[] = [
   { id: 'song-page', gesture: { do: [B('SEL')], how: 'tap' }, does: 'structure song', sheet: { drum: 70, roll: 60 }, effect: 'song_page', hint: 'SEL song',
     help: 'the SONG page (not after SEL held as the pen)' },
   // (the pattern store, #901: patterns kept apart from the patches, which link them)
-  { id: 'pattern-save', gesture: { hold: 'SEL', do: [B('SAVE')] }, does: 'save pattern', when: 'pattern_store', sheet: { drum: 72, roll: 62 }, effect: 'pattern_save',
-    help: 'the selected pattern into the pattern store: over the stored pattern it is linked to (every patch that links it plays the change), else as a new one named after the patch and the pattern (SCROUNGE P3), which it is then linked to; pattern 1 is only copied. The bar says PATTERN SAVED or SAVED AS NEW and the name, PATTERN STORE FULL when there is no room' },
-  { id: 'pattern-new', gesture: { hold: 'FX', do: [B('SAVE')] }, does: 'save pattern as new', when: 'pattern_store', sheet: { drum: 74, roll: 64 }, effect: 'pattern_new',
-    help: 'the selected pattern into the pattern store as a new one (a copy), which it is then linked to instead (pattern 1 is only copied)' },
+  { id: 'pattern-new', gesture: { hold: 'FX', do: [B('SAVE')] }, does: 'keep pattern copy', when: 'pattern_store', sheet: { drum: 74, roll: 64 }, effect: 'pattern_new',
+    help: 'a copy of the selected pattern into the pattern store as a new entry named after the patch and the pattern (SCROUNGE P3), kept: no patch links it, the FM-1 never deletes it and SAVE never writes over it; the pattern’s own link stays (SAVE puts the patterns into the store). The bar says KEPT AS and the name, PATTERN STORE FULL when there is no room' },
   { id: 'pattern-load', gesture: { hold: 'SEL', do: [E('PRESET')] }, does: 'load stored pattern', when: 'pattern_store', sheet: { drum: 76, roll: 66 }, effect: 'pattern_load',
     help: 'steps through the pattern store, your patterns first, then the factory ones, each click loading one into the selected pattern: one of yours is linked (pattern 1 and the factory ones are copied). The bar names it (P3: SCROUNGE P3); its P-locks load only into a patch of the layout they were saved in, else the bar says LOCKS LEFT OUT: OTHER LAYOUT' },
   // (the pattern commands, #1177 and #1178: the editor's copy and clear all, D-544)
@@ -368,7 +366,7 @@ const STRIP: Record<string, string | ({ _: string } & Partial<Record<HelpState, 
   'row-select': 'pick a drum sound, silently', accent: 'accent that step (play it louder)',
   'step-record': 'write notes one step at a time, from the first step shown', 'step-record-there': 'step record starting from that step',
   pattern: 'change pattern (1..64; running: at the end of the pass)', 'song-page': 'arrange patterns into a song',
-  'pattern-save': 'save this pattern to the pattern store (over its link)', 'pattern-new': 'save this pattern to the store as a new copy',
+  'pattern-new': 'keep a copy of this pattern in the pattern store',
   'pattern-load': 'load stored patterns into this pattern as you turn',
   clear: 'clear the whole track (press REC again to confirm)', 'steps-page': 'show the next or previous 16 steps',
   'pattern-copy': 'copy this pattern to the next empty number', 'clear-all': 'clear every pattern and song (press HOME again to confirm)',

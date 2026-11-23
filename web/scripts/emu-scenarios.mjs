@@ -334,7 +334,8 @@ class RigTarget extends Target {
 class Emu extends Target {
   constructor(bin, fw) {
     super();
-    this.proc = own(spawn(bin, ['serve', fw, '--name', PORT_NAME], { cwd: ROOT, stdio: ['pipe', 'pipe', 'inherit'] }));
+    this.proc = own(spawn(bin, ['serve', fw, '--name', PORT_NAME, '--factory', join(ROOT, 'web/public/firmware/matryoshka-factory.bin')],
+      { cwd: ROOT, stdio: ['pipe', 'pipe', 'inherit'] }));
     this.cutSysex = 0;
     this.channel = new EmuChannel(this.proc, { onComment: (line) => {
       console.log(`  emu ${line.slice(2)}`);
