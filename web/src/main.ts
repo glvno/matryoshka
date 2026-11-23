@@ -11,7 +11,7 @@ import { addUserPreset, capturePreset, exportPresets, importPresets, migrateUser
 import { presetEngines, snapshotPreset } from './snapshot-presets';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
-import { chainHelpers, rackOf } from './fx-drawer';
+import { chainHelpers, rackOf } from './assembly';
 import { FEATURE_FX_PRESETS, FX_BYPASS_PARAM } from './protocol';
 import { applyImport, backupFile, backupKeys, collectKeys, importSummary, receiveMigration } from './migrate';
 import { moveOffer, onPagesDev } from './move-offer';

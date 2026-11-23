@@ -10,27 +10,6 @@
    "params": {
     "morph": 0,
     "tempo": 120
-   },
-   "panel": {
-    "kinds": {
-     "fx": "page"
-    },
-    "pages": {
-     "fx": [
-      {
-       "device": "a20",
-       "page": 0
-      },
-      {
-       "device": "a20",
-       "page": 1
-      },
-      {
-       "device": "a20",
-       "page": 2
-      }
-     ]
-    }
    }
   },
   {
@@ -3183,8 +3162,7 @@
     "p2": [
      "offset"
     ]
-   },
-   "bypass": true
+   }
   },
   {
    "id": 146,
@@ -3206,8 +3184,7 @@
     "p2": [
      "offset"
     ]
-   },
-   "bypass": true
+   }
   },
   {
    "id": 147,
@@ -3230,8 +3207,7 @@
     "p2": [
      "kb"
     ]
-   },
-   "bypass": true
+   }
   },
   {
    "id": 148,
@@ -3250,8 +3226,7 @@
      "value"
     ],
     "p2": []
-   },
-   "bypass": true
+   }
   },
   {
    "id": 149,
@@ -3274,8 +3249,7 @@
     "p2": [
      "kb"
     ]
-   },
-   "bypass": true
+   }
   }
  ],
  "cables": [
@@ -6122,7 +6096,8 @@
     13,
     15,
     16,
-    17
+    17,
+    20
    ]
   },
   {
@@ -6522,7 +6497,17 @@
     }
    ],
    "bypass": true,
-   "kept": []
+   "kept": [],
+   "chain": {
+    "ins": [
+     0,
+     1
+    ],
+    "outs": [
+     0,
+     1
+    ]
+   }
   },
   {
    "v": 1,
@@ -6556,17 +6541,24 @@
     {
      "module": 145,
      "port": "out",
-     "label": "out"
-    },
-    {
-     "module": 149,
-     "port": "mul",
-     "label": "mul"
+     "label": "out",
+     "also": [
+      {
+       "module": 149,
+       "port": "mul"
+      }
+     ]
     },
     {
      "module": 146,
      "port": "out",
-     "label": "out 2"
+     "label": "out 2",
+     "also": [
+      {
+       "module": 149,
+       "port": "mul"
+      }
+     ]
     }
    ],
    "params": [
@@ -6602,128 +6594,53 @@
     }
    ],
    "bypass": true,
-   "kept": []
+   "kept": [],
+   "chain": {
+    "ins": [
+     0,
+     1
+    ],
+    "outs": [
+     0,
+     1
+    ],
+    "helpers": [
+     145,
+     146,
+     147,
+     148,
+     149
+    ]
+   }
   },
   {
    "v": 1,
    "id": 20,
    "name": "FX",
    "label": "FX",
-   "x": 7420,
-   "y": 20,
+   "x": 380,
+   "y": 600,
    "open": false,
    "modules": [],
-   "inputs": [
-    {
-     "module": 142,
-     "port": "in",
-     "label": "in"
-    },
-    {
-     "module": 143,
-     "port": "in",
-     "label": "in 2"
-    }
-   ],
-   "outputs": [
-    {
-     "module": 145,
-     "port": "out",
-     "label": "out"
-    },
-    {
-     "module": 149,
-     "port": "mul",
-     "label": "mul"
-    },
-    {
-     "module": 146,
-     "port": "out",
-     "label": "out 2"
-    }
-   ],
-   "params": [
-    {
-     "module": 142,
-     "param": "drive",
-     "label": "drive",
-     "head": "Drive",
-     "also": [
-      {
-       "module": 143,
-       "param": "drive"
-      }
-     ]
-    },
-    {
-     "module": 142,
-     "param": "mode",
-     "label": "mode",
-     "also": [
-      {
-       "module": 143,
-       "param": "mode"
-      }
-     ]
-    },
-    {
-     "module": 142,
-     "param": "level",
-     "label": "level",
-     "also": [
-      {
-       "module": 143,
-       "param": "level"
-      }
-     ]
-    },
-    {
-     "module": 142,
-     "param": "sym",
-     "label": "sym",
-     "also": [
-      {
-       "module": 143,
-       "param": "sym"
-      }
-     ]
-    },
-    {
-     "module": 144,
-     "param": "size",
-     "label": "size",
-     "head": "Reverb"
-    },
-    {
-     "module": 144,
-     "param": "damp",
-     "label": "damp"
-    },
-    {
-     "module": 148,
-     "param": "value",
-     "label": "mix"
-    },
-    {
-     "module": 144,
-     "param": "pre",
-     "label": "pre"
-    },
-    {
-     "module": 144,
-     "param": "mod",
-     "label": "mod"
-    },
-    {
-     "module": 144,
-     "param": "freeze",
-     "label": "freeze"
-    }
-   ],
    "children": [
     18,
     19
-   ]
+   ],
+   "inputs": [],
+   "outputs": [],
+   "params": [],
+   "drawer": {
+    "taps": [
+     {
+      "module": 4,
+      "port": "out"
+     },
+     {
+      "module": 4,
+      "port": "out"
+     }
+    ]
+   }
   }
  ],
  "octave": -1

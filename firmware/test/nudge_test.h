@@ -217,11 +217,12 @@ static void nudge_suite(void)
     char want[96];
     static const uint8_t B[4] = {0, 3, 4, 6};          /* FX, LFO, EDIT, ARP */
 
-    for (p = 0; p < N_PRESETS && !found; p++) {        /* a factory patch with a patch button that has no job */
+    for (p = 0; p < N_PRESETS && !found; p++) {        /* a factory patch with a patch button that has no job (not FX: with
+                                                     * no job it says NO FX IN THE RACK itself, fx_suite) */
         uint32_t i;
         if (load_at(p))
             continue;
-        for (i = 0; i < 4u && !found; i++)
+        for (i = 1; i < 4u && !found; i++)
             if (!panel_btn_job(B[i])) {
                 b = B[i];
                 found = 1;
@@ -244,9 +245,10 @@ static void nudge_suite(void)
     check("a patch button with no job: it names itself, NOT USED IN PATCH (D-249)", nudged(want));
     nudge_snap("button");
     check("  the nudge ends: the screen as a whole redraw", nudge_ends_whole());
-    {                                                   /* a button with a job says what it did, as before */
+    {                                                   /* a button with a job says what it did, as before (FX in a patch
+                                                     * with an FX rack goes to the effects instead: fx_suite) */
         uint32_t i, j = 4u;
-        for (i = 0; i < 4u; i++)
+        for (i = 1; i < 4u; i++)
             if (panel_btn_job(B[i]))
                 j = i;
         if (j < 4u) {

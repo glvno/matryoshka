@@ -21,18 +21,29 @@ uint32_t host_eng_rec_size(const uint8_t *p, uint32_t at) { return eng_rec_size(
 uint32_t host_eng_cables_end(const uint8_t *p, uint32_t len) { return eng_cables_end(p, len); }
 uint32_t host_eng_routes_end(const uint8_t *p, uint32_t len, uint32_t at) { return eng_routes_end(p, len, at); }
 
-#define FX_PRESET "build/panel-fixtures/fx-preset.m1p"          /* Monolith D owning the whole master FX rack */
-#define FX_POLY "build/panel-fixtures/fx-preset-poly.m1p"       /* Expander S, its VOICES row's top 3, the rack */
-#define PLAIN "build/panel-fixtures/engine-unreached.m1p"       /* Monolith D and basic poly, no FX bus */
+#define FX_PRESET "fx-preset"                                   /* Monolith D owning the whole master FX rack (format 55,
+                                                                 * legacy_fx_fixtures.h) */
+#define FX_POLY "fx-preset-poly"                                /* Expander S, its VOICES row's top 3, the rack (the same) */
+#define FX_DRAWER "build/panel-fixtures/fx-drawer.m1p"          /* Monolith D with three effects in its FX drawer */
+#define PLAIN "build/panel-fixtures/engine-unreached.m1p"       /* Monolith D and basic poly, no FX rack */
 
 static uint8_t fix[M1_PATCH_MAX + 16u], buf[M1_PATCH_MAX + 16u], want[M1_PATCH_MAX];
 static uint32_t fix_len, want_len;
 
-/* fixture path's bytes into fix */
+/* fixture path's bytes into fix (a name without a path: a frozen master FX bus patch, legacy_fx_fixtures.h) */
 static int fixture(const char *path)
 {
-    FILE *f = fopen(path, "rb");
-    if (!f)
+    FILE *f;
+    uint32_t i;
+    if (!strchr(path, '/')) {
+        for (i = 0; i < sizeof LEGACY_FX / sizeof LEGACY_FX[0] && strcmp(LEGACY_FX[i].name, path); i++)
+            ;
+        if (i == sizeof LEGACY_FX / sizeof LEGACY_FX[0])
+            return -1;
+        memcpy(fix, LEGACY_FX[i].bin, fix_len = LEGACY_FX[i].len);
+        return 0;
+    }
+    if (!(f = fopen(path, "rb")))
         return -1;
     fix_len = (uint32_t)fread(fix, 1, M1_PATCH_MAX, f);
     fclose(f);
@@ -41,7 +52,7 @@ static int fixture(const char *path)
 /* fixture path running and its pages read */
 static int run(const char *path)
 {
-    if (load_fixture(path))
+    if (strchr(path, '/') ? load_fixture(path) : load_legacy(path))
         return -1;
     pv_gen++;
     pages_ensure();
@@ -321,10 +332,54 @@ static void scoped(void)
     host_ps_init();
 }
 
+/* FXD1: a user preset of Monolith D with its FX drawer (the instrument's rows, each effect's on/off and rows) written into
+ * a binary that is not loaded, as the PRESET turn writes it: rows, the effects' rows, their targets' bypass, the name */
+static void drawer(void)
+{
+    static int32_t vals[PS_MAXV];
+    uint8_t e[64];
+    uint32_t d, structure, scope, rows, n, len, w, first = 0, cnt = 0, ed, i;
+    host_ps_init();
+    check("drawer: fixture loads", !fixture(FX_DRAWER) && !run(FX_DRAWER));
+    for (d = 0; d < pg_ndev && !dp_drawer(d, &first, &cnt); d++)
+        ;
+    check("drawer: Monolith D owns a drawer of three effects", d < pg_ndev && cnt == 3u);
+    if (d >= pg_ndev || cnt != 3u)
+        return;
+    structure = pg_dev[d].structure;
+    scope = dp_structure(d);
+    rows = pg_dev[d].nrows;
+    n = dp_values(d);
+    check("drawer: its capture is FX-scoped", n > rows + 4u && scope != structure);
+    if (n <= rows + 4u)
+        return;
+    memcpy(vals, pr_vals, n * sizeof *vals);
+    ed = pages_dev_of(eng_fx_device(first));
+    vals[rows + 1u + pg_dev[ed].nrows] = 0;             /* (the second effect off) */
+    for (i = 0; i < pg_dev[ed].nrows; i++) {            /* (a row of the first effect moved) */
+        uint32_t m = pg_dev[ed].rows[2u * i], p = pg_dev[ed].rows[2u * i + 1u];
+        if (m != 0xFFu && !(p & POLY_ROW) && row_ok(m, p) && !DEF_FIXED((uint32_t)eng_type(m), p)
+            && DEFS[eng_type(m)].pmin[p] < DEF_TOP(&DEFS[eng_type(m)], p)) {
+            vals[rows + 1u + i] = vals[rows + 1u + i] == DEFS[eng_type(m)].pmin[p] ? DEF_TOP(&DEFS[eng_type(m)], p) : DEFS[eng_type(m)].pmin[p];
+            break;
+        }
+    }
+    check("drawer: the user preset stores in the drawer's namespace", !ps_put(scope, "DRAWER", vals, n));
+    w = into(PLAIN, e, entry_of(e, pg_dev[d].bin, structure, scope, "DRAWER"), &len, M1_PATCH_MAX);
+    check("drawer: one device written", w == 1u);
+    check("drawer: PRESET turn on the same patch", !turned(FX_DRAWER, structure, scope, "DRAWER"));
+    check("drawer: the bytes are the PRESET turn's (rows, the effects' rows, their bypass, the name)", same_as_turned(len)
+          && memcmp(buf, fix, fix_len));
+    check("drawer: the written binary loads with the second effect off", !eng_load(buf, len) && eng_fx_on(first)
+          && !eng_fx_on(first + 1u) && eng_fx_on(first + 2u));
+    host_ps_init();
+}
+
 int main(void)
 {
     plain_and_poly();
     scoped();
+    drawer();
     if (failed) {
         printf("%d FAILED\n", failed);
         return 1;

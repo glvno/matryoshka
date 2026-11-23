@@ -1434,11 +1434,6 @@ static int head_free(void) { return !msg_until && !eng_overload && !load_err && 
 /* the top bar of page 0, GLO and ENV (ui.c header_draw): the device page's header; ENV's bar */
 static void pages_strip(void)
 {
-    if (page == PAGE_FX) {
-        bar_fill(P_LILAC);
-        text_bc(&FONT_S, 8, 3, "MASTER FX", P_NIGHT, P_LILAC, 224, TA_LEFT);
-        return;
-    }
     if (page == PAGE_ENV) {                             /* the environment: ENVIRONMENT and the patch, on lilac */
         char nm[32], num[8], *q = nm;
         if (cur_preset < bank_slots) {
@@ -2577,75 +2572,77 @@ static void env_knob_msg(uint32_t k)
     ui_msg(m, 1000);
 }
 
-/* Master FX uses the same page rows and edits as normal devices. Metadata is already bounded and type checked by the
- * engine; stage order and indices never come from labels. Normal device pages retain the later parameter pages. */
-static uint32_t fx_row;
-static uint32_t fx_shown[4], fx_params_shown[4];
-static const char *const FX_NAMES[4] = {"DRIVE", "CHORUS", "DELAY", "REVERB"};
-static void fx_focus(void)
+/* ---- FX (the FX drawer, 1.26.2): the rack's effects are ordinary devices, each drawer's right after its instrument in
+ * chain order (the editor's device list: SELECT walks them, nothing to page here). FX goes to the first page of the first
+ * effect of a drawer (panel.c fx_button). A patch of formats 55..65 holds the master FX bus (D-1010): its stages are the
+ * effects of one Output drawer, all on the bus device (engine.c) */
+/* the pg device of binary device index bin, pg_ndev none */
+static uint32_t pages_dev_of(uint32_t bin)
 {
-    uint32_t n = eng_fx_count();
-    if (!n)
-        return;
-    fx_row %= n;
-    pages_ensure();
-    if (pages_focus(eng_fx_device(fx_row), eng_fx_page(fx_row)))
-        m1_focus_now(pg_cur_dev, pg_cur_page);
+    uint32_t d;
+    for (d = 0; d < pg_ndev && pg_dev[d].bin != bin; d++)
+        ;
+    return d;
 }
-static void fx_select(int32_t step)
+/* the drawer whose effects include one on binary device bin, UINT32_MAX none (no effect, or one on the canvas) */
+static uint32_t fx_drawer_at(uint32_t bin)
 {
-    uint32_t n = eng_fx_count();
-    if (!n)
-        return;
-    fx_row = (uint32_t)(((int32_t)fx_row + step % (int32_t)n + (int32_t)n) % (int32_t)n);
-    fx_focus();
+    uint32_t r, e;
+    for (r = 0; r < eng_rack_count(); r++)
+        for (e = eng_rack_first(r); e < eng_rack_first(r) + eng_rack_len(r); e++)
+            if (eng_fx_device(e) == bin)
+                return r;
+    return UINT32_MAX;
 }
-static void fx_draw(int full)
+/* the drawer of owner (an instrument's binary device index, ENG_RACK_OUTPUT the Output drawer) when it holds an effect,
+ * UINT32_MAX none */
+static uint32_t fx_drawer_full(uint32_t owner)
 {
-    uint32_t i;
-    const ppage_t *pg;
-    pages_ensure();
-    pg = pages_now();
-    if (full) {
-        lcd_fill(0, BAR_H, 240, 240u - BAR_H, P_NIGHT);
-        for (i = 0; i < 4u; i++)
-            fx_shown[i] = fx_params_shown[i] = 0;
-        if (!msg_until && pal_next == PAL_NONE)
-            pages_strip();
-        text_bc(&FONT_S, 6, 218, HINT_FX, P_DIM, P_NIGHT, 228, TA_LEFT);
-    }
-    pg_strip_dirty = 0;
-    for (i = 0; i < eng_fx_count() && i < 4u; i++) {
-        uint32_t kind = eng_fx_kind(i), h = 2u + kind * 32u + i * 8u + (uint32_t)eng_fx_on(i) * 2u + (uint32_t)(i == fx_row);
-        if (kind < 4u && fx_shown[i] != h) {
-            fx_shown[i] = h;
-            list_row(ENV_Y0 + i * ENV_ROW_H, i == fx_row ? 2 : 0, i == fx_row ? P_TRACK : P_PANEL,
-                     8, 8, eng_fx_on(i) ? P_SEA : P_DIM, FX_NAMES[kind], 24, P_INK, 0, 0,
-                     eng_fx_on(i) ? "ON" : "OFF", 208, eng_fx_on(i) ? P_SEA : P_DIM);
-        }
-    }
-    for (i = 0; i < 4u; i++) {
-        char label[24], num[20], unit[8], value[32], *q;
-        uint32_t base = 0, live = 0, h, y = 136u + i * 19u;
-        label[0] = num[0] = unit[0] = 0;
-        label[0] = 'K'; label[1] = (char)('1' + i); label[2] = ' '; label[3] = 0;
-        if (pg && i < pg->nrows) {
-            caps(label + 3, pg->lab[i], pg->llen[i], 16);
-            row_show(pg, i, num, unit, 100, &base, &live);
-        }
-        q = put(value, num);
-        if (unit[0])
-            q = put(put(q, " "), unit);
-        *q = 0;
-        h = row_sig(row_sig_word(2166136261u, fx_row), label, str_len(label));
-        h = row_sig(h, value, str_len(value)) | 1u;
-        if (h != fx_params_shown[i]) {
-            fx_params_shown[i] = h;
-            lcd_fill(0, y, 240, 18, P_NIGHT);
-            text_bc(&FONT_S, 8, y + 2u, label, P_DIM, P_NIGHT, 128, TA_LEFT);
-            text_bc(&FONT_S, 138, y + 2u, value, P_INK, P_NIGHT, 94, TA_RIGHT);
-        }
-    }
+    uint32_t r;
+    for (r = 0; r < eng_rack_count(); r++)
+        if (eng_rack_owner(r) == owner && eng_rack_len(r))
+            return r;
+    return UINT32_MAX;
+}
+/* the device in focus (a device page, the environment's row) is an effect in an FX drawer: FX's light (ui.c) */
+static int fx_focus_effect(void)
+{
+    return (page == 0u || page == PAGE_ENV) && pg_cur_dev < pg_ndev && fx_drawer_at(pg_dev[pg_cur_dev].bin) != UINT32_MAX;
+}
+/* the effect FX goes to (pages_ensure first): the first of the drawer of the instrument on show (an effect's page counts
+ * as its drawer's instrument's), else of the first armed instrument with one, else of the Output drawer, the first that
+ * has a page (pages_build leaves out a device of no rows); UINT32_MAX none */
+static uint32_t fx_target(void)
+{
+    uint32_t r = UINT32_MAX, d, e;
+    if (pg_cur_dev < pg_ndev && (r = fx_drawer_at(pg_dev[pg_cur_dev].bin)) == UINT32_MAX)
+        r = fx_drawer_full(pg_dev[pg_cur_dev].bin);
+    for (d = 0; r == UINT32_MAX && d < pg_ndev; d++)
+        if (env_armed(d))
+            r = fx_drawer_full(pg_dev[d].bin);
+    if (r == UINT32_MAX)
+        r = fx_drawer_full(ENG_RACK_OUTPUT);
+    for (e = r == UINT32_MAX ? 0u : eng_rack_first(r); r != UINT32_MAX && e < eng_rack_first(r) + eng_rack_len(r); e++)
+        if (pages_dev_of(eng_fx_device(e)) < pg_ndev)
+            return e;
+    return UINT32_MAX;
+}
+/* the page of pg device d effect e opens on: its first; a master FX bus stage (eng_fx_page past 0, format 55..65) the
+ * first page that shows one of the stage's modules, as the bus record names it (pages_build leaves out pages of no rows,
+ * so the record's page index is not the pg one) */
+static uint32_t fx_first_page(uint32_t d, uint32_t e)
+{
+    const uint8_t *t;
+    uint32_t g, k, j, n;
+    if (!eng_fx_page(e))
+        return 0;
+    n = eng_fx_targets(e, &t);
+    for (g = 0; g < pg_dev[d].npg && pg_dev[d].pg0 + g < PG_PAGES; g++)
+        for (k = 0; k < pg_page[pg_dev[d].pg0 + g].nrows; k++)
+            for (j = 0; j < n; j++)
+                if (pg_page[pg_dev[d].pg0 + g].mod[k] == t[j])
+                    return g;
+    return eng_fx_page(e);
 }
 
 /* ---- presets on the FM-1 (#194, docs/ledger/vocabulary.md "Preset"): an assembly device's card row values under a name, for its
@@ -2665,7 +2662,7 @@ static const int32_t *pr_at = pr_vals;                  /* decoded entry values;
 static uint32_t pr_structure;                           /* identity of the last dp_entry, including scoped factory entries */
 
 /* The patch a preset's values go into (dp_rows, the one row walker: the device's rows, its poly rows, the further
- * parameters a row also sets, an FX-scoped preset's rack). Either the running patch (pb 0: the engine, m1_cur through
+ * parameters a row also sets, an FX-scoped preset's effects). Either the running patch (pb 0: the engine, m1_cur through
  * proto.c and the editor told; pg_dev and pg_page describe it, d is the device: a PRESET turn, dp_load), or a patch binary
  * that is not loaded (the palette's next sound, pal_presets_into, #1196): its own bytes say what it holds (pg_dev still
  * describes the running patch) and only those bytes change. What such a binary holds after its records, cables and morph
@@ -2683,8 +2680,9 @@ typedef struct {
     uint8_t type[ENG_MAX_MODULES], grp[ENG_MAX_MODULES];   /* pb's modules: their types, the poly group each is in (its
                                                          * membership byte: eng_load keeps the shared types out of groups,
                                                          * only a Part's is asked) */
-    uint8_t nfx, fx_kind[ENG_FX_STAGE_COUNT], fx_dev[ENG_FX_STAGE_COUNT], fx_n[ENG_FX_STAGE_COUNT];
-    uint8_t fx_t[ENG_FX_STAGE_COUNT][ENG_FX_TARGETS_MAX];  /* pb's master FX bus: its stages (eng_fx_*'s) */
+    uint32_t rack;                                      /* pb's FX rack (flag bit 14's section: offset, 0 none; read where
+                                                         * it is each time, ds_fx_at) */
+    uint8_t fmt;                                        /* pb's format (55..65: the rack is the master FX bus) */
 } dp_at_t;
 static const uint8_t *dev_row_more(uint32_t d, uint32_t mod, uint32_t par);
 static int32_t dev_poly_top(uint32_t d, uint32_t mod, uint32_t par);
@@ -2723,16 +2721,81 @@ static int ds_tempo_row(const dp_at_t *s, uint32_t m, uint32_t par)
 {
     return !s->pb ? eng_tempo_row(m, par) : tempo_glo && s->main >= 0 && m == (uint32_t)s->main && par == FM1_P_TEMPO;
 }
-static uint32_t ds_fx_count(const dp_at_t *s) { return s->pb ? s->nfx : eng_fx_count(); }
-static uint32_t ds_fx_kind(const dp_at_t *s, uint32_t st) { return !s->pb ? eng_fx_kind(st) : st < s->nfx ? s->fx_kind[st] : UINT32_MAX; }
-static uint32_t ds_fx_device(const dp_at_t *s, uint32_t st) { return !s->pb ? eng_fx_device(st) : st < s->nfx ? s->fx_dev[st] : UINT32_MAX; }
-static uint32_t ds_fx_targets(const dp_at_t *s, uint32_t st, const uint8_t **targets)
+/* the patch's format: 66 on, its rack holds effects and FX drawers; 55..65 the master FX bus (D-1010) */
+static uint32_t ds_fmt(const dp_at_t *s) { return s->pb ? s->fmt : eng_format(); }
+/* where pb's rack record of effect e starts (formats 55..65: a stage, its kind byte first), 0 none (eng_rack_end checked
+ * the section at dp_pb_open: format 66 u8 device, u8 n, n modules; older u8 kind, device, page, n, n modules) */
+static uint32_t ds_fx_at(const dp_at_t *s, uint32_t e)
 {
+    const uint8_t *p = s->pb;
+    uint32_t at, i, hd = s->fmt >= 66u ? 2u : 4u;
+    if (!s->rack || e >= p[at = ds_at(s, s->rack)])
+        return 0;
+    for (at++, i = 0; i < e; i++)
+        at += hd + p[at + hd - 1u];
+    return at;
+}
+static uint32_t ds_fx_count(const dp_at_t *s) { return !s->pb ? eng_fx_count() : s->rack ? s->pb[ds_at(s, s->rack)] : 0u; }
+static uint32_t ds_fx_targets(const dp_at_t *s, uint32_t e, const uint8_t **targets)
+{
+    uint32_t at, hd = s->fmt >= 66u ? 2u : 4u;
     if (!s->pb)
-        return eng_fx_targets(st, targets);
+        return eng_fx_targets(e, targets);
+    at = ds_fx_at(s, e);
     if (targets)
-        *targets = st < s->nfx ? s->fx_t[st] : 0;
-    return st < s->nfx ? s->fx_n[st] : 0u;
+        *targets = at ? s->pb + at + hd : 0;
+    return at ? s->pb[at + hd - 1u] : 0u;
+}
+static uint32_t ds_fx_device(const dp_at_t *s, uint32_t e)
+{
+    uint32_t at;
+    if (!s->pb)
+        return eng_fx_device(e);
+    return (at = ds_fx_at(s, e)) ? s->pb[at + (s->fmt >= 66u ? 0u : 1u)] : UINT32_MAX;
+}
+/* (eng_fx_kind's: the master FX kind of its first target's type) */
+static uint32_t ds_fx_kind(const dp_at_t *s, uint32_t e)
+{
+    const uint8_t *t;
+    int type;
+    if (!s->pb)
+        return eng_fx_kind(e);
+    type = ds_fx_targets(s, e, &t) ? ds_type(s, t[0]) : -1;
+    return type == T_SHAPE ? ENG_FX_DRIVE : type == T_CHORUS ? ENG_FX_CHORUS : type == T_DELAY ? ENG_FX_DELAY
+         : type == T_REVERB ? ENG_FX_REVERB : UINT32_MAX;
+}
+/* the running patch's FX drawer of pg device d (an instrument): its first effect and how many, 0 none */
+static int dp_drawer(uint32_t d, uint32_t *first, uint32_t *n)
+{
+    uint32_t r;
+    for (r = 0; d < pg_ndev && r < eng_rack_count(); r++)
+        if (eng_rack_owner(r) == pg_dev[d].bin) {
+            *first = eng_rack_first(r);
+            *n = eng_rack_len(r);
+            return 1;
+        }
+    return 0;
+}
+/* the FX drawer of the walker's patch's instrument at binary device index bin (format 66): its first effect and how many,
+ * 0 none */
+static int ds_drawer(const dp_at_t *s, uint32_t bin, uint32_t *first, uint32_t *n)
+{
+    const uint8_t *p = s->pb;
+    uint32_t r, at, cnt;
+    if (!p)
+        return dp_drawer(pages_dev_of(bin), first, n);
+    if (!s->rack || s->fmt < 66u)
+        return 0;
+    at = ds_at(s, s->rack);
+    for (cnt = p[at++], r = 0; r < cnt; r++)
+        at += 2u + p[at + 1u];
+    for (cnt = p[at++], r = 0; r < cnt; r++, at += 3u)
+        if (p[at] == bin) {
+            *first = p[at + 1u];
+            *n = p[at + 2u];
+            return 1;
+        }
+    return 0;
 }
 static uint32_t ds_ncables(const dp_at_t *s) { return s->pb ? ((uint32_t)s->pb[4] | (uint32_t)s->pb[5] << 8) : (uint32_t)eng_ncables(); }
 /* cable i (< ds_ncables): from module and output, to module and input (eng_cable's; pb's decoded as eng_load does) */
@@ -2785,6 +2848,28 @@ static uint32_t pb_dev_structure(const dp_at_t *s, uint32_t k)
 {
     uint32_t at = pb_extra(s, k);
     return at ? (uint32_t)rd32(s->pb + at + 1u) : 0u;
+}
+/* the device the walker is on: its index in the binary's device lists */
+static uint32_t ds_bin(const dp_at_t *s) { return s->pb ? s->bin : pg_dev[s->d].bin; }
+/* the walker onto the device at binary index bin (an FX drawer's effect, and back to the instrument): its structure and
+ * rows; 0 when the patch shows no such device (the running patch: no page, so no pg_dev; pb: no extras entry) */
+static int ds_point(dp_at_t *s, uint32_t bin)
+{
+    uint32_t at, d;
+    if (!s->pb) {
+        for (d = 0; d < pg_ndev && pg_dev[d].bin != bin; d++)
+            ;
+        s->d = d < pg_ndev ? d : s->d;
+        return d < pg_ndev;
+    }
+    if (!(at = pb_extra(s, bin)))
+        return 0;
+    s->bin = bin;
+    s->structure = (uint32_t)rd32(s->pb + at + 1u);
+    at += 6u + s->pb[at + 5u];
+    s->nrows = s->pb[at];
+    s->rows = at + 1u - (*s->len - s->len0);           /* (as ds_at reads it: an offset as at dp_pb_open) */
+    return 1;
 }
 /* pb's page row of its device on module mod's parameter byte par, as pages_build takes the rows (the first PG_ROWS of a
  * page that row_ok takes): where its extras start (ENG_ROW_MORE), 0 none; *found: it has such a row */
@@ -2949,7 +3034,8 @@ static int dp_pb_open(dp_at_t *s, uint8_t *buf, uint32_t *len, uint32_t cap, uin
     s->len = len;
     s->cap = cap;
     s->len0 = n;
-    s->nfx = 0;
+    s->rack = 0;
+    s->fmt = n > 1u ? buf[1] : 0u;
     s->main = -1;
     if (n < 8u || n > cap || buf[2] > ENG_MAX_MODULES || !(at = eng_records_at(buf, n)))
         return -1;
@@ -2967,23 +3053,16 @@ static int dp_pb_open(dp_at_t *s, uint8_t *buf, uint32_t *len, uint32_t cap, uin
         || !(buf[7] & ENG_FLAG_EXTRAS) || !(s->extras = eng_section_at(buf, n, ENG_SEC_EXTRAS)) || s->extras >= n
         || !eng_extras_end(buf, n, s->extras) || !(at = eng_section_at(buf, n, ENG_SEC_BUTTONS)) || at > n)
         return -1;
-    if (buf[7] & (ENG_FLAG_FX_BUS >> 8)) {
-        const uint8_t *q;
+    if (buf[7] & (ENG_FLAG_FX_BUS >> 8)) {          /* (the rack: eng_rack_end checks its counts and bounds) */
+        const uint8_t *t;
         at = eng_section_at(buf, n, ENG_SEC_FX);
-        if (!at || at > n || !eng_skip_fx(buf + at, buf + n, (uint16_t)((uint32_t)buf[6] | (uint32_t)buf[7] << 8)))
+        if (!at || at > n || !eng_rack_end(buf, n, at))
             return -1;
-        q = buf + at;
-        s->nfx = *q++;                                  /* (eng_skip_fx: at most ENG_FX_STAGE_COUNT, each of at most
-                                                         * ENG_FX_TARGETS_MAX targets) */
-        for (i = 0; i < s->nfx; i++) {
-            s->fx_kind[i] = q[0];
-            s->fx_dev[i] = q[1];
-            s->fx_n[i] = q[3];
-            for (k = 0; k < q[3]; k++)
-                if ((s->fx_t[i][k] = q[4u + k]) >= s->nmod)
+        s->rack = at;
+        for (i = 0; i < ds_fx_count(s); i++)
+            for (k = ds_fx_targets(s, i, &t); k--;)
+                if (t[k] >= s->nmod)
                     return -1;
-            q += 4u + q[3];
-        }
     }
     for (k = 0; k < buf[s->extras] && pb_dev_structure(s, k) != structure; k++)
         ;
@@ -2991,16 +3070,11 @@ static int dp_pb_open(dp_at_t *s, uint8_t *buf, uint32_t *len, uint32_t cap, uin
         k = dev;
     if (!structure || k >= buf[s->extras])
         return -1;
-    s->bin = k;
-    s->structure = structure;
-    at = pb_extra(s, k);
-    at += 6u + buf[at + 5u];
-    s->nrows = buf[at];
-    s->rows = at + 1u;
-    return 0;
+    return ds_point(s, k) ? 0 : -1;
 }
 
-/* FXP1 hashes binary bytes, not printed hex. Footer words are signed whole Q16 numbers. */
+/* FXP1 (formats 55..65's master FX bus, D-1010) hashes binary bytes, not printed hex. Footer words are signed whole Q16
+ * numbers. The FM-1 still reads these presets on such a patch (a bank slot saved before 1.26.2 with its user presets) */
 static uint32_t dp_fx_hash(uint32_t base, uint32_t mask)
 {
     uint32_t h = 2166136261u, i;
@@ -3010,11 +3084,11 @@ static uint32_t dp_fx_hash(uint32_t base, uint32_t mask)
     return (h ^ mask) * 16777619u;
 }
 
-/* Only the sole non-master structure-bearing device owns the graph-recognized rack. */
+/* FXP1: only the sole non-master structure-bearing device of a master FX bus patch owns the graph-recognized rack */
 static uint32_t ds_fx_mask(const dp_at_t *s)
 {
     uint32_t i, n, bus, self, owner = UINT32_MAX, mask = 0;
-    if ((!s->pb && s->d >= pg_ndev) || !ds_structure(s) || !ds_fx_count(s)) return 0;
+    if (ds_fmt(s) >= 66u || (!s->pb && s->d >= pg_ndev) || !ds_structure(s) || !ds_fx_count(s)) return 0;
     bus = ds_fx_device(s, 0);
     self = s->pb ? s->bin : pg_dev[s->d].bin;
     n = s->pb ? s->pb[ds_at(s, s->extras)] : pg_ndev;
@@ -3033,16 +3107,52 @@ static uint32_t ds_fx_mask(const dp_at_t *s)
     }
     return mask;
 }
-static uint32_t dp_fx_mask(uint32_t d)
-{
-    dp_at_t s;
-    return ds_fx_mask(dp_eng(&s, d));
-}
 
+/* FXD1 (the FX drawer, 1.26.2, docs/ARCHITECTURE.md): an instrument with an FX drawer has its presets with its drawer, the
+ * values [ its rows | each effect in chain order: on (0 / 1), the effect's rows | lo16 base, hi16 base, n, 23119 ] under
+ * FNV-1a over 'F','X','D','1', the base structure (u32 LE), n (u8) and each effect's structure (u32 LE): a preset lists
+ * only where the instrument and every effect match, device for device (web/src/fx-preset-format.ts) */
+#define FXD1_MAGIC 23119
+static uint32_t dp_fnv(uint32_t h, uint32_t v, uint32_t bytes)
+{
+    uint32_t i;
+    for (i = 0; i < bytes; i++)
+        h = (h ^ ((v >> (8u * i)) & 255u)) * 16777619u;
+    return h;
+}
+/* the walker's device's namespace beyond its structure: FXD1 when it owns an FX drawer, FXP1 when it is the sole
+ * instrument of a master FX bus; 0 none (or a drawer's effect the patch shows no structure for) */
+static uint32_t ds_scope(dp_at_t *s)
+{
+    uint32_t base = ds_structure(s), own = ds_bin(s), first, n, e, h, st = 1, mask;
+    if (!base)
+        return 0;
+    if (ds_drawer(s, own, &first, &n)) {
+        h = dp_fnv(dp_fnv(dp_fnv(2166136261u, 0x31445846u, 4u), base, 4u), n, 1u);   /* ('F','X','D','1') */
+        for (e = first; st && e < first + n; e++)
+            if ((st = ds_point(s, ds_fx_device(s, e)) ? ds_structure(s) : 0u) != 0u)
+                h = dp_fnv(h, st, 4u);
+        (void)ds_point(s, own);
+        return st ? h : 0u;
+    }
+    mask = ds_fx_mask(s);
+    return mask ? dp_fx_hash(base, mask) : 0u;
+}
+/* an FXD1 preset's length for the walker's instrument, its drawer's effects first .. first + n (ds_scope passed) */
+static uint32_t ds_fxd_size(dp_at_t *s, uint32_t first, uint32_t n)
+{
+    uint32_t own = ds_bin(s), total = ds_nrows(s) + 4u, e;
+    for (e = first; e < first + n; e++)
+        total += ds_point(s, ds_fx_device(s, e)) ? 1u + ds_nrows(s) : 0u;
+    (void)ds_point(s, own);
+    return total;
+}
+/* device d's presets' namespace: its FX-scoped one, else its structure */
 static uint32_t dp_structure(uint32_t d)
 {
-    uint32_t mask = dp_fx_mask(d);
-    return mask ? dp_fx_hash(pg_dev[d].structure, mask) : pg_dev[d].structure;
+    dp_at_t s;
+    uint32_t scope = ds_scope(dp_eng(&s, d));
+    return scope ? scope : pg_dev[d].structure;
 }
 
 static const uint8_t DP_FX_N[4] = {4, 3, 6, 6};
@@ -3108,22 +3218,12 @@ static int dp_fx_binding(uint32_t stage, uint32_t control, uint32_t target, uint
     return ds_fx_binding(dp_eng(&s, 0), stage, control, target, mod, par);
 }
 
-/* Validate the entire envelope and all bindings before touching synth, pattern, or rack state.
- * A scoped key without a valid tail is never treated as a shortened legacy preset. */
-static int ds_check(const dp_at_t *s, int n)
+/* the walker's device's rows hold values in range at pr_at[at ..] (a poly row a whole number within its setting) */
+static int ds_rows_ok(const dp_at_t *s, uint32_t at)
 {
-    uint32_t mask, base = ds_structure(s), nrows = ds_nrows(s), at, kind, c, t, m, p;
-    if (n <= 0) return 0;
-    if (pr_structure == base) return 1;
-    mask = ds_fx_mask(s);
-    if (!mask || pr_structure != dp_fx_hash(base, mask) || (uint32_t)n > PS_MAXV ||
-        (uint32_t)n != nrows + dp_fx_size(mask)) return 0;
-    at = (uint32_t)n - 4u;
-    if (pr_at[at] != (int32_t)(int16_t)base * 65536 ||
-        pr_at[at + 1u] != (int32_t)(int16_t)(base >> 16) * 65536 ||
-        pr_at[at + 2u] != (int32_t)mask * 65536 || pr_at[at + 3u] != 23118 * 65536) return 0;
-    for (at = 0; at < nrows; at++) {
-        ds_row(s, at, &m, &p);
+    uint32_t i, m, p;
+    for (i = 0; i < ds_nrows(s); i++, at++) {
+        ds_row(s, i, &m, &p);
         if (m == 0xFFu) continue;
         if (!ds_row_ok(s, m, p)) return 0;
         if (p & POLY_ROW) {
@@ -3131,7 +3231,37 @@ static int ds_check(const dp_at_t *s, int n)
                 pr_at[at] / 65536 > poly_max(p & 0x7Fu)) return 0;
         } else if (pr_at[at] < DEFS[ds_type(s, m)].pmin[p] || pr_at[at] > DEF_TOP(&DEFS[ds_type(s, m)], p)) return 0;
     }
-    for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind)) {
+    return 1;
+}
+/* an FX-scoped preset's footer at pr_at[n - 4 ..]: the base structure, the drawer's effects or the bus's kinds, magic */
+static int dp_footer_ok(int n, uint32_t base, uint32_t count, int32_t magic)
+{
+    const int32_t *f = pr_at + n - 4;
+    return f[0] == (int32_t)(int16_t)base * 65536 && f[1] == (int32_t)(int16_t)(base >> 16) * 65536
+        && f[2] == (int32_t)count * 65536 && f[3] == magic * 65536;
+}
+/* Validate the entire envelope and all bindings before touching synth, pattern, or rack state.
+ * A scoped key without a valid tail is never treated as a shortened legacy preset. */
+static int ds_check(dp_at_t *s, int n)
+{
+    uint32_t mask, base = ds_structure(s), nrows = ds_nrows(s), own = ds_bin(s), at, kind, c, t, m, p, first, cnt, e;
+    int ok = 1;
+    if (n <= 0) return 0;
+    if (pr_structure == base) return 1;
+    if (pr_structure != ds_scope(s) || !pr_structure || (uint32_t)n > PS_MAXV) return 0;
+    if (ds_drawer(s, own, &first, &cnt)) {            /* FXD1: the instrument's rows, then each effect's on and rows */
+        if ((uint32_t)n != ds_fxd_size(s, first, cnt) || !dp_footer_ok(n, base, cnt, FXD1_MAGIC) || !ds_rows_ok(s, 0))
+            return 0;
+        for (at = nrows, e = first; ok && e < first + cnt; e++) {
+            ok = ds_point(s, ds_fx_device(s, e)) && (pr_at[at] == 0 || pr_at[at] == 65536) && ds_rows_ok(s, at + 1u);
+            at += 1u + ds_nrows(s);
+        }
+        (void)ds_point(s, own);
+        return ok;
+    }
+    mask = ds_fx_mask(s);                               /* FXP1: the rows, then each stage's on and its fixed controls */
+    if ((uint32_t)n != nrows + dp_fx_size(mask) || !dp_footer_ok(n, base, mask, 23118) || !ds_rows_ok(s, 0)) return 0;
+    for (at = nrows, kind = 0; kind < 4u; kind++) if (mask & (1u << kind)) {
         uint32_t stage = ds_fx_stage(s, kind), count = ds_fx_targets(s, stage, 0);
         if (!count || (pr_at[at] != 0 && pr_at[at] != 65536)) return 0;
         at++;
@@ -3202,17 +3332,13 @@ static int32_t dp_row_value(uint32_t d, uint32_t i)
     return mod == 0xFFu ? 0 : (par & POLY_ROW) ? (row_ok(mod, par) ? poly_value(mod, par & 0x7Fu) << 16 : 0) : eng_get_param(mod, par);
 }
 
-/* whether loading entry e (its values at pr_at, n of them) would leave device d as it is: each row dp_load
- * sets holds the entry's value already (a poly row at its whole number); rows past a shorter entry are kept by a load,
- * so they do not count. An entry of no values never matches. */
-static int dp_same(uint32_t d, int n)
+/* device d's rows 0 .. n - 1 hold the values at pr_at[at ..] (a poly row its whole number) */
+static int dp_rows_same(uint32_t d, uint32_t at, uint32_t n)
 {
     uint32_t i;
-    if (!dp_validate(d, n))
-        return 0;
-    for (i = 0; i < (uint32_t)n && i < pg_dev[d].nrows; i++) {
+    for (i = 0; i < n && i < pg_dev[d].nrows; i++) {
         uint32_t mod = pg_dev[d].rows[2u * i], par = pg_dev[d].rows[2u * i + 1u];
-        int32_t v = pr_at[i];
+        int32_t v = pr_at[at + i];
         if (mod == 0xFFu)
             continue;
         if (par & POLY_ROW) {
@@ -3221,8 +3347,34 @@ static int dp_same(uint32_t d, int n)
         } else if (eng_type(mod) >= 0 && par < DEFS[eng_type(mod)].npar && eng_get_param(mod, par) != v)
             return 0;
     }
-    if (pr_structure != pg_dev[d].structure) {
-        uint32_t mask = dp_fx_mask(d), kind, c, t, m, p, at = pg_dev[d].nrows;
+    return 1;
+}
+static uint32_t dp_fx_mask(uint32_t d)
+{
+    dp_at_t s;
+    return ds_fx_mask(dp_eng(&s, d));
+}
+
+/* whether loading entry e (its values at pr_at, n of them) would leave device d as it is: each row dp_load
+ * sets holds the entry's value already (a poly row at its whole number); rows past a shorter entry are kept by a load,
+ * so they do not count; an FX-scoped one's effects (an effect of no runtime targets: its on/off is not the preset's,
+ * fxd_on). An entry of no values never matches. */
+static int dp_same(uint32_t d, int n)
+{
+    uint32_t first, cnt, e, at = pg_dev[d].nrows;
+    if (!dp_validate(d, n) || !dp_rows_same(d, 0, (uint32_t)n))
+        return 0;
+    if (pr_structure == pg_dev[d].structure)
+        return 1;
+    if (dp_drawer(d, &first, &cnt)) {
+        for (e = first; e < first + cnt; e++) {
+            uint32_t ed = pages_dev_of(eng_fx_device(e));   /* (dp_validate: every effect is a device) */
+            if ((eng_fx_targets(e, 0) && pr_at[at] != eng_fx_on(e) * 65536) || !dp_rows_same(ed, at + 1u, pg_dev[ed].nrows))
+                return 0;
+            at += 1u + pg_dev[ed].nrows;
+        }
+    } else {
+        uint32_t mask = dp_fx_mask(d), kind, c, t, m, p;
         for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind)) {
             uint32_t stage = dp_fx_stage(kind);
             if (pr_at[at++] != eng_fx_on(stage) * 65536) return 0;
@@ -3377,14 +3529,10 @@ static int dp_mark_param(uint32_t *written, uint32_t m, uint32_t p)
     return 1;
 }
 
-/* Exact native growth before any recall mutation: missing A parameters, sparse B preservation,
- * factory pattern growth, and the remembered name. No patch-size copy or speculative engine load. */
-static int dp_room(uint32_t d, const char *name, int factory)
+/* device d's rows (and the further parameters each also sets) into written: 0 when one cannot take a value */
+static int dp_room_rows(uint32_t *written, uint32_t d)
 {
-    uint32_t written[ENG_MAX_MODULES] = {0}, len, total, at, i, j, kind, c, t, m, par, old_name = 0, mask = dp_fx_mask(d);
-    const uint8_t *bin = pages_src(&len);
-    if (!bin || len < 8u || len > pages_capacity() || bin[1] < ENG_COUNTED) return 0;
-    total = len;
+    uint32_t i, j, m, par;
     for (i = 0; i < pg_dev[d].nrows; i++) {
         const uint8_t *x;
         m = pg_dev[d].rows[2u * i]; par = pg_dev[d].rows[2u * i + 1u];
@@ -3395,11 +3543,28 @@ static int dp_room(uint32_t d, const char *name, int factory)
         for (j = 0; x && j < x[0]; j++)
             if (!dp_mark_param(written, x[1u + 2u * j], x[2u + 2u * j])) return 0;
     }
-    for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind)) {
-        uint32_t stage = dp_fx_stage(kind);
-        for (c = 0; c < DP_FX_N[kind]; c++)
-            for (t = 0; t < eng_fx_targets(stage, 0); t++)
-                if (!dp_fx_binding(stage, c, t, &m, &par) || !dp_mark_param(written, m, par)) return 0;
+    return 1;
+}
+
+/* Exact native growth before any recall mutation: missing A parameters, sparse B preservation,
+ * factory pattern growth, and the remembered name. No patch-size copy or speculative engine load. */
+static int dp_room(uint32_t d, const char *name, int factory)
+{
+    uint32_t written[ENG_MAX_MODULES] = {0}, len, total, at, i, j, kind, c, t, m, par, old_name = 0, first, cnt;
+    const uint8_t *bin = pages_src(&len);
+    if (!bin || len < 8u || len > pages_capacity() || bin[1] < ENG_COUNTED || !dp_room_rows(written, d)) return 0;
+    total = len;
+    if (dp_drawer(d, &first, &cnt)) {
+        for (i = first; i < first + cnt; i++)
+            if (!dp_room_rows(written, pages_dev_of(eng_fx_device(i)))) return 0;   /* (dp_validate: each a device) */
+    } else {
+        uint32_t mask = dp_fx_mask(d);
+        for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind)) {
+            uint32_t stage = dp_fx_stage(kind);
+            for (c = 0; c < DP_FX_N[kind]; c++)
+                for (t = 0; t < eng_fx_targets(stage, 0); t++)
+                    if (!dp_fx_binding(stage, c, t, &m, &par) || !dp_mark_param(written, m, par)) return 0;
+        }
     }
     at = eng_records_at(bin, len);
     for (m = 0; m < bin[2]; m++) {
@@ -3468,8 +3633,9 @@ static void dp_more_set(uint32_t d, uint32_t mod, uint32_t par, int32_t value)
 }
 
 /* Poly edits can fail for memory/old-format reasons. Do them before any other writes and
- * roll back earlier rows on failure; no editor parameter notification escapes a rejection. */
-static int dp_prepare_poly(uint32_t d)
+ * roll back earlier rows on failure; no editor parameter notification escapes a rejection. Device d's rows take the
+ * values at pr_at[at ..] */
+static int dp_prepare_poly(uint32_t d, uint32_t at)
 {
     int32_t before[PS_MAXV];
     uint32_t i, count = pg_dev[d].nrows;
@@ -3478,7 +3644,7 @@ static int dp_prepare_poly(uint32_t d)
         uint32_t m = pg_dev[d].rows[2u * i], p = pg_dev[d].rows[2u * i + 1u];
         int32_t v;
         if (m == 0xFFu || !(p & POLY_ROW)) continue;
-        v = clampi(pr_at[i] / 65536, 0, dev_poly_top(d, m, p));
+        v = clampi(pr_at[at + i] / 65536, 0, dev_poly_top(d, m, p));
         if (v == poly_value(m, p & 0x7Fu)) continue;
         if (poly_row_set(m, p & 0x7Fu, v)) {
             while (i) {
@@ -3492,8 +3658,44 @@ static int dp_prepare_poly(uint32_t d)
     }
     return 1;
 }
+/* an FX-scoped preset's poly rows first: the instrument's, then its drawer's effects' (an effect's poly row refused
+ * leaves the instrument's set: no effect the editor makes has one) */
+static int dp_prepare_scoped(uint32_t d)
+{
+    uint32_t first, cnt, e, at = pg_dev[d].nrows;
+    if (!dp_prepare_poly(d, 0))
+        return 0;
+    if (dp_drawer(d, &first, &cnt))
+        for (e = first; e < first + cnt; e++) {
+            uint32_t ed = pages_dev_of(eng_fx_device(e));
+            if (!dp_prepare_poly(ed, at + 1u))
+                return 0;
+            at += 1u + pg_dev[ed].nrows;
+        }
+    return 1;
+}
 
-/* an FX-scoped preset's rack (its values after the device's rows at pr_at, ds_check passed) into the patch s */
+/* effect e of the walker's patch on or off as a preset says (FXD1, FXP1: the targets' bypass, never the processing tail;
+ * PARAM_NOW 0xFF is Q16 bypass, the editor applies it to the target's effect; helpers keep their own state). An effect
+ * of no runtime targets (format 66's fallback past 8) switches by its members' bypass, which the FM-1 cannot tell from
+ * its helpers: it keeps its state, and its preset value is not compared (dp_same) */
+static void ds_fx_switch(dp_at_t *s, uint32_t e, int on)
+{
+    const uint8_t *targets;
+    uint32_t t, count = ds_fx_targets(s, e, &targets);
+    if (!s->pb && count)
+        eng_fx_set(e, on);
+    for (t = 0; t < count; t++) {
+        if (s->pb) {
+            pb_bypass(s, targets[t], !on);
+            continue;
+        }
+        m1_patch_bypass(targets[t], !on);
+        m1_param_now(targets[t], 0xFFu, on ? 0 : 65536);
+    }
+}
+
+/* an FXP1 preset's rack (its values after the device's rows at pr_at, ds_check passed) into the patch s */
 static void ds_fx_apply(dp_at_t *s)
 {
     uint32_t mask = ds_fx_mask(s), kind, c, t, m = 0, p = 0, at = ds_nrows(s);
@@ -3510,36 +3712,19 @@ static void ds_fx_apply(dp_at_t *s)
                     (void)dp_param_set(m, p, pr_at[at]);
             }
     }
-    if (!s->pb)
-        for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind))
-            eng_fx_set(dp_fx_stage(kind), on[kind]);
-    /* As on the panel, write target desired bypass, never the processing tail. PARAM_NOW
-     * 0xFF is Q16 bypass; the editor applies it to the coherent recognized stage. Helpers retain
-     * their compiler-normalized native state and their own editable-graph representation. */
-    for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind)) {
-        const uint8_t *targets;
-        uint32_t count = ds_fx_targets(s, ds_fx_stage(s, kind), &targets);
-        for (t = 0; t < count; t++) {
-            if (s->pb) {
-                pb_bypass(s, targets[t], !on[kind]);
-                continue;
-            }
-            m1_patch_bypass(targets[t], !on[kind]);
-            m1_param_now(targets[t], 0xFFu, on[kind] ? 0 : 65536);
-        }
-    }
+    for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind))
+        ds_fx_switch(s, ds_fx_stage(s, kind), on[kind]);
 }
 
-/* the row walker: the entry's values at pr_at (n of them, ds_check passed) into the patch s, scoped: an FX-scoped preset
- * (its rack follows the rows). The device's rows in order (a poly row at its whole number, within its row's top), the
- * further parameters a row also sets, then the rack. The running patch: the engine, m1_cur and the editor, as K1..K4 would
- * (a scoped preset's poly rows set before, dp_prepare_poly); -1 a poly row refused (no room). pb: its bytes alone; a value
- * that would not fit is left out */
-static int dp_rows(dp_at_t *s, int n, int scoped)
+/* the walker's device's rows take the values at pr_at[at ..] (n of them, ds_check passed), scoped: an FX-scoped preset
+ * (its poly rows set before, dp_prepare_scoped). The device's rows in order (a poly row at its whole number, within its
+ * row's top), the further parameters a row also sets. The running patch: the engine, m1_cur and the editor, as K1..K4
+ * would; -1 a poly row refused (no room). pb: its bytes alone; a value that would not fit is left out */
+static int ds_walk(dp_at_t *s, uint32_t at, uint32_t n, int scoped)
 {
     uint32_t i, mod, par;
-    for (i = 0; i < (uint32_t)n && i < ds_nrows(s); i++) {
-        int32_t v = pr_at[i];
+    for (i = 0; i < n && i < ds_nrows(s); i++) {
+        int32_t v = pr_at[at + i];
         int t;
         ds_row(s, i, &mod, &par);
         if (mod == 0xFFu)
@@ -3575,8 +3760,31 @@ static int dp_rows(dp_at_t *s, int n, int scoped)
             more_set(dev_row_more(s->d, mod, par), v); /* legacy row propagation */
         }
     }
-    if (scoped)
+    return 0;
+}
+
+/* the row walker: the entry's values at pr_at (n of them, ds_check passed) into the patch s, scoped: an FX-scoped preset.
+ * The device's rows, then an FXD1 preset's effects in chain order (each one's rows, then its on/off), or an FXP1 preset's
+ * rack. The walker ends on the device it began on */
+static int dp_rows(dp_at_t *s, int n, int scoped)
+{
+    uint32_t own = ds_bin(s), first, cnt, e, at = ds_nrows(s);
+    if (ds_walk(s, 0, (uint32_t)n, scoped))
+        return -1;
+    if (!scoped)
+        return 0;
+    if (!ds_drawer(s, own, &first, &cnt)) {
         ds_fx_apply(s);
+        return 0;
+    }
+    for (e = first; e < first + cnt; e++) {
+        int on = pr_at[at] != 0;
+        (void)ds_point(s, ds_fx_device(s, e));          /* (ds_check: every effect is a device) */
+        (void)ds_walk(s, at + 1u, ds_nrows(s), 1);
+        at += 1u + ds_nrows(s);
+        ds_fx_switch(s, e, on);
+    }
+    (void)ds_point(s, own);
     return 0;
 }
 
@@ -3594,7 +3802,7 @@ static int dp_load(uint32_t d, uint32_t k)
     if (!dp_validate(d, n)) return -1;
     structure = pr_structure;
     scoped = structure != pg_dev[d].structure;
-    if (scoped && (!dp_room(d, nm, !(pr_list[k] & PR_USER)) || !dp_prepare_poly(d))) return -1;
+    if (scoped && (!dp_room(d, nm, !(pr_list[k] & PR_USER)) || !dp_prepare_scoped(d))) return -1;
     if (!(pr_list[k] & PR_USER)) {
         dp_pattern(d, nm);
         pages_ensure(); /* Notes precede page metadata; growth or shrink can move every row pointer. */
@@ -3642,11 +3850,13 @@ static __attribute__((unused)) uint32_t pal_capture(uint8_t *out, uint32_t cap)
 /* the preset `name` of the patch s's device, as dp_list orders its list: the factory's first (its rack's when the factory
  * has some for it, else its structure's), then the user store's under pstructure (0 unknown: the device's structure, then
  * its rack's). Its values into pr_at as dp_entry gives them, its stored name into nm (17 bytes): how many values, -1 none */
-static int pb_preset(const dp_at_t *s, uint32_t pstructure, const char *name, char *nm)
+static int pb_preset(dp_at_t *s, uint32_t pstructure, const char *name, char *nm)
 {
-    uint32_t mask = ds_fx_mask(s), scoped = mask ? dp_fx_hash(s->structure, mask) : s->structure, factory = s->structure, k = 0;
+    uint32_t scoped = ds_scope(s), factory = s->structure, k = 0;
     char fn[FC_PNAME + 1u];
     int f, slot;
+    if (!scoped)
+        scoped = s->structure;
     if (scoped != factory && fc_preset_find(scoped, 0) >= 0)
         factory = scoped;
     for (f = fc_preset_find(factory, 0); f >= 0 && k < FC_STRUCT_PRESETS; f = fc_preset_find(factory, (uint32_t)f + 1u), k++)
@@ -3692,12 +3902,24 @@ static __attribute__((unused)) uint32_t pal_presets_into(uint8_t *buf, uint32_t 
     return written;
 }
 
-/* device d's row values now, in canonical order, into pr_vals: how many */
+/* device d's values now into pr_vals, as a preset of its namespace (dp_structure) holds them: its rows in canonical
+ * order; with an FX drawer then each effect's on/off and rows and the FXD1 footer, an FXP1 instrument the bus's stages
+ * and its footer: how many, 0 none (more than PS_MAXV: never cut short) */
 static uint32_t dp_values(uint32_t d)
 {
-    uint32_t i, mask = dp_fx_mask(d), n = pg_dev[d].nrows, at = n, kind, c, m, p;
-    if (n + (mask ? dp_fx_size(mask) : 0u) > PS_MAXV) return 0;
-    for (i = 0; i < n; i++) pr_vals[i] = dp_row_value(d, i);
+    uint32_t i, mask = 0, n = pg_dev[d].nrows, at = n, kind, c, m, p, first = 0, cnt = 0, e, fxd;
+    fxd = dp_structure(d) != pg_dev[d].structure && dp_drawer(d, &first, &cnt);
+    if (!fxd)
+        mask = dp_fx_mask(d);
+    for (e = first; fxd && e < first + cnt; e++)
+        n += 1u + pg_dev[pages_dev_of(eng_fx_device(e))].nrows;   /* (dp_structure: every effect is a device) */
+    if (n + (fxd ? 4u : mask ? dp_fx_size(mask) : 0u) > PS_MAXV) return 0;
+    for (i = 0; i < pg_dev[d].nrows; i++) pr_vals[i] = dp_row_value(d, i);
+    for (e = first; fxd && e < first + cnt; e++) {
+        uint32_t ed = pages_dev_of(eng_fx_device(e));
+        pr_vals[at++] = !eng_fx_targets(e, 0) || eng_fx_on(e) ? 65536 : 0;   /* (no runtime targets: on, ds_fx_switch) */
+        for (i = 0; i < pg_dev[ed].nrows; i++) pr_vals[at++] = dp_row_value(ed, i);
+    }
     for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind)) {
         uint32_t stage = dp_fx_stage(kind), t;
         pr_vals[at++] = eng_fx_on(stage) ? 65536 : 0;
@@ -3709,11 +3931,11 @@ static uint32_t dp_values(uint32_t d)
             at++;
         }
     }
-    if (mask) {
+    if (fxd || mask) {
         pr_vals[at++] = (int32_t)(int16_t)pg_dev[d].structure * 65536;
         pr_vals[at++] = (int32_t)(int16_t)(pg_dev[d].structure >> 16) * 65536;
-        pr_vals[at++] = (int32_t)mask * 65536;
-        pr_vals[at++] = 23118 * 65536;
+        pr_vals[at++] = (int32_t)(fxd ? cnt : mask) * 65536;
+        pr_vals[at++] = (fxd ? FXD1_MAGIC : 23118) * 65536;
     }
     pr_at = pr_vals;
     pr_structure = dp_structure(d);
