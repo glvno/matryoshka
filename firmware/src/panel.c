@@ -1153,6 +1153,13 @@ static void panel_edges(uint32_t p, uint32_t rel)
         else
             seq_clear_press();
     }
+    if (page == PAGE_SEQ && (p >> BTN_OCT_UP & 1u) && (panel_held >> BTN_SEQ & 1u)) {   /* SEQ held + OCT+ (D-838): the
+                                                     * selected pattern of every track doubled, on the press; neither SEQ's
+                                                     * nor OCT+'s release does its own job (no step page, no octave) */
+        seq_held_used = 1;
+        oct_used |= (uint8_t)(1u << BTN_OCT_UP);
+        seq_double_press();
+    }
     if (page == PAGE_MENU)                          /* the menu: OCT- / OCT+ do nothing there (#395) */
         oct_rel = 0;
     if (oct_rel && (drum_bank_oct() || (page == PAGE_SEQ && (panel_held >> BTN_SEL & 1u) && seq_map() >= 0 && seq_rl_n > ENG_DRUM_ROWS))) {

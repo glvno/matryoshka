@@ -85,8 +85,9 @@ enum { C_PADS = 0x1D, R_PADS_NOW = 0x64 };                  /* the global pad ma
                                                              * + note u8 (0xFF: none) to set a row, 0xFE to clear every row, 0xFD
                                                              * + on u8 for PAD MAP; -> PADS_NOW on u8, then the 24 rows' notes,
                                                              * also unasked after a change on the FM-1 */
-enum { R_PATTERN_OP = 0x65 };                               /* unasked (#1177, #1178): the SEQ page copied a pattern or cleared every
-                                                             * pattern and song; op u8, from u8, to u8, hash u32 LE (m1_pattern_op_now) */
+enum { R_PATTERN_OP = 0x65 };                               /* unasked (#1177, #1178, #1179, D-838): the SEQ page copied a pattern,
+                                                             * cleared every pattern and song, loaded the demo set or doubled the
+                                                             * pattern; op u8, from u8, to u8, hash u32 LE (m1_pattern_op_now) */
 enum { C_PALETTE = 0x1E, R_PALETTE_NOW = 0x66, R_PALETTE_ENTRY = 0x67 };   /* the palette (#1196, palette.c m1_palette): op u8
                                                              * (0 GET, 1 ENTRY_GET pos, 2 PUT pos + ENTRY, 3 ORDER from[8], 4 GO
                                                              * pos, 5 NAME name[20]) -> PALETTE_NOW, PALETTE_ENTRY pos + ENTRY,
@@ -771,6 +772,49 @@ static void m1_patch_patterns(void)
 static int m1_patterns_fit(void)
 {
     return m1_steps_sec(ENG_SEC_PATTERNS) && (m1_cur[1] < 49u ? !eng_locks_count() : m1_steps_sec(ENG_SEC_LOCKS));
+}
+/* the parameters a track's record holds (m1_track_fit's npar: what a double that is undone trims it back to) */
+static uint32_t m1_track_npar(uint32_t mod)
+{
+    uint32_t at = m1_record(mod);
+    return at ? eng_rec_npar(m1_cur, at) : 0u;
+}
+/* a track's pattern 1 and its length as the engine has them into the binary (a double of pattern 1, D-838), saying
+ * whether both went in: 0 when it could not hold them (the caller undoes the engine's change and writes it again, with
+ * npar). npar: the parameters the record held before (m1_track_npar), to which a record the double grew goes back, the
+ * ones after them at their defaults again; -1 none */
+static int m1_track_fit(uint32_t mod, int npar)
+{
+    const uint32_t *w;
+    int32_t v = eng_get_param(mod, STEPS_P_LEN);
+    int n = eng_pattern_notes(mod, 0, &w), i;
+    uint32_t at, sec, cnt, k;
+    m1_patch_track(mod);
+    m1_patch_param(mod, STEPS_P_LEN, v);
+    at = m1_record(mod);
+    if (npar >= 0 && at && m1_cur[1] >= ENG_COUNTED && !(m1_cur[6] & 1u) && (k = eng_rec_npar(m1_cur, at)) > (uint32_t)npar) {   /* (no morph B set) */
+        m1_splice(at + 2u + 4u * (uint32_t)npar, 4u * (k - (uint32_t)npar), 0);
+        m1_cur[at + 1u] = (uint8_t)((m1_cur[at + 1u] & ~ENG_REC_COUNT) | (uint32_t)npar);
+        return 1;
+    }
+    if (n < 0 || !at || STEPS_P_LEN >= eng_rec_npar(m1_cur, at))
+        return 0;
+    at += eng_rec_head(m1_cur[1]) + 4u * STEPS_P_LEN;
+    if (((uint32_t)m1_cur[at] | (uint32_t)m1_cur[at + 1u] << 8 | (uint32_t)m1_cur[at + 2u] << 16 | (uint32_t)m1_cur[at + 3u] << 24) != (uint32_t)v)
+        return 0;
+    sec = (m1_cur[6] & 16u) ? m1_notes_at() : 0u;    /* (the notes section's entry for it holds the engine's words) */
+    cnt = sec ? m1_cur[sec++] : 0u;
+    for (; cnt && m1_cur[sec] != mod; cnt--)
+        sec += 2u + 4u * m1_cur[sec + 1u];
+    if (!cnt)
+        return !n;
+    if (m1_cur[sec + 1u] != (uint32_t)n)
+        return 0;
+    for (i = 0; i < n; i++)
+        if (((uint32_t)m1_cur[sec + 2u + 4u * (uint32_t)i] | (uint32_t)m1_cur[sec + 3u + 4u * (uint32_t)i] << 8
+             | (uint32_t)m1_cur[sec + 4u + 4u * (uint32_t)i] << 16 | (uint32_t)m1_cur[sec + 5u + 4u * (uint32_t)i] << 24) != w[i])
+            return 0;
+    return 1;
 }
 
 /* Origin event (0x5A): six bytes, module/pattern/u32 LE identity. Module 255 with

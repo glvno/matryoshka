@@ -129,6 +129,12 @@
 #define MSG_NOT_LOADED "NOT LOADED"
 #define MSG_NO_DEMO_SET "NO DEMO SET"
 #define MSG_FULL_NOT_LOADED "PATCH FULL: NOT LOADED"
+#define MSG_DOUBLED "DOUBLED: "                         /* DOUBLED: 32 STEPS (SEQ held + OCT+, D-838: the longest track) */
+#define MSG_STEPS_AFTER " STEPS"
+#define MSG_DOUBLE_STEPS "64 STEPS MAX: NOT DOUBLED"
+#define MSG_DOUBLE_NOTES "TOO MANY NOTES TO DOUBLE"
+#define MSG_DOUBLE_LOCKS "TOO MANY P-LOCKS TO DOUBLE"
+#define MSG_DOUBLE_FULL "PATCH FULL: NOT DOUBLED"
 #define MSG_BAR_STEP "STEP "                            /* the SEQ bar in step record: STEP n/len, two spaces, the track */
 #define MSG_BAR_ARM " ARM"                              /* the SEQ bar: after the track's name */
 #define MSG_BAR_REC " REC"

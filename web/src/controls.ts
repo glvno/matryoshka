@@ -57,7 +57,7 @@ export const EFFECTS = [
   'tab', 'scroll', 'set', 'save_close', 'run_row',
   'editor', 'analog_out', 'chord_button', 'fx_page', 'fx_toggle', 'fx_row',
   'pattern_new', 'pattern_load', 'condition', 'fill', 'ratchet', 'micro', 'drum_bank', 'learn_row', 'learn_mode', 'learn_end',
-  'pattern_copy', 'clear_all', 'demo_set', 'palette_go', 'palette_save',
+  'pattern_copy', 'clear_all', 'demo_set', 'pattern_double', 'palette_go', 'palette_save',
 ] as const;
 export type Effect = (typeof EFFECTS)[number];
 
@@ -269,6 +269,9 @@ export const CONTROLS: ControlRow[] = [
   // (the demo set, #1179: the patterns and songs a factory patch shipped with up to 1.24.1)
   { id: 'demo-set', gesture: { hold: 'SEQ', do: [B('SEL')] }, does: 'load demo set', when: 'demo_set', sheet: { drum: 84, roll: 204 }, effect: 'demo_set', hint: 'SEQ+SEL demo set',
     help: 'only on a patch with a demo set: the 808 Kit, 909 Kit, Verona Drum 1, Scrounge or Silver Box, or a copy of one with the same modules. The bar asks first (LOAD DEMO SET? SEL AGAIN); SEL again within 3 s, SEQ still held, replaces every pattern, link and song with the patterns and songs that factory patch shipped with, pattern 1 selected (DEMO SET LOADED). PATCH FULL: NOT LOADED when the patch has no room for them (nothing changes); NO DEMO SET when the FM-1 lacks the factory sounds' },
+  // (the double, D-838: the editor's ×2)
+  { id: 'pattern-double', gesture: { hold: 'SEQ', do: [B('OCT+')] }, does: 'double pattern', sheet: { drum: 79, roll: 69 }, effect: 'pattern_double',
+    help: 'the selected pattern of every track twice as long (16 steps become 32), its steps copied into the new half: notes, ties, velocities, chance, conditions, ratchets, micro timing and P-locks, so it plays the same twice; again doubles it again, up to 64 steps. Pattern 1 doubles the track’s length (its other patterns keep theirs). While playing it goes on in the first half. The bar says DOUBLED: 32 STEPS (the longest track); nothing changes when a track would pass 64 steps (64 STEPS MAX: NOT DOUBLED), a pattern 128 notes or the patch 1536 (TOO MANY NOTES TO DOUBLE), a pattern 64 P-locks or the patch 256 (TOO MANY P-LOCKS TO DOUBLE), or the patch its bytes (PATCH FULL: NOT DOUBLED)' },
 
   // ---- STEP RECORD (#532, D-804)
   { id: 'sr-keys', gesture: { do: [{ key: 'keys' }] }, does: 'play, let go: write', sheet: { step: 20 }, effect: 'write', hint: 'KEYS note',

@@ -183,24 +183,24 @@ static void vectors(void)
     printf("patlink: %u payload vectors as the editor writes them, and back\n", (unsigned)N_PATTERN_CASES);
 }
 
-/* what the editor and the FM-1 must agree on after a pattern command (#1177, #1178): binary b loaded alone (links not
- * resolved), every track's pattern 1, the patterns and songs record (the selected pattern and song in it), the P-locks
- * record, then the links and the pattern origins as the binary holds them */
-static uint32_t content(const uint8_t *b, uint32_t len, uint8_t *out)
+/* the running engine's patterns as the editor and the FM-1 must agree on them: every track's pattern 1 and length, the
+ * patterns and songs record (the selected pattern and song in it), the P-locks record */
+static uint32_t state(uint8_t *out)
 {
-    static uint8_t tmp[M1_PATCH_MAX];
     const uint32_t *w;
-    uint32_t n = 0, t, at, end;
+    uint32_t n = 0, t, m;
+    int32_t v;
     int c;
-    memcpy(tmp, b, len);
-    if (eng_load(tmp, len))
-        return 0;
     eng_patterns_omit(0);
     for (t = 0; (int)t < eng_steps_count(); t++) {
-        c = eng_pattern_notes((uint32_t)eng_steps_module(t), 0, &w);
+        m = (uint32_t)eng_steps_module(t);
+        c = eng_pattern_notes(m, 0, &w);
         out[n++] = (uint8_t)c;
         memcpy(out + n, w, 4u * (uint32_t)c);
         n += 4u * (uint32_t)c;
+        v = eng_get_param(m, STEPS_P_LEN);      /* (D-838: a double of pattern 1 doubles the track's length) */
+        memcpy(out + n, &v, 4u);
+        n += 4u;
     }
     c = eng_patterns_record(out + n, 8192u);
     n += c > 0 ? (uint32_t)c : 0u;
@@ -208,6 +208,18 @@ static uint32_t content(const uint8_t *b, uint32_t len, uint8_t *out)
     c = eng_locks_record(out + n, 8192u);
     n += c > 0 ? (uint32_t)c : 0u;
     out[n++] = 0xEE;
+    return n;
+}
+/* what the editor and the FM-1 must agree on after a pattern command (#1177, #1178, D-838): binary b loaded alone (links
+ * not resolved), its state, then the links and the pattern origins as the binary holds them */
+static uint32_t content(const uint8_t *b, uint32_t len, uint8_t *out)
+{
+    static uint8_t tmp[M1_PATCH_MAX];
+    uint32_t n, at, end;
+    memcpy(tmp, b, len);
+    if (eng_load(tmp, len))
+        return 0;
+    n = state(out);
     if ((tmp[7] & ENG_FLAG_LINKS) && (at = eng_links_at(tmp, len)) != 0u) {
         end = eng_links_end(tmp, len, at);
         memcpy(out + n, tmp + at, end - at);
@@ -221,13 +233,14 @@ static uint32_t content(const uint8_t *b, uint32_t len, uint8_t *out)
     }
     return n;
 }
-/* each case's pattern copied (SEQ held + SAVE: pl_copy, the copy selected) and everything cleared (SEQ held + HOME:
- * pl_clear_all) on the running patch: what the FM-1's binary then holds is what the editor's copy of the patch holds
- * after the same command (pattern_cases.h PATTERN_OPS, web/src/pattern-ops.ts) */
+/* each case's pattern copied (SEQ held + SAVE: pl_copy, the copy selected), everything cleared (SEQ held + HOME:
+ * pl_clear_all) and its pattern doubled (SEQ held + OCT+: pl_double) on the running patch: what the FM-1's binary then
+ * holds is what the editor's copy of the patch holds after the same command (pattern_cases.h PATTERN_OPS,
+ * web/src/pattern-ops.ts); a double the editor refuses the FM-1 refuses for the same reason */
 static void ops(void)
 {
     static uint8_t a[24576], b[24576];
-    uint32_t c, na, nb;
+    uint32_t c, na, nb, most;
     for (c = 0; c < N_PATTERN_CASES; c++) {
         uint32_t from = PATTERN_OPS[c].from, to = PATTERN_OPS[c].to;
         OK(!load_patch(PATTERN_CASES[c].patch, PATTERN_CASES[c].patch_len));
@@ -249,8 +262,103 @@ static void ops(void)
         if (!na || na != nb || memcmp(a, b, na))
             fprintf(stderr, "case %s: clear all differs from the editor's\n", PATTERN_CASES[c].name);
         OK(na && na == nb && !memcmp(a, b, na));
+        OK(!load_patch(PATTERN_CASES[c].patch, PATTERN_CASES[c].patch_len));
+        OK(pl_double(from, &most) == PATTERN_OPS[c].doubled_rc);
+        if (PATTERN_OPS[c].doubled_rc)
+            continue;
+        na = content(m1_cur, m1_cur_len, a);
+        nb = content(PATTERN_OPS[c].doubled, PATTERN_OPS[c].doubled_len, b);
+        if (!na || na != nb || memcmp(a, b, na))
+            fprintf(stderr, "case %s: the double of P%02u differs from the editor's\n", PATTERN_CASES[c].name, (unsigned)from + 1u);
+        OK(na && na == nb && !memcmp(a, b, na));
     }
-    printf("patlink: %u patches copied and cleared on the FM-1 as the editor does it (#1177, #1178)\n", (unsigned)N_PATTERN_CASES);
+    printf("patlink: %u patches copied, cleared and doubled on the FM-1 as the editor does it (#1177, #1178, D-838)\n", (unsigned)N_PATTERN_CASES);
+}
+
+/* the case of that name */
+static uint32_t case_of(const char *name)
+{
+    uint32_t c;
+    for (c = 0; c < N_PATTERN_CASES && strcmp(PATTERN_CASES[c].name, name); c++)
+        ;
+    return c;
+}
+/* a double refused with rc: the binary byte for byte as it was, and the engine's patterns too */
+static int refused(uint32_t p, int rc)
+{
+    static uint8_t bin[M1_PATCH_MAX], a[24576], b[24576];
+    uint32_t len = m1_cur_len, na = state(a), nb, most = 0;
+    memcpy(bin, m1_cur, len);
+    if (pl_double(p, &most) != rc)
+        return 0;
+    nb = state(b);
+    return m1_cur_len == len && !memcmp(bin, m1_cur, len) && na == nb && !memcmp(a, b, na);
+}
+/* the binary filled with patterns of the first track from pattern `first` on until it holds no more: 100 long words each,
+ * then single notes */
+static void fill_bytes(uint32_t first)
+{
+    uint32_t w[TRACK_NOTES_MAX], j, q, k, m = (uint32_t)eng_steps_module(0);
+    for (k = 100; k; k = k > 1u ? 1u : 0u)
+        for (q = first; q < ENG_PATTERNS; q++) {
+            if (eng_pattern_has(m, q))
+                continue;
+            for (j = 0; j < k; j++)
+                w[j] = NW(j % 16u, 1u, 30u + j / 16u, 90u, 0u);
+            if (!eng_pattern_set_notes(m, q, w, k) || !m1_patterns_fit()) {
+                eng_pattern_drop(m, q);
+                (void)m1_patterns_fit();
+                break;
+            }
+        }
+}
+/* the double's limits (D-838): doubled again it repeats the doubled pattern, up to 64 steps; each refusal (64 steps, the
+ * notes of a pattern, the P-locks of a pattern, the patch's bytes, for a pattern and for pattern 1) changes nothing. The
+ * bytes' refusals with the store off: on, the patterns 2..64 the binary cannot hold go to the store (#1199) */
+static void doubles(void)
+{
+    uint32_t all = case_of("DOUBLE ALL"), one = case_of("DOUBLE ONE"), most = 0, m, j, k, n, ok;
+    uint32_t w[TRACK_NOTES_MAX];
+    const uint32_t *x;
+    OK(all < N_PATTERN_CASES && one < N_PATTERN_CASES);
+    OK(!load_patch(PATTERN_CASES[all].patch, PATTERN_CASES[all].patch_len));
+    m = (uint32_t)eng_steps_module(1);
+    OK(pl_double(1, &most) == 0 && most == 32u && eng_pattern_len(m, 1) == 32);
+    OK(pl_double(1, &most) == 0 && most == 64u && eng_pattern_len(m, 1) == 64);
+    n = (uint32_t)eng_pattern_notes(m, 1, &x);   /* (steps 32..63 the same as 0..31: the doubled pattern repeated) */
+    for (j = 0, ok = n > 0u; j < n; j++)
+        if (NW_VEL(x[j]) && NW_AT(x[j]) < 32u && !eng_note_drone(x[j])) {
+            for (k = 0; k < n && x[k] != x[j] + 32u; k++)
+                ;
+            ok &= k < n;
+        }
+    OK(ok);
+    OK(eng_pattern_len((uint32_t)eng_steps_module(0), 1) == 48 && eng_pattern_len((uint32_t)eng_steps_module(2), 1) == 32);
+    OK(refused(1, -1));
+    OK(!load_patch(PATTERN_CASES[one].patch, PATTERN_CASES[one].patch_len));
+    OK(pl_double(0, &most) == 0 && most == 64u);  /* (its second track's 32 steps to 64: the next double is refused) */
+    OK(refused(0, -1));
+    OK(!load_patch(PATTERN_CASES[all].patch, PATTERN_CASES[all].patch_len));
+    m = (uint32_t)eng_steps_module(0);
+    for (j = 0; j < 70u; j++)                    /* (70 notes on 12 steps: 140 doubled) */
+        w[j] = NW(j % 12u, 1u, 40u + j / 12u, STEP_VEL, 0u);
+    OK(eng_pattern_set_notes(m, 1, w, 70));
+    OK(refused(1, -2));
+    OK(!load_patch(PATTERN_CASES[one].patch, PATTERN_CASES[one].patch_len));
+    m = (uint32_t)eng_steps_module(1);           /* (33 locks on 32 steps, two rows: 66 doubled) */
+    for (j = 0; j < 32u; j++)
+        OK(!eng_lock_set(m, 0, j, (uint32_t)eng_find(T_CONST), 0, 0, 65536, 1));
+    OK(!eng_lock_set(m, 0, 0, (uint32_t)eng_find(T_OUTPUT), 0, 0, 0, 1));
+    OK(refused(0, -3));
+    pt_on = 0;
+    OK(!load_patch(PATTERN_CASES[all].patch, PATTERN_CASES[all].patch_len));
+    fill_bytes(5);
+    OK(refused(1, -4));
+    OK(!load_patch(PATTERN_CASES[one].patch, PATTERN_CASES[one].patch_len));
+    fill_bytes(5);
+    OK(refused(0, -4));
+    pt_on = 1;
+    printf("patlink: doubled twice to 64 steps, the doubled pattern repeated; each refusal leaves the binary as it was (D-838)\n");
 }
 
 /* one note, for an edit */
@@ -898,6 +1006,7 @@ int main(void)
     }
     vectors();
     ops();
+    doubles();
     links();
     seq_page();
     link_frames();
