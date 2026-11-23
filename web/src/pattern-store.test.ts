@@ -6,9 +6,9 @@ import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type ModuleInst, type Patch } from './patch';
 import { deviceBudget, encodePatch, FLAG_LINKS, FLAG_PATTERNS, FORMAT_LINKS, layout, linkPlan, linkRecord, lockRecord, patternRecord, SECTION_FORMATS, VERSION, type LinkStore } from './patchbin';
-import { applyPayload, autoName, decodePayload, encodePayload, entryName, FACTORY_ID, factoryEntries, fnv, FNV0, layoutOf, patternFile, payloadHash, portablePatch, readPatternFile, storedName, storePlan, withLinks } from './pattern-store';
+import { applyPayload, autoName, decodePayload, encodePayload, entryName, fnv, FNV0, fromHex, layoutOf, legacyFactoryStore, patternFile, payloadHash, portablePatch, readPatternFile, storedName, storePlan, withLinks } from './pattern-store';
+import LEGACY_FACTORY_PATTERNS from './factory-store.json';
 import { deviceView } from './poly';
-import { PRESET_PATTERNS } from './preset-pattern-data';
 import { inflate, encodeShare } from './share';
 import { fixSeq, LINK_ID_MAX, READ_ONLY_ID, withoutLinks, type StepNote } from './track';
 import { patternCases, patternCasesHeader } from '../scripts/pattern-vectors';
@@ -114,25 +114,17 @@ describe('the stored pattern payload', () => {
     expect(() => decodePayload([1, 5, 0, 0, 0, 1, 0xff, 0])).toThrow();      // a layout without locks
   });
 
-  it('builds the read-only factory entries: the factory patches\' patterns, then preset-patterns.json in its order', () => {
-    const all = factoryEntries();
-    const kits = all.filter((e) => e.kit), f = all.filter((e) => !e.kit);
-    expect(all.map((e) => e.id)).toEqual([...all.map((e) => e.id)].sort((a, b) => a - b));   // (in id order, as PATS lists them)
-    expect(kits.length).toBeGreaterThan(0);
-    for (const e of kits) {
+  it('keeps the legacy factory patterns (factory-store.json, frozen) for old links: ids above the user ids, whole payloads', () => {
+    const ids = LEGACY_FACTORY_PATTERNS.map((e) => e.id);
+    expect(ids).toEqual([...ids].sort((a, b) => a - b));
+    expect(ids.length).toBe(34);   // (the 808 Kit's 23 and the 909 Kit's 11)
+    for (const e of LEGACY_FACTORY_PATTERNS) {
       expect(e.id).toBeGreaterThanOrEqual(READ_ONLY_ID);
       expect(e.id).toBeLessThanOrEqual(LINK_ID_MAX);
-      expect(e).toMatchObject({ readOnly: true, layout: 0, tracks: decodePayload(e.payload).tracks.length, name: storedName(e.name), len: e.payload.length, hash: fnv(FNV0, e.payload) });
+      expect(storedName(e.name)).toBe(e.name);
+      expect(decodePayload(fromHex(e.payload)).tracks.length).toBeGreaterThan(0);
+      expect(legacyFactoryStore().get(e.id)).toBe(fnv(FNV0, fromHex(e.payload)));
     }
-    expect(f).toHaveLength(PRESET_PATTERNS.length);
-    f.forEach((e, i) => {
-      expect(e).toMatchObject({ id: FACTORY_ID + i, readOnly: true, layout: 0, tracks: 1, name: storedName(PRESET_PATTERNS[i].name), len: e.payload.length, hash: fnv(FNV0, e.payload) });
-      const t = decodePayload(e.payload).tracks;
-      expect(t).toHaveLength(1);
-      expect(t[0]!.len).toBe(PRESET_PATTERNS[i].len);
-      expect(t[0]!.rate).toBe(PRESET_PATTERNS[i].rate);
-      expect(t[0]!.notes).toHaveLength(PRESET_PATTERNS[i].notes.length);
-    });
   });
 
   it('names a new stored pattern after its patch and number, and keeps names to 16 printable capitals', () => {
@@ -253,7 +245,7 @@ describe('format 59: stored pattern links', () => {
     const plain = rig().p;
     expect(portablePatch(plain)).toBe(plain);
     // a factory link whose pattern the patch does not hold: the entry's payload comes in, the link goes
-    const kit = factoryEntries().find((e) => e.kit)!;
+    const legacy = LEGACY_FACTORY_PATTERNS[0], kit = { id: legacy.id, hash: fnv(FNV0, fromHex(legacy.payload)) };
     const q = rig().p;
     q.modules.filter((m) => m.type === 'steps').forEach((m) => delete m.patterns);
     link(q, 2, kit.id, kit.hash);
@@ -287,13 +279,13 @@ describe('format 59: stored pattern links', () => {
     a.patterns = [{ notes: [n(0, 2, 36)] }];
     const pay = (k: number): Uint8Array => encodePayload(p, k);
     expect(fnv(FNV0, pay(2))).toBe(fnv(FNV0, pay(4)));
-    const entry = (id: number, payload: Uint8Array, len = payload.length) => ({ id, len, hash: fnv(FNV0, payload), layout: 0, tracks: 2, readOnly: false, name: 'X' });
+    const entry = (id: number, payload: Uint8Array, len = payload.length) => ({ id, len, hash: fnv(FNV0, payload), layout: 0, tracks: 2, readOnly: false, kept: false, name: 'X' });
     const plan = storePlan(p, [entry(5, pay(1)), entry(3, pay(1)), entry(9, pay(2), 1)], 'A long patch name');
     expect(plan.links).toEqual({ 1: { id: 3, hash: fnv(FNV0, pay(1)) } });   // (the lowest id; 9 has another length)
     expect(plan.put.map((e) => [e.ps, e.name])).toEqual([[[2, 4], 'A LONG PATCH P03']]);
     link(p, 1, 5);
     expect(storePlan(p, [entry(3, pay(1)), entry(5, pay(1))]).links[1].id).toBe(5);   // (the one it links already)
-    expect(storePlan(p, [{ ...entry(FACTORY_ID, pay(1)), readOnly: true }]).links[1]).toBeUndefined();   // (never a demonstration pattern)
+    expect(storePlan(p, [{ ...entry(0xff00, pay(1)), readOnly: true }]).links[1]).toBeUndefined();   // (never an id above LINK_ID_MAX)
     expect(entryName('909 Kit', 2)).toBe('909 KIT P03');
     expect(entryName('909 Kit', 63)).toBe('909 KIT P64');
     expect(entryName('Twelve chars and more', 9).length).toBeLessThanOrEqual(16);

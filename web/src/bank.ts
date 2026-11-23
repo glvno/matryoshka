@@ -13,7 +13,8 @@ import type { BufferAllocation } from './signal-buffers';
 // Save as bank…. Nothing merges on its own. The FM-1 cannot send a patch back (SLOT_INFO gives a name and a length), so ←
 // copies this browser's own copy of the slot's patch: one with the slot's name and binary length (bankCopy). One bank for
 // now; several named banks are #220. To a 1.26 FM-1 each patch's patterns go into its pattern store first, then the patch
-// (DeviceLink.uploadSlot, #1202).
+// (DeviceLink.uploadSlot, #1202). Restore FM-1 bank backup writes the bank backup this browser keeps (bank-backup.ts, made
+// by the Flash tab before older firmware) back into the slots.
 // HOME + PRESET on the FM-1 steps through the bank; with an empty bank it steps through the factory patches built into
 // the firmware.
 import { PatchRefused, storeFullText, type DeviceLink } from './device';
@@ -22,6 +23,7 @@ import { validatePatch, type Patch } from './patch';
 import { deviceBudget, encodePatch, type BudgetStore } from './patchbin';
 import { EXAMPLE_PRESETS, FM1_PRESETS, PRESETS } from './presets';
 import { BANK_SLOTS, NAME_BYTES, SLOTS_MAX, slotLabel, type SlotInfo } from './protocol';
+import { restoreBankBackup, savedSlots } from './bank-backup';
 import { renamedKey } from './storage-key';
 import { addCommunity, addedCommunity, onAddedChange, openCommunity, removeCommunity } from './community';
 import { relocatedPatches } from './community-factory';
@@ -293,6 +295,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
   const erase = el('button', { textContent: 'Empty the FM-1 bank', title: 'Erase every slot on the FM-1 (asks first)' });
   const resetList = el('button', { textContent: 'All factory patches', title: 'Make the offline copy the factory patches' });
   const emptyList = el('button', { textContent: 'Empty the list', title: 'Empty the offline copy' });
+  const restoreBackup = el('button', { textContent: 'Restore FM-1 bank backup', title: 'Write the bank backup this browser keeps (the Flash tab makes one before installing older firmware) into the FM-1’s slots (asks first)' });
 
   const live = (): boolean => device.connected;
   /** the store the FM-1's budget and its slots' lengths count with (patchbin.ts BudgetStore) */
@@ -447,6 +450,8 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     send.title = live() ? `Write the ${BANK_NAME.toLowerCase()} kept in this browser into the FM-1's slots, replacing what they hold (asks first when it would lose a patch)` : 'Connect an FM-1 first';
     readBtn.hidden = erase.hidden = !live();
     readBtn.disabled = erase.disabled = !ready;
+    restoreBackup.hidden = !live() || !savedSlots().length;
+    restoreBackup.disabled = !ready;
     resetList.hidden = emptyList.hidden = live();
     resetList.disabled = emptyList.disabled = busy;
     if (onDevice) {
@@ -557,6 +562,10 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     if (notes.length) showToast(notes.join(' '));
   });
   readBtn.onclick = () => void readDevice();
+  restoreBackup.onclick = () => void run('Restoring the bank backup', async () => {
+    status.textContent = await restoreBankBackup(device);
+    slots = await device.readBank();
+  });
   erase.onclick = () => {
     if (busy || !window.confirm('Erase every patch slot on the FM-1? HOME + PRESET then steps through the factory patches built into the firmware.')) return;
     void run('Emptying the FM-1 bank', async () => {
@@ -582,7 +591,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
       el('section', { class: 'card lib-col', ariaLabel: 'FM-1' },
         el('h2', {}, el('span', { class: 'mtag util', textContent: 'FM-1' }), 'FM-1', stateEl, saveAs),
         // (the bank picker of #220 goes before Send bank to FM-1; with one bank the header's state names it)
-        el('div', { class: 'toolbar' }, send, readBtn, erase, resetList, emptyList),
+        el('div', { class: 'toolbar' }, send, readBtn, erase, restoreBackup, resetList, emptyList),
         bar,
         bankEl,
         countEl,

@@ -8,14 +8,16 @@ import { OPEN_RELEASES, logicalImage, productOf, validateOpenPackage, validateSt
 import { FELUCCA_WARNING, firmwareKind, runsFelucca } from './felucca-store';
 import { runningVersion, updateOffer } from './fm1-version';
 import { type MvaveTarget, TARGET_NAME, WHICH_TARGET, rememberTarget, targetGuard } from './mvave-target';
-import { BANK_SLOTS, CMD, editorSkips, FEATURE_FACTORY, helloFrame, parse, parseInfo, parseSlot, readStoredPattern, slotCount, slotEraseFrame, slotInfoFrame, slotLabel, type SlotInfo } from './protocol';
+import { BANK_SLOTS, CMD, editorSkips, FEATURE_FACTORY, helloFrame, parse, parseInfo, parsePatEntry, parseSlot, patsFrame, readSlotBinary, readStoredPattern, slotCount, slotEraseFrame, slotInfoFrame, slotLabel, type SlotInfo, type StoredPatternEntry } from './protocol';
 import { factoryInfo, fetchFactoryImage, installFactory, linkAsk, loadFactorySets, pickSet, type Ask } from './factory-content';
 import { fetchFont, fontId, fontOffer, installFont } from './font-content';
 import { fm1Label, installPlan, OTHER_CHANGED, readFm1Id, type Fm1Choice, type FoundFm1, type InstallPlan } from './fm1-choice';
-import { BACKUP_TEXT, bankBackup, bankPlan, movesText, needsBankCheck, OLDER_FIRMWARE_TEXT, packageBeforeStore, packageHasSmallBank, slotList, storesEveryPattern, tooManyText, type BankBackup } from './install-bank';
+import { BACKUP_TEXT, BackupHeld, bankBackup, bankPlan, movesText, needsBankCheck, NO_BACKUP_TEXT, OLDER_FIRMWARE_TEXT, onlyNewText, packageBeforeStore, packageHasSmallBank, sendsBank, slotList, storesEveryPattern, tooManyText, type BankBackup } from './install-bank';
+import { BANK_BACKUP_KEY, keepBackup, KEPT_PATTERNS_KEY, keptJson, slotsJson } from './bank-backup';
 import { bankCandidates, knownCopy } from './bank';
 import { backupFile } from './migrate';
 import { savePatch } from './saved';
+import { bufferAllocation } from './signal-buffers';
 
 /** the Install panel's factory sounds box (#915): ticked by default; unticked, this warning shows */
 export const FACTORY_LABEL = ' Install factory instruments and presets (recommended)';
@@ -228,6 +230,21 @@ async function readSlots(ask: Ask, n: number): Promise<SlotInfo[]> {
     out.push(got);
   }
   return out;
+}
+
+/** the pattern store's list (PATS: one PAT per entry) over the Install panel's link, asked again when it comes short */
+async function readPatList(link: { send(b: Uint8Array): boolean; read(ms: number): Promise<number[] | null> }): Promise<StoredPatternEntry[]> {
+  for (let t = 0; t < 3; t++) {
+    link.send(patsFrame());
+    const got: StoredPatternEntry[] = [];
+    for (let f = await link.read(800); f; f = await link.read(800)) {
+      const p = parse(f), e = p && parsePatEntry(p);
+      if (!e) continue;
+      if (e.entry) got[e.k] = e.entry;
+      if (got.filter(Boolean).length >= e.count) return got.filter(Boolean);
+    }
+  }
+  throw new Error('the FM-1 did not send its pattern store’s list');
 }
 
 /** the firmware package that comes with this copy of the app (web/public/firmware, made by `npm run firmware`) */
@@ -511,9 +528,10 @@ export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null 
   };
 
   /** before firmware older than 1.26 (#1202, P2): over an FM-1 that keeps every pattern 2..64 in its pattern store, the
-   *  warning first, with a backup of the bank offered (bankBackup: read now, the FM-1 cannot send its patches); nothing is
-   *  installed until the user presses Install anyway. An FM-1 in update mode or one that does not answer cannot be asked:
-   *  the log says so, and the install goes on, as the bank check of 1.26 does */
+   *  warning first, with a backup of the bank read from the FM-1 offered (bankBackup: every slot by SLOT_GET, the kept
+   *  copies; while the FM-1 cannot lend its running patch, it says why and offers Retry); firmware without SLOT_GET gets
+   *  the warning alone. Nothing is installed until the user presses Install anyway. An FM-1 in update mode or one that does
+   *  not answer cannot be asked: the log says so, and the install goes on, as the bank check of 1.26 does */
   const checkOlder = async (): Promise<void> => {
     const dev = await (await access()).find();
     if (!dev) return;   // (install() reports a missing device itself)
@@ -525,8 +543,24 @@ export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null 
       const info = hello && parseInfo(hello);
       if (!info) return log('the patterns were not checked: the FM-1 did not answer. Firmware older than 1.26 cannot read the patterns 2 to 64 that firmware 1.26 keeps in the pattern store');
       if (!storesEveryPattern(info)) return;
-      log('this FM-1 keeps its patterns in the pattern store: reading the bank and its patterns for a backup…');
-      const backup = await bankBackup(await readSlots(ask, slotCount(info)), bankCandidates(), (id) => readStoredPattern((f, m) => ask(f, m, 800, 3), id));
+      let backup: BankBackup | null = null;
+      if (sendsBank(info)) {
+        log('this FM-1 keeps its patterns in the pattern store: reading its bank, its patterns and kept copies for a backup…');
+        const slots = await readSlots(ask, slotCount(info));
+        const read = {
+          slot: (s: number, mode: number) => readSlotBinary((f, m) => ask(f, m, 800, 3), s, mode),
+          list: () => readPatList(dev.link),
+          pattern: (id: number) => readStoredPattern((f, m) => ask(f, m, 800, 3), id),
+        };
+        while (!backup) {
+          try {
+            backup = await bankBackup(slots, bankCandidates(), read, bufferAllocation(info.bufferAllocation));
+          } catch (e) {
+            if (!(e instanceof BackupHeld)) throw e;
+            if (!(await retryAsk(e.message))) throw new Error(`nothing was installed: ${e.message}`);
+          }
+        }
+      }
       if (!(await olderAsk(backup))) throw new Error(`nothing was installed: ${OLDER_FIRMWARE_TEXT}`);
       log('installing firmware older than 1.26 anyway: it does not read the patterns in the pattern store');
     } finally {
@@ -534,39 +568,76 @@ export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null 
     }
   };
 
-  /** the warning before firmware older than 1.26 goes onto a 1.26 FM-1: Back up to this browser (Your patches), Back up to
-   *  a file (a browser backup file of those patches, which Load patch from .json takes), Install anyway (true) or Cancel */
-  const olderAsk = (backup: BankBackup): Promise<boolean> => {
-    const n = backup.patches.length;
-    const toBrowser = el('button', { textContent: 'Back up to this browser', disabled: !n, title: 'Keep each patch, with every pattern inside it, in Your patches' });
-    const toFile = el('button', { textContent: 'Back up to a file', disabled: !n, title: 'Save the patches, with every pattern inside each, as a file: Load patch from .json brings them back' });
+  /** a dialog that shows `text` before the bank backup with Retry (true) and Cancel */
+  const retryAsk = (text: string): Promise<boolean> => {
+    const retry = el('button', { class: 'primary', textContent: 'Retry' });
+    const cancel = el('button', { textContent: 'Cancel' });
+    const dlg = el('dialog', { class: 'help sync-ask flash-bank' },
+      el('div', { class: 'sync-ask-body' },
+        el('h2', { textContent: 'Back up the bank' }),
+        el('p', { textContent: text }),
+        el('div', { class: 'sync-ask-actions' }, retry, cancel)));
+    let result = false;
+    cancel.onclick = () => dlg.close();
+    retry.onclick = () => {
+      result = true;
+      dlg.close();
+    };
+    return new Promise((done) => {
+      dlg.addEventListener('close', () => { dlg.remove(); done(result); }, { once: true });
+      root.append(dlg);
+      dlg.showModal();
+    });
+  };
+
+  /** the warning before firmware older than 1.26 goes onto a 1.26 FM-1: Back up to this browser (the patches it has a copy
+   *  of into Your patches, the slots and kept copies kept, bank-backup.ts), Back up to a file (a browser backup file of
+   *  the same, which Load patch from .json takes), Install anyway (true) or Cancel. `backup` null: the FM-1 cannot send
+   *  its bank, and only the warning shows */
+  const olderAsk = (backup: BankBackup | null): Promise<boolean> => {
     const go = el('button', { class: 'primary', textContent: 'Install anyway' });
     const cancel = el('button', { textContent: 'Cancel' });
-    toBrowser.onclick = () => {
-      const failed = backup.patches.map((x) => savePatch(x.patch)).filter((r) => (log(r.msg), !r.ok));
-      if (failed.length) return;
-      toBrowser.textContent = 'Backed up in this browser';
-      toBrowser.disabled = true;
-    };
-    toFile.onclick = () => {
-      const saved = Date.now();
-      const file = backupFile({ 'matryoshka.patches': JSON.stringify(backup.patches.map((x) => ({ name: x.patch.name, patch: x.patch, saved }))) }, location.origin);
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }));
-      a.download = `matryoshka-fm1-bank-${file.saved.slice(0, 10)}.json`;
-      document.body.append(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-      log(`the bank's ${n} patch${n === 1 ? '' : 'es'} saved to ${a.download}`);
-    };
-    const missing = backup.missing.length;
+    const texts: string[] = [`${OLDER_FIRMWARE_TEXT} ${backup ? BACKUP_TEXT : NO_BACKUP_TEXT}`];
+    const actions: HTMLButtonElement[] = [];
+    if (backup) {
+      const n = backup.slots.length, k = backup.kept.length, empty = !n && !k;
+      const toBrowser = el('button', { textContent: 'Back up to this browser', disabled: empty, title: 'Keep the slots and kept copies in this browser, and the patches it has a copy of in Your patches' });
+      const toFile = el('button', { textContent: 'Back up to a file', disabled: empty, title: 'Save the slots, the kept copies and the patches this browser has a copy of as a file: Load patch from .json brings them back' });
+      toBrowser.onclick = () => {
+        keepBackup(backup.slots, backup.kept);
+        const failed = backup.patches.map((p) => savePatch(p)).filter((r) => (log(r.msg), !r.ok));
+        log(`the bank's ${n} slot${n === 1 ? '' : 's'} and ${k} kept cop${k === 1 ? 'y' : 'ies'} kept in this browser`);
+        if (failed.length) return;
+        toBrowser.textContent = 'Backed up in this browser';
+        toBrowser.disabled = true;
+      };
+      toFile.onclick = () => {
+        const saved = Date.now();
+        const file = backupFile({
+          'matryoshka.patches': JSON.stringify(backup.patches.map((p) => ({ name: p.name, patch: p, saved }))),
+          [BANK_BACKUP_KEY]: slotsJson(backup.slots),
+          [KEPT_PATTERNS_KEY]: keptJson(backup.kept),
+        }, location.origin);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }));
+        a.download = `matryoshka-fm1-bank-${file.saved.slice(0, 10)}.json`;
+        document.body.append(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        log(`the bank's ${n} slot${n === 1 ? '' : 's'} and ${k} kept cop${k === 1 ? 'y' : 'ies'} saved to ${a.download}`);
+      };
+      actions.push(toBrowser, toFile);
+      const p = backup.patches.length;
+      texts.push(`The backup holds ${n} slot${n === 1 ? '' : 's'} (${p} of ${n === 1 ? 'it' : 'them'} also as ${p === 1 ? 'a patch' : 'patches'} this browser has a copy of) and ${k} kept cop${k === 1 ? 'y' : 'ies'}.`
+        + (backup.onlyNew.length ? ` ${onlyNewText(backup.onlyNew)}` : '')
+        + (backup.unreadable.length ? ` The FM-1 could not read ${slotList(backup.unreadable)}.` : ''));
+    }
     const dlg = el('dialog', { class: 'help sync-ask flash-bank' },
       el('div', { class: 'sync-ask-body' },
         el('h2', { textContent: 'Firmware older than 1.26' }),
-        el('p', { textContent: `${OLDER_FIRMWARE_TEXT} ${BACKUP_TEXT}` }),
-        el('p', { textContent: `The backup holds ${n} patch${n === 1 ? '' : 'es'}.${missing ? ` This browser has no copy of ${slotList(backup.missing)}, so ${missing === 1 ? 'it' : 'they'} cannot be backed up.` : ''}` }),
-        el('div', { class: 'sync-ask-actions' }, toBrowser, toFile, go, cancel)));
+        ...texts.map((t) => el('p', { textContent: t })),
+        el('div', { class: 'sync-ask-actions' }, ...actions, go, cancel)));
     let result = false;
     cancel.onclick = () => dlg.close();
     go.onclick = () => {

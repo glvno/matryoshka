@@ -128,7 +128,7 @@ An input a parameter is permanently wired to (a VCA's `cv`, a filter's cutoff `c
 
 ### Demo set
 
-A factory patch's patterns, pattern links, songs and pattern-1 origins as the patch shipped up to 1.24.1, kept in the factory region and loaded back into the patch in one step: SEQ held + SEL on the FM-1, or `demo set` on a Steps card in the editor ([D-836](steps.md#D-836)). The patch itself ships without them. Not the factory set, which is the list of factory patches a release installs ([D-887](patches-and-presets.md#D-887), [D-1020](patch-format.md#D-1020)).
+In firmware 1.25 and its editor, a factory patch's patterns, pattern links, songs and pattern-1 origins as the patch shipped up to 1.24.1, kept in the factory region and loaded back into the patch in one step: SEQ held + SEL on the FM-1, or `demo set` on a Steps card in the editor. Firmware 1.26 and its editor have none ([D-840](steps.md#D-840)). Not the factory set, which is the list of factory patches a release installs ([D-887](patches-and-presets.md#D-887), [D-1020](patch-format.md#D-1020)).
 
 ### Derivative artifact
 
@@ -434,7 +434,7 @@ One of a Steps track's note lists, numbered 1 to 64, with its own length and rat
 
 ### Pattern store
 
-The FM-1's own store of patterns, outside the patches. A stored pattern is one pattern number across a patch's Steps tracks, with a name. A patch refers to it by a number, and loading the patch copies it in; any patch can load it. After the user's stored patterns come read-only factory entries, which the firmware carries: the patterns some factory patches refer to, and the factory demonstration patterns.
+The FM-1's own store of patterns, outside the patches. A stored pattern is one pattern number across a patch's Steps tracks, with a name. A patch refers to it by a number, and loading the patch copies it in; any patch can load it. From firmware 1.26 the store holds only the user's patterns: it has no read-only factory entries ([D-1018](patch-format.md#D-1018)).
 
 ### Piano roll
 

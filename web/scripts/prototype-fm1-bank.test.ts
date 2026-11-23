@@ -8,9 +8,9 @@ import SOURCE from '../factory/bank.json';
 import { backupKeys } from '../src/migrate';
 import { factoryQualificationPhaseIds, factoryQualificationTargetSeconds } from '../src/factory-bank-qualification';
 import { exportSelectedFactoryAudition, parseAuditionExportOptions } from './factory-bank-audition';
-import { DEMO_SET_PATCHES, withoutDemoSet } from '../src/demo-sets';
+import { clearAllPatterns } from '../src/pattern-ops';
 import { FACTORY_KITS, withKitPatterns } from '../src/factory-kit-patterns';
-import { selectedFactoryProfile } from '../src/factory-bank';
+import { selectedFactoryProfile, UNSHIPPED_PATTERNS } from '../src/factory-bank';
 import { FM1_PRESETS } from '../src/presets';
 import type { Patch } from '../src/patch';
 
@@ -48,12 +48,15 @@ describe('explicit final-profile audition export', () => {
       expect(entry.cpu.qualified).toBe(false);
       if (entry.protected) {
         // (a drum kit with a pattern set, D-829: its source plus those patterns, links and songs; D-1053, D-1055; a kit
-        // with a drum rack is the shipped patch, which factory-bank.test.ts holds to its source; a patch with a demo set
-        // ships without its patterns and songs, #1179)
+        // with a drum rack is the shipped patch, which factory-bank.test.ts holds to its source; a patch of
+        // UNSHIPPED_PATTERNS ships without its patterns and songs)
         const source = structuredClone(SOURCE.find(s => s.name === entry.sourceName)!) as unknown as { name: string; patch: Patch };
         const full = FACTORY_KITS.some(k => k.patch === source.name) ? withKitPatterns(source.patch) : source.patch;
         if (selectedFactoryProfile[source.name]?.drumRack) expect(exported).toEqual({ name: source.name, patch: FM1_PRESETS[source.name]() });
-        else expect(exported).toEqual({ ...source, patch: DEMO_SET_PATCHES.includes(source.name) ? withoutDemoSet(full) : full });
+        else {
+          if (UNSHIPPED_PATTERNS.includes(source.name)) clearAllPatterns(full);
+          expect(exported).toEqual({ ...source, patch: full });
+        }
       }
     }
   });

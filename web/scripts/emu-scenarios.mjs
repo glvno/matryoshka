@@ -1173,31 +1173,22 @@ async function main() {
       await check('clock: GLO again: the device page', await emu.waitOwnPage(3000));
     },
     async patterns() {   // #375: a pattern or song chosen on the FM-1 reaches the editor, the editor's reaches the FM-1;
-                         // Silver Box ships without them, its demo set brings them (#1179: SEQ held + SEL, SEL again)
-      const n = (await T()).loads;
-      await open('Silver Box');
-      await sentAfter(n);
-      await emu.waitOwnPage(6000);
+                         // Silver Box ships without them: the editor opens it with the patterns it shipped with up to 1.24.1
+      const patterned = (name) => page.evaluate(async (n) => {
+        const { factoryWithPatterns } = await import('/src/presets.ts');
+        return window.__m1test.openFactory(n, JSON.stringify(factoryWithPatterns(n)));
+      }, name);
+      await check('patterns: Silver Box with its patterns opens, synced', await openSynced('Silver Box', patterned));
       const seqOf = async () => JSON.parse(await patchJson()).modules.find((m) => m.type === 'fm1')?.seq ?? {};
       await emu.tap(B.seq);
       await check('patterns: the SEQ bar shows P01', await emu.waitText('P01', 3000));
-      await emu.key(B.seq, true);
-      await emu.elapse(150);
-      await emu.tap(B.scl);
-      await check('patterns: SEQ held + SEL asks to load the demo set', await emu.waitText('LOAD DEMO SET? SEL AGAIN', 2000));
-      await emu.tap(B.scl);
-      await check('patterns: SEL again loads it', await emu.waitText('DEMO SET LOADED', 2000));
-      await emu.key(B.seq, false);
-      await emu.elapse(300);
-      const tracksOf = async () => JSON.parse(await patchJson()).modules.filter((m) => m.type === 'steps');
-      await check('patterns: the editor loads the demo set too (PATTERN_OP)', !!(await until(async () => (await tracksOf()).some((t) => t.patterns?.length), 3000)), JSON.stringify(await seqOf()));
       await emu.turn(ENC.preset, 1);
       await check('patterns: PRESET on the SEQ page: the editor follows (pattern 2)', !!(await until(async () => (await seqOf()).pattern === 1, 3000)), JSON.stringify(await seqOf()));
       await page.keyboard.press(']');
       await check('patterns: ] in the editor: the FM-1 plays pattern 3', await emu.waitText('P03', 3000));
       await emu.snap('patterns');
       await emu.tap(B.scl);
-      await check('patterns: SEL tapped opens the SONG page with the demo song', await emu.waitText('SONG 1', 3000));
+      await check('patterns: SEL tapped opens the SONG page with its song', await emu.waitText('SONG 1', 3000));
       await emu.turn(ENC.k4, 1);
       await check('patterns: K4 right: the editor plays song 1 too', !!(await until(async () => (await seqOf()).song === 1, 3000)), JSON.stringify(await seqOf()));
       await emu.tap(B.play);
@@ -1210,6 +1201,7 @@ async function main() {
       await emu.turn(ENC.k4, -1);
       await check('patterns: K4 left: the editor plays the pattern again', !!(await until(async () => !(await seqOf()).song, 3000)));
       await emu.tap(B.scl);
+      const tracksOf = async () => JSON.parse(await patchJson()).modules.filter((m) => m.type === 'steps');
       // D-838: SEQ held + OCT+ doubles pattern 3 of every track; the editor doubles its copy too (PATTERN_OP op 4)
       await emu.key(B.seq, true);
       await emu.elapse(150);

@@ -26,8 +26,6 @@ import { addBreak, fm1Name, layoutOf, moveRows, moveSection, pagesOf, removeBrea
 import type { ParameterValues } from './engine';
 import { delayRoom, deviceBudget, deviceSection, DEVICE, encodedSize, LINE_TYPES, lineBudget, linesAdvice, mapRecord, mapSource } from './patchbin';
 import { PATTERN_OP, type MapEntry } from './protocol';
-import { applyDemoSet } from './demo-sets';
-import { demoSetFor } from './presets';
 import { cardCostText, cardCostTitle, type CardCost, type CardCosts } from './cpu';
 import { choiceName, formatValue, longName, moduleName, moduleTag, moduleTitle, paramHint } from './labels';
 import { outputRange } from './ranges';
@@ -323,8 +321,6 @@ const LONG_PRESS_MS = 500;
 /** Main's jack captions on the dock that are shortened */
 const DOCK_SHORT: Record<string, string> = { vel: 'vel', at: 'aft' };
 
-/** the status line when the FM-1 loaded a demo set other than the one this editor has for the patch (PATTERN_OP op 3, #1179) */
-export const DEMO_SET_OUTDATED = "The FM-1's factory content needs updating for its demo set: install the factory sounds from the Flash tab.";
 /** the status line when ×2 changes nothing (D-838): the FM-1 bar's words (firmware/src/messages.h MSG_DOUBLE_*) */
 export const DOUBLE_REFUSED: Record<DoubleRefusal, string> = { steps: '64 STEPS MAX: NOT DOUBLED', notes: 'TOO MANY NOTES TO DOUBLE', locks: 'TOO MANY P-LOCKS TO DOUBLE' };
 export const DOUBLE_FULL = 'PATCH FULL: NOT DOUBLED';
@@ -1418,8 +1414,6 @@ export class Editor {
       nextEmpty: (from) => this.nextEmptyPattern(from),
       clearAll: () => this.clearAllPatterns(),
       empty: () => patternsEmpty(this.patch),
-      demoSet: () => demoSetFor(this.patch)?.name,
-      loadDemoSet: () => this.loadDemoSet(),
       song: () => (this.songView ? this.closeSong() : this.openSong()),
       playing: () => this.song,
     });
@@ -1718,16 +1712,6 @@ export class Editor {
     this.ev.onStructure(this.patch);
     this.patternShown();
   }
-  /** the patch's demo set loaded (demo-sets.ts, #1179): every pattern and song replaced by the set's, pattern 1 selected,
-   *  no song playing; an undo step; nothing when the patch has none */
-  loadDemoSet(): void {
-    const set = demoSetFor(this.patch);
-    if (!set) return;
-    this.touch();
-    applyDemoSet(this.patch, set);
-    this.ev.onStructure(this.patch);
-    this.patternShown();
-  }
   /** the shown pattern (`p`) of every Steps track doubled (pattern-ops.ts doublePattern, D-838): an undo step, and the
    *  status line says DOUBLED: 32 STEPS (the longest track). Refused, nothing changes and the status line says why, as the
    *  FM-1's bar does; a double the FM-1 ran (`fromDevice`) is not checked against the patch bytes (it fitted there) */
@@ -1743,19 +1727,15 @@ export class Editor {
     this.refreshStrips();
     this.ev.onError(`DOUBLED: ${r.len} STEPS`);
   }
-  /** the FM-1's SEQ page ran a pattern command (PATTERN_OP, #1177, #1178, #1179, D-838): the same here, an undo step, not
-   *  sent back (main.ts marks it). op 1: pattern `from` copied to `to`, which is selected; op 2: everything cleared; op 3:
-   *  the patch's demo set loaded when the FM-1's (`hash`) is the one this editor has, else the status line says to update
-   *  the FM-1's factory sounds; op 4: pattern `from` of every track doubled */
-  patternOpFromDevice(op: number, from: number, to: number, hash = 0): void {
+  /** the FM-1's SEQ page ran a pattern command (PATTERN_OP, #1177, #1178, D-838): the same here, an undo step, not sent
+   *  back (main.ts marks it). op 1: pattern `from` copied to `to`, which is selected; op 2: everything cleared; op 4:
+   *  pattern `from` of every track doubled. Any other op (3, retired) does nothing */
+  patternOpFromDevice(op: number, from: number, to: number): void {
     if (op === PATTERN_OP.copy && from >= 0 && from < PATTERNS_MAX && to > 0 && to < PATTERNS_MAX) {
       this.copyPattern(from, to);
       this.selectPattern(to);
     } else if (op === PATTERN_OP.clearAll) this.clearAllPatterns();
-    else if (op === PATTERN_OP.demoSet) {
-      if (demoSetFor(this.patch)?.hash === hash) this.loadDemoSet();
-      else this.ev.onError(DEMO_SET_OUTDATED);
-    } else if (op === PATTERN_OP.double && from >= 0 && from < PATTERNS_MAX) this.doublePatterns(from, true);
+    else if (op === PATTERN_OP.double && from >= 0 && from < PATTERNS_MAX) this.doublePatterns(from, true);
   }
   /** the open song drawer (song.ts), if any */
   songView: SongView | null = null;

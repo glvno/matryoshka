@@ -25,18 +25,14 @@ import { deviceView } from './poly';
 import { lockPlan } from './locks';
 import { patternsWithContent, TYPE_ORDER, toQ16 } from './patchbin';
 import type { StoredPatternEntry } from './protocol';
-import { PRESET_PATTERNS, type PresetPattern } from './preset-pattern-data';
 import { fixLocks, fixNotes, fixPatterns, LINK_ID_MAX, patternWords, withoutLinks, wordShort, wordsNotes, type Pattern, type PatternLink, type StepLock, type StepNote } from './track';
-import FACTORY_STORE from './factory-store.json';
+import LEGACY_FACTORY_PATTERNS from './factory-store.json';
 
 export const PAYLOAD_VERSION = 1;
 /** the most payload bytes a stored pattern takes (patstore.c PT_MAX) */
 export const PAYLOAD_MAX = 2048;
 /** a stored pattern's name: printable ASCII, 16 bytes (patstore.c PT_NAME) */
 export const PATTERN_NAME_BYTES = 16;
-/** the factory demonstration patterns' ids: FACTORY_ID + their index (the read-only ids from track.ts READ_ONLY_ID start
- * with the factory patches' patterns, factory-store.json) */
-export const FACTORY_ID = 0xff00;
 /** bytes a stored pattern takes in the store besides its payload (patstore.c pt_hdr_t), and its records' alignment */
 export const RECORD_HEADER = 36;
 export const recordBytes = (len: number): number => RECORD_HEADER + ((len + 3) & ~3);
@@ -201,49 +197,30 @@ export function autoName(patchName: string, p: number): string {
 export const entryName = (patchName: string, p: number): string =>
   storedName(`${storedName(patchName).slice(0, PATTERN_NAME_BYTES - 4).trim()} P${String(p + 1).padStart(2, '0')}`);
 
-/** a factory demonstration pattern (PRESET_PATTERNS, D-882 / D-1009) as a payload: one track, its notes, length and rate */
-export function factoryPayload(e: PresetPattern): Uint8Array {
-  const { short, words } = patternWords(wordsNotes(e.notes));
-  const out = [PAYLOAD_VERSION, 0, 0, 0, 0, 1, words.length, (e.len & 0x7f) | (short ? 0x80 : 0), e.rate];
-  for (const w of words) {
-    out.push(w & 0xff, (w >>> 8) & 0xff);
-    if (!short) out.push((w >>> 16) & 0xff, w >>> 24);
-  }
-  out.push(0);
-  return Uint8Array.from(out);
-}
-
-/** the store's read-only factory entries as the FM-1 lists them after the user's (C_PATS), in id order, with their
- * payloads: the factory patches' patterns (`kit`: the patch that links them), then the demonstration patterns (`structure`:
- * the engine whose sound they belong to). The editor has them without an FM-1 */
-export function factoryEntries(): (StoredPatternEntry & { payload: Uint8Array; kit?: string; structure?: string })[] {
-  const entry = (id: number, name: string, payload: Uint8Array): StoredPatternEntry & { payload: Uint8Array } =>
-    ({ id, len: payload.length, hash: fnv(FNV0, payload), layout: (payload[1] | payload[2] << 8 | payload[3] << 16 | payload[4] << 24) >>> 0, tracks: payload[5], readOnly: true, name, payload });
-  return [
-    ...FACTORY_STORE.map((e) => ({ ...entry(e.id, e.name, fromHex(e.payload)), kit: e.kit })),
-    ...PRESET_PATTERNS.map((e, i) => ({ ...entry(FACTORY_ID + i, storedName(e.name), factoryPayload(e)), structure: e.structure })),
-  ];
-}
-
-/** the patch's links to factory patches' patterns (factory-store.json) whose entry is the one the link was made for */
+/** the patch's links to the legacy factory patterns (factory-store.json: frozen data, the 808 Kit's and 909 Kit's patterns
+ *  that were read-only entries of the FM-1's store up to 1.25, ids from track.ts READ_ONLY_ID) whose payload is the one the
+ *  link was made for */
 function factoryLinks(p: Patch): { k: number; payload: Uint8Array }[] {
   const links = p.modules.find((m) => m.type === 'fm1')?.seq?.links ?? {};
   return Object.entries(links).flatMap(([k, l]) => {
-    const e = FACTORY_STORE.find((x) => x.id === l.id);
+    const e = LEGACY_FACTORY_PATTERNS.find((x) => x.id === l.id);
     const payload = e && fromHex(e.payload);
     return payload && fnv(FNV0, payload) === l.hash ? [{ k: Number(k), payload }] : [];
   });
 }
+/** the legacy factory patterns as a link store (id → payload hash): what firmware that holds them compiled in resolves
+ *  (the FM-1 tab's emulator: a patch that still links one plays it from there, as on the FM-1) */
+export const legacyFactoryStore = (): Map<number, number> => new Map(LEGACY_FACTORY_PATTERNS.map((e) => [e.id, fnv(FNV0, fromHex(e.payload))]));
 /** the patch as it leaves the editor (G2, #1202: the editor's copy, patch files, share links, Community): every pattern
  *  inside it and no link, so whoever opens it has every pattern without this FM-1's store. A pattern held only as a link
- *  to a factory entry gets that entry's payload (factory-store.json); a linked pattern keeps the content the patch holds.
+ *  to a legacy factory pattern gets its payload (factory-store.json); a linked pattern keeps the content the patch holds.
  *  The patch itself when it links nothing */
 export function portablePatch(p: Patch): Patch {
   if (!p.modules.some((m) => m.seq?.links)) return p;
   return withoutLinks(withFactoryPatterns(structuredClone(p)));
 }
-/** the patterns a patch links to factory entries but does not hold (a share link made before 1.26 left them out, #923),
- *  back from the factory entries (changed in place) */
+/** the patterns a patch links to legacy factory patterns but does not hold (a share link or a browser copy made before
+ *  1.26 left them out, #923), back from factory-store.json (changed in place) */
 export function withFactoryPatterns(p: Patch): Patch {
   const steps = p.modules.filter((m) => m.type === 'steps');
   for (const x of factoryLinks(p)) if (!steps.some((m) => m.patterns?.[x.k - 1])) applyPayload(p, x.k, x.payload);
@@ -255,8 +232,8 @@ export interface EntryToPut { ps: number[]; name: string; payload: Uint8Array; h
 /**
  * What sending `patch` to an FM-1 that stores every pattern 2..64 takes (#1202): each pattern with content links an entry
  * of `entries` (the FM-1's list) whose payload has the same hash and length (the one the patch links already first, then
- * the lowest id; the factory demonstration patterns are never linked), else a new entry named after `name` (entryName),
- * one for patterns with the same payload. `links`: the patterns already stored, by pattern
+ * the lowest id; never an id above LINK_ID_MAX), else a new entry named after `name` (entryName), one for patterns with
+ * the same payload. `links`: the patterns already stored, by pattern
  */
 export function storePlan(patch: Patch, entries: readonly StoredPatternEntry[], name = patch.name): { links: Record<number, PatternLink>; put: EntryToPut[] } {
   const dev = deviceView(patch, true).patch;

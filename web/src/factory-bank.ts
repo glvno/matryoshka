@@ -10,7 +10,7 @@ import { sharedAlgoContours } from './factory-algo-sharing';
 import { sharedArticulationFactory } from './factory-shared-articulation';
 import { fitCanvasFactory } from './factory-canvas-fit';
 import { FACTORY_KITS, withKitPatterns } from './factory-kit-patterns';
-import { DEMO_SET_PATCHES, withoutDemoSet } from './demo-sets';
+import { clearAllPatterns } from './pattern-ops';
 import { DEFS } from './modules';
 import { devicesOf } from './pages';
 import { addModule, connect, disconnect, removeModule, type Patch } from './patch';
@@ -73,8 +73,8 @@ export const selectedFactoryProfile: Readonly<Record<string, SelectedFactoryOpti
 /** Selected names in source order, without building the patch graphs. */
 export const selectedFactoryNames = SOURCE.map(({ name }) => selectedFactoryProfile[name]?.bankName ?? name);
 
-/** The approved bank shared by browser defaults, numeric exports and firmware. The patches with a demo set ship without
- *  their patterns and songs (demo-sets.ts, #1179); `full` keeps them, as bank.json holds them: the demo sets come from it */
+/** The approved bank shared by browser defaults, numeric exports and firmware. The patches of UNSHIPPED_PATTERNS ship
+ *  without their patterns and songs; `full` keeps them, as bank.json holds them (test and measurement material only) */
 export function buildSelectedFactoryBank(opts: { full?: boolean } = {}): FactoryCandidate[] {
   const measurements = Object.fromEntries(Object.entries(selectedFactoryProfile).map(([name, { configurationId: _id, outputLevel: _level, ...options }]) => [name, options]));
   const bank = buildFactoryBank(measurements);
@@ -89,10 +89,20 @@ export function buildSelectedFactoryBank(opts: { full?: boolean } = {}): Factory
   return opts.full ? bank : shippedFactoryBank(bank);
 }
 
-/** the bank as it ships, from the bank in full: each patch with a demo set without its patterns and songs */
+/** the factory patches that ship without the patterns and songs they had up to 1.24.1 (owner 2026-11-21, #1202 G8). The
+ *  bank in full keeps them only as test and measurement material: the CPU checks, the level and headroom checks, the golden
+ *  kits and the kits' own tests play the patches with them, as the owner heard them */
+export const UNSHIPPED_PATTERNS: readonly string[] = ['808 Kit', '909 Kit', 'Verona Drum 1', 'Scrounge', 'Silver Box'];
+
+/** the bank as it ships, from the bank in full: each patch of UNSHIPPED_PATTERNS without its patterns and songs */
 export function shippedFactoryBank(full: readonly FactoryCandidate[]): FactoryCandidate[] {
-  for (const name of DEMO_SET_PATCHES) if (!full.some((c) => c.name === name)) throw new Error(`demo set of ${name}: no such factory patch`);
-  return full.map((c) => (DEMO_SET_PATCHES.includes(c.name) ? { name: c.name, patch: withoutDemoSet(c.patch) } : c));
+  for (const name of UNSHIPPED_PATTERNS) if (!full.some((c) => c.name === name)) throw new Error(`${name}: no such factory patch`);
+  return full.map((c) => {
+    if (!UNSHIPPED_PATTERNS.includes(c.name)) return c;
+    const patch = structuredClone(c.patch);
+    clearAllPatterns(patch);
+    return { name: c.name, patch };
+  });
 }
 
 /** Explicit measurement reductions only; the unselected bank retains every original allocation and interface. */

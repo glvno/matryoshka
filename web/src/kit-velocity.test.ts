@@ -15,7 +15,7 @@ import { factoryPresets } from './factory-presets';
 import { Fm1Engine } from './fm1-engine';
 import { Fm1Bridge } from './fm1-engine-host';
 import { removeModule, type Patch } from './patch';
-import { factoryWithDemoSet } from './presets';
+import { factoryWithPatterns } from './presets';
 import { rowOrder, structureOf } from './structure';
 
 const SR = 48000;
@@ -33,7 +33,7 @@ beforeAll(() => {
 }, 120_000);
 
 let kitName = '808 Kit', cardName = '808 kit';
-const kit = (): Patch => factoryWithDemoSet(kitName);   // (with its demo set: its song, #1179)
+const kit = (): Patch => factoryWithPatterns(kitName);   // (with its 1.24.1 patterns and song)
 const cardOf = (p: Patch) => assembliesOf(p).find((a) => a.name === cardName && !parentOf(p, a.id))!;
 const velocityRow = (p: Patch) => cardOf(p).params.find((r) => r.label === 'velocity')!;
 function withVelocity(p: Patch, v: number): Patch {

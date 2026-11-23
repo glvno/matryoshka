@@ -19,8 +19,7 @@ function fixture(name = 'Spokes 6', patch?: Patch) {
   const t = p.modules.find((m) => m.id === d.track)!;
   const presets = presetsOf(p, a);
   a.preset = 'Init';
-  // (pattern 1 as a demo set leaves it, the Init demo notes and their origin: the factory patches with a demo set ship
-  // without them, #1179)
+  // (pattern 1 with the Init demo notes and their origin, as the kits had it up to 1.24.1: they ship without them)
   const init = presetPattern(presets[0].structure, 'Init')!;
   t.notes = wordsNotes(init.notes);
   seedPresetPattern(p, a, init.id);

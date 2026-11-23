@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The patches the factory measurements play (levels-*.test.ts, headroom-*.test.ts, #1179): every preset as it opens, but
-// the factory patches with a demo set with it loaded (demo-sets.ts), so their patterns are measured as the owner hears
-// them after SEQ+SEL (the shipped patches have no notes, and a measurement of them would measure keys or silence).
-import { DEMO_SET_PATCHES } from './demo-sets';
+// The patches the factory measurements play (levels-*.test.ts, headroom-*.test.ts): every preset as it opens, but the
+// factory patches of factory-bank.ts UNSHIPPED_PATTERNS with the patterns they shipped with up to 1.24.1, so their
+// patterns are measured as the owner heard them (the shipped patches have no notes, and a measurement of them would
+// measure keys or silence).
+import { UNSHIPPED_PATTERNS } from './factory-bank';
 import type { Patch } from './patch';
-import { factoryWithDemoSet, PRESETS } from './presets';
+import { factoryWithPatterns, PRESETS } from './presets';
 
 export const MEASURED_PRESETS: [string, () => Patch][] = Object.entries(PRESETS)
-  .map(([name, make]): [string, () => Patch] => (DEMO_SET_PATCHES.includes(name) ? [name, () => factoryWithDemoSet(name)] : [name, make]));
+  .map(([name, make]): [string, () => Patch] => (UNSHIPPED_PATTERNS.includes(name) ? [name, () => factoryWithPatterns(name)] : [name, make]));

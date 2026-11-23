@@ -2,13 +2,13 @@
 // @vitest-environment jsdom
 // The pattern commands (#1177, #1178) run on the FM-1's SEQ page (the firmware UI as WebAssembly): the editor runs each on
 // its patch too, as one undo step, and ends where the FM-1 does. The bytes both write are compared in
-// firmware/test/patlink_test.c (scripts/pattern-vectors.ts). The demo set (#1179) from the Steps card and from PATTERN_OP.
+// firmware/test/patlink_test.c (scripts/pattern-vectors.ts). PATTERN_OP's retired op 3 does nothing.
 import { readFileSync } from 'node:fs';
 import { expect, it, vi } from 'vitest';
 import { buildFm1Wasm } from '../scripts/fm1-wasm.mjs';
-import { DEMO_SET_OUTDATED, Editor, type EditorEvents } from './editor';
+import { Editor, type EditorEvents } from './editor';
 import { BUTTONS, Fm1Ui } from './fm1-ui';
-import { demoSetFor, factoryWithDemoSet, FM1_PRESETS } from './presets';
+import { FM1_PRESETS } from './presets';
 import { encodePatch } from './patchbin';
 import { patternsEmpty } from './pattern-ops';
 import { parsePatternOp, PATTERN_OP } from './protocol';
@@ -96,64 +96,16 @@ function editorOn(patch: Patch): { editor: Editor; said: string[] } {
   return { editor: new Editor(document.getElementById('canvas')!, patch, ev), said };
 }
 const sequence = (p: Patch) => ({ tracks: p.modules.filter((m) => m.type === 'steps').map(({ notes, patterns, locks, factoryPatterns }) => ({ notes, patterns, locks, factoryPatterns })), seq: p.modules.find((m) => m.type === 'fm1')?.seq });
-const demoButtons = (): HTMLButtonElement[] => [...document.querySelectorAll<HTMLButtonElement>('.pattern-strip .pat-act')].filter((b) => b.textContent === 'demo set');
 
-it('the Steps card’s demo set: only on a patch with one, asks only when it would replace something, one undo step', () => {
-  expect(editorOn(FM1_PRESETS['Meridian 8']()).editor.patch.name).toBe('Meridian 8');
-  expect(demoButtons().every((b) => b.hidden)).toBe(true);
-  const { editor } = editorOn(FM1_PRESETS['808 Kit']());
-  const buttons = demoButtons();
-  expect(buttons.length).toBeGreaterThan(0);
-  expect(buttons.every((b) => !b.hidden)).toBe(true);
-  const shipped = sequence(editor.patch);
-  const was = window.confirm;
-  let asked = 0, answer = false;
-  window.confirm = () => (asked++, answer);
-  try {
-    buttons[0].click();               // (the kit as it ships: nothing to replace, no question)
-    editor.endGesture();
-    expect(asked).toBe(0);
-    expect(sequence(editor.patch)).toEqual(sequence(factoryWithDemoSet('808 Kit')));
-    expect(editor.pattern).toBe(0);
-    const loaded = sequence(editor.patch);
-    editor.patch.modules.find((m) => m.type === 'steps')!.notes = [{ at: 0, len: 1, note: 60, vel: 100 }];
-    const edited = sequence(editor.patch);
-    demoButtons()[0].click();         // (patterns there: asked, and No keeps them)
-    expect(asked).toBe(1);
-    expect(sequence(editor.patch)).toEqual(edited);
-    answer = true;
-    demoButtons()[0].click();
-    editor.endGesture();
-    expect(asked).toBe(2);
-    expect(sequence(editor.patch)).toEqual(loaded);
-    editor.undo();
-    expect(sequence(editor.patch)).toEqual(edited);
-    editor.undo();
-    expect(sequence(editor.patch)).toEqual(shipped);
-    expect(patternsEmpty(editor.patch)).toBe(true);
-  } finally { window.confirm = was; }
-});
-
-it('PATTERN_OP op 3 (the FM-1 loaded the demo set): the right hash loads it once as one undo step; another one only says so', () => {
+it('PATTERN_OP op 3 (retired) changes nothing, says nothing and makes no undo step', () => {
   const { editor, said } = editorOn(FM1_PRESETS['909 Kit']());
-  const set = demoSetFor(editor.patch)!;
   const shipped = sequence(editor.patch);
-  editor.patternOpFromDevice(PATTERN_OP.demoSet, 0, 0, (set.hash + 1) >>> 0);
+  editor.patternOpFromDevice(3, 0, 0);
   editor.endGesture();
-  expect(said).toEqual([DEMO_SET_OUTDATED]);
   expect(sequence(editor.patch)).toEqual(shipped);
-  editor.patternOpFromDevice(PATTERN_OP.demoSet, 0, 0, set.hash);
-  editor.endGesture();
-  expect(sequence(editor.patch)).toEqual(sequence(factoryWithDemoSet('909 Kit')));
-  expect(said).toEqual([DEMO_SET_OUTDATED]);
+  expect(patternsEmpty(editor.patch)).toBe(true);
   editor.undo();
-  expect(sequence(editor.patch)).toEqual(shipped);
-  editor.undo();                      // (the wrong hash made no undo step)
-  expect(said.at(-1)).toBe('nothing to undo');
-  const other = editorOn(FM1_PRESETS['Meridian 8']());
-  const before = sequence(other.editor.patch);
-  other.editor.patternOpFromDevice(PATTERN_OP.demoSet, 0, 0, set.hash);
-  expect(other.said).toEqual([DEMO_SET_OUTDATED]);
-  expect(sequence(other.editor.patch)).toEqual(before);
-  expect(parsePatternOp([3, 0, 0, set.hash & 0xff, (set.hash >>> 8) & 0xff, (set.hash >>> 16) & 0xff, set.hash >>> 24])).toEqual({ op: 3, from: 0, to: 0, hash: set.hash });
+  expect(said).toEqual(['nothing to undo']);
+  expect(parsePatternOp([3, 0, 0, 0, 0, 0, 0])).toEqual({ op: 3, from: 0, to: 0, hash: 0 });
+  expect(Object.values(PATTERN_OP)).not.toContain(3);
 });

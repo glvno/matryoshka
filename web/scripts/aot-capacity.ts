@@ -7,7 +7,7 @@ import { FACTORY } from '../src/assemblies';
 import { insertAssembly, type AssemblyInst } from '../src/assembly';
 import { DEFS } from '../src/modules';
 import { addModule, type Patch } from '../src/patch';
-import { factoryWithDemoSet } from '../src/presets';
+import { factoryWithPatterns } from '../src/presets';
 import { relocatedPatches } from '../src/community-factory';
 import { deviceBudget, encodePatch } from '../src/patchbin';
 import { fixNotes } from '../src/track';
@@ -62,7 +62,7 @@ function save(p: Patch, name: string): void {
   console.log(name, bytes.length, 'bytes', 'over:', budget.over.map((x) => `${x.key} ${x.used}/${x.max}`).join(', ') || 'none');
 }
 for (const voices of [1, 2, 4]) {
-  const p = factoryWithDemoSet('808 Kit');   // (its demo set loaded: DRUMS plays pattern 1 on the left, #1179)
+  const p = factoryWithPatterns('808 Kit');   // (with its 1.24.1 patterns: DRUMS plays pattern 1 on the left)
   const main = p.modules.find((m) => m.type === 'fm1')!;
   const drums = p.modules.find((m) => m.type === 'steps')!;
   p.cables = p.cables.filter((c) => !(c.from.module === main.id && c.to.module === drums.id));

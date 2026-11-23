@@ -9,7 +9,7 @@ import { COUNTED, deviceBudget, encodePatch, FLAG_INPUTS, FLAG_LINKS, FORMAT_LIN
 import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
-import { make, factoryWithDemoSet, FM1_PRESETS, PRESETS, type Build } from '../src/presets';
+import { make, FM1_PRESETS, PRESETS, type Build } from '../src/presets';
 import { relocatedPatches } from '../src/community-factory';
 import { oracleMorph } from '../src/test-morph';
 import { addModule, connect, defaultParams, emptyPatch, fixMatrix, newPatch, paramUnit, setMorphTarget, SOURCES, stepByte, type Patch, type PolyCfg } from '../src/patch';

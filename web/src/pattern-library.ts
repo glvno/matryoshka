@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Library > Patterns (#901): the FM-1's pattern store beside the patch. "This patch" shows the selected pattern and its
 // link: Save writes it over the stored pattern it links (every patch that links it changes), Save as new makes a copy and
-// links that, Upload puts a pattern file into the store. "FM-1" lists the store (read on connect and on entering the
-// section) and, after the user's entries, the read-only factory ones: the patterns the factory patches link (#923) and the
-// demonstration patterns (pattern-store.ts factoryEntries, listed without an FM-1 too): Load copies one into the selected
-// pattern (a user entry into pattern 2..64 is linked, as the FM-1's SEQ page links it), Rename, Delete (asks; one the
-// bank's patches link asks again with how many slots), Download (a pattern file). A loaded pattern whose locks were
-// written for another layout keeps its notes only.
+// links that, Upload puts a pattern file into the store. "FM-1" lists the store's entries (read on connect and on entering
+// the section; nothing without an FM-1): Load copies one into the selected pattern (into pattern 2..64 it is linked, as
+// the FM-1's SEQ page links it), Rename, Delete (asks; one the bank's patches link asks again with how many slots),
+// Download (a pattern file). A loaded pattern whose locks were written for another layout keeps its notes only. The kept
+// copies a bank backup keeps in this browser (bank-backup.ts) go back with Restore kept copies.
 // On an FM-1 that stores every pattern 2..64 (1.26, #1202) sending the patch stores its patterns and SAVE on the FM-1 does
 // the same, and the FM-1 frees an entry no patch links at its next slot write. The library then offers what the FM-1 does
 // (P3 of #1202): Load, Keep a copy and Load file. Save and Save as new are not offered (an entry of their own would be
@@ -17,11 +16,11 @@ import type { DeviceLink } from './device';
 import type { LibrarySection } from './bank';
 import type { Patch } from './patch';
 import { deviceView } from './poly';
-import { engineOf } from './library-presets';
-import { applyPayload, autoName, decodePayload, encodePayload, entryName, factoryEntries, fnv, FNV0, layoutOf, PATTERN_NAME_BYTES, PAYLOAD_MAX, patternFile, readPatternFile, recordBytes, storedName, type LocksLoaded } from './pattern-store';
+import { applyPayload, autoName, decodePayload, encodePayload, entryName, fnv, FNV0, layoutOf, PATTERN_NAME_BYTES, PAYLOAD_MAX, patternFile, readPatternFile, recordBytes, storedName, type LocksLoaded } from './pattern-store';
+import { restoreKept, savedKept } from './bank-backup';
 import { kb } from './patchbin';
 import type { StoredPatternEntry } from './protocol';
-import { patternName, type PatternLink } from './track';
+import { patternName, READ_ONLY_ID, type PatternLink } from './track';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { class?: string } = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -47,10 +46,9 @@ export const LOCKS_LEFT_OUT = 'its P-locks were left out: they were written for 
 
 /** Library > Patterns, built into `root` */
 export function buildPatternsSection(root: HTMLElement, device: DeviceLink, ev: PatternsEvents): LibrarySection {
-  /** the store's entries as last read (user then factory); null: not read since it connected */
+  /** the store's entries as last read; null: not read since it connected */
   let onFm1: StoredPatternEntry[] | null = null;
   let busy = false;
-  const factory = factoryEntries();
   const hereEl = el('div', { class: 'bank-list' });
   const listEl = el('div', { class: 'bank-list' });
   const stateEl = el('span', { class: 'lib-state' });
@@ -63,13 +61,13 @@ export function buildPatternsSection(root: HTMLElement, device: DeviceLink, ev: 
   /** the FM-1 stores every pattern 2..64 (#1202): a pattern is stored by sending the patch, or kept on its own as a kept copy */
   const everyStored = (): boolean => device.patternsStored;
   const readBtn = el('button', { textContent: 'Read again', title: 'Read the FM-1’s pattern store again' });
+  const restore = el('button', { title: 'Put the kept copies a bank backup keeps in this browser back into the FM-1’s pattern store (kept copies on firmware 1.26, plain entries on older firmware); each leaves this browser once stored' });
   const file = el('input', { type: 'file', accept: 'application/json,.json', hidden: true });
 
   const store = (): boolean => device.connected && device.hasPatternStore;
   const ready = (): boolean => store() && !busy && !!onFm1;
+  /** the user's entries (firmware before 1.26 lists its read-only factory ones too, which this list leaves out) */
   const user = (): StoredPatternEntry[] => (onFm1 ?? []).filter((e) => !e.readOnly);
-  /** the factory entries as the FM-1 lists them, else the editor's own (the same, in the same order) */
-  const listed = (): StoredPatternEntry[] => (store() && onFm1 ? onFm1 : factory);
 
   const run = async (what: string, fn: () => Promise<void>): Promise<void> => {
     if (busy) return;
@@ -89,10 +87,9 @@ export function buildPatternsSection(root: HTMLElement, device: DeviceLink, ev: 
     onFm1 = await device.listPatterns();
     status.textContent = '';
   });
-  /** a stored pattern's payload: the factory ones are the editor's own */
+  /** a stored pattern's payload */
   const payloadOf = async (e: StoredPatternEntry): Promise<Uint8Array> => {
-    const own = factory.find((f) => f.id === e.id);
-    const payload = own ? own.payload : await device.getPattern(e.id);
+    const payload = await device.getPattern(e.id);
     if (!payload) throw new Error('the FM-1 has no such pattern any more');
     return payload;
   };
@@ -131,16 +128,16 @@ export function buildPatternsSection(root: HTMLElement, device: DeviceLink, ev: 
       status.textContent = `${patternName(p)} kept on the FM-1 as "${name}": no patch links it, and it stays until you delete it`;
     });
   };
-  /** entry `e` into the selected pattern: a user entry into pattern 2..64 is linked when the pattern comes out as stored
-   *  (a patch with fewer tracks, or locks of another layout, makes a copy instead: a SAVE must not write the loss back) */
+  /** entry `e` into the selected pattern: into pattern 2..64 it is linked when the pattern comes out as stored (a patch with
+   *  fewer tracks, or locks of another layout, makes a copy instead: a SAVE must not write the loss back) */
   const load = (e: StoredPatternEntry): void => void run('Loading the pattern', async () => {
     const p = ev.pattern(), payload = await payloadOf(e);
     // (tried on a copy first: the link goes in with the load, one undo step)
     const trial = structuredClone(ev.patch());
     applyPayload(trial, p, payload);
-    const linked = !e.readOnly && p > 0 && fnv(FNV0, encodePayload(trial, p)) === e.hash;
+    const linked = p > 0 && fnv(FNV0, encodePayload(trial, p)) === e.hash;
     const locks = ev.load(p, payload, linked ? { id: e.id, hash: e.hash } : null);
-    status.textContent = `${patternName(p)} is "${e.name}"${linked ? ', linked to it' : !e.readOnly && p > 0 ? ' (a copy: this patch’s tracks do not hold all of it)' : ''}${locks === 'dropped' ? `; ${LOCKS_LEFT_OUT}` : ''}`;
+    status.textContent = `${patternName(p)} is "${e.name}"${linked ? ', linked to it' : p > 0 ? ' (a copy: this patch’s tracks do not hold all of it)' : ''}${locks === 'dropped' ? `; ${LOCKS_LEFT_OUT}` : ''}`;
   });
   const rename = (e: StoredPatternEntry): void => {
     const to = storedName(window.prompt(`Rename the stored pattern "${e.name}" to:`, e.name) ?? '');
@@ -173,16 +170,16 @@ export function buildPatternsSection(root: HTMLElement, device: DeviceLink, ev: 
     const patch = ev.patch(), p = ev.pattern();
     const links = patch.modules.find((m) => m.type === 'fm1')?.seq?.links ?? {};
     const link = links[p];
-    /** a linked entry: the user's as the FM-1 lists them, a factory one as the editor has it */
-    const named = (id: number): StoredPatternEntry | undefined => user().find((e) => e.id === id) ?? factory.find((e) => e.id === id);
-    const entry = link ? named(link.id) : undefined;
+    /** a linked entry as the FM-1 lists it; a link to a legacy factory pattern (an id from READ_ONLY_ID) by what it is */
+    const named = (id: number): string => user().find((e) => e.id === id)?.name ?? (id >= READ_ONLY_ID ? `factory pattern ${id}` : `stored pattern ${id}`);
+    const entry = link ? user().find((e) => e.id === link.id) : undefined;
     const edited = !!link && fnv(FNV0, encodePayload(patch, p)) !== link.hash;
     hereEl.replaceChildren(el('div', { class: 'bank-row' },
       el('span', { class: 'grow', textContent: patternName(p) }),
-      el('span', { class: 'muted', textContent: !link ? (p ? 'not linked' : 'pattern 1 is the patch’s own') : `linked to ${entry ? `"${entry.name}"` : `stored pattern ${link.id}`}${edited ? (everyStored() ? ' · edited: sending the patch or SAVE on the FM-1 stores it' : entry?.readOnly ? ' · edited: SAVE on the FM-1 stores it as a new pattern' : ' · edited: SAVE on the FM-1 or Save here writes it there') : ''}${onFm1 && store() && !entry ? ' · not on this FM-1' : ''}` }),
+      el('span', { class: 'muted', textContent: !link ? (p ? 'not linked' : 'pattern 1 is the patch’s own') : `linked to ${entry ? `"${entry.name}"` : named(link.id)}${edited ? (everyStored() ? ' · edited: sending the patch or SAVE on the FM-1 stores it' : link.id >= READ_ONLY_ID ? ' · edited: SAVE on the FM-1 stores it as a new pattern' : ' · edited: SAVE on the FM-1 or Save here writes it there') : ''}${onFm1 && store() && !entry ? ' · not on this FM-1' : ''}` }),
     ), ...Object.entries(links).filter(([k]) => Number(k) !== p).map(([k, l]) => el('div', { class: 'bank-row' },
       el('span', { class: 'grow', textContent: patternName(Number(k)) }),
-      el('span', { class: 'muted', textContent: `linked to ${named(l.id)?.name ?? `stored pattern ${l.id}`}` }),
+      el('span', { class: 'muted', textContent: `linked to ${named(l.id)}` }),
     )));
     save.disabled = saveNew.disabled = keep.disabled = !ready();
     upload.disabled = everyStored() ? busy : !ready();
@@ -193,29 +190,28 @@ export function buildPatternsSection(root: HTMLElement, device: DeviceLink, ev: 
     save.title = !store() ? 'Connect an FM-1 whose pattern store is on' : entry ? `Write the selected pattern over "${entry.name}" on the FM-1 (every patch that links it changes; asks first)` : 'Store the selected pattern on the FM-1 (pattern 2..64 is then linked to it)';
     readBtn.hidden = !device.connected;
     readBtn.disabled = busy || !device.hasPatternStore;
-    stateEl.textContent = !device.connected ? 'Not connected · factory patterns' : !device.hasPatternStore ? 'No pattern store' : !onFm1 ? 'Connected · reading…' : `On the FM-1 · ${user().length} pattern${user().length === 1 ? '' : 's'}`;
+    stateEl.textContent = !device.connected ? 'Not connected' : !device.hasPatternStore ? 'No pattern store' : !onFm1 ? 'Connected · reading…' : `On the FM-1 · ${user().length} pattern${user().length === 1 ? '' : 's'}`;
     stateEl.className = `lib-state${ready() || (busy && onFm1) ? ' live' : ''}`;
     const total = device.info?.store?.total;
     roomEl.textContent = store() && onFm1 && total ? `about ${kb(user().reduce((n, e) => n + recordBytes(e.len), 0))} of ${kb(total)} KB used` : '';
+    const kept = savedKept().length;
+    restore.hidden = !kept;
+    restore.disabled = !ready();
+    restore.textContent = `Restore ${kept} kept cop${kept === 1 ? 'y' : 'ies'}`;
     const layout = layoutOf(deviceView(patch, true).patch);
-    listEl.replaceChildren(...listed().map((e) => {
-      const own = e.readOnly ? factory.find((f) => f.id === e.id) : undefined;
-      const kit = own?.kit ?? (own ? engineOf(own.structure ?? '') : '');
+    listEl.replaceChildren(...(store() ? user() : []).map((e) => {
       const linkedAs = Object.entries(links).filter(([, l]) => l.id === e.id).map(([k]) => patternName(Number(k)));
       return el('div', { class: 'bank-row' },
         el('span', { class: 'grow', textContent: e.name }),
-        ...(kit ? [el('span', { class: 'muted', textContent: kit })] : []),
+        ...(e.kept ? [el('span', { class: 'muted', textContent: 'kept', title: 'A kept copy: no patch links it, and the FM-1 keeps it until you delete it' })] : []),
         ...(linkedAs.length ? [el('span', { class: 'muted', textContent: `linked as ${linkedAs.join(', ')}` })] : []),
         el('span', { class: 'muted', textContent: `${e.tracks} track${e.tracks === 1 ? '' : 's'} · ${e.len} B` }),
-        ...(e.readOnly ? [el('span', { class: 'muted', textContent: 'factory', title: own?.kit ? `Read-only: a pattern of the factory ${own.kit}, which links it` : 'Read-only: a factory demonstration pattern' })] : []),
         ...(e.layout ? [el('span', { class: 'muted', textContent: e.layout === layout ? 'locks' : 'locks left out',
           title: e.layout === layout ? 'Its P-locks were written for this patch’s layout: they load too' : 'Its P-locks were written for another patch layout: only its notes load here' })] : []),
-        el('button', { textContent: 'Load', title: `Load it into ${patternName(ev.pattern())}${e.readOnly ? ' (a copy)' : ev.pattern() ? ' and link it' : ' (a copy: pattern 1 is never linked)'}`, disabled: busy || (!e.readOnly && !ready()), onclick: () => load(e) }),
-        ...(e.readOnly ? [] : [
-          el('button', { textContent: 'Rename', title: `rename "${e.name}" on the FM-1`, disabled: !ready(), onclick: () => rename(e) }),
-          el('button', { class: 'delete', textContent: 'Delete', title: `delete "${e.name}" on the FM-1 (asks first)`, disabled: !ready(), onclick: () => remove(e) }),
-        ]),
-        el('button', { textContent: 'Download', title: 'Save it as a pattern file', disabled: busy || (!e.readOnly && !ready()), onclick: () => download(e) }),
+        el('button', { textContent: 'Load', title: `Load it into ${patternName(ev.pattern())}${ev.pattern() ? ' and link it' : ' (a copy: pattern 1 is never linked)'}`, disabled: !ready(), onclick: () => load(e) }),
+        el('button', { textContent: 'Rename', title: `rename "${e.name}" on the FM-1`, disabled: !ready(), onclick: () => rename(e) }),
+        el('button', { class: 'delete', textContent: 'Delete', title: `delete "${e.name}" on the FM-1 (asks first)`, disabled: !ready(), onclick: () => remove(e) }),
+        el('button', { textContent: 'Download', title: 'Save it as a pattern file', disabled: !ready(), onclick: () => download(e) }),
       );
     }));
   };
@@ -242,6 +238,11 @@ export function buildPatternsSection(root: HTMLElement, device: DeviceLink, ev: 
     });
   };
   readBtn.onclick = () => void readDevice();
+  restore.onclick = () => void run('Restoring the kept copies', async () => {
+    const n = await restoreKept(device);
+    onFm1 = await device.listPatterns();
+    status.textContent = `${n} kept cop${n === 1 ? 'y is' : 'ies are'} back on the FM-1`;
+  });
 
   root.append(
     el('div', { class: 'lib-cols' },
@@ -253,8 +254,8 @@ export function buildPatternsSection(root: HTMLElement, device: DeviceLink, ev: 
       ),
       el('section', { class: 'card lib-col', ariaLabel: 'FM-1' },
         el('h2', {}, el('span', { class: 'mtag util', textContent: 'FM-1' }), 'FM-1', stateEl),
-        el('p', { class: 'muted', textContent: 'The FM-1’s pattern store, then the factory patterns (read-only). Load copies one into the selected pattern.' }),
-        el('div', { class: 'toolbar' }, readBtn),
+        el('p', { class: 'muted', textContent: 'The FM-1’s pattern store. Load copies one into the selected pattern.' }),
+        el('div', { class: 'toolbar' }, readBtn, restore),
         listEl,
         roomEl,
         status,

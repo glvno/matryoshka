@@ -229,8 +229,8 @@ export type DeviceEvent =
   /** the running patch's link of pattern `pattern` changed on the FM-1 (PAT_LINK_NOW, #901): the stored id (0 none) and its
    *  payload hash */
   | { kind: 'link'; pattern: number; id: number; hash: number }
-  /** the FM-1's SEQ page ran a pattern command (PATTERN_OP, #1177, #1178, #1179): op 1 pattern `from` copied to `to`, op 2
-   *  everything cleared, op 3 the patch's demo set loaded (`hash`: its record's); the editor runs it on its patch too */
+  /** the FM-1's SEQ page ran a pattern command (PATTERN_OP, #1177, #1178): op 1 pattern `from` copied to `to`, op 2
+   *  everything cleared, op 4 pattern `from` doubled; the editor runs it on its patch too */
   | { kind: 'patternOp'; op: number; from: number; to: number; hash: number }
   /** the running patch's MIDI learn mappings after a learn or a clear on the FM-1 (MAP_NOW, #1067; device-form indices),
    *  with the "also sent" warning of a learn there (null none) */
@@ -577,7 +577,7 @@ export class DeviceLink {
     if (!this.patternsStored) return encodePatch(patch, false, 0, this.bufferAllocation, this.linkStore);
     const known = [...(this.stored ?? [])].flatMap(([id, hash]) => {
       const len = this.storedLen.get(id);
-      return len === undefined ? [] : [{ id, hash, len, layout: 0, tracks: 0, readOnly: false, name: '' }];
+      return len === undefined ? [] : [{ id, hash, len, layout: 0, tracks: 0, readOnly: false, kept: false, name: '' }];
     });
     return encodePatch(withLinks(patch, storePlan(patch, known).links), false, 0, this.bufferAllocation, this.linkStore);
   }
@@ -758,8 +758,8 @@ export class DeviceLink {
     return this.patternsStored ? 'every' : 'assume';
   }
 
-  /** the entries of the FM-1's pattern store, the user's then the read-only factory ones (PATS); it also learns what the
-   *  store holds for linkStore */
+  /** the entries of the FM-1's pattern store (PATS: the user's; firmware before 1.26 lists its read-only factory ones after
+   *  them); it also learns what the store holds for linkStore */
   listPatterns(): Promise<StoredPatternEntry[]> {
     return this.serial(() => this.readPatterns());
   }
@@ -777,7 +777,7 @@ export class DeviceLink {
         const all = got.filter(Boolean);
         if (e.count && all.length < e.count) return void (t = late());
         this.collectingPatterns = null;
-        this.stored = new Map(all.map((x) => [x.id, x.hash]));   // (a factory patch links read-only entries too, #923)
+        this.stored = new Map(all.map((x) => [x.id, x.hash]));   // (a factory patch links read-only entries on firmware before 1.26 too, #923)
         this.storedLen = new Map(all.map((x) => [x.id, x.len]));
         resolve(all);
       };
@@ -796,8 +796,8 @@ export class DeviceLink {
   putPattern(id: number, name: string, payload: Uint8Array, kept = false): Promise<number> {
     return this.serial(async () => {
       let r = await this.putEntry(id, name, payload, kept);
-      // (a 1.26 FM-1 writes over a kept copy only with a kept put, and its list does not say which entries are kept: a
-      // put over an id it calls missing goes again as a kept put, which it refuses the same way for any other id)
+      // (a 1.26 FM-1 writes over a kept copy only with a kept put: a put over an id it calls missing goes again as a kept
+      // put, which it refuses the same way for any other id)
       if (r.status === PAT_MISSING && id && !kept && this.patternsStored) r = await this.putEntry(id, name, payload, true);
       if (r.status !== PAT_OK) throw new Error(`FM-1: ${PAT_STATUS[r.status] ?? `error ${r.status}`}`);
       return r.id;

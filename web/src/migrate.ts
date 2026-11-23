@@ -105,6 +105,9 @@ const LISTS: Record<string, ListRule> = {
   'matryoshka.bank': { id: byName, cap: SLOTS_MAX, what: (n) => plural(n, 'FM-1 bank entry', 'FM-1 bank entries') },
   'matryoshka.bank-over': { id: byName, what: (n) => plural(n, 'browser-only bank patch', 'browser-only bank patches') },
   'matryoshka.tutorial.variations': { id: (e) => String(e.id ?? ''), what: (n) => plural(n, 'tutorial variation') },
+  // the FM-1 bank backup's slots and kept pattern copies (bank-backup.ts): an identical one is not added twice
+  'matryoshka.bank-backup': { id: (e) => `${e.slot}\n${e.name}\n${e.binary}`, body: (e) => `${e.slot}\n${e.name}\n${e.binary}`, what: (n) => plural(n, 'FM-1 bank backup slot') },
+  'matryoshka.kept-patterns': { id: (e) => `${e.name}\n${e.payload}`, what: (n) => plural(n, 'kept pattern copy', 'kept pattern copies') },
 };
 /** the values with a name of their own in the summary; the rest are settings */
 const NAMED: Record<string, string> = { [OPEN_PATCH]: 'the open patch', 'matryoshka.tutorial': 'the tutorial progress' };

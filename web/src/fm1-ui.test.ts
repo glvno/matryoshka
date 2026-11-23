@@ -11,7 +11,7 @@ import { BUTTONS, ENCODERS, Fm1Ui } from './fm1-ui';
 import { encodePatch } from './patchbin';
 import { deviceView } from './poly';
 import { PROFILES } from './fm1-profiles';
-import { factoryWithDemoSet, FM1_PRESETS } from './presets';
+import { factoryWithPatterns, FM1_PRESETS } from './presets';
 import { relocatedPatches } from './community-factory';
 import { DEFS } from './modules';
 import { devicesOf } from './pages';
@@ -298,7 +298,7 @@ describe('the FM-1 UI as WebAssembly', () => {
     const params: number[][] = [];
     const ui = await Fm1Ui.create(bytes, { focus: (d, g) => focus.push([d, g]), param: (m, p, v) => params.push([m, p, v]) });
     const kit = Object.keys(FM1_PRESETS).find((n) => /808/.test(n))!;
-    expect(ui.load(encodePatch(factoryWithDemoSet(kit)), '808 KIT')).toBe(0);   // (with its demo set: the kick's steps, #1179)
+    expect(ui.load(encodePatch(factoryWithPatterns(kit)), '808 KIT')).toBe(0);   // (with its 1.24.1 patterns: the kick's steps)
     ui.tick(10_000);
     expect([ui.focusDevice, ui.focusPage]).toEqual([1, 0]); // the home device (#196): the 808 kit card, after Main (its track inside)
     ui.encoder(ENCODERS.algo, 1);

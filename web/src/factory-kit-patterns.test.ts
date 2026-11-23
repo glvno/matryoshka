@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The factory drum kits' pattern sets (#923, D-829): patterns 2.. of the 808 and 909 Kits linked to read-only entries of
-// the pattern store, factory-store.json current, the patches' binaries carrying the links instead of the notes, and the
-// songs over them. The kits ship without them and load them as their demo sets (#1179): this checks the bank in full, as
-// the demo sets hold it. firmware/test/patlink_test.c loads the same binaries.
+// The pattern sets the 808 and 909 Kits shipped with up to 1.24.1 (#923, D-829), kept in the bank in full as test and
+// measurement material: patterns 2.. linked to the legacy factory patterns (factory-store.json, frozen data: the links
+// name its payloads), the binaries carrying the links instead of the notes, and the songs over them.
 import { describe, expect, it } from 'vitest';
 import STORE from './factory-store.json';
 import { buildSelectedFactoryBank } from './factory-bank';
-import { FACTORY_KITS, KIT_FIRST_ID, KIT_IDS_PER_KIT, gridNotes, kitStoreEntries } from './factory-kit-patterns';
+import { FACTORY_KITS, KIT_FIRST_ID, KIT_IDS_PER_KIT, gridNotes } from './factory-kit-patterns';
 import { DEVICE, deviceBudget, encodePatch, linkPlan } from './patchbin';
-import { decodePayload, fnv, FNV0, hexBytes, PATTERN_NAME_BYTES, storedName } from './pattern-store';
+import { decodePayload, fnv, FNV0, PATTERN_NAME_BYTES, storedName } from './pattern-store';
 import { deviceView } from './poly';
 import { COND_FILL, LINK_ID_MAX, PATTERNS_MAX, READ_ONLY_ID, SONG_LEN_MAX, type StepNote } from './track';
 import SOURCE from '../factory/bank.json';
@@ -17,10 +16,6 @@ const bank = buildSelectedFactoryBank({ full: true });
 const patchOf = (name: string) => bank.find((x) => x.name === name)!.patch;
 
 describe('the factory kits\' linked patterns', () => {
-  it('factory-store.json is what the factory bank links (npx vite-node scripts/gen-presets.ts writes it)', () => {
-    expect(STORE).toEqual(kitStoreEntries(bank).map(({ payload, ...e }) => ({ ...e, payload: hexBytes(payload) })));
-  });
-
   it('gives each kit its own block of read-only ids, one per pattern 2..64, append-only', () => {
     expect(KIT_FIRST_ID).toBe(READ_ONLY_ID);
     expect(FACTORY_KITS.map((k) => k.first)).toEqual(FACTORY_KITS.map((_, i) => KIT_FIRST_ID + i * KIT_IDS_PER_KIT));

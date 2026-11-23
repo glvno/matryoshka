@@ -4,11 +4,11 @@ import { recoveredLines } from './test-buffer-budget';
 import { describe, expect, it } from 'vitest';
 import { chipState, DeviceLink, type DeviceEvent, holdsFactoryLinks, IGNORED_NOW, ignoredFound, linkCandidates, type LinkCandidate, liveSync, notFound, sysexRefused, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, takesTrackCards, transportOf } from './device';
 import { attachMidi } from './input';
-import { factoryEntries } from './pattern-store';
+import { legacyFactoryStore } from './pattern-store';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
 import { deviceBudget, encodePatch, FLAG_PATTERN_ORIGINS, VERSION } from './patchbin';
-import { factoryWithDemoSet, FM1_PRESETS } from './presets';
+import { factoryWithPatterns, FM1_PRESETS } from './presets';
 import { CMD, frame, liveFrame, PADS_CMD, parse } from './protocol';
 import { subtractiveSaw } from './test-patches';
 import { withFxBus } from './fx-bus';
@@ -17,10 +17,10 @@ const names = Object.keys(FM1_PRESETS);
 const a = encodePatch(FM1_PRESETS[names[0]]());
 const b = encodePatch(FM1_PRESETS[names[1]]());
 
-describe('factory pattern links (#923)', () => {
-  it('sends a kit only to an FM-1 whose pattern list has its factory entries, else asks for the update', () => {
-    const kit = factoryWithDemoSet('808 Kit');   // (its demo set links patterns 2.., #1179)
-    const all = new Map(factoryEntries().map((e) => [e.id, e.hash]));
+describe('legacy factory pattern links (#923)', () => {
+  it('sends a patch linking legacy factory patterns to an older FM-1 only when its pattern list has them, else asks for the update', () => {
+    const kit = factoryWithPatterns('808 Kit');   // (as it shipped up to 1.24.1: patterns 2.. linked to the factory ids)
+    const all = legacyFactoryStore();
     expect(holdsFactoryLinks(kit, all)).toBe(true);
     expect(holdsFactoryLinks(kit, 'assume')).toBe(true);
     for (const older of [new Map<number, number>(), 'none', 'unknown'] as const) expect(holdsFactoryLinks(kit, older)).toBe(false);

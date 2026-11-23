@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The factory drum kits' pattern sets (#923, D-829): patterns 2.. of a factory patch kept as read-only entries of the
-// FM-1's pattern store, which the patch links (format 59's links section, D-1015), so a set larger than the patch's
-// 3,840 bytes plays from the patch. Pattern 1 stays the patch's own (its demonstration pattern, D-882); each kit's song
-// chains the set. gen-presets.ts writes the entries into factory-store.json (the editor's copy, pattern-store.ts
-// factoryEntries), export-defs.ts packs them into firmware/src/factory_tier.h (KIT_GROUPS, patlink.c), compiled in with
-// the firmware tier, which both kits belong to (#915).
+// The pattern sets the 808 and 909 Kits shipped with up to 1.24.1 (#923, D-829): patterns 2.. of the patch linked to
+// read-only entries of the FM-1's pattern store (format 59's links section, D-1015), pattern 1 the patch's own (its
+// demonstration pattern, D-882), each kit's song chaining the set. The kits ship without them now (factory-bank.ts
+// UNSHIPPED_PATTERNS, #1202 G8): the bank in full keeps them as test and measurement material only. The entries
+// themselves are frozen data, factory-store.json (the legacy factory patterns a saved patch may still link), which these
+// grids give byte for byte (factory-kit-patterns.test.ts).
 //
-// A kit's entries take ids from its own first id (KIT_IDS_PER_KIT apart, append-only), pattern p (0-based, 1..) at first
-// + p - 1, so a saved patch's links keep their meaning when a later set grows.
+// A kit's entries take ids from its own first id (KIT_IDS_PER_KIT apart), pattern p (0-based, 1..) at first + p - 1.
 //
 // Grids: one row per drum, a character per step: `.` rest, `x` a hit, `X` an accented hit (velocity 127: the 909 Kit's
 // drums that accent on their own), `f` a flam (the 909 Kit: the drum's FLAM row in place of its own row). The 808 Kit
@@ -425,9 +424,6 @@ export function withFill(kit: FactoryKit, plain: readonly StepNote[], fill: Fill
   return out.sort((a, b) => a.at - b.at || a.note - b.note);
 }
 
-/** a kit pattern's stored name: the kit's prefix and the pattern's name */
-export const kitPatternName = (kit: FactoryKit, k: number): string => `${kit.prefix} ${kit.patterns[k].name}`;
-
 /** factory patch `p` (changed in place) with its kit's patterns 2.., songs and links, when it has a kit */
 export function withKitPatterns(p: Patch): Patch {
   const kit = FACTORY_KITS.find((k) => k.patch === p.name);
@@ -441,18 +437,4 @@ export function withKitPatterns(p: Patch): Patch {
   const links = Object.fromEntries(kit.patterns.map((_, k) => [k + 1, { id: kit.first + k, hash: fnv(FNV0, encodePayload(p, k + 1, dev)) }]));
   main.seq = { ...main.seq, songs, links };
   return p;
-}
-
-/** a read-only store entry of a factory patch's pattern: its id, the patch, its stored name and payload */
-export interface KitStoreEntry { id: number; kit: string; name: string; payload: Uint8Array }
-
-/** the factory patches' linked patterns as store entries, in id order (gen-presets.ts writes them into
- *  factory-store.json): each link's payload as the patch has it */
-export function kitStoreEntries(bank: readonly { name: string; patch: Patch }[]): KitStoreEntry[] {
-  return FACTORY_KITS.flatMap((kit) => {
-    const p = bank.find((x) => x.name === kit.patch)?.patch;
-    if (!p) throw new Error(`no factory patch ${kit.patch}`);
-    const dev = deviceView(p, true).patch;
-    return kit.patterns.map((_, k) => ({ id: kit.first + k, kit: kit.patch, name: kitPatternName(kit, k), payload: encodePayload(p, k + 1, dev) }));
-  });
 }

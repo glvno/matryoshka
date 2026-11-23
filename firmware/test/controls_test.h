@@ -28,6 +28,7 @@ typedef struct {
     uint32_t learn;                                     /* MIDI learn (#1067, midi_learn.c learn_live): 0 none, 1 a row, 2 a control */
     uint32_t pal_go, pal_save;                          /* the palette (#1196): palette.c's switches and saves asked (the stubs) */
     int32_t slen;                                       /* the shown track's length (D-838: a double), 0 none */
+    uint32_t br;                                        /* the stored patterns' browser's cursor (#1202 G8), 0 closed */
 } ct_snap_t;
 static int ct_mod;                                      /* the track shown when the gesture began, -1 none */
 static uint32_t ct_pre_dev, ct_pre_pg;                  /* the device page before the Page button's press (ct_page_button) */
@@ -122,6 +123,7 @@ static void ct_take(ct_snap_t *s)
         pt_info_t in;
         uint32_t id = 0, t;
         s->stored = pt_count();
+        s->br = seq_br_at;
         s->store_sum = s->pat_sum = 0x811c9dc5u;
         while (!pt_next(id, &in))
             s->store_sum = ct_fnv(ct_fnv(s->store_sum, id = in.id), in.hash);
@@ -221,8 +223,8 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_PATTERN_COPY: return a->pattern != b->pattern && a->pat_sum == b->pat_sum && a->page == b->page;   /* (the copy
                                                          * selected: the same notes on every track; the page stays) */
     case CE_CLEAR_ALL: return b->notes_n > 0 && a->notes_n == 0 && !a->pattern && !a->song_len && !a->song && a->page == b->page;
-    case CE_DEMO_SET: return (a->notes_n > 0 || a->song_len > 0) && !a->pattern && !a->song && a->page == b->page && a->msg_sum != b->msg_sum;
-                                                        /* (the set's pattern 1 selected, its notes or songs there, no song playing; the page stays) */
+    case CE_PATTERN_BROWSE: return a->page == b->page && ((a->br && !b->br) || (!a->stored && a->msg_sum != b->msg_sum));
+                                                        /* (the browser open on the SEQ page; an empty store: the bar says so) */
     case CE_PALETTE_GO: case CE_PALETTE_SAVE: {         /* (#1196) the switch / the save asked once, the other not; the key
                                                          * played no note, the page stayed */
         int i, note = 0;
@@ -319,7 +321,7 @@ static int ct_load(const char *name)
     return 0;
 }
 /* factory patch `name` as the FM-1 has it (factory.c: the firmware tier and the region), not the panel's fixture graphs:
- * the layout its demo set is found by (#1179) */
+ * the layout and patterns the factory ships */
 static int ct_load_factory(const char *name)
 {
     char n[M1_NAME + 1u];
@@ -516,7 +518,7 @@ static int ct_enter(uint32_t s, uint32_t v)
         later(500);
         return page == PAGE_ENV;
     case HS_DRUM:                                       /* the 808 Kit's DRUMS, 16 and 32 steps; <7PH's drums (two tracks); the
-                                                         * factory 808 Kit (a demo set, #1179) */
+                                                         * factory 808 Kit as it ships */
         if (v == 3u) {
             if (ct_load_factory("808 KIT"))
                 return 0;
@@ -527,8 +529,8 @@ static int ct_enter(uint32_t s, uint32_t v)
             return 0;
         ct_seq(0, v == 1, 0);
         return 1;
-    case HS_ROLL:                                       /* <7PH's melodic track, 16 and 32 steps; the factory Silver Box (a demo
-                                                         * set, #1179) */
+    case HS_ROLL:                                       /* <7PH's melodic track, 16 and 32 steps; the factory Silver Box as it
+                                                         * ships */
         if (v == 3u) {
             if (ct_load_factory("SILVER BOX"))
                 return 0;
@@ -703,7 +705,7 @@ static void ct_drive(const ctl_row_t *r, uint32_t alt, int dir)
     } else if (r->hold != CH_NONE) {
         ct_down(r->hold);
         ct_part(&r->alt[alt], r->how, dir, r->hold);
-        if (r->effect == CE_CLEAR || r->effect == CE_DELETE_ENTRY || r->effect == CE_CLEAR_ALL || r->effect == CE_DEMO_SET)
+        if (r->effect == CE_CLEAR || r->effect == CE_DELETE_ENTRY || r->effect == CE_CLEAR_ALL)
             ct_part(&r->alt[alt], r->how, dir, r->hold);
         ct_up(r->hold);
     } else

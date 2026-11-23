@@ -53,6 +53,9 @@ static PMIG_CASES_H: LazyLock<String> = LazyLock::new(|| crate::repo::text("firm
 /// Released copies of factory patches unlike today's: a firmware-tier patch's, then a factory-region patch's
 /// (web/scripts/legacy-factory.ts, D-887)
 static RELEASED_CASES_H: LazyLock<String> = LazyLock::new(|| crate::repo::text("firmware/test/released_cases.h"));
+/// The factory patches with the patterns 1.25 gave them (PATTERNED_CASES: the 808 and 909 Kits linking the legacy factory
+/// patterns, the others inline)
+static PATTERN_CASES_H: LazyLock<String> = LazyLock::new(|| crate::repo::text("firmware/test/pattern_cases.h"));
 /// The Drum maps' default row names (DRUM_ROW_NAME), which format 64 leaves out of a patch binary
 static DEFS_H: LazyLock<String> = LazyLock::new(|| crate::repo::text("firmware/src/defs.h"));
 
@@ -1278,6 +1281,24 @@ fn bank_with_7ph(app: &[u8], presets: &[(String, Vec<u8>)]) -> Result<(Vec<u8>, 
     Ok((f, slot as u8))
 }
 
+/// Silver Box as 1.25 saved it (pattern_cases.h PATTERNED_CASES: its patterns 2..64 and its song inline) into the bank's
+/// second-to-last sector, as slot "SILVER OLD" after <7PH's (#1202 G8: the boot moves its patterns into the store). Its slot
+fn old_silver_box(f: &mut [u8], presets: &[(String, Vec<u8>)]) -> Result<u8, String> {
+    const AT: usize = 0xCE000; // (free after the factory bank, as bank_with_7ph's 0xCF000)
+    let h = &*PATTERN_CASES_H;
+    let row = h.find("{\"Silver Box\", ").ok_or("pattern_cases.h: no Silver Box in PATTERNED_CASES")?;
+    let arr = h[row + 15..].split(',').next().unwrap_or("").trim().to_string();
+    let def = format!("static const uint8_t {arr}[");
+    let d = &h[h.find(&def).ok_or(format!("pattern_cases.h: {arr}"))?..];
+    let bin: Vec<u8> = d[d.find('{').unwrap() + 1..d.find('}').unwrap()].split(',').filter_map(|t| t.trim().parse::<u8>().ok()).collect();
+    if f[AT..AT + 0x1000].iter().any(|&b| b != 0xff) {
+        return Err("the bank's second-to-last sector is not free after the first boot".into());
+    }
+    let slot = presets.len() as u32 + 1;
+    f[AT..AT + 0x1000].copy_from_slice(&record(slot, 1, "SILVER OLD", &bin, false));
+    Ok(slot as u8)
+}
+
 /// The same piano-roll assertions used by full smoke and the focused normal-firmware probe, on <7PH in slot `gb`.
 fn piano_roll(m: &mut Machine, gb: u8, t: &mut Run) -> Result<(), String> {
     // D-823: all piano keys play outside step record; only REC changes entry mode.
@@ -1371,7 +1392,8 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         t.check("seq: the factory 808 Kit is there", false, String::new());
         return Ok(());
     };
-    let (flash, gb) = bank_with_7ph(app, presets)?;
+    let (mut flash, gb) = bank_with_7ph(app, presets)?;
+    let old = old_silver_box(&mut flash, presets)?;
     let mut m = Machine::boot(app, Some(&flash));
     quick_start(&mut m, 9000)?;
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
@@ -1494,26 +1516,42 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     t.screen(&m, "clear: the page stays after it", "ALGO track");
     m.tap(SEQ, 120, 400)?;
     piano_roll(&mut m, gb, t)?;
-    if let Some(sb) = presets.iter().position(|(n, _)| n == "SILVER BOX") {
-        // patterns and songs (#375): Silver Box ships without them, its demo set loads them (#1179: SEQ held + SEL asks,
-        // SEL again within 3 s loads). PRESET on the SEQ page picks the pattern (stopped: at once; the bar shows it), SEL
-        // tapped opens the SONG page, K4 right plays song 1 (Silver Box's demo), PLAY sounds it, K4 left the pattern again
-        m.midi(&[0xC0, sb as u8], 500)?;
-        t.screen(&m, "song: Silver Box loads", "SILVER BOX");
+    {
+        // the stored patterns' browser and patterns and songs (#375, #1202 G8): Silver Box as 1.25 saved it, its patterns
+        // 2..64 inline, in a slot of its own; the boot moves them into the pattern store ("SILVER OLD P02" ..). On the SEQ
+        // page PRESET picks the pattern (stopped: at once; the bar shows it); SEQ held + SEL lists the stored patterns from
+        // the one the selected pattern links, PRESET moves through them, HOME closes the list, SEL loads the entry shown (the
+        // bar names it); SEL tapped opens the SONG page, K4 right plays song 1, PLAY sounds it, K4 left the pattern again
+        m.midi(&[0xC0, old], 500)?;
+        t.screen(&m, "song: Silver Box as 1.25 saved it loads", "SILVER OLD");
         m.tap(SEQ, 120, 400)?;
         t.screen(&m, "song: the SEQ bar shows pattern 1", "P01");
-        m.key(SEQ, true);
-        m.run_for(200)?;
-        m.tap(SEL, 120, 300)?;
-        t.screen(&m, "demo set: SEQ held + SEL asks first", "LOAD DEMO SET? SEL AGAIN");
-        m.tap(SEL, 120, 300)?;
-        t.screen(&m, "demo set: SEL again loads Silver Box's", "DEMO SET LOADED");
-        m.key(SEQ, false);
-        m.run_for(1500)?;
-        t.screen(&m, "demo set: the SEQ page stays, on pattern 1", "P01");
         m.turn(PRESET, 1, 600)?;
         m.run_for(1200)?;
         t.screen(&m, "song: PRESET on the SEQ page picks pattern 2, at once while stopped", "P02");
+        m.key(SEQ, true);
+        m.run_for(200)?;
+        m.tap(SEL, 120, 300)?;
+        m.key(SEQ, false);
+        m.run_for(800)?;
+        t.screen(&m, "browser: SEQ held + SEL lists the stored patterns, into P02", "LOAD INTO P02");
+        t.screen(&m, "browser: the entries as the store names them (the boot moved them)", "SILVER OLD P02");
+        t.snap(&m, "pattern-browser");
+        m.turn(PRESET, 1, 600)?;
+        t.screen(&m, "browser: PRESET moves the cursor", "SILVER OLD P03");
+        m.tap(HOME, 120, 600)?;
+        t.check("browser: HOME closes it, nothing loaded", !font::on_screen(m.lcd(), "LOAD INTO"), String::new());
+        t.screen(&m, "browser: HOME leaves the SEQ page as it was", "P02");
+        m.key(SEQ, true);
+        m.run_for(200)?;
+        m.tap(SEL, 120, 300)?;
+        m.key(SEQ, false);
+        m.run_for(600)?;
+        m.tap(SEL, 120, 300)?;
+        t.screen(&m, "browser: SEL loads the entry shown (the one P02 links) and names it", "P2: SILVER OLD P02");
+        m.run_for(1500)?;
+        t.check("browser: closed after the load, the SONG page not opened", !font::on_screen(m.lcd(), "LOAD INTO")
+                && !font::on_screen(m.lcd(), "SONG 1"), String::new());
         let mk = m.mark();
         m.tap(PLAY, 120, 1500)?;
         let p = m.peak_since(mk);
@@ -1541,8 +1579,6 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         m.tap(SEL, 120, 400)?;
         t.screen(&m, "song: SEL goes back to the SEQ page", "P01");
         m.tap(SEQ, 120, 400)?;
-    } else {
-        t.check("song: the factory Silver Box is there", false, String::new());
     }
     *emulated += m.ms();
     Ok(())

@@ -15,8 +15,7 @@ import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK
 import { ACCENT_VEL, MICRO_MAX, MICRO_STEPS, RATCHET_MAX, TRACK_NOTES_MAX } from '../src/track';
 import { DRUM_MAP_DEFAULT, DRUM_ROWS, STEPS_HITS } from '../src/modules';
 import { MAX_POLY } from '../src/poly';
-import { factoryWithDemoSet, FM1_PRESETS } from '../src/presets';
-import { DEMO_SET_PATCHES, demoSetRecord, demoSetsSection } from '../src/demo-sets';
+import { FM1_PRESETS } from '../src/presets';
 import { FALLBACK_NAME, fallbackPatch } from '../src/fallback';
 import { factoryPresets, factoryRackPresets } from '../src/factory-presets';
 import { controlsHeader, readmeWithControls } from './controls-h';
@@ -32,7 +31,6 @@ import { releasedFactoryHas } from './released-factory-names';
 import { lzPack, packedListC } from './factory-lz';
 import { patternCasesHeader } from './pattern-vectors';
 import FACTORY_STORE from '../src/factory-store.json';
-import DEMO_ROOM from '../src/demo-set-room.json';
 import { fromHex, storedName } from '../src/pattern-store';
 const FACTORY_PRESETS = [...factoryPresets(), ...factoryRackPresets()];
 
@@ -394,20 +392,16 @@ P.push('static const preset_pattern_t PRESET_PATTERNS[N_PRESET_PATTERNS] = {');
 // from looking like literal hardware addresses to the firmware build safeguard.
 patternDefaults.forEach((p, i) => P.push(`    {${Number.parseInt(p.id, 16)}u, 0x${p.structure}u, "${p.name.toUpperCase()}", FPN_${i}, ${p.notes.length}, ${p.len}, ${p.rate}, ${p.swing}, ${p.dir}, ${toQ16(p.gate)}},`));
 P.push('};', '');
-// the patterns the factory patches link (#923, factory-kit-patterns.ts via factory-store.json): read-only entries of the
-// pattern store, packed in groups (lz_unpack.h), each entry its name (NUL ended), u16 payload length, payload (patlink.c
-// pl_read). A group holds one kit's consecutive entries, as many as unpack into m1_up; a kit whose set is larger takes
-// several groups (the 808 Kit, with its fill-ins' trig conditions, #852). They go into factory_tier.h (compiled in: both
-// kits are firmware-tier patches, #915, so a kit plays its whole set without the factory region), which the host tests
-// read through factory.c
+// the legacy factory patterns (#1202 G8): the 808 Kit's and 909 Kit's patterns that were read-only pattern store entries up
+// to 1.25 (ids from 0xE000, web/src/factory-store.json: frozen data), kept only so a slot that still links one gets it as
+// a user entry (main.c bank_patterns, patlink.c pl_read). Packed in groups (lz_unpack.h), each entry its name (NUL
+// ended), u16 payload length, payload; a group holds one kit's consecutive entries, as many as unpack into m1_up. They go
+// into factory_tier.h (compiled in: the migration needs no factory region), which the host tests read through factory.c
 const KIT_LINES: string[] = [];
 let KIT_PACKED = 0;   // (bytes: the groups packed)
 {
   const kits = [...new Set(FACTORY_STORE.map((e) => e.kit))];
-  for (const kit of kits)
-    if (!FIRMWARE_TIER.some((n) => n.toUpperCase() === kit.toUpperCase()))
-      throw new Error(`${kit} links factory pattern store entries but is not in the firmware tier (web/src/factory-tiers.ts): the firmware compiles only the tier's linked patterns in`);
-  KIT_LINES.push('/* the factory patches\' linked patterns (#923): read-only pattern store entries from id `first`, groups of a kit\'s, packed */');
+  KIT_LINES.push('/* the legacy factory patterns (#1202 G8): ids from `first`, groups of a kit\'s, packed; only to migrate slots that link them */');
   const chunks = kits.flatMap((kit) => {
     const xs = FACTORY_STORE.filter((e) => e.kit === kit);
     if (xs.some((e, k) => e.id !== xs[0].id + k)) throw new Error(`${kit}: its linked patterns' ids are not consecutive`);
@@ -464,21 +458,11 @@ const imagePatches = (indexes: number[]): { name: string; binary: Uint8Array; sl
 const tierPatches = imagePatches(tierIndexes), regionPatches = imagePatches(regionIndexes);
 const tier = buildRegion({
   kind: KIND_TIER, set: setId, version, migrations, released: imageReleased(tierIndexes), copies: imageCopies(tierPatches, releasedCopies),
-  patches: tierPatches, presets: [], patterns: [], demoSets: new Uint8Array(0),
+  patches: tierPatches, presets: [], patterns: [],
 });
-// the demo sets (demo-sets.ts, #1179): only the region carries them (an FM-1 without one says NO DEMO SET). A set's links
-// name the factory patches' patterns the firmware compiles in (KIT_GROUPS above)
-const demoRecords = DEMO_SET_PATCHES.map((name) => demoSetRecord(factoryWithDemoSet(name)));
-for (const name of DEMO_SET_PATCHES) for (const link of Object.values(factoryWithDemoSet(name).modules.find((m) => m.type === 'fm1')?.seq?.links ?? {}))
-  if (!FACTORY_STORE.some((e) => e.id === link.id)) throw new Error(`the demo set of ${name} links ${link.id}, which the firmware does not compile in`);
-for (const r of demoRecords) {   // (the room the editor keeps for each set, patchbin.ts: gen-presets.ts writes it)
-  const layout = String((r[0] | r[1] << 8 | r[2] << 16 | r[3] << 24) >>> 0);
-  if ((DEMO_ROOM as Record<string, number>)[layout] !== (r[24] | r[25] << 8)) throw new Error('src/demo-set-room.json is stale: run scripts/gen-presets.ts');
-}
 const region = buildRegion({
   kind: KIND_REGION, set: setId, version, migrations: new Uint8Array(0), released: imageReleased(regionIndexes),
   copies: imageCopies(regionPatches, releasedCopies), patches: regionPatches, presets: regionPresets, patterns: regionPatterns,
-  demoSets: demoSetsSection(demoRecords),
 });
 writeFileSync(new URL('../public/firmware/matryoshka-factory.bin', import.meta.url), region);
 { // the factory sets the editor can install (factory-content.ts): today's, and the older ones kept for older firmwares
@@ -500,19 +484,19 @@ writeFileSync(new URL('../../firmware/test/factory_region.h', import.meta.url), 
   '   for the host tests: their simulated flash holds it at 0xEA000 (factory.c, #915). */',
   '#pragma once', '#include <stdint.h>',
   `static const uint8_t FACTORY_REGION_IMG[${region.length}] = {${Array.from(region).join(',')}};`, ''].join('\n'));
-{ // what the firmware compiles in: safe mode's fallback patch, the firmware tier and the tier kits' linked patterns
+{ // what the firmware compiles in: safe mode's fallback patch, the firmware tier and the legacy factory patterns
   const fallback = encodePatch(fallbackPatch());
   writeFileSync(new URL('../../firmware/src/factory_tier.h', import.meta.url), [
     '/* SPDX-License-Identifier: GPL-3.0-only */',
     '/* Generated by web/scripts/export-defs.ts. Do not edit. What the firmware keeps of the factory content (#915, factory.c):',
     '   safe mode\'s fallback patch (web/src/fallback.ts) and the firmware tier (web/src/factory-tiers.ts), an image in the',
     `   factory region's layout (web/scripts/factory-region.ts): ${FIRMWARE_TIER.join(', ')}`,
-    '   and the preset migrations; then the patterns the tier\'s kits link (patlink.c KIT_GROUPS, #923). */',
+    '   and the preset migrations; then the legacy factory patterns (patlink.c KIT_GROUPS, #1202 G8). */',
     '#pragma once', '#include <stdint.h>',
     `#define FALLBACK_NAME "${FALLBACK_NAME}"`,
     `static const uint8_t FALLBACK_PATCH[${fallback.length}] = {${Array.from(fallback).join(',')}};`,
     `static const uint8_t FC_TIER[${tier.length}] = {${Array.from(tier).join(',')}};`, ...KIT_LINES].join('\n'));
-  console.log(`firmware tier: ${tier.length} bytes (${tierIndexes.length} patches, ${readHeader(tier)!.copies} released copies, migrations ${migrations.length}) + kit patterns ${KIT_PACKED} bytes; factory region: ${region.length} of ${REGION_SIZE} bytes (${REGION_SIZE - region.length} free; ${regionIndexes.length} patches, ${readHeader(region)!.copies} released copies, ${regionPresets.length} presets, ${regionPatterns.length} patterns)`);
+  console.log(`firmware tier: ${tier.length} bytes (${tierIndexes.length} patches, ${readHeader(tier)!.copies} released copies, migrations ${migrations.length}) + legacy factory patterns ${KIT_PACKED} bytes; factory region: ${region.length} of ${REGION_SIZE} bytes (${REGION_SIZE - region.length} free; ${regionIndexes.length} patches, ${readHeader(region)!.copies} released copies, ${regionPresets.length} presets, ${regionPatterns.length} patterns)`);
 }
 { // the preset migrations' test cases (firmware/test/preset_test.c, tools/emu/src/smoke.rs)
   const initOf = (s: string): number[] | undefined => FACTORY_PRESETS.find((p) => p.structure === s && p.name === 'Init')?.values;

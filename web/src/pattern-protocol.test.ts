@@ -49,7 +49,9 @@ describe('pattern store frames', () => {
   it('reads PAT, PAT_DATA, PAT_STORED and PAT_LINK_NOW', () => {
     const entry = [...u16(2), ...u16(5), ...u16(0x101), ...u16(40), ...u32(0xdeadbeef), ...u32(0x12345678), 3, 1, ...name16('DUB PRESSURE')];
     expect(entry).toHaveLength(34);
-    expect(parsePatEntry({ cmd: CMD.pat, payload: entry })).toEqual({ k: 2, count: 5, entry: { id: 0x101, len: 40, hash: 0xdeadbeef, layout: 0x12345678, tracks: 3, readOnly: true, name: 'DUB PRESSURE' } });
+    expect(parsePatEntry({ cmd: CMD.pat, payload: entry })).toEqual({ k: 2, count: 5, entry: { id: 0x101, len: 40, hash: 0xdeadbeef, layout: 0x12345678, tracks: 3, readOnly: true, kept: false, name: 'DUB PRESSURE' } });
+    // (flags bit 1: a kept copy, #1202 G8)
+    expect(parsePatEntry({ cmd: CMD.pat, payload: entry.map((x, i) => (i === 17 ? 2 : x)) })?.entry).toMatchObject({ readOnly: false, kept: true });
     expect(parsePatEntry({ cmd: CMD.pat, payload: [0, 0, 0, 0] })).toEqual({ k: 0, count: 0, entry: null });
     expect(parsePatEntry({ cmd: CMD.pat, payload: entry.slice(0, 20) })).toBeNull();
     expect(parsePatData({ cmd: CMD.patData, payload: [...u16(3), ...u16(0xffff), 0, 0] })).toEqual({ id: 3, total: null, offset: 0, bytes: [] });

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DRUM_MAP_DEFAULT, drumRowName } from './modules';
 import { deviceBudget } from './patchbin';
-import { EXAMPLE_PRESETS, factoryWithDemoSet, FM1_PRESETS, PRESETS } from './presets';
+import { EXAMPLE_PRESETS, factoryWithPatterns, FM1_PRESETS, PRESETS } from './presets';
 import type { Patch } from './patch';
 import { melodicFactoryNames, selectedFactoryProfile } from './factory-bank';
 
@@ -11,9 +11,9 @@ const SR = 48000;
 const KIT_NOTES = [53, 55, 57, 59, 60, 62, 64, 65]; // the white keys from F3, the FM-1's lowest key at octave 0
 const WHITE = new Set([0, 2, 4, 5, 7, 9, 11]);
 
-/** a kit (with its demo set loaded: its steps, #1179), its Drum map, DRUMS track and Main, and the rows (1..8) with a gate cable */
+/** a kit (with its 1.24.1 patterns: its steps), its Drum map, DRUMS track and Main, and the rows (1..8) with a gate cable */
 function kit(name: string): { p: Patch; rows: number[] } {
-  const p = factoryWithDemoSet(name);
+  const p = factoryWithPatterns(name);
   const map = p.modules.find((m) => m.type === 'drummap')!;
   const rows = [...new Set(p.cables.filter((c) => c.from.module === map.id && /^g\d$/.test(c.from.port)).map((c) => +c.from.port.slice(1)))].sort();
   return { p, rows };

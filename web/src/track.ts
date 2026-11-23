@@ -471,11 +471,11 @@ export interface SeqState {
 }
 /** a pattern's link to a stored pattern: its id (1..LINK_ID_MAX) and payload hash (u32) */
 export interface PatternLink { id: number; hash: number }
-/** the store's first read-only id (one above its user ids, patstore.c PT_ID_MAX): the factory patches' patterns from here
- * (factory-kit-patterns.ts), the factory demonstration patterns at pattern-store.ts FACTORY_ID + index */
+/** the first id above the store's user ids (patstore.c PT_ID_MAX): the legacy factory patterns' ids start here (the 808
+ * Kit's and 909 Kit's patterns, read-only entries up to 1.25; pattern-store.ts resolves an old link to one from
+ * factory-store.json, a 1.26 FM-1 copies them into its store, #1202 G8) */
 export const READ_ONLY_ID = 0xe000;
-/** the highest id a link takes (engine.h ENG_LINK_ID_MAX): the store's user ids and the factory patches' patterns; the
- * factory demonstration patterns are never linked */
+/** the highest id a link takes (engine.h ENG_LINK_ID_MAX): the store's user ids and the legacy factory patterns */
 export const LINK_ID_MAX = 0xefff;
 
 /** pattern p (0-based) as the editor names it: P01 .. P64, or the TB-303's I-A1 .. IV-B8 (four groups of two sections of
