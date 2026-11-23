@@ -7,21 +7,21 @@
 import { insertAssembly, parentOf, toDef, assembliesOf, type AssemblyDef, type AssemblyInst } from './assembly';
 import { applyPreset, presetsFor, userPresets, type Preset } from './device-presets';
 import { cardCosts, cpuEstimate } from './cpu';
-import { addDrawer, catalogEffectDef, drawerOf, drawerOfEffect, EFFECT_CATALOG, effectKind, insertEffect, outputDrawer, ownerOf, type ChainMode, type EffectEntry } from './fx-drawer';
+import { addDrawer, catalogEffectDef, CHAIN_MODE_LABELS, drawerOf, drawerOfEffect, EFFECT_CATALOG, effectKind, insertEffect, outputDrawer, ownerOf, type ChainMode, type EffectEntry } from './fx-drawer';
 import { popMenu } from './menu';
 import { DEFS } from './modules';
 import { newPatch, type Patch } from './patch';
 import { defStructure } from './structure';
 import { DRAG_START_PX } from './patch-drag';
 
-/** what adding an effect puts in: a module type or an assembly definition (insertEffect wraps either for a drawer) */
-export type EffectSource = { type: string } | { def: AssemblyDef };
+/** what adding an effect puts in: a catalog entry's module type or assembly definition (insertEffect wraps either for a drawer) */
+export type EffectSource = EffectEntry['source'];
 
 /** the Library's groups, in display order: how an effect sits in a drawer's stereo chain (fx-drawer.ts ChainMode) */
 export const MODES: readonly { mode: ChainMode; title: string; tag: string; tip: string }[] = [
-  { mode: 'stereo', title: 'Stereo', tag: 'stereo', tip: 'Makes a left and a right side of its own.' },
-  { mode: 'pair', title: 'In line, as an L/R pair', tag: 'L/R pair', tip: 'In a drawer it runs twice, once for each side, with one set of knobs: twice the CPU of one.' },
-  { mode: 'wet', title: 'Wet, added to both sides', tag: 'wet', tip: 'In a drawer it hears a mix of both sides and adds its sound to each; the dry sound stays stereo.' },
+  { mode: 'stereo', title: CHAIN_MODE_LABELS.stereo, tag: 'stereo', tip: 'Makes a left and a right side of its own.' },
+  { mode: 'pair', title: CHAIN_MODE_LABELS.pair, tag: 'L/R pair', tip: 'In a drawer it runs twice, once for each side, with one set of knobs: twice the CPU of one.' },
+  { mode: 'wet', title: CHAIN_MODE_LABELS.wet, tag: 'wet', tip: 'In a drawer it hears a mix of both sides and adds its sound to each; the dry sound stays stereo.' },
 ];
 export const modeOf = (mode: ChainMode): (typeof MODES)[number] => MODES.find((m) => m.mode === mode)!;
 
@@ -55,8 +55,9 @@ const cpus = new Map<EffectEntry, number>();
 export function effectCpu(entry: EffectEntry): number {
   let c = cpus.get(entry);
   if (c === undefined) {
+    // in a scratch patch's Output drawer, so the estimate hears it (cpu.ts counts only modules the Output hears)
     const p = newPatch(DEFS);
-    const a = insertAssembly(p, DEFS, catalogEffectDef(entry), 0, 0);
+    const a = insertEffect(p, addDrawer(p, 'output'), entry.source);
     c = cardCosts(p, cpuEstimate(p)).assemblies.get(a.id)?.share ?? 0;
     cpus.set(entry, c);
   }
@@ -75,7 +76,7 @@ export function effectPresets(list: Preset[] = userPresets(), catalog: readonly 
       const s = entryStructures(entry);
       const i = s.indexOf(preset.structure);
       if (i < 0) continue;
-      out.push({ preset, entry, wrapped: i === 0 && defStructure(catalogEffectDef(entry)) === preset.structure });
+      out.push({ preset, entry, wrapped: i === 0 });
       break;
     }
   }

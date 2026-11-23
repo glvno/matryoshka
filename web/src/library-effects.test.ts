@@ -32,7 +32,7 @@ describe('the Library’s effects', () => {
   it('finds the effect a module type or a factory assembly is, and none for a modulator or an instrument', () => {
     expect(entryOf({ type: 'reverb' })?.mode).toBe('wet');
     expect(entryOf({ type: 'lfo' })).toBeUndefined();
-    expect(entryOf({ def: def('Echo') })?.name).toBe('Echo');
+    expect(entryOf({ def: def('echo') })?.name).toBe('Echo');
     expect(entryOf({ def: def('Hera 4') })).toBeUndefined();
     expect(EFFECT_CATALOG.some((e) => e.name.toLowerCase() === 'master fx')).toBe(false);
   });
@@ -61,7 +61,7 @@ describe('adding to an FX drawer', () => {
     expect(drawerTargets(p)[0].detail).toBe('at the end');
     addToDrawer(p, { type: 'shape' }, hera.id, 0);
     expect(effectsOf(p, drawer).map((a) => a.id)[1]).toBe(effect.id);
-    addToDrawer(p, { def: def('Echo') }, 'output');
+    addToDrawer(p, { def: def('echo') }, 'output');
     expect(effectsOf(p, outputDrawer(p)!)).toHaveLength(1);
     // an instrument with a drawer stays an instrument; drawers and effects never are
     expect(instrumentsOf(p).map((a) => a.id)).toEqual([hera.id]);
@@ -88,17 +88,15 @@ describe('effect presets', () => {
     const a = insertAssembly(p, DEFS, catalogEffectDef(delay), 0, 0);
     expect(entryStructures(delay)[0]).toBe(defStructure(catalogEffectDef(delay)));
     const row = a.params[0];
-    const m = p.modules.find((x) => x.id === row.module)!;
-    const was = m.params[row.param];
-    m.params[row.param] = (was ?? 0) === 0.5 ? 0.25 : 0.5;
+    p.modules.find((x) => x.id === row.module)!.params[row.param] = 333;
     const preset = capturePreset(p, a, 'Slapback');
+    expect(preset.values).toContain(333);
     const listed = effectPresets([preset]);
     expect(listed).toEqual([{ preset, entry: delay, wrapped: true }]);
     const { def: made } = presetSource(listed[0]);
     const q = newPatch(DEFS);
     const b = insertAssembly(q, DEFS, made, 0, 0);
-    const r = b.params[0];
-    expect(q.modules.find((x) => x.id === r.module)!.params[r.param]).toBe(m.params[row.param]);
+    expect(capturePreset(q, b, 'again').values).toEqual(preset.values);
     expect(b.chain).toBeTruthy();
   });
 });
