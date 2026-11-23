@@ -115,6 +115,7 @@ static void eng_overload_clear(void)
     ovl_guard_reset(&ovl_g);
     shed_req = 0;
 }
+#include "pal_fade.h"                            /* the palette's fade and stop on the bar line (#1196) */
 
 void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) */
 {
@@ -122,7 +123,7 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
     uint8_t p = fm1_audio_pending();
     fm1_audio_ack_aux(p);
     if (p & FM1_AUDIO_HALF) {
-        uint32_t half = fm1_audio_free_half(), i, t0 = fm1_ticks(), all, late;
+        uint32_t half = fm1_audio_free_half(), i, t0 = fm1_ticks(), all, late, run;
         int32_t *o = &abuf[half * HALF_WORDS];
         uint8_t fx = usb_fixed;                     /* (read once: the main loop may clear it during the half) */
         bt_in_audio = 1;
@@ -141,10 +142,14 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
             }
         }
         bt_m[BT_M_REND0] = bt_eng[0] = bt_eng[1] = bt_eng[2] = fm1_ticks();   /* (no patch: the engine marks none) */
-        if (eng_run) {
+        run = eng_run;                              /* (this half's: the palette's fade may stop the engine after its
+                                                     * render, and the half still goes out whole, its clock ticks too) */
+        if (run) {
             uint32_t loud = 0;
             eng_render(eng_l, eng_r, HALF_FRAMES);
             bt_m[BT_M_REND1] = fm1_ticks();
+            if (pal_fade_st)                            /* (a switch's few halves: pal_fade.h, in the flash) */
+                pal_fade_half(eng_l, eng_r, HALF_FRAMES);
             /* (the test mode's fixed USB level, fx: USB audio takes the half at it; the analog half is made again below) */
             int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)(fx ? USB_FIXED_Q12 : master_q12) * patch_gain) >> 16);
             UNROLL4                                     /* (engine.c, #803) */
@@ -164,17 +169,17 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
                 o[i] = 0;
         }
         bt_m[BT_M_MIX1] = fm1_ticks();
-        clk_out_block(t0, eng_run);
+        clk_out_block(t0, (int)run);
         bt_m[BT_M_CLK1] = fm1_ticks();
 #if FELUCCA_UAC
         uac_tap(o, HALF_FRAMES);
 #endif
-        if (eng_run && (meq_low | meq_mid | meq_high | meq_fade | fx))
+        if (run && (meq_low | meq_mid | meq_high | meq_fade | fx))
             meq_analog(o, fx);                      /* the master EQ (master_eq.h), or USB audio at the test mode's fixed
                                                      * level: the analog half again at MASTER's; flat and not fixed, no call */
         bt_m[BT_M_TAP1] = fm1_ticks();
         {
-            int clk = eng_run && eng_click_mix(eng_l, eng_r, HALF_FRAMES);   /* a count-in's click (play once's, REC's):
+            int clk = run && eng_click_mix(eng_l, eng_r, HALF_FRAMES);   /* a count-in's click (play once's, REC's):
                                                                               * the analog output only, not USB audio (D-820) */
             if (clk)
                 snd_heard_ms = fm1_ms;
@@ -218,13 +223,13 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         ovl_t_prev = t0;
         if (all / FM1_TICKS_PER_US < ovl_us_min)
             ovl_us_min = all / FM1_TICKS_PER_US;
-        if (eng_run && !st_busy && ovl_guard_step(&ovl_g, all, OVL_HALF_TICKS, late))
+        if (run && !st_busy && ovl_guard_step(&ovl_g, all, OVL_HALF_TICKS, late))
             shed_req = 1;
         eng_us_last = all / FM1_TICKS_PER_US;
         if (eng_us_last > eng_us_max)
             eng_us_max = eng_us_last;
         eng_halves++;
-        bt_block(eng_run);
+        bt_block((int)run);
     }
 }
 extern void isr_alnk0(void);

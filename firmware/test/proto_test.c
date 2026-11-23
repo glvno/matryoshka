@@ -34,6 +34,16 @@ static int m1_store(const uint8_t *p, uint32_t n)
     return 0;
 }
 static int m1_device_settings(const uint8_t *p, uint32_t n, uint8_t *out) { (void)p; (void)n; out[0]=6; return 1; }
+static uint8_t pal_got[64];                                      /* palette.c m1_palette's stand-in: the last PALETTE payload */
+static uint32_t pal_got_n, pal_calls;                            /* (its ops: firmware/test/palette_test.c) */
+static void m1_palette(const uint8_t *d, uint32_t len)
+{
+    uint32_t i;
+    pal_calls++;
+    pal_got_n = len;
+    for (i = 0; i < len && i < sizeof pal_got; i++)
+        pal_got[i] = d[i];
+}
 static uint8_t meq_bytes[4];                                    /* main.c m1_master_eq's stand-in: what the link set */
 static int m1_master_eq(const uint8_t *p, uint32_t n, uint8_t *out)
 {
@@ -243,6 +253,12 @@ static uint32_t m1_fact_write(uint32_t s, uint32_t off, const uint8_t *p, uint32
 static int m1_fact_sum(uint32_t s, uint32_t *crc);
 static int m1_fact_read(uint32_t off, uint8_t *p, uint32_t n);
 static uint32_t m1_fact_commit(const uint8_t *h);
+/* the font area (#602): stand-ins after proto.c keep what the frames carried (font_area_test.c tests font_area.c) */
+static void m1_font_info(uint8_t *p);
+static uint32_t m1_font_begin(void);
+static uint32_t m1_font_write(uint32_t s, uint32_t off, const uint8_t *p, uint32_t n);
+static int m1_font_sum(uint32_t s, uint32_t *crc);
+static uint32_t m1_font_commit(const uint8_t *h);
 #include "../src/proto.c"
 #ifndef PROTO_TEST_FACTORY
 static uint32_t fact_begins, fact_sector, fact_off, fact_n, fact_commits;
@@ -261,6 +277,20 @@ static int m1_fact_sum(uint32_t s, uint32_t *crc) { *crc = 0xBEEFu ^ s; return s
 static int m1_fact_read(uint32_t off, uint8_t *p, uint32_t n) { uint32_t i; for (i = 0; i < n; i++) p[i] = (uint8_t)(off + i); return off < 0x12000u ? 0 : -1; }
 static uint32_t m1_fact_commit(const uint8_t *h) { fact_commits++; memcpy(fact_hdr, h, 64); return h[0] == 'M' ? S_OK : S_CRC; }
 #endif
+static uint32_t font_begins, font_sector, font_off, font_n, font_commits;
+static uint8_t font_data[256], font_hdr[64];
+static void m1_font_info(uint8_t *p) { p[0] = 3u; p[1] = 0x78u; p[2] = 0x56u; p[3] = 0x34u; p[4] = 0x12u; }
+static uint32_t m1_font_begin(void) { font_begins++; return S_OK; }
+static uint32_t m1_font_write(uint32_t s, uint32_t off, const uint8_t *p, uint32_t n)
+{
+    font_sector = s;
+    font_off = off;
+    font_n = n;
+    memcpy(font_data, p, n > 256u ? 256u : n);
+    return n > 256u ? S_RANGE : S_OK;
+}
+static int m1_font_sum(uint32_t s, uint32_t *crc) { *crc = 0xCAFEu ^ s; return s < 10u ? 0 : -1; }
+static uint32_t m1_font_commit(const uint8_t *h) { font_commits++; memcpy(font_hdr, h, 64); return h[0] == 'M' ? S_OK : S_CRC; }
 
 /* the offset of the device pages section (its count byte) in the current patch, 0 if the patch has none */
 static uint32_t m1_devices_at(void)
@@ -1055,6 +1085,14 @@ int main(int argc, char **argv)
         CHECK(n == 26u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
         CHECK(p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION && p[14] == M1_FEATURES4 && p[15] == 64u);
         printf("allocation rule %u advertised with unchanged format range %u..%u\n", p[13], p[7], p[8]);
+        {                                                    /* #1196: feature bit 31 (INFO byte 14 bit 7) and PALETTE (0x1E) goes
+                                                              * to palette.c with its payload (the ops: palette_test.c) */
+            uint8_t g[16] = {0x7D, 0x4D, 0x31, C_PALETTE}, raw[2] = {4, 2};
+            CHECK((p[14] & 0x80u) && C_PALETTE == 0x1Eu && R_PALETTE_NOW == 0x66u && R_PALETTE_ENTRY == 0x67u);
+            CHECK(m1_handle(g, 4u + m1_pack7(raw, 2, g + 4)) == 1 && pal_calls == 1u && pal_got_n == 2u && pal_got[0] == 4u &&
+                  pal_got[1] == 2u && m1_pal_asked == 0u);
+            printf("palette: feature bit 31, PALETTE handed to palette.c\n");
+        }
         return 0;
     }
     if (argc >= 2 && !strcmp(argv[1], "--old"))
@@ -1204,8 +1242,8 @@ int main(int argc, char **argv)
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4 && replies[0][4] == R_INFO && replies[1][4] == R_TEMPO_NOW);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
         CHECK(n == 26u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION && p[14] == M1_FEATURES4);
-        CHECK(!p[20] && !p[21] && !p[22] && !p[23] && !p[24] && (p[25] & M1_FEATURES5) == M1_FEATURES5 && (p[25] & 1u));   /* (bytes 20..24 the font area's, #1203,
-                                                     * none here; byte 25 bit 0: a card holding its track is its device, #1202 K2) */
+        CHECK(p[20] == 3u && p[21] == 0x78u && p[22] == 0x56u && p[23] == 0x34u && p[24] == 0x12u);   /* #602: the font area's flags and id */
+        CHECK((p[25] & M1_FEATURES5) == M1_FEATURES5 && (p[25] & 1u));   /* (byte 25 bit 0: a card holding its track is its device, #1202 K2) */
         { uint32_t j; uint8_t origin[6];
           for (j = 0; j < 2u; j++) {
               CHECK(replies[j + 2u][4] == R_PATTERN_ORIGIN);
@@ -1296,6 +1334,58 @@ int main(int argc, char **argv)
         CHECK(n == 4u && p[2] == S_RANGE);
     }
 #endif
+    /* the font area's command (#602, font_area.c): each op reaches its hook with its fields; the answers' layout */
+    {
+        uint8_t pl[4u + 256u], p[16];
+        uint32_t n, k;
+        pl[0] = 1;
+        nreplies = 0;
+        CHECK(send_frame(C_FONT, pl, 1) == 1 && font_begins == 1 && nreplies == 1 && replies[0][4] == R_ACK);
+        n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
+        CHECK(n == 4u && p[0] == C_FONT && p[1] == 1u && p[2] == S_OK);
+        pl[0] = 2;                                              /* sector 6, offset 0x0200, 256 bytes */
+        pl[1] = 6;
+        pl[2] = 0x00;
+        pl[3] = 0x02;
+        for (k = 0; k < 256u; k++)
+            pl[4u + k] = (uint8_t)(k ^ 0xA5u);
+        nreplies = 0;
+        CHECK(send_frame(C_FONT, pl, 4u + 256u) == 1 && font_sector == 6u && font_off == 0x200u && font_n == 256u &&
+              font_data[255] == (uint8_t)(255u ^ 0xA5u));
+        n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
+        CHECK(nreplies == 1 && n == 4u && p[0] == C_FONT && p[1] == 2u && p[2] == S_OK && p[3] == 6u);
+        nreplies = 0;
+        CHECK(send_frame(C_FONT, pl, 4u) == 1 && font_n == 256u);   /* (no bytes: refused before the hook) */
+        n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
+        CHECK(n == 4u && p[0] == C_FONT && p[1] == 2u && p[2] == S_RANGE);
+        pl[0] = 3;
+        pl[1] = 9;
+        nreplies = 0;
+        CHECK(send_frame(C_FONT, pl, 2) == 1 && nreplies == 1 && replies[0][4] == R_FONT_SUM);
+        n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
+        CHECK(n == 4u && p[0] == 9u && p[1] == 1u && (p[2] | p[3] << 8) == (0xCAFEu ^ 9u));
+        pl[1] = 10;                                             /* (past the area: not ok) */
+        nreplies = 0;
+        CHECK(send_frame(C_FONT, pl, 2) == 1 && nreplies == 1);
+        n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
+        CHECK(n == 4u && p[0] == 10u && p[1] == 0u);
+        memset(pl, 0, sizeof pl);
+        pl[0] = 4;
+        pl[1] = 'M';
+        nreplies = 0;
+        CHECK(send_frame(C_FONT, pl, 65) == 1 && font_commits == 1 && font_hdr[0] == 'M');
+        n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
+        CHECK(n == 4u && p[0] == C_FONT && p[1] == 4u && p[2] == S_OK);
+        nreplies = 0;
+        CHECK(send_frame(C_FONT, pl, 64) == 1 && font_commits == 1);   /* (short: refused before the hook) */
+        n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
+        CHECK(n == 4u && p[1] == 4u && p[2] == S_RANGE);
+        pl[0] = 9;                                              /* (no such op) */
+        nreplies = 0;
+        CHECK(send_frame(C_FONT, pl, 1) == 1 && nreplies == 1);
+        n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
+        CHECK(n == 4u && p[1] == 9u && p[2] == S_RANGE);
+    }
     /* ARMS (#191, feature bit 20): the editor's armed set, u32 LE words, as the FM-1's own; no reply, no ARMS_NOW. Two words
      * from an editor before feature bit 21, ENG_MSET_WORDS from one after (#721: modules 0..127) */
     {

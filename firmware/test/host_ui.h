@@ -141,6 +141,7 @@ static void lcd_line_out_raw(uint32_t x, uint32_t y, uint32_t w)   /* lcd.c's */
 /* Stable graph fixtures for panel regressions; retain the actual ROM preset/pattern tables. */
 #include "../../build/panel-fixtures/panel_bank.h"
 #endif
+#include "../src/palette.h"            /* the palette's index (#1196): ui.c's NEXT bar, pal_ui.c (panel_test, fm1_ui.c) */
 #include "../src/tempo_glo.h"
 #include "factory_host.h"
 /* the preset store (presetstore.c, #194) over 7 sectors of RAM flash (all 0xFF until host_ps_init), the pattern store

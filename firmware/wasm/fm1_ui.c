@@ -147,6 +147,7 @@ static void ui_steps_chord_button(uint32_t track, uint32_t b, int down)
 #define eng_chord_button ui_chord_button
 #define eng_note_on ui_note_on
 #define eng_note_off ui_note_off
+#include "../src/pal_ui.c"                     /* the palette's keys and overview (#1196): pal_request, pal_save below */
 #define PANEL_ALIGN                             /* (panel_align: following an FM-1, its GUIDE_NOW puts the copy back in line) */
 #include "../src/panel.c"
 #undef eng_steps_chord_button
@@ -209,6 +210,18 @@ static void midi_send_play(uint32_t b, uint32_t spp)   /* PLAY's Start / Continu
 static void preset_step(int32_t d) { js_preset(d); }
 static void save_state(void) { js_save(); }
 static void settings_store(void) {}             /* (the quick start is the FM-1's, after power-on: not here) */
+/* the palette (#1196, palette.h): HOME + a black key tapped / held 1 s asks the page to switch to position pos (0..7) /
+ * to save there; the page's palette model answers through fm1w_palette (its switch, its state), as palette.c's PALETTE_NOW */
+WASM_IMPORT("pal_go") void js_pal_go(uint32_t pos);
+WASM_IMPORT("pal_save") void js_pal_save(uint32_t pos);
+static uint32_t pal_request(uint32_t pos, uint32_t *aux)
+{
+    js_pal_go(pos);
+    if (aux)
+        *aux = 0;
+    return 0;
+}
+static void pal_save(uint32_t pos) { js_pal_save(pos); }
 /* a poly group's setting from a device page: into the group record of the running patch, as main.c does on the device
  * (the page hears of it through m1_param_now and sends the edited patch again) */
 #include "../src/poly_edit.h"
@@ -424,5 +437,28 @@ WASM_EXPORT("fm1w_align_buf") uint8_t *fm1w_align_buf(void) { return align_buf; 
 WASM_EXPORT("fm1w_align") void fm1w_align(void)
 {
     panel_align(align_buf);
+    panel_draw();
+}
+
+/* the palette the page shows (#1196): 8 positions of 24 bytes at fm1w_palette_buf, {u8 state (PAL_EMPTY, PAL_OK,
+ * PAL_MISSING), u8 slot, u8 pattern, u8 pad, char name[20] (zero padded)}, taken with the position playing and the one
+ * waiting (PAL_NONE none) by fm1w_palette: the overview and the bar's NEXT: follow */
+#define PAL_BUF_ROW 24u
+static uint8_t pal_buf[PAL_N * PAL_BUF_ROW];
+WASM_EXPORT("fm1w_palette_buf") uint8_t *fm1w_palette_buf(void) { return pal_buf; }
+WASM_EXPORT("fm1w_palette") void fm1w_palette(uint32_t cur, uint32_t next)
+{
+    uint32_t i, k;
+    for (i = 0; i < PAL_N; i++) {
+        const uint8_t *b = pal_buf + i * PAL_BUF_ROW;
+        pal_ix[i].state = b[0] <= PAL_MISSING ? b[0] : PAL_EMPTY;
+        pal_ix[i].slot = b[1];
+        pal_ix[i].pattern = b[2];
+        for (k = 0; k < PAL_NAME; k++)
+            pal_ix[i].name[k] = (char)b[4u + k];
+    }
+    pal_cur = (uint8_t)(cur < PAL_N ? cur : PAL_NONE);
+    pal_next = (uint8_t)(next < PAL_N ? next : PAL_NONE);
+    pal_ui_changed();
     panel_draw();
 }

@@ -222,6 +222,10 @@ Per-part offsets of a poly assembly (detune, drift, brightness, envelope times, 
 
 The status-line indicator that shows the editor's link to the FM-1 (not connected, synced, not synced, patch too big to sync) and opens FM-1 & MIDI.
 
+### Font area
+
+The 10 flash sectors outside the firmware that hold the screen type's larger sizes, from 1.26. The installer writes them after the firmware, and without them the FM-1 shows only its small type ([D-184](firmware-install.md#D-184)).
+
 ### Format 35
 
 The binary patch format that added the PD Osc, Env 8 and Selector modules, the parameters appended to existing modules, and the device page row extras ([D-266](patch-format.md#D-266), [D-267](patch-format.md#D-267)). The current format is `VERSION` in `web/src/patchbin.ts` and `ENG_PATCH_VERSION` in `firmware/src/engine.h`.
@@ -385,6 +389,10 @@ Editor-only data laid over the flat module and cable list (assemblies, layout); 
 ### Page
 
 Four rows of a device's card that K1..K4 turn at once on the FM-1.
+
+### Palette
+
+Up to 8 sounds collected for a project, in order, to switch among them. Each entry is a bank slot, checked by its patch's name, with every device's preset and the selected pattern. The FM-1 keeps one palette; HOME held with a black key switches to an entry or saves to it. It is unrelated to the colour palettes of the screen and the editor.
 
 ### Panel core
 

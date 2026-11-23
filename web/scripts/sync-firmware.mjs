@@ -6,6 +6,9 @@
 //                                         successful one on main (needs `gh`)
 // matryoshka.json gets the product read from the package itself, and the version from the package's sidecar
 // (x.fwsc -> x.json, written by build.py) if there is one, else from firmware/src/modular.c with a warning.
+// The screen font the sidecar names (#602, "font") is copied too: x-font.bin beside the package (for --ci the
+// artifact's matryoshka-font.bin) to public/firmware/matryoshka-font.bin, its id into matryoshka.json as a number;
+// a named font that is missing or another one stops it, as the Install panel would refuse that package.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -59,8 +62,18 @@ try {
 if (!isMatryoshkaProduct(product)) fail(`${src}: identity ${product} is not a Matryoshka package (FM-1_7MMmmpp, or FM-1_7XY before 1.8)`);
 
 const sidecar = src.replace(/\.fwsc$/i, '') + '.json';
-let version;
-if (sidecar !== src && existsSync(sidecar)) version = JSON.parse(readFileSync(sidecar, 'utf8')).version;
+let version, fontHex;
+if (sidecar !== src && existsSync(sidecar)) ({ version, font: fontHex } = JSON.parse(readFileSync(sidecar, 'utf8')));
+let font, fontBytes;
+if (fontHex !== undefined) {
+  font = typeof fontHex === 'number' ? fontHex : Number.parseInt(fontHex, 16);
+  const fontSrc = src.replace(/\.fwsc$/i, '') + '-font.bin';
+  if (!existsSync(fontSrc)) fail(`${sidecar} names screen font ${fontHex}, but ${fontSrc} is missing: the package needs it (tools/build.py writes it beside the package)`);
+  const img = readFileSync(fontSrc);
+  const id = img.length >= 64 && img.toString('latin1', 0, 4) === 'MFN1' ? img.readUInt32LE(12) : null;
+  if (id !== font) fail(`${fontSrc} is ${id === null ? 'not a screen font' : `screen font ${id.toString(16).padStart(8, '0')}`}, but ${sidecar} names ${fontHex}`);
+  fontBytes = img;
+}
 if (typeof version !== 'string') {
   version = /#define FELUCCA_VERSION "([^"]+)"/.exec(readFileSync(join(ROOT, 'firmware/src/modular.c'), 'utf8'))?.[1] ?? '?';
   console.warn(`warning: no version sidecar (${sidecar}); the version is this checkout's firmware/src/modular.c (${version}), which may not be the package's`);
@@ -69,8 +82,9 @@ if (typeof version !== 'string') {
 const dir = new URL('../public/firmware/', import.meta.url);
 mkdirSync(dir, { recursive: true });
 copyFileSync(src, new URL('matryoshka.fwsc', dir));
-writeFileSync(new URL('matryoshka.json', dir), JSON.stringify({ version, product, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') }));
+if (fontBytes) writeFileSync(new URL('matryoshka-font.bin', dir), fontBytes);
+writeFileSync(new URL('matryoshka.json', dir), JSON.stringify({ version, product, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), ...(font === undefined ? {} : { font }) }));
 // the package carries three Apache-2.0 SDK files and GPL-3.0 firmware: ship both licence texts with it
 copyFileSync(join(ROOT, 'LICENSE'), new URL('LICENSE-GPL-3.0.txt', dir));
 copyFileSync(join(ROOT, 'LICENSES/Apache-2.0.txt'), new URL('LICENSE-Apache-2.0.txt', dir));
-console.log(`public/firmware/matryoshka.fwsc: ${version}, ${product}, ${bytes.length} bytes`);
+console.log(`public/firmware/matryoshka.fwsc: ${version}, ${product}, ${bytes.length} bytes${fontBytes ? `; matryoshka-font.bin: font ${fontHex}, ${fontBytes.length} bytes` : ''}`);

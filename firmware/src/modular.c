@@ -62,6 +62,7 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #define SCR_POOL __attribute__((section(".pool")))   /* screen_text.h: the texts on the screen, as text (#291) */
 #include "lcd.c"
 #include "font5x7.c"
+#define FONT_AREA 1          /* the type's larger sizes from the font area, outside the firmware (#602, font_area.c) */
 #include "font_bc.c"
 #define ENG_POOL __attribute__((section(".pool")))
 #define ENG_LOWRAM __attribute__((section(".lowram")))   /* app.ld: the SRAM below the RAM region (#273) */
@@ -144,6 +145,7 @@ static void bt_parts(uint32_t arg)         /* the awake items handed over, per l
 #include "ota_hw.c"
 static int m1_device_settings(const uint8_t *p, uint32_t n, uint8_t *out);
 static int m1_master_eq(const uint8_t *p, uint32_t n, uint8_t *out);   /* main.c: GLO > EQ over the link (#1107) */
+static void m1_palette(const uint8_t *d, uint32_t len);       /* palette.c: the link's PALETTE command (#1196) */
 static int m1_apply(const uint8_t *patch, uint32_t len);       /* main.c: the hooks proto.c needs */
 #define CIN_LOG_RING ((cin_ent_t *)ota_buf.words)   /* clock_in.h: the MIDI clock-in log in ota_stage's 2 KiB (#870) */
 static int m1_store(const uint8_t *patch, uint32_t len);
@@ -184,6 +186,13 @@ static uint32_t m1_fact_write(uint32_t s, uint32_t off, const uint8_t *p, uint32
 static int m1_fact_sum(uint32_t s, uint32_t *crc);
 static int m1_fact_read(uint32_t off, uint8_t *p, uint32_t n);
 static uint32_t m1_fact_commit(const uint8_t *h);
+#include "palette.h"              /* the palette (#1196): palette.c (main.c), pal_ui.c, panel.c, proto.c, ui.c's NEXT bar */
+static void m1_font_info(uint8_t *p);                         /* font_area.c: the font area (#602), the hooks proto.c needs */
+static uint32_t m1_font_begin(void);
+static uint32_t m1_font_write(uint32_t s, uint32_t off, const uint8_t *p, uint32_t n);
+static int m1_font_sum(uint32_t s, uint32_t *crc);
+static uint32_t m1_font_commit(const uint8_t *h);
+static void m1_font_changed(void);                            /* main.c: the font area changed: the screen drawn again */
 #include "tempo_glo.h"            /* the global tempo (D-907): proto.c, menu.c, main.c */
 #include "pad_map.h"              /* the global pad map (#1067): proto.c's PADS, ui.c's FACTORY RESET, midi_learn.c, main.c */
 #include "proto.c"
@@ -195,6 +204,7 @@ _Static_assert(sizeof sx_frame >= 4u + (8u * M1_RX_MAX + 7u) / 7u && sizeof sx_f
 #endif
 #define FC_MEM ENG_NOINIT      /* factory.c: its headers and merged list (fc_scan sets them first) */
 #include "factory.c"           /* the factory content: the firmware tier and the factory region (#915) */
+#include "font_area.c"         /* the type's larger sizes in their own flash sectors (#602) */
 #include "slotstore.c"
 #include "patstore.c"          /* the pattern store in the bank's last 4 sectors (#901; slotstore.c pt_claim hands them over) */
 #include "patlink.c"           /* the pattern store's glue: the payloads, the running patch's links (#901) */
@@ -216,6 +226,7 @@ static uint32_t pages_gen(void) { return m1_gen; }
 #include "seq_ui.c"
 #include "splash.c"
 #include "help_ui.c"         /* the controls sheet and the quick start (#450) */
+#include "pal_ui.c"          /* the palette's overview and its keys' taps (#1196) */
 #define M1_KEYS_NOW          /* panel.c reports its key edges to the editor (main.c m1_keys_now, #549) */
 #include "panel.c"
 #include "main.c"

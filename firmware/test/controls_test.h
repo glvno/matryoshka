@@ -26,6 +26,7 @@ typedef struct {
                                                          * the selected pattern's notes on every track */
     int mlen;
     uint32_t learn;                                     /* MIDI learn (#1067, midi_learn.c learn_live): 0 none, 1 a row, 2 a control */
+    uint32_t pal_go, pal_save;                          /* the palette (#1196): palette.c's switches and saves asked (the stubs) */
     int32_t slen;                                       /* the shown track's length (D-838: a double), 0 none */
 } ct_snap_t;
 static int ct_mod;                                      /* the track shown when the gesture began, -1 none */
@@ -61,6 +62,8 @@ static void ct_take(ct_snap_t *s)
     s->list_step = pg_list_step;
     s->menu_tab = menu_tab;
     s->learn = (uint32_t)learn_live();
+    s->pal_go = (uint32_t)pal_requests;
+    s->pal_save = (uint32_t)pal_saves;
     s->man_top = man_top;
     s->updates = (uint32_t)(host_updates + host_defaults);
     s->cfg_sum = ct_fnv(ct_fnv(ct_fnv(ct_fnv(ct_fnv(ct_fnv(0, cfg.ch), cfg.midi_out), cfg.count_in), cfg.quick), (uint32_t)gt_patch), cfg.clock_in);
@@ -220,6 +223,15 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_CLEAR_ALL: return b->notes_n > 0 && a->notes_n == 0 && !a->pattern && !a->song_len && !a->song && a->page == b->page;
     case CE_DEMO_SET: return (a->notes_n > 0 || a->song_len > 0) && !a->pattern && !a->song && a->page == b->page && a->msg_sum != b->msg_sum;
                                                         /* (the set's pattern 1 selected, its notes or songs there, no song playing; the page stays) */
+    case CE_PALETTE_GO: case CE_PALETTE_SAVE: {         /* (#1196) the switch / the save asked once, the other not; the key
+                                                         * played no note, the page stayed */
+        int i, note = 0;
+        for (i = b->mlen; i < a->mlen; i++)
+            note |= (mlog[i][0] & 0xF0u) == 0x90u;
+        return (e == CE_PALETTE_GO ? a->pal_go == b->pal_go + 1u && a->pal_save == b->pal_save
+                                   : a->pal_save == b->pal_save + 1u && a->pal_go == b->pal_go)
+            && !note && a->page == b->page;
+    }
     case CE_PATTERN_DOUBLE: return b->slen > 0 && a->slen == 2 * b->slen && a->pattern == b->pattern && a->page == b->page
                                    && a->octave == b->octave && a->seq_pg == b->seq_pg;   /* (twice as long; OCT+'s own jobs not done) */
     case CE_DRUM_BANK: return a->bank != b->bank && a->octave == b->octave && a->seq_pg == b->seq_pg && a->page == b->page;
@@ -643,6 +655,8 @@ static void ct_part(const ctl_part_t *p, uint32_t how, int dir, uint32_t hold)
     case CK_BLACK:                                      /* (REC / SEQ held: track 1; else a second row; b:N black key N) */
         k = p->n ? ct_black(p->n - 1) : ct_black(hold == 13u || hold == 11u ? 0 : 1);
         ct_key(k, 1);
+        if (how == CW_HOLD1S)                           /* (HOME + a black key held 1 s: the palette's save) */
+            later(1100);
         ct_key(k, 0);
         break;
     case CK_ANY:
@@ -752,6 +766,14 @@ static int ct_list_named(const char *name)
 static void controls_suite(void)
 {
     uint32_t i, s, t, v, alt, rows = 0, runs = 0, bad = 0;
+    pal_ix_t pal_was[PAL_N];
+    memcpy(pal_was, pal_ix, sizeof pal_was);            /* (#1196: a palette whose every position holds a patch, so HOME + a
+                                                         * black key switches) */
+    for (i = 0; i < PAL_N; i++) {
+        memset(&pal_ix[i], 0, sizeof pal_ix[i]);
+        pal_ix[i].state = PAL_OK;
+        snprintf(pal_ix[i].name, sizeof pal_ix[i].name, "ENTRY %u", (unsigned)i + 1u);
+    }
     for (i = 0; i < CTL_NROWS; i++) {
         const ctl_row_t *r = &CTL_ROW[i];
         for (s = 0; s < HS_COUNT; s++)
@@ -835,4 +857,5 @@ static void controls_suite(void)
     check("the SONG page's two hint lines from the table", ct_enter(HS_SONG, 0) && ct_shows(HINT_SONG_1) && ct_shows(HINT_SONG_2));
     check("every row of the controls table does what it says in each state it works in (web/src/controls.ts)", bad == 0u);
     ct_reset();
+    memcpy(pal_ix, pal_was, sizeof pal_was);
 }

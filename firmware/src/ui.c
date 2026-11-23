@@ -371,6 +371,20 @@ static void header_draw_now(void)
         msg_until = 0;
         return;
     }
+    if (pal_next < PAL_N && !eng_overload && !load_err) {   /* a palette switch waits for the bar line (#1196): NEXT: 3 MONOLITH D,
+                                                 * on every page but sandbox mode's, as the SEQ bar's P03>P04 (the device
+                                                 * page leaves its header band to it: pages_ui.c head_free) */
+        char b[40], *p = put(b, MSG_PAL_NEXT);
+        uint32_t i;
+        *p++ = (char)('1' + pal_next);
+        *p++ = ' ';
+        for (i = 0; i < PAL_NEXT_NAME && pal_ix[pal_next].name[i]; i++)
+            *p++ = pal_ix[pal_next].name[i];
+        *p = 0;
+        bar_text(b, C_ACC);
+        msg_until = 0;
+        return;
+    }
     if (page == 8u && !eng_overload && !load_err) {     /* the SEQ page: the track's name (seq_ui.c PAGE_SEQ) */
         seq_bar();
         msg_until = 0;
@@ -524,7 +538,7 @@ static void screen_idle(void)                   /* redraws in place: every text 
     if (booting)
         return;
     ui_full = 0;                                /* (a patch load's pending full redraw: this is it, not a second one) */
-    if (dev_like() && !sb_on && !eng_overload && !load_err && !ui_yielding)
+    if (dev_like() && !sb_on && !eng_overload && !load_err && pal_next == PAL_NONE && !ui_yielding)
         msg_until = 0;                          /* (the device page draws its header with the rest: pages_draw) */
     else
         header_draw();

@@ -1100,10 +1100,12 @@ static uint16_t mix565(uint16_t a, uint16_t b, uint32_t k)
 /* glyph row r of s (font f) blended in fg onto whatever row[] already holds, from x (row[] is w px wide) */
 static void text_onto(uint16_t *row, uint32_t w, const font_t *f, uint32_t r, const char *s, uint32_t x, uint16_t fg)
 {
+    font_t fb;
     uint32_t px = x;
     int32_t k;
     if (r >= f->h)
         return;
+    f = font_use(f, &fb);                               /* (FONT_S's letters until the font area holds the font: font_bc.c) */
     if (r == 0u)
         scr_pend(x, text_w(f, s, -1), f->h, s, -1);
     for (k = 0; s[k]; k++) {
@@ -1426,8 +1428,8 @@ static void head_draw(int whole)
         head_out(&h, (uint32_t)(a < 0 ? 0 : a), (uint32_t)(b > 240 ? 240 : b));
 }
 
-/* the header's band is the page's (no message, no OVERLOAD or LOAD ERR in it) */
-static int head_free(void) { return !msg_until && !eng_overload && !load_err; }
+/* the header's band is the page's (no message, no OVERLOAD or LOAD ERR, no palette switch waiting: ui.c's NEXT bar) */
+static int head_free(void) { return !msg_until && !eng_overload && !load_err && pal_next == PAL_NONE; }
 
 /* the top bar of page 0, GLO and ENV (ui.c header_draw): the device page's header; ENV's bar */
 static void pages_strip(void)
@@ -2520,7 +2522,7 @@ static void env_draw(int full)
     uint32_t i;
     pages_ensure();
     if (full) {
-        if (!msg_until)
+        if (!msg_until && pal_next == PAL_NONE)
             pages_strip();
         for (i = 0; i < ENV_ROWS; i++)
             list_shown[i] = 0;
@@ -2608,7 +2610,7 @@ static void fx_draw(int full)
         lcd_fill(0, BAR_H, 240, 240u - BAR_H, P_NIGHT);
         for (i = 0; i < 4u; i++)
             fx_shown[i] = fx_params_shown[i] = 0;
-        if (!msg_until)
+        if (!msg_until && pal_next == PAL_NONE)
             pages_strip();
         text_bc(&FONT_S, 6, 218, HINT_FX, P_DIM, P_NIGHT, 228, TA_LEFT);
     }
@@ -2662,6 +2664,342 @@ static uint8_t dp_short;                                /* the entry dp_load loa
 static const int32_t *pr_at = pr_vals;                  /* decoded entry values; no heap or audio-path decompression */
 static uint32_t pr_structure;                           /* identity of the last dp_entry, including scoped factory entries */
 
+/* The patch a preset's values go into (dp_rows, the one row walker: the device's rows, its poly rows, the further
+ * parameters a row also sets, an FX-scoped preset's rack). Either the running patch (pb 0: the engine, m1_cur through
+ * proto.c and the editor told; pg_dev and pg_page describe it, d is the device: a PRESET turn, dp_load), or a patch binary
+ * that is not loaded (the palette's next sound, pal_presets_into, #1196): its own bytes say what it holds (pg_dev still
+ * describes the running patch) and only those bytes change. What such a binary holds after its records, cables and morph
+ * B set (the device pages, the extras) moves when a record grows: their offsets are as at dp_pb_open, ds_at says where
+ * they are now. */
+#include "poly_edit.h"
+typedef struct {
+    uint8_t *pb;                                        /* the binary; 0: the running patch */
+    uint32_t *len, cap, len0;                           /* its length now, its room, its length at dp_pb_open */
+    uint32_t d;                                         /* the running patch's device (pg_dev) */
+    uint32_t bin, structure, rows, nrows;               /* pb's device: its index in the device lists, its structure, its
+                                                         * rows in the extras (offset, count) */
+    uint32_t pages, extras, nmod;                       /* pb's device pages and extras sections (offsets), its modules */
+    int32_t main;                                       /* pb's Main (the first, as eng_load takes it), -1 none */
+    uint8_t type[ENG_MAX_MODULES], grp[ENG_MAX_MODULES];   /* pb's modules: their types, the poly group each is in (its
+                                                         * membership byte: eng_load keeps the shared types out of groups,
+                                                         * only a Part's is asked) */
+    uint8_t nfx, fx_kind[ENG_FX_STAGE_COUNT], fx_dev[ENG_FX_STAGE_COUNT], fx_n[ENG_FX_STAGE_COUNT];
+    uint8_t fx_t[ENG_FX_STAGE_COUNT][ENG_FX_TARGETS_MAX];  /* pb's master FX bus: its stages (eng_fx_*'s) */
+} dp_at_t;
+static const uint8_t *dev_row_more(uint32_t d, uint32_t mod, uint32_t par);
+static int32_t dev_poly_top(uint32_t d, uint32_t mod, uint32_t par);
+
+/* the running patch's device d as the walker's patch */
+static dp_at_t *dp_eng(dp_at_t *s, uint32_t d)
+{
+    s->pb = 0;
+    s->d = d;
+    return s;
+}
+static uint32_t ds_at(const dp_at_t *s, uint32_t o) { return o + *s->len - s->len0; }
+static uint32_t ds_structure(const dp_at_t *s) { return s->pb ? s->structure : pg_dev[s->d].structure; }
+static uint32_t ds_nrows(const dp_at_t *s) { return s->pb ? s->nrows : pg_dev[s->d].nrows; }
+/* the device's row i (canonical order, as a preset holds its values): its module and parameter byte */
+static void ds_row(const dp_at_t *s, uint32_t i, uint32_t *mod, uint32_t *par)
+{
+    const uint8_t *r = s->pb ? s->pb + ds_at(s, s->rows) : pg_dev[s->d].rows;
+    *mod = r[2u * i];
+    *par = r[2u * i + 1u];
+}
+static int ds_type(const dp_at_t *s, uint32_t m) { return !s->pb ? eng_type(m) : m < s->nmod ? (int)s->type[m] : -1; }
+static int ds_row_ok(const dp_at_t *s, uint32_t m, uint32_t par)   /* (row_ok's) */
+{
+    int t;
+    if (!s->pb)
+        return row_ok(m, par);
+    if ((t = ds_type(s, m)) < 0)
+        return 0;
+    if (par & POLY_ROW)
+        return t == T_PART && (par & 0x7Fu) < POLY_FIELDS && s->grp[m] > 0u;
+    return par < DEFS[t].npar;
+}
+/* (eng_tempo_row's: the global tempo, engine.c's, leaves Main's own value as it is, D-907) */
+static int ds_tempo_row(const dp_at_t *s, uint32_t m, uint32_t par)
+{
+    return !s->pb ? eng_tempo_row(m, par) : tempo_glo && s->main >= 0 && m == (uint32_t)s->main && par == FM1_P_TEMPO;
+}
+static uint32_t ds_fx_count(const dp_at_t *s) { return s->pb ? s->nfx : eng_fx_count(); }
+static uint32_t ds_fx_kind(const dp_at_t *s, uint32_t st) { return !s->pb ? eng_fx_kind(st) : st < s->nfx ? s->fx_kind[st] : UINT32_MAX; }
+static uint32_t ds_fx_device(const dp_at_t *s, uint32_t st) { return !s->pb ? eng_fx_device(st) : st < s->nfx ? s->fx_dev[st] : UINT32_MAX; }
+static uint32_t ds_fx_targets(const dp_at_t *s, uint32_t st, const uint8_t **targets)
+{
+    if (!s->pb)
+        return eng_fx_targets(st, targets);
+    if (targets)
+        *targets = st < s->nfx ? s->fx_t[st] : 0;
+    return st < s->nfx ? s->fx_n[st] : 0u;
+}
+static uint32_t ds_ncables(const dp_at_t *s) { return s->pb ? ((uint32_t)s->pb[4] | (uint32_t)s->pb[5] << 8) : (uint32_t)eng_ncables(); }
+/* cable i (< ds_ncables): from module and output, to module and input (eng_cable's; pb's decoded as eng_load does) */
+static void ds_cable(const dp_at_t *s, uint32_t i, uint32_t *f, uint32_t *fp, uint32_t *t, uint32_t *tp)
+{
+    const uint8_t *p = s->pb;
+    uint32_t at, g, n = 0, c;
+    if (!p) {
+        eng_cable(i, f, fp, t, tp);
+        return;
+    }
+    at = eng_records_end(p, *s->len, 0);                /* (the cables follow the records: dp_pb_open checked them) */
+    if (eng_cables_grouped(p)) {                        /* (the counts first: the module they go into) */
+        for (g = 0; g < p[2] && i >= n + (c = p[at + (g >> 1)] >> (4u * (g & 1u)) & 15u); g++)
+            n += c;
+        at += (p[2] + 1u) / 2u + 2u * i;
+        *f = p[at];
+        *t = g;
+        *fp = p[at + 1u] >> 4;
+        *tp = p[at + 1u] & 15u;
+    } else if (eng_cable_bytes(p) == 3u) {
+        at += 3u * i;
+        *f = p[at];
+        *t = p[at + 1u];
+        *fp = p[at + 2u] >> 4;
+        *tp = p[at + 2u] & 15u;
+    } else {
+        at += 4u * i;
+        *f = p[at];
+        *fp = p[at + 1u];
+        *t = p[at + 2u];
+        *tp = p[at + 3u];
+    }
+}
+/* where pb's extras entry of device k starts, 0 none */
+static uint32_t pb_extra(const dp_at_t *s, uint32_t k)
+{
+    const uint8_t *p = s->pb;
+    uint32_t at = ds_at(s, s->extras), i;
+    if (k >= p[at])
+        return 0;
+    for (at++, i = 0; i < k; i++) {
+        at += 6u + p[at + 5u];
+        at += 1u + 2u * p[at];
+        at += 1u + ((p[at] & ENG_MEMBER_RUN) ? 1u : p[at]);
+    }
+    return at;
+}
+static uint32_t pb_dev_structure(const dp_at_t *s, uint32_t k)
+{
+    uint32_t at = pb_extra(s, k);
+    return at ? (uint32_t)rd32(s->pb + at + 1u) : 0u;
+}
+/* pb's page row of its device on module mod's parameter byte par, as pages_build takes the rows (the first PG_ROWS of a
+ * page that row_ok takes): where its extras start (ENG_ROW_MORE), 0 none; *found: it has such a row */
+static uint32_t pb_page_row(const dp_at_t *s, uint32_t mod, uint32_t par, int *found)
+{
+    const uint8_t *p = s->pb;
+    uint32_t len = *s->len, at = ds_at(s, s->pages), n, d, g, r, np, nr;
+    *found = 0;
+    n = p[at++];
+    for (d = 0; d < n && d <= s->bin; d++) {
+        if (p[at] == 0u || p[at] == ENG_DEV_NAMED) {   /* (a plain module: no extras on its rows) */
+            at += p[at] == ENG_DEV_NAMED ? 3u + p[at + 2u] : 2u;
+            continue;
+        }
+        at++;
+        at += 1u + p[at];
+        np = p[at++];
+        for (g = 0; g < np; g++) {
+            uint32_t taken = 0;
+            at += 1u + p[at];
+            nr = p[at + 3u];
+            at += 4u;
+            for (r = 0; r < nr; r++) {
+                uint32_t m = p[at], q = p[at + 1u] & ~ENG_ROW_MORE, xo = (p[at + 1u] & ENG_ROW_MORE) ? at + 3u + p[at + 2u] : 0u;
+                if (taken < PG_ROWS && ds_row_ok(s, m, q)) {
+                    taken++;
+                    if (d == s->bin && m == mod && q == par) {
+                        *found = 1;
+                        return xo;
+                    }
+                }
+                at += 2u;
+                at += 1u + p[at];
+                if (xo)
+                    at = q & POLY_ROW ? at + 1u : eng_row_more_end(p, len, at);   /* (eng_devices_end checked it) */
+            }
+        }
+    }
+    return 0;
+}
+/* the extras (row_more) of the device's row on module mod's parameter par, 0 none */
+static const uint8_t *ds_more(const dp_at_t *s, uint32_t mod, uint32_t par)
+{
+    int found;
+    uint32_t xo;
+    if (!s->pb)
+        return dev_row_more(s->d, mod, par);
+    if (par & POLY_ROW)
+        return 0;
+    xo = pb_page_row(s, mod, par, &found);
+    return xo && xo < *s->len ? s->pb + xo : 0;
+}
+/* the top of the device's poly row on module mod's setting par (dev_poly_top's) */
+static int32_t ds_poly_top(const dp_at_t *s, uint32_t mod, uint32_t par)
+{
+    int found;
+    uint32_t xo, f = par & 0x7Fu;
+    if (!s->pb)
+        return dev_poly_top(s->d, mod, par);
+    xo = pb_page_row(s, mod, par, &found);
+    return found && f == ENG_POLY_PARTS && xo && xo < *s->len && s->pb[xo] ? clampi(s->pb[xo], 1, poly_max(f)) : poly_max(f);
+}
+/* where pb's record of module mod starts, 0 malformed (proto.c m1_record's) */
+static uint32_t pb_record(const dp_at_t *s, uint32_t mod)
+{
+    uint32_t at = eng_records_at(s->pb, *s->len), i;
+    if (!at || mod >= s->pb[2])
+        return 0;
+    for (i = 0; i < mod; i++) {
+        if (!eng_rec_ok(s->pb, *s->len, at))
+            return 0;
+        at += eng_rec_size(s->pb, at);
+    }
+    return eng_rec_ok(s->pb, *s->len, at) ? at : 0;
+}
+/* a value into pb (proto.c m1_patch_param's): a counted record that leaves the parameter out grows to hold it, a B side
+ * keeps its value (D-1005); one that would not fit in the room is left out */
+static void pb_param(dp_at_t *s, uint32_t mod, uint32_t par, int32_t v)
+{
+    uint8_t *p = s->pb;
+    uint32_t at = pb_record(s, mod);
+    if (ds_tempo_row(s, mod, par) || !at || DEF_FIXED(p[at] & 0x7Fu, par))
+        return;
+    if (par >= eng_rec_npar(p, at) && (p[1] < ENG_COUNTED || eng_rec_grow(p, s->len, s->cap, mod, par + 1u)))
+        return;
+    if (eng_b_keep(p, s->len, s->cap, mod, par))
+        return;
+    at += eng_rec_head(p[1]) + 4u * par;
+    p[at] = (uint8_t)v;
+    p[at + 1u] = (uint8_t)((uint32_t)v >> 8);
+    p[at + 2u] = (uint8_t)((uint32_t)v >> 16);
+    p[at + 3u] = (uint8_t)((uint32_t)v >> 24);
+}
+static void pb_bypass(dp_at_t *s, uint32_t mod, int on)   /* (proto.c m1_patch_bypass's) */
+{
+    uint32_t at = pb_record(s, mod);
+    if (at)
+        s->pb[at] = (uint8_t)(on ? s->pb[at] | 0x80u : s->pb[at] & 0x7Fu);
+}
+/* the further parameters the device's row on module mod's parameter par also sets (#357) take its value, in pb (more_set's,
+ * dp_more_set's) */
+static void pb_more(dp_at_t *s, uint32_t mod, uint32_t par, int32_t v)
+{
+    const uint8_t *x;
+    uint32_t i;
+    for (i = 0; (x = ds_more(s, mod, par)) && i < x[0]; i++) {   /* (found again each time: a grown record moved them) */
+        uint32_t m = x[1u + 2u * i], p = x[2u + 2u * i];
+        if (!ds_row_ok(s, m, p) || (p & POLY_ROW))
+            continue;
+        pb_param(s, m, p, clampi(v, DEFS[s->type[m]].pmin[p], DEF_TOP(&DEFS[s->type[m]], p)));
+    }
+}
+/* pb's device's preset name is name, in any case, over the first 12 characters (the binary keeps 12) */
+static int pb_named(const dp_at_t *s, const char *name)
+{
+    const uint8_t *p = s->pb;
+    uint32_t at = pb_extra(s, s->bin), nl = p[at + 5u], i;
+    for (i = 0; i < 12u; i++) {
+        uint32_t a = i < nl ? p[at + 6u + i] : 0u, b = (uint8_t)name[i];
+        if (a >= 'a' && a <= 'z')
+            a -= 32u;
+        if (b >= 'a' && b <= 'z')
+            b -= 32u;
+        if (a != b)
+            return 0;
+        if (!a)
+            break;
+    }
+    return 1;
+}
+/* the preset's name into pb's device extras (proto.c m1_preset_name's: 12 characters, the editor's NAME_MAX); what follows
+ * moves; a name that would not fit is left out */
+static void pb_name(dp_at_t *s, const char *name)
+{
+    uint8_t *p = s->pb;
+    uint32_t at = pb_extra(s, s->bin), len = *s->len, n = 0, old, j;
+    if (!at)
+        return;
+    while (name[n] && n < 12u)
+        n++;
+    old = p[at + 5u];
+    if (len + n > s->cap + old)
+        return;
+    p[at + 5u] = (uint8_t)n;
+    at += 6u;
+    if (n > old)
+        for (j = len; j-- > at + old;)
+            p[j + n - old] = p[j];
+    else if (n < old)
+        for (j = at + old; j < len; j++)
+            p[j - (old - n)] = p[j];
+    *s->len = len + n - old;
+    for (j = 0; j < n; j++)
+        p[at + j] = (uint8_t)name[j];
+}
+/* s: binary buf (*len bytes, room for cap) and its device of this structure: the one at index dev in its device lists
+ * when it has that structure, else the first that has. 0; -1 malformed, or no such device */
+static int dp_pb_open(dp_at_t *s, uint8_t *buf, uint32_t *len, uint32_t cap, uint32_t dev, uint32_t structure)
+{
+    uint32_t n = *len, at, i, k;
+    s->pb = buf;
+    s->len = len;
+    s->cap = cap;
+    s->len0 = n;
+    s->nfx = 0;
+    s->main = -1;
+    if (n < 8u || n > cap || buf[2] > ENG_MAX_MODULES || !(at = eng_records_at(buf, n)))
+        return -1;
+    s->nmod = buf[2];
+    for (i = 0; i < s->nmod; i++) {
+        s->grp[i] = buf[3] ? buf[8u + ENG_GROUP_REC * buf[3] + i] : 0u;   /* (eng_records_at: the membership bytes are there) */
+        if (!eng_rec_ok(buf, n, at) || s->grp[i] > buf[3])
+            return -1;
+        s->type[i] = buf[at] & 0x7Fu;
+        if (s->type[i] == T_FM1 && s->main < 0)
+            s->main = (int32_t)i;
+        at += eng_rec_size(buf, at);
+    }
+    if (at > n || !eng_cables_to(buf, n, at) || !(s->pages = pages_at(buf, n)) || !eng_devices_end(buf, n, s->pages)
+        || !(buf[7] & ENG_FLAG_EXTRAS) || !(s->extras = eng_section_at(buf, n, ENG_SEC_EXTRAS)) || s->extras >= n
+        || !eng_extras_end(buf, n, s->extras) || !(at = eng_section_at(buf, n, ENG_SEC_BUTTONS)) || at > n)
+        return -1;
+    if (buf[7] & (ENG_FLAG_FX_BUS >> 8)) {
+        const uint8_t *q;
+        at = eng_section_at(buf, n, ENG_SEC_FX);
+        if (!at || at > n || !eng_skip_fx(buf + at, buf + n, (uint16_t)((uint32_t)buf[6] | (uint32_t)buf[7] << 8)))
+            return -1;
+        q = buf + at;
+        s->nfx = *q++;                                  /* (eng_skip_fx: at most ENG_FX_STAGE_COUNT, each of at most
+                                                         * ENG_FX_TARGETS_MAX targets) */
+        for (i = 0; i < s->nfx; i++) {
+            s->fx_kind[i] = q[0];
+            s->fx_dev[i] = q[1];
+            s->fx_n[i] = q[3];
+            for (k = 0; k < q[3]; k++)
+                if ((s->fx_t[i][k] = q[4u + k]) >= s->nmod)
+                    return -1;
+            q += 4u + q[3];
+        }
+    }
+    for (k = 0; k < buf[s->extras] && pb_dev_structure(s, k) != structure; k++)
+        ;
+    if (dev < buf[s->extras] && pb_dev_structure(s, dev) == structure)
+        k = dev;
+    if (!structure || k >= buf[s->extras])
+        return -1;
+    s->bin = k;
+    s->structure = structure;
+    at = pb_extra(s, k);
+    at += 6u + buf[at + 5u];
+    s->nrows = buf[at];
+    s->rows = at + 1u;
+    return 0;
+}
+
 /* FXP1 hashes binary bytes, not printed hex. Footer words are signed whole Q16 numbers. */
 static uint32_t dp_fx_hash(uint32_t base, uint32_t mask)
 {
@@ -2673,23 +3011,32 @@ static uint32_t dp_fx_hash(uint32_t base, uint32_t mask)
 }
 
 /* Only the sole non-master structure-bearing device owns the graph-recognized rack. */
-static uint32_t dp_fx_mask(uint32_t d)
+static uint32_t ds_fx_mask(const dp_at_t *s)
 {
-    uint32_t i, bus, owner = PG_DEVS, mask = 0;
-    if (d >= pg_ndev || !pg_dev[d].structure || !eng_fx_count()) return 0;
-    bus = eng_fx_device(0);
-    for (i = 0; i < pg_ndev; i++)
-        if (pg_dev[i].structure && pg_dev[i].bin != bus) {
-            if (owner != PG_DEVS) return 0;
-            owner = i;
+    uint32_t i, n, bus, self, owner = UINT32_MAX, mask = 0;
+    if ((!s->pb && s->d >= pg_ndev) || !ds_structure(s) || !ds_fx_count(s)) return 0;
+    bus = ds_fx_device(s, 0);
+    self = s->pb ? s->bin : pg_dev[s->d].bin;
+    n = s->pb ? s->pb[ds_at(s, s->extras)] : pg_ndev;
+    for (i = 0; i < n; i++) {
+        uint32_t bin = s->pb ? i : pg_dev[i].bin;
+        if ((s->pb ? pb_dev_structure(s, i) : pg_dev[i].structure) && bin != bus) {
+            if (owner != UINT32_MAX) return 0;
+            owner = bin;
         }
-    if (owner != d) return 0;
-    for (i = 0; i < eng_fx_count(); i++) {
-        uint32_t kind = eng_fx_kind(i);
-        if (kind >= 4u || eng_fx_device(i) != bus || (mask & (1u << kind))) return 0;
+    }
+    if (owner != self) return 0;
+    for (i = 0; i < ds_fx_count(s); i++) {
+        uint32_t kind = ds_fx_kind(s, i);
+        if (kind >= 4u || ds_fx_device(s, i) != bus || (mask & (1u << kind))) return 0;
         mask |= 1u << kind;
     }
     return mask;
+}
+static uint32_t dp_fx_mask(uint32_t d)
+{
+    dp_at_t s;
+    return ds_fx_mask(dp_eng(&s, d));
 }
 
 static uint32_t dp_structure(uint32_t d)
@@ -2713,32 +3060,37 @@ static uint32_t dp_fx_size(uint32_t mask)
     return n;
 }
 
+static uint32_t ds_fx_stage(const dp_at_t *s, uint32_t kind)
+{
+    uint32_t st;
+    for (st = 0; st < ds_fx_count(s); st++) if (ds_fx_kind(s, st) == kind) return st;
+    return UINT32_MAX;
+}
 static uint32_t dp_fx_stage(uint32_t kind)
 {
-    uint32_t s;
-    for (s = 0; s < eng_fx_count(); s++) if (eng_fx_kind(s) == kind) return s;
-    return UINT32_MAX;
+    dp_at_t s;
+    return ds_fx_stage(dp_eng(&s, 0), kind);
 }
 
 /* Actual graph bindings, independent of labels, pagination, and row order. The reverb mix is
  * the Macro on the wet return's B input, never the wet-only kernel's mix parameter. */
-static int dp_fx_binding(uint32_t stage, uint32_t control, uint32_t target, uint32_t *mod, uint32_t *par)
+static int ds_fx_binding(const dp_at_t *s, uint32_t stage, uint32_t control, uint32_t target, uint32_t *mod, uint32_t *par)
 {
     const uint8_t *targets;
-    uint32_t n = eng_fx_targets(stage, &targets), kind = eng_fx_kind(stage), i, j;
+    uint32_t n = ds_fx_targets(s, stage, &targets), kind = ds_fx_kind(s, stage), i, j;
     if (kind >= 4u || control >= DP_FX_N[kind] || target >= n) return 0;
     *mod = targets[target];
     *par = DP_FX_PAR[kind][control];
     if (kind == ENG_FX_REVERB && control == 2u) {
         uint32_t mix = UINT32_MAX;
-        for (i = 0; i < (uint32_t)eng_ncables(); i++) {
+        for (i = 0; i < ds_ncables(s); i++) {
             uint32_t f, fp, t, tp;
-            eng_cable(i, &f, &fp, &t, &tp);
-            if (f != targets[0] || fp != REVERB_O_OUT || eng_type(t) != T_MATH || tp != MATH_I_A) continue;
-            for (j = 0; j < (uint32_t)eng_ncables(); j++) {
+            ds_cable(s, i, &f, &fp, &t, &tp);
+            if (f != targets[0] || fp != REVERB_O_OUT || ds_type(s, t) != T_MATH || tp != MATH_I_A) continue;
+            for (j = 0; j < ds_ncables(s); j++) {
                 uint32_t a, ap, b, bp;
-                eng_cable(j, &a, &ap, &b, &bp);
-                if (b == t && bp == MATH_I_B && eng_type(a) == T_MACRO && ap == MACRO_O_OUT) {
+                ds_cable(s, j, &a, &ap, &b, &bp);
+                if (b == t && bp == MATH_I_B && ds_type(s, a) == T_MACRO && ap == MACRO_O_OUT) {
                     if (mix != UINT32_MAX && mix != a) return 0;
                     mix = a;
                 }
@@ -2748,44 +3100,54 @@ static int dp_fx_binding(uint32_t stage, uint32_t control, uint32_t target, uint
         *mod = mix;
         *par = MACRO_P_VALUE;
     }
-    return row_ok(*mod, *par);
+    return ds_row_ok(s, *mod, *par);
+}
+static int dp_fx_binding(uint32_t stage, uint32_t control, uint32_t target, uint32_t *mod, uint32_t *par)
+{
+    dp_at_t s;
+    return ds_fx_binding(dp_eng(&s, 0), stage, control, target, mod, par);
 }
 
 /* Validate the entire envelope and all bindings before touching synth, pattern, or rack state.
  * A scoped key without a valid tail is never treated as a shortened legacy preset. */
-static int dp_validate(uint32_t d, int n)
+static int ds_check(const dp_at_t *s, int n)
 {
-    uint32_t mask, base = pg_dev[d].structure, at, kind, c, t, m, p;
+    uint32_t mask, base = ds_structure(s), nrows = ds_nrows(s), at, kind, c, t, m, p;
     if (n <= 0) return 0;
     if (pr_structure == base) return 1;
-    mask = dp_fx_mask(d);
+    mask = ds_fx_mask(s);
     if (!mask || pr_structure != dp_fx_hash(base, mask) || (uint32_t)n > PS_MAXV ||
-        (uint32_t)n != pg_dev[d].nrows + dp_fx_size(mask)) return 0;
+        (uint32_t)n != nrows + dp_fx_size(mask)) return 0;
     at = (uint32_t)n - 4u;
     if (pr_at[at] != (int32_t)(int16_t)base * 65536 ||
         pr_at[at + 1u] != (int32_t)(int16_t)(base >> 16) * 65536 ||
         pr_at[at + 2u] != (int32_t)mask * 65536 || pr_at[at + 3u] != 23118 * 65536) return 0;
-    for (at = 0; at < pg_dev[d].nrows; at++) {
-        m = pg_dev[d].rows[2u * at]; p = pg_dev[d].rows[2u * at + 1u];
+    for (at = 0; at < nrows; at++) {
+        ds_row(s, at, &m, &p);
         if (m == 0xFFu) continue;
-        if (!row_ok(m, p)) return 0;
+        if (!ds_row_ok(s, m, p)) return 0;
         if (p & POLY_ROW) {
             if (pr_at[at] % 65536 || pr_at[at] < ((p & 0x7Fu) == ENG_POLY_PARTS ? 65536 : 0) ||
                 pr_at[at] / 65536 > poly_max(p & 0x7Fu)) return 0;
-        } else if (pr_at[at] < DEFS[eng_type(m)].pmin[p] || pr_at[at] > DEF_TOP(&DEFS[eng_type(m)], p)) return 0;
+        } else if (pr_at[at] < DEFS[ds_type(s, m)].pmin[p] || pr_at[at] > DEF_TOP(&DEFS[ds_type(s, m)], p)) return 0;
     }
     for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind)) {
-        uint32_t stage = dp_fx_stage(kind), count = eng_fx_targets(stage, 0);
+        uint32_t stage = ds_fx_stage(s, kind), count = ds_fx_targets(s, stage, 0);
         if (!count || (pr_at[at] != 0 && pr_at[at] != 65536)) return 0;
         at++;
         for (c = 0; c < DP_FX_N[kind]; c++, at++)
             for (t = 0; t < count; t++) {
-                if (!dp_fx_binding(stage, c, t, &m, &p) ||
-                    pr_at[at] < DEFS[eng_type(m)].pmin[p] || pr_at[at] > DEF_TOP(&DEFS[eng_type(m)], p) ||
+                if (!ds_fx_binding(s, stage, c, t, &m, &p) ||
+                    pr_at[at] < DEFS[ds_type(s, m)].pmin[p] || pr_at[at] > DEF_TOP(&DEFS[ds_type(s, m)], p) ||
                     (kind == ENG_FX_REVERB && c == 2u && (pr_at[at] < 0 || pr_at[at] > 65536))) return 0;
             }
     }
     return 1;
+}
+static int dp_validate(uint32_t d, int n)
+{
+    dp_at_t s;
+    return ds_check(dp_eng(&s, d), n);
 }
 
 /* Prefer the authored factory bank for this exact rack, falling back to base factory sounds.
@@ -2839,8 +3201,6 @@ static int32_t dp_row_value(uint32_t d, uint32_t i)
     uint32_t mod = pg_dev[d].rows[2u * i], par = pg_dev[d].rows[2u * i + 1u];
     return mod == 0xFFu ? 0 : (par & POLY_ROW) ? (row_ok(mod, par) ? poly_value(mod, par & 0x7Fu) << 16 : 0) : eng_get_param(mod, par);
 }
-
-static int32_t dev_poly_top(uint32_t d, uint32_t mod, uint32_t par);
 
 /* whether loading entry e (its values at pr_at, n of them) would leave device d as it is: each row dp_load
  * sets holds the entry's value already (a poly row at its whole number); rows past a shorter entry are kept by a load,
@@ -3133,32 +3493,91 @@ static int dp_prepare_poly(uint32_t d)
     return 1;
 }
 
-static void dp_fx_apply(uint32_t d)
+/* an FX-scoped preset's rack (its values after the device's rows at pr_at, ds_check passed) into the patch s */
+static void ds_fx_apply(dp_at_t *s)
 {
-    uint32_t mask = dp_fx_mask(d), kind, c, t, m = 0, p = 0, at = pg_dev[d].nrows;
+    uint32_t mask = ds_fx_mask(s), kind, c, t, m = 0, p = 0, at = ds_nrows(s);
     uint8_t on[4] = {0};
     for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind)) {
-        uint32_t stage = dp_fx_stage(kind);
+        uint32_t stage = ds_fx_stage(s, kind);
         on[kind] = pr_at[at++] != 0;
         for (c = 0; c < DP_FX_N[kind]; c++, at++)
-            for (t = 0; t < eng_fx_targets(stage, 0); t++) {
-                (void)dp_fx_binding(stage, c, t, &m, &p); /* fully checked before any writes */
-                (void)dp_param_set(m, p, pr_at[at]);
+            for (t = 0; t < ds_fx_targets(s, stage, 0); t++) {
+                (void)ds_fx_binding(s, stage, c, t, &m, &p); /* fully checked before any writes */
+                if (s->pb)
+                    pb_param(s, m, p, pr_at[at]);
+                else
+                    (void)dp_param_set(m, p, pr_at[at]);
             }
     }
-    for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind))
-        eng_fx_set(dp_fx_stage(kind), on[kind]);
+    if (!s->pb)
+        for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind))
+            eng_fx_set(dp_fx_stage(kind), on[kind]);
     /* As on the panel, write target desired bypass, never the processing tail. PARAM_NOW
      * 0xFF is Q16 bypass; the editor applies it to the coherent recognized stage. Helpers retain
      * their compiler-normalized native state and their own editable-graph representation. */
     for (kind = 0; kind < 4u; kind++) if (mask & (1u << kind)) {
         const uint8_t *targets;
-        uint32_t count = eng_fx_targets(dp_fx_stage(kind), &targets);
+        uint32_t count = ds_fx_targets(s, ds_fx_stage(s, kind), &targets);
         for (t = 0; t < count; t++) {
+            if (s->pb) {
+                pb_bypass(s, targets[t], !on[kind]);
+                continue;
+            }
             m1_patch_bypass(targets[t], !on[kind]);
             m1_param_now(targets[t], 0xFFu, on[kind] ? 0 : 65536);
         }
     }
+}
+
+/* the row walker: the entry's values at pr_at (n of them, ds_check passed) into the patch s, scoped: an FX-scoped preset
+ * (its rack follows the rows). The device's rows in order (a poly row at its whole number, within its row's top), the
+ * further parameters a row also sets, then the rack. The running patch: the engine, m1_cur and the editor, as K1..K4 would
+ * (a scoped preset's poly rows set before, dp_prepare_poly); -1 a poly row refused (no room). pb: its bytes alone; a value
+ * that would not fit is left out */
+static int dp_rows(dp_at_t *s, int n, int scoped)
+{
+    uint32_t i, mod, par;
+    for (i = 0; i < (uint32_t)n && i < ds_nrows(s); i++) {
+        int32_t v = pr_at[i];
+        int t;
+        ds_row(s, i, &mod, &par);
+        if (mod == 0xFFu)
+            continue;
+        if (par & POLY_ROW) {
+            if (!ds_row_ok(s, mod, par))
+                continue;
+            v = clampi((v + 32768) >> 16, 0, ds_poly_top(s, mod, par));   /* (a VOICES row's top: a preset of more
+                                                     * voices plays the most the row offers) */
+            if (s->pb) {
+                (void)poly_bytes_set(s->pb, *s->len, s->grp[mod], par & 0x7Fu, v);
+                continue;
+            }
+            if (!scoped && poly_row_set(mod, par & 0x7Fu, v))
+                return -1;
+            m1_param_now(mod, par, v << 16);
+            continue;
+        }
+        t = ds_type(s, mod);
+        if (t < 0 || par >= DEFS[t].npar || ds_tempo_row(s, mod, par) || DEF_FIXED((uint32_t)t, par))   /* (a preset
+                                                     * leaves the global tempo, D-907, and a row set when the patch loads) */
+            continue;
+        if (s->pb) {
+            pb_param(s, mod, par, v);
+            pb_more(s, mod, par, v);
+        } else if (scoped) {
+            (void)dp_param_set(mod, par, v);
+            dp_more_set(s->d, mod, par, v);
+        } else {
+            eng_set_param(mod, par, v);
+            m1_patch_param(mod, par, v);
+            m1_param_now(mod, par, v);
+            more_set(dev_row_more(s->d, mod, par), v); /* legacy row propagation */
+        }
+    }
+    if (scoped)
+        ds_fx_apply(s);
+    return 0;
 }
 
 /* load list entry k of device d: its rows take the values (the running binary and the editor too); an entry of fewer
@@ -3168,7 +3587,8 @@ static int dp_load(uint32_t d, uint32_t k)
 {
     char nm[17];
     int n;
-    uint32_t i, scoped, structure;
+    uint32_t scoped, structure;
+    dp_at_t s;
     if (d >= pg_ndev || k >= dp_list(d) || (n = dp_entry(pr_list[k], nm)) < 0)
         return -1;
     if (!dp_validate(d, n)) return -1;
@@ -3181,38 +3601,95 @@ static int dp_load(uint32_t d, uint32_t k)
     }
     else dp_clear_origin(d);
     dp_short = (uint32_t)n < pg_dev[d].nrows;
-    for (i = 0; i < (uint32_t)n && i < pg_dev[d].nrows; i++) {
-        uint32_t mod = pg_dev[d].rows[2u * i], par = pg_dev[d].rows[2u * i + 1u];
-        int32_t v = pr_at[i];
-        if (mod == 0xFFu)
-            continue;
-        if (par & POLY_ROW) {
-            if (!row_ok(mod, par))
-                continue;
-            v = clampi((v + 32768) >> 16, 0, dev_poly_top(d, mod, par));   /* (a VOICES row's top: a preset of more
-                                                     * voices plays the most the row offers) */
-            if (!scoped && poly_row_set(mod, par & 0x7Fu, v))
-                return -1;
-            m1_param_now(mod, par, v << 16);
-        } else {
-            if (eng_type(mod) < 0 || par >= DEFS[eng_type(mod)].npar || eng_tempo_row(mod, par) || DEF_FIXED((uint32_t)eng_type(mod), par))   /* (a preset
-                                                     * leaves the global tempo, D-907, and a row set when the patch loads) */
-                continue;
-            if (scoped) {
-                (void)dp_param_set(mod, par, v);
-                dp_more_set(d, mod, par, v);
-            } else {
-                eng_set_param(mod, par, v);
-                m1_patch_param(mod, par, v);
-                m1_param_now(mod, par, v);
-                more_set(dev_row_more(d, mod, par), v); /* legacy row propagation */
-            }
-        }
-    }
-    if (scoped) dp_fx_apply(d);
+    if (dp_rows(dp_eng(&s, d), n, (int)scoped))
+        return -1;
     dp_name_set(d, nm);
     pg_pstructure[d] = structure;
     return 0;
+}
+
+/* the palette (#1196, palette.c): the running patch's devices that carry a preset name (pages_ensure first; the namespace
+ * of a name read from the binary resolved, dp_remember_names) into out (cap bytes): u8 ndev (0..PAL_DEVS), then per device
+ * u8 dev (its index in the device lists, pg_dev[d].bin), u32 LE structure, u32 LE pstructure (the preset's namespace,
+ * pg_pstructure; 0 unknown), u8 nl (1..16) and the name. A device of no structure or no name is left out, so are those past
+ * PAL_DEVS and one that would not fit. The bytes written (1 at least; 0 when cap is 0) */
+static __attribute__((unused)) uint32_t pal_capture(uint8_t *out, uint32_t cap)
+{
+    uint32_t d, k, nl, w = 1, n = 0;
+    if (!cap)
+        return 0;
+    dp_remember_names();
+    for (d = 0; d < pg_ndev && n < PAL_DEVS; d++) {
+        if (!pg_dev[d].structure || !pg_pname[d][0])
+            continue;
+        nl = str_len(pg_pname[d]);
+        if (w + 10u + nl > cap)
+            break;
+        out[w++] = pg_dev[d].bin;
+        for (k = 0; k < 4u; k++)
+            out[w++] = (uint8_t)(pg_dev[d].structure >> (8u * k));
+        for (k = 0; k < 4u; k++)
+            out[w++] = (uint8_t)(pg_pstructure[d] >> (8u * k));
+        out[w++] = (uint8_t)nl;
+        for (k = 0; k < nl; k++)
+            out[w++] = (uint8_t)pg_pname[d][k];
+        n++;
+    }
+    out[0] = (uint8_t)n;
+    return w;
+}
+
+/* the preset `name` of the patch s's device, as dp_list orders its list: the factory's first (its rack's when the factory
+ * has some for it, else its structure's), then the user store's under pstructure (0 unknown: the device's structure, then
+ * its rack's). Its values into pr_at as dp_entry gives them, its stored name into nm (17 bytes): how many values, -1 none */
+static int pb_preset(const dp_at_t *s, uint32_t pstructure, const char *name, char *nm)
+{
+    uint32_t mask = ds_fx_mask(s), scoped = mask ? dp_fx_hash(s->structure, mask) : s->structure, factory = s->structure, k = 0;
+    char fn[FC_PNAME + 1u];
+    int f, slot;
+    if (scoped != factory && fc_preset_find(scoped, 0) >= 0)
+        factory = scoped;
+    for (f = fc_preset_find(factory, 0); f >= 0 && k < FC_STRUCT_PRESETS; f = fc_preset_find(factory, (uint32_t)f + 1u), k++)
+        if (fc_preset_name((uint32_t)f, fn) >= 0 && !ps_name_cmp(fn, name))
+            return dp_entry((uint16_t)f, nm);
+    slot = ps_find(pstructure ? pstructure : s->structure, name);
+    if (slot < 0 && !pstructure && scoped != s->structure)
+        slot = ps_find(scoped, name);
+    return slot < 0 ? -1 : dp_entry((uint16_t)(PR_USER | (uint32_t)slot), nm);
+}
+
+/* the palette (#1196, palette.c): an entry's device presets into the patch binary buf (*len bytes, room for cap) before it
+ * loads, while the patch before it still plays. devs: the entry's ndev byte and its devices (pal_capture's layout), n bytes
+ * from there. Each device whose preset name is not the one buf's own extras name (in any case, over the first 12
+ * characters: the binary keeps 12) is found in buf (at index dev with that structure, else the first with it), its preset
+ * found (pb_preset) and written in through the row walker (dp_rows: its rows, poly rows, the further parameters, an
+ * FX-scoped preset's rack), then its name (12 characters). A device not found, a preset gone or one that does not fit the
+ * device: left as buf has it; a value that would not fit in cap: left out. *len follows. buf's own bytes describe it
+ * (pg_dev describes the running patch); nothing but buf changes (m1_cur, m1_edited, the engine, pg_dev, the editor), and
+ * no buffer but dp_entry's (pr_vals, ps_vbuf). The devices written */
+static __attribute__((unused)) uint32_t pal_presets_into(uint8_t *buf, uint32_t *len, uint32_t cap, const uint8_t *devs, uint32_t n)
+{
+    dp_at_t s;
+    char want[PAL_PNAME + 1u], nm[17];
+    uint32_t at = 1, k, j, nl, written = 0;
+    int c;
+    for (k = 0; n && k < devs[0] && at + 10u <= n; k++) {
+        uint32_t dev = devs[at], structure = (uint32_t)rd32(devs + at + 1u), pstructure = (uint32_t)rd32(devs + at + 5u);
+        nl = devs[at + 9u];
+        if (!nl || nl > PAL_PNAME || at + 10u + nl > n)
+            break;
+        for (j = 0; j < nl; j++)
+            want[j] = (char)devs[at + 10u + j];
+        want[nl] = 0;
+        at += 10u + nl;
+        if (dp_pb_open(&s, buf, len, cap, dev, structure) || pb_named(&s, want) || (c = pb_preset(&s, pstructure, want, nm)) < 0
+            || !ds_check(&s, c))
+            continue;
+        (void)dp_rows(&s, c, pr_structure != structure);
+        pb_name(&s, nm);
+        written++;
+    }
+    return written;
 }
 
 /* device d's row values now, in canonical order, into pr_vals: how many */

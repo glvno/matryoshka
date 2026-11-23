@@ -10,6 +10,7 @@ import { runningVersion, updateOffer } from './fm1-version';
 import { type MvaveTarget, TARGET_NAME, WHICH_TARGET, rememberTarget, targetGuard } from './mvave-target';
 import { BANK_SLOTS, CMD, editorSkips, FEATURE_FACTORY, helloFrame, parse, parseInfo, parseSlot, readStoredPattern, slotCount, slotEraseFrame, slotInfoFrame, slotLabel, type SlotInfo } from './protocol';
 import { factoryInfo, fetchFactoryImage, installFactory, linkAsk, loadFactorySets, pickSet, type Ask } from './factory-content';
+import { fetchFont, fontId, fontOffer, installFont } from './font-content';
 import { fm1Label, installPlan, OTHER_CHANGED, readFm1Id, type Fm1Choice, type FoundFm1, type InstallPlan } from './fm1-choice';
 import { BACKUP_TEXT, bankBackup, bankPlan, movesText, needsBankCheck, OLDER_FIRMWARE_TEXT, packageBeforeStore, packageHasSmallBank, slotList, storesEveryPattern, tooManyText, type BankBackup } from './install-bank';
 import { bankCandidates, knownCopy } from './bank';
@@ -22,11 +23,15 @@ export const FACTORY_WARNING =
   'Without them the FM-1 plays only the patches built into the firmware, has no factory presets, and says FACTORY SOUNDS MISSING when it starts. ' +
   'The editor offers them again whenever the FM-1 connects; patches you edited and saved are never touched.';
 
-/** the Install panel's one bar for an install with the factory sounds ticked: the firmware write fills it to
- *  `write` (~600 KB served over the update loader, about 2,000 requests: the `write` step's count), the FM-1's restart
- *  and return hold it there until `back`, and the factory image (~50 KB: about 200 page writes of 256 bytes over the
- *  editor link, each awaiting its flash write, about a tenth of the requests) fills the rest. */
-export const INSTALL_SHARE = { write: 80, back: 86 } as const;
+/** the Install panel's one bar for a Matryoshka install, by its steps: the firmware write fills it to `write` (~600 KB
+ *  served over the update loader, about 2,000 requests: the `write` step's count), the FM-1's restart and return hold it
+ *  there until `back`, the screen font (~41 KB: about 160 page writes of 256 bytes over the editor link, each awaiting
+ *  its flash write) fills it to `font`, and with the factory sounds ticked their image (~50 KB, about 200 page writes)
+ *  fills the rest. `font` without the factory sounds: the font's commit ends the install. */
+export const INSTALL_SHARE = {
+  factory: { write: 72, back: 76, font: 87 },
+  firmware: { write: 84, back: 88, font: 100 },
+} as const;
 
 export interface InstallMeter {
   /** the firmware write: `n` requests served so far */
@@ -35,24 +40,37 @@ export interface InstallMeter {
   restart(): void;
   /** the FM-1 runs the new firmware */
   back(): void;
+  /** the screen font: `done` of `total` pages */
+  font(done: number, total: number): void;
   /** the factory content: `done` of `total` pages */
   factory(done: number, total: number): void;
-  /** the whole install finished (with the factory sounds: their commit acknowledged, or nothing to install) */
+  /** the whole install finished (each step's commit acknowledged, or nothing to install) */
   done(): void;
 }
 
-/** progress for one install, shown by `show(percent, step)`: never backwards; with `factory` (the box ticked when
- *  Install was pressed) 100 % only at `done()`, unticked the firmware alone fills the bar */
-export function installMeter(show: (value: number, step: string) => void, factory: boolean): InstallMeter {
+/** progress for one install, shown by `show(percent, step)`, never backwards. `steps`: 1 the firmware alone (it fills
+ *  the bar), 2 a Matryoshka install (then its screen font), 3 with the factory sounds too (the box ticked when Install
+ *  was pressed); with 2 or 3, 100 % only at `done()` */
+export function installMeter(show: (value: number, step: string) => void, steps: 1 | 2 | 3): InstallMeter {
   let at = 0;
   const to = (v: number, step: string): void => show((at = Math.max(at, v)), step);
-  const top = factory ? INSTALL_SHARE.write : 100;
-  const first = factory ? 'Step 1 of 2: installing the firmware' : 'Installing the firmware';
+  const share = steps === 3 ? INSTALL_SHARE.factory : INSTALL_SHARE.firmware;
+  const top = steps === 1 ? 100 : share.write;
+  const first = steps === 1 ? 'Installing the firmware' : `Step 1 of ${steps}: installing the firmware`;
+  const font = `Step 2 of ${steps}: installing the screen font`;
+  const factory = 'Step 3 of 3: installing the factory instruments and presets';
+  /** `done` of `total` pages between `from` and `end`, short of 100 % until the step's commit */
+  const part = (from: number, end: number, done: number, total: number): number => Math.min(99, from + ((end - from) * done) / (total || 1));
   return {
     write: (n) => to((Math.min(99, n / 20) * top) / 100, first),
     restart: () => to(top, `${first}: the FM-1 restarts`),
-    back: () => to(factory ? INSTALL_SHARE.back : 100, factory ? 'Step 2 of 2: installing the factory instruments and presets' : 'Done'),
-    factory: (done, total) => to(Math.min(99, INSTALL_SHARE.back + ((100 - INSTALL_SHARE.back) * done) / total), 'Step 2 of 2: installing the factory instruments and presets'),
+    back: () => (steps === 1 ? to(100, 'Done') : to(share.back, font)),
+    font: (done, total) => {
+      if (steps > 1) to(part(share.back, share.font, done, total), font);
+    },
+    factory: (done, total) => {
+      if (steps === 3) to(part(share.font, 100, done, total), factory);
+    },
     done: () => to(100, 'Done'),
   };
 }
@@ -191,6 +209,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
   return e;
 }
 
+/** a screen font's id as the tools print it */
+const fontHex = (id: number): string => id.toString(16).padStart(8, '0');
+
 /** M-VAVE's stock V15 in web/public/firmware (Apache-2.0, NOTICE-FM-1_015.txt next to it) */
 const STOCK_FILE = 'FM-1_015.fwsc';
 
@@ -219,6 +240,9 @@ interface Bundle {
   dev?: string;
   /** set while it cannot be installed yet (the dev server's smoke test running or failed): why */
   wait?: string;
+  /** the id of the screen font the package needs (#602; its sidecar's, sync-firmware.mjs), served beside it as
+   *  matryoshka-font.bin; absent for a firmware with its type built in */
+  font?: number;
 }
 
 async function loadBundle(): Promise<Bundle | null> {
@@ -255,8 +279,8 @@ export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null 
     bar.value = value;
     stage.textContent = step;
   };
-  /** this run's progress: install() makes one that leaves room for the factory sounds when their box was ticked */
-  let meter = installMeter(show, false);
+  /** this run's progress: install() makes one with room for a Matryoshka's screen font and, ticked, its factory sounds */
+  let meter = installMeter(show, 1);
   // shown while an install runs: browsers give only a generic text for beforeunload
   const keepOpen = el('p', { class: 'muted', hidden: true, textContent: 'Installing: keep this tab open. If it is closed, open Install firmware again and press the same button to finish.' });
   const unload = guardUnload(window);
@@ -318,7 +342,7 @@ export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null 
       unload.arm();
       keepOpen.hidden = false;
     }
-    meter = installMeter(show, false);
+    meter = installMeter(show, 1);
     show(0, '');
     log(`\n— ${name}`);
     try {
@@ -373,21 +397,25 @@ export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null 
     log(`installing over Felucca (${dev.id.text}): its projects and samples in the shared sectors will be overwritten`);
   };
 
-  /** `factory`: the factory sounds box as it was when the install button was pressed */
-  const install = async (raw: Uint8Array, factory: boolean): Promise<void> => {
+  /** `factory`: the factory sounds box as it was when the install button was pressed; `font`: the id of the screen font
+   *  the package's sidecar names (the bundled package's matryoshka.json), undefined for a chosen file */
+  const install = async (raw: Uint8Array, factory: boolean, font?: number): Promise<void> => {
     const product = productOf(raw);
     log(`package: ${product}, ${raw.length} bytes`);
     const mark = new TextEncoder().encode('FELUCCA-LOADER-1');
     if (!raw.some((_: number, i: number) => i < raw.length - mark.length && mark.every((b, k) => raw[i + k] === b))) throw new Error('this package has no update loader; refusing to install it');
     if (product === STOCK_PRODUCT) throw new Error('this is the official V15: use Return to stock');
-    await overFelucca();
     const matryoshka = /^FM-1_7/.test(product);
+    // the screen font (#602): one the package names must be here before anything is written
+    const fontImage = matryoshka ? await fetchFont() : null;
+    if (font !== undefined && (!fontImage || fontId(fontImage) !== font))
+      throw new Error(`nothing was sent: this firmware needs screen font ${fontHex(font)}, which does not come with this copy of the app`);
+    await overFelucca();
     if (matryoshka && packageHasSmallBank(product)) await checkBank();
     else if (packageBeforeStore(product)) await checkOlder();
-    meter = installMeter(show, matryoshka && factory);
+    meter = installMeter(show, !matryoshka ? 1 : factory ? 3 : 2);
     await installImage(logicalImage(raw), product);
-    if (matryoshka && factory) await installFactoryAfter();
-    else if (matryoshka) log('factory sounds: not installed (the box is unticked). The editor offers them when the FM-1 connects.');
+    if (matryoshka) await installAfter(fontImage, factory);
   };
 
   /** before firmware 1.26 or later (#1202, G9): the bank of an FM-1 that runs older firmware with more than 48 slots. Its
@@ -552,26 +580,41 @@ export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null 
     });
   };
 
-  /** the factory sounds after a Matryoshka install (#915): the FM-1 found again once it runs the new firmware, then
-   *  the newest set it reads (factory-content.ts), unless it holds that one already */
-  const installFactoryAfter = async (): Promise<void> => {
-    log('installing the factory instruments and presets…');
+  /** what a Matryoshka install writes once the FM-1 runs the new firmware, over one link: the screen font its firmware
+   *  needs (#602, font-content.ts), always, unless it is there already; then, with `factory` (the box ticked), the
+   *  newest factory set it reads (#915, factory-content.ts), unless it holds that one already. `fontImage`: this
+   *  site's font, installed only when it is the one the firmware names */
+  const installAfter = async (fontImage: Uint8Array | null, factory: boolean): Promise<void> => {
     const up = await access();
     let dev = null;
     for (let t = 0; t < 10 && !dev; t++) {
       dev = await up.find((id: { model: string }) => !/^ota-/i.test(id.model));
       if (!dev) await new Promise((r) => setTimeout(r, 1500));
     }
-    if (!dev) throw new Error('the FM-1 did not come back after the install: connect it in the editor to install the factory sounds');
+    if (!dev) throw new Error('the FM-1 did not come back after the install: connect it in the editor to install the screen font and the factory sounds');
     try {
       up.check?.();
       const ask = linkAsk(dev.link);
       const info = parseInfo(await ask(helloFrame(), (p) => p?.cmd === CMD.info, 800, 3));
-      if (!info || !(info.features & FEATURE_FACTORY)) return log('this firmware has no factory region: nothing more to install');
+      if (!info) return log('this firmware did not say what it holds: nothing more to install');
       if (editorSkips(info)) return log(IGNORED_INSTALL);
       const serial = plan?.target?.serial;   // (among several FM-1s: the one installed on, by its serial when it tells it)
       if (serial && (await readFm1Id((frame, match) => ask(frame, match, 800, 3), info.features)).serial !== serial)
-        throw new Error(`factory sounds not installed: ${OTHER_CHANGED}`);
+        throw new Error(`nothing more was installed: ${OTHER_CHANGED}`);
+
+      const offer = fontOffer(info.font, fontImage);
+      if (!info.font) log('screen font: built into this firmware');
+      else if (!offer) log(`screen font: current (font ${fontHex(info.font.id)})`);
+      else if (!offer.install || !fontImage) log(offer.text);
+      else {
+        log('installing the screen font…');
+        await installFont(ask, fontImage, (done, total) => meter.font(done, total));
+        log(`screen font installed (font ${fontHex(info.font.id)}, ${fontImage.length} bytes)`);
+      }
+
+      if (!factory) return log('factory sounds: not installed (the box is unticked). The editor offers them when the FM-1 connects.');
+      if (!(info.features & FEATURE_FACTORY)) return log('this firmware has no factory region: nothing more to install');
+      log('installing the factory instruments and presets…');
       const fi = await factoryInfo(ask);
       const set = pickSet(await loadFactorySets(), fi);
       if (!set) throw new Error('no factory sounds for this firmware come with this copy of the app');
@@ -596,7 +639,7 @@ export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null 
       const raw = new Uint8Array(await r.arrayBuffer());
       const sum = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', raw)), (b) => b.toString(16).padStart(2, '0')).join('');
       if (sum !== bundle.sha256) throw new Error('the bundled firmware package does not match its checksum');
-      await install(raw, factory);
+      await install(raw, factory, bundle.font);
     }, true);
   };
   const showBundle = (b: Bundle | null): void => {

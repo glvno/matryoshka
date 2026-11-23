@@ -207,7 +207,7 @@ static void page_show(uint32_t p)
         seq_leds_off();
     } else
         seq_arm_shown(1);                           /* (the SEQ page arms the track it shows, #395) */
-    if (dev_like() && !sb_on && !eng_overload && !load_err)
+    if (dev_like() && !sb_on && !eng_overload && !load_err && pal_next == PAL_NONE)   /* (NEXT: is ui.c's bar, #1196) */
         msg_until = 0;                              /* (the device page and GLO's draw their header with the rest) */
     else
         header_draw();
@@ -483,6 +483,9 @@ static void panel_encoders(int32_t *st)
         help_knobs_turn(st[0], st[1]);
         return;
     }
+    if ((panel_held >> BTN_HOME & 1u) && (st[0] | st[1] | st[2] | st[3] | st[4] | st[5] | st[6]))
+        pal_combo();                                /* HOME held + a knob (fine K1..K4, PRESET's patches): the palette's overview
+                                                     * goes, the knob does its job (#1196) */
     for (k = 0; k < 7u; k++)                        /* MIDI out: the encoders as they turn, before anything uses them */
         if (ENC_CC[k] && st[k])
             midi_send(0xB0u, ENC_CC[k], rel_cc(st[k]));
@@ -739,7 +742,7 @@ static int panel_key(uint32_t n, int down, int quick)
     uint32_t bit = 1u << n;
     if (n >= 27u || !(keys_now & bit) == !down)
         return 1;
-    if (quick && down && !sb_on && !help_on && seq_black(n) >= 0 && (panel_held & (1u << BTN_REC | 1u << BTN_SEQ)))
+    if (quick && down && !sb_on && !help_on && seq_black(n) >= 0 && (panel_held & (1u << BTN_REC | 1u << BTN_SEQ | 1u << BTN_HOME)))
         return 0;
     keys_now ^= bit;
     m1_keys_now(n, down);
@@ -748,7 +751,7 @@ static int panel_key(uint32_t n, int down, int quick)
         seq_all_cancel();
         seq_demo_cancel();
     }
-    if (down && sb_on && !cfg.midi_out && !help_on)
+    if (down && sb_on && !cfg.midi_out && !help_on && !(panel_held >> BTN_HOME & 1u))
         sb_mout_due = 1;                            /* (sandbox mode: the note reaches nothing; panel_status nudges, D-228) */
     eng_midi_channel(cfg.ch);
     if (down && !sb_on && !help_on && (panel_held >> BTN_REC & 1u) && seq_black(n) >= 0) {   /* REC held + a black key: arm (#139) */
@@ -768,6 +771,16 @@ static int panel_key(uint32_t n, int down, int quick)
         rec_held_used = 1;
         return 1;
     }
+    if (down && !help_on && (panel_held >> BTN_HOME & 1u)) {   /* HOME held + a key (#1196): taken, nothing sounds or goes out (every
+                                                     * key, C2; sandbox mode too); black keys 1..8 are the palette's: a tap
+                                                     * switches, a 1 s hold saves (pal_ui.c, from panel_status); HOME's release
+                                                     * then goes nowhere. A key already down as HOME went down plays on */
+        if (pal_key_down(n))
+            home_turned = 1;
+        return 1;
+    }
+    if (!down && pal_key_up(n))                     /* (a key taken so let go: no note to end; the palette key's tap) */
+        return 1;
     if (down && n < CHORD_KEYS && !sb_on && (sr_on ? eng_steps_harm((uint32_t)seq_module()) : eng_keys_harm()) >= 0) {   /* the keys reach a Harmonizer (#598):
                                                      * its Side layout, the lowest keys its chord buttons whatever the octave
                                                      * (black maj min dim, white sus2 sus4 7 9); MIDI out sends the button's
@@ -1086,6 +1099,14 @@ static void panel_edges(uint32_t p, uint32_t rel)
         }
         midi_btn_sent = (midi_btn_sent | po) & ~rel;
     }
+    if (p & (1u << BTN_HOME))                       /* the palette's overview (#1196, pal_ui.c): HOME held alone shows it; the
+                                                     * first edge of another button while HOME is held closes it (that combo
+                                                     * does its own job), and HOME's release */
+        pal_home_down();
+    if ((p & ~(1u << BTN_HOME)) && (panel_held >> BTN_HOME & 1u))
+        pal_combo();
+    if (rel & (1u << BTN_HOME))
+        pal_home_up();
     rel = out_combo(p, rel);
     if (help_on || pair) {                          /* a card shows, or the pair opens the sheet */
         help_edges(p, rel, pair);
@@ -1358,6 +1379,8 @@ static void panel_status(void)
         if (sb_on && !cfg.midi_out && !help_on)
             sb_mout_nudge();
     }
+    if (pal_poll((panel_held & 0x3FFFu) == 1u << BTN_HOME))   /* the palette (#1196): a key's tap or hold, the overview */
+        home_turned = 1;                            /* (the overview opened: HOME's release only closes it) */
     {                                               /* play once (#632): the transport as the engine starts and stops it (the
                                                      * PLAY LED, the editor's FM-1 tab); the count-in's beats in the bar */
         static int8_t run_seen = -1;
@@ -1512,6 +1535,7 @@ static void panel_draw(void)
 }
 static void panel_draw_now(void)
 {
+    pal_follow();                                   /* the palette's overview (pal_ui.c) and its NEXT: bar, as the card */
     help_follow();                                  /* a card first (help_ui.c), then the page: under it, a dim frame */
     if (help_due)
         help_draw();
@@ -1552,6 +1576,8 @@ static void panel_align(const uint8_t *g)
     int sr = (g[2] & 1u) != 0, sheet = (g[2] & 16u) != 0;
     if ((held & ~panel_held) >> BTN_SEL & 1u)
         sel_down_ms = fm1_ms;                       /* (as its press: a key since is the pen) */
+    if ((held & ~panel_held) >> BTN_HOME & 1u)
+        pal_home_down();                            /* (as its press: the palette's overview may show) */
     panel_held = (panel_held & ~0x3FFFu) | held;
     if (off >> BTN_SEQ & 1u)
         seq_held_used = 0;
@@ -1559,6 +1585,8 @@ static void panel_align(const uint8_t *g)
         rec_held_used = 0;
     if (off & OCT_BTNS)
         oct_used &= (uint8_t)~off;
+    if (off >> BTN_HOME & 1u)
+        pal_home_up();                              /* (the palette's overview goes, a palette key's hold is no longer timed) */
     if (sr_on && !sr)                               /* (before the page: step record ends with it) */
         sr_stop();
     if (want == PAGE_SEQ && g[5] != seq_trk)

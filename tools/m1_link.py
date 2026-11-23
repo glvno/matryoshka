@@ -15,6 +15,11 @@
   tools/m1_link.py cpu                    (the audio ISR's load: now, and the peak since the last cpu read)
   tools/m1_link.py meq [LOW MID HIGH [FREQ]]   (#1107, D-938: the master EQ, GLO > EQ: read it, or set the gains in dB
                                            (half-dB steps, +-12) and MID FREQ's index (0..38: 100 Hz x 2^(i/6), 20 = 1 kHz))
+  tools/m1_link.py palette [get | entry N | go N|cancel | put N SLOT NAME [PATTERN] | clear N | order F1..F8]
+                                          (#1196: the palette: its 8 positions (1..8), one entry's bytes and presets, switch
+                                           to N (stopped: at once; playing: at the next bar line), store slot SLOT (1..60)
+                                           named NAME with no presets at N, empty N, or reorder (new position i takes old
+                                           Fi, 0 = empty))
   tools/m1_link.py uac [SECONDS]          (the USB audio stream: state, glitch counters, rate adjustments, the ring's fill
                                            range; SECONDS: read again after that long and print the changes per second)
   tools/m1_link.py mem                    (#273: the boot's proof of .lowram and how deep each stack has gone since boot)
@@ -75,6 +80,9 @@
                                            web/public/firmware/matryoshka-factory.bin; sectors whose sum already matches
                                            are skipped, so a cut install is resumed by running it again)
   tools/m1_link.py factory-read [OFFSET [LENGTH [OUT]]]   (#915: the region's bytes, default all 73,728, to OUT or stdout)
+  tools/m1_link.py font-info              (#602: the font area: the font this firmware needs, and whether the FM-1 has it)
+  tools/m1_link.py font-install [FILE]    (#602: the screen font into the font area; FILE default
+                                           web/public/firmware/matryoshka-font.bin; resumed like factory-install)
 Every command takes --rig (the test rig: the FM-1 at its registered USB location, checked by its mark) or --location HEX
 (the FM-1 in that USB socket, tools/fm1_usb.py list). Without either it takes the FM-1 by its port name, and refuses
 while more than one FM-1 is connected, since they share the name (#771).
@@ -84,6 +92,7 @@ import atexit
 import collections
 import os
 import re
+import struct
 import sys
 import time
 
@@ -94,7 +103,11 @@ except ImportError:
 
 PREFIX = [0x7D, 0x4D, 0x31]
 STATUS = ["ok", "bad offset or size", "checksum mismatch", "the firmware refused the patch", "flash error",
-          "unknown command", "nothing to store"]
+          "unknown command", "nothing to store", "the preset store is full", "no such preset", "still in use",
+          "the bank holds more than 48 patches"]
+FONT_BLOCKED = ("the FM-1's bank holds more than 48 patches, so there is no room for the screen font yet (it needs three "
+                "of the bank's old sectors, #602): delete patches until 48 or fewer are left, restart the FM-1, then "
+                "install the font")
 
 
 def pack7(b):
@@ -362,8 +375,9 @@ def factory_info_text(i):
             + ("; an install was begun" if i["writing"] else "") + tier)
 
 
-def factory_sector_sum(img, s):
-    """CRC-16 of sector s as the flash holds the image before the commit (the header's 64 bytes erased)"""
+def sector_sum(img, s):
+    """CRC-16 of sector s as the flash holds a factory region or font area image before the commit (the header's 64 bytes
+    erased)"""
     b = bytearray(b"\xFF" * 0x1000)
     part = img[s * 0x1000:(s + 1) * 0x1000]
     b[:len(part)] = part
@@ -387,7 +401,7 @@ def factory_install(link, img, log=lambda s: None):
     link.ack(frame(C_FACT_BEGIN), C_FACT_BEGIN, wait=3.0)
     sectors = (len(img) + 0xFFF) // 0x1000
     for s in range(sectors):
-        if factory_sum(link, s) == factory_sector_sum(img, s):
+        if factory_sum(link, s) == sector_sum(img, s):
             log(f"sector {s + 1:2d} of {sectors}: already there")
             continue
         off = FACTORY_HDR if s == 0 else 0
@@ -397,7 +411,7 @@ def factory_install(link, img, log=lambda s: None):
                 page += b"\xFF" * (256 - len(page))
             link.ack(frame(C_FACT_WRITE, [s, off & 0xFF, off >> 8, *page]), C_FACT_WRITE, wait=3.0)
             off = (off | 0xFF) + 1
-        if factory_sum(link, s) != factory_sector_sum(img, s):
+        if factory_sum(link, s) != sector_sum(img, s):
             sys.exit(f"factory region: sector {s} did not read back as written")
         log(f"sector {s + 1:2d} of {sectors}: written")
     link.ack(frame(C_FACT_COMMIT, list(img[:FACTORY_HDR])), C_FACT_COMMIT, wait=5.0)
@@ -413,6 +427,66 @@ def factory_read(link, off, n):
             sys.exit(f"factory region: {at:#x} not readable")
         out += bytes(p[4:4 + k])
     return bytes(out)
+
+
+# ---- the font area (#602, firmware/src/font_area.c): the screen type's larger sizes in their own flash sectors
+FONT_BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web", "public", "firmware", "matryoshka-font.bin")
+FONT_HDR = 64
+C_FONT, R_FONT_SUM = 0x1F, 0x68
+
+
+def font_id(img):
+    """the id of the font in a font area image (its header's CRC-32), None when img is not one"""
+    return struct.unpack_from("<I", img, 12)[0] if len(img) >= FONT_HDR and img[:4] == b"MFN1" else None
+
+
+def font_info(link):
+    """INFO byte 20 and bytes 21..24 (proto.c m1_info): None for a firmware with its type compiled in (before #602), else
+    {"valid": the FM-1 has the font it needs, "writing": an install began and did not commit, "blocked": no room for it
+    yet (a bank of more than 48 patches keeps its sectors), "id": that font's id}"""
+    p = link.ask(frame(0x01), (0x41,))
+    if len(p) < 25 or not p[20] & 1:
+        return None
+    return {"valid": bool(p[20] & 2), "writing": bool(p[20] & 4), "blocked": bool(p[20] & 8),
+            "id": p[21] | p[22] << 8 | p[23] << 16 | p[24] << 24}
+
+
+def font_info_text(i):
+    if i is None:
+        return "screen font: built into this firmware (no font area)"
+    return (f"screen font: {'installed' if i['valid'] else 'missing (every size draws the small type)'}, font {i['id']:08x}"
+            + ("; an install was begun" if i["writing"] else "") + (f"; {FONT_BLOCKED}" if i.get("blocked") else ""))
+
+
+def font_sum(link, s):
+    p = link.ask(frame(C_FONT, [3, s]), (R_FONT_SUM, s), wait=2.0)
+    return p[2] | p[3] << 8 if p[1] else None
+
+
+def font_install(link, img, log=lambda s: None):
+    """the image into the font area, in the factory region's order: BEGIN (the header goes), each sector whose SUM differs
+    written a page at a time, then COMMIT (the firmware takes only its own font and checks the image's CRC-32 before it
+    programs the magic). Run again after a cut: the matching sectors are skipped"""
+    if font_id(img) is None:
+        sys.exit("not a font area image (web/public/firmware/matryoshka-font.bin)")
+    link.ack(frame(C_FONT, [1]), C_FONT, wait=3.0)
+    sectors = (len(img) + 0xFFF) // 0x1000
+    for s in range(sectors):
+        if font_sum(link, s) == sector_sum(img, s):
+            log(f"sector {s + 1:2d} of {sectors}: already there")
+            continue
+        off = FONT_HDR if s == 0 else 0
+        while off < 0x1000 and s * 0x1000 + off < len(img):
+            page = bytearray(img[s * 0x1000 + off:s * 0x1000 + (off | 0xFF) + 1])
+            if off & 0xF00 == 0xF00 and len(page) < 80:
+                page += b"\xFF" * (256 - len(page))
+            link.ack(frame(C_FONT, [2, s, off & 0xFF, off >> 8, *page]), C_FONT, wait=3.0)
+            off = (off | 0xFF) + 1
+        if font_sum(link, s) != sector_sum(img, s):
+            sys.exit(f"font area: sector {s} did not read back as written")
+        log(f"sector {s + 1:2d} of {sectors}: written")
+    link.ack(frame(C_FONT, [4, *img[:FONT_HDR]]), C_FONT, wait=5.0)
+    log("screen font committed")
 
 
 def bank_slots(link):
@@ -455,6 +529,79 @@ def bank_command(link, a, ask=input, out=print):
         out("bank emptied")
 
 
+PAL_STATE = ("empty", "ok", "MISSING")
+PAL_STATUS = {0: "ok", 1: "out of range", 4: "flash error", 5: "refused (sandbox mode)", 6: "empty position",
+              8: "MISSING: the slot does not hold that name"}
+
+
+def palette_now(p):
+    """PALETTE_NOW's payload (#1196): (cur, next, edited, seq, [(state, slot, pattern, hash, len, name) x 8])"""
+    rows = []
+    for i in range(8):
+        r = p[6 + 27 * i:33 + 27 * i]
+        rows.append((r[0], r[1], r[2], r[3] | r[4] << 8, r[5] | r[6] << 8, bytes(x for x in r[7:27] if x).decode()))
+    return p[1], p[2], p[3] & 1, p[4] | p[5] << 8, rows
+
+
+def palette_entry(e):
+    """an ENTRY's bytes: (slot, pattern, name, [(dev, structure, pstructure, preset name)])"""
+    devs, at = [], 23
+    for _ in range(e[22]):
+        nl = e[at + 9]
+        devs.append((e[at], int.from_bytes(bytes(e[at + 1:at + 5]), "little"), int.from_bytes(bytes(e[at + 5:at + 9]), "little"),
+                     bytes(e[at + 10:at + 10 + nl]).decode()))
+        at += 10 + nl
+    return e[0], e[1], bytes(x for x in e[2:22] if x).decode(), devs
+
+
+def palette_command(link, a, out=print):
+    """palette get / entry N / go N|cancel / put N SLOT NAME [PATTERN] / clear N / order F1..F8 (#1196)"""
+    op = a[1] if len(a) > 1 else "get"
+
+    def acked(payload, seq):
+        p = link.ask(frame(0x1E, payload), (0x40, 0x1E), wait=4.0, tries=1)
+        if p[2]:
+            sys.exit(f"FM-1: {PAL_STATUS.get(p[2], p[2])}")
+        return p
+    if op == "entry":
+        pos = int(a[2]) - 1
+        p = link.ask(frame(0x1E, [1, pos]), (0x67, pos))
+        if len(p) <= 1:
+            out(f"palette {pos + 1}: empty")
+            return
+        slot, pattern, name, devs = palette_entry(p[1:])
+        out(f"palette {pos + 1}: slot {slot + 1:02d} {name}, pattern P{pattern + 1:02d}, hash {crc16(bytes(p[1:])):#06x}")
+        for d, st, pst, pn in devs:
+            out(f"  device {d}: preset {pn} (structure {st:#010x}, namespace {pst:#010x})")
+        return
+    if op == "go":
+        pos = 0xFF if a[2] == "cancel" else int(a[2]) - 1
+        p = acked([4, pos], pos)
+        out({0: "switched", 1: "waiting for the bar line", 2: "cancelled"}.get(p[3], p[3]))
+        return
+    if op == "put":
+        pos, slot = int(a[2]) - 1, int(a[3]) - 1
+        name = [ord(c) for c in a[4][:20]]           # (the slot's own name, case and all: the FM-1 compares it exactly)
+        acked([2, pos, slot, int(a[5]) - 1 if len(a) > 5 else 0, *name, *[0] * (20 - len(name)), 0], pos)
+        out(f"palette {pos + 1}: slot {slot + 1:02d} {a[4]}")
+        return
+    if op == "clear":
+        pos = int(a[2]) - 1
+        acked([2, pos], pos)
+        out(f"palette {pos + 1}: emptied")
+        return
+    if op == "order":
+        acked([3, *[int(x) - 1 if int(x) else 0xFF for x in a[2:10]]], 0)
+        out("palette reordered")
+        return
+    cur, nxt, edited, seq, rows = palette_now(link.ask(frame(0x1E, [0]), (0x66,)))
+    for i, (state, slot, pattern, h, n, name) in enumerate(rows):
+        mark = (" < playing" + (" (edited)" if edited else "") if i == cur else "") + (" < next" if i == nxt else "")
+        out(f"{i + 1}  " + (f"slot {slot + 1:02d} {name}, P{pattern + 1:02d}, {n} bytes, hash {h:#06x}"
+                            + ("" if state == 1 else f" {PAL_STATE[state]}") if state else "empty") + mark)
+    out(f"record seq {seq}")
+
+
 def main():
     a = sys.argv[1:]
     if not a:
@@ -477,6 +624,14 @@ def main():
         print(f"uploaded {len(data)} bytes")
     elif a[0] in ("bank", "bank-info", "bank-clear"):
         bank_command(link, a)
+    elif a[0] == "palette":
+        palette_command(link, a)
+    elif a[0] == "font-info":
+        print(font_info_text(font_info(link)))
+    elif a[0] == "font-install":
+        img = open(a[1] if len(a) > 1 else FONT_BIN, "rb").read()
+        font_install(link, img, log=print)
+        print(font_info_text(font_info(link)))
     elif a[0] == "factory-info":
         print(factory_info_text(factory_info(link)))
     elif a[0] == "factory-install":
