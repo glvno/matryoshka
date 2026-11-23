@@ -7,11 +7,12 @@ import { attachMidi } from './input';
 import { legacyFactoryStore } from './pattern-store';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
-import { deviceBudget, encodePatch, FLAG_PATTERN_ORIGINS, VERSION } from './patchbin';
+import { deviceBudget, encodePatch, FLAG_PATTERN_ORIGINS, FLAG_RACK, FORMAT_RACK, VERSION } from './patchbin';
 import { factoryWithPatterns, FM1_PRESETS } from './presets';
 import { CMD, frame, liveFrame, PADS_CMD, parse } from './protocol';
 import { subtractiveSaw } from './test-patches';
-import { withFxBus } from './fx-bus';
+import { withFxBus } from './factory-bank';
+import { convertLegacyBus } from './fx-drawer';
 
 const names = Object.keys(FM1_PRESETS);
 const a = encodePatch(FM1_PRESETS[names[0]]());
@@ -324,16 +325,16 @@ describe('DeviceLink.connect', () => {
     expect(link.bufferAllocation).toBe(0);
     expect(link.info).toBeNull();
   });
-  it('refuses master FX uploads on older firmware before sending any patch data', async () => {
+  it('refuses FX drawer uploads on firmware older than format 66 before sending any patch data', async () => {
     const inp = port('i', 'FM-1'), out = port('o', 'FM-1');
     answering(out, inp);
     const link = new DeviceLink();
     await withMidi([inp], [out], async () => {
       await link.connect();
-      const bin = encodePatch(withFxBus(subtractiveSaw()), true);
-      expect(bin[1]).toBe(55);   // (the master FX record's format, D-1010)
-      expect((bin[6] | bin[7] << 8) & FLAG_PATTERN_ORIGINS).toBe(0);
-      link.info!.patchFormats = { min: 31, max: 54 };
+      const bin = encodePatch(convertLegacyBus(withFxBus(subtractiveSaw())), true);
+      expect(bin[1]).toBe(FORMAT_RACK);   // (the FX rack's format, #1214)
+      expect((bin[6] | bin[7] << 8) & FLAG_RACK).toBe(FLAG_RACK);
+      link.info!.patchFormats = { min: 31, max: FORMAT_RACK - 1 };
       const sent = out.sent.length;
       await expect(link.uploadSlotBin(0, 'FX', bin)).rejects.toThrow();
       expect(out.sent).toHaveLength(sent);

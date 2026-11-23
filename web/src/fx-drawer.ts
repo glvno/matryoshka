@@ -12,13 +12,18 @@ import {
   assembliesOf,
   assemblyById,
   assemblyOf,
-  childrenOf,
   deleteAssembly,
   descendants,
+  drawerOf,
+  drawerOfEffect,
+  drawers,
+  effectsOf,
   findRef,
   insertAssembly,
   makeAssembly,
   moveAssembly,
+  outputDrawer,
+  ownerOf,
   parentOf,
   reconcile,
   removeChild,
@@ -27,7 +32,6 @@ import {
   targetsOf,
   toDef,
   validateAssemblyDef,
-  chainHelpers,
   type AssemblyDef,
   type AssemblyInst,
   type ParamRef,
@@ -38,7 +42,11 @@ import { convertLegacyBus as convertBus, LEGACY_STAGE_ROWS, type FxStageKind } f
 import { DEFS } from './modules';
 import { addModule, connect, disconnect, sameEnd, type Cable, type Endpoint, type ModuleInst, type Patch } from './patch';
 
-export { chainHelpers, deviceModules } from './assembly';
+// (the drawers' read side lives in assembly.ts, so the engine and the binary read it without the catalog)
+export {
+  chainHelpers, deviceModules, drawerOf, drawerOfEffect, drawers, effectsOf, outputDrawer, ownerOf, rackOf,
+  type Rack, type RackDrawer, type RackEffect,
+} from './assembly';
 
 /** how an effect sits in the stereo chain: true stereo, an L/R pair of a mono effect, or a mono effect's wet added to both sides */
 export type ChainMode = 'stereo' | 'pair' | 'wet';
@@ -56,12 +64,6 @@ export interface EffectEntry {
 }
 /** what insertEffect takes: a module or an assembly in the patch, a saved assembly, or a module type */
 export type EffectSource = { module: number } | { assembly: number } | { def: AssemblyDef } | { type: string };
-
-/** what the patch binary's rack section needs (patchbin.ts): every effect that is a device (drawers' in chain order, then
- *  the canvas's), with the modules its runtime switches (its members minus its helpers), and every drawer */
-export interface RackEffect { asm: number; targets: number[] }
-export interface RackDrawer { drawer: number; owner: number | 'output'; effects: number[] }
-export interface Rack { effects: RackEffect[]; drawers: RackDrawer[] }
 
 // ---- the effects there are ----
 
@@ -160,34 +162,6 @@ export function legacyEffectDef(kind: FxStageKind): AssemblyDef {
   return catalogEffectDef(EFFECT_CATALOG.find((e) => 'type' in e.source && e.source.type === type)!);
 }
 
-// ---- reading the drawers ----
-
-/** every FX drawer of the patch, in overlay order */
-export const drawers = (p: Patch): AssemblyInst[] => assembliesOf(p).filter((a) => a.drawer);
-
-/** an instrument's FX drawer */
-export function drawerOf(p: Patch, instrumentId: number): AssemblyInst | undefined {
-  const a = assemblyById(p, instrumentId);
-  return a ? childrenOf(p, a).find((c) => c.drawer) : undefined;
-}
-
-/** the patch's Output drawer */
-export const outputDrawer = (p: Patch): AssemblyInst | undefined => assembliesOf(p).find((a) => a.drawer && !a.drawer.taps);
-
-/** the instrument a drawer belongs to, or 'output' for the Output drawer */
-export function ownerOf(p: Patch, drawer: AssemblyInst): AssemblyInst | 'output' {
-  return (drawer.drawer?.taps && parentOf(p, drawer.id)) || 'output';
-}
-
-/** the drawer an effect is in */
-export function drawerOfEffect(p: Patch, effectId: number): AssemblyInst | undefined {
-  const d = parentOf(p, effectId);
-  return d?.drawer ? d : undefined;
-}
-
-/** a drawer's effects in signal order */
-export const effectsOf = (p: Patch, drawer: AssemblyInst): AssemblyInst[] => childrenOf(p, drawer).filter((e) => e.chain);
-
 /** the endpoints of an effect's chain input / output on a channel (a jack's `also` included) */
 export const chainIns = (e: AssemblyInst, ch: Channel): Target[] => targetsOf(e.inputs[e.chain!.ins[ch]]);
 export const chainOuts = (e: AssemblyInst, ch: Channel): Target[] => targetsOf(e.outputs[e.chain!.outs[ch]]);
@@ -255,18 +229,6 @@ export function chainCableProblem(p: Patch, from: Endpoint, to: Endpoint): strin
     if (has(outs, from) && allModules(p, owner).includes(to.module)) return `${owner.label}'s FX drawer output cannot go back into ${owner.label}.`;
   }
   return null;
-}
-
-/** what the patch binary's rack section is made from (Rack) */
-export function rackOf(p: Patch): Rack {
-  const helpers = chainHelpers(p);
-  const targets = (e: AssemblyInst): number[] => allModules(p, e).filter((id) => !helpers.has(id));
-  const list = drawers(p).map((d) => ({ d, fx: effectsOf(p, d) }));
-  const canvas = assembliesOf(p).filter((a) => a.chain && !parentOf(p, a.id));
-  return {
-    effects: [...list.flatMap((x) => x.fx), ...canvas].map((e) => ({ asm: e.id, targets: targets(e) })),
-    drawers: list.map(({ d, fx }) => { const o = ownerOf(p, d); return { drawer: d.id, owner: o === 'output' ? 'output' : o.id, effects: fx.map((e) => e.id) }; }),
-  };
 }
 
 // ---- the chain's cables ----
@@ -429,6 +391,7 @@ export function insertEffect(p: Patch, drawer: AssemblyInst, effect: EffectSourc
   const owner = ownerOf(p, drawer);
   const where = owner === 'output' ? drawer : owner;
   let e: AssemblyInst;
+  let extra: Ends = { sources: [[], []], dests: [[], []] };
   if ('def' in effect) {
     const made = insertAssembly(p, DEFS, structuredClone(effect.def), where.x, where.y);
     e = made.chain ? made : wrapEffect(p, { assembly: made.id });
@@ -439,6 +402,9 @@ export function insertEffect(p: Patch, drawer: AssemblyInst, effect: EffectSourc
   } else if ('module' in effect) {
     const host = assemblyOf(p, effect.module);
     if (host) removeMember(p, host, effect.module);
+    const m = moduleById(p, effect.module);
+    const ports = m && audioPorts(p, { module: m });
+    if (ports) extra = inLine(p, drawer, ports, new Set([effect.module]));
     e = wrapEffect(p, { module: effect.module });
   } else {
     const a = assemblyById(p, effect.assembly);
@@ -450,16 +416,45 @@ export function insertEffect(p: Patch, drawer: AssemblyInst, effect: EffectSourc
     }
     if (from) leave(p, from, a);
     else if (parentOf(p, a.id)) removeChild(p, parentOf(p, a.id)!, a.id);
+    const ports = a.chain ? { input: [...chainIns(a, 0), ...chainIns(a, 1)], outputs: [chainOuts(a, 0), chainOuts(a, 1)] } : audioPorts(p, { assembly: a });
+    if (ports && !from) extra = inLine(p, drawer, ports, new Set(allModules(p, a)));
     if (a.chain) {
       unplug(p, a);
       e = a;
     } else e = wrapEffect(p, { assembly: a.id });
   }
   const ends = endsOf(p, drawer);
+  for (const ch of [0, 1] as const) {
+    for (const s of extra.sources[ch]) addOnce(ends.sources[ch], s);
+    for (const t of extra.dests[ch]) addOnce(ends.dests[ch], t);
+  }
   addChild(p, drawer, e.id);
   place(drawer, e.id, at);
   applyChain(p, drawer, ends);
   return e;
+}
+
+/**
+ * What a canvas effect did in line with a drawer's sound, kept when it moves into that drawer (so the sound never stops):
+ * one fed by an instrument drawer's output hands its destinations to the drawer; one feeding the Output hands what fed it
+ * to the Output drawer.
+ */
+function inLine(p: Patch, d: AssemblyInst, ports: { input: Endpoint[]; outputs: Endpoint[][] }, inside: Set<number>): Ends {
+  const extra: Ends = { sources: [[], []], dests: [[], []] };
+  const owner = ownerOf(p, d);
+  if (owner !== 'output') {
+    const end = [...drawerOutput(p, owner.id, 0), ...drawerOutput(p, owner.id, 1)];
+    if (!p.cables.some((c) => has(ports.input, c.to) && has(end, c.from))) return extra;
+    ports.outputs.forEach((list, k) => {
+      for (const c of p.cables) if (has(list, c.from) && !inside.has(c.to.module))
+        addOnce(extra.dests[ports.outputs.length > 1 ? Math.min(k, 1) : c.to.port === 'r' ? 1 : 0], c.to);
+    });
+    return extra;
+  }
+  const out = outputModule(p);
+  if (!out || !p.cables.some((c) => has(ports.outputs.flat(), c.from) && c.to.module === out.id)) return extra;
+  for (const c of p.cables) if (has(ports.input, c.to) && !inside.has(c.from.module)) for (const ch of [0, 1] as const) addOnce(extra.sources[ch], c.from);
+  return extra;
 }
 
 /** an effect leaves its drawer: it becomes top level with nothing on its chain jacks, and the chain closes the gap */

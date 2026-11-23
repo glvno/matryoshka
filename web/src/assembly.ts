@@ -521,6 +521,52 @@ export function deviceModules(p: Patch, a: AssemblyInst): number[] {
  *  and no Toggle lists them */
 export const chainHelpers = (p: Patch): Set<number> => new Set(assembliesOf(p).flatMap((a) => a.chain?.helpers ?? []));
 
+// ---- reading the drawers ----
+
+/** every FX drawer of the patch, in overlay order */
+export const drawers = (p: Patch): AssemblyInst[] => assembliesOf(p).filter((a) => a.drawer);
+
+/** an instrument's FX drawer */
+export function drawerOf(p: Patch, instrumentId: number): AssemblyInst | undefined {
+  const a = assemblyById(p, instrumentId);
+  return a ? childrenOf(p, a).find((c) => c.drawer) : undefined;
+}
+
+/** the patch's Output drawer */
+export const outputDrawer = (p: Patch): AssemblyInst | undefined => assembliesOf(p).find((a) => a.drawer && !a.drawer.taps);
+
+/** the instrument a drawer belongs to, or 'output' for the Output drawer */
+export function ownerOf(p: Patch, drawer: AssemblyInst): AssemblyInst | 'output' {
+  return (drawer.drawer?.taps && parentOf(p, drawer.id)) || 'output';
+}
+
+/** the drawer an effect is in */
+export function drawerOfEffect(p: Patch, effectId: number): AssemblyInst | undefined {
+  const d = parentOf(p, effectId);
+  return d?.drawer ? d : undefined;
+}
+
+/** a drawer's effects in signal order */
+export const effectsOf = (p: Patch, drawer: AssemblyInst): AssemblyInst[] => childrenOf(p, drawer).filter((e) => e.chain);
+
+/** what the patch binary's rack section needs (patchbin.ts): every effect that is a device (drawers' in chain order, then
+ *  the canvas's), with the modules its runtime switches (its members minus its helpers), and every drawer */
+export interface RackEffect { asm: number; targets: number[] }
+export interface RackDrawer { drawer: number; owner: number | 'output'; effects: number[] }
+export interface Rack { effects: RackEffect[]; drawers: RackDrawer[] }
+
+/** what the patch binary's rack section is made from (Rack) */
+export function rackOf(p: Patch): Rack {
+  const helpers = chainHelpers(p);
+  const targets = (e: AssemblyInst): number[] => allModules(p, e).filter((id) => !helpers.has(id));
+  const list = drawers(p).map((d) => ({ d, fx: effectsOf(p, d) }));
+  const canvas = assembliesOf(p).filter((a) => a.chain && !parentOf(p, a.id));
+  return {
+    effects: [...list.flatMap((x) => x.fx), ...canvas].map((e) => ({ asm: e.id, targets: targets(e) })),
+    drawers: list.map(({ d, fx }) => { const o = ownerOf(p, d); return { drawer: d.id, owner: o === 'output' ? 'output' : o.id, effects: fx.map((e) => e.id) }; }),
+  };
+}
+
 /**
  * The group switch: off bypasses every member (nested ones too) and remembers which were already off; on restores exactly
  * that, so a member you switched off yourself stays off. An instrument's switch leaves its FX drawer alone (the drawer has

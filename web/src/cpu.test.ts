@@ -2,12 +2,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { cardCosts, cardCostText, CPU, cpuEstimate, runCost } from './cpu';
-import { allModules, assembliesOf } from './assembly';
+import { allModules, assembliesOf, assemblyById, bypassAssembly, rackOf } from './assembly';
 import { cpuChecks, looseModel } from './cpu-checks';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, EDITOR_ONLY, validatePatch } from './patch';
-import { fxBusOf } from './fx-bus';
-import { setFxStageEnabled } from './fx-preset';
 import { FM1_PRESETS } from './presets';
 import { relocatedPatches } from './community-factory';
 import { withParts } from './test-poly';
@@ -159,7 +157,7 @@ describe('CPU estimate of the poly factory patches by voices (docs/measurements/
       const p = FM1_PRESETS[base]();
       const top = Math.max(...p.modules.filter((m) => m.type === 'alloc').map((m) => m.params.voices ?? 1));
       for (const m of p.modules) if (m.type === 'alloc' && (m.params.voices ?? 1) === top) m.params.voices = Number(v);
-      if (fx) for (const s of fxBusOf(p)!.stages) setFxStageEnabled(p, s, true);
+      if (fx) for (const e of rackOf(p).effects) bypassAssembly(p, assemblyById(p, e.asm)!, false);
       const device = (100 * us) / CPU.blockUs, est = 100 * cpuEstimate(p).use;
       expect(est).toBeGreaterThanOrEqual(device);
       expect(est).toBeLessThanOrEqual(device + 4);

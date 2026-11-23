@@ -17,31 +17,14 @@
     ],
     "kinds": {
      "arp": "bypass",
-     "lfo": "nothing",
-     "fx": "page"
+     "lfo": "nothing"
     },
     "targets": {
      "arp": {
       "module": 70
      }
     },
-    "labels": {},
-    "pages": {
-     "fx": [
-      {
-       "device": "a4",
-       "page": 0
-      },
-      {
-       "device": "a4",
-       "page": 1
-      },
-      {
-       "device": "a4",
-       "page": 2
-      }
-     ]
-    }
+    "labels": {}
    }
   },
   {
@@ -4338,6 +4321,9 @@
      "param": "view",
      "label": "meter"
     }
+   ],
+   "children": [
+    4
    ]
   },
   {
@@ -4350,7 +4336,8 @@
    "open": false,
    "modules": [
     74,
-    75
+    75,
+    72
    ],
    "inputs": [
     {
@@ -4367,23 +4354,25 @@
    "outputs": [
     {
      "module": 74,
-     "port": "r",
-     "label": "r"
-    },
-    {
-     "module": 75,
      "port": "l",
-     "label": "l"
-    },
-    {
-     "module": 74,
-     "port": "l",
-     "label": "l 2"
+     "label": "l 2",
+     "also": [
+      {
+       "module": 72,
+       "port": "sub"
+      }
+     ]
     },
     {
      "module": 75,
      "port": "r",
-     "label": "r 2"
+     "label": "r 2",
+     "also": [
+      {
+       "module": 72,
+       "port": "sub"
+      }
+     ]
     }
    ],
    "params": [
@@ -4422,7 +4411,20 @@
     }
    ],
    "bypass": true,
-   "kept": []
+   "kept": [],
+   "chain": {
+    "ins": [
+     0,
+     1
+    ],
+    "outs": [
+     0,
+     1
+    ],
+    "helpers": [
+     72
+    ]
+   }
   },
   {
    "v": 1,
@@ -4434,7 +4436,8 @@
    "open": false,
    "modules": [
     76,
-    77
+    77,
+    73
    ],
    "inputs": [
     {
@@ -4451,23 +4454,25 @@
    "outputs": [
     {
      "module": 76,
-     "port": "r",
-     "label": "r"
-    },
-    {
-     "module": 77,
      "port": "out",
-     "label": "out"
-    },
-    {
-     "module": 76,
-     "port": "out",
-     "label": "out 2"
+     "label": "out 2",
+     "also": [
+      {
+       "module": 73,
+       "port": "sub"
+      }
+     ]
     },
     {
      "module": 77,
      "port": "r",
-     "label": "r 2"
+     "label": "r 2",
+     "also": [
+      {
+       "module": 73,
+       "port": "sub"
+      }
+     ]
     }
    ],
    "params": [
@@ -4539,156 +4544,49 @@
     }
    ],
    "bypass": true,
-   "kept": []
+   "kept": [],
+   "chain": {
+    "ins": [
+     0,
+     1
+    ],
+    "outs": [
+     0,
+     1
+    ],
+    "helpers": [
+     73
+    ]
+   }
   },
   {
    "v": 1,
    "id": 4,
    "name": "FX",
    "label": "FX",
-   "x": 4240,
-   "y": -500,
+   "x": 20,
+   "y": 60,
    "open": false,
-   "modules": [
-    72,
-    73
-   ],
-   "inputs": [
-    {
-     "module": 74,
-     "port": "in",
-     "label": "in"
-    },
-    {
-     "module": 75,
-     "port": "in",
-     "label": "in 2"
-    }
-   ],
-   "outputs": [
-    {
-     "module": 73,
-     "port": "sub",
-     "label": "sub 2"
-    },
-    {
-     "module": 76,
-     "port": "out",
-     "label": "out 2"
-    },
-    {
-     "module": 77,
-     "port": "r",
-     "label": "r 2"
-    }
-   ],
-   "params": [
-    {
-     "module": 74,
-     "param": "rate",
-     "label": "rate",
-     "head": "Chorus",
-     "also": [
-      {
-       "module": 75,
-       "param": "rate"
-      }
-     ]
-    },
-    {
-     "module": 74,
-     "param": "depth",
-     "label": "depth",
-     "also": [
-      {
-       "module": 75,
-       "param": "depth"
-      }
-     ]
-    },
-    {
-     "module": 74,
-     "param": "mix",
-     "label": "mix",
-     "also": [
-      {
-       "module": 75,
-       "param": "mix"
-      }
-     ]
-    },
-    {
-     "module": 76,
-     "param": "time",
-     "label": "time",
-     "head": "Delay",
-     "also": [
-      {
-       "module": 77,
-       "param": "time"
-      }
-     ]
-    },
-    {
-     "module": 76,
-     "param": "fb",
-     "label": "fb",
-     "also": [
-      {
-       "module": 77,
-       "param": "fb"
-      }
-     ]
-    },
-    {
-     "module": 76,
-     "param": "mix",
-     "label": "mix",
-     "also": [
-      {
-       "module": 77,
-       "param": "mix"
-      }
-     ]
-    },
-    {
-     "module": 76,
-     "param": "sync",
-     "label": "sync",
-     "also": [
-      {
-       "module": 77,
-       "param": "sync"
-      }
-     ]
-    },
-    {
-     "module": 76,
-     "param": "pingpong",
-     "label": "pingpong",
-     "also": [
-      {
-       "module": 77,
-       "param": "pingpong"
-      }
-     ]
-    },
-    {
-     "module": 76,
-     "param": "note",
-     "label": "note",
-     "also": [
-      {
-       "module": 77,
-       "param": "note"
-      }
-     ]
-    }
-   ],
+   "modules": [],
    "children": [
     2,
     3
-   ]
+   ],
+   "inputs": [],
+   "outputs": [],
+   "params": [],
+   "drawer": {
+    "taps": [
+     {
+      "module": 50,
+      "port": "out"
+     },
+     {
+      "module": 51,
+      "port": "out"
+     }
+    ]
+   }
   }
  ]
 }

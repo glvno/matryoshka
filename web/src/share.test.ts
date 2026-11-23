@@ -19,7 +19,7 @@ const memoryKv = (): Kv & { size(): number } => {
 describe('share links', () => {
   it('round-trips factory and relocated community patches through share links', async () => {
     for (const make of Object.values({ ...PRESETS, ...relocatedPatches })) {
-      const p = make();
+      const p = validatePatch(make(), DEFS);   // (as a patch opens: an old master FX bus is an FX drawer)
       const s = await encodeShare(p, { base: 'https://example.test/x/' });
       expect(s.length).toBe(s.link.length);
       expect(/^[A-Za-z0-9_-]+$/.test(s.code)).toBe(true);

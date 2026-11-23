@@ -8,7 +8,9 @@ import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
 import { binaryPage } from './patchbin';
 import { devicesOf } from './pages';
-import { fxBusOf, withFxBus } from './fx-bus';
+import { withFxBus } from './factory-bank';
+import { convertLegacyBus } from './fx-drawer';
+import { fxBusOf, type FxStageKind } from './fx-legacy';
 import { deviceSection } from './patchbin';
 import { deviceView } from './poly';
 
@@ -54,36 +56,35 @@ describe('the controls strip is made from the controls table (#554, controls.ts)
     expect(v.rows.length, 'every state lists rows').toBeGreaterThan(0);
   });
 
-  it('renders real master FX controls instead of the legacy FX binding, with selected-stage knob labels', () => {
+  /** the factory bus on the rig, made into an FX drawer (each stage an effect device of its own) */
+  const drawerRig = (omit: readonly FxStageKind[] = []) => {
+    const built = withFxBus(rig().p, { omit }), bus = fxBusOf(built, DEFS)!;
+    const p = convertLegacyBus(built);
+    return { p, bus, compiled: stripPatch(p), devs: deviceSection(p, deviceView(p, true).patch) };
+  };
+
+  it('a patch with an FX rack reserves FX (its legacy binding is not shown) and lists FX opening the first effect', () => {
     const legacy = rig().p;
     expect(stripPatch(legacy).buttons.some((b) => b.button === 'FX')).toBe(true);
-    const p = withFxBus(legacy), bus = fxBusOf(p)!;
-    expect(bus).not.toBeNull();
-    const compiled = stripPatch(p);
+    const { bus, compiled, devs } = drawerRig();
     expect(compiled.buttons.some((b) => b.button === 'FX')).toBe(false);
-    const normal = stripView(at('device', { conditions: cond('fx_bank') }), compiled);
+    const normal = stripView(at('device'), compiled);
     expect(ids([...normal.rows, ...normal.more])).toContain('fx-open');
-    const devs = deviceSection(p, deviceView(p, true).patch);
-    const device = devs.findIndex((d) => d.asm === bus.assembly);
-    const target = bus.stages[2].targets;
-    const page = devs[device].pages.findIndex((pg) => pg.rows.some((r) => target.includes(r.module)));
-    const v = stripView(at('fx', { device, devicePage: page }), compiled);
-    expect(ids(v.rows)).toEqual(['fx-row', 'fx-params', 'fx-toggle', 'fx-back']);
+    const device = devs.findIndex((d) => d.asm === bus.stages[2].assembly), page = 0;
+    expect(device).toBeGreaterThanOrEqual(0);
+    const v = stripView(at('device', { device, devicePage: page }), compiled);
     expect(v.knobs).toEqual(Array.from({ length: 4 }, (_, k) => devs[device].pages[page].rows[k]?.label ?? ''));
     expect(ids(stripView(at('step', { held: 1 << BUTTON_ID.FX }), compiled).rows)).toEqual(['sr-accent']);
   });
 
-  it('shows the sparse Reverb page’s helper-bound mix knob without exposing the legacy FX Toggle', () => {
-    const p = withFxBus(rig().p, { omit: ['drive', 'chorus', 'delay'] }), bus = fxBusOf(p)!;
-    const compiled = stripPatch(p), devs = deviceSection(p, deviceView(p, true).patch);
-    const device = devs.findIndex(d => d.asm === bus.assembly), stage = bus.stages[0];
-    const page = devs[device].pages.findIndex(pg => pg.rows.some(r => stage.targets.includes(r.module)));
-    const mix = devs[device].pages[page].rows.find(r => stage.helpers.includes(r.module));
+  it('shows the Reverb effect page\'s helper-bound mix knob', () => {
+    const { bus, compiled, devs } = drawerRig(['drive', 'chorus', 'delay']), stage = bus.stages[0];
+    const device = devs.findIndex((d) => d.asm === stage.assembly);
+    const page = devs[device].pages.findIndex((pg) => pg.rows.some((r) => stage.targets.includes(r.module)));
+    const mix = devs[device].pages[page].rows.find((r) => stage.helpers.includes(r.module));
     expect(mix).toBeDefined();
-    const view = stripView(at('fx', { device, devicePage: page }), compiled);
-    expect(view.knobs).toContain(mix!.label);
-    expect(ids(view.rows)).toEqual(['fx-row', 'fx-params', 'fx-toggle', 'fx-back']);
-    expect(compiled.buttons.some(b => b.button === 'FX')).toBe(false);
+    expect(stripView(at('device', { device, devicePage: page }), compiled).knobs).toContain(mix!.label);
+    expect(compiled.buttons.some((b) => b.button === 'FX')).toBe(false);
   });
 
   it('a row\'s condition decides whether it shows (a device page, a Page button\'s list or not)', () => {
