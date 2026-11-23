@@ -2,13 +2,13 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it, vi } from 'vitest';
 import { FACTORY } from './assemblies';
-import { insertAssembly, parentOf, type AssemblyInst } from './assembly';
+import { insertAssembly, type AssemblyInst } from './assembly';
 import type { DeviceLink } from './device';
 import { applyPreset, capturePreset, currentValues, presetsOf, setFactoryPresets, storePreset, userPresets } from './device-presets';
 import { defIsEngine } from './engines';
 import { drawerScope } from './fx-preset';
 import { drawerPresetInfo } from './fx-preset-format';
-import { buildPresetsSection, engineOf } from './library-presets';
+import { buildPresetsSection, engineOf, factoryInstruments } from './library-presets';
 import { DEFS } from './modules';
 import { newPatch, validatePatch, type Patch } from './patch';
 import { bindPatchPresetTransfer } from './patch-presets';
@@ -87,10 +87,10 @@ it.each([
   expect(putPreset).not.toHaveBeenCalled();
 });
 
-/** a factory patch as the editor opens it and its one instrument (the drawer's effects are not instruments) */
+/** a factory patch as the editor opens it and its one instrument (the drawer's effects are devices, not instruments) */
 function factoryInstrument(name: string): { patch: Patch; instrument: AssemblyInst } {
   const patch = validatePatch(JSON.parse(JSON.stringify(FM1_PRESETS[name]())), DEFS);
-  const found = (patch.assemblies ?? []).filter((a) => !parentOf(patch, a.id) && !a.chain && !a.drawer && a.modules.length);
+  const found = factoryInstruments(patch);
   return { patch, instrument: found.length === 1 ? found[0] : undefined! };
 }
 

@@ -12,9 +12,16 @@ import { showUndo } from './toast';
 import type { LibrarySection } from './bank';
 import { drawerPresetInfo } from './fx-preset-format';
 import { FM1_PRESETS } from './presets';
-import { parentOf } from './assembly';
+import { assemblyById, type AssemblyInst } from './assembly';
+import { devicesOf } from './pages';
+import { DEFS } from './modules';
+import type { Patch } from './patch';
 
 let engineNames: Map<string, string> | undefined;
+
+/** a patch's instruments: its assembly devices that are not effects (an FX drawer's effects are devices of their own) */
+export const factoryInstruments = (p: Patch): AssemblyInst[] =>
+  devicesOf(p, DEFS).flatMap((d) => { const a = d.asm === undefined ? undefined : assemblyById(p, d.asm); return a && !a.chain ? [a] : []; });
 
 /** which factory instrument a structure is, by name; '' when it is the user's own. A factory patch's instrument goes by the
  *  patch's name, as the bank shows it (its library engine may differ: the Hera 6 patch's is the library's Hera 4 at six
@@ -25,8 +32,7 @@ export function engineOf(structure: string, values?: readonly number[]): string 
     const names = new Map<string, string>();
     const add = (base: string, name: string): void => void (names.has(base) || names.set(base, name));
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
-      const p = make();
-      const instruments = (p.assemblies ?? []).filter((a) => !parentOf(p, a.id) && !a.chain && !a.drawer && a.modules.length);
+      const p = make(), instruments = factoryInstruments(p);
       if (instruments.length === 1) add(structureOf(p, instruments[0]), name);
     }
     for (const def of FACTORY) add(defStructure(def), def.name);
