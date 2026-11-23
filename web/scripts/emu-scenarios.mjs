@@ -2325,8 +2325,9 @@ async function main() {
     // armed track's) at 100 / 127 of what it played at 0
     async velocity808() {
       await check('808 velocity: the 808 Kit opens, synced', await openSynced('808 Kit'));
-      const row = JSON.parse(await patchJson()).assemblies.find((a) => a.name === '808 kit').params.at(-1);
-      await check('808 velocity: the card\'s last row is VELOCITY, a Macro at 0', row?.label === 'velocity', JSON.stringify(row));
+      const rows808 = JSON.parse(await patchJson()).assemblies.find((a) => a.name === '808 kit').params;
+      const row = rows808[rows808.findIndex((r) => r.head === 'pattern') - 1];   // (the last sound row, before the pattern section, D-1062)
+      await check('808 velocity: the card\'s last sound row is VELOCITY, a Macro at 0', row?.label === 'velocity', JSON.stringify(row));
       const value = async () => JSON.parse(await patchJson()).modules.find((m) => m.id === row.module).params.value;
       await emu.tap(B.scl);                         // the kit card, DRUMS' device, armed with it: black key 6 plays the low tom at velocity 100
       await check('808 velocity: SEL arms the kit with DRUMS', await emu.waitText('808 KIT ARMED', 1500));
@@ -2364,8 +2365,9 @@ async function main() {
     // D-1055 amended (#1158 option 2): the 909 Kit's VELOCITY row, as the 808 Kit's in velocity808
     async velocity909() {
       await check('909 velocity: the 909 Kit opens, synced', await openSynced('909 Kit'));
-      const row = JSON.parse(await patchJson()).assemblies.find((a) => a.name === '909 kit').params.at(-1);
-      await check('909 velocity: the card\'s last row is VELOCITY, a Macro at 0', row?.label === 'velocity', JSON.stringify(row));
+      const rows909 = JSON.parse(await patchJson()).assemblies.find((a) => a.name === '909 kit').params;
+      const row = rows909[rows909.findIndex((r) => r.head === 'pattern') - 1];   // (the last sound row, before the pattern section, D-1062)
+      await check('909 velocity: the card\'s last sound row is VELOCITY, a Macro at 0', row?.label === 'velocity', JSON.stringify(row));
       const value = async () => JSON.parse(await patchJson()).modules.find((m) => m.id === row.module).params.value;
       await emu.tap(B.scl);                         // the kit card, DRUMS' device, armed with it: black key 1 plays the kick at velocity 100
       await check('909 velocity: SEL arms the kit with DRUMS', await emu.waitText('909 KIT ARMED', 1500));

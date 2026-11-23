@@ -1378,8 +1378,8 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     t.screen(&m, "seq: the 808 Kit loads", "808 KIT");
     m.run_for(1200)?;                        // (PRESET's toast over)
     t.screen(&m, "arm: a patch loads with nothing armed, the footer says KEYS WIRED (#395)", "KEYS WIRED");
-    m.tap(SEL, 120, 300)?;                   // the home device, the kit (its Drum map inside, D-1059): SEL arms DRUMS
-    t.screen(&m, "arm: SEL on a device fed through a track arms it with the track (#395), named too (#582)", "808 KIT + DRUMS ARMED");
+    m.tap(SEL, 120, 300)?;                   // the home device, the kit card with DRUMS inside (D-1062): SEL arms it with DRUMS
+    t.screen(&m, "arm: SEL on a card holding its track arms the card with its track (#395, D-1062), named too (#582)", "808 KIT ARMED");
     m.run_for(1200)?;
     let mk = m.mark();
     m.tap(14 + 1, 120, 300)?;                // F#3, black key 1, on the device page: the kick (Main's keys into DRUMS, #141)
