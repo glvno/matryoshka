@@ -7,7 +7,7 @@
   "sourceUrl": "https://github.com/glvno/matryoshka/actions/runs/45127108376",
   "measurementLabel": "v1.26.0",
   "targetRelease": "v1.26.0",
-  "display": "current",
+  "display": "historical",
   "qualification": "display-only",
   "instrumentation": "All web tests except the slow renders (levels-*, headroom-*, kit909, audition-render); those pass separately without coverage."
 }
