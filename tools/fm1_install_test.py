@@ -640,7 +640,7 @@ class RigPin(RigFakes, unittest.TestCase):
         buf = io.StringIO()
         code = fi.main([pkg, "--rig", "--yes"], backend=self.backend(usb), out=buf,
                        font_step=lambda a, out, img: steps.append("font"))
-        self.assertEqual((code, len(steps)), (10, 1))
+        self.assertEqual((code, len(steps)), (fi.EXIT["nofont"], 1))
         self.assertFalse(usb.sent)
         self.assertEqual(self.installed, [(RIG, "FM-1_7000000")])   # (only the first install)
 
