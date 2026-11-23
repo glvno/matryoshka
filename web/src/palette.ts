@@ -86,6 +86,9 @@ function isNumbered(name: string, label: string): boolean {
 /** "preset A" or "presets A, B" */
 const presetWord = (names: string[]): string => `preset${names.length > 1 ? 's' : ''} ${names.join(', ')}`;
 
+/** two binaries are the same, byte for byte */
+const sameBytes = (a: ArrayLike<number>, b: ArrayLike<number>): boolean => a.length === b.length && Array.prototype.every.call(a, (x: number, i: number) => x === b[i]);
+
 /** the selected pattern of `patch` (0-based) */
 export const patchPattern = (patch: Patch): number => patch.modules.find((m) => m.type === 'fm1')?.seq?.pattern ?? 0;
 
@@ -217,8 +220,13 @@ export interface PalettePorts {
   candidates(): Candidate[];
   /** Live sync is on and the FM-1 plays the editor's patch */
   live(): boolean;
+  /** the editor's patch as it is now */
+  current(): Patch;
   /** open `patch` in the editor; `adopt`: the FM-1 plays it already (a switch under Live): no upload */
   open(patch: Patch, o: { adopt: boolean; from: string }): void;
+  /** under Live the FM-1 plays a palette position that holds the editor's patch as it is (it saved it there: HOME + a
+   *  black key held): the editor keeps its patch, and Live edits go on to the FM-1's */
+  kept(): void;
   /** turn Live sync off and say why */
   liveOff(why: string): void;
   say(text: string): void;
@@ -247,6 +255,8 @@ export class Palette {
   private numbered: NumberedCopy[];
   /** an FM-1 linked that keeps a palette: the chips are live (otherwise read-only, the last read) */
   linked = false;
+  /** the editor's patch when the FM-1 last said it plays a slot (slotNow), until a switch is followed */
+  private atSlot: Patch | null = null;
 
   constructor(private ports: PalettePorts, private storage: Pick<Storage, 'getItem' | 'setItem'> | null = globalThis.localStorage ?? null) {
     const kept = loadKept(storage);
@@ -275,6 +285,12 @@ export class Palette {
     if (this.linked) void this.take(now, true);
   }
 
+  /** the FM-1 says it plays a slot (SLOT_NOW), before the editor takes it in (the editor drops its pattern origins then):
+   *  the editor's patch as it is now, which a hold-save stored as it was (follow), is kept for the PALETTE_NOW after it */
+  slotNow(): void {
+    this.atSlot = this.linked ? structuredClone(this.ports.current()) : null;
+  }
+
   /** take a palette read: fetch the entries whose hash is new, keep it, and under Live follow a switch */
   private async take(now: PaletteNow, follow: boolean): Promise<void> {
     this.now = now;
@@ -291,9 +307,10 @@ export class Palette {
     }
     this.keep();
     this.ports.changed();
-    const was = this.taken;
+    const was = this.taken, at = this.atSlot;
     this.taken = now;
-    if (follow && was && now.cur !== null && now.cur !== was.cur && this.ports.live()) this.follow(now.cur);
+    this.atSlot = null;   // (one read after the SLOT_NOW: an FM-1 SAVE outside the palette leaves none behind)
+    if (follow && was && now.cur !== null && now.cur !== was.cur && this.ports.live()) await this.follow(now, now.cur, at ?? this.ports.current());
   }
 
   private keep(): void {
@@ -423,7 +440,7 @@ export class Palette {
         const n = deviceName(s.name);
         if (!s.used || s.length !== bin.length || (n !== label && !isNumbered(n, label))) continue;
         const held = await d.readSlotBin(s.slot);
-        if (held && held.length === bin.length && held.every((x, i) => x === bin[i])) return { slot: s.slot, label: s.name, store: false, numbered: n !== label };
+        if (held && sameBytes(held, bin)) return { slot: s.slot, label: s.name, store: false, numbered: n !== label };
       }
     }
     const free = bank.find((s) => !s.used);
@@ -547,10 +564,37 @@ export class Palette {
     return true;
   }
 
-  /** the FM-1 switched to position `pos` under Live: open its copy without sending it back, or turn Live off */
-  private follow(pos: number): void {
-    const p = this.now!.positions[pos];
+  /**
+   * The FM-1 plays position `pos` under Live (`now` the read that said so): a switch opens its copy without sending it
+   * back, or turns Live off without one. A position that holds the editor's patch (`at`: as it was when the FM-1 said it
+   * plays the slot) is no switch: the FM-1 saved the patch it played from the editor there (HOME + a black key held,
+   * #1244), so the editor keeps its patch and Live rather than open a copy of that name and length, which can be an older
+   * one, or turn Live off for want of one. A position that holds anything else is a switch, whatever made it.
+   */
+  private async follow(now: PaletteNow, pos: number, at: Patch): Promise<void> {
+    const p = now.positions[pos];
+    const mine = await this.holds(pos, at);
+    if (this.taken !== now) return;   // (a newer palette came meanwhile: it follows on its own)
+    if (mine) return this.ports.kept();
     if (this.open(pos, true)) return;
     this.ports.liveOff(`FM-1 switched to palette ${pos + 1} · ${p.name}: no copy in this browser, so Live sync is off`);
+  }
+
+  /** position `pos` plays `patch` as it is: its entry sets nothing on it, and its slot holds it byte for byte (SLOT_GET;
+   *  firmware that cannot send a slot back: never) */
+  private async holds(pos: number, patch: Patch): Promise<boolean> {
+    const d = this.ports.device, p = this.now?.positions[pos], e = this.entries[pos];
+    if (!p || p.state !== 1 || !e || !d.readsSlots) return false;
+    let bin: Uint8Array;
+    try {
+      const applied = structuredClone(patch);
+      applyEntry(applied, e);
+      bin = d.encodeFor(patch);
+      if (bin.length !== p.len || !sameBytes(d.encodeFor(applied), bin)) return false;
+    } catch {
+      return false;   // (over the FM-1's budget: not the patch it plays)
+    }
+    const held = await d.readSlotBin(p.slot).catch(() => null);
+    return !!held && sameBytes(held, bin);
   }
 }

@@ -440,6 +440,7 @@ device.onEvent = (e) => {
     return;
   }
   if (e.kind === 'slot') {
+    palette?.slotNow();   // (a hold-save stored the patch as it is before this: the palette compares the slot with it)
     clearDevicePatternOrigins();
     installedLayout = null;
     if (!device.hasLive) onEditorPatch = false;   // (an FM-1 that takes LIVE loads no slot under Live: this is SAVE or a boot)
@@ -1700,6 +1701,7 @@ palette = new Palette({
   device,
   candidates: () => bankCandidates(),
   live: () => live() && onEditorPatch,
+  current: () => editor.currentPatch(),
   open(p, o) {
     if (!o.adopt) return loadNamed(p, { from: o.from });
     // the FM-1 switched under Live: it plays this patch already, so the editor takes it as the FM-1's (nothing is sent
@@ -1707,6 +1709,12 @@ palette = new Palette({
     fromDevice = true;
     try { loadNamed(p, { from: o.from }); } finally { fromDevice = false; }
     uploadGate.forget();
+    onEditorPatch = true;
+    installedLayout = deviceLayoutKey(editor.patch);
+  },
+  kept() {
+    // the FM-1 saved the patch it plays from the editor into the palette (HOME + a black key held, #1244): nothing loads
+    // there, so the editor keeps its patch, and Live edits go on to the FM-1's
     onEditorPatch = true;
     installedLayout = deviceLayoutKey(editor.patch);
   },
