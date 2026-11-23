@@ -24,6 +24,13 @@ class SelectionTests(unittest.TestCase):
         self.assertTrue(selected['firmware'])
         self.assertNotIn('golden', selected['host'])
 
+    def test_every_rule_names_host_checks_that_exist(self):
+        # a misspelt name ('pal_preset' for 'pal-preset') ran every check of the scope, then failed the job on a KeyError
+        known = set(self.config['host_commands'])
+        for rule in self.config['rules']:
+            with self.subTest(rule=rule['name']):
+                self.assertEqual([h for h in rule['host'] if h not in known], [])
+
     def test_changed_web_test_and_companion_are_targeted(self):
         selected = ci.select(['web/src/roll.ts', 'web/src/piano.test.ts'], self.config, 'web')
         self.assertEqual(set(selected['web']), {'web/src/roll.test.ts', 'web/src/piano.test.ts'})
