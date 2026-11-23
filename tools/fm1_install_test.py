@@ -644,6 +644,30 @@ class RigPin(RigFakes, unittest.TestCase):
         self.assertFalse(usb.sent)
         self.assertEqual(self.installed, [(RIG, "FM-1_7000000")])   # (only the first install)
 
+    def test_package_font_id_hex_or_number(self):
+        # the release sidecar names the font as hex, the web bundle's matryoshka.json (sync-firmware.mjs) as a number
+        import shutil
+        import tempfile
+        with open(fi.FONT_BIN, "rb") as f:
+            font = f.read()
+        fid = fi.font_image_id(font)
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        pkg = os.path.join(d, "matryoshka.fwsc")
+        shutil.copy(OURS, pkg)
+        beside = os.path.join(d, "matryoshka-font.bin")
+        with open(beside, "wb") as f:
+            f.write(font)
+        for named in (f"{fid:08x}", f"{fid:08X}", fid):
+            with open(os.path.join(d, "matryoshka.json"), "w") as f:
+                json.dump({"font": named}, f)
+            self.assertEqual(fi.package_font(pkg), (beside, font), named)
+        for wrong in ("0badf00d", 0x0badf00d, "nope", "0x528f19", 1 << 32, -1, True, [fid]):
+            with open(os.path.join(d, "matryoshka.json"), "w") as f:
+                json.dump({"font": wrong}, f)
+            with self.assertRaises(fi.InstallError, msg=repr(wrong)):
+                fi.package_font(pkg)
+
     def test_nothing_at_the_location(self):
         usb = self.usb((OWNER, "FM-1_7011000", MARK))
         self.assertEqual(self.run_rig(usb)[0], 3)

@@ -1038,8 +1038,16 @@ def package_font(path):
             found.append((p, img))
     if want is None:
         return found[0] if found else None
+    # the release sidecar names the id as hex ("528f1926"), the web bundle's matryoshka.json as a number
+    if isinstance(want, int) and not isinstance(want, bool) and 0 <= want <= 0xFFFFFFFF:
+        want_id = want
+    elif isinstance(want, str) and len(want) == 8 and all(c in "0123456789abcdefABCDEF" for c in want):
+        want_id = int(want, 16)
+    else:
+        raise InstallError("nofont", f"{stem}.json names screen font {want!r}, which is neither an 8-digit hex string "
+                                     f"nor a 32-bit number: nothing was written")
     for p, img in found:
-        if f"{font_image_id(img):08x}" == want:
+        if font_image_id(img) == want_id:
             return p, img
     raise InstallError("nofont", f"{path} needs screen font {want}, and neither {stem}-font.bin nor this checkout's "
                                  f"{os.path.relpath(FONT_BIN)} is that font: nothing was written")
