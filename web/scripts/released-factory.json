@@ -1250,6 +1250,58 @@
     {"name": "VERONA DRUM 1", "len": 3811, "fnv": "0a428c5f", "crc": "231de737"},
     {"name": "SHUSH 101", "len": 2222, "fnv": "ca982687", "crc": "a09ea280"}
    ]
+  },
+  {
+   "set": "f81fee",
+   "tags": [
+    "v1.26.0"
+   ],
+   "names": [
+    "MONOLITH D",
+    "ORACLE V",
+    "SILVER BOX",
+    "HERA 6",
+    "SALLEN 20",
+    "EXPANDER S",
+    "ALGO FOUR",
+    "CANVAS",
+    "WANDERER",
+    "BRIEFCASE 3",
+    "IO 4",
+    "VERNON 100",
+    "8 LIRE",
+    "ELVIRA 2",
+    "SCROUNGE",
+    "MERIDIAN 8",
+    "808 KIT",
+    "909 KIT",
+    "CASSIA 1",
+    "VERONA DRUM 1",
+    "SHUSH 101"
+   ],
+   "copies": [
+    {"name": "MONOLITH D", "len": 2758, "fnv": "558a6873", "crc": "de7db0d7"},
+    {"name": "ORACLE V", "len": 3099, "fnv": "d0aa5618", "crc": "cac1a3af"},
+    {"name": "SILVER BOX", "len": 1386, "fnv": "bc1e1ee7", "crc": "c9142da0"},
+    {"name": "HERA 6", "len": 2370, "fnv": "a98cbfdc", "crc": "6e1299e7"},
+    {"name": "SALLEN 20", "len": 2481, "fnv": "4cdc66ea", "crc": "bdb9b4ae"},
+    {"name": "EXPANDER S", "len": 2156, "fnv": "fa79e823", "crc": "3d515c36"},
+    {"name": "ALGO FOUR", "len": 2088, "fnv": "f63f12e0", "crc": "f9d12fb3"},
+    {"name": "CANVAS", "len": 3821, "fnv": "0ed1e81a", "crc": "721c0432"},
+    {"name": "WANDERER", "len": 3165, "fnv": "3ae1f923", "crc": "9d309c0c"},
+    {"name": "BRIEFCASE 3", "len": 3818, "fnv": "4cb0687c", "crc": "71e905de"},
+    {"name": "IO 4", "len": 2818, "fnv": "a1d93a42", "crc": "f12027ed"},
+    {"name": "VERNON 100", "len": 3026, "fnv": "dab92480", "crc": "21de2cd3"},
+    {"name": "8 LIRE", "len": 3736, "fnv": "43660209", "crc": "6ec4b297"},
+    {"name": "ELVIRA 2", "len": 3491, "fnv": "59e85248", "crc": "0b3bc2fe"},
+    {"name": "SCROUNGE", "len": 3517, "fnv": "cbe0aa0a", "crc": "b0561976"},
+    {"name": "MERIDIAN 8", "len": 3493, "fnv": "14e2c1db", "crc": "c8ac62d8"},
+    {"name": "808 KIT", "len": 3711, "fnv": "6a2858e2", "crc": "15c76d77"},
+    {"name": "909 KIT", "len": 3608, "fnv": "325d4163", "crc": "2d2d58b6"},
+    {"name": "CASSIA 1", "len": 3698, "fnv": "e092938e", "crc": "7dd02ab0"},
+    {"name": "VERONA DRUM 1", "len": 3788, "fnv": "20116dd3", "crc": "6c10cf43"},
+    {"name": "SHUSH 101", "len": 2222, "fnv": "ca982687", "crc": "a09ea280"}
+   ]
   }
  ]
 }
