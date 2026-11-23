@@ -15,4 +15,4 @@ cargo build --release --quiet --manifest-path tools/emu/Cargo.toml --config "$IS
 OUT="build/emu/smoke"
 rm -rf "$OUT"
 exec tools/emu/target/release/m1emu smoke "$BIN" --levels build/emu/levels.txt --out "$OUT" \
-  ${M1EMU_STRICT:+--strict}
+  --factory web/public/firmware/matryoshka-factory.bin ${M1EMU_STRICT:+--strict}

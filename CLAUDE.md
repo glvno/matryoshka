@@ -46,10 +46,10 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 
 ## Worktrees
 
-These rules are in [D-074](docs/ledger/project.md#D-074) (Proposed).
+These rules are in [D-074](docs/ledger/project.md#D-074) (Decided, amended).
 
 - Work in a git worktree under `/Users/mg/projects/music/fm1/wt/<name>`, the `wt/` folder beside the main checkout `modular-1`, on a branch off `origin/main`.
-- Link `web/node_modules` to the main checkout's: `ln -s /Users/mg/projects/music/fm1/modular-1/web/node_modules web/node_modules`. Never run `npm install` in a worktree. When you need the emulator, link `tools/emu/target` the same way instead of building a second one, unless your change is to the emulator itself.
+- Link `web/node_modules` to the main checkout's: `ln -s /Users/mg/projects/music/fm1/modular-1/web/node_modules web/node_modules`. Never run `npm install` in a worktree. When you need the emulator, link `tools/emu/target` the same way instead of building a second one, unless your change is to the emulator itself. `m1emu` reads the factory region and the firmware headers from the checkout it runs in, so the shared build never runs another checkout's factory sounds (docs/EMULATOR.md).
 - When your pull request is merged or closed, remove your worktree and its local branch: `git worktree remove <path>`, then `git branch -D <branch>`.
 - After merges, run `python3 tools/worktree_gc.py --apply`. It removes every worktree whose work is kept elsewhere, and lists the rest with the reason each one stays. Without `--apply` it only prints the table. It never removes the main checkout or a path listed in the main checkout's `build/worktree-keep.txt`, such as a checkout a dev server serves. It removes uncommitted work only with `--archive`, which saves it first.
 - A worktree's `build/` is deleted with the worktree. Listening files and anything else meant for the owner go to the main checkout's `build/`. `tools/engine_exact.sh` and `tools/lanes_exact.sh` delete their output when every check passes (`KEEP_EXACT=1` keeps it).

@@ -144,6 +144,16 @@ command; deployment neither downloads arbitrary reports nor reruns tests.
   MIDI input into the TRS jack; fm1-live prints its key map; built once into `tools/emu/live/`).
 - Without FIRMWARE both take `build/matryoshka.bin`, else download the latest firmware artifact of a successful
   `firmware` run on `main` with `gh` (`build/emu/ci/`), else unpack `web/public/firmware/matryoshka.fwsc`.
+- Every `m1emu` command reads the factory region and the firmware headers it checks against when it starts, from the
+  checkout it runs in: the nearest directory at or above the working directory holding `tools/emu/Cargo.toml`. The
+  region is `web/public/firmware/matryoshka-factory.bin`, or the image `--factory FILE` names; the headers are
+  `presets.h`, `factory_tier.h`, `engine.h`, `defs.h`, `font5x7.c` and `font_bc.h` in `firmware/src/`, and
+  `pmig_cases.h` and `released_cases.h` in `firmware/test/`. None of them is compiled in. Worktrees share one
+  `tools/emu/target` ([D-074](ledger/project.md#D-074), Decided, amended), so its binary is the one the last checkout
+  built, and cargo does not rebuild it for another checkout's changed files: a compiled-in region ran kit-fold's
+  firmware on main's factory sounds (#1205). The runners pass their checkout's image. `m1emu` prints the region it loaded
+  on stderr: `factory region: PATH (layout L, version V, set S, N patches)`. A change to `tools/emu/src` itself still
+  needs its own `tools/emu/target`.
 - `tools/emu_smoke.sh [BIN]` is what `emu:smoke` runs (`M1EMU_STRICT=1` makes
   level warnings fail). `tools/emu/target/release/m1emu run BIN --ms N --keys SCRIPT --snap MS,.. --wav F
   --flash-in F --flash-out F --text S` is a free run (SCRIPT as fm1-emu's: `800:n7,1500:n7^,2000:e6:1,2500:mc005`;
