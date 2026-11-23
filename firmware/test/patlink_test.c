@@ -877,8 +877,9 @@ static void store(void)
         m1_patch_track(m);
     }
     OK((uint32_t)patch_full_calls == full + 1u && eng_pattern_notes(m, 0, &w) == (int)cnt && m1_valid(m1_cur, m1_cur_len));
-    /* a pattern 2..64 past it goes to the store (an entry only this patch links), and SAVE keeps that entry */
-    OK(!load_patch(bin, len) && pl_copy(1, 24) == 0 && (idc = pl_link(24)) && (pl_priv >> 24 & 1u));
+    /* a pattern 2..64 past it (P04, as in kits) goes to the store (an entry only this patch links), and SAVE keeps that
+     * entry */
+    OK(!load_patch(bin, len) && pl_copy(3, 24) == 0 && (idc = pl_link(24)) && (pl_priv >> 24 & 1u));
     OK(pl_commit("808 Kit", 0) == 0 && pl_link(24) == idc && !pl_priv);
     pl_name(name, "a very long patch name", 63);
     OK(!strcmp(name, "A VERY LONG P64"));
