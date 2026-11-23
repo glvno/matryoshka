@@ -34,6 +34,16 @@ static int m1_store(const uint8_t *p, uint32_t n)
     return 0;
 }
 static int m1_device_settings(const uint8_t *p, uint32_t n, uint8_t *out) { (void)p; (void)n; out[0]=6; return 1; }
+static uint8_t pal_got[64];                                      /* palette.c m1_palette's stand-in: the last PALETTE payload */
+static uint32_t pal_got_n, pal_calls;                            /* (its ops: firmware/test/palette_test.c) */
+static void m1_palette(const uint8_t *d, uint32_t len)
+{
+    uint32_t i;
+    pal_calls++;
+    pal_got_n = len;
+    for (i = 0; i < len && i < sizeof pal_got; i++)
+        pal_got[i] = d[i];
+}
 static uint8_t meq_bytes[4];                                    /* main.c m1_master_eq's stand-in: what the link set */
 static int m1_master_eq(const uint8_t *p, uint32_t n, uint8_t *out)
 {
@@ -1075,6 +1085,14 @@ int main(int argc, char **argv)
         CHECK(n == 26u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
         CHECK(p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION && p[14] == M1_FEATURES4 && p[15] == 64u);
         printf("allocation rule %u advertised with unchanged format range %u..%u\n", p[13], p[7], p[8]);
+        {                                                    /* #1196: feature bit 31 (INFO byte 14 bit 7) and PALETTE (0x1E) goes
+                                                              * to palette.c with its payload (the ops: palette_test.c) */
+            uint8_t g[16] = {0x7D, 0x4D, 0x31, C_PALETTE}, raw[2] = {4, 2};
+            CHECK((p[14] & 0x80u) && C_PALETTE == 0x1Eu && R_PALETTE_NOW == 0x66u && R_PALETTE_ENTRY == 0x67u);
+            CHECK(m1_handle(g, 4u + m1_pack7(raw, 2, g + 4)) == 1 && pal_calls == 1u && pal_got_n == 2u && pal_got[0] == 4u &&
+                  pal_got[1] == 2u && m1_pal_asked == 0u);
+            printf("palette: feature bit 31, PALETTE handed to palette.c\n");
+        }
         return 0;
     }
     if (argc >= 2 && !strcmp(argv[1], "--old"))

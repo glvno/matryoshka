@@ -15,6 +15,11 @@
   tools/m1_link.py cpu                    (the audio ISR's load: now, and the peak since the last cpu read)
   tools/m1_link.py meq [LOW MID HIGH [FREQ]]   (#1107, D-938: the master EQ, GLO > EQ: read it, or set the gains in dB
                                            (half-dB steps, +-12) and MID FREQ's index (0..38: 100 Hz x 2^(i/6), 20 = 1 kHz))
+  tools/m1_link.py palette [get | entry N | go N|cancel | put N SLOT NAME [PATTERN] | clear N | order F1..F8]
+                                          (#1196: the palette: its 8 positions (1..8), one entry's bytes and presets, switch
+                                           to N (stopped: at once; playing: at the next bar line), store slot SLOT (1..60)
+                                           named NAME with no presets at N, empty N, or reorder (new position i takes old
+                                           Fi, 0 = empty))
   tools/m1_link.py uac [SECONDS]          (the USB audio stream: state, glitch counters, rate adjustments, the ring's fill
                                            range; SECONDS: read again after that long and print the changes per second)
   tools/m1_link.py mem                    (#273: the boot's proof of .lowram and how deep each stack has gone since boot)
@@ -524,6 +529,79 @@ def bank_command(link, a, ask=input, out=print):
         out("bank emptied")
 
 
+PAL_STATE = ("empty", "ok", "MISSING")
+PAL_STATUS = {0: "ok", 1: "out of range", 4: "flash error", 5: "refused (sandbox mode)", 6: "empty position",
+              8: "MISSING: the slot does not hold that name"}
+
+
+def palette_now(p):
+    """PALETTE_NOW's payload (#1196): (cur, next, edited, seq, [(state, slot, pattern, hash, len, name) x 8])"""
+    rows = []
+    for i in range(8):
+        r = p[6 + 27 * i:33 + 27 * i]
+        rows.append((r[0], r[1], r[2], r[3] | r[4] << 8, r[5] | r[6] << 8, bytes(x for x in r[7:27] if x).decode()))
+    return p[1], p[2], p[3] & 1, p[4] | p[5] << 8, rows
+
+
+def palette_entry(e):
+    """an ENTRY's bytes: (slot, pattern, name, [(dev, structure, pstructure, preset name)])"""
+    devs, at = [], 23
+    for _ in range(e[22]):
+        nl = e[at + 9]
+        devs.append((e[at], int.from_bytes(bytes(e[at + 1:at + 5]), "little"), int.from_bytes(bytes(e[at + 5:at + 9]), "little"),
+                     bytes(e[at + 10:at + 10 + nl]).decode()))
+        at += 10 + nl
+    return e[0], e[1], bytes(x for x in e[2:22] if x).decode(), devs
+
+
+def palette_command(link, a, out=print):
+    """palette get / entry N / go N|cancel / put N SLOT NAME [PATTERN] / clear N / order F1..F8 (#1196)"""
+    op = a[1] if len(a) > 1 else "get"
+
+    def acked(payload, seq):
+        p = link.ask(frame(0x1E, payload), (0x40, 0x1E), wait=4.0, tries=1)
+        if p[2]:
+            sys.exit(f"FM-1: {PAL_STATUS.get(p[2], p[2])}")
+        return p
+    if op == "entry":
+        pos = int(a[2]) - 1
+        p = link.ask(frame(0x1E, [1, pos]), (0x67, pos))
+        if len(p) <= 1:
+            out(f"palette {pos + 1}: empty")
+            return
+        slot, pattern, name, devs = palette_entry(p[1:])
+        out(f"palette {pos + 1}: slot {slot + 1:02d} {name}, pattern P{pattern + 1:02d}, hash {crc16(bytes(p[1:])):#06x}")
+        for d, st, pst, pn in devs:
+            out(f"  device {d}: preset {pn} (structure {st:#010x}, namespace {pst:#010x})")
+        return
+    if op == "go":
+        pos = 0xFF if a[2] == "cancel" else int(a[2]) - 1
+        p = acked([4, pos], pos)
+        out({0: "switched", 1: "waiting for the bar line", 2: "cancelled"}.get(p[3], p[3]))
+        return
+    if op == "put":
+        pos, slot = int(a[2]) - 1, int(a[3]) - 1
+        name = [ord(c) for c in a[4][:20]]           # (the slot's own name, case and all: the FM-1 compares it exactly)
+        acked([2, pos, slot, int(a[5]) - 1 if len(a) > 5 else 0, *name, *[0] * (20 - len(name)), 0], pos)
+        out(f"palette {pos + 1}: slot {slot + 1:02d} {a[4]}")
+        return
+    if op == "clear":
+        pos = int(a[2]) - 1
+        acked([2, pos], pos)
+        out(f"palette {pos + 1}: emptied")
+        return
+    if op == "order":
+        acked([3, *[int(x) - 1 if int(x) else 0xFF for x in a[2:10]]], 0)
+        out("palette reordered")
+        return
+    cur, nxt, edited, seq, rows = palette_now(link.ask(frame(0x1E, [0]), (0x66,)))
+    for i, (state, slot, pattern, h, n, name) in enumerate(rows):
+        mark = (" < playing" + (" (edited)" if edited else "") if i == cur else "") + (" < next" if i == nxt else "")
+        out(f"{i + 1}  " + (f"slot {slot + 1:02d} {name}, P{pattern + 1:02d}, {n} bytes, hash {h:#06x}"
+                            + ("" if state == 1 else f" {PAL_STATE[state]}") if state else "empty") + mark)
+    out(f"record seq {seq}")
+
+
 def main():
     a = sys.argv[1:]
     if not a:
@@ -546,6 +624,8 @@ def main():
         print(f"uploaded {len(data)} bytes")
     elif a[0] in ("bank", "bank-info", "bank-clear"):
         bank_command(link, a)
+    elif a[0] == "palette":
+        palette_command(link, a)
     elif a[0] == "font-info":
         print(font_info_text(font_info(link)))
     elif a[0] == "font-install":

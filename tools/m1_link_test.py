@@ -139,5 +139,26 @@ class FpuBench(unittest.TestCase):
 
 
 
+class Palette(unittest.TestCase):
+    """#1196: the palette's link vectors (firmware/test/palette_test.c, web/src/protocol.test.ts assert the same bytes)"""
+    V1 = bytes.fromhex("00024D4F4E4F4C49544820440000000000000000000001007856341278563412055741524D31")
+    V2 = bytes.fromhex("1000383038204B4954" + "00" * 14)
+
+    def test_vectors(self):
+        self.assertEqual(m1_link.crc16(b"123456789"), 0x29B1)
+        self.assertEqual((len(self.V1), m1_link.crc16(self.V1)), (38, 0x9B74))
+        self.assertEqual((len(self.V2), m1_link.crc16(self.V2)), (23, 0x3659))
+        self.assertEqual(m1_link.palette_entry(list(self.V1)), (0, 2, "MONOLITH D", [(0, 0x12345678, 0x12345678, "WARM1")]))
+        self.assertEqual(m1_link.palette_entry(list(self.V2)), (16, 0, "808 KIT", []))
+
+    def test_now(self):
+        p = [1, 0, 0xFF, 1, 7, 0] + [0] * 27 * 8
+        p[6:6 + 27] = [1, 16, 0, 0x59, 0x36, 0x4B, 0x0E, *b"808 KIT", *[0] * 13]
+        cur, nxt, edited, seq, rows = m1_link.palette_now(p)
+        self.assertEqual((cur, nxt, edited, seq), (0, 0xFF, 1, 7))
+        self.assertEqual(rows[0], (1, 16, 0, 0x3659, 3659, "808 KIT"))
+        self.assertEqual(rows[1][0], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

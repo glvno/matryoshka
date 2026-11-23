@@ -43,6 +43,7 @@ static void m1_keys_now(uint32_t n, int down)
     kr_held[kr_n] = panel_held;
     kr_n++;
 }
+#include "../src/pal_ui.c"                          /* the palette's keys and overview (#1196): pal_request, pal_save below */
 #include "../src/panel.c"
 /* the hooks */
 static int presets_stepped, saved, midi_out;
@@ -100,6 +101,22 @@ static void preset_step(int32_t d)
 static void save_state(void) { saved++; }
 static int settings_stored;                         /* the settings record written alone (HOME + SAVE on the quick start) */
 static void settings_store(void) { settings_stored++; }
+/* palette.c's switch and save (#1196): counted, the position kept (pal_panel_test.h) */
+static int pal_requests, pal_saves;
+static uint32_t pal_req_pos = PAL_NONE, pal_save_pos = PAL_NONE;
+static uint32_t pal_request(uint32_t pos, uint32_t *aux)
+{
+    pal_requests++;
+    pal_req_pos = pos;
+    if (aux)
+        *aux = 1u;
+    return 0;
+}
+static void pal_save(uint32_t pos)
+{
+    pal_saves++;
+    pal_save_pos = pos;
+}
 #include "../src/poly_edit.h"
 /* a set of modules as one number, its first 64, and back (#721: most patches here have fewer; the ones past 63: mset_*) */
 static uint64_t m64(eng_mset_t s) { return (uint64_t)s.w[1] << 32 | s.w[0]; }
@@ -469,6 +486,7 @@ static uint32_t panel_buttons_at(void)
 }
 #include "controls_test.h"                          /* #553: every row of the controls table driven, its effect checked */
 #include "report_test.h"                            /* #549: KEYS_NOW, GUIDE_NOW, panel_align */
+#include "pal_panel_test.h"                         /* #1196: the palette's keys, its overview, the bar's NEXT: */
 
 /* the notes the groups a Harmonizer plays sound now, low to high (#598) */
 static const char *harm_notes(int h)
@@ -1327,15 +1345,16 @@ int main(void)
           && trail_n == 0 && memcmp(before, fb, sizeof before) == 0);
     enc(1, 1);
 
-    panel_held |= 1u << BTN_HOME;                           /* HOME held: nothing any more (#395: GLO is the menu) */
+    panel_held |= 1u << BTN_HOME;                           /* HOME held: no menu (#395: GLO is the menu); the palette's
+                                                             * overview (#1196) */
     panel_edges(1u << BTN_HOME, 0);
     later(1200);
+    check("HOME held 1.2 s: no menu, the palette's overview shows", page == 0 && pal_view && on_screen(MSG_PAL_TITLE));
     panel_held &= ~(1u << BTN_HOME);
     panel_edges(0, 1u << BTN_HOME);
     loop();
-    check("HOME held 1.2 s: no menu (its release is a tap: the device's first page)", page == 0 && trail_n == 0 && pg_cur_dev == 2 && pg_cur_page == 0);
-    enc(1, 1);                                              /* (the second page again: the checks below expect it) */
-    check("ALGO: the second page again", pg_cur_dev == 2 && pg_cur_page == 1);
+    check("  its release: the overview closes, nothing else (the device's second page stays)", !pal_view && !lcd_ovl
+          && page == 0 && trail_n == 0 && pg_cur_dev == 2 && pg_cur_page == 1 && !on_screen(MSG_PAL_TITLE));
     mlen = 0;                                               /* (the MIDI log holds 256 messages; the menu's steps below would fill it) */
     tap(BTN_GLO);
     check("GLO: the menu on its MIDI tab, a step on the trail", page == PAGE_MENU && menu_tab == MT_MIDI && trail_n == 1 && menu_page());
@@ -5744,6 +5763,7 @@ int main(void)
     fx_suite();
     fx_preset_suite();
     report_suite();
+    palette_panel_suite();
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;
 }

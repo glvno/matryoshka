@@ -95,6 +95,12 @@ enum { C_PADS = 0x1D, R_PADS_NOW = 0x64 };                  /* the global pad ma
 enum { R_PATTERN_OP = 0x65 };                               /* unasked (#1177, #1178, #1179, D-838): the SEQ page copied a pattern,
                                                              * cleared every pattern and song, loaded the demo set or doubled the
                                                              * pattern; op u8, from u8, to u8, hash u32 LE (m1_pattern_op_now) */
+enum { C_PALETTE = 0x1E, R_PALETTE_NOW = 0x66, R_PALETTE_ENTRY = 0x67 };   /* the palette (#1196, palette.c m1_palette): op u8
+                                                             * (0 GET, 1 ENTRY_GET pos, 2 PUT pos + ENTRY, 3 ORDER from[8], 4 GO
+                                                             * pos, 5 NAME name[20]) -> PALETTE_NOW, PALETTE_ENTRY pos + ENTRY,
+                                                             * ACK; PALETTE_NOW also unasked after a change, once the editor sent
+                                                             * GET since its HELLO (m1_pal_asked) */
+static uint8_t m1_pal_asked;
 enum { C_FONT = 0x1F, R_FONT_SUM = 0x68 };                  /* the font area (#602, font_area.c): op u8 then 1 BEGIN; 2 WRITE
                                                              * sector u8, offset u16, 1..256 bytes inside one page; 3 SUM sector
                                                              * u8 -> FONT_SUM sector, ok u8, CRC-16 u16; 4 COMMIT the 64-byte
@@ -104,7 +110,7 @@ enum { C_FONT = 0x1F, R_FONT_SUM = 0x68 };                  /* the font area (#6
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
 #define M1_FEATURES3 255u                                      /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549), bit 19 = INFO's flags bit 3 says GLO > SYSTEM > EDITOR (#702), bit 20 = ARMS, the editor's armed set (#191), bit 21 = ARMS and ARMS_NOW carry ENG_MSET_WORDS words, modules 0..127 (#721; INFO byte 1 says 128), bit 22 = device settings, bit 23 = explicit factory pattern origins / snapshots */
-#define M1_FEATURES4 125u                                     /* INFO byte 14, feature bits 24..31: bit 24 = complete FX-scoped preset recall; bit 25 = the pattern store is on (#901: PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW, format 59's links; m1_pat_info sets it); bit 26 = the factory region (#915, D-490: FACT_INFO, FACT_BEGIN, FACT_WRITE, FACT_SUM, FACT_READ, FACT_COMMIT); bit 27 = MASTER_EQ (#1107); bit 28 = MIDI learn (#1067: MAP, MAP_NOW, the mapping section after the macro ranges); bit 29 = the global pad map (#1067: PADS, PADS_NOW); bit 30 = PATTERN_OP (#1177, #1178: the SEQ page's copy and clear all) */
+#define M1_FEATURES4 253u                                     /* INFO byte 14, feature bits 24..31: bit 24 = complete FX-scoped preset recall; bit 25 = the pattern store is on (#901: PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW, format 59's links; m1_pat_info sets it); bit 26 = the factory region (#915, D-490: FACT_INFO, FACT_BEGIN, FACT_WRITE, FACT_SUM, FACT_READ, FACT_COMMIT); bit 27 = MASTER_EQ (#1107); bit 28 = MIDI learn (#1067: MAP, MAP_NOW, the mapping section after the macro ranges); bit 29 = the global pad map (#1067: PADS, PADS_NOW); bit 30 = PATTERN_OP (#1177, #1178: the SEQ page's copy and clear all); bit 31 = the palette (#1196: PALETTE, PALETTE_NOW, PALETTE_ENTRY; the last free bit: the next feature needs an INFO byte 20) */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_INFO_EDITOR_IGNORE 8u                             /* INFO byte 3 (flags) bit 3: GLO > SYSTEM > EDITOR is at IGNORE, the
                                                               * editor leaves this FM-1 alone (with feature bit 19, #702) */
@@ -1153,6 +1159,10 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         m1_origin_snapshot();
         m1_heard = 1;                                        /* (the editor is there: GUIDE_NOW, KEYS_NOW; main.c guide_poll) */
         m1_guide_due = 1;
+        m1_pal_asked = 0;                                    /* (PALETTE_NOW unasked only after this editor's GET, #1196) */
+        break;
+    case C_PALETTE:                                          /* #1196: palette.c m1_palette */
+        m1_palette(d, len);
         break;
     case C_ARMS:                                             /* u32 LE words (#191): the editor's armed set, as the FM-1's own; */
         if (len >= 8u)                                       /* 2 from an editor before feature bit 21, else ENG_MSET_WORDS (#721) */

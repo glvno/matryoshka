@@ -145,6 +145,7 @@ static void bt_parts(uint32_t arg)         /* the awake items handed over, per l
 #include "ota_hw.c"
 static int m1_device_settings(const uint8_t *p, uint32_t n, uint8_t *out);
 static int m1_master_eq(const uint8_t *p, uint32_t n, uint8_t *out);   /* main.c: GLO > EQ over the link (#1107) */
+static void m1_palette(const uint8_t *d, uint32_t len);       /* palette.c: the link's PALETTE command (#1196) */
 static int m1_apply(const uint8_t *patch, uint32_t len);       /* main.c: the hooks proto.c needs */
 #define CIN_LOG_RING ((cin_ent_t *)ota_buf.words)   /* clock_in.h: the MIDI clock-in log in ota_stage's 2 KiB (#870) */
 static int m1_store(const uint8_t *patch, uint32_t len);
@@ -185,6 +186,7 @@ static uint32_t m1_fact_write(uint32_t s, uint32_t off, const uint8_t *p, uint32
 static int m1_fact_sum(uint32_t s, uint32_t *crc);
 static int m1_fact_read(uint32_t off, uint8_t *p, uint32_t n);
 static uint32_t m1_fact_commit(const uint8_t *h);
+#include "palette.h"              /* the palette (#1196): palette.c (main.c), pal_ui.c, panel.c, proto.c, ui.c's NEXT bar */
 static void m1_font_info(uint8_t *p);                         /* font_area.c: the font area (#602), the hooks proto.c needs */
 static uint32_t m1_font_begin(void);
 static uint32_t m1_font_write(uint32_t s, uint32_t off, const uint8_t *p, uint32_t n);
@@ -224,6 +226,7 @@ static uint32_t pages_gen(void) { return m1_gen; }
 #include "seq_ui.c"
 #include "splash.c"
 #include "help_ui.c"         /* the controls sheet and the quick start (#450) */
+#include "pal_ui.c"          /* the palette's overview and its keys' taps (#1196) */
 #define M1_KEYS_NOW          /* panel.c reports its key edges to the editor (main.c m1_keys_now, #549) */
 #include "panel.c"
 #include "main.c"

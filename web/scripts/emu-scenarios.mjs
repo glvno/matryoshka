@@ -84,6 +84,9 @@ for (const n of Object.keys(RIG_SCENARIOS)) if (!SCENARIOS.includes(n)) throw ne
  *  --only (tools/ci_checks.json's rule names the command); a release candidate's run does not */
 const PER_PR_SCENARIOS = ['signalBuffers', 'liveCompile', 'rollPen', 'mirrorKeys', 'longPreset', 'abFlip', 'editorIgnore'];
 for (const n of PER_PR_SCENARIOS) if (!SCENARIOS.includes(n)) throw new Error(`PER_PR_SCENARIOS names ${n}, which is no scenario`);
+/** scenarios that read the screen's texts and DIAG pages through the rig's page on the emulator's port, as the device
+ *  check's do (their own reason: the palette's switch tick, DIAG 202) */
+const RP_SCENARIOS = ['paletteFm1'];
 if (flag('--list')) {
   console.log(SCENARIOS.join('\n'));
   process.exit(0);
@@ -697,7 +700,7 @@ async function main() {
     await context.addInitScript(FILTER_MIDI, { name: PORT_NAME });
     // the device check's scenarios read the screen's texts and DIAG pages: through the rig's page on the emulator's port,
     // made before the editor's page (its HELLO goes out before the editor connects, as with --via-emu)
-    if (!only || only.some((n) => CHECK_SCENARIOS.includes(n))) {
+    if (!only || only.some((n) => CHECK_SCENARIOS.includes(n) || RP_SCENARIOS.includes(n))) {
       const rp = await rigPage(context, url);
       const [pair] = await rp.evaluate(() => window.__rig.pairs());
       if (!pair) throw new Error('the emulated FM-1 did not answer on its port');
@@ -2509,6 +2512,76 @@ async function main() {
       await emu.snap('ab-flip');
       await shot('ab-flip');
       await tempoPatch(false);
+    },
+    async paletteFm1() {   // #1196: the palette from the FM-1's own panel: a hold-save, the overview, a switch stopped and at the bar line
+      /** HOME held, black key k (0..7: palette 1..8) held `ms`, both let go */
+      const homeKey = async (k, ms) => {
+        await emu.key(B.home, true);
+        await emu.elapse(100);
+        await emu.key(BLACK[k], true);
+        await emu.elapse(ms);
+        await emu.key(BLACK[k], false);
+        await emu.elapse(60);
+        await emu.key(B.home, false);
+        await emu.elapse(200);
+      };
+      const savedTo = async (pos) => {
+        await emu.waitText(`PALETTE ${pos}`, 2000);
+        return (await emu.texts()).find((t) => t.startsWith('SAVED: SLOT ') && t.endsWith(`, PALETTE ${pos}`));
+      };
+      // the editor's patch runs (Live): a hold-save stores it into a free slot first (PATCH nn: this editor sends no name)
+      await check('palette: the 808 Kit opens, synced', await openSynced('808 Kit'));
+      await homeKey(2, 1300);
+      const s3 = await savedTo(3);
+      const slot3 = Number(s3?.match(/SLOT (\d+)/)?.[1] ?? 0);
+      await check('palette: HOME + black key 3 held 1 s: the editor\'s patch into a free slot and palette 3', !!s3 && slot3 > 0, s3 ?? (await emu.texts()).join(' | '));
+      const name3 = `PATCH ${String(slot3).padStart(2, '0')}`;
+      await check('palette: the stored slot is named PATCH nn and plays on', await emu.waitText(name3, 2000));
+      await check('palette: a second sound opens, synced', await openSynced('8 Lire'));
+      await homeKey(0, 1300);
+      const s1 = await savedTo(1);
+      const slot1 = Number(s1?.match(/SLOT (\d+)/)?.[1] ?? 0);
+      const name1 = `PATCH ${String(slot1).padStart(2, '0')}`;
+      await check('palette: palette 1 saved the same way, another slot', !!s1 && slot1 > 0 && slot1 !== slot3, s1 ?? '');
+      // HOME held alone: the overview of the 8 positions
+      await emu.key(B.home, true);
+      await emu.elapse(600);
+      const view = await emu.texts();
+      await emu.snap('palette-overview');
+      await emu.key(B.home, false);
+      await emu.elapse(400);
+      await check('palette: HOME held: the overview names palette 1 and 3, the empty ones EMPTY', view.includes('PALETTE') &&
+        view.some((t) => t.includes(name1)) && view.some((t) => t.includes(name3)) && view.some((t) => t.includes('EMPTY')), view.join(' | '));
+      await check('palette: HOME let go: the overview closes, the device page is back', (await emu.waitOwnPage(2000)) && !(await emu.text('EMPTY')));
+      // a tap, stopped: at once
+      await homeKey(2, 150);
+      await check('palette: HOME + black key 3 tapped, stopped: palette 3 plays at once', (await emu.waitText(name3, 1500)) && !(await emu.text('NEXT:')));
+      const d0 = await emu.diagWords(202);
+      await check('palette: the stopped switch loaded without a bar line (DIAG 202: run tick -1)', d0[0] === 0xFFFFFFFF && d0[2] >= 1, d0.join(' '));
+      // an empty position: nothing changes, the bar says so
+      await homeKey(5, 150);
+      await check('palette: an empty position tapped: PALETTE 6 EMPTY: HOLD KEY, the patch stays', (await emu.waitText('PALETTE 6 EMPTY: HOLD KEY', 1500)) && (await emu.text(name3)));
+      // playing: the switch waits for the bar line, NEXT: shows meanwhile
+      await emu.tap(B.play);
+      await emu.elapse(700);
+      await homeKey(0, 150);
+      const waiting = await emu.waitText(`NEXT: 1 ${name1}`, 1500);
+      await check('palette: playing, palette 1 tapped: NEXT: 1 PATCH nn while it waits', waiting);
+      await check('palette: then palette 1 plays (at the bar line)', (await emu.waitFor(async () => !(await emu.text('NEXT:')), 4000)) && (await emu.text(name1)));
+      const d1 = await emu.diagWords(202);
+      await check('palette: the switch loaded on a bar line (DIAG 202: the run tick a whole number of bars)',
+        d1[2] === d0[2] + 1 && (d1[0] | 0) > 0 && d1[1] > 0 && d1[0] % d1[1] === 0, `run tick ${d1[0] | 0}, bar ${d1[1]} ticks, switches ${d1[2]}`);
+      // the same key again cancels; HOME + PRESET during the wait cancels too (another patch change)
+      await homeKey(2, 150);
+      await check('palette: palette 3 tapped: NEXT: 3', await emu.waitText('NEXT: 3', 1500));
+      await homeKey(2, 150);
+      await emu.elapse(300);
+      await check('palette: palette 3 tapped again: cancelled, palette 1 plays on', !(await emu.text('NEXT:')) && (await emu.text(name1)));
+      await emu.elapse(2500);
+      const d2 = await emu.diagWords(202);
+      await check('palette: the cancelled switch never loaded', d2[2] === d1[2] && (await emu.text(name1)), `switches ${d2[2]}`);
+      await emu.tap(B.play);
+      await emu.snap('palette');
     },
     async editorIgnore() {   // #702: GLO > SYSTEM > EDITOR at IGNORE: the editor lets go, Connect skips the FM-1 and says why
       // (the rig tools' page connects to an FM-1 at IGNORE all the same: the test rig is set so, D-123)
