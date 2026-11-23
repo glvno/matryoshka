@@ -1213,8 +1213,9 @@ async function main() {
       await check('patterns: SEQ held + OCT+ doubles the pattern (DOUBLED: n STEPS)', await emu.waitText('DOUBLED:', 2000));
       await emu.key(B.seq, false);
       await emu.elapse(300);
-      await check('patterns: the editor doubles pattern 3 too (PATTERN_OP)', !!(await until(async () => (await tracksOf()).every((t) => t.patterns?.[2]?.len), 3000)),
-        JSON.stringify((await tracksOf()).map((t) => t.patterns?.[2]?.len)));
+      // (a track's `patterns` start at pattern 2: pattern 3 is index 1)
+      await check('patterns: the editor doubles pattern 3 too (PATTERN_OP)', !!(await until(async () => (await tracksOf()).every((t) => t.patterns?.[1]?.len), 3000)),
+        JSON.stringify((await tracksOf()).map((t) => t.patterns?.[1]?.len)));
       await emu.tap(B.seq);
       await shot('patterns');
     },
