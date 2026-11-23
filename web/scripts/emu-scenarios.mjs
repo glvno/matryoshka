@@ -1188,7 +1188,7 @@ async function main() {
       await check('patterns: ] in the editor: the FM-1 plays pattern 3', await emu.waitText('P03', 3000));
       await emu.snap('patterns');
       await emu.tap(B.scl);
-      await check('patterns: SEL tapped opens the SONG page with the demo song', await emu.waitText('SONG 1', 3000));
+      await check('patterns: SEL tapped opens the SONG page with its song', await emu.waitText('SONG 1', 3000));
       await emu.turn(ENC.k4, 1);
       await check('patterns: K4 right: the editor plays song 1 too', !!(await until(async () => (await seqOf()).song === 1, 3000)), JSON.stringify(await seqOf()));
       await emu.tap(B.play);

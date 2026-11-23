@@ -5196,7 +5196,7 @@ int main(void)
                   saved == was && page == PAGE_SEQ && eng_pattern() == pat);
         }
         {                                               /* a pattern the track takes on its own (queued, at once while
-                                                         * stopped: PRESET, a demo set), after the page was drawn with the
+                                                         * stopped: PRESET, a stored pattern loaded), after the page was drawn with the
                                                          * old one: the cells follow, not only the bar */
             static uint16_t keep[240 * 240];
             int pat = eng_pattern(), mod = eng_steps_module(0), was, to;
@@ -5209,7 +5209,7 @@ int main(void)
             loop();                                     /* (drawn before the engine takes it) */
             blocks(2);
             seq_shown_pos = (int8_t)eng_steps_pos((uint32_t)mod);   /* (the playhead as drawn: only the pattern changed,
-                                                         * as with the demo set's P02 in emu:smoke seq-50) */
+                                                         * as with Silver Box's P02 in emu:smoke seq-50) */
             later(1700);
             memcpy(keep, fb, sizeof keep);
             ui_dirty = 2;

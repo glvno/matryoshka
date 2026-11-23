@@ -321,7 +321,7 @@ static int ct_load(const char *name)
     return 0;
 }
 /* factory patch `name` as the FM-1 has it (factory.c: the firmware tier and the region), not the panel's fixture graphs:
- * the layout its demo set is found by (#1179) */
+ * the layout and patterns the factory ships */
 static int ct_load_factory(const char *name)
 {
     char n[M1_NAME + 1u];
@@ -518,7 +518,7 @@ static int ct_enter(uint32_t s, uint32_t v)
         later(500);
         return page == PAGE_ENV;
     case HS_DRUM:                                       /* the 808 Kit's DRUMS, 16 and 32 steps; <7PH's drums (two tracks); the
-                                                         * factory 808 Kit (a demo set, #1179) */
+                                                         * factory 808 Kit as it ships */
         if (v == 3u) {
             if (ct_load_factory("808 KIT"))
                 return 0;
@@ -529,8 +529,8 @@ static int ct_enter(uint32_t s, uint32_t v)
             return 0;
         ct_seq(0, v == 1, 0);
         return 1;
-    case HS_ROLL:                                       /* <7PH's melodic track, 16 and 32 steps; the factory Silver Box (a demo
-                                                         * set, #1179) */
+    case HS_ROLL:                                       /* <7PH's melodic track, 16 and 32 steps; the factory Silver Box as it
+                                                         * ships */
         if (v == 3u) {
             if (ct_load_factory("SILVER BOX"))
                 return 0;
