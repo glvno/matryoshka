@@ -155,9 +155,14 @@ async function main(): Promise<void> {
   const after = join(out, 'after');
   mkdirSync(after, { recursive: true });
   const ways = ['opened', 'converted'] as const;
+  /** the effects each after render has (a patch that had a bus must come out with its stages as effects) */
+  const effects = new Map<string, number>();
   for (const c of cases) {
     const p = { opened: await opened(c), converted: validatePatch(JSON.parse(readFileSync(join(out, 'base', `${c.id}.json`), 'utf8')), DEFS) };
-    for (const w of ways) write(after, `${c.id}.${w}`, p[w], (x) => encodePatch(x, true), () => new Engine(DEVICE_SR));
+    for (const w of ways) {
+      write(after, `${c.id}.${w}`, p[w], (x) => encodePatch(x, true), () => new Engine(DEVICE_SR));
+      effects.set(`${c.id}.${w}`, rackOf(p[w]).effects.length);
+    }
   }
 
   // engine.c: BASE's host_test on BASE's binaries, this tree's on this tree's
@@ -178,6 +183,7 @@ async function main(): Promise<void> {
   for (const c of cases) {
     const b = join(out, 'base', c.id);
     const refused = host('base_test', b);
+    const hadBus = c.fx || cases.some((x) => x.id === `${c.id}~fx`);
     for (const w of ways) {
       const a = join(after, `${c.id}.${w}`);
       const refusedAfter = host('new_test', a);
@@ -185,11 +191,15 @@ async function main(): Promise<void> {
       // (a binary the FM-1 refuses the same way before and after has no engine.c render to compare)
       const both = refused !== '' && refused === refusedAfter;
       const cdiff = both ? 0 : maxDiff(`${b}.c.f32`, `${a}.c.f32`);
-      const ok = ts === 0 && cdiff === 0;
+      const fx = effects.get(`${c.id}.${w}`)!;
+      // (the binary's format byte: a converted bus is written with its rack, format 66)
+      const format = existsSync(`${a}.m1p`) ? readFileSync(`${a}.m1p`)[1] : 0;
+      const ok = ts === 0 && cdiff === 0 && (!hadBus || (fx > 0 && (!format || format >= 66)));
       pairs++;
       if (!ok) failed++;
-      const note = both ? ` (the FM-1 refuses it before and after: ${refused}; engine.ts only)` : refused || refusedAfter ? ` (before: ${refused || 'plays'}; after: ${refusedAfter || 'plays'})` : '';
-      lines.push(`${ok ? 'ok  ' : 'FAIL'} ${c.kind.padEnd(9)} ${`${c.name}${c.fx ? ' ~fx' : ''}`.padEnd(34)} ${w.padEnd(9)} engine.ts ${show(ts).padEnd(9)} engine.c ${both ? '-' : show(cdiff)}${note}`);
+      const note = (hadBus && !fx ? ' (the master FX bus did not become effects)' : '') + (hadBus && format && format < 66 ? ' (written without its rack)' : '')
+        + (both ? ` (the FM-1 refuses it before and after: ${refused}; engine.ts only)` : refused || refusedAfter ? ` (before: ${refused || 'plays'}; after: ${refusedAfter || 'plays'})` : '');
+      lines.push(`${ok ? 'ok  ' : 'FAIL'} ${c.kind.padEnd(9)} ${`${c.name}${c.fx ? ' ~fx' : ''}`.padEnd(34)} ${w.padEnd(9)} format ${String(format || '-').padEnd(2)} effects ${hadBus ? String(fx) : '-'} engine.ts ${show(ts).padEnd(9)} engine.c ${both ? '-' : show(cdiff)}${note}`);
     }
   }
   const head1 = [
