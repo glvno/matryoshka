@@ -57,7 +57,7 @@ import type { CapabilityInspector } from './capability-inspector';
 import { initStatusline, pinStatus } from './statusline';
 import { buildAssembliesSection, storeAssembly, storeTutorialAssembly } from './assemblies';
 import { AssemblyBrowser } from './browser';
-import { searchCommands, type Command } from './commands';
+import { keyOf, runFor, searchCommands, type Command } from './commands';
 import { loadBlueprints, type Catalog } from './quick-patch';
 import { QuickPatch } from './quick-patch-view';
 import { CATEGORIES, MUTATE_AMOUNTS, PROFILES, type Category } from './mutate';
@@ -80,7 +80,9 @@ import { DEFS, METERS } from './modules';
 import { addModule, newPatch, NOTE_NAMES, trackLabel, validatePatch, type Patch, type SideKey } from './patch';
 import { diffCount, diffLines, diffPatches } from './diff';
 import { loadLibrary, summary } from './assemblies';
-import type { AssemblyDef, AssemblyInst } from './assembly';
+import { assembliesOf, type AssemblyDef, type AssemblyInst } from './assembly';
+import { addToDrawer, buildEffectsPanel, buildEffectsSection, currentInstrument, drawerName, entryOf, modeOf, ownerTarget, type EffectActions, type EffectSource } from './library-effects';
+import { EFFECT_CATALOG } from './fx-drawer';
 import { defIsEngine, feedsOutput } from './engines';
 import { EngineStart } from './engine-start';
 import { encodeShare, handOut, isShareLink, openShareLink, shareCodeOf } from './share';
@@ -849,6 +851,8 @@ function showArmed(): void {
 if (import.meta.env.DEV) (window as unknown as { __notes?: typeof sink }).__notes = sink;
 
 let refreshAssemblies: () => void = () => {};
+/** Library › Effects rereads the user's effect presets and the patch's drawers (built below) */
+let refreshEffects: () => void = () => {};
 /** the factory patches and the Patches page's own copies (the morph picker keeps those of the same structure; Commands loads any) */
 let snapshotCandidates: () => { name: string; patch: Patch }[] = () => [];
 /** (`like`: only a factory patch of its shape is built, presets.ts shapeOf; the others could not be of its structure) */
@@ -1207,6 +1211,9 @@ const editor = new Editor($('canvas'), firstPatch, {
   },
   onError(msg) {
     status.textContent = msg;
+  },
+  onAddEffect(drawer, at) {   // (a drawer's + slot: the + list of effects, into that drawer at that place)
+    openCommands('', { drawer, at });
   },
   onSaveAssembly(def) {
     // a name already in the library is replaced at once, with Undo (#218: no confirm for what the browser keeps)
@@ -2039,14 +2046,64 @@ outScope.update(true);
 const cmdDialog = $<HTMLDialogElement>('commands');
 const cmdInput = $<HTMLInputElement>('commands-input');
 const cmdList = $('commands-list');
+const cmdPlaceholder = cmdInput.placeholder;
 const inPatch = (run: () => void): (() => void) => () => { toPatch(); run(); };
 const keepBlueprint = (): void => {
   if (!quick.hasChain) return void (status.textContent = 'Build a chain in Quick patch (Tab) first, then keep it as a blueprint');
   const name = window.prompt('Name of the blueprint', 'my-chain')?.trim();
   if (name) quick.keepAs(name);
 };
+/** an effect into a drawer (made first when there is none), as one undo step */
+const addEffectToDrawer = (s: EffectSource, to: number | 'output', name: string, at?: number): void => {
+  toPatch();
+  if (editor.transact(() => addToDrawer(editor.patch, s, to, at))) status.textContent = `${name} is in ${drawerName(editor.patch, to)}`;
+};
+/** what the Library's Effects section and the Patch tab's Effects panel do: the canvas first, a drawer second */
+const effectActions: EffectActions = {
+  patch: () => editor.patch,
+  canvas(s) {
+    toPatch();
+    if ('type' in s) editor.add(s.type);
+    else editor.insert(s.def);
+  },
+  drawer: (s, to, name) => addEffectToDrawer(s, to, name),
+  drag: {
+    start: toPatch,
+    over: (x, y) => editor.dragEffectOver(x, y),
+    end: () => editor.dragEffectOver(null),
+    drop: (s, x, y) => void editor.dropEffect(s, x, y),
+  },
+  error(msg) { status.textContent = msg; },
+};
+/** the + list opened by a drawer's + slot: effects only, ⏎ puts one into that drawer at that place (null: the whole list) */
+let cmdScope: { drawer: number; at: number } | null = null;
+/** the effect rows of the + list scoped to a drawer */
+const drawerCommands = (scope: { drawer: number; at: number }): Command[] => {
+  const drawer = assembliesOf(editor.patch).find((a) => a.id === scope.drawer);
+  if (!drawer) return [];
+  const to = ownerTarget(editor.patch, drawer), into = drawerName(editor.patch, to);
+  return EFFECT_CATALOG.map((e) => ({
+    kind: 'effect', tags: ['effect'], label: e.name, detail: `${modeOf(e.mode).tag} · ⏎ into ${into}`, keywords: e.blurb,
+    run: () => addEffectToDrawer(e.source, to, e.name, scope.at),
+  }));
+};
 const commands = (): Command[] => {
-  const assembly = (d: AssemblyDef, shelf: string): Command => ({
+  if (cmdScope) return drawerCommands(cmdScope);
+  // an effect goes on the canvas with ⏎ (as any card), into the current instrument's FX drawer with ⇧⏎, into the Output FX with ⌥⏎
+  const current = currentInstrument(editor.patch, { assemblies: editor.selectedAsm, focus: editor.focus?.device, armed: editor.armedSet });
+  const output = editor.patch.modules.some((m) => m.type === 'output');
+  const effect = (s: EffectSource, c: Command): Command => {
+    const e = entryOf(s);
+    if (!e) return c;
+    return {
+      ...c, tags: [...(c.tags ?? []), 'effect'], detail: `${modeOf(e.mode).tag} effect · ⏎ on the canvas${c.detail ? ` · ${c.detail}` : ''}`,
+      also: [
+        ...(current ? [{ key: 'shift' as const, label: `or into ${drawerName(editor.patch, current.id)}`, run: () => addEffectToDrawer(s, current.id, e.name) }] : []),
+        ...(output ? [{ key: 'alt' as const, label: 'or into the Output FX', run: () => addEffectToDrawer(s, 'output', e.name) }] : []),
+      ],
+    };
+  };
+  const assembly = (d: AssemblyDef, shelf: string): Command => effect({ def: d }, {
     kind: 'assembly', tags: ['assembly', ...(defIsEngine(d) ? ['engine'] : []), shelf], label: d.name, detail: d.blurb ? `${d.blurb} · ${shelf}` : shelf, keywords: `insert ${d.blurb ?? ''} ${summary(d)}`,
     run: () => editor.insert(d),
   });
@@ -2163,7 +2220,7 @@ const commands = (): Command[] => {
     // the patch's modules with their own names (#518): picking one selects it
     ...editor.patch.modules.filter((m) => m.name && m.type !== 'steps' && DEFS[m.type]).map((m) => ({ kind: 'module in patch', tags: ['module'], label: m.name!, detail: moduleName(m.type, DEFS[m.type].label), keywords: 'select find named', run: inPatch(() => editor.reveal(m.id)) })),
     // the same lists as + Add module, the assembly browser and the Open picker (catalog.ts)
-    ...addableModules(DEFS).map((m) => ({ kind: 'add module', tags: ['module'], label: m.name, keywords: moduleKeywords(m.type, m.def.label), run: () => editor.add(m.type) })),
+    ...addableModules(DEFS).map((m) => effect({ type: m.type }, { kind: 'add module', tags: ['module'], label: m.name, keywords: moduleKeywords(m.type, m.def.label), run: () => editor.add(m.type) })),
     // a splitter is a question, not a module (#1004): last in the module list, the answer shows in the list, and it opens
     // the help card at it
     { kind: 'how to', tags: ['module'], label: 'Splitter / mult: cable an output again', detail: 'an output feeds any number of inputs; in an assembly, card · N › merge… makes one jack feed several', keywords: 'split splitter mult multiple multiply fan out fanout y cable copy duplicate one to many distribute stackable buffered', run: () => { help.showModal(); $('help-mult').scrollIntoView({ block: 'center' }); } },
@@ -2213,7 +2270,7 @@ let cmdSel = 0;
 let cmdItems: Command[] = [];
 const cmdRender = (): void => {
   const q = cmdInput.value.trim().toLowerCase();
-  cmdItems = q ? searchCommands(commands(), q) : commands().filter((c) => c.kind === 'command');
+  cmdItems = q ? searchCommands(commands(), q) : cmdScope ? commands() : commands().filter((c) => c.kind === 'command');
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-query]')) button.setAttribute('aria-pressed', String(button.dataset.query === q));
   cmdSel = Math.min(cmdSel, Math.max(0, cmdItems.length - 1));
   cmdList.replaceChildren(
@@ -2235,8 +2292,19 @@ const cmdRender = (): void => {
         li.append(detail);
       }
       li.onclick = () => cmdRun(c);
-      return li;
-    }),
+      if (i !== cmdSel || !c.also?.length) return [li];
+      // the selected effect's other places, under it: ⇧⏎ the current instrument's FX drawer, ⌥⏎ the Output FX
+      return [li, ...c.also.map((a) => {
+        const sub = document.createElement('li');
+        sub.className = 'cmd-also';
+        sub.setAttribute('role', 'presentation');
+        const kbd = document.createElement('kbd');
+        kbd.textContent = a.key === 'shift' ? '⇧⏎' : '⌥⏎';
+        sub.append(a.label, kbd);
+        sub.onclick = () => cmdRun(c, a.run);
+        return sub;
+      })];
+    }).flat(),
   );
   if (!cmdItems.length) {
     const empty = document.createElement('li');
@@ -2248,10 +2316,10 @@ const cmdRender = (): void => {
   else cmdInput.removeAttribute('aria-activedescendant');
   cmdList.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
 };
-const cmdRun = (c: Command): void => {
+const cmdRun = (c: Command, run = c.run): void => {
   cmdDialog.close();
   if (c.kind !== 'command') toPatch();
-  c.run();
+  run();
 };
 /** a prefilled query ends in a space, the caret after it, so typing straight away narrows it instead of extending its last word */
 const prefill = (query: string): void => {
@@ -2261,11 +2329,16 @@ const prefill = (query: string): void => {
   cmdInput.focus();
   cmdInput.setSelectionRange(cmdInput.value.length, cmdInput.value.length);
 };
-const openCommands = (query = ''): void => {
+/** open the + list at `query`; `scope`: a drawer's + slot, effects only, ⏎ puts one into that drawer at that place */
+const openCommands = (query = '', scope: { drawer: number; at: number } | null = null): void => {
   closeSidebar();
+  const drawer = scope && assembliesOf(editor.patch).find((a) => a.id === scope.drawer);
+  cmdScope = drawer ? scope : null;
+  cmdInput.placeholder = drawer ? `Add an effect to ${drawerName(editor.patch, ownerTarget(editor.patch, drawer))}` : cmdPlaceholder;
   cmdDialog.showModal();
   prefill(query);
 };
+cmdDialog.addEventListener('close', () => { cmdScope = null; });
 cmdInput.oninput = () => {
   cmdSel = 0;
   cmdRender();
@@ -2277,7 +2350,7 @@ cmdInput.onkeydown = (e) => {
     e.preventDefault();
   } else if (e.key === 'Enter') {
     e.preventDefault();
-    if (cmdItems[cmdSel]) cmdRun(cmdItems[cmdSel]);
+    if (cmdItems[cmdSel]) cmdRun(cmdItems[cmdSel], runFor(cmdItems[cmdSel], keyOf(e)));
   }
   e.stopPropagation();
 };
@@ -2960,12 +3033,12 @@ function toPatch(): void {
   if (currentView === 'library') setView('patch');
 }
 
-// LIBRARY's sections (#218): Patches, Assemblies, Presets, Community as tabs under the switch, the last one remembered per browser; one shows
-// at a time (bank.ts, assemblies.ts, library-presets.ts build them below). Entering one rereads it, and reads the FM-1
+// LIBRARY's sections (#218): Patches, Assemblies, Presets, Effects, Patterns, Community as tabs under the switch, the last one remembered per browser; one shows
+// at a time (bank.ts, assemblies.ts, library-presets.ts, library-effects.ts build them below). Entering one rereads it, and reads the FM-1
 // when one is connected
-type LibrarySection = 'patches' | 'assemblies' | 'presets' | 'patterns' | 'community';
+type LibrarySection = 'patches' | 'assemblies' | 'presets' | 'effects' | 'patterns' | 'community';
 const LIBRARY_SECTION = 'matryoshka.library-section';
-const isSection = (v: unknown): v is LibrarySection => v === 'patches' || v === 'assemblies' || v === 'presets' || v === 'patterns' || v === 'community';
+const isSection = (v: unknown): v is LibrarySection => v === 'patches' || v === 'assemblies' || v === 'presets' || v === 'effects' || v === 'patterns' || v === 'community';
 let librarySection: LibrarySection = (() => {
   try {
     const v = localStorage.getItem(LIBRARY_SECTION);
@@ -2975,7 +3048,7 @@ let librarySection: LibrarySection = (() => {
   }
 })();
 const sectionBtns = [...document.querySelectorAll<HTMLButtonElement>('#library-tabs [data-section]')];
-const sectionEls: Record<LibrarySection, HTMLElement> = { patches: $('lib-patches'), assemblies: $('lib-assemblies'), presets: $('lib-presets'), patterns: $('lib-patterns'), community: $('lib-community') };
+const sectionEls: Record<LibrarySection, HTMLElement> = { patches: $('lib-patches'), assemblies: $('lib-assemblies'), presets: $('lib-presets'), effects: $('lib-effects'), patterns: $('lib-patterns'), community: $('lib-community') };
 /** the sections' panes with an FM-1 column (set when they are built, below) */
 const libraryPanes: Partial<Record<LibrarySection, LibraryPane>> = {};
 function showLibrarySection(): void {
@@ -2983,6 +3056,7 @@ function showLibrarySection(): void {
   for (const [k, el] of Object.entries(sectionEls)) el.hidden = k !== librarySection;
   $('tab-library').scrollTop = 0;
   if (librarySection === 'assemblies') refreshAssemblies();
+  if (librarySection === 'effects') refreshEffects();
   libraryPanes[librarySection]?.enter();
 }
 /** an FM-1 connected or went away: the Library's FM-1 columns follow (the one on screen reads the FM-1 now) */
@@ -3881,6 +3955,13 @@ libraryPanes.patches = buildPatchesSection($('lib-patches'), device, { remove: d
 if (addedTitles().length) void loadCommunity().then(() => { fillPicker(); libraryPanes.patches?.refresh(); });
 libraryPanes.community = buildCommunitySection($('lib-community'), { status: (msg) => { status.textContent = msg; } }, () => device.bufferAllocation, () => device.budgetStore);
 libraryPanes.presets = buildPresetsSection($('lib-presets'), device, { changed: () => editor.rebuild() });
+// Library › Effects is built when it first shows (each effect's CPU share is estimated then); the Patch tab's Effects panel now
+let effectsSection: { refresh(): void } | null = null;
+refreshEffects = () => {
+  if (effectsSection) effectsSection.refresh();
+  else effectsSection = buildEffectsSection($('lib-effects'), effectActions);
+};
+buildEffectsPanel($('effects-panel'), effectActions);
 patternsPane = libraryPanes.patterns = buildPatternsSection($('lib-patterns'), device, {
   patch: () => editor.patch,
   pattern: () => editor.pattern,

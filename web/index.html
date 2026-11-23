@@ -59,6 +59,12 @@
             <div class="wheel-row" title="What a plain scroll wheel does over the canvas. Auto: a mouse wheel zooms at the pointer, a trackpad's two-finger scroll pans. Ctrl/Cmd + wheel always zooms, Shift + wheel pans sideways, right- or middle-drag pans"><label for="wheel-mode">Scroll wheel</label><select id="wheel-mode"><option value="auto">auto</option><option value="zoom">zoom</option><option value="pan">pan</option></select></div>
           </div>
         </section>
+        <!-- the effects to add (library-effects.ts buildEffectsPanel): a click puts one on the canvas, a drag drops it on the
+             canvas, an FX plug or an open drawer -->
+        <section class="spanel fxlib-panel" aria-label="Effects">
+          <div class="shead"><span class="mtag fx">FX</span><span class="stitle">Effects</span></div>
+          <div id="effects-panel" class="sbody"></div>
+        </section>
         <section class="spanel" aria-label="Learn">
           <div class="shead"><span class="mtag mod">LEARN</span><span class="stitle">Get started</span></div>
           <div class="sbody">
@@ -107,6 +113,7 @@
       <div id="lib-patches" class="lib-section"><h2 class="lib-title">Patches</h2></div>
       <div id="lib-assemblies" class="lib-section" hidden><h2 class="lib-title">Assemblies</h2></div>
       <div id="lib-presets" class="lib-section" hidden><h2 class="lib-title">Presets</h2></div>
+      <div id="lib-effects" class="lib-section" hidden><h2 class="lib-title">Effects</h2></div>
       <div id="lib-patterns" class="lib-section" hidden><h2 class="lib-title">Patterns</h2></div>
       <div id="lib-community" class="lib-section" hidden><h2 class="lib-title">Community patches</h2></div>
     </section>
@@ -115,7 +122,7 @@
     <!-- listening to one signal instead of the Output (#939, main.ts showListen): what plays, and the way back -->
     <div id="listen-chip" class="listen-chip" role="status" hidden><span class="listen-dot" aria-hidden="true"></span><span>Listening to <b id="listen-name"></b></span><button id="listen-stop" type="button" title="Back to the Output (Esc)">× Back to Output</button></div>
     <!-- LIBRARY's sections, tabs under the switch while LIBRARY shows (main.ts setLibrarySection) -->
-    <nav id="library-tabs" class="library-tabs view-switch" aria-label="Library sections" hidden><button type="button" data-section="patches" aria-current="true">Patches</button><button type="button" data-section="assemblies" aria-current="false">Assemblies</button><button type="button" data-section="presets" aria-current="false">Presets</button><button type="button" data-section="patterns" aria-current="false">Patterns</button><button type="button" data-section="community" aria-current="false">Community</button></nav>
+    <nav id="library-tabs" class="library-tabs view-switch" aria-label="Library sections" hidden><button type="button" data-section="patches" aria-current="true">Patches</button><button type="button" data-section="assemblies" aria-current="false">Assemblies</button><button type="button" data-section="presets" aria-current="false">Presets</button><button type="button" data-section="effects" aria-current="false">Effects</button><button type="button" data-section="patterns" aria-current="false">Patterns</button><button type="button" data-section="community" aria-current="false">Community</button></nav>
     <!-- Connect FM-1 (top right, in every view): connects as FM-1 & MIDI's Connect does; connected, it opens FM-1 & MIDI (main.ts syncChip) -->
     <button id="fm1-connect" class="fm1-connect" type="button" title="Connect the FM-1 over USB MIDI"><span class="sl-dot" aria-hidden="true"></span><span class="fm1-connect-text">Connect FM-1</span></button>
     <!-- the Install panel (Get started > Install firmware, Commands, #flash): flasher.ts's page over the main area -->
