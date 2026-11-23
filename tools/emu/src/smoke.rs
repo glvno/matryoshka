@@ -1269,7 +1269,7 @@ fn bank_with_7ph(app: &[u8], presets: &[(String, Vec<u8>)]) -> Result<(Vec<u8>, 
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     let mut f = m.flash();
-    const AT: usize = 0xDB000; // the bank's last sector (firmware/src/slotstore.c; 0xDC000.. is the pattern store's), free after the factory bank
+    const AT: usize = 0xCF000; // the bank's last sector (firmware/src/slotstore.c, 48 slots; 0xD0000.. is the pattern store's), free after the factory bank
     if f[AT..AT + 0x1000].iter().any(|&b| b != 0xff) {
         return Err("the bank's last sector is not free after the first boot".into());
     }

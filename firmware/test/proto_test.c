@@ -216,6 +216,7 @@ static void m1_arms(eng_mset_t mask) { arms_calls++; arms_last = mask; eng_arm_m
                                                               * glue (patlink.c) and a store in RAM itself */
 static void m1_pat_load(void) {}
 static uint64_t m1_pat_clean(void) { return 0; }
+static int m1_pat_spill(void) { return 0; }
 static void m1_pat_info(uint8_t *p) { p[1] = 64; p[2] = p[3] = p[4] = p[5] = 0; }
 static uint32_t m1_pat_list(uint32_t after, uint8_t *e) { (void)after; (void)e; return 0; }
 static const uint8_t *m1_pat_get(uint32_t id, uint32_t *len) { (void)id; (void)len; return 0; }
@@ -224,12 +225,16 @@ static uint32_t m1_pat_del(uint32_t id, uint32_t force, uint32_t *count) { (void
 #else
 static void m1_pat_load(void);
 static uint64_t m1_pat_clean(void);
+static int m1_pat_spill(void);
 static void m1_pat_info(uint8_t *p);
 static uint32_t m1_pat_list(uint32_t after, uint8_t *e);
 static const uint8_t *m1_pat_get(uint32_t id, uint32_t *len);
 static uint32_t m1_pat_put(uint32_t *id, const char *name, const uint8_t *p, uint32_t len);
 static uint32_t m1_pat_del(uint32_t id, uint32_t force, uint32_t *count);
 #endif
+static int patch_full_calls;
+static void m1_patch_full(void) { patch_full_calls++; }        /* (main.c's, #1199) */
+static const char *m1_patch_name(void) { return "TEST"; }      /* (main.c's) */
 /* the factory region (#915): proto.c calls these; without PROTO_TEST_FACTORY stand-ins after proto.c keep what the frames
  * carried, with it patlink_test.c and preset_pattern_test.c bring factory.c over RAM themselves (factory_test.c tests it) */
 static uint32_t m1_fact_info(uint8_t *out);
@@ -1047,7 +1052,7 @@ int main(int argc, char **argv)
         uint32_t n;
         CHECK(m1_handle(q, sizeof q) == 1 && replies[0][4] == R_INFO);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 20u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
+        CHECK(n == 26u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION);
         CHECK(p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION && p[14] == M1_FEATURES4 && p[15] == 64u);
         printf("allocation rule %u advertised with unchanged format range %u..%u\n", p[13], p[7], p[8]);
         return 0;
@@ -1198,7 +1203,7 @@ int main(int argc, char **argv)
         nreplies = 0;
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4 && replies[0][4] == R_INFO && replies[1][4] == R_TEMPO_NOW);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 20u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION && p[14] == M1_FEATURES4);
+        CHECK(n == 26u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION && p[14] == M1_FEATURES4);
         { uint32_t j; uint8_t origin[6];
           for (j = 0; j < 2u; j++) {
               CHECK(replies[j + 2u][4] == R_PATTERN_ORIGIN);
@@ -1212,7 +1217,7 @@ int main(int argc, char **argv)
         nreplies = 0;
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 20u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[14] == M1_FEATURES4);
+        CHECK(n == 26u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[14] == M1_FEATURES4);
         CHECK(!(p[3] & M1_INFO_MIDI_OUT));
         midi_out_on = 1;
         /* #702: EDITOR at IGNORE is flag bit 3; at ALLOW the bit is clear (as in older firmware) */
@@ -1221,7 +1226,7 @@ int main(int argc, char **argv)
         nreplies = 0;
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
-        CHECK(n == 20u && (p[3] & M1_INFO_EDITOR_IGNORE) && (p[3] & M1_INFO_MIDI_OUT) && p[14] == M1_FEATURES4);
+        CHECK(n == 26u && (p[3] & M1_INFO_EDITOR_IGNORE) && (p[3] & M1_INFO_MIDI_OUT) && p[14] == M1_FEATURES4);
         editor_ignore_on = 0;
         CHECK(p[14] & 4u);                                    /* #915: feature bit 26, the factory region's commands */
         CHECK(p[14] & 8u);                                    /* #1107: feature bit 27, MASTER_EQ */
