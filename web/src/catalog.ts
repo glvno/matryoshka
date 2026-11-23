@@ -9,6 +9,7 @@ import { moduleName } from './labels';
 import type { ModuleDef, Patch } from './patch';
 import { EXAMPLE_PRESETS, FM1_PRESETS, PRESETS } from './presets';
 import { chipOf, type Chip } from './sandbox';
+import type { BudgetStore } from './patchbin';
 import { savedPatches } from './saved';
 
 /** module types that never go on the canvas by hand: Main is docked (one per patch), Part is the engine's form of a
@@ -44,29 +45,30 @@ export interface Openable {
 
 /** a factory patch's chip: the factory patches do not change while the page is open, so each is worked out once */
 const factoryChips = new Map<string, Chip>();
-const factoryChip = (name: string, allocation: BufferAllocation): Chip => {
-  let c = factoryChips.get(allocation + name);
-  if (!c) factoryChips.set(allocation + name, (c = chipOf(PRESETS[name](), allocation)));
+const factoryChip = (name: string, allocation: BufferAllocation, store: BudgetStore): Chip => {
+  let c = factoryChips.get(allocation + store + name);
+  if (!c) factoryChips.set(allocation + store + name, (c = chipOf(PRESETS[name](), allocation, store)));
   return c;
 };
 
 /** Saved patches, hardware candidates and editor examples remain independently openable.
- * Community patches only appear after the user adds them in Library > Community. */
-export function openableGroups(allocation: BufferAllocation = 0): { label: string; items: Openable[] }[] {
+ * Community patches only appear after the user adds them in Library > Community. Their chips count for the open FM-1
+ * (`allocation`, `store`: patchbin.ts deviceBudget). */
+export function openableGroups(allocation: BufferAllocation = 0, store: BudgetStore = 'assume'): { label: string; items: Openable[] }[] {
   const mine = savedPatches();
   const saved = new Set(mine.map((e) => e.name));
   return [
     {
       label: 'Your patches',
       items: [
-        ...mine.map((e) => ({ value: `saved:${e.name}`, name: e.name, from: e.name, load: () => JSON.parse(JSON.stringify(e.patch)) as Patch, chip: () => chipOf(e.patch, allocation) })),
+        ...mine.map((e) => ({ value: `saved:${e.name}`, name: e.name, from: e.name, load: () => JSON.parse(JSON.stringify(e.patch)) as Patch, chip: () => chipOf(e.patch, allocation, store) })),
         ...addedCommunity()
           .filter((c) => !saved.has(c.entry.title))
-          .map((c) => ({ value: `community:${c.entry.title}`, name: c.entry.title, author: c.entry.author, load: () => openCommunity(c), chip: () => chipOfEntry(c, allocation) })),
+          .map((c) => ({ value: `community:${c.entry.title}`, name: c.entry.title, author: c.entry.author, load: () => openCommunity(c), chip: () => chipOfEntry(c, allocation, store) })),
       ],
     },
-    { label: 'Factory patches', items: Object.keys(FM1_PRESETS).map(name => ({ value: name, name, load: FM1_PRESETS[name], chip: () => factoryChip(name, allocation) })) },
-    { label: 'Examples', items: Object.keys(EXAMPLE_PRESETS).map(name => ({ value: name, name, load: EXAMPLE_PRESETS[name], chip: () => factoryChip(name, allocation) })) },
+    { label: 'Factory patches', items: Object.keys(FM1_PRESETS).map(name => ({ value: name, name, load: FM1_PRESETS[name], chip: () => factoryChip(name, allocation, store) })) },
+    { label: 'Examples', items: Object.keys(EXAMPLE_PRESETS).map(name => ({ value: name, name, load: EXAMPLE_PRESETS[name], chip: () => factoryChip(name, allocation, store) })) },
   ].filter((g) => g.items.length);
 }
 

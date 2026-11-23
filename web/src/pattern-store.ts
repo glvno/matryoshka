@@ -23,10 +23,10 @@ import { DEFS } from './modules';
 import type { Patch } from './patch';
 import { deviceView } from './poly';
 import { lockPlan } from './locks';
-import { TYPE_ORDER, toQ16 } from './patchbin';
+import { patternsWithContent, TYPE_ORDER, toQ16 } from './patchbin';
 import type { StoredPatternEntry } from './protocol';
 import { PRESET_PATTERNS, type PresetPattern } from './preset-pattern-data';
-import { fixLocks, fixNotes, fixPatterns, patternWords, wordShort, wordsNotes, type Pattern, type StepLock, type StepNote } from './track';
+import { fixLocks, fixNotes, fixPatterns, LINK_ID_MAX, patternWords, withoutLinks, wordShort, wordsNotes, type Pattern, type PatternLink, type StepLock, type StepNote } from './track';
 import FACTORY_STORE from './factory-store.json';
 
 export const PAYLOAD_VERSION = 1;
@@ -196,6 +196,10 @@ export function autoName(patchName: string, p: number): string {
   const tail = ` P${p + 1}`;
   return storedName(`${storedName(patchName).slice(0, PATTERN_NAME_BYTES - tail.length).trim()}${tail}`);
 }
+/** the name of an entry the editor makes when it sends a patch to an FM-1 that stores every pattern (#1202): the patch's
+ *  name, its first 12 characters, and the pattern number in two digits ("909 KIT P03") */
+export const entryName = (patchName: string, p: number): string =>
+  storedName(`${storedName(patchName).slice(0, PATTERN_NAME_BYTES - 4).trim()} P${String(p + 1).padStart(2, '0')}`);
 
 /** a factory demonstration pattern (PRESET_PATTERNS, D-882 / D-1009) as a payload: one track, its notes, length and rate */
 export function factoryPayload(e: PresetPattern): Uint8Array {
@@ -230,24 +234,53 @@ function factoryLinks(p: Patch): { k: number; payload: Uint8Array }[] {
     return payload && fnv(FNV0, payload) === l.hash ? [{ k: Number(k), payload }] : [];
   });
 }
-/** a patch without the patterns it links to factory entries as those entries hold them (share links: whoever opens one
- * has the entries, #923); the patch itself when it has none */
-export function withoutFactoryPatterns(p: Patch): Patch {
-  const dev = deviceView(p, true).patch;
-  const clean = factoryLinks(p).filter((x) => fnv(FNV0, encodePayload(p, x.k, dev)) === fnv(FNV0, x.payload)).map((x) => x.k);
-  if (!clean.length) return p;
-  return { ...p, modules: p.modules.map((m) => {
-    if (m.type !== 'steps' || !m.patterns) return m;
-    const pats = fixPatterns(m.patterns.map((x, i) => (clean.includes(i + 1) ? null : x)));
-    const { patterns: _p, ...rest } = m;
-    return pats ? { ...rest, patterns: pats } : rest;
-  }) };
+/** the patch as it leaves the editor (G2, #1202: the editor's copy, patch files, share links, Community): every pattern
+ *  inside it and no link, so whoever opens it has every pattern without this FM-1's store. A pattern held only as a link
+ *  to a factory entry gets that entry's payload (factory-store.json); a linked pattern keeps the content the patch holds.
+ *  The patch itself when it links nothing */
+export function portablePatch(p: Patch): Patch {
+  if (!p.modules.some((m) => m.seq?.links)) return p;
+  return withoutLinks(withFactoryPatterns(structuredClone(p)));
 }
-/** the patterns withoutFactoryPatterns left out, back from the factory entries (changed in place) */
+/** the patterns a patch links to factory entries but does not hold (a share link made before 1.26 left them out, #923),
+ *  back from the factory entries (changed in place) */
 export function withFactoryPatterns(p: Patch): Patch {
   const steps = p.modules.filter((m) => m.type === 'steps');
   for (const x of factoryLinks(p)) if (!steps.some((m) => m.patterns?.[x.k - 1])) applyPayload(p, x.k, x.payload);
   return p;
+}
+
+/** one entry a send makes (storePlan): the patterns (0-based) it holds, its name, payload and payload hash */
+export interface EntryToPut { ps: number[]; name: string; payload: Uint8Array; hash: number }
+/**
+ * What sending `patch` to an FM-1 that stores every pattern 2..64 takes (#1202): each pattern with content links an entry
+ * of `entries` (the FM-1's list) whose payload has the same hash and length (the one the patch links already first, then
+ * the lowest id; the factory demonstration patterns are never linked), else a new entry named after `name` (entryName),
+ * one for patterns with the same payload. `links`: the patterns already stored, by pattern
+ */
+export function storePlan(patch: Patch, entries: readonly StoredPatternEntry[], name = patch.name): { links: Record<number, PatternLink>; put: EntryToPut[] } {
+  const dev = deviceView(patch, true).patch;
+  const had = patch.modules.find((m) => m.type === 'fm1')?.seq?.links ?? {};
+  const links: Record<number, PatternLink> = {};
+  const put: EntryToPut[] = [];
+  for (const p of patternsWithContent(dev)) {
+    const payload = encodePayload(patch, p, dev), hash = fnv(FNV0, payload);
+    const same = (e: StoredPatternEntry): boolean => e.hash === hash && e.len === payload.length && e.id <= LINK_ID_MAX;
+    const e = entries.find((x) => x.id === had[p]?.id && same(x)) ?? entries.filter(same).sort((a, b) => a.id - b.id)[0];
+    if (e) links[p] = { id: e.id, hash };
+    else {
+      const twin = put.find((x) => x.hash === hash && x.payload.length === payload.length);
+      if (twin) twin.ps.push(p);
+      else put.push({ ps: [p], name: entryName(name, p), payload, hash });
+    }
+  }
+  return { links, put };
+}
+/** the patch with exactly these links (patterns 1..63): what a send to an FM-1 that stores every pattern encodes */
+export function withLinks(patch: Patch, links: Record<number, PatternLink>): Patch {
+  const out = withoutLinks(patch);
+  if (!Object.keys(links).length) return out;
+  return { ...out, modules: out.modules.map((m) => (m.type === 'fm1' ? { ...m, seq: { ...(m.seq ?? {}), links } } : m)) };
 }
 
 /** bytes as hexadecimal text, two digits each (pattern files, factory-store.json), and back */

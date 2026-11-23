@@ -6,7 +6,7 @@ import type { BufferAllocation } from './signal-buffers';
 // status line's words for an open sandbox patch, and the "No limits here" card, shown once per browser the first time a
 // patch is a sandbox patch and afterwards from the status line's SANDBOX pill.
 import type { Patch } from './patch';
-import { deviceBudget, type Budget } from './patchbin';
+import { deviceBudget, type Budget, type BudgetStore } from './patchbin';
 
 export interface Chip {
   fits: boolean;
@@ -21,14 +21,15 @@ export const chipOfBudget = (b: Pick<Budget, 'fits' | 'use'>): Chip =>
 /** chips worked out this visit, by the patch's content (the Open picker lists every patch again after each save) */
 const known = new Map<string, Chip>();
 
-/** a patch's chip (a patch that cannot be counted is a sandbox patch) */
-export function chipOf(p: Patch, allocation: BufferAllocation = 0): Chip {
-  const key = allocation + JSON.stringify(p);
+/** a patch's chip (a patch that cannot be counted is a sandbox patch), counted for the open FM-1 (`store`: patchbin.ts
+ *  BudgetStore) */
+export function chipOf(p: Patch, allocation: BufferAllocation = 0, store: BudgetStore = 'assume'): Chip {
+  const key = allocation + store + JSON.stringify(p);
   const had = known.get(key);
   if (had) return { ...had };
   let c: Chip;
   try {
-    c = chipOfBudget(deviceBudget(p, allocation));
+    c = chipOfBudget(deviceBudget(p, allocation, store));
   } catch {
     c = { fits: false, text: 'SANDBOX' };
   }

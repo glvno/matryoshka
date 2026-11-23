@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// "Store to an FM-1 slot…" (#635): a dialog lists the FM-1's 64 slots, each with the name of the patch it holds or EMPTY
-// (read with SLOT_INFO, as Library > Patches reads the bank), and offers the first empty slot. A used slot is still
-// replaced only after the caller asks (D-580).
+// "Store to an FM-1 slot…" (#635): a dialog lists the FM-1's slots (as many as it says it has: 48 from 1.26, 60 or 64
+// before, protocol.ts slotCount), each with the name of the patch it holds or EMPTY (read with SLOT_INFO, as Library >
+// Patches reads the bank), and offers the first empty slot. A used slot is still replaced only after the caller asks (D-580).
 import { slotLabel, type SlotInfo } from './protocol';
 
 /** the slot offered first: the first empty one, else `fallback` (the slot the FM-1 plays), else the first */
