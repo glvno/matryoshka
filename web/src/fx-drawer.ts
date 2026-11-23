@@ -391,6 +391,7 @@ export function insertEffect(p: Patch, drawer: AssemblyInst, effect: EffectSourc
   const owner = ownerOf(p, drawer);
   const where = owner === 'output' ? drawer : owner;
   let e: AssemblyInst;
+  let extra: Ends = { sources: [[], []], dests: [[], []] };
   if ('def' in effect) {
     const made = insertAssembly(p, DEFS, structuredClone(effect.def), where.x, where.y);
     e = made.chain ? made : wrapEffect(p, { assembly: made.id });
@@ -401,6 +402,9 @@ export function insertEffect(p: Patch, drawer: AssemblyInst, effect: EffectSourc
   } else if ('module' in effect) {
     const host = assemblyOf(p, effect.module);
     if (host) removeMember(p, host, effect.module);
+    const m = moduleById(p, effect.module);
+    const ports = m && audioPorts(p, { module: m });
+    if (ports) extra = inLine(p, drawer, ports, new Set([effect.module]));
     e = wrapEffect(p, { module: effect.module });
   } else {
     const a = assemblyById(p, effect.assembly);
@@ -412,16 +416,45 @@ export function insertEffect(p: Patch, drawer: AssemblyInst, effect: EffectSourc
     }
     if (from) leave(p, from, a);
     else if (parentOf(p, a.id)) removeChild(p, parentOf(p, a.id)!, a.id);
+    const ports = a.chain ? { input: [...chainIns(a, 0), ...chainIns(a, 1)], outputs: [chainOuts(a, 0), chainOuts(a, 1)] } : audioPorts(p, { assembly: a });
+    if (ports && !from) extra = inLine(p, drawer, ports, new Set(allModules(p, a)));
     if (a.chain) {
       unplug(p, a);
       e = a;
     } else e = wrapEffect(p, { assembly: a.id });
   }
   const ends = endsOf(p, drawer);
+  for (const ch of [0, 1] as const) {
+    for (const s of extra.sources[ch]) addOnce(ends.sources[ch], s);
+    for (const t of extra.dests[ch]) addOnce(ends.dests[ch], t);
+  }
   addChild(p, drawer, e.id);
   place(drawer, e.id, at);
   applyChain(p, drawer, ends);
   return e;
+}
+
+/**
+ * What a canvas effect did in line with a drawer's sound, kept when it moves into that drawer (so the sound never stops):
+ * one fed by an instrument drawer's output hands its destinations to the drawer; one feeding the Output hands what fed it
+ * to the Output drawer.
+ */
+function inLine(p: Patch, d: AssemblyInst, ports: { input: Endpoint[]; outputs: Endpoint[][] }, inside: Set<number>): Ends {
+  const extra: Ends = { sources: [[], []], dests: [[], []] };
+  const owner = ownerOf(p, d);
+  if (owner !== 'output') {
+    const end = [...drawerOutput(p, owner.id, 0), ...drawerOutput(p, owner.id, 1)];
+    if (!p.cables.some((c) => has(ports.input, c.to) && has(end, c.from))) return extra;
+    ports.outputs.forEach((list, k) => {
+      for (const c of p.cables) if (has(list, c.from) && !inside.has(c.to.module))
+        addOnce(extra.dests[ports.outputs.length > 1 ? Math.min(k, 1) : c.to.port === 'r' ? 1 : 0], c.to);
+    });
+    return extra;
+  }
+  const out = outputModule(p);
+  if (!out || !p.cables.some((c) => has(ports.outputs.flat(), c.from) && c.to.module === out.id)) return extra;
+  for (const c of p.cables) if (has(ports.input, c.to) && !inside.has(c.from.module)) for (const ch of [0, 1] as const) addOnce(extra.sources[ch], c.from);
+  return extra;
 }
 
 /** an effect leaves its drawer: it becomes top level with nothing on its chain jacks, and the chain closes the gap */
