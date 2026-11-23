@@ -168,6 +168,9 @@ export class Palette {
   entries: (PaletteEntry | null)[];
   /** entries by their hash: a position whose hash is known needs no ENTRY_GET */
   private byHash = new Map<number, PaletteEntry>();
+  /** the last palette taken whole (its entries read): a switch is a change of `cur` from it, so a newer report that
+   *  overtakes the switch's own while that one reads an entry still follows it */
+  private taken: PaletteNow | null = null;
   /** each position's copy in this browser (worked out when the palette changes: a binary length costs an encode) */
   private copies: boolean[] = [];
   /** an FM-1 linked that keeps a palette: the chips are live (otherwise read-only, the last read) */
@@ -201,7 +204,6 @@ export class Palette {
 
   /** take a palette read: fetch the entries whose hash is new, keep it, and under Live follow a switch */
   private async take(now: PaletteNow, follow: boolean): Promise<void> {
-    const was = this.now;
     this.now = now;
     this.entries = now.positions.map((p) => (p.state ? this.byHash.get(p.hash) ?? null : null));
     this.findCopies();
@@ -216,6 +218,8 @@ export class Palette {
     }
     this.keep();
     this.ports.changed();
+    const was = this.taken;
+    this.taken = now;
     if (follow && was && now.cur !== null && now.cur !== was.cur && this.ports.live()) this.follow(now.cur);
   }
 

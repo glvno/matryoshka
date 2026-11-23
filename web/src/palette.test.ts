@@ -109,7 +109,6 @@ async function linked(o: { features?: number; live?: boolean; candidates?: Candi
   await palette.connected();
   return { fm1, link, palette, said, opened, off };
 }
-const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 20));
 
 describe('the palette over the link (#1196)', () => {
   it('stores a sound not on the FM-1 into the first free slot, named, then puts it; the chips follow', async () => {
@@ -117,7 +116,7 @@ describe('the palette over the link (#1196)', () => {
     fm1.slots[0] = { slot: 0, used: true, length: 10, name: 'TAKEN' };
     const { p } = padPatch();
     expect(await palette.add('My Pad', p)).toBe(true);
-    await settle();
+    await fm1.quiet();
     expect(fm1.slots[1]).toMatchObject({ used: true, name: 'MY PAD', length: binLength(p) });
     expect(fm1.entries[0]).toMatchObject({ slot: 1, name: 'MY PAD', devices: [{ name: 'Warm1' }] });
     expect(palette.chips()[0]).toMatchObject({ state: 'ok', name: 'MY PAD', presets: ['Warm1'] });
@@ -131,7 +130,7 @@ describe('the palette over the link (#1196)', () => {
     await palette.add('My Pad', p, { pos: 2 });
     fm1.slots[9] = { slot: 9, used: true, length: 50, name: '808 Kit' };
     await palette.add('808 Kit', null, { pos: 3, slot: { slot: 9, name: '808 Kit' } });
-    await settle();
+    await fm1.quiet();
     expect(fm1.o.sent.some((f) => f[4] === 0x13)).toBe(false);   // (no SLOT: nothing stored)
     expect(fm1.entries[2]).toMatchObject({ slot: 5, name: 'My Pad' });
     expect(fm1.entries[3]).toEqual({ slot: 9, pattern: 0, name: '808 Kit', devices: [] });
@@ -143,7 +142,7 @@ describe('the palette over the link (#1196)', () => {
     expect(said.at(-1)).toMatch(/bank is full/);
     fm1.entries = fm1.entries.map(() => ({ slot: 0, pattern: 0, name: 'P0', devices: [] }));
     fm1.report();
-    await settle();
+    await fm1.quiet();
     expect(await palette.add('My Pad', padPatch().p)).toBe(false);
     expect(said.at(-1)).toBe('Palette full: drag onto a chip to replace');
   });
@@ -152,26 +151,26 @@ describe('the palette over the link (#1196)', () => {
     fm1.slots[0] = { slot: 0, used: true, length: 10, name: 'A' };
     await palette.add('A', null, { pos: 0, slot: { slot: 0, name: 'A' } });
     await palette.move(0, 5);
-    await settle();
+    await fm1.quiet();
     expect(fm1.entries[5]).toMatchObject({ name: 'A' });
     expect(palette.chips()[5].name).toBe('A');
     fm1.entries[1] = { slot: 0, pattern: 4, name: 'A', devices: [{ dev: 0, structure: 1, pstructure: 0, name: 'X' }] };
     fm1.report();
-    await settle();
+    await fm1.quiet();
     expect(palette.chips()[1]).toMatchObject({ pattern: 4, presets: ['X'] });
     expect(fm1.ops.filter((op) => op === PALETTE.entryGet)).toHaveLength(1);
     await palette.remove(5);
-    await settle();
+    await fm1.quiet();
     expect(fm1.entries[5]).toBeNull();
   });
   it('refuses to write while a switch waits for the bar line', async () => {
     const { fm1, palette, said } = await linked();
     fm1.slots[0] = { slot: 0, used: true, length: 10, name: 'A' };
     await palette.add('A', null, { pos: 0, slot: { slot: 0, name: 'A' } });
-    await settle();
+    await fm1.quiet();
     fm1.running = true;
     await palette.click(0);
-    await settle();
+    await fm1.quiet();
     expect(palette.chips()[0].next).toBe(true);
     const ops = fm1.ops.length;
     await palette.remove(0);
@@ -183,9 +182,9 @@ describe('the palette over the link (#1196)', () => {
     const { fm1, palette, opened } = await linked({ candidates: [{ name: 'My Pad', patch: () => structuredClone(p) }] });
     fm1.slots[3] = { slot: 3, used: true, length: binLength(p), name: 'MY PAD' };
     await palette.add('My Pad', p, { pos: 0 });
-    await settle();
+    await fm1.quiet();
     await palette.click(0);
-    await settle();
+    await fm1.quiet();
     expect(fm1.cur).toBe(0);
     expect(opened).toHaveLength(1);
     expect(opened[0]).toMatchObject({ adopt: false, from: 'My Pad' });
@@ -198,25 +197,39 @@ describe('the palette over the link (#1196)', () => {
     fm1.entries[0] = entryOf(p, 3);
     fm1.entries[1] = { slot: 4, pattern: 0, name: 'STRANGER', devices: [] };
     fm1.report();
-    await settle();
+    await fm1.quiet();
     await palette.click(0);   // (under Live: GO only; the editor opens when the FM-1 says it switched)
-    await settle();
+    await fm1.quiet();
     expect(opened).toEqual([expect.objectContaining({ adopt: true })]);
     expect(fm1.o.sent.some((f) => f[4] === 0x11)).toBe(false);   // (no COMMIT)
     fm1.running = true;
     await palette.click(1);
     fm1.bar();
-    await settle();
+    await fm1.quiet();
     expect(off).toEqual(['FM-1 switched to palette 2 · STRANGER: no copy in this browser, so Live sync is off']);
     link.sendLiveName('MY PAD');
-    await settle();
+    await fm1.quiet();
     expect(fm1.liveName).toBe('MY PAD');
+  });
+  it('under Live follows a switch whose report a newer one overtakes while it reads the entry', async () => {
+    const { p } = padPatch();
+    const { fm1, palette, opened } = await linked({ live: true, candidates: [{ name: 'My Pad', patch: () => structuredClone(p) }] });
+    fm1.slots[3] = { slot: 3, used: true, length: binLength(p), name: 'MY PAD' };
+    fm1.entries[0] = entryOf(p, 3);
+    fm1.report();
+    await fm1.quiet();
+    fm1.entries[0] = { ...entryOf(p, 3), pattern: 1 };   // (changed on the FM-1: the switch's report has a hash to read)
+    await palette.click(0);
+    fm1.report();   // (another report, the same switch, comes in while the editor reads that entry)
+    await fm1.quiet();
+    expect(fm1.ops.filter((op) => op === PALETTE.entryGet)).toHaveLength(3);   // (the first read, the switch's, the newer report's)
+    expect(opened).toEqual([expect.objectContaining({ adopt: true })]);
   });
   it('keeps the last palette read for when no FM-1 is linked, and with firmware without it sends nothing', async () => {
     const { fm1, palette } = await linked();
     fm1.slots[0] = { slot: 0, used: true, length: 10, name: 'A' };
     await palette.add('A', null, { pos: 0, slot: { slot: 0, name: 'A' } });
-    await settle();
+    await fm1.quiet();
     expect(JSON.parse(mem.get(PALETTE_STORE)!).now.positions[0].name).toBe('A');
     const old = await linked({ features: 0 });
     expect(old.palette.linked).toBe(false);

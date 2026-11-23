@@ -35,6 +35,8 @@ export class PaletteFm1 {
   /** every PALETTE op the editor sent, in order */
   ops: number[] = [];
   private chunkTotal = 0;
+  /** answers sent but not yet arrived */
+  private pending = 0;
 
   constructor(o: { features?: number; slots?: SlotInfo[] } = {}) {
     const port = (id: string): PalettePort => {
@@ -69,8 +71,22 @@ export class PaletteFm1 {
   }
 
   private reply(f: Uint8Array): void {
-    setTimeout(() => this.i.onmidimessage?.({ data: f }), 1);
+    this.pending++;
+    setTimeout(() => {
+      this.pending--;
+      this.i.onmidimessage?.({ data: f });
+    }, 1);
   }
+
+  /** the link went quiet: no answer on its way and nothing new from the editor for 20 ms, however long the editor's
+   *  exchanges take on a busy machine */
+  async quiet(): Promise<void> {
+    for (let sent = -1; this.pending || sent !== this.o.sent.length; ) {
+      sent = this.o.sent.length;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+
   private ack(cmd: number, seq: number, status: number, aux = 0): void {
     this.reply(frame(CMD.ack, [cmd, seq, status, aux]));
   }
