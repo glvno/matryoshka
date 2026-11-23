@@ -11,6 +11,13 @@ const USED = ['matryoshka.patch', 'matryoshka.patches', 'modular-1.patch', 'modu
 
 /** the main changes, by "major.minor"; a version without an entry shows no card */
 export const HIGHLIGHTS: Record<string, string[]> = {
+  '1.26': [
+    'The palette: up to 8 sounds to switch between on the FM-1. Hold HOME and hold a black key for a second to save the sound playing there; hold HOME and tap it to switch, on the next bar line while playing, with a short fade. The editor shows the 8 chips at the bottom of Sound design; drag patches onto them.',
+    'Patterns 2 to 64 live in the FM-1\'s pattern store, so a patch no longer fills up with patterns. SEQ + SEL on the SEQ page lists the stored patterns to load one. The bank has 48 slots.',
+    'Double a pattern: hold SEQ and press OCT+ on the FM-1, or press ×2 on a Steps card.',
+    'The 808 Kit and the 909 Kit are one card and one device, with their sequencer inside. A row a cable sets now says SET BY on the FM-1.',
+    'Install firmware 1.26 from Install firmware: it checks your bank first, installs the screen font right after the firmware, and warns before you go back to older firmware, with a backup of your bank.',
+  ],
   '1.3': [
     'A big UI overhaul on the FM-1: paging is 6x faster, knobs answer 29x faster, and the header always shows your patch, device and page. Install the new firmware from Get started → Install firmware.',
     'Sandbox mode: a patch too big for the FM-1 plays here with no limits, and your FM-1 becomes its controller.',
