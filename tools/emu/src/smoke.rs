@@ -166,6 +166,9 @@ const DRUM_ROWS: usize = 8;
 const DRUM_NAME: usize = 8;
 /// The first format that writes only the row names off their default (engine.h ENG_SLIM, patchbin.ts SLIM, D-1025)
 const SLIM: u8 = 64;
+/// The first format whose flag bit 14 section is the FX rack, not the master FX bus (engine.h ENG_PATCH_VERSION 66,
+/// patchbin.ts FORMAT_RACK, #1214)
+const FORMAT_RACK: u8 = 66;
 
 /// A Drum map row's default name, the one the FM-1 shows for a row a format 64 binary does not name (defs.h DRUM_ROW_NAME)
 fn drum_default_names() -> Result<Vec<String>, String> {
@@ -226,15 +229,28 @@ fn names_section(p: &[u8], mut at: usize) -> Option<(usize, Vec<Vec<Option<Strin
 }
 
 /// The end of the sections a binary has after its row names, from p[at]: the pattern origins (p[7] bit 5, u16 LE count, 6
-/// bytes each), the master FX bus (p[7] bit 6: u8 count 1..4, per stage u8 kind, ascending, device, page, n 1..8, n
-/// modules), the macro ranges (p[6] bit 1: u8 count, 5 bytes each) and from format 65 the MIDI learn mappings (any bytes
-/// left: u8 count 1.., 5 bytes each); engine.c eng_section_at, eng_skip_fx, eng_maps_at, eng_maps
+/// bytes each), flag bit 14's section (p[7] bit 6): before format 66 the master FX bus (u8 count 1..4, per stage u8 kind,
+/// ascending, device, page, n 1..8, n modules), from format 66 the FX rack (u8 E effects, each u8 device, u8 n, n
+/// modules; u8 D drawers, 3 bytes each; E + D at least 1), the macro ranges (p[6] bit 1: u8 count, 5 bytes each) and from
+/// format 65 the MIDI learn mappings (any bytes left: u8 count 1.., 5 bytes each); engine.c eng_section_at, eng_rack_end,
+/// eng_maps_at, eng_maps
 fn tail_end(p: &[u8], mut at: usize) -> Option<usize> {
     if p[7] & 32 != 0 {
         let b = p.get(at..at + 2)?;
         at += 2 + 6 * u16::from_le_bytes([b[0], b[1]]) as usize;
     }
-    if p[7] & 64 != 0 {
+    if p[7] & 64 != 0 && p[1] >= FORMAT_RACK {
+        let effects = *p.get(at)?;
+        at += 1;
+        for _ in 0..effects {
+            at += 2 + *p.get(at + 1)? as usize;
+        }
+        let drawers = *p.get(at)?;
+        if effects == 0 && drawers == 0 {
+            return None;
+        }
+        at += 1 + 3 * drawers as usize;
+    } else if p[7] & 64 != 0 {
         let count = *p.get(at)?;
         if !(1..=4).contains(&count) {
             return None;
@@ -2202,7 +2218,8 @@ mod tests {
     }
 
     /// a Drum map's row names come out of a patch binary of either layout, a format 64 one's unnamed rows as their
-    /// defaults; the factory 808 Kit's too
+    /// defaults, past flag bit 14's section in either form (the master FX bus before format 66, the FX rack from 66);
+    /// the factory 808 Kit's too (format 66, its FX drawer in the rack)
     #[test]
     fn drum_row_names_both_layouts() {
         let default = drum_default_names().unwrap();
@@ -2219,7 +2236,20 @@ mod tests {
         let names = drum_row_names(&slim).unwrap();
         assert_eq!((names[0].as_str(), names[1].as_str(), names[7].as_str()), (default[0].as_str(), "SD", "CB"));
         assert!(drum_row_names(&slim[..slim.len() - 1]).is_err(), "a cut short tail");
+        // format 65, flag bit 14 the master FX bus: one Reverb stage (kind 3, device 0, page 0, one target: module 0),
+        // then a macro range and one MIDI mapping
+        let names_at = [0x55, 1, 1, 0x80, 2, b'C', b'B'];
+        let tail = [1, 0, 0, 0, 0, 0, 1, 7, 0, 0, 0, 255];
+        let bus: Vec<u8> = [&[0xA1, 65, 2, 0, 0, 0, 0x82, 0x40][..], &names_at, &[1, 3, 0, 0, 1, 0], &tail].concat();
+        assert_eq!(drum_row_names(&bus).unwrap()[7], "CB");
+        // format 66, flag bit 14 the FX rack: one effect (device 0, one target: module 0), the Output drawer holding it
+        let rack: Vec<u8> = [&[0xA1, 66, 2, 0, 0, 0, 0x82, 0x40][..], &names_at, &[1, 0, 1, 0, 1, 0xFF, 0, 1], &tail].concat();
+        assert_eq!(drum_row_names(&rack).unwrap()[7], "CB");
+        // each section read in the other format's form does not end the binary
+        assert!(drum_row_names(&[&[0xA1, 66][..], &bus[2..]].concat()).is_err(), "a master FX bus read as a rack");
+        assert!(drum_row_names(&[&[0xA1, 65][..], &rack[2..]].concat()).is_err(), "a rack read as a master FX bus");
         let kit = factory().into_iter().find(|(n, _)| n == "808 KIT").unwrap().1;
+        assert!(kit[1] >= FORMAT_RACK && kit[7] & 64 != 0, "the factory 808 Kit has its FX drawer in a format 66 rack");
         let names = drum_row_names(&kit).unwrap();
         assert!(names.iter().all(|n| !n.is_empty()), "{names:?}");
     }
