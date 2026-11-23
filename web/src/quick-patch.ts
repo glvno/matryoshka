@@ -3,7 +3,7 @@
 // screen: what a card offers as ports and which one Enter takes, the search for modules, the typed chain
 // (`lfo.out > multimode.cv; multimode.lp > vca.in > output.in`), following cables, blueprints and where a new card goes.
 // quick-patch-view.ts draws the field and the ring and drives the editor with these.
-import { allModules, assembliesOf, assemblyById, assemblyOf, cardWidth, findRef, insertAssembly, overlaps, paramColumns, parentOf, targetsOf, tiedTo, type AssemblyDef, type AssemblyInst, type Rect } from './assembly';
+import { allModules, assembliesOf, assemblyById, assemblyOf, cardWidth, deviceModules, findRef, insertAssembly, overlaps, paramColumns, parentOf, targetsOf, tiedTo, type AssemblyDef, type AssemblyInst, type Rect } from './assembly';
 import { addDrawer, chainCableProblem, chainJackProblem, drawerOf, drawerOfEffect, drawerOutput, drawers, effectKind, effectsOf, insertEffect, outputDrawer, ownerOf, rewire } from './fx-drawer';
 import { score } from './fuzzy';
 import { keyRouteError } from './key-routing';
@@ -218,7 +218,8 @@ export function cardPorts(p: Patch, defs: Record<string, ModuleDef>, c: Card): Q
 export function portCables(p: Patch, defs: Record<string, ModuleDef>, c: Card, port: QPort): Cable[] {
   // (the chain wires are the editor's: never followed)
   if (port.chain) return [];
-  const inside = c.kind === 'assembly' ? new Set(allModules(p, assemblyById(p, c.id)!)) : null;
+  // (an instrument's drawer is not inside its card: its effects are cards of their own)
+  const inside = c.kind === 'assembly' ? new Set(deviceModules(p, assemblyById(p, c.id)!)) : null;
   const outside = (e: Endpoint): boolean => !inside || !inside.has(e.module);
   if (port.dir === 'out') return p.cables.filter((x) => port.ends.some((e) => sameEnd(x.from, e)) && outside(x.to));
   if (port.note === 'into FX') return outputDrawerSources(p, port.ends[0]);
