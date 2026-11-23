@@ -11,7 +11,7 @@ import { DEFS } from './modules';
 import { connect, newPatch, type Patch } from './patch';
 import { applyEntry, entryOf, moveOrder, Palette, PALETTE_STORE, paletteDevices, repointed, type PalettePorts } from './palette';
 import { chipMeta } from './palette-view';
-import { PALETTE, type PaletteEntry } from './protocol';
+import { CMD, PALETTE, type PaletteEntry } from './protocol';
 import { structureOf } from './structure';
 import { PaletteFm1 } from './test-palette-fm1';
 
@@ -86,8 +86,8 @@ describe('re-pointing after Send bank (#1196)', () => {
 });
 
 /** the editor's link to a stand-in FM-1, and a palette on it with recorded ports */
-async function linked(o: { features?: number; live?: boolean; candidates?: Candidate[] } = {}) {
-  const fm1 = new PaletteFm1({ features: o.features });
+async function linked(o: { features?: number; features25?: number; presetRoom?: number; live?: boolean; candidates?: Candidate[] } = {}) {
+  const fm1 = new PaletteFm1({ features: o.features, features25: o.features25, presetRoom: o.presetRoom });
   const g = globalThis as unknown as { window?: unknown; navigator: { requestMIDIAccess?: unknown } };
   g.window ??= globalThis;
   g.navigator.requestMIDIAccess = async () => ({ inputs: new Map([[fm1.i.id, fm1.i]]), outputs: new Map([[fm1.o.id, fm1.o]]), onstatechange: null });
@@ -120,13 +120,14 @@ describe('the palette over the link (#1196)', () => {
     expect(fm1.slots[1]).toMatchObject({ used: true, name: 'MY PAD', length: binLength(p) });
     expect(fm1.entries[0]).toMatchObject({ slot: 1, name: 'MY PAD', devices: [{ name: 'Warm1' }] });
     expect(palette.chips()[0]).toMatchObject({ state: 'ok', name: 'MY PAD', presets: ['Warm1'] });
-    expect(said.at(-1)).toBe('"My Pad" is palette 1');
+    expect(said.at(-1)).toBe('"My Pad" is palette 1 (preset Warm1 sent to the FM-1)');
     expect(fm1.ops.filter((op) => op === PALETTE.entryGet)).toEqual([]);   // (its hash was known: no ENTRY_GET)
   });
-  it('points at a sound the FM-1 holds already (its name, case aside, and length) under the slot\'s own name, and at a dragged FM-1 slot', async () => {
-    const { fm1, palette } = await linked();
+  it('points at a slot that holds the same patch, byte for byte, under the slot\'s own name, and at a dragged FM-1 slot', async () => {
+    const { fm1, palette, link } = await linked();
     const { p } = padPatch();
     fm1.slots[5] = { slot: 5, used: true, length: binLength(p), name: 'My Pad' };   // (a factory slot keeps its case)
+    fm1.bins[5] = link.encodeFor(p);
     await palette.add('My Pad', p, { pos: 2 });
     fm1.slots[9] = { slot: 9, used: true, length: 50, name: '808 Kit' };
     await palette.add('808 Kit', null, { pos: 3, slot: { slot: 9, name: '808 Kit' } });
@@ -242,5 +243,138 @@ describe('the palette over the link (#1196)', () => {
     const fm1 = new PaletteFm1();
     fm1.report();
     expect(fm1.asked).toBe(false);
+  });
+});
+
+/** a frame's command byte (after F0 and the three prefix bytes) */
+const sentCmds = (fm1: PaletteFm1): number[] => fm1.o.sent.map((f) => f[4]);
+const q16 = (values: number[]): number[] => values.map((v) => Math.round(v * 65536));
+
+describe('adding to the palette saves what the FM-1 needs to play the sound (owner 2026-11-23)', () => {
+  it('uploads a preset only this browser has, under its name and structure, before the entry', async () => {
+    const { fm1, palette, said } = await linked();
+    const { p, a } = padPatch();
+    expect(await palette.add('My Pad', p)).toBe(true);
+    await fm1.quiet();
+    const s = structureOf(p, a);
+    expect(fm1.findPreset(s, 'Warm1')?.q16).toEqual(q16(currentValues(p, a)));
+    expect(fm1.entries[0]).toMatchObject({ devices: [{ name: 'Warm1' }] });
+    const cmds = sentCmds(fm1);
+    expect(cmds.indexOf(CMD.presetPut)).toBeLessThan(cmds.indexOf(PALETTE.cmd, cmds.indexOf(CMD.presetPut)));
+    expect(said.at(-1)).toBe('"My Pad" is palette 1 (preset Warm1 sent to the FM-1)');
+  });
+  it('replaces an FM-1 preset of that name whose values differ, and leaves one that agrees', async () => {
+    const { fm1, palette, said } = await linked();
+    const { p, a } = padPatch();
+    const s = structureOf(p, a), now = q16(currentValues(p, a));
+    fm1.presets.push({ structure: s, name: 'WARM1', q16: now.map((v, i) => (i ? v : v + 65536)) });
+    await palette.add('My Pad', p);
+    await fm1.quiet();
+    expect(fm1.presets).toHaveLength(1);
+    expect(fm1.findPreset(s, 'Warm1')?.q16).toEqual(now);
+    expect(said.at(-1)).toBe('"My Pad" is palette 1 (preset Warm1 updated on the FM-1)');
+    const puts = sentCmds(fm1).filter((c) => c === CMD.presetPut).length;
+    await palette.add('My Pad', p, { pos: 1 });
+    await fm1.quiet();
+    expect(sentCmds(fm1).filter((c) => c === CMD.presetPut)).toHaveLength(puts);
+    expect(said.at(-1)).toBe('"My Pad" is palette 2');
+  });
+  it('does not send a factory preset: the FM-1 has it', async () => {
+    const { fm1, palette } = await linked();
+    const { p, a } = padPatch();
+    const s = structureOf(p, a);
+    setFactoryPresets([{ structure: s, name: 'Lush', values: currentValues(p, a).map((v, i) => (i ? v : v + 0.5)), factory: true }]);
+    applyPreset(p, a, presetsOf(p, a).find((x) => x.name === 'Lush')!);
+    expect(await palette.add('My Pad', p)).toBe(true);
+    await fm1.quiet();
+    expect(sentCmds(fm1)).not.toContain(CMD.presetPut);
+    expect(fm1.entries[0]).toMatchObject({ devices: [{ name: 'Lush' }] });
+  });
+  it('does not point at a slot of the patch\'s name and length that holds other values: stores the patch, numbered', async () => {
+    const { fm1, palette, said, link } = await linked();
+    const { p, a } = padPatch();
+    const older = structuredClone(p);
+    const oa = older.assemblies!.find((x) => x.id === a.id)!;
+    applyPreset(older, oa, presetsOf(older, oa).find((x) => x.name === 'Bright')!);
+    oa.preset = 'Warm1';
+    fm1.slots[0] = { slot: 0, used: true, length: binLength(older), name: 'MY PAD' };
+    fm1.bins[0] = link.encodeFor(older);
+    expect(fm1.bins[0].length).toBe(link.encodeFor(p).length);
+    expect(await palette.add('My Pad', p)).toBe(true);
+    await fm1.quiet();
+    expect(fm1.slots[1]).toMatchObject({ used: true, name: 'MY PAD 2' });
+    expect(fm1.bins[1]).toEqual(link.encodeFor(p));
+    expect(fm1.entries[0]).toMatchObject({ slot: 1, name: 'MY PAD 2' });
+    expect(said.at(-1)).toBe('"My Pad" is palette 1 (preset Warm1 sent to the FM-1; slot 1 holds another "MY PAD", so it is stored as "MY PAD 2" in slot 2)');
+  });
+  it('finds this browser\'s copy of a numbered slot by the name before the number', async () => {
+    const { p } = padPatch();
+    const { fm1, palette, opened } = await linked({ candidates: [{ name: 'My Pad', patch: () => structuredClone(p) }] });
+    fm1.slots[0] = { slot: 0, used: true, length: binLength(p), name: 'MY PAD' };
+    await palette.add('My Pad', p);
+    await fm1.quiet();
+    expect(fm1.entries[0]).toMatchObject({ slot: 1, name: 'MY PAD 2' });
+    await palette.click(0);
+    await fm1.quiet();
+    expect(opened).toEqual([expect.objectContaining({ from: 'My Pad' })]);
+  });
+  it('never takes a different patch in a numbered slot for the copy: only the content the editor stored there', async () => {
+    const { p, a } = padPatch();
+    let mine = structuredClone(p);
+    const { fm1, palette, opened, said } = await linked({ candidates: [{ name: 'My Pad', patch: () => structuredClone(mine) }] });
+    fm1.slots[0] = { slot: 0, used: true, length: binLength(p), name: 'MY PAD' };
+    fm1.slots[5] = { slot: 5, used: true, length: binLength(p), name: 'MY PAD 2' };   // (not the editor's: stored elsewhere)
+    fm1.entries[1] = { slot: 5, pattern: 0, name: 'MY PAD 2', devices: [] };
+    fm1.report();
+    await fm1.quiet();
+    expect(palette.chips()[1].copy).toBe(false);
+    await palette.click(1);
+    await fm1.quiet();
+    expect(opened).toEqual([]);
+    expect(said.at(-1)).toBe('Palette 2 · MY PAD 2: no copy of this patch in this browser');
+    await palette.add('My Pad', p);   // (stored as MY PAD 3 in slot 1: the copy is this content)
+    await fm1.quiet();
+    expect(fm1.entries[0]).toMatchObject({ slot: 1, name: 'MY PAD 3' });
+    expect(palette.chips()[0].copy).toBe(true);
+    mine = structuredClone(p);
+    applyPreset(mine, mine.assemblies!.find((x) => x.id === a.id)!, presetsOf(p, a).find((x) => x.name === 'Bright')!);
+    palette.findCopies();
+    expect(palette.chips()[0].copy).toBe(false);   // (My Pad changed since: no longer what slot 2 holds)
+  });
+  it('with firmware that cannot read a slot back, stores the patch rather than trust a name and length', async () => {
+    const { fm1, palette } = await linked({ features25: 0 });
+    const { p } = padPatch();
+    fm1.slots[4] = { slot: 4, used: true, length: binLength(p), name: 'MY PAD' };
+    await palette.add('My Pad', p);
+    await fm1.quiet();
+    expect(fm1.entries[0]).toMatchObject({ slot: 0, name: 'MY PAD 2' });
+  });
+  it('with the preset store full, the entry leaves the preset out and the slot carries the sound, and says so', async () => {
+    const { fm1, palette, said, link } = await linked({ presetRoom: 0 });
+    const { p } = padPatch();
+    expect(await palette.add('My Pad', p)).toBe(true);
+    await fm1.quiet();
+    expect(fm1.presets).toEqual([]);
+    expect(fm1.bins[0]).toEqual(link.encodeFor(p));
+    expect(fm1.entries[0]).toMatchObject({ slot: 0, name: 'MY PAD', devices: [] });
+    expect(said.at(-1)).toBe('"My Pad" is palette 1. The FM-1 could not take preset Warm1 (its preset store is full): palette 1 plays the values stored with the patch in slot 1');
+  });
+  it('with firmware that keeps no presets, sends none and falls back the same way', async () => {
+    const { fm1, palette, said } = await linked({ features: 1 << 31 });
+    const { p } = padPatch();
+    expect(await palette.add('My Pad', p)).toBe(true);
+    await fm1.quiet();
+    expect(sentCmds(fm1).some((c) => c >= CMD.presets && c <= CMD.presetDel)).toBe(false);
+    expect(fm1.entries[0]).toMatchObject({ devices: [] });
+    expect(said.at(-1)).toBe('"My Pad" is palette 1. The FM-1 could not take preset Warm1 (update the FM-1 to store presets on it): palette 1 plays the values stored with the patch in slot 1');
+  });
+  it('a refused entry takes back the slot it stored and the preset it sent, and says what happened', async () => {
+    const { fm1, palette, said } = await linked();
+    fm1.refusePut = true;
+    expect(await palette.add('My Pad', padPatch().p)).toBe(false);
+    await fm1.quiet();
+    expect(fm1.presets).toEqual([]);
+    expect(fm1.slots.every((s) => !s.used)).toBe(true);
+    expect(said.at(-1)).toBe('Adding "My Pad" to the palette failed: FM-1: that slot no longer holds the patch. Nothing was added: what it stored on the FM-1 for it is taken back');
   });
 });

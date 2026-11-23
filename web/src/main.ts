@@ -4093,6 +4093,9 @@ if (import.meta.env.DEV) {
       const back = await device.getPreset(pr.structure, as);
       return back && back.every((v, i) => Math.abs(v - pr.values[i]) < 1e-4) ? back.length : -1;
     },
+    // the FM-1's user preset of this structure and name, as it holds it (null: none; the scenario paletteEditor: Add to
+    // palette sends the presets the FM-1 has not got)
+    fm1Preset: (structure: string, name: string): Promise<number[] | null> => device.getPreset(structure, name),
     // the release's device check as scenarios (scripts/device-check.mjs): its test patches kept in Your patches, as the
     // owner keeps them; the Open picker's chip of one (FM-1 · NN % or SANDBOX)
     save: (json: string): boolean => keepPatch(validatePatch(JSON.parse(json), DEFS)).ok,

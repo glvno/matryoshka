@@ -2614,11 +2614,28 @@ async function main() {
       await page.type('#commands-input', 'add to palette');
       await page.keyboard.press('Enter');
       await check('palette editor: Commands > Add to palette puts the patch into palette 1', !!(await until(async () => (await chip(0))?.name === 'SILVER BOX', 6000)), JSON.stringify(await chip(0)));
-      // a patch this FM-1 has not got, dragged from Library > Patches onto chip 4: stored into a free slot (SLOT), then PUT
-      await page.evaluate(async () => {
+      // a patch this FM-1 has not got, dragged from Library > Patches onto chip 4: its device set to a preset only this
+      // browser has (Mine), so the drop sends that preset (PRESET_PUT), stores the patch into a free slot (SLOT), then PUTs
+      // (owner 2026-11-23: adding to the palette saves on the FM-1 the presets it needs)
+      const mine = await page.evaluate(async () => {
         const { savePatch } = await import('/src/saved.ts');
-        savePatch({ ...JSON.parse(window.__m1test.patchJson()), name: 'Pal Test' });
+        const { addUserPreset, currentValues } = await import('/src/device-presets.ts');
+        const { paletteDevices } = await import('/src/palette.ts');
+        const { structureOf } = await import('/src/structure.ts');
+        const p = { ...JSON.parse(window.__m1test.patchJson()), name: 'Pal Test' };
+        const name = `Pal ${Date.now() % 100000}`;   // (a name no earlier run left on the FM-1)
+        for (const a of p.assemblies ?? []) {
+          const structure = structureOf(p, a), was = a.preset;
+          a.preset = name;
+          if (!paletteDevices(p).some((d) => d.name === name)) { a.preset = was; continue; }
+          const values = currentValues(p, a);
+          addUserPreset(structure, name, values);
+          savePatch(p);
+          return { structure, name, values };
+        }
+        return null;
       });
+      await check('palette editor: Pal Test has a device set to a preset only this browser has', !!mine);
       await page.click('#view-switch [data-view="library"]');
       await page.waitForSelector('#lib-patches .patch-drag-source', { timeout: 5000 });
       const sel = await page.evaluate(() => {
@@ -2629,9 +2646,12 @@ async function main() {
       const t0 = await now();
       await check('palette editor: Pal Test dragged from Your patches onto chip 4', sel && (await drag('#pal-test-row', '.lib-dock .pal-chip[data-pos="3"]')));
       await check('palette editor: chip 4 holds PAL TEST', !!(await until(async () => (await chip(3))?.name === 'PAL TEST', 15000)), JSON.stringify(await chip(3)));
+      await check('palette editor: its entry names the browser-only preset', !!mine && !!(await chip(3))?.presets.includes(mine.name), JSON.stringify(await chip(3)));
       const sent = await sentSince(t0);
-      const slotAt = sent.findIndex((s) => s[0] === 0x13), putAt = sent.findIndex((s) => s[0] === 0x1e && s[1] === 2);
-      await check('palette editor: the drop stored it into a slot (SLOT), then put it (PALETTE PUT)', slotAt >= 0 && putAt > slotAt, JSON.stringify(sent.map((s) => s[0].toString(16))));
+      const presetAt = sent.findIndex((s) => s[0] === 0x2f), slotAt = sent.findIndex((s) => s[0] === 0x13), putAt = sent.findIndex((s) => s[0] === 0x1e && s[1] === 2);
+      await check('palette editor: the drop sent the preset (PRESET_PUT), stored the patch (SLOT), then put it (PALETTE PUT)', presetAt >= 0 && slotAt > presetAt && putAt > slotAt, JSON.stringify(sent.map((s) => s[0].toString(16))));
+      const held = mine ? await page.evaluate((m) => window.__m1test.fm1Preset(m.structure, m.name), mine) : null;
+      await check('palette editor: the FM-1 holds that preset, its values as the editor\'s', !!held && held.length === mine.values.length && held.every((v, i) => Math.abs(v - mine.values[i]) < 1e-4), JSON.stringify(held?.length ?? null));
       await page.click('#view-switch [data-view="patch"]');
       // a chip dragged onto an empty one: one ORDER
       const t1 = await now();
