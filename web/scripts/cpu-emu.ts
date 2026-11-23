@@ -88,7 +88,8 @@ function playBank(reqs: Req[], keys: number[], run: boolean): Promise<void> {
   });
   writeFileSync(`${WORK}bank${id}.txt`, list.join('\n') + '\n');
   const args = ['cpu', `${FW}/matryoshka.bin`, '--elf', `${FW}/matryoshka.elf`, '--no-survey', '--modtime', '--bank', `${WORK}bank${id}.txt`,
-    '--keys', keys.join(','), '--settle', String(SETTLE), '--window', String(WINDOW), '--out', `${WORK}out${id}.json`, ...(run ? ['--mt-run'] : [])];
+    '--keys', keys.join(','), '--settle', String(SETTLE), '--window', String(WINDOW), '--out', `${WORK}out${id}.json`, ...(run ? ['--mt-run'] : []),
+    '--factory', `${ROOT}web/public/firmware/matryoshka-factory.bin`];
   const { promise, resolve } = Promise.withResolvers<void>();
   execFile(EMU, args, { env: { ...process.env, M1EMU_TIMING: TIMING }, maxBuffer: 1 << 26 }, (err, _o, stderr) => {
       if (err && reqs.length > 1) {
