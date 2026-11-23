@@ -1,0 +1,431 @@
+{
+ "checks": [
+  {
+   "name": "the pad map starts empty with PAD MAP on (PADS 0xFE, 0xFD 1 through the link)",
+   "ok": true,
+   "detail": "[1, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]"
+  },
+  {
+   "name": "808 Kit before the learn: pad C5 is silent",
+   "ok": true,
+   "detail": "TEST_PEAK 0"
+  },
+  {
+   "name": "HOME held + SEL on a kit: LEARN: KNOB OR DRUM KEY",
+   "ok": true,
+   "detail": "LEARN: KNOB OR DRUM KEY | - | 0.50 | - | - | KEYS WIRED | 120 | ROWS 1-8 | - | 808 KIT | KEYS WIRED | 120 | ROWS 1-8"
+  },
+  {
+   "name": "black key 1 picks row 1: 1 ...: HIT A PAD",
+   "ok": true,
+   "detail": "1 BD: HIT A PAD | - | 0.50 | - | - | KEYS WIRED | 120 | ROWS 1-8 | - | 808 KIT | KEYS WIRED | 120 | ROWS 1-8"
+  },
+  {
+   "name": "pad C5: NOTE C5 > 1 ...",
+   "ok": true,
+   "detail": "NOTE C5 > 1 BD | - | 0.50 | - | - | KEYS WIRED | 120 | ROWS 1-8 | - | 808 KIT | KEYS WIRED | 120 | ROWS 1-8"
+  },
+  {
+   "name": "a second later row 2 waits: 2 ...: HIT A PAD",
+   "ok": true,
+   "detail": "2 SD: HIT A PAD | - | 0.50 | - | - | KEYS WIRED | 120 | ROWS 1-8 | - | 808 KIT | KEYS WIRED | 120 | ROWS 1-8"
+  },
+  {
+   "name": "pad D5: NOTE D5 > 2 ...",
+   "ok": true,
+   "detail": "NOTE D5 > 2 SD | - | 0.50 | - | - | KEYS WIRED | 120 | ROWS 1-8 | - | 808 KIT | KEYS WIRED | 120 | ROWS 1-8"
+  },
+  {
+   "name": "a HOME tap ends learn mode: PADS: 2 LEARNED",
+   "ok": true,
+   "detail": "PADS: 2 LEARNED | - | 0.50 | - | - | KEYS WIRED | 120 | ROWS 1-8 | - | 808 KIT | KEYS WIRED | 120 | ROWS 1-8"
+  },
+  {
+   "name": "PADS_NOW: PAD MAP on, row 1 = 72, row 2 = 74, the rest none",
+   "ok": true,
+   "detail": "[1, 72, 74, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]"
+  },
+  {
+   "name": "808 Kit: pad C5 plays row 1 (within 6 dB of black key 1)",
+   "ok": true,
+   "detail": "TEST_PEAK pad 2634, key 2628"
+  },
+  {
+   "name": "808 Kit: pad D5 plays row 2 (within 6 dB of black key 2)",
+   "ok": true,
+   "detail": "TEST_PEAK pad 1989, key 2226"
+  },
+  {
+   "name": "808 Kit: the unmapped note E5 is silent",
+   "ok": true,
+   "detail": "TEST_PEAK 0"
+  },
+  {
+   "name": "909 Kit: pad C5 plays row 1 (within 6 dB of black key 1)",
+   "ok": true,
+   "detail": "TEST_PEAK pad 2373, key 2373"
+  },
+  {
+   "name": "909 Kit: pad D5 plays row 2 (within 6 dB of black key 2)",
+   "ok": true,
+   "detail": "TEST_PEAK pad 3362, key 3676"
+  },
+  {
+   "name": "909 Kit: the unmapped note E5 is silent",
+   "ok": true,
+   "detail": "TEST_PEAK 0"
+  },
+  {
+   "name": "Monolith D: C5, D5 and E5 play as notes, about equally loud",
+   "ok": true,
+   "detail": "[2259, 2009, 1992]"
+  },
+  {
+   "name": "GLO > MIDI 4/4: PAD MAP ON, row 1 with NOTE C5, CLEAR, CLEAR ALL",
+   "ok": true,
+   "detail": "MENU | MIDI 4/4 | ON | PAD MAP | NOTE C5 | 1 BD | TURN > | CLEAR | TURN > | CLEAR ALL | MIDI | PANEL | SYSTEM | EQ | INFO | GUIDE | ALGO tab  K1-K4 set  GLO/HOME b | 808 KIT | KEYS WIRED | 120 | ROWS 1-8"
+  },
+  {
+   "name": "K1 left: PAD MAP OFF",
+   "ok": true,
+   "detail": "MENU | MIDI 4/4 | OFF | PAD MAP | NOTE C5 | 1 BD | TURN > | CLEAR | TURN > | CLEAR ALL | MIDI | PANEL | SYSTEM | EQ | INFO | GUIDE | ALGO tab  K1-K4 set  GLO/HOME b | 808 KIT | KEYS WIRED | 120 | ROWS 1-8"
+  },
+  {
+   "name": "PAD MAP OFF, 808 Kit: pads C5 and D5 play as their own notes (silent)",
+   "ok": true,
+   "detail": "[0, 0]"
+  },
+  {
+   "name": "K1 right: PAD MAP ON",
+   "ok": true,
+   "detail": "MENU | MIDI 4/4 | ON | PAD MAP | NOTE C5 | 1 BD | TURN > | CLEAR | TURN > | CLEAR ALL | MIDI | PANEL | SYSTEM | EQ | INFO | GUIDE | ALGO tab  K1-K4 set  GLO/HOME b | 808 KIT | KEYS WIRED | 120 | ROWS 1-8"
+  },
+  {
+   "name": "MIDI 4/4 CLEAR on row 1: NOTE C5 CLEARED",
+   "ok": true,
+   "detail": "NOTE C5 CLEARED | ON | PAD MAP | - | 1 BD | - | CLEAR | TURN > | CLEAR ALL | MIDI | PANEL | SYSTEM | EQ | INFO | GUIDE | ALGO tab  K1-K4 set  GLO/HOME b | 808 KIT | KEYS WIRED | 120 | ROWS 1-8"
+  },
+  {
+   "name": "  PADS_NOW after CLEAR: row 1 none, row 2 = 74",
+   "ok": true,
+   "detail": "[1, 255, 74, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]"
+  },
+  {
+   "name": "CLEAR ALL through the link (PADS 0xFE): PADS_NOW empty, MIDI 4/4 row 1 reads -",
+   "ok": true,
+   "detail": "[1, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255] / MENU | MIDI 4/4 | ON | PAD MAP | - | 1 BD | - | CLEAR | TURN > | CLEAR ALL | MIDI | PANEL | SYSTEM | EQ | INFO | GUIDE | ALGO tab  K1-K4 set  GLO/HOME b | 808 KIT | KEYS WIRED | 120 | ROWS 1-8"
+  },
+  {
+   "name": "808 Kit after the clear: pads C5 and D5 silent, as before the learn",
+   "ok": true,
+   "detail": "[0, 0]"
+  },
+  {
+   "name": "HOME held + SEL on a device page (not a kit): LEARN: TURN A KNOB",
+   "ok": true,
+   "detail": "LEARN: TURN A KNOB | - | 0.80 | 0.60 | SINE | 0.50 | RAMP | KEYS WIRED | 120 | = OCT = | - | BRIEFCASE 3 | KEYS WIRED | 120 | = OCT ="
+  },
+  {
+   "name": "K1 picks its row: LEARN <row>: MOVE A CONTROL",
+   "ok": true,
+   "detail": "LEARN FREQUENCY: MOVE A CONTROL | - | 0.80 | 0.60 | SINE | 0.50 | RAMP | KEYS WIRED | 120 | = OCT = | - | BRIEFCASE 3 | KEYS WIRED | 120 | = OCT ="
+  },
+  {
+   "name": "CC 30 sent three values: CC 30 MOVES the row",
+   "ok": true,
+   "detail": "CC 30 MOVES FREQUENCY | - | 0.80 | 0.60 | SINE | 0.50 | RAMP | KEYS WIRED | 120 | = OCT = | - | BRIEFCASE 3 | KEYS WIRED | 120 | = OCT ="
+  },
+  {
+   "name": "ALGO to another page (the row off screen)",
+   "ok": true,
+   "detail": "BRIEFCASE 3 | OSC 2 | 1.11 | FREQUENCY | 0.50 | SHAPE"
+  },
+  {
+   "name": "CC 30 at 0 and at 127 sent while off screen: the row reads differently on its page",
+   "ok": true,
+   "detail": "[[\"-4.00\", \"4.00\"]]"
+  },
+  {
+   "name": "learn mode on, then a HOME tap ends it: LEARN OFF, the page stays",
+   "ok": true,
+   "detail": "LEARN OFF | 4.00 | FREQUENCY | 0.60 | SINE | 0.50 | RAMP | - | BRIEFCASE 3 * | KEYS WIRED | 120 | = OCT ="
+  },
+  {
+   "name": "HOME held + SEL on the SEQ page: LEARN: ON A DEVICE PAGE (refused)",
+   "ok": true,
+   "detail": "LEARN: ON A DEVICE PAGE | 1-16 OF 16  RATE 1/16 | D#4 | D4 | C#4 | C4 | B3 | A#3 | A3 | G#3 | TRACK 1/1  ARMED  ALGO track  S | EMPTY  SEQ+SEL load a pattern"
+  },
+  {
+   "name": "k2 picks a row; CC 16 once, then CC 31 three values: CC 16 ALSO SENT: TURNS K1",
+   "ok": true,
+   "detail": "CC 16 ALSO SENT: TURNS K1 | 4.00 | FREQUENCY | 0.60 | SINE | 0.50 | RAMP | - | ARM PATTERN | 120 | = OCT ="
+  },
+  {
+   "name": "k3 picks a row; note C5 played: NOTE C5 MOVES the row",
+   "ok": true,
+   "detail": "NOTE C5 MOVES RAMP | 4.00 | FREQUENCY | 0.60 | SINE | 0.50 | RAMP | - | ARM PATTERN | 120 | = OCT ="
+  },
+  {
+   "name": "note C5 at velocity 10, then 120: the row reads differently (velocity, or a switch toggled)",
+   "ok": true,
+   "detail": "[[\"0.08\", \"0.94\"]]"
+  },
+  {
+   "name": "the learned note is not played (C5 against an unlearned D5)",
+   "ok": true,
+   "detail": "TEST_PEAK C5 0, D5 903"
+  },
+  {
+   "name": "GLO > MIDI 3/4: LEARN reads HOME + SEL, MAPPING counts 3 and names the first row",
+   "ok": true,
+   "detail": "MENU | MIDI 3/4 | FREQUENCY | CC 30  1/3 | TURN > | CLEAR | HOME + SEL | LEARN | - | MIDI | PANEL | SYSTEM | EQ | INFO | GUIDE | ALGO tab  K1-K4 set  GLO/HOME b | ARM PATTERN | 120 | = OCT ="
+  },
+  {
+   "name": "after SAVE, another patch and back: CC 30 still moves the row (the slot keeps the mapping)",
+   "ok": true,
+   "detail": "[[\"-4.00\", \"4.00\"]]"
+  },
+  {
+   "name": "MAP with no mappings clears them: MAPPING reads NONE",
+   "ok": true,
+   "detail": "MENU | MIDI 3/4 | NONE | MAPPINGS | - | CLEAR | HOME + SEL | LEARN | - | MIDI | PANEL | SYSTEM | EQ | INFO | GUIDE | ALGO tab  K1-K4 set  GLO/HOME b | BRIEFCASE 3 * | KEYS WIRED | 120 | = OCT ="
+  },
+  {
+   "name": "MIDI 3/4 LEARN turned right: the menu closes, learn mode asks for a knob",
+   "ok": true,
+   "detail": "LEARN: TURN A KNOB | 4.00 | FREQUENCY | 0.60 | SINE | 1.00 | RAMP | - | BRIEFCASE 3 * | KEYS WIRED | 120 | = OCT ="
+  },
+  {
+   "name": "a learn on the FM-1 sends MAP_NOW to the linked editor (and PARAM_NOW as it moves)",
+   "ok": true,
+   "detail": "replies ['0x63']"
+  },
+  {
+   "name": "a format-65 patch (Briefcase 3 with CC 20 / CC 21 on x / y) loads live",
+   "ok": true,
+   "detail": "3315 B, format byte 65"
+  },
+  {
+   "name": "MIDI 3/4 lists its two mappings",
+   "ok": true,
+   "detail": "MENU | MIDI 3/4 | X | CC 20  1/2 | TURN > | CLEAR | HOME + SEL | LEARN | - | MIDI | PANEL | SYSTEM | EQ | INFO | GUIDE | ALGO tab  K1-K4 set  GLO/HOME b | FROM EDITOR | KEYS WIRED | 120 | = OCT ="
+  },
+  {
+   "name": "ALGO reaches the joystick page (X, Y)",
+   "ok": true,
+   "detail": "BRIEFCASE 3 | JOYSTICK | 0.00 | X | 0.00 | Y | 1.00 | RANGE X"
+  },
+  {
+   "name": "HOME + SEL, K3: pitch bend learned on the joystick page's K3 row: BEND MOVES it",
+   "ok": true,
+   "detail": "BEND MOVES RANGE X | 0.00 | X | 0.00 | Y | 1.00 | RANGE X | 1.00 | RANGE Y | FROM EDITOR | KEYS WIRED | 120 | = OCT ="
+  },
+  {
+   "name": "HOME + SEL, K4: CC 25 learned on the page's K4 row (when it takes MIDI)",
+   "ok": true,
+   "detail": "CC 25 MOVES RANGE Y | 0.00 | X | 0.00 | Y | 1.00 | RANGE X | 1.00 | RANGE Y | FROM EDITOR | KEYS WIRED | 120 | = OCT ="
+  },
+  {
+   "name": "4 learned controls sent together: every learned row moves",
+   "ok": true,
+   "detail": "[[\"0.00\", \"4.00\"], [\"0.00\", \"-4.00\"], [\"1.00\", \"4.00\"], [\"1.00\", \"4.00\"]]"
+  }
+ ],
+ "midi_channel": 1,
+ "menu_midi_1": [
+  "MENU",
+  "MIDI 1/4",
+  "OMNI",
+  "MIDI CHANNEL",
+  "ON",
+  "CLOCK IN",
+  "ON",
+  "MIDI OUT",
+  "ON",
+  "CLOCK OUT",
+  "MIDI",
+  "PANEL",
+  "SYSTEM",
+  "EQ",
+  "INFO",
+  "GUIDE",
+  "ALGO tab  K1-K4 set  GLO/HOME b",
+  "BRIEFCASE 3",
+  "KEYS WIRED",
+  "120",
+  "= OCT ="
+ ],
+ "pads_808_screen": [
+  "808 KIT",
+  "ACCENT",
+  "-",
+  "0.50",
+  "-",
+  "-",
+  "KEYS WIRED",
+  "120",
+  "ROWS 1-8",
+  "-",
+  "808 KIT",
+  "KEYS WIRED",
+  "120",
+  "ROWS 1-8"
+ ],
+ "peaks": {
+  "808 Kit row 1": {
+   "pad": 2634,
+   "key": 2628
+  },
+  "808 Kit row 2": {
+   "pad": 1989,
+   "key": 2226
+  },
+  "909 Kit row 1": {
+   "pad": 2373,
+   "key": 2373
+  },
+  "909 Kit row 2": {
+   "pad": 3362,
+   "key": 3676
+  },
+  "Monolith D C5 D5 E5": [
+   2259,
+   2009,
+   1992
+  ]
+ },
+ "menu_midi_4": [
+  "MENU",
+  "MIDI 4/4",
+  "ON",
+  "PAD MAP",
+  "NOTE C5",
+  "1 BD",
+  "TURN >",
+  "CLEAR",
+  "TURN >",
+  "CLEAR ALL",
+  "MIDI",
+  "PANEL",
+  "SYSTEM",
+  "EQ",
+  "INFO",
+  "GUIDE",
+  "ALGO tab  K1-K4 set  GLO/HOME b",
+  "808 KIT",
+  "KEYS WIRED",
+  "120",
+  "ROWS 1-8"
+ ],
+ "learned_row": "FREQUENCY",
+ "offscreen": {
+  "low": [
+   "BRIEFCASE 3",
+   "OSC 1",
+   "-4.00",
+   "FREQUENCY",
+   "0.60",
+   "SINE",
+   "0.50",
+   "RAMP",
+   "-",
+   "BRIEFCASE 3 *",
+   "KEYS WIRED",
+   "120",
+   "= OCT ="
+  ],
+  "high": [
+   "BRIEFCASE 3",
+   "OSC 1",
+   "4.00",
+   "FREQUENCY",
+   "0.60",
+   "SINE",
+   "0.50",
+   "RAMP",
+   "-",
+   "BRIEFCASE 3 *",
+   "KEYS WIRED",
+   "120",
+   "= OCT ="
+  ]
+ },
+ "menu_midi_3": [
+  "MENU",
+  "MIDI 3/4",
+  "FREQUENCY",
+  "CC 30  1/3",
+  "TURN >",
+  "CLEAR",
+  "HOME + SEL",
+  "LEARN",
+  "-",
+  "MIDI",
+  "PANEL",
+  "SYSTEM",
+  "EQ",
+  "INFO",
+  "GUIDE",
+  "ALGO tab  K1-K4 set  GLO/HOME b",
+  "ARM PATTERN",
+  "120",
+  "= OCT ="
+ ],
+ "xy_mapping": [
+  "MENU",
+  "MIDI 3/4",
+  "X",
+  "CC 20  1/2",
+  "TURN >",
+  "CLEAR",
+  "HOME + SEL",
+  "LEARN",
+  "-",
+  "MIDI",
+  "PANEL",
+  "SYSTEM",
+  "EQ",
+  "INFO",
+  "GUIDE",
+  "ALGO tab  K1-K4 set  GLO/HOME b",
+  "FROM EDITOR",
+  "KEYS WIRED",
+  "120",
+  "= OCT ="
+ ],
+ "xy_bend": {
+  "before": [
+   "BRIEFCASE 3",
+   "JOYSTICK",
+   "0.00",
+   "X",
+   "0.00",
+   "Y",
+   "1.00",
+   "RANGE X",
+   "1.00",
+   "RANGE Y",
+   "FROM EDITOR",
+   "KEYS WIRED",
+   "120",
+   "= OCT ="
+  ],
+  "after": [
+   "BRIEFCASE 3",
+   "JOYSTICK",
+   "4.00",
+   "X",
+   "-4.00",
+   "Y",
+   "4.00",
+   "RANGE X",
+   "4.00",
+   "RANGE Y",
+   "FROM EDITOR ",
+   "KEYS WIRED",
+   "120",
+   "= OCT ="
+  ],
+  "controls": 4
+ }
+}

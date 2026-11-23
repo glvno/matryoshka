@@ -1,0 +1,305 @@
+{
+ "method": "tools/m1_link.py --rig meq LOW MID HIGH, then tools/rig_cpu_survey.py on Expander S with every FX stage on, stopped and --run; flat after",
+ "runs": {
+  "0 0 0": {
+   "stopped": [
+    {
+     "slot": 0,
+     "name": "05 Expander S fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "patterned": false,
+     "n0_us": 2709,
+     "n0_samples": [
+      2709,
+      1381,
+      1381,
+      1377
+     ],
+     "n0_mean_us": [
+      832,
+      1039,
+      818,
+      1004
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2704,
+     "n1_samples": [
+      2704,
+      1753,
+      1753,
+      1745
+     ],
+     "n1_mean_us": [
+      1340,
+      1363,
+      1345,
+      1363
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2709,
+     "n4_samples": [
+      2709,
+      1978,
+      1992,
+      1992
+     ],
+     "n4_mean_us": [
+      1710,
+      1647,
+      1757,
+      1668
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2720,
+     "n8_samples": [
+      2720,
+      2333,
+      2368,
+      2369
+     ],
+     "n8_mean_us": [
+      2289,
+      2298,
+      2327,
+      2338
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    }
+   ],
+   "running": [
+    {
+     "slot": 0,
+     "name": "05 Expander S fx",
+     "transport": true,
+     "hold_seconds": 2.0,
+     "patterned": false,
+     "n0_us": 2718,
+     "n0_samples": [
+      2718,
+      1452,
+      1459,
+      1413
+     ],
+     "n0_mean_us": [
+      899,
+      1021,
+      906,
+      1139
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2732,
+     "n1_samples": [
+      2732,
+      1777,
+      1777,
+      1765
+     ],
+     "n1_mean_us": [
+      1396,
+      1358,
+      1390,
+      1351
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2711,
+     "n4_samples": [
+      2711,
+      2025,
+      2042,
+      1998
+     ],
+     "n4_mean_us": [
+      1666,
+      1688,
+      1697,
+      1671
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2701,
+     "n8_samples": [
+      2701,
+      2366,
+      2413,
+      2460
+     ],
+     "n8_mean_us": [
+      2295,
+      2315,
+      2347,
+      2346
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    }
+   ]
+  },
+  "6 6 6": {
+   "stopped": [
+    {
+     "slot": 0,
+     "name": "05 Expander S fx",
+     "transport": false,
+     "hold_seconds": 2.0,
+     "patterned": false,
+     "n0_us": 2886,
+     "n0_samples": [
+      2886,
+      1560,
+      1553,
+      1557
+     ],
+     "n0_mean_us": [
+      1347,
+      1021,
+      1337,
+      1006
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2910,
+     "n1_samples": [
+      2910,
+      1908,
+      1915,
+      1911
+     ],
+     "n1_mean_us": [
+      1570,
+      1507,
+      1555,
+      1511
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2879,
+     "n4_samples": [
+      2879,
+      2141,
+      2165,
+      2165
+     ],
+     "n4_mean_us": [
+      1828,
+      1918,
+      1834,
+      1903
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2884,
+     "n8_samples": [
+      2884,
+      2526,
+      2549,
+      2565
+     ],
+     "n8_mean_us": [
+      2445,
+      2462,
+      2494,
+      2500
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    }
+   ],
+   "running": [
+    {
+     "slot": 0,
+     "name": "05 Expander S fx",
+     "transport": true,
+     "hold_seconds": 2.0,
+     "patterned": false,
+     "n0_us": 2890,
+     "n0_samples": [
+      2890,
+      1629,
+      1633,
+      1616
+     ],
+     "n0_mean_us": [
+      1063,
+      1359,
+      1042,
+      1289
+     ],
+     "n0_late": 0,
+     "n0_ovl": 0,
+     "n0_shed": 0,
+     "n1_us": 2881,
+     "n1_samples": [
+      2881,
+      1981,
+      1981,
+      1961
+     ],
+     "n1_mean_us": [
+      1520,
+      1566,
+      1532,
+      1568
+     ],
+     "n1_late": 0,
+     "n1_ovl": 0,
+     "n1_shed": 0,
+     "n4_us": 2883,
+     "n4_samples": [
+      2883,
+      2184,
+      2180,
+      2174
+     ],
+     "n4_mean_us": [
+      1813,
+      1848,
+      1917,
+      1854
+     ],
+     "n4_late": 0,
+     "n4_ovl": 0,
+     "n4_shed": 0,
+     "n8_us": 2886,
+     "n8_samples": [
+      2886,
+      2537,
+      2600,
+      2600
+     ],
+     "n8_mean_us": [
+      2447,
+      2484,
+      2520,
+      2516
+     ],
+     "n8_late": 0,
+     "n8_ovl": 0,
+     "n8_shed": 0,
+     "budget_us": 2902
+    }
+   ]
+  }
+ }
+}
