@@ -29,6 +29,7 @@ import PANEL_BANK from '../factory/bank.json';
 import PANEL_EXAMPLES from '../factory/examples.json';
 import { validatePatch } from '../src/patch';
 import { packedListC } from './factory-lz';
+import { writeFxPanelFixtures } from './panel-fixtures';
 
 const SR = DEVICE_SR;
 const OUT = new URL('../../build/golden/', import.meta.url);
@@ -4314,36 +4315,8 @@ if (process.argv.includes('--panel-fixtures')) {
   writeFileSync(new URL('panel_bank.h', out), panelHeader.join('\n'));
   for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio', 'harm-side', 'route-harm-steps', 'route-steps-harm', 'route-harm-arp', 'route-steps-harm-arp', 'route-harm-steps-arp', 'route-dense-steps', 'route-root-snapshot', 'route-branch-snapshot'])
     writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));
-  {
-    const p = withFxBus(tests['route-harm-steps']);
-    const harm = p.modules.find(m => m.type === 'harm')!;
-    harm.bypass = true;
-    setKind(p, 'lfo', 'bypass');
-    setTarget(p, 'lfo', { module: harm.id });
-    setSwitches(p, 'lfo', true);
-    writeFileSync(new URL('fx-bus.m1p', out), encodePatch(p, true));
-  }
-  // The shipped factory patches whose FX stages came after the instrument: the FM-1's FX page must show exactly their
-  // stages, every one off at load (panel_test.c fx_suite)
-  for (const name of ['Hera 6', '808 Kit'])
-    writeFileSync(new URL(`factory-rack-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.m1p`, out), encodePatch(FM1_PRESETS[name]()));
-  {
-    // A real assembly owns the complete rack: panel preset recall must include every promoted FX control.
-    const p = newPatch(DEFS);
-    const instrument = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Monolith D')!, 300, 0);
-    wireEngine(p, instrument);
-    writeFileSync(new URL('fx-preset.m1p', out), encodePatch(withFxBus(p), true));
-  }
-  {
-    const p = newPatch(DEFS);
-    const instrument = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Expander S')!, 300, 0);
-    wireEngine(p, instrument);
-    for (const row of instrument.params) if (row.param === 'voices') {
-      row.top = 3;
-      p.modules.find(m => m.id === row.module)!.params.voices = 3;
-    }
-    writeFileSync(new URL('fx-preset-poly.m1p', out), encodePatch(withFxBus(p), true));
-  }
+  // The FX drawer's fixtures (format 66; the master FX bus ones are frozen in firmware/test/legacy_fx_fixtures.h)
+  writeFxPanelFixtures(out);
   {
     // more than 64 modules (#721): arm-many with the Drum map moved last (index 69, a device past 63) and its chain of
     // mixers as one assembly
