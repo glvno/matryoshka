@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { buildFactoryBank, buildSelectedFactoryBank, factoryFile, factoryFxAudit, selectedFactoryNames, selectedFactoryProfile, shippedFactoryBank } from './factory-bank';
 import { FACTORY_KITS, withKitPatterns } from './factory-kit-patterns';
 import SOURCE from '../factory/bank.json';
-import { fxBusOf, type FxStageKind } from './fx-bus';
+import { assemblyById, drawers, rackOf, type AssemblyInst } from './assembly';
+import type { FxStageKind } from './fx-legacy';
 import { EXAMPLE_PRESETS, factoryShape, FM1_PRESETS, PRESETS, shapeOf } from './presets';
 import type { Patch } from './patch';
 
@@ -15,7 +16,7 @@ describe('hardware candidate measurement profiles', () => {
   it('unions measured omissions with interface effects and leaves original auxiliary mono voices alone', () => {
     const p = patchOf('Hera 4', buildFactoryBank({ 'Hera 4': { voices: 3, omit: ['delay', 'reverb', 'delay'] } }));
     expect(p.modules.filter(m => m.type === 'alloc').map(m => m.params.voices)).toEqual([3, 1]);
-    expect(fxBusOf(p)!.stages.map(stage => stage.kind)).toEqual(['drive']);
+    expect(rackOf(p).effects.map(e => assemblyById(p, e.asm)!.label)).toEqual(['Drive']);
   });
 
 
@@ -97,17 +98,23 @@ describe('owner-selected factory defaults', () => {
         expect(patchOf(source.name, full)).toEqual(original);
         continue;
       }
-      // (a drum kit with the master FX bus: every module and cable of the kit as it was, but the Output's, which the bus
-      // now feeds; every stage bypassed; FX opens the bus's pages, the other buttons as they were; owner 2026-11-19, D-1200)
+      // (a drum kit with the factory FX: every module and cable of the kit as it was, but the Output's, which the chain now
+      // feeds; the kit's assemblies as they were but for its FX drawer; every effect bypassed; FX finds the drawer, the
+      // other buttons as they were; owner 2026-11-19, D-1200; #1214)
       expect(selectedFactoryProfile[source.name].drumRack).toBe(true);
       const p = patchOf(source.name, full);
       const output = original.modules.find(m => m.type === 'output')!.id;
-      for (const m of original.modules) expect(p.modules.find(x => x.id === m.id), `${source.name} ${m.id}`).toEqual(m.type === 'fm1' ? { ...m, panel: p.modules.find(x => x.id === m.id)!.panel } : m);
+      for (const m of original.modules) expect(p.modules.find(x => x.id === m.id), `${source.name} ${m.id}`).toEqual(m);
       for (const c of original.cables.filter(c => c.to.module !== output)) expect(p.cables).toContainEqual(c);
-      expect((p.assemblies ?? []).slice(0, original.assemblies?.length ?? 0)).toEqual(original.assemblies ?? []);
-      const bus = fxBusOf(p)!;
-      for (const stage of bus.stages) for (const id of stage.targets) expect(p.modules.find(m => m.id === id)!.bypass).toBe(true);
-      expect(p.modules.find(m => m.type === 'fm1')!.panel!.kinds).toEqual({ fx: 'page' });
+      const drawerIds = new Set(drawers(p).map(d => d.id));
+      const withoutDrawer = (a: AssemblyInst): AssemblyInst => {
+        const children = a.children?.filter(c => !drawerIds.has(c));
+        return { ...a, children: children?.length ? children : undefined };
+      };
+      expect((p.assemblies ?? []).slice(0, original.assemblies?.length ?? 0).map(withoutDrawer)).toEqual((original.assemblies ?? []).map(withoutDrawer));
+      const effects = rackOf(p).effects;
+      expect(effects.length, source.name).toBeGreaterThan(0);
+      for (const e of effects) for (const id of e.targets) expect(p.modules.find(m => m.id === id)!.bypass).toBe(true);
     }
     for (const [name, options] of Object.entries(selectedFactoryProfile)) if (options.outputLevel !== undefined) {
       expect(factoryFxAudit.some(audit => audit.name === name), name).toBe(true);
@@ -123,9 +130,8 @@ describe('owner-selected factory defaults', () => {
       const original = source.modules.find(o => o.id === m.id)!.params.voices;
       expect(m.params.voices, `${sourceName} alloc ${m.id}`).toBe(options?.voices !== undefined && original > 1 ? options.voices : original);
     }
-    const bus = fxBusOf(p);
-    for (const stage of bus?.stages ?? []) {
-      for (const id of stage.targets) expect(p.modules.find(m => m.id === id)!.bypass).toBe(true);
+    for (const e of rackOf(p).effects) {
+      for (const id of e.targets) expect(p.modules.find(m => m.id === id)!.bypass).toBe(true);
     }
     if (options?.harmonizer === 'removed') expect(p.modules.some(m => m.type === 'harm')).toBe(false);
     else expect(p.modules.find(m => m.type === 'harm')!.bypass).toBe(true);

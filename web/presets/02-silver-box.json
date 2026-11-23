@@ -19,8 +19,7 @@
     "kinds": {
      "arp": "bypass",
      "edit": "nothing",
-     "lfo": "bypass",
-     "fx": "page"
+     "lfo": "bypass"
     },
     "targets": {
      "arp": {
@@ -32,34 +31,6 @@
     },
     "labels": {
      "lfo": "BYP HARM"
-    },
-    "pages": {
-     "fx": [
-      {
-       "device": "a6",
-       "page": 0
-      },
-      {
-       "device": "a6",
-       "page": 1
-      },
-      {
-       "device": "a6",
-       "page": 2
-      },
-      {
-       "device": "a6",
-       "page": 3
-      },
-      {
-       "device": "a6",
-       "page": 4
-      },
-      {
-       "device": "a6",
-       "page": 5
-      }
-     ]
     }
    },
    "seq": {
@@ -793,8 +764,7 @@
     "p2": [
      "offset"
     ]
-   },
-   "bypass": true
+   }
   },
   {
    "id": 33,
@@ -816,8 +786,7 @@
     "p2": [
      "offset"
     ]
-   },
-   "bypass": true
+   }
   },
   {
    "id": 34,
@@ -840,8 +809,7 @@
     "p2": [
      "kb"
     ]
-   },
-   "bypass": true
+   }
   },
   {
    "id": 35,
@@ -860,8 +828,7 @@
      "value"
     ],
     "p2": []
-   },
-   "bypass": true
+   }
   },
   {
    "id": 36,
@@ -884,8 +851,7 @@
     "p2": [
      "kb"
     ]
-   },
-   "bypass": true
+   }
   }
  ],
  "cables": [
@@ -1558,6 +1524,9 @@
      "param": "l1",
      "label": "volume"
     }
+   ],
+   "children": [
+    6
    ]
   },
   {
@@ -1643,7 +1612,18 @@
     }
    ],
    "bypass": true,
-   "kept": []
+   "kept": [],
+   "chain": {
+    "ins": [
+     0,
+     1
+    ],
+    "outs": [
+     0,
+     1
+    ],
+    "helpers": []
+   }
   },
   {
    "v": 1,
@@ -1655,7 +1635,8 @@
    "open": false,
    "modules": [
     27,
-    28
+    28,
+    23
    ],
    "inputs": [
     {
@@ -1672,23 +1653,25 @@
    "outputs": [
     {
      "module": 27,
-     "port": "r",
-     "label": "r"
-    },
-    {
-     "module": 28,
      "port": "l",
-     "label": "l"
-    },
-    {
-     "module": 27,
-     "port": "l",
-     "label": "l 2"
+     "label": "l 2",
+     "also": [
+      {
+       "module": 23,
+       "port": "sub"
+      }
+     ]
     },
     {
      "module": 28,
      "port": "r",
-     "label": "r 2"
+     "label": "r 2",
+     "also": [
+      {
+       "module": 23,
+       "port": "sub"
+      }
+     ]
     }
    ],
    "params": [
@@ -1727,7 +1710,20 @@
     }
    ],
    "bypass": true,
-   "kept": []
+   "kept": [],
+   "chain": {
+    "ins": [
+     0,
+     1
+    ],
+    "outs": [
+     0,
+     1
+    ],
+    "helpers": [
+     23
+    ]
+   }
   },
   {
    "v": 1,
@@ -1739,7 +1735,8 @@
    "open": false,
    "modules": [
     29,
-    30
+    30,
+    24
    ],
    "inputs": [
     {
@@ -1756,23 +1753,25 @@
    "outputs": [
     {
      "module": 29,
-     "port": "r",
-     "label": "r"
-    },
-    {
-     "module": 30,
      "port": "out",
-     "label": "out"
-    },
-    {
-     "module": 29,
-     "port": "out",
-     "label": "out 2"
+     "label": "out 2",
+     "also": [
+      {
+       "module": 24,
+       "port": "sub"
+      }
+     ]
     },
     {
      "module": 30,
      "port": "r",
-     "label": "r 2"
+     "label": "r 2",
+     "also": [
+      {
+       "module": 24,
+       "port": "sub"
+      }
+     ]
     }
    ],
    "params": [
@@ -1844,7 +1843,20 @@
     }
    ],
    "bypass": true,
-   "kept": []
+   "kept": [],
+   "chain": {
+    "ins": [
+     0,
+     1
+    ],
+    "outs": [
+     0,
+     1
+    ],
+    "helpers": [
+     24
+    ]
+   }
   },
   {
    "v": 1,
@@ -1878,17 +1890,24 @@
     {
      "module": 32,
      "port": "out",
-     "label": "out"
-    },
-    {
-     "module": 36,
-     "port": "mul",
-     "label": "mul"
+     "label": "out",
+     "also": [
+      {
+       "module": 36,
+       "port": "mul"
+      }
+     ]
     },
     {
      "module": 33,
      "port": "out",
-     "label": "out 2"
+     "label": "out 2",
+     "also": [
+      {
+       "module": 36,
+       "port": "mul"
+      }
+     ]
     }
    ],
    "params": [
@@ -1924,234 +1943,55 @@
     }
    ],
    "bypass": true,
-   "kept": []
+   "kept": [],
+   "chain": {
+    "ins": [
+     0,
+     1
+    ],
+    "outs": [
+     0,
+     1
+    ],
+    "helpers": [
+     32,
+     33,
+     34,
+     35,
+     36
+    ]
+   }
   },
   {
    "v": 1,
    "id": 6,
    "name": "FX",
    "label": "FX",
-   "x": 2640,
-   "y": -500,
+   "x": 20,
+   "y": 60,
    "open": false,
-   "modules": [
-    23,
-    24
-   ],
-   "inputs": [
-    {
-     "module": 25,
-     "port": "in",
-     "label": "in"
-    },
-    {
-     "module": 26,
-     "port": "in",
-     "label": "in 2"
-    }
-   ],
-   "outputs": [
-    {
-     "module": 32,
-     "port": "out",
-     "label": "out"
-    },
-    {
-     "module": 36,
-     "port": "mul",
-     "label": "mul"
-    },
-    {
-     "module": 33,
-     "port": "out",
-     "label": "out 2"
-    }
-   ],
-   "params": [
-    {
-     "module": 25,
-     "param": "drive",
-     "label": "drive",
-     "head": "Drive",
-     "also": [
-      {
-       "module": 26,
-       "param": "drive"
-      }
-     ]
-    },
-    {
-     "module": 25,
-     "param": "mode",
-     "label": "mode",
-     "also": [
-      {
-       "module": 26,
-       "param": "mode"
-      }
-     ]
-    },
-    {
-     "module": 25,
-     "param": "level",
-     "label": "level",
-     "also": [
-      {
-       "module": 26,
-       "param": "level"
-      }
-     ]
-    },
-    {
-     "module": 25,
-     "param": "sym",
-     "label": "sym",
-     "also": [
-      {
-       "module": 26,
-       "param": "sym"
-      }
-     ]
-    },
-    {
-     "module": 27,
-     "param": "rate",
-     "label": "rate",
-     "head": "Chorus",
-     "also": [
-      {
-       "module": 28,
-       "param": "rate"
-      }
-     ]
-    },
-    {
-     "module": 27,
-     "param": "depth",
-     "label": "depth",
-     "also": [
-      {
-       "module": 28,
-       "param": "depth"
-      }
-     ]
-    },
-    {
-     "module": 27,
-     "param": "mix",
-     "label": "mix",
-     "also": [
-      {
-       "module": 28,
-       "param": "mix"
-      }
-     ]
-    },
-    {
-     "module": 29,
-     "param": "time",
-     "label": "time",
-     "head": "Delay",
-     "also": [
-      {
-       "module": 30,
-       "param": "time"
-      }
-     ]
-    },
-    {
-     "module": 29,
-     "param": "fb",
-     "label": "fb",
-     "also": [
-      {
-       "module": 30,
-       "param": "fb"
-      }
-     ]
-    },
-    {
-     "module": 29,
-     "param": "mix",
-     "label": "mix",
-     "also": [
-      {
-       "module": 30,
-       "param": "mix"
-      }
-     ]
-    },
-    {
-     "module": 29,
-     "param": "sync",
-     "label": "sync",
-     "also": [
-      {
-       "module": 30,
-       "param": "sync"
-      }
-     ]
-    },
-    {
-     "module": 29,
-     "param": "pingpong",
-     "label": "pingpong",
-     "also": [
-      {
-       "module": 30,
-       "param": "pingpong"
-      }
-     ]
-    },
-    {
-     "module": 29,
-     "param": "note",
-     "label": "note",
-     "also": [
-      {
-       "module": 30,
-       "param": "note"
-      }
-     ]
-    },
-    {
-     "module": 31,
-     "param": "size",
-     "label": "size",
-     "head": "Reverb"
-    },
-    {
-     "module": 31,
-     "param": "damp",
-     "label": "damp"
-    },
-    {
-     "module": 35,
-     "param": "value",
-     "label": "mix"
-    },
-    {
-     "module": 31,
-     "param": "pre",
-     "label": "pre"
-    },
-    {
-     "module": 31,
-     "param": "mod",
-     "label": "mod"
-    },
-    {
-     "module": 31,
-     "param": "freeze",
-     "label": "freeze"
-    }
-   ],
+   "modules": [],
    "children": [
     2,
     3,
     4,
     5
-   ]
+   ],
+   "inputs": [],
+   "outputs": [],
+   "params": [],
+   "drawer": {
+    "taps": [
+     {
+      "module": 18,
+      "port": "out"
+     },
+     {
+      "module": 18,
+      "port": "out"
+     }
+    ]
+   }
   }
  ]
 }

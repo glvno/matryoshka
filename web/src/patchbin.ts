@@ -136,13 +136,12 @@ import { payloadHash } from './pattern-store';
 import { lockPlan, PATCH_LOCKS_MAX } from './locks';
 import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS } from './poly';
 import { devicesOf, NAME_MAX, type Device, type PageRow } from './pages';
-import { assemblyById, deviceModules, ROW_NAMES_MAX } from './assembly';
+import { assemblyById, chainHelpers, deviceModules, ROW_NAMES_MAX } from './assembly';
 import { structureAndRows } from './structure';
 import { CPU, cpuEstimate, planCosts, type CpuEstimate } from './cpu';
 import { schedule, type Schedule } from './schedule';
 import { instIsEngine } from './engines';
 import { engineUnreached } from './arm';
-import { chainHelpers } from './fx-drawer';
 import { rackPlan } from './rack-plan';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 import { noteSource, sourceNote, type LearnSource } from './midi-learn';

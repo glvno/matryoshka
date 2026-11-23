@@ -17,8 +17,7 @@
     ],
     "kinds": {
      "arp": "bypass",
-     "lfo": "nothing",
-     "fx": "page"
+     "lfo": "nothing"
     },
     "targets": {
      "arp": {
@@ -27,18 +26,6 @@
     },
     "labels": {
      "edit": "PULSER"
-    },
-    "pages": {
-     "fx": [
-      {
-       "device": "a3",
-       "page": 0
-      },
-      {
-       "device": "a3",
-       "page": 1
-      }
-     ]
     }
    }
   },
@@ -4801,6 +4788,9 @@
      "param": "view",
      "label": "out"
     }
+   ],
+   "children": [
+    3
    ]
   },
   {
@@ -4813,7 +4803,8 @@
    "open": false,
    "modules": [
     85,
-    86
+    86,
+    84
    ],
    "inputs": [
     {
@@ -4830,23 +4821,25 @@
    "outputs": [
     {
      "module": 85,
-     "port": "r",
-     "label": "r"
-    },
-    {
-     "module": 86,
      "port": "out",
-     "label": "out"
-    },
-    {
-     "module": 85,
-     "port": "out",
-     "label": "out 2"
+     "label": "out 2",
+     "also": [
+      {
+       "module": 84,
+       "port": "sub"
+      }
+     ]
     },
     {
      "module": 86,
      "port": "r",
-     "label": "r 2"
+     "label": "r 2",
+     "also": [
+      {
+       "module": 84,
+       "port": "sub"
+      }
+     ]
     }
    ],
    "params": [
@@ -4918,120 +4911,48 @@
     }
    ],
    "bypass": true,
-   "kept": []
+   "kept": [],
+   "chain": {
+    "ins": [
+     0,
+     1
+    ],
+    "outs": [
+     0,
+     1
+    ],
+    "helpers": [
+     84
+    ]
+   }
   },
   {
    "v": 1,
    "id": 3,
    "name": "FX",
    "label": "FX",
-   "x": 9680,
-   "y": 20,
+   "x": 20,
+   "y": 60,
    "open": false,
-   "modules": [
-    84
-   ],
-   "inputs": [
-    {
-     "module": 85,
-     "port": "in",
-     "label": "in"
-    },
-    {
-     "module": 86,
-     "port": "in",
-     "label": "in 2"
-    }
-   ],
-   "outputs": [
-    {
-     "module": 85,
-     "port": "out",
-     "label": "out 2"
-    },
-    {
-     "module": 84,
-     "port": "sub",
-     "label": "sub"
-    },
-    {
-     "module": 86,
-     "port": "r",
-     "label": "r 2"
-    }
-   ],
-   "params": [
-    {
-     "module": 85,
-     "param": "time",
-     "label": "time",
-     "head": "Delay",
-     "also": [
-      {
-       "module": 86,
-       "param": "time"
-      }
-     ]
-    },
-    {
-     "module": 85,
-     "param": "fb",
-     "label": "fb",
-     "also": [
-      {
-       "module": 86,
-       "param": "fb"
-      }
-     ]
-    },
-    {
-     "module": 85,
-     "param": "mix",
-     "label": "mix",
-     "also": [
-      {
-       "module": 86,
-       "param": "mix"
-      }
-     ]
-    },
-    {
-     "module": 85,
-     "param": "sync",
-     "label": "sync",
-     "also": [
-      {
-       "module": 86,
-       "param": "sync"
-      }
-     ]
-    },
-    {
-     "module": 85,
-     "param": "pingpong",
-     "label": "pingpong",
-     "also": [
-      {
-       "module": 86,
-       "param": "pingpong"
-      }
-     ]
-    },
-    {
-     "module": 85,
-     "param": "note",
-     "label": "note",
-     "also": [
-      {
-       "module": 86,
-       "param": "note"
-      }
-     ]
-    }
-   ],
+   "modules": [],
    "children": [
     2
-   ]
+   ],
+   "inputs": [],
+   "outputs": [],
+   "params": [],
+   "drawer": {
+    "taps": [
+     {
+      "module": 50,
+      "port": "out"
+     },
+     {
+      "module": 50,
+      "port": "out"
+     }
+    ]
+   }
   }
  ],
  "notes": "Music Easel patch field with four independent random outputs. Select PATCH to connect any control source to an input. FX fires the pulser. The Arpeggiator has a rate input in Hz. Missing: external audio/preamp/envelope detector and linear decay. Pulse/wave rows use numbers; sine is extra. Plates, trims, program cards and local/remote switching need hardware or storage. Low range starts at 0.22 Hz, not 0.17. Output split remains unverified."
