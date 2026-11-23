@@ -25,6 +25,7 @@ import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 import { FEATURE5_FX_DRAWERS, FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo, type MapEntry } from './protocol';
 import { FEATURE_PADS, PADS_CMD, padsClearAllFrame, padsOnFrame, padsReadFrame, padsSetFrame, parsePadsNow, parsePatternOp, PATTERN_OP, type PadMap } from './protocol';
 import { hasPaletteFeature, PAL_STATUS, PALETTE, paletteEntryGetFrame, paletteGetFrame, paletteGoFrame, paletteNameFrame, paletteOrderFrame, palettePutFrame, parsePaletteEntry, parsePaletteNow, type PaletteEntry, type PaletteNow } from './protocol';
+import { FEATURE25_SLOT_GET, readSlotBinary, SLOT_STORED } from './protocol';
 import { factoryInfo, installFactory } from './factory-content';
 import { installFont } from './font-content';
 import { drawerPresetInfo, fxPresetInfo } from './fx-preset-format';
@@ -546,7 +547,7 @@ export class DeviceLink {
   private async ackFor(frame: Uint8Array, cmd: number, seq?: number, timeout = ACK_TIMEOUT, texts: Readonly<Record<number, string>> = STATUS_TEXT, most = TRIES): Promise<Ack> {
     const p = await this.request(frame, (x) => x?.cmd === CMD.ack && x.payload[0] === cmd && (seq === undefined || x.payload[1] === seq), timeout, most);
     const a = parseAck(p)!;
-    if (a.status) throw new Error(`FM-1: ${texts[a.status] ?? `error ${a.status}`}${a.aux ? ` (${a.aux})` : ''}`);
+    if (a.status) throw Object.assign(new Error(`FM-1: ${texts[a.status] ?? `error ${a.status}`}${a.aux ? ` (${a.aux})` : ''}`), { status: a.status });
     return a;
   }
 
@@ -697,6 +698,19 @@ export class DeviceLink {
       const s = parseSlot(p);
       if (!s) throw new Error('unexpected answer to SLOT_INFO');
       return s;
+    });
+  }
+
+  /** the firmware sends a slot's binary back (SLOT_GET, INFO byte 25 bit 2, 1.26) */
+  get readsSlots(): boolean {
+    return this.connected && !!((this.info?.features25 ?? 0) & FEATURE25_SLOT_GET);
+  }
+
+  /** slot `slot`'s binary as stored (SLOT_GET, firmware that readsSlots), or null when it is empty */
+  readSlotBin(slot: number): Promise<Uint8Array | null> {
+    return this.serial(async () => {
+      const bin = await readSlotBinary((f, m) => this.request(f, m), slot, SLOT_STORED);
+      return typeof bin === 'string' ? null : bin;
     });
   }
 

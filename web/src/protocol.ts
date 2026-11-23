@@ -234,6 +234,8 @@ export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param:
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store', 'the preset store is full', 'no such preset', 'still in use', 'the bank holds more than 48 patches'];
+/** an ACK's status for PRESET_PUT when the FM-1's preset store has no room (STATUS_TEXT[7]) */
+export const STATUS_PRESETS_FULL = 7;
 
 export function pack7(bytes: ArrayLike<number>): number[] {
   const out: number[] = [];
