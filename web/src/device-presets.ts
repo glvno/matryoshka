@@ -1,25 +1,38 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Presets (#192, docs/ledger/vocabulary.md "Preset"): stored card values for one structure, optionally including a
-// compatible master FX rack (FXP1). A plain module never has any. Legacy presets change only their synth card.
-// User presets live in localStorage `matryoshka.presets`; factory ones (#193) come with the app, read-only (storing over
-// one makes a new one). A patch remembers which preset each assembly was set to (AssemblyInst.preset), for display only:
-// the patch plays its own values. Not the A/B snapshot, not a patch (a patch is the whole stored thing).
-import { tiedTo, type AssemblyInst } from './assembly';
+// Presets (#192, docs/ledger/vocabulary.md "Preset"): stored card values for one structure. An instrument with an FX drawer
+// stores its drawer with it, always (FXD1, fx-preset.ts): the effects in order, their on/off and card values; loading one
+// in the editor rebuilds the drawer to match. Older instrument-only presets ("no FX") load the instrument and leave its
+// drawer as it is. An effect has presets of its own (its card values), loadable onto any copy. A plain module never has
+// any. User presets live in localStorage `matryoshka.presets`; factory ones (#193) come with the app, read-only (storing
+// over one makes a new one). A patch remembers which preset each assembly was set to (AssemblyInst.preset), for display
+// only: the patch plays its own values. Not the A/B snapshot, not a patch (a patch is the whole stored thing).
+import { type AssemblyDef, type AssemblyInst } from './assembly';
 import { DEFS } from './modules';
 import { topOf, type Patch } from './patch';
 import { applyPresetPattern, clearPresetPattern } from './preset-patterns';
 import { migrationRank, movePreset } from './preset-migrate';
 import { rowOrder, structureOf } from './structure';
-import { applyFxValues, currentFxValues, fxPresetScope, validFxValues } from './fx-preset';
-import { fxPresetInfo, fxPresetValues } from './fx-preset-format';
+import { applyDrawerValues, checkDrawerPreset, currentDrawerValues, drawerChange, drawerScope, fxp1ToFxd1, presetEffects, rebuildDrawer, resolveEffects, setRows, type DrawerScope } from './fx-preset';
+import { drawerPresetInfo, fxPresetInfo, splitDrawerValues } from './fx-preset-format';
 import { PRESET_VALUES_MAX } from './protocol';
+
+/** an effect of an FX drawer preset, kept with it in the editor so loading can add a copy back */
+export interface PresetEffect {
+  name: string;
+  /** its structure (structure.ts structureOf) */
+  structure: string;
+  def: AssemblyDef;
+}
 
 export interface Preset {
   /** the structure fingerprint it belongs to */
   structure: string;
   name: string;
-  /** Canonical card rows (structure.ts rowOrder), followed by the FXP1 rack payload/footer when scoped. */
+  /** Canonical card rows (structure.ts rowOrder); an FX drawer preset's then hold its effects and a footer (FXD1). */
   values: number[];
+  /** an FX drawer preset's effects, in chain order (editor only: one from the FM-1 has none, its effects are found by
+   *  structure) */
+  fx?: PresetEffect[];
   /** shipped with the app: read-only */
   factory?: true;
 }
@@ -31,19 +44,34 @@ const STORE = 'matryoshka.presets';
 export const PRESET_NAME_MAX = 24;
 
 /** the factory presets: set by factory-presets.ts (#193), as a list or as a function that gives a structure's (called when a
- * structure's factory presets are first asked for, so the page does not work them all out as it loads) */
+ * structure's factory presets are first asked for, so the page does not work them all out as it loads); `drawers` gives
+ * the FX drawer presets of an instrument structure (by the footer's, fx-preset-format.ts) */
 let factorySource: Preset[] | ((structure: string) => Preset[]) = [];
+let drawerSource: (base: string) => Preset[] = () => [];
 const recalledStructures = new WeakMap<AssemblyInst, string>();
 let factoryMade = new Map<string, Preset[]>();
-export const setFactoryPresets = (list: Preset[] | ((structure: string) => Preset[])): void => void ((factorySource = list), (factoryMade = new Map()));
+let drawersMade = new Map<string, Preset[]>();
+export function setFactoryPresets(list: Preset[] | ((structure: string) => Preset[]), drawers?: (base: string) => Preset[]): void {
+  factorySource = list;
+  drawerSource = drawers ?? (typeof list === 'function' ? () => [] : (base) => list.filter((p) => drawerPresetInfo(p)?.baseStructure === base));
+  factoryMade = new Map();
+  drawersMade = new Map();
+}
+const asFactory = (list: Preset[]): Preset[] => list.map((p) => ({ ...p, factory: true as const }));
 /** a structure's factory presets, in their own order (Init first) */
 function factoryFor(structure: string): Preset[] {
   let out = factoryMade.get(structure);
   if (!out) {
     const src = factorySource;
-    out = (typeof src === 'function' ? src(structure) : src.filter((p) => p.structure === structure)).map((p) => ({ ...p, factory: true as const }));
+    out = asFactory(typeof src === 'function' ? src(structure) : src.filter((p) => p.structure === structure));
     factoryMade.set(structure, out);
   }
+  return out;
+}
+/** an instrument structure's factory FX drawer presets, in their own order */
+export function factoryDrawerPresets(base: string): Preset[] {
+  let out = drawersMade.get(base);
+  if (!out) drawersMade.set(base, (out = asFactory(drawerSource(base))));
   return out;
 }
 
@@ -52,7 +80,13 @@ export const sameName = (a: string | undefined, b: string | undefined): boolean 
 
 const fixName = (s: unknown): string => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, PRESET_NAME_MAX);
 
-/** a preset from anything, or null */
+const isEffect = (x: unknown): x is PresetEffect => {
+  const o = x as Partial<PresetEffect> | null;
+  return !!o && typeof o.name === 'string' && typeof o.structure === 'string' && /^[0-9a-f]{8}$/.test(o.structure) &&
+    !!o.def && Array.isArray(o.def.modules) && Array.isArray(o.def.params) && Array.isArray(o.def.cables);
+};
+
+/** a preset from anything, or null; an old "+ FX" one (FXP1) comes back as an FX drawer preset (fx-preset.ts fxp1ToFxd1) */
 export function fixPreset(raw: unknown): Preset | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
@@ -60,7 +94,8 @@ export function fixPreset(raw: unknown): Preset | null {
   if (typeof o.structure !== 'string' || !/^[0-9a-f]{8}$/.test(o.structure) || !name || !Array.isArray(o.values)) return null;
   const values = o.values.map(Number);
   if (values.some((v) => !Number.isFinite(v))) return null;
-  return { structure: o.structure, name, values };
+  const fx = Array.isArray(o.fx) && o.fx.every(isEffect) ? (o.fx as PresetEffect[]) : undefined;
+  return fxp1ToFxd1(fx ? { structure: o.structure, name, values, fx } : { structure: o.structure, name, values });
 }
 
 /** a factory engine's Init values for a structure, if it has them */
@@ -75,14 +110,15 @@ export function movedPreset(structure: string, name: string, values: number[]): 
 }
 
 /** move the user's presets of earlier structures to today's (once as the app starts, D-865): each replaces its old copy,
- * and a preset of today's structure of the same name (the older structure's moved first, so the newer one's wins).
- * How many moved. */
+ * and a preset of today's structure of the same name (the older structure's moved first, so the newer one's wins). Old
+ * "+ FX" presets (FXP1) are stored again as FX drawer presets (userPresets reads them so). How many moved. */
 export function migrateUserPresets(): number {
   const list = userPresets();
+  const converted = storedRaw().filter((x) => { const o = x as Preset | null; return !!o && Array.isArray(o.values) && typeof o.structure === 'string' && !!fxPresetInfo(o); }).length;
   const due = list.map((p) => ({ p, r: migrationRank(p.structure) })).filter((x) => x.r >= 0).sort((a, b) => a.r - b.r);
-  if (!due.length) return 0;
+  if (!due.length && !converted) return 0;
   let out = list;
-  let n = 0;
+  let n = converted;
   for (const { p } of due) {
     const m = movedPreset(p.structure, p.name, p.values);
     if (!m) continue;
@@ -93,28 +129,34 @@ export function migrateUserPresets(): number {
   return n;
 }
 
-/** the user's presets */
-export function userPresets(): Preset[] {
+/** the stored list as it is, unread */
+function storedRaw(): unknown[] {
   try {
     const raw = JSON.parse(localStorage.getItem(STORE) ?? '[]') as unknown;
-    return Array.isArray(raw) ? raw.map(fixPreset).filter((p): p is Preset => !!p) : [];
+    return Array.isArray(raw) ? raw : [];
   } catch {
     return [];
   }
 }
 
-function writeUser(list: Preset[]): void {
+/** the user's presets */
+export function userPresets(): Preset[] {
+  return storedRaw().map(fixPreset).filter((p): p is Preset => !!p);
+}
+
+function writeUser(list: readonly Preset[]): void {
   try {
-    localStorage.setItem(STORE, JSON.stringify(list.map(({ structure, name, values }) => ({ structure, name, values }))));
+    localStorage.setItem(STORE, JSON.stringify(list.map(({ structure, name, values, fx }) => (fx ? { structure, name, values, fx } : { structure, name, values }))));
   } catch {
     // storage full or blocked: the library stays as it was
   }
 }
 
+const byName = (a: Preset, b: Preset): number => a.name.localeCompare(b.name, undefined, { numeric: true });
+
 /** the presets of a structure: factory first (in their own order, Init first), then the user's by name */
 export function presetsFor(structure: string): Preset[] {
-  const by = (a: Preset, b: Preset): number => a.name.localeCompare(b.name, undefined, { numeric: true });
-  return [...factoryFor(structure), ...userPresets().filter((p) => p.structure === structure).sort(by)];
+  return [...factoryFor(structure), ...userPresets().filter((p) => p.structure === structure).sort(byName)];
 }
 
 /** Values as this card can play them. Keep stored factory/user values intact for wider copies. */
@@ -134,60 +176,121 @@ function boundedValues(p: Patch, a: AssemblyInst, rows: { module: number; param:
   return bounded ?? values;
 }
 
-/** The presets this assembly can load, respecting its exposed row limits. */
-export const presetsOf = (p: Patch, a: AssemblyInst): Preset[] => {
-  const rows = rowOrder(p, a), base = structureOf(p, a), scope = fxPresetScope(p, a);
-  const legacy = presetsFor(base);
-  const scoped = scope ? presetsFor(scope.structure) : [];
-  const authored = scoped.filter(preset => preset.factory);
-  const list = [...authored, ...legacy.filter(preset => !preset.factory || !authored.length), ...scoped.filter(preset => !preset.factory)];
-  return list.map(preset => {
-    const values = boundedValues(p, a, rows, preset.values);
-    return values === preset.values ? preset : { ...preset, values };
-  });
-};
+/** an instrument's FX drawer presets: the factory ones, then the user's by name (any chain: loading rebuilds the drawer) */
+function drawerPresetsFor(base: string): Preset[] {
+  return [...factoryDrawerPresets(base), ...userPresets().filter((p) => p.structure !== base && drawerPresetInfo(p)?.baseStructure === base).sort(byName)];
+}
+
+/** a preset of an instrument with its drawer that cannot be loaded here, and why */
+export interface UnloadablePreset { preset: Preset; reason: string }
+
+/** The presets this assembly can load, respecting its exposed row limits, and those it cannot (an FX drawer preset whose
+ *  effects are not to be found). An instrument with a drawer lists its FX drawer presets, then its instrument-only ones
+ *  ("no FX"); the factory instrument-only ones only when it has no factory FX drawer presets (those are the same sounds
+ *  with their effects). Any other assembly (an effect too) lists its own structure's. */
+export function presetChoices(p: Patch, a: AssemblyInst): { list: Preset[]; unloadable: UnloadablePreset[] } {
+  const rows = rowOrder(p, a), base = structureOf(p, a), scope = drawerScope(p, a);
+  const unloadable: UnloadablePreset[] = [];
+  let list = presetsFor(base);
+  if (scope) {
+    const fx = drawerPresetsFor(base).filter((preset) => {
+      const r = resolveEffects(p, a, preset, scope);
+      if (typeof r === 'string') unloadable.push({ preset, reason: r });
+      return typeof r !== 'string';
+    });
+    const authored = fx.some((preset) => preset.factory);
+    list = [...fx.filter((preset) => preset.factory), ...list.filter((preset) => !preset.factory || !authored), ...fx.filter((preset) => !preset.factory)];
+  }
+  return {
+    list: list.map((preset) => {
+      const values = boundedValues(p, a, rows, preset.values);
+      return values === preset.values ? preset : { ...preset, values };
+    }),
+    unloadable,
+  };
+}
+
+/** The presets this assembly can load (presetChoices). */
+export const presetsOf = (p: Patch, a: AssemblyInst): Preset[] => presetChoices(p, a).list;
+
+/** how a preset reads in the menu of an instrument with a drawer */
+export interface PresetView {
+  /** instrument-only: loading leaves the drawer as it is */
+  noFx: boolean;
+  /** its effects by name, in chain order, and whether each is on */
+  chain: string[];
+  on: boolean[];
+  /** what loading adds to and removes from the drawer, by name */
+  adds: string[];
+  removes: string[];
+}
+
+/** How a preset of an instrument with a drawer reads in its menu; null for an assembly without a drawer (or a preset
+ *  whose effects cannot be found). */
+export function presetView(p: Patch, a: AssemblyInst, preset: Preset, scope = drawerScope(p, a)): PresetView | null {
+  if (!scope) return null;
+  if (!drawerPresetInfo(preset)) return { noFx: true, chain: [], on: [], adds: [], removes: [] };
+  const r = resolveEffects(p, a, preset, scope);
+  if (typeof r === 'string') return null;
+  const split = splitDrawerValues(preset.values, rowOrder(p, a).length, r.map((e) => e.rows));
+  return { noFx: false, chain: r.map((e) => e.name), on: split?.effects.map((e) => e.on) ?? r.map(() => true), ...drawerChange(scope, r) };
+}
+
+/** names in a sentence: "Drive", "Drive and Delay", "Drive, Chorus and Delay" */
+const listed = (names: readonly string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
+
+/** what loading a preset does to the drawer, as its menu row says it ("loading adds Drive, removes Chorus"), or once done
+ *  ("added Drive, removed Chorus"); '' nothing */
+export function drawerChangeText(adds: readonly string[], removes: readonly string[], done = false): string {
+  const parts = [adds.length ? `${done ? 'added' : 'adds'} ${listed(adds)}` : '', removes.length ? `${done ? 'removed' : 'removes'} ${listed(removes)}` : ''].filter(Boolean);
+  return !parts.length ? '' : done ? parts.join(', ') : `loading ${parts.join(', ')}`;
+}
 
 /** an assembly's card row values, in canonical order */
 export function currentValues(p: Patch, a: AssemblyInst): number[] {
   return rowOrder(p, a).map((r) => p.modules.find((m) => m.id === r.module)?.params[r.param] ?? 0);
 }
 
-/** Capture a sound's complete compatible scope; ordinary assemblies keep card-only presets. */
+/** Capture an assembly's preset: an instrument with a drawer, the instrument with its whole drawer (FXD1, its effects'
+ *  copies with it); any other assembly, its card rows. */
 export function capturePreset(p: Patch, a: AssemblyInst, name: string): Preset {
-  const values = currentValues(p, a), scope = fxPresetScope(p, a);
+  const values = currentValues(p, a), scope = drawerScope(p, a);
   return scope
-    ? { structure: scope.structure, name, values: fxPresetValues(scope.baseStructure, scope.mask, values, currentFxValues(p, scope)) }
+    ? { structure: scope.structure, name, values: currentDrawerValues(p, a, scope, values), fx: presetEffects(p, scope) }
     : { structure: structureOf(p, a), name, values };
 }
 
-/** load a preset into an assembly: its card rows take the preset's values (clamped to each parameter's range), every
+/** Load a preset into an assembly: its card rows take the preset's values (clamped to each parameter's range), every
  * parameter a row sets (#357) too; the assembly remembers its name. A preset of fewer values than the card has rows (a
  * Cassia 1 preset the FM-1 stored before 1.8.2 kept 88 of 118, #485, D-858) sets the rows it has, in order; the rest keep
- * their values (shortBy says how many). False when it does not fit (another structure, or more values than rows). */
-export function applyPreset(p: Patch, a: AssemblyInst, preset: Preset): boolean {
-  const base = structureOf(p, a), fx = fxPresetInfo(preset);
-  const scope = fx ? fxPresetScope(p, a) : null;
-  const rows = rowOrder(p, a);
-  if (fx ? !scope || preset.structure !== scope.structure || fx.rows !== rows.length || preset.values.length > PRESET_VALUES_MAX
-    : preset.structure !== base || preset.values.length > rows.length) return false;
-  if (preset.values.some(v => !Number.isFinite(v))) return false;
-  if (scope && (!validFxValues(p, scope, preset.values, rows.length) || rows.some((row, i) => {
-    const m = p.modules.find(m => m.id === row.module);
-    const pd = m && DEFS[m.type]?.params.find(pd => pd.name === row.param);
-    return pd && (preset.values[i] < pd.min || preset.values[i] > topOf(pd));
-  }))) return false;
-  const count = fx?.rows ?? preset.values.length;
-  const values = boundedValues(p, a, rows, preset.values);
+ * their values (shortBy says how many). An FX drawer preset is checked whole first, then sets the instrument's rows and
+ * each effect's rows and on/off; with `rebuild` (the editor's menu) the drawer is first made to hold the preset's
+ * effects in its order, else (the FM-1's palette) only a drawer that holds them already takes one. False when it does
+ * not fit (another structure, more values than rows, a malformed record or effects not to be found): nothing changed. */
+export function applyPreset(p: Patch, a: AssemblyInst, preset: Preset, rebuild = false): boolean {
+  const base = structureOf(p, a), rows = rowOrder(p, a);
+  if (drawerPresetInfo(preset)) return applyDrawerPreset(p, a, preset, base, rows, rebuild);
+  if (preset.structure !== base || preset.values.length > rows.length || preset.values.some(v => !Number.isFinite(v))) return false;
   if (preset.factory) applyPresetPattern(p, a, base, preset.name);
   else clearPresetPattern(p, a);
-  rows.slice(0, count).forEach((r, i) => {
-    for (const t of tiedTo(p, r.module, r.param)) {
-      const m = p.modules.find((x) => x.id === t.module);
-      const pd = m && DEFS[m.type]?.params.find((d) => d.name === t.param);
-      if (m && pd) m.params[t.param] = Math.min(topOf(pd), Math.max(pd.min, values[i]));
-    }
-  });
-  if (scope) applyFxValues(p, scope, values, rows.length);
+  setRows(p, rows, boundedValues(p, a, rows, preset.values));
+  recalledStructures.set(a, preset.structure);
+  a.preset = preset.name;
+  return true;
+}
+
+function applyDrawerPreset(p: Patch, a: AssemblyInst, preset: Preset, base: string, rows: { module: number; param: string }[], rebuild: boolean): boolean {
+  const scope = drawerScope(p, a);
+  if (!scope || preset.values.length > PRESET_VALUES_MAX || (!rebuild && preset.structure !== scope.structure)) return false;
+  const effects = resolveEffects(p, a, preset, scope);
+  if (typeof effects === 'string') return false;
+  const split = checkDrawerPreset(p, a, preset, effects);
+  if (!split) return false;
+  if (preset.factory) applyPresetPattern(p, a, base, preset.name);
+  else clearPresetPattern(p, a);
+  const chain = preset.structure === scope.structure ? scope.effects : rebuildDrawer(p, scope, effects);
+  setRows(p, rows, boundedValues(p, a, rows, split.rows));
+  applyDrawerValues(p, scope.drawer, chain, split.effects);
   recalledStructures.set(a, preset.structure);
   a.preset = preset.name;
   return true;
@@ -195,7 +298,7 @@ export function applyPreset(p: Patch, a: AssemblyInst, preset: Preset): boolean 
 
 /** how many of the assembly's card rows a preset leaves as they are (it has fewer values than rows); 0 a whole one */
 export function shortBy(p: Patch, a: AssemblyInst, preset: Preset): number {
-  return Math.max(0, rowOrder(p, a).length - preset.values.length);
+  return drawerPresetInfo(preset) ? 0 : Math.max(0, rowOrder(p, a).length - preset.values.length);
 }
 
 /** what the editor says about a preset that leaves `missing` of an engine's `rows` rows as they are (D-858) */
@@ -206,21 +309,24 @@ export const shortPresetText = (engine: string, missing: number, rows: number): 
  * one of no values never) */
 const agrees = (now: number[], values: number[]): boolean => values.length > 0 && values.length <= now.length && values.every((v, i) => Math.abs(v - now[i]) < 1e-6);
 
-function agreesWithPreset(p: Patch, a: AssemblyInst, preset: Preset): boolean {
-  if (fxPresetInfo(preset)) {
-    const now = capturePreset(p, a, preset.name);
-    return now.structure === preset.structure && now.values.length === preset.values.length && agrees(now.values, preset.values);
+function agreesWithPreset(p: Patch, a: AssemblyInst, preset: Preset, scope: DrawerScope | null = drawerScope(p, a)): boolean {
+  if (drawerPresetInfo(preset)) {
+    if (!scope || scope.structure !== preset.structure) return false;
+    const now = currentDrawerValues(p, a, scope, currentValues(p, a));
+    return now.length === preset.values.length && agrees(now, preset.values);
   }
   return preset.structure === structureOf(p, a) && agrees(currentValues(p, a), preset.values);
 }
 
-/** Names may exist in both legacy and rack namespaces. A live selection wins;
- * after patch reload, infer it from the actual values, scoped entries first. */
+/** Names may exist both for the instrument alone and with its drawer. A live selection wins; after a patch reload, infer
+ * it from the actual values, FX drawer presets first. */
 export function rememberedPreset(p: Patch, a: AssemblyInst, list = presetsOf(p, a)): Preset | undefined {
   const named = list.filter(pr => sameName(pr.name, a.preset));
+  if (named.length < 2) return named[0];
+  const scope = drawerScope(p, a);
   return named.find(pr => pr.structure === recalledStructures.get(a))
-    ?? named.find(pr => !!fxPresetInfo(pr) && agreesWithPreset(p, a, pr))
-    ?? named.find(pr => agreesWithPreset(p, a, pr)) ?? named[0];
+    ?? named.find(pr => !!drawerPresetInfo(pr) && agreesWithPreset(p, a, pr, scope))
+    ?? named.find(pr => agreesWithPreset(p, a, pr, scope)) ?? named[0];
 }
 
 /** whether the assembly's values still match the preset it remembers (false: edited since, or the preset is gone) */
@@ -244,15 +350,15 @@ export function storePreset(p: Patch, a: AssemblyInst, name: string): string {
  * instead of storing over a user preset. The assembly is left as it is. What it stored, and the user preset it replaced */
 export function addPresetOf(p: Patch, a: AssemblyInst, preset: Preset, fresh = false): { put: Preset; was?: Preset } {
   const structure = preset.structure;
-  if (fxPresetInfo(preset) && preset.values.length > PRESET_VALUES_MAX)
-    throw new Error(`This sound and its FX need ${preset.values.length} preset values; a preset holds ${PRESET_VALUES_MAX} at most`);
+  if (drawerPresetInfo(preset) && preset.values.length > PRESET_VALUES_MAX)
+    throw new Error(`${a.label} with its FX drawer needs ${preset.values.length} preset values, and a preset holds ${PRESET_VALUES_MAX} at most. Take an effect out of the drawer to store it.`);
   let n = fixName(preset.name) || 'preset';
   const available = presetsOf(p, a);
   const taken = (x: string): boolean => available.some(f => (fresh || f.factory || f.structure !== structure) && sameName(f.name, x));
   for (let k = 2; taken(n); k++) n = `${fixName(preset.name).slice(0, PRESET_NAME_MAX - 3)} ${k}`;
   const users = userPresets();
   const was = users.find((x) => x.structure === structure && sameName(x.name, n));
-  const put: Preset = { structure, name: n, values: [...preset.values] };
+  const put: Preset = { structure, name: n, values: [...preset.values], ...(preset.fx ? { fx: preset.fx } : {}) };
   writeUser([...users.filter((x) => x !== was), put]);
   return was ? { put, was } : { put };
 }
@@ -260,23 +366,24 @@ export function addPresetOf(p: Patch, a: AssemblyInst, preset: Preset, fresh = f
 /** take the user presets of these structures and names out of the library, then add `add` (an undo step's presets, #1031) */
 export function replaceUserPresets(drop: readonly { structure: string; name: string }[], add: readonly Preset[]): void {
   const gone = (x: Preset): boolean => drop.some((d) => d.structure === x.structure && sameName(d.name, x.name));
-  writeUser([...userPresets().filter((x) => !gone(x)), ...add.map((x) => ({ structure: x.structure, name: x.name, values: [...x.values] }))]);
+  writeUser([...userPresets().filter((x) => !gone(x)), ...add.map((x) => ({ ...x, values: [...x.values] }))]);
 }
 
 /** a user preset from elsewhere (the FM-1, #195): stored under its name, over one of the same structure and name in any
  * case (which keeps its own spelling); a name in capitals only, as the FM-1 writes them, otherwise takes the editor's
- * style (INIT 2 -> Init 2). One of an earlier structure of a factory engine moves to today's (D-865). False when a
- * factory one has that name. Returns the name it is stored under */
+ * style (INIT 2 -> Init 2). One of an earlier structure of a factory engine moves to today's (D-865); an old "+ FX" one
+ * (FXP1) becomes an FX drawer preset. False when a factory one has that name. Returns the name it is stored under */
 export function addUserPreset(structure: string, name: string, values: number[]): string | false {
   let n = fixName(name);
   const m = movedPreset(structure, n, values);   // (from an FM-1 that has not moved its presets yet, D-865)
   if (m) ({ structure, values } = m);
-  if (!n || factoryFor(structure).some((f) => sameName(f.name, n))) return false;
+  const read = fxp1ToFxd1({ structure, name: n, values });
+  if (!n || factoryFor(read.structure).some((f) => sameName(f.name, n))) return false;
   const users = userPresets();
-  const had = users.find((x) => x.structure === structure && sameName(x.name, n));
+  const had = users.find((x) => x.structure === read.structure && sameName(x.name, n));
   if (had) n = had.name;
   else if (n === n.toUpperCase() && /[A-Z]/.test(n)) n = n.toLowerCase().replace(/(^|[\s-])([a-z])/g, (_, a: string, b: string) => a + b.toUpperCase());
-  writeUser([...users.filter((x) => !(x.structure === structure && sameName(x.name, n))), { structure, name: n, values: [...values] }]);
+  writeUser([...users.filter((x) => !(x.structure === read.structure && sameName(x.name, n))), { ...read, name: n, values: [...read.values] }]);
   return n;
 }
 
