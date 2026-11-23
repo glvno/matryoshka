@@ -10,8 +10,8 @@ import { setSwitches, setTarget } from './buttons';
 import { Editor, type EditorEvents } from './editor';
 import { drawers } from './fx-drawer';
 import { editorCc } from './input';
-import { PANEL_BUTTONS } from './modules';
-import type { Patch } from './patch';
+import { DEFS, PANEL_BUTTONS } from './modules';
+import { validatePatch, type Patch } from './patch';
 import { PRESETS } from './presets';
 
 vi.hoisted(() => {
@@ -108,25 +108,26 @@ describe('a bypass from the FM-1 changes the card’s ⏻ with its stripes (#105
     expect(light('lfo')).toBe('false');
   });
 
-  it('an effect in an FX drawer as the Toggle’s target: its card in the open drawer follows, and the drawer’s ⏻ keeps it', () => {
-    const { editor } = setup((p) => {
-      setTarget(p, 'lfo', { asm: asmNamed(p, 'Delay').id });
-      for (const d of drawers(p)) d.open = true;
-    });
-    const delay = asmNamed(editor.patch, 'Delay');
+  it('an effect in an open FX drawer: its card follows its switch, and the drawer’s ⏻ keeps it', () => {
+    const { editor } = setup();
+    // (the old master FX bus becomes Monolith D's drawer when a patch is opened: validatePatch)
+    editor.setPatch(validatePatch(JSON.parse(JSON.stringify(editor.patch)), DEFS));
     const drawer = drawers(editor.patch)[0];
+    editor.setDrawerOpen(drawer.id, true);
+    const delay = asmNamed(editor.patch, 'Delay');
     const pw = () => document.querySelector(`.fx-drawer[data-drawer="${drawer.id}"] > .fx-dh button.pw`)!;
     expect(container(delay.id)!.closest('.fx-drawer')).not.toBeNull();
-    const before = shown(container(delay.id));
-    fromFm1(editor, LFO);
-    expect(shown(container(delay.id))).toEqual(before.off ? onView : offView);
+    const card = container(delay.id);
+    editor.setBypass([], !delay.bypass, delay);   // (the FM-1's effect switch, a Toggle, the card's ⏻)
+    expect(container(delay.id)).toBe(card);         // (drawn again in place)
+    expect(shown(card)).toEqual(delay.bypass ? offView : onView);
     // the drawer's ⏻ off and on again: the effect's own state comes back
-    const mid = shown(container(delay.id));
+    const mid = shown(card);
     editor.setBypass([], true, drawer);
     expect(pw().getAttribute('aria-pressed')).toBe('false');
     editor.setBypass([], false, drawer);
     expect(pw().getAttribute('aria-pressed')).toBe('true');
-    expect(shown(container(delay.id))).toEqual(mid);
+    expect(shown(card)).toEqual(mid);
   });
 
   it('a Toggle that acts while held shows its target off while it is down, ⏻ and all', () => {
