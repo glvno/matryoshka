@@ -166,6 +166,10 @@ Main's K1..K4 are bound to the rows of the page in focus; they edit those rows a
 
 The FM-1's RAM for the lines of its line-type modules: every Delay, reverb, chorus, string, comb, Granular and Limiter. It is two areas, divided when a patch loads: what the patch's memory arena has left after its module copies, signal buffers and parameter values, and about 26 KB of other RAM. A patch fits only when every line does. A Delay's line holds its length, or two or four times that at a lower rate. The editor's budget shows how much a patch takes and which module takes what.
 
+### Embedded card
+
+A whole device inside an assembly shown as a card of its own on the assembly's collapsed card, beside the assembly's exposed rows. In an ordinary assembly its cables stay free and the FM-1 shows it as pages of the assembly. The [FX drawer](#fx-drawer) is the special case.
+
 ### Emulator view
 
 The EMU view of the editor's top switch: the FM-1's firmware UI compiled to WebAssembly, running in the browser (`#emu`). Also called the FM-1 view or the FM-1 tab.
@@ -237,6 +241,14 @@ The page at the old GitHub Pages address: it sends visitors to the Cloudflare si
 ### Full-parity cost
 
 What an FM-1 factory instrument would take of the FM-1 with every open gap closed: its CPU estimate, its modules and its bytes. It is the factory patch or XL measured at the original's voice count, plus each gap that patch lacks, plus the estimated cost of each engine feature the instrument waits for.
+
+### FX drawer
+
+A purple tray of audio effects that slides out from an instrument card. It holds the instrument's effects in signal order, and the editor wires them as one stereo chain itself, so the chain never goes silent. It belongs to the instrument: its presets include it, and on the FM-1 each effect in it is a device right after the instrument. An [Output drawer](#output-drawer) is the patch's own.
+
+### FX plug
+
+The closed [FX drawer](#fx-drawer): a tab on the instrument card's edge that covers only the output jacks the chain uses. Its other outputs stay free. When those jacks are not side by side, the plug is two lobes joined by a band, with a window that shows the free jack between them.
 
 ### Global
 
@@ -344,7 +356,7 @@ The FM-1's own three-band equalizer on its speaker and headphone jack: a setting
 
 ### Master FX bus
 
-An editable assembly of ordinary modules between an instrument and Output, with one to four present stages in Drive, Chorus, Delay, Reverb order. Its graph, grouping and control bindings identify it, not its name or a saved identity tag.
+An editable assembly of ordinary modules between an instrument and Output, with one to four present stages in Drive, Chorus, Delay, Reverb order, found by its graph, grouping and control bindings. It is the shape of patches before format 66. The editor turns one into an [FX drawer](#fx-drawer) or the [Output drawer](#output-drawer) when it opens the patch, and the FM-1 still plays it in a format 55–65 patch.
 
 ### Matrix pin
 
@@ -373,6 +385,10 @@ A short message in the FM-1's header (at most 26 characters) that says why a con
 ### Offline copy
 
 The bank as the editor keeps it in the browser (`matryoshka.bank`): what Send bank to FM-1 writes, and what the Library's FM-1 column shows while no FM-1 is connected.
+
+### Output drawer
+
+The [FX drawer](#fx-drawer) of the patch rather than of an instrument: one at most, in front of the Output module, for effects several instruments share. It is saved with the patch and never in a preset.
 
 ### Output range
 

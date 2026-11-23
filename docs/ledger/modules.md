@@ -115,5 +115,5 @@ Keys and MIDI reach a patch only through the **Main** module, whose `pitch` alre
 - Player Piano: an editor-only module that plays a MIDI file into Main's note input, and whether it exports to Steps — issue #131
 - Whether and how users can write and share their own module types — issue #144
 - Whether the synced Delay's note lengths spread over the FM-1's whole 1..700 ms instead of 1..520 ms; it would change the note length of stored synced Delays, and today the knob's top quarter all picks the longest — PR #304
-- Whether the Output module or the [**master FX bus**](vocabulary.md#master-fx-bus) should offer a limiter that is on by default, so every patch protects ears and headphones — issue #1019
-- Whether the [**master FX bus**](vocabulary.md#master-fx-bus) gets a fifth stage, an EQ pair after the Reverb (about 73 to 90 bytes in a patch that has it; the 909 Kit has no room) — issue #1107
+- Whether the Output module or the [**Output drawer**](vocabulary.md#output-drawer) should offer a limiter that is on by default, so every patch protects ears and headphones — issue #1019
+- Whether factory instruments' [**FX drawers**](vocabulary.md#fx-drawer) get an EQ pair after the Reverb (about 73 to 90 bytes in a patch that has it; the 909 Kit has no room) — issue #1107
