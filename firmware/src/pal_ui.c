@@ -56,8 +56,7 @@ static void pal_open(void)
     pal_view = 1;
     pal_due = 2;
     lcd_ovl = 1;
-    ui_full = 1;
-    batt_drawn = BATT_NONE;
+    ovl_changed();
 }
 static void pal_close(void)
 {
@@ -67,8 +66,7 @@ static void pal_close(void)
     pal_due = 0;
     if (!help_on)
         lcd_ovl = 0;
-    ui_full = 1;
-    batt_drawn = BATT_NONE;
+    ovl_changed();
 }
 
 /* the first edge of another combo while HOME is held (a button, a knob): the overview closes, and stays shut until

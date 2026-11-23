@@ -395,6 +395,17 @@ static void help_draw(void)
 
 /* ---- opening, closing, following */
 
+/* a card or the palette's overview (pal_ui.c) opened or went: the whole screen at the next panel_draw, the footer's
+ * battery too. Until then the bars on screen are not the page as it draws them (dimmed, or under the card), so nothing
+ * draws in place over them: PRESET's next patch (screen_patch) keeps the whole redraw rather than staging its page over
+ * the old one (#1222: the overview left between the next patch's bars) */
+static void ovl_changed(void)
+{
+    ui_full = 1;
+    pg_plain = 0;
+    batt_drawn = BATT_NONE;
+}
+
 /* a card opens over the page (the sheet replaces the quick start): the page is drawn again as the dim frame around it */
 static void help_open(uint32_t which)
 {
@@ -406,8 +417,7 @@ static void help_open(uint32_t which)
     help_sig = help_state_sig();
     help_due = 2;
     lcd_ovl = 1;
-    ui_full = 1;
-    batt_drawn = BATT_NONE;                         /* (the footer's battery: drawn again, dim) */
+    ovl_changed();
 }
 
 /* HOME (or HOME + SAVE on the quick start): the card goes, the page is drawn whole again; a boot message held back
@@ -419,8 +429,7 @@ static void help_close(void)
     help_on = 0;
     help_due = 0;
     lcd_ovl = 0;
-    ui_full = 1;
-    batt_drawn = BATT_NONE;
+    ovl_changed();
     if (help_msg) {
         uint32_t i;
         for (i = 0; help_msg[i] && i < sizeof msg_text - 1u; i++)

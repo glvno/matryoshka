@@ -3,8 +3,9 @@
 /* #1196, part of panel_test.c (its helpers): the palette's gestures (pal_ui.c, panel.c). HOME held + black key n tapped
  * asks palette.c for position n (pal_request, on the release, from the loop), held 1 s saves there (pal_save, once);
  * every key is silent while HOME is held, a key already down plays on; HOME held alone 300 ms shows the overview, which
- * HOME's other combos close; sandbox mode refuses; the empty and missing texts, the bar's NEXT:, the copy's KEYS_NOW and
- * panel_align. palette.c is stood in for (panel_test.c pal_request / pal_save). */
+ * HOME's other combos close; HOME + PRESET over the overview or a card leaves nothing of it on the next patch's page
+ * (#1222); sandbox mode refuses; the empty and missing texts, the bar's NEXT:, the copy's KEYS_NOW and panel_align.
+ * palette.c is stood in for (panel_test.c pal_request / pal_save). */
 
 static uint32_t pt_black(int b)
 {
@@ -56,6 +57,16 @@ static void pt_palette(void)
     pal_next = PAL_NONE;
     pal_ui_changed();
 }
+/* PRESET turned one click (HOME held: the next patch), the patch loaded as main.c preset_load does, with PRESET's toast:
+ * 1 it stepped */
+static int pt_preset(void)
+{
+    int sv = presets_stepped;
+    preset_loads = 1;
+    enc(6, 1);
+    preset_loads = 0;
+    return presets_stepped == sv + 1;
+}
 /* the device page's second page (a device that has one), so a HOME tap would move */
 static int pt_second_page(void)
 {
@@ -72,7 +83,7 @@ static int pt_second_page(void)
 static void palette_panel_suite(void)
 {
     uint32_t k3 = pt_black(2), dev, i, n;
-    int from, req, sv;
+    int from, req;
     char want[64];
     while (page != 0u && trail_n)
         tap(BTN_HOME);
@@ -255,11 +266,30 @@ static void palette_panel_suite(void)
     pt_home(0);
     pt_home(1);
     later(400);
-    sv = presets_stepped;
-    enc(6, 1);
-    check("HOME + PRESET: the overview closes, the patch steps (or the bank says it is empty)", !pal_view
-          && (presets_stepped == sv + 1 || !strcmp(msg_text, MSG_BANK_EMPTY)));
+    check("HOME + PRESET: the overview closes, the patch steps, its toast", pt_preset() && !pal_view && !lcd_ovl
+          && toast_wanted());
+    check("  nothing of the overview left on the next patch's page and toast (#1222: a full redraw changes nothing)",
+          fb_stale() == 0u);
     pt_home(0);
+    later(NUDGE_MS + 100u);
+
+    /* #1222, the cards: on the quick start HOME + PRESET closes it and steps (a knob closes it and does its job, #582);
+     * under the controls sheet it does nothing (D-245). Either way nothing of the card is left on the page */
+    help_open(HELP_QUICK);
+    loop();
+    pt_home(1);
+    check("on the quick start HOME + PRESET: the card closes, the patch steps, its toast", pt_preset() && !help_on
+          && !lcd_ovl && toast_wanted());
+    check("  nothing of the card left on the next patch's page and toast", fb_stale() == 0u);
+    pt_home(0);
+    later(NUDGE_MS + 100u);
+    help_open(HELP_SHEET);
+    loop();
+    pt_home(1);
+    check("under the controls sheet HOME + PRESET: no patch, the card and the page around it as a whole redraw",
+          !pt_preset() && help_on == HELP_SHEET && lcd_ovl && fb_stale() == 0u);
+    pt_home(0);
+    check("  HOME let go: the sheet closes, the page as a whole redraw", !help_on && !lcd_ovl && fb_stale() == 0u);
     later(NUDGE_MS + 100u);
     if (page != 0u)
         tap(BTN_HOME);

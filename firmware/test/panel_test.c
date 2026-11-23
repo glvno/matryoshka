@@ -294,6 +294,19 @@ static uint32_t fb_changed_in(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1
             n += fb_changes[y * 240u + x] != 0u;
     return n;
 }
+/* the pixels a full redraw now changes (0: the screen is what it would draw whole; else something stale was left on it,
+ * #1222); the screen is then the full redraw's */
+static uint32_t fb_stale(void)
+{
+    static uint16_t was[240 * 240];
+    uint32_t i, n = 0;
+    memcpy(was, fb, sizeof was);
+    ui_full = 1;
+    panel_draw();
+    for (i = 0; i < 240u * 240u; i++)
+        n += was[i] != fb[i];
+    return n;
+}
 /* button btn held, key n pressed and let go, btn let go (a loop between each) */
 static void held_key(uint32_t btn, uint32_t n)
 {
