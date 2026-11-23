@@ -14,6 +14,7 @@ import { connect, newPatch, type Patch } from './patch';
 import { applyEntry, entryOf, moveOrder, Palette, PALETTE_STORE, paletteDevices, repointed, type PalettePorts } from './palette';
 import { chipMeta } from './palette-view';
 import { FM1_PRESETS } from './presets';
+import { invalidatePresetPatterns } from './preset-patterns';
 import { CMD, PALETTE, type PaletteEntry } from './protocol';
 import { structureOf } from './structure';
 import { PaletteFm1 } from './test-palette-fm1';
@@ -89,7 +90,7 @@ describe('re-pointing after Send bank (#1196)', () => {
 });
 
 /** the editor's link to a stand-in FM-1, and a palette on it with recorded ports */
-async function linked(o: { features?: number; features25?: number; presetRoom?: number; live?: boolean; candidates?: Candidate[] } = {}) {
+async function linked(o: { features?: number; features25?: number; presetRoom?: number; live?: boolean; candidates?: Candidate[]; current?: () => Patch; onSlot?: () => void } = {}) {
   const fm1 = new PaletteFm1({ features: o.features, features25: o.features25, presetRoom: o.presetRoom });
   const g = globalThis as unknown as { window?: unknown; navigator: { requestMIDIAccess?: unknown } };
   g.window ??= globalThis;
@@ -97,20 +98,25 @@ async function linked(o: { features?: number; features25?: number; presetRoom?: 
   const link = new DeviceLink();
   await link.connect();
   const said: string[] = [], opened: { patch: Patch; adopt: boolean; from: string }[] = [], off: string[] = [];
-  let live = o.live ?? false;
+  let live = o.live ?? false, kept = 0;
   const ports: PalettePorts = {
     device: link,
     candidates: () => o.candidates ?? [],
     live: () => live,
+    current: o.current ?? (() => newPatch(DEFS)),
     open: (patch, x) => void opened.push({ patch, ...x }),
+    kept: () => void kept++,
     liveOff: (why) => { live = false; off.push(why); },
     say: (t) => void said.push(t),
     changed: () => {},
   };
   const palette = new Palette(ports, storage);
-  link.onEvent = (e) => { if (e.kind === 'palette') palette.received(e.now); };
+  link.onEvent = (e) => {
+    if (e.kind === 'palette') palette.received(e.now);
+    if (e.kind === 'slot') { palette.slotNow(); o.onSlot?.(); }   // (as main.ts: then the editor drops its pattern origins)
+  };
   await palette.connected();
-  return { fm1, link, palette, said, opened, off };
+  return { fm1, link, palette, said, opened, off, kept: () => kept, live: () => live };
 }
 
 describe('the palette over the link (#1196)', () => {
@@ -214,6 +220,69 @@ describe('the palette over the link (#1196)', () => {
     link.sendLiveName('MY PAD');
     await fm1.quiet();
     expect(fm1.liveName).toBe('MY PAD');
+  });
+  it('under Live, the FM-1 saving the editor\'s patch to the palette (HOME + a key held) keeps Live and the patch (#1244)', async () => {
+    // the owner, 1.26.2: "saving to palette seems to disconnect the fm1". The FM-1 plays position 3 after the save, which
+    // is no switch: the slot holds the patch the editor has, byte for byte, unsaved in this browser
+    const { p } = padPatch('Fresh Idea');
+    const { fm1, link, opened, off, kept, live } = await linked({ live: true, current: () => structuredClone(p) });
+    fm1.holdSave(2, link.encodeFor(p), 'FRESH IDEA', entryOf(p, 0));
+    await fm1.quiet();
+    expect(off).toEqual([]);
+    expect(live()).toBe(true);
+    expect(opened).toEqual([]);
+    expect(kept()).toBe(1);
+  });
+  it('the FM-1 saving the editor\'s patch never opens an older saved copy of the same name and length (#1244)', async () => {
+    const { p, a } = padPatch();
+    const older = structuredClone(p);
+    const oa = older.assemblies!.find((x) => x.id === a.id)!;
+    applyPreset(older, oa, presetsOf(older, oa).find((x) => x.name === 'Bright')!);
+    oa.preset = 'Warm1';
+    expect(binLength(older)).toBe(binLength(p));
+    const { fm1, link, opened, off, kept } = await linked({ live: true, candidates: [{ name: 'My Pad', patch: () => structuredClone(older) }], current: () => structuredClone(p) });
+    fm1.holdSave(0, link.encodeFor(p), 'MY PAD', entryOf(p, 0));
+    await fm1.quiet();
+    expect(opened).toEqual([]);
+    expect(off).toEqual([]);
+    expect(kept()).toBe(1);
+  });
+  it('the FM-1 saving a patch with factory pattern origins keeps it too, though the editor drops them at SLOT_NOW', async () => {
+    const lire = FM1_PRESETS['8 Lire']();
+    expect(lire.modules.some((m) => m.type === 'steps' && m.factoryPatterns)).toBe(true);
+    let cur = structuredClone(lire);
+    const { fm1, link, opened, off, kept } = await linked({ live: true, current: () => cur, onSlot: () => { cur = structuredClone(cur); invalidatePresetPatterns(cur); } });
+    fm1.holdSave(1, link.encodeFor(lire), '8 LIRE', entryOf(lire, 0));
+    await fm1.quiet();
+    expect(link.encodeFor(cur)).not.toEqual(link.encodeFor(lire));   // (the origins went)
+    expect([opened, off, kept()]).toEqual([[], [], 1]);
+  });
+  it('a hold-save while the FM-1 plays a patch the editor is not showing is a switch: its copy opens, or Live goes off', async () => {
+    const { p } = padPatch();
+    const { p: other, a: oa } = padPatch('Other Pad');
+    applyPreset(other, oa, presetsOf(other, oa).find((x) => x.name === 'Bright')!);   // (other values than the editor's)
+    const { fm1, link, opened, off, kept } = await linked({ live: true, candidates: [{ name: 'Other Pad', patch: () => structuredClone(other) }], current: () => structuredClone(p) });
+    fm1.holdSave(0, link.encodeFor(other), 'OTHER PAD', entryOf(other, 0));
+    await fm1.quiet();
+    expect(kept()).toBe(0);
+    expect(opened).toEqual([expect.objectContaining({ adopt: true, from: 'Other Pad' })]);
+    fm1.holdSave(1, Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8]), 'STRANGER', { slot: 0, pattern: 0, name: '', devices: [] });
+    await fm1.quiet();
+    expect(kept()).toBe(0);
+    expect(off).toEqual(['FM-1 switched to palette 2 · STRANGER: no copy in this browser, so Live sync is off']);
+  });
+  it('a switch to a position whose entry sets other presets on the editor\'s own patch still opens it with them', async () => {
+    const { p } = padPatch();
+    const { fm1, link, palette, opened, kept } = await linked({ live: true, candidates: [{ name: 'My Pad', patch: () => structuredClone(p) }], current: () => structuredClone(p) });
+    fm1.slots[3] = { slot: 3, used: true, length: binLength(p), name: 'MY PAD' };
+    fm1.bins[3] = link.encodeFor(p);
+    fm1.entries[0] = { ...entryOf(p, 3), devices: entryOf(p, 3).devices.map((d) => ({ ...d, name: 'Bright' })) };
+    fm1.report();
+    await fm1.quiet();
+    await palette.click(0);
+    await fm1.quiet();
+    expect(kept()).toBe(0);
+    expect(opened).toEqual([expect.objectContaining({ adopt: true })]);
   });
   it('under Live follows a switch whose report a newer one overtakes while it reads the entry', async () => {
     const { p } = padPatch();

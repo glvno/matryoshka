@@ -3,7 +3,8 @@
 // tests: HELLO (INFO with feature bit 31, the presets' bits 7 and 17, and byte 25's SLOT_GET), the bank (SLOT_INFO, CHUNK,
 // SLOT, SLOT_ERASE, SLOT_GET of the bytes stored), the user preset store (PRESETS, PRESET_GET, PRESET_PUT, PRESET_DEL; a
 // room of `presetRoom` presets, then the store is full), and PALETTE's six ops with their ACKs, PALETTE_NOW (unasked only
-// after a GET) and PALETTE_ENTRY. It answers on a fake Web MIDI input, a millisecond later.
+// after a GET) and PALETTE_ENTRY; and the panel's hold-save (`holdSave`). It answers on a fake Web MIDI input, a
+// millisecond later.
 import { CMD, crc16, decodePaletteEntry, encodePaletteEntry, FEATURE25_SLOT_GET, FEATURE_LONG_PRESETS, frame, NAME_BYTES, PALETTE, PALETTE_SIZE, parse, PRESET_NAME_BYTES, type PaletteEntry, type SlotInfo } from './protocol';
 
 /** a user preset as the stand-in keeps it: its structure (8 hex digits), its name as sent, its values in Q16 */
@@ -195,6 +196,17 @@ export class PaletteFm1 {
   bar(): void {
     if (this.next === null) return;
     this.switchTo(this.next);
+  }
+
+  /** HOME held + a black key held (palette.c pal_save): the patch it plays from the editor (`bin`, as uploaded, under the
+   *  name the editor sent) into the first free slot, then position `pos` points at it with the presets and pattern it plays
+   *  (`entry`, slot and name filled in here), and the FM-1 plays that position (SLOT_NOW, PALETTE_NOW) */
+  holdSave(pos: number, bin: Uint8Array, name: string, entry: PaletteEntry): void {
+    const slot = this.slots.findIndex((s) => !s.used);
+    this.slots[slot] = { slot, used: true, length: bin.length, name };
+    this.bins[slot] = bin.slice();
+    this.entries[pos] = { ...entry, slot, name };
+    this.switchTo(pos);
   }
 
   private switchTo(pos: number): void {

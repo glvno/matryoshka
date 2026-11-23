@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Saving to the palette on the FM-1 (HOME and a black key held) no longer drops the editor's link.** With Live on, the editor used to take the save for a switch to another sound: it turned Live sync off ("no copy in this browser") or reopened an older saved copy of the patch. It now sees that the FM-1 saved the very patch the editor shows: the patch stays open as it is and Live stays on. A save while the FM-1 plays something else is still followed as a switch ([D-1321](docs/ledger/editor.md#D-1321), #1244).
+
 ## 1.26.2 — 2026-11-23
 
 - **Adding a sound to the palette now saves on the FM-1 everything it needs to sound as it does in the editor.** A preset you saved in this browser (Mine) is sent to the FM-1 first, or updated there when the FM-1 has other values under that name. The palette points at an FM-1 slot only when that slot holds exactly the editor's patch; a slot with the same name but older values is left alone, and the patch is stored into a free slot as "MY PAD 2". When the FM-1 cannot take a preset (its preset store is full, or its firmware is too old), the patch carries the sound itself and the status line says so. If anything fails, nothing is left half-added.
