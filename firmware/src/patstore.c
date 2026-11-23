@@ -505,8 +505,9 @@ static void pt_find_many(const uint16_t *ids, uint32_t n, int32_t *at, uint32_t 
 }
 
 /* store a pattern: *id 0 a new one (its id assigned into *id), else over that live id (the old record is killed once
- * the new one is committed); kept: as a kept copy (PT_KMAGIC). Only a kept put writes over a kept copy: any other answers
- * -4, so SAVE makes a new entry. 0 ok, -1 flash, -2 full, -3 range (len 0 / > PT_MAX / ids used up), -4 missing */
+ * the new one is committed); kept: as a kept copy (PT_KMAGIC). A put over an id writes over it only when both are kept or
+ * neither is, else -4 (SAVE then makes a new entry). 0 ok, -1 flash, -2 full, -3 range (len 0 / > PT_MAX / ids used
+ * up), -4 missing */
 static int pt_put(uint32_t *id, const char *name, const uint8_t *p, uint32_t len, int kept)
 {
     pt_hdr_t h, o;
@@ -517,7 +518,7 @@ static int pt_put(uint32_t *id, const char *name, const uint8_t *p, uint32_t len
     pt_ensure();
     if (len < 1u || len > PT_MAX || (!*id && pt_nextid > PT_ID_MAX))
         return -3;
-    if (*id && (pt_find(*id, &o) < 0 || (o.magic == PT_KMAGIC && !kept)))
+    if (*id && (pt_find(*id, &o) < 0 || (o.magic == PT_KMAGIC) != (kept != 0)))
         return -4;
     sec = pt_pick(r);
     if (sec == PT_NSEC) {

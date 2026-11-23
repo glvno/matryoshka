@@ -259,7 +259,8 @@ static void kept_tests(void)
           "a plain put over a kept copy: -4, the copy as it was");
     CHECK(!pt_put(&k, "KEPT2", b, 8, 1) && !pt_stat(k, &in) && in.kept && in.len == 8u && pt_count() == 2u,
           "a kept put over it: written over, still kept");
-    CHECK(!pt_put(&a, "PLAIN", b, 8, 0) && !pt_stat(a, &in) && !in.kept, "a plain entry stays plain");
+    CHECK(pt_put(&a, "PLAIN", b, 8, 1) == -4 && !pt_put(&a, "PLAIN", b, 8, 0) && !pt_stat(a, &in) && !in.kept,
+          "a kept put over a plain entry: -4; a plain put: it stays plain");
     boot();
     CHECK(pt_count() == 2u && !pt_stat(k, &in) && in.kept && !pt_stat(a, &in) && !in.kept, "after a power cycle");
     CHECK(!pt_compact(pt_size(8)) && pt_count() == 2u && !pt_stat(k, &in) && in.kept && !pt_read(k, b, sizeof b, &in)
