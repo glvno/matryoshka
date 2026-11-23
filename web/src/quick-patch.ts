@@ -206,8 +206,8 @@ export function patchCards(p: Patch): Card[] {
 }
 
 /**
- * Search by name, card tag, former name and the editor's search words (labels.ts moduleKeywords), with the command
- * palette's fuzzy match (fuzzy.ts). A word typed whole that is a word of the name or the search words beats a part of one
+ * Search by name, card tag, former name and the editor's search words (labels.ts moduleKeywords), with Commands' fuzzy
+ * match (fuzzy.ts). A word typed whole that is a word of the name or the search words beats a part of one
  * (`envelope` finds every envelope, the commonest, the ADSR, first), and a name match beats a search-word match. At a like
  * match a card already in the patch comes first, so `out` finds the Output there is, then a new module, then a new
  * assembly (`mm` is the Multimode filter, not Shimmer); the type's own name typed in full (`filter`, `vca`) wins outright.

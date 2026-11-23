@@ -59,7 +59,7 @@ describe('engines (#159)', () => {
     expect(new Set(assemblyShelves().map((a) => a.def))).toEqual(new Set(FACTORY)); // every one somewhere
   });
 
-  it('come up when the palette is asked for "engine"', () => {
+  it('come up when Commands is asked for "engine"', () => {
     const cmd = (label: string, tags: string[]): Command => ({ kind: 'assembly', label, tags, run: () => {} });
     const list = [cmd('Hera 4', ['assembly', 'engine', 'Engines']), cmd('pluck', ['assembly', 'Voices']), { kind: 'command', label: 'New patch', run: () => {} }];
     expect(searchCommands(list, 'engine').map((c) => c.label)).toEqual(['Hera 4']);

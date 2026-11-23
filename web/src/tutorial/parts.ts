@@ -409,7 +409,7 @@ export function partTargets(part: PartSpec, s: S, roles: Roles): Target[] {
           const left = types.filter((t) => !mods(p, t).some((m) => s.selected.has(m.id)));
           return (left.length ? left : types).flatMap((t) => T.module(mod(p, t)?.id));
         }
-        default: return T.ui('palette-btn');
+        default: return T.ui('commands-btn');
       }
     }
     case 'sound': return T.module(mod(p, 'output')?.id);

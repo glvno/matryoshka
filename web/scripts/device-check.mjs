@@ -648,8 +648,8 @@ export function checkScenarios(h) {
       await loudCheck('6.1 store: PLAY: C3 holds through the loop point (every window after its attack keeps 80 %)', d.top, d.ok, `peak ${d.top}, lowest ${d.low}`);
       // the store dialog: the FM-1's slots (48 with 1.26's pattern store, 60 with the older one or a bank too full for 48, 64 without; D-959, D-1016), a used one says what it holds (Replace), the first empty one Store
       await page().keyboard.press('/');
-      await page().waitForSelector('#palette[open]', { timeout: 2000 });
-      await page().fill('#palette-input', 'Store to an FM-1 slot');
+      await page().waitForSelector('#commands[open]', { timeout: 2000 });
+      await page().fill('#commands-input', 'Store to an FM-1 slot');
       await page().keyboard.press('Enter');
       const shown = await page().waitForSelector('#store-slot[open]', { timeout: 15000 * h.SLACK }).then(() => true, () => false);
       const dlg = () => page().evaluate(() => {

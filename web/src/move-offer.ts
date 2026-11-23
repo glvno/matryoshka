@@ -3,7 +3,7 @@
 // holds data there is not forwarded (site-move.ts), so a bar at the top offers to move it to matryoshka.lol in one click:
 // "Move them there" opens matryoshka.lol with `?migrate=1` and hands the data over (migrate.ts sendMigration); the new tab
 // merges it without replacing anything and says what came over. "Not now" or a finished move hides the bar for good at
-// this address (MOVE_OFFER); the command palette's "Move to matryoshka.lol" opens it again.
+// this address (MOVE_OFFER); Commands' "Move to matryoshka.lol" opens it again.
 import { collectKeys, MOVE_OFFER, sendMigration } from './migrate';
 import { PAGES_DEV_URL, SITE_URL } from './site';
 
@@ -29,7 +29,7 @@ const remember = (v: 'later' | 'moved'): void => {
 
 /**
  * The bar. `saveBackup` downloads a browser backup (the way over when the browser blocks the new tab). At the pages.dev
- * address it shows by itself until dismissed or moved; `open()` shows it anyway (the command palette).
+ * address it shows by itself until dismissed or moved; `open()` shows it anyway (Commands).
  */
 export function moveOffer(saveBackup: () => void): { open: () => void } {
   let bar: HTMLElement | null = null;
@@ -72,7 +72,7 @@ export function moveOffer(saveBackup: () => void): { open: () => void } {
       remember('later');
       close();
     }, 'move-close');
-    later.title = 'Hide this here; the command palette has "Move to matryoshka.lol"';
+    later.title = 'Hide this here; Commands has "Move to matryoshka.lol"';
     actions.append(move, later);
     bar.append(text, actions);
     document.body.append(bar);

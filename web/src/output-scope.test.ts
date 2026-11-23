@@ -78,7 +78,7 @@ describe('Output scope (#1029)', () => {
     expect(make().scope.m.params.mode).toBe(2);   // (remembered in this browser)
   });
 
-  it('the collapse button folds it to its title; the palette opens it again, and folds it', () => {
+  it('the collapse button folds it to its title; Commands opens it again, and folds it', () => {
     const { scope, root } = make();
     root.querySelector<HTMLButtonElement>('.oscope-fold')!.click();
     expect(root.classList.contains('collapsed')).toBe(true);
@@ -86,7 +86,7 @@ describe('Output scope (#1029)', () => {
     expect(scope.open).toBe(false);
     expect(make().scope.open).toBe(false);   // (remembered)
     const again = make().scope;
-    again.toggle();   // the palette's Output scope
+    again.toggle();   // Commands' Output scope
     expect(again.open).toBe(true);
     again.toggle();
     expect([again.visible, again.open]).toEqual([true, false]);

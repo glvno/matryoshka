@@ -5,7 +5,7 @@ import { searchCommands, type Command } from './commands';
 import { moduleKeywords } from './labels';
 import { DEFS } from './modules';
 
-/** the palette's module entries, built as main.ts builds them */
+/** Commands' module entries, built as main.ts builds them */
 const modules: Command[] = addableModules(DEFS).map((m) => ({ kind: 'add module', tags: ['module'], label: m.name, keywords: moduleKeywords(m.type, m.def.label), run() {} }));
 const found = (q: string): string[] => searchCommands(modules, q).map((c) => c.label);
 
