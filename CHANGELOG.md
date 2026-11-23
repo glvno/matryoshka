@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Library › Presets names the instrument of a preset you saved from the Hera 6 patch Hera 6. It said Hera 4, the library's four-voice engine with the same panel, which shares Hera 6's presets and now shows that name too. Presets saved from the 808 Kit and the 909 Kit name their kit instead of "your assembly". Presets load exactly as before.
+
 ## 1.26.1 — 2026-11-23
 
 - Turning PRESET with HOME held while the palette overview or the quick start shows no longer leaves pieces of it between the next patch's bars: the screen is drawn whole (#1222).
