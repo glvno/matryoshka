@@ -4,8 +4,8 @@
 // silent for 10 s; at its defaults and at a long-ring setting (feedback, resonance, decay near their tops, damping off).
 // EXTRA adds settings that take other code paths of one module (the Delay's ping-pong, lower rate, swell and Tape loops at
 // a time short enough to ring out within the 10 s; the Reverb's fixed taps and full damping; the resonant filters at a low
-// cutoff, with drive and in the Ladder's other modes), and the master FX bus with one stage on at a time (its wrapper,
-// m_fx, around the same kernels).
+// cutoff, with drive and in the Ladder's other modes), and the factory FX drawer (the master FX bus it replaced) with one
+// effect on at a time (its wrapper, m_fx, around the same kernels).
 // Writes build/floor/NAME.{m1p,ev,f32} (the reference output of web/src/engine.ts); host_test with HOST_TEST_FLOOR=1 then
 // says whether the C engine's last second holds a floor the reference does not. Run from web/: npx vite-node scripts/floor-kits.ts
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -13,7 +13,9 @@ import { Engine } from '../src/engine';
 import { encodePatch } from '../src/patchbin';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { addModule, connect, newPatch, type ModuleInst, type Patch } from '../src/patch';
-import { fxBusOf, withFxBus, type FxStageKind } from '../src/fx-bus';
+import { withFxBus } from '../src/factory-bank';
+import { convertLegacyBus } from '../src/fx-drawer';
+import { fxBusOf, type FxStageKind } from '../src/fx-legacy';
 
 const OUT = new URL('../../build/floor/', import.meta.url);
 mkdirSync(OUT, { recursive: true });
@@ -109,10 +111,10 @@ for (const [kind, params] of Object.entries(FX) as [FxStageKind, Record<string, 
   const main = p0.modules.find((m) => m.type === 'fm1')!, out = p0.modules.find((m) => m.type === 'output')!, hit = strike(p0, main);
   for (const port of ['l', 'r']) connect(p0, DEFS, { module: hit.id, port: 'out' }, { module: out.id, port });
   const p = withFxBus(p0);
-  const stage = fxBusOf(p)!.stages.find((s) => s.kind === kind)!;
+  const stage = fxBusOf(p, DEFS)!.stages.find((s) => s.kind === kind)!;
   p.assemblies!.find((a) => a.id === stage.assembly)!.bypass = false;
   for (const id of [...stage.helpers, ...stage.targets]) p.modules.find((m) => m.id === id)!.bypass = false;
   for (const id of stage.targets) Object.assign(p.modules.find((m) => m.id === id)!.params, params);
-  render(`fxbus-${kind}`, p);
+  render(`fxbus-${kind}`, convertLegacyBus(p));
 }
 console.log(`${names.length} floor kits in build/floor/`);
