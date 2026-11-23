@@ -7,7 +7,7 @@ import { resizeHandle } from './resize-handle';
 import { FINE, parseValue, stepOf, stepToward, wholeSteps } from './value-input';
 import { isTextEntry } from './input';
 import { lockOf } from './relevance';
-import { clearAround, isPile, tidy, tidyAssembly } from './tidy';
+import { clearAround, isPile, pushAside, tidy, tidyAssembly } from './tidy';
 import { breedPatch, cardScope, ENVELOPES, isLocked, MUTATE_DEFAULT, MUTATE_SKIP, mutatePatch, setParamLock, type Category, type MutateMode, type MutateOptions, type MutateScope } from './mutate';
 import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS, rowRange } from './modules';
 import { FIXED_BUTTONS, setBy, type Range } from './patch';
@@ -87,10 +87,8 @@ import { addPresetOf, applyPreset, capturePreset, deletePreset, drawerChangeText
 import { snapshotPreset } from './snapshot-presets';
 import { engineOf } from './library-presets';
 import { drawerScope } from './fx-preset';
-import { effectsOf, outputDrawer } from './fx-drawer';
+import { chainCableProblem, chainJackProblem, drawerOutput, drawers, effectKind, effectsOf, insertEffect, moveEffect, outputDrawer, ownerOf, removeEffect, rewire, takeOut } from './fx-drawer';
 import { PRESET_VALUES_MAX } from './protocol';
-import { fxBusOf, type FxBus, type FxStage } from './fx-bus';
-import { setFxStageEnabled } from './fx-preset';
 import { armable, armDrawing, armedWith, deviceOfModule, keepArmed, keysTargets, noKeysReach, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
 import { stepGrid, stopEntry, type LockRow, type StepGrid } from './step-grid';
@@ -119,6 +117,7 @@ import { EXCLUDED_TYPES,
   demote,
   depthOf,
   descendants,
+  deviceModules,
   exposePort,
   findRef,
   fixAssemblies,
@@ -252,6 +251,8 @@ export interface EditorEvents {
   outputReadout?(): HTMLElement;
   /** a Limiter card's gain reduction readout (#1019, limit-view.ts), made again at every rebuild */
   limitReadout?(id: number): HTMLElement;
+  /** an FX drawer's + slot: the add list for that drawer, adding at chain position `at` (main.ts) */
+  onAddEffect?(drawerId: number, at: number): void;
   /** a message for the status line */
   onError(msg: string): void;
   /** "save" on an assembly: put this definition into the library */
@@ -320,6 +321,44 @@ const HEAD_Y = 15;
 /** a touch held this long without moving is a long press */
 const LONG_PRESS_MS = 500;
 
+/** a card shown whole inside another element, never on the canvas by itself: an effect in an open FX drawer, or a child its
+ *  collapsed parent shows as an embedded card (spec Model 6) */
+type Embed = { drawer: AssemblyInst } | { embedIn: AssemblyInst };
+/**
+ * An FX drawer as drawn: closed, the purple plug on the card that shows the jacks its chain takes (`taps`: an instrument's
+ * outputs on its right edge, the Output's l / r on its left); open, the drawer with the effect cards. `ends`: the drawer's
+ * own jacks on its far edge, the instrument's sound after its effects (or, for the Output drawer, where sources come in).
+ * `layer`: the chain's dashed wires and copies of the cables over the drawer. `geom`: the last layout, to skip unchanged.
+ */
+type DrawerView = {
+  d: AssemblyInst; label: string; side: 'r' | 'l'; host: HTMLElement; taps: HTMLElement[];
+  plug: HTMLElement | null; drawer: HTMLElement | null; ends: HTMLElement[]; layer: SVGSVGElement | null; geom: string;
+};
+/** where a dragged effect would go: a drawer, at a gap of its chain, or at its end (`at` null: over the closed plug) */
+type FxSpot = { id: number; at: number | null };
+/** FX drawer geometry, px (designs fxdrawer3 and fxdrawer4): the plug and the drawer start this far under the card's edge */
+const FX_TUCK = 18;
+/** the closed plug past the card's edge; an empty drawer's plug is thinner */
+const FX_PLUG_W = 40;
+const FX_PLUG_EMPTY_W = 30;
+/** the band joining a plug's two lobes along their outer edge, round the free jack's window */
+const FX_BAND = 7;
+/** the open drawer is this much shorter than the card at each end, so its outline stays under the card's corners */
+const FX_INSET = 10;
+/** the strip beside the card where its other outputs' cables run down (without other outputs, a narrow one) */
+const FX_GUTTER = 44;
+const FX_GUTTER_BARE = 20;
+/** the drawer's header, the space between effect cards, its corner radius */
+const FX_HEAD = 30;
+const FX_GAP = 30;
+const FX_R = 10;
+/** holding a dragged card over a closed plug this long springs the drawer open */
+const FX_SPRING_MS = 450;
+/** the drawer slides out from behind the card in this time */
+const FX_SLIDE_MS = 200;
+/** a canvas narrower than this opens drawers below their card */
+const FX_NARROW = 760;
+
 /** Main's jack captions on the dock that are shortened */
 const DOCK_SHORT: Record<string, string> = { vel: 'vel', at: 'aft' };
 
@@ -370,6 +409,20 @@ export class Editor {
   private frames = new Map<number, HTMLElement>();
   /** the collapsed assembly cards on the canvas */
   private containers = new Map<number, HTMLElement>();
+  /** the cards shown whole inside another element: effects in open FX drawers, children embedded on a parent's card */
+  private embeds = new Map<number, HTMLElement>();
+  /** the FX drawers drawn in this rebuild, by drawer id */
+  private drawerViews = new Map<number, DrawerView>();
+  /** a closed drawer's plug, standing in for its effects' jacks: the modulation cables into them end on it */
+  private fxAnchors = new Map<number, HTMLElement>();
+  /** an instrument's other outputs beside its open drawer: their cables run down the gutter (`k`: which lane) */
+  private gutterJacks = new Map<HTMLElement, { v: DrawerView; k: number }>();
+  /** drawers just opened: drawn shut, then slid out */
+  private sliding = new Set<number>();
+  /** a drag that can drop an effect into a drawer: the spot under the pointer, the spring-open timer, the drawer it opened */
+  private fxDrag: { spot: FxSpot | null; timer: number; sprung: number | null } = { spot: null, timer: 0, sprung: null };
+  /** the pointer during a card drag (client px) */
+  private dragPointer: Pt | null = null;
   private drag: { path: SVGPathElement; cancel: () => void } | null = null;
   private sliderPorts: { m: ModuleInst; pd: ParamDef; jack: HTMLElement; ticks: (t: { knob: string; unit: number }[]) => void }[] = [];
   private cablePaths: { path: SVGPathElement; from: HTMLElement; to: HTMLElement; origin: HTMLElement; cable?: Cable }[] = [];
@@ -940,6 +993,10 @@ export class Editor {
     this.cards.clear();
     this.frames.clear();
     this.containers.clear();
+    this.embeds.clear();
+    this.drawerViews.clear();
+    this.fxAnchors.clear();
+    this.gutterJacks.clear();
     this.commentEls.clear();
     const copies = copiesOf(this.patch);
     const hidden = hiddenModules(this.patch);
@@ -956,7 +1013,7 @@ export class Editor {
     // an assembly's badge: the voice count of the poly assembly it is (or is inside), else none
     const voicesOf = new Map(polyGroups(this.patch).map((g) => [g.asm.id, g.cfg.parts]));
     const perVoice = (a: AssemblyInst): number => {
-      const first = allModules(this.patch, a)[0];
+      const first = deviceModules(this.patch, a)[0];
       const root = first === undefined ? undefined : polyOfModule(this.patch, first);
       return root ? voicesOf.get(root.id) ?? 0 : 0;
     };
@@ -976,6 +1033,8 @@ export class Editor {
       this.modulesEl.append(this.card(m, DEFS[m.type], copies.get(m.id) ?? 0, a));
     }
     for (const a of visible) if (!a.open) this.modulesEl.append(this.container(a, perVoice(a), parentOf(this.patch, a.id)));
+    // the FX drawers, on the cards that show their jacks (FxModel hides every drawer's subtree from the cards above)
+    for (const d of drawers(this.patch)) this.buildDrawer(d, perVoice(d));
     for (const id of this.selectedComments) if (!this.patch.comments?.some((c) => c.id === id)) this.selectedComments.delete(id);
     for (const c of this.patch.comments ?? []) this.modulesEl.append(this.commentBox(c));
     const drawn = new Set(this.selRows.map((r) => r.key));
@@ -991,6 +1050,7 @@ export class Editor {
     this.sizeCanvas();
     requestAnimationFrame(() => {
       this.layoutFrames();
+      this.layoutDrawers();
       this.sizeCanvas();
       this.drawCables();
     });
@@ -1004,9 +1064,14 @@ export class Editor {
     this.stack = this.stack.filter((key) => keys.includes(key));
     this.stack = [...keys.filter((key) => !this.stack.includes(key)), ...this.stack];
     for (const el of elements) el.style.zIndex = String(2 + this.stack.indexOf(this.layerKey(el)));
+    // a drawer and its plug sit just under their card: its layer, before it in the document
+    for (const v of this.drawerViews.values()) for (const el of [v.plug, v.drawer]) if (el) el.style.zIndex = v.host.style.zIndex;
   }
 
-  private raiseCard(el: HTMLElement): void {
+  private raiseCard(card: HTMLElement): void {
+    // a press in a drawer raises the card it belongs to, one on an embedded card the card it is on
+    const box = card.closest<HTMLElement>('.fx-drawer, .fx-plug');
+    const el = (box && this.drawerViews.get(Number(box.dataset.drawer))?.host) || card.closest<HTMLElement>('.module:not(.embedded)') || card;
     let raised = [this.layerKey(el)];
     if (el.classList.contains('frame')) {
       const a = assembliesOf(this.patch).find((a) => a.id === Number(el.dataset.asm));
@@ -1054,7 +1119,7 @@ export class Editor {
 
   /** lay the scroll space out round the cards and the view at `cam` (by default where it is), and scroll to `cam` */
   private sizeCanvas(cam: Pt = this.camera): void {
-    const elements = [...this.cards.values(), ...this.containers.values(), ...this.frames.values(), ...this.commentEls.values()];
+    const elements = [...this.cards.values(), ...this.containers.values(), ...this.frames.values(), ...this.commentEls.values(), ...this.drawerBoxes()];
     const c = this.canvas, z = this.zoom;
     const MARGIN = 32;
     let content: Rect | null = null;
@@ -1100,6 +1165,11 @@ export class Editor {
     };
     for (const [id, el] of this.cards) fill(el, costs.modules.get(id));
     for (const [id, el] of this.containers) fill(el, costs.assemblies.get(id));
+    for (const [id, el] of this.embeds) fill(el, costs.assemblies.get(id));
+    for (const [id, v] of this.drawerViews) {
+      const chip = v.drawer?.querySelector<HTMLElement>(':scope > .fx-dh .mcpu');
+      if (chip) this.fillCost(chip, costs.assemblies.get(id));
+    }
   }
 
   /** a cost readout: hidden while there is no cost (an editor-only card, before the first estimate) */
@@ -2173,6 +2243,15 @@ export class Editor {
     return t;
   }
 
+  /** an effect card's tag in an FX drawer: FX, purple like the drawer */
+  private fxTag(): HTMLElement {
+    const t = document.createElement('span');
+    t.className = 'mtag fx fx-own';
+    t.textContent = 'FX';
+    t.title = 'An effect in this FX drawer: drag it to move it in the chain, or out onto the canvas';
+    return t;
+  }
+
   /**
    * A card's body: rows of [input jack | parameter | output jack]. A parameter's dedicated input (ParamDef.input) sits on
    * its row; at most EDGE_JACKS jacks hang on each side edge (the outputs from the top, the other inputs in the free rows),
@@ -2992,7 +3071,7 @@ export class Editor {
 
   /** a card's element: a module's card (Main's panel in the dock), or a collapsed assembly's */
   private cardEl(c: Card): HTMLElement | undefined {
-    if (c.kind === 'assembly') return this.containers.get(c.id);
+    if (c.kind === 'assembly') return this.containers.get(c.id) ?? this.embeds.get(c.id);
     return this.cards.get(c.id) ?? (this.docked()?.id === c.id ? this.dock?.querySelector<HTMLElement>('.dock-main') ?? undefined : undefined);
   }
 
@@ -3015,17 +3094,20 @@ export class Editor {
     return el?.isConnected ? el : null;
   }
 
-  /** a card's place on the canvas (layout px); null for Main in the dock or a card not drawn */
+  /** a card's place on the canvas (layout px); null for Main in the dock or a card not drawn; an effect in an open drawer
+   *  where it shows */
   cardRect(c: Card): Rect | null {
+    const inside = c.kind === 'assembly' ? this.embeds.get(c.id) : undefined;
+    if (inside?.isConnected) return this.worldRect(inside);
     const el = c.kind === 'module' ? this.cards.get(c.id) : this.containers.get(c.id);
     return el?.offsetWidth ? { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight } : null;
   }
 
-  /** the places taken on the canvas (layout px): cards, assembly cards and frames, comments (the panels over the canvas
-   *  move with the view, so a card beside another is not kept clear of them) */
+  /** the places taken on the canvas (layout px): cards, assembly cards and frames, comments, FX plugs and open drawers (the
+   *  panels over the canvas move with the view, so a card beside another is not kept clear of them) */
   takenRects(): Rect[] {
     const rect = (el: HTMLElement): Rect => ({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight });
-    return [...this.cards.values(), ...this.containers.values(), ...this.frames.values(), ...this.commentEls.values()].map(rect);
+    return [...this.cards.values(), ...this.containers.values(), ...this.frames.values(), ...this.commentEls.values(), ...this.drawerBoxes()].map(rect);
   }
 
   /** where + Module would put a card `w` wide: near the pointer over the canvas, else the view's centre, in a free cell */
@@ -3438,7 +3520,7 @@ export class Editor {
     const levels = (b: AssemblyInst): number => (b.open ? 1 + Math.max(0, ...childrenOf(this.patch, b).map(levels)) : 0);
     const n = levels(top);
     if (!n) return;
-    const ms = allModules(this.patch, top).map((id) => this.patch.modules.find((m) => m.id === id)).filter((m): m is ModuleInst => !!m);
+    const ms = deviceModules(this.patch, top).map((id) => this.patch.modules.find((m) => m.id === id)).filter((m): m is ModuleInst => !!m);
     if (!ms.length) return;
     const room = n * (FRAME_PAD + FRAME_HEAD) + 8;
     const ys = Math.min(...ms.map((m) => m.y));
@@ -4739,50 +4821,29 @@ export class Editor {
 
   /**
    * Bypass switches set in the patch (#1054): the modules `ids` bypassed (`on`) or back on, or with `a` that assembly's
-   * own switch (assembly.ts bypassAssembly). Every bypass the editor makes comes through here or setFxStage: a card's ⏻,
-   * an assembly's, an FX stage switch, Bypass selection, a Toggle pressed on the dock, on the FM-1 or as MIDI CC 80..86,
-   * the tutorial. The patch and every view of it change together; the caller sends the engines what they need. Returns
-   * the modules whose switch moved.
+   * own switch (assembly.ts bypassAssembly: an effect's ⏻, an FX drawer's ⏻ keeping each effect's own state). Every bypass
+   * the editor makes comes through here: a card's ⏻, an assembly's, Bypass selection, a Toggle pressed on the dock, on the
+   * FM-1 or as MIDI CC 80..86, the FM-1's effect switch, the tutorial. The patch and every view of it change together; the
+   * caller sends the engines what they need. Returns the modules whose switch moved.
    */
   setBypass(ids: readonly number[], on: boolean, a?: AssemblyInst): number[] {
-    return this.bypassChange(() => {
-      if (a) return bypassAssembly(this.patch, a, on);
-      const moved: number[] = [];
-      for (const id of ids) {
-        const m = this.patch.modules.find((x) => x.id === id);
-        if (!m || !!m.bypass === on) continue;
-        if (on) m.bypass = true;
-        else delete m.bypass;
-        moved.push(id);
-      }
-      return moved;
-    });
-  }
-
-  /** an FX stage on or off whole, as the FM-1's FX page switches it (D-966, fx-preset.ts setFxStageEnabled), shown as
-   *  setBypass shows a change. Returns the stage's modules */
-  setFxStage(stage: FxStage, on: boolean): number[] {
-    return this.bypassChange(() => setFxStageEnabled(this.patch, stage, on));
-  }
-
-  /** a bypass change, then its views: drawn again in place (showBypass), or the whole canvas when it changed whether the
-   *  patch has a master FX bus or which stages it has (fx-bus.ts fxBusOf: the bus card's switches come and go) */
-  private bypassChange(change: () => number[]): number[] {
-    const bus = (): string => {
-      const b = fxBusOf(this.patch);
-      return b ? `${b.assembly}:${b.stages.map((s) => s.assembly).join()}` : '';
-    };
-    const was = bus();
-    const moved = change();
-    if (bus() !== was) this.rebuild();
-    else this.showBypass();
+    const moved: number[] = [];
+    if (a) moved.push(...bypassAssembly(this.patch, a, on));
+    else for (const id of ids) {
+      const m = this.patch.modules.find((x) => x.id === id);
+      if (!m || !!m.bypass === on) continue;
+      if (on) m.bypass = true;
+      else delete m.bypass;
+      moved.push(id);
+    }
+    this.showBypass();
     return moved;
   }
 
   /**
    * Every view of the bypass switches drawn again from the patch, in place (no redraw: a dock button may be held, a card
-   * dragged): each card's stripes and ⏻, each assembly's card, frame and ⏻, the master FX bus card's stage switches and
-   * dimmed rows (D-966), and the dock's Toggle lights.
+   * dragged): each card's stripes and ⏻, each assembly's card, frame and ⏻, the effect cards in open FX drawers and each
+   * drawer's own ⏻, and the dock's Toggle lights.
    */
   private showBypass(): void {
     const power = (b: Element | null | undefined, on: boolean): void => {
@@ -4797,12 +4858,15 @@ export class Editor {
       power(card.querySelector(':scope > .mhead button.pw'), !off);
     }
     const asmOff = new Map(assembliesOf(this.patch).map((a) => [a.id, this.asmOffShown(a)]));
-    for (const [id, off] of asmOff) for (const el of [this.containers.get(id), this.frames.get(id)]) {
+    for (const [id, off] of asmOff) for (const el of [this.containers.get(id), this.frames.get(id), this.embeds.get(id)]) {
       el?.classList.toggle('off', off);
       power(el?.querySelector(':scope > .mhead button.pw, :scope > .fhead button.pw'), !off);
     }
-    for (const el of this.modulesEl.querySelectorAll<HTMLElement>('[data-stage]')) el.classList.toggle('stage-off', !!asmOff.get(Number(el.dataset.stage)));
-    for (const b of this.modulesEl.querySelectorAll<HTMLElement>('.fx-stages button.fx-stage')) power(b, !asmOff.get(Number(b.dataset.asm)));
+    for (const [id, v] of this.drawerViews) {
+      const off = !!asmOff.get(id);
+      for (const el of [v.plug, v.drawer]) el?.classList.toggle('off', off);
+      power(v.drawer?.querySelector(':scope > .fx-dh button.pw'), !off);
+    }
     const panel = this.patch.modules.find((x) => x.type === 'fm1')?.panel;
     for (const b of PANEL_BUTTONS) {
       if (FIXED_BUTTONS.has(b) || kindOf(panel, b) !== 'bypass') continue;
@@ -5137,28 +5201,6 @@ export class Editor {
     return [...arm, this.polyButton(a), pw, this.moreButton((at) => this.assemblyMenu(a, at))];
   }
 
-  /** the collapsed master FX bus card's stage switches (D-966): one per present stage, named as its stage card, each that
-   * card's ⏻, so a stage turns on or off without expanding the bus */
-  private fxStageSwitches(bus: FxBus): HTMLElement {
-    const row = document.createElement('div');
-    row.className = 'fx-stages';
-    row.setAttribute('role', 'group');
-    row.setAttribute('aria-label', 'Effects on / off');
-    for (const s of bus.stages) {
-      const st = this.patch.assemblies!.find((x) => x.id === s.assembly)!;
-      const b = this.button(st.label, `${st.label} on / off (bypass every module inside)`, () => {
-        this.switchAssembly(st);
-        // (the card is redrawn: keyboard focus stays on the switch)
-        this.modulesEl.querySelector<HTMLElement>(`.fx-stages button[data-asm="${st.id}"]`)?.focus();
-      }, 'sm fx-stage');
-      b.classList.toggle('on', !this.asmOffShown(st));
-      b.setAttribute('aria-pressed', String(!this.asmOffShown(st)));
-      b.dataset.asm = String(st.id);
-      row.append(b);
-    }
-    return row;
-  }
-
   /** the preset chip on an assembly device that has presets (#192), and on every effect (its own presets, so its first one
    * can be stored from it): ‹ name › steps through them (each load one undo step), the name opens the list; a star after
    * it once a value differs from the preset */
@@ -5370,20 +5412,26 @@ export class Editor {
 
   /**
    * The collapsed assembly: one card with the exposed ports and the promoted parameters. Inside an expanded parent (`open`)
-   * its rows get the parent's expose / pin toggles, like a member card's.
+   * its rows get the parent's expose / pin toggles, like a member card's. `embed`: the card shown whole inside another
+   * element, never on the canvas by itself: an effect in an open FX drawer, or a child its collapsed parent shows as an
+   * embedded card (spec Model 6). Neither can be expanded there.
    */
-  private container(a: AssemblyInst, perVoice: number, parent?: AssemblyInst): HTMLElement {
-    const arranging = this.arrangeAsm === a.id;
+  private container(a: AssemblyInst, perVoice: number, parent?: AssemblyInst, embed?: Embed): HTMLElement {
+    const arranging = !embed && this.arrangeAsm === a.id;
     // while its own card is arranged, the parent's pick toggles stay off it
     const open = arranging ? undefined : parent;
+    const inDrawer = embed && 'drawer' in embed ? embed.drawer : undefined;
+    const embedIn = embed && 'embedIn' in embed ? embed.embedIn : undefined;
     const ncols = paramColumns(a.params).length;
     const el = document.createElement('div');
-    el.className = 'module assembly' + (this.armedSet.has(`a${a.id}`) ? ' armed' : '') + (a.poly ? ' poly' : '') + (parent ? ' member' : '') + (this.asmOffShown(a) ? ' off' : '') + (this.picking(open) ? ' picking' : '') + (this.selectedAsm.has(a.id) ? ' selected' : '') + (arranging ? ' arranging' : '') + (ncols > 1 ? ' cols' : '');
+    el.className = 'module assembly' + (this.armedSet.has(`a${a.id}`) ? ' armed' : '') + (a.poly ? ' poly' : '') + (parent ? ' member' : '') + (this.asmOffShown(a) ? ' off' : '') + (this.picking(open) ? ' picking' : '') + (this.selectedAsm.has(a.id) ? ' selected' : '') + (arranging ? ' arranging' : '') + (ncols > 1 ? ' cols' : '') + (embed ? ' embedded' : '') + (inDrawer ? ' fx-card' : '');
     if (ncols > 1) el.style.setProperty('--cols', String(ncols));
-    el.style.left = `${a.x}px`;
-    el.style.top = `${a.y}px`;
+    if (!embed) {
+      el.style.left = `${a.x}px`;
+      el.style.top = `${a.y}px`;
+    }
     el.dataset.asm = String(a.id);
-    this.containers.set(a.id, el);
+    (embed ? this.embeds : this.containers).set(a.id, el);
     const head = document.createElement('div');
     head.className = 'mhead';
     const tools = document.createElement('span');
@@ -5397,14 +5445,34 @@ export class Editor {
       tools.append(act, done);
     }
     if (parent) tools.append(this.outButton(parent, () => this.takeOutAssembly(parent, a)));
-    tools.append(...this.assemblyButtons(a));
     const title = this.titleOf(a, perVoice);
-    title.prepend(this.tag(null, a));
     const chip = parent ? null : this.presetChip(a);
     tools.prepend(this.costSlot(this.costs?.assemblies.get(a.id)));
-    head.append(this.chevron(a), title, ...(chip ? [chip] : []), tools);
-    this.headMenu(head, (at) => this.assemblyMenu(a, at));
-    this.assemblyDrag(el, head, a);
+    if (embed) {
+      const menu = (at: Pt): void => (inDrawer ? this.effectMenu(inDrawer, a, at) : this.embedMenu(embedIn!, a, at));
+      const pw = this.button('⏻', `${a.label} on / off (bypass)`, () => this.switchAssembly(a), 'pw');
+      pw.classList.toggle('on', !this.asmOffShown(a));
+      pw.setAttribute('aria-pressed', String(!this.asmOffShown(a)));
+      tools.append(pw, this.moreButton(menu));
+      title.prepend(inDrawer ? this.fxTag() : this.tag(null, a));
+      const lead: HTMLElement[] = [];
+      if (inDrawer) {
+        const grip = document.createElement('span');
+        grip.className = 'grip';
+        grip.textContent = '⠿';
+        grip.title = 'Drag to move it in the chain, or out onto the canvas';
+        lead.push(grip);
+      }
+      head.append(...lead, title, ...(chip ? [chip] : []), tools);
+      this.headMenu(head, menu);
+      if (inDrawer) this.effectDrag(head, el, inDrawer, a);
+    } else {
+      tools.append(...this.assemblyButtons(a));
+      title.prepend(this.tag(null, a));
+      head.append(this.chevron(a), title, ...(chip ? [chip] : []), tools);
+      this.headMenu(head, (at) => this.assemblyMenu(a, at));
+      this.assemblyDrag(el, head, a);
+    }
 
     const body = document.createElement('div');
     body.className = 'mbody';
@@ -5435,14 +5503,6 @@ export class Editor {
     const copy = copyStarts(a.params);
     const starts = new Map(groupStarts(kept.map((i) => ({ ...a.params[i], copy: copy[i], knob: !shown[i].screen }))).map((st, k) => [kept[k], st && k > 0]));
     const tie = this.patch.assemblies?.some((x) => x.params.some((r) => r.also || r.names)) ? ties(this.patch) : null;
-    // the master FX bus card: each stage's rows (and their headings) carry the stage, dimmed while it is off as its switch
-    // shows it (D-966; showBypass dims them again in place)
-    const bus = !parent && a.children?.length ? fxBusOf(this.patch) : null;
-    const stageOf = new Map<number, AssemblyInst>();
-    if (bus?.assembly === a.id) for (const s of bus.stages) {
-      const st = this.patch.assemblies!.find((x) => x.id === s.assembly)!;
-      for (const id of st.modules) stageOf.set(id, st);
-    }
     // copies shown one at a time (the CZ's envelope steps): only the picked one, under a row that picks it
     const runs = copyRuns(a.params);
     const runOf = (i: number) => runs.find((x) => i >= x.at && i < x.at + x.rows * x.count);
@@ -5458,22 +5518,679 @@ export class Editor {
       const first = run && i === run.at + picked * run.rows;
       const lead = first ? a.params[run.at] : r;   // (the run's heading and column break stay above whichever copy shows)
       const above = [...(lead.head ? [this.heading(a, first ? run.at : i)] : []), ...(first ? [this.copyPicker(a, run)] : [])];
-      const st = stageOf.get(m.id);
-      if (st) for (const e of [row, ...above]) {
-        e.dataset.stage = String(st.id);
-        e.classList.toggle('stage-off', this.asmOffShown(st));
-      }
       return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!lead.col, above, span: pd.screen ? r.span : undefined, gap: !!starts.get(first ? run.at : i) && !lead.col && !lead.head && !run }];
     });
     body.append(...this.edgeLayout(ins, outs, params));
-    if (!a.inputs.length && !a.outputs.length && !a.params.length) {
+    // an effect's chain jacks in a drawer: the drawer wires them (dashed purple), a cable onto one is refused
+    if (inDrawer && a.chain) {
+      const mark = (refs: PortRef[], idx: readonly number[], dir: 'in' | 'out'): void => {
+        for (const i of idx) if (refs[i]) body.querySelector(`.dot[data-mod="${refs[i].module}"][data-port="${refs[i].port}"][data-dir="${dir}"]`)?.classList.add('chain');
+      };
+      mark(a.inputs, a.chain.ins, 'in');
+      mark(a.outputs, a.chain.outs, 'out');
+    }
+    // the children shown whole on this card (spec Model 6): live cards inside its body, their cables free
+    const shownCards = embed ? [] : (a.cards ?? []).map((id) => childrenOf(this.patch, a).find((c) => c.id === id && !c.drawer)).filter((c): c is AssemblyInst => !!c);
+    if (shownCards.length && !arranging) {
+      const box = document.createElement('div');
+      box.className = 'embed-cards';
+      box.append(...shownCards.map((c) => this.container(c, perVoice, undefined, { embedIn: a })));
+      body.append(box);
+      el.dataset.embedHost = '';
+    }
+    if (arranging) {
+      const kids = childrenOf(this.patch, a).filter((c) => !c.drawer);
+      if (kids.length) body.append(this.embedPicker(a, kids));
+    }
+    if (!a.inputs.length && !a.outputs.length && !a.params.length && !shownCards.length) {
       const hint = document.createElement('p');
       hint.className = 'muted empty';
       hint.textContent = 'nothing exposed: open it and mark ports and parameters';
       body.append(hint);
     }
-    el.append(head, ...(bus?.assembly === a.id ? [this.fxStageSwitches(bus)] : []), body);
+    el.append(head, body);
     return el;
+  }
+
+  /** Arrange mode's list of the children that can be shown whole on the card (spec Model 6): one switch each */
+  private embedPicker(a: AssemblyInst, kids: AssemblyInst[]): HTMLElement {
+    const box = document.createElement('div');
+    box.className = 'embed-pick';
+    const label = document.createElement('span');
+    label.textContent = 'Show whole on the card:';
+    box.append(label);
+    for (const c of kids) {
+      const on = !!a.cards?.includes(c.id);
+      const b = this.button(c.label, on ? `${c.label} shows whole on this card. Click to show it as rows again` : `Show ${c.label} whole on this card, as a live card with its own jacks`, () => this.setEmbedded(a, c, !on), 'sm embed-toggle');
+      b.setAttribute('aria-pressed', String(on));
+      box.append(b);
+    }
+    return box;
+  }
+
+  /** a child shown whole on its parent's card, or not (a layout change: undoable, saved, no engine reload) */
+  private setEmbedded(a: AssemblyInst, child: AssemblyInst, on: boolean): void {
+    this.layoutChange(() => {
+      const list = (a.cards ?? []).filter((id) => id !== child.id);
+      if (on) list.push(child.id);
+      if (list.length) a.cards = list;
+      else delete a.cards;
+    });
+  }
+
+  /** the ⋯ of a child shown whole on its parent's card */
+  private embedMenu(parent: AssemblyInst, a: AssemblyInst, at: Pt): void {
+    this.popMenu([
+      { text: a.bypass ? 'Turn on' : 'Bypass', run: () => this.switchAssembly(a) },
+      { text: 'Rename', run: () => this.rename(a) },
+      { text: 'Show as rows again', run: () => this.setEmbedded(parent, a, false) },
+    ], at);
+  }
+
+  // ---- FX drawers (spec "The drawer (editor)"): the plug on the card, the drawer sliding out from behind it, the effect
+  // cards inside, effects dropped in and dragged out. Every change to a drawer goes through fx-drawer.ts in one change(),
+  // which rewires the chain, so it never goes silent (#1214).
+
+  /** the jack on the canvas that shows this end: its own, or a merged jack that includes it */
+  private jackAt(t: Endpoint, dir: 'in' | 'out'): HTMLElement | undefined {
+    return this.ports.get(this.key(t.module, t.port, dir)) ?? [...this.ports.values()].find((dot) =>
+      dot.dataset.dir === dir && dot.dataset.also && (JSON.parse(dot.dataset.also) as Target[]).some((x) => sameEnd(x, t)));
+  }
+
+  /** a drawer on the card that shows its jacks: the plug, or the open drawer with its effects; placed by layoutDrawer */
+  private buildDrawer(d: AssemblyInst, perVoice: number): void {
+    const own = ownerOf(this.patch, d);
+    const output = this.patch.modules.find((m) => m.type === 'output');
+    const owner = own === 'output' ? null : own;
+    const ends: Endpoint[] = owner ? [...(d.drawer?.taps ?? [])] : output ? [{ module: output.id, port: 'l' }, { module: output.id, port: 'r' }] : [];
+    const taps = [...new Set(ends.map((t) => this.jackAt(t, owner ? 'out' : 'in')).filter((j): j is HTMLElement => !!j))];
+    const host = taps[0]?.closest<HTMLElement>('.module');
+    if (!host || host.parentElement !== this.modulesEl) return;   // (its card is not on the canvas: inside a collapsed assembly)
+    const effects = effectsOf(this.patch, d);
+    const v: DrawerView = { d, label: owner ? owner.label : 'Output', side: owner ? 'r' : 'l', host, taps, plug: null, drawer: null, ends: [], layer: null, geom: '' };
+    this.drawerViews.set(d.id, v);
+    for (const t of taps) t.classList.add('plugged');
+    if (d.open) this.drawerEl(v, effects, perVoice);
+    else {
+      this.plugEl(v, effects.length);
+      // the effects' jacks are hidden: their modulation cables end on the plug
+      for (const id of allModules(this.patch, d)) this.fxAnchors.set(id, v.plug!);
+    }
+    this.drawerEnds(v, effects, output, owner);
+    for (const el of [v.plug, v.drawer]) if (el) host.before(el);
+  }
+
+  /**
+   * The drawer's own jacks on its far edge (on the plug while closed). An instrument's: its sound after the effects
+   * (fx-drawer.ts drawerOutput), cabled like its own output. The Output drawer's: the Output's l / r, where cables come in;
+   * with effects, the cables into the first effect are drawn to them.
+   */
+  private drawerEnds(v: DrawerView, effects: AssemblyInst[], output: ModuleInst | undefined, owner: AssemblyInst | null): void {
+    const box = v.drawer ?? v.plug!;
+    const make = (end: Endpoint, also: Endpoint[], dir: 'in' | 'out', title: string): HTMLElement | null => {
+      const m = this.patch.modules.find((x) => x.id === end.module);
+      const pd = m && (dir === 'out' ? DEFS[m.type].outputs : DEFS[m.type].inputs).find((q) => q.name === end.port);
+      if (!m || !pd) return null;
+      const dot = this.jack(m, pd, dir);
+      dot.classList.add('fx-end');
+      dot.title = title;
+      if (also.length) dot.dataset.also = JSON.stringify(also);
+      const wrap = document.createElement('span');
+      wrap.className = 'fx-jack';
+      wrap.append(dot);
+      box.append(wrap);
+      v.ends.push(dot);
+      return dot;
+    };
+    if (owner) {
+      const seen = new Set<string>();
+      for (const ch of [0, 1] as const) {
+        const list = ([] as Endpoint[]).concat(drawerOutput(this.patch, owner.id, ch) ?? []);
+        const sig = JSON.stringify(list);
+        if (!list.length || seen.has(sig)) continue;
+        seen.add(sig);
+        make(list[0], list.slice(1), 'out', `${v.label} ${ch ? 'out R' : 'out L'}, after its effects: cable it as the instrument's own output`);
+      }
+      return;
+    }
+    if (!output) return;
+    const first = effects[0];
+    (['l', 'r'] as const).forEach((port, ch) => {
+      const own = this.ports.get(this.key(output.id, port, 'in'));
+      const dot = make({ module: output.id, port }, [], 'in', `Into the Output's FX drawer, ${port === 'l' ? 'left' : 'right'}`);
+      if (!dot || !first?.chain) return;
+      // (the Output's own jack keeps the chain's last wire; the cables into the first effect are drawn here)
+      if (own) this.ports.set(this.key(output.id, port, 'in'), own);
+      const ref = first.inputs[first.chain.ins[ch]];
+      if (ref) for (const t of targetsOf(ref)) this.ports.set(this.key(t.module, t.port, 'in'), dot);
+    });
+  }
+
+  /** the closed drawer: the FX plug on the card's edge, over the jacks the chain takes; a click opens it */
+  private plugEl(v: DrawerView, n: number): void {
+    const p = document.createElement('div');
+    p.className = `fx-plug side-${v.side}` + (n ? '' : ' empty') + (this.asmOffShown(v.d) ? ' off' : '');
+    p.dataset.drawer = String(v.d.id);
+    p.tabIndex = 0;
+    p.setAttribute('role', 'button');
+    const what = n ? `${n} effect${n === 1 ? '' : 's'}` : 'no effects yet';
+    p.title = `FX drawer of ${v.label}: ${what}. Click to open it. Drop an effect here to add it at the end, or hold it here to pick its place`;
+    p.setAttribute('aria-label', `Open the FX drawer of ${v.label} (${what})`);
+    p.innerHTML = '<svg class="fx-plug-shape" aria-hidden="true"><path/></svg>';
+    for (let i = 0; i < 2; i++) {
+      const l = document.createElement('span');
+      l.className = 'fx-pl';
+      l.textContent = n ? 'FX' : 'FX +';
+      if (n && !i) {
+        const c = document.createElement('small');
+        c.textContent = String(n);
+        l.append(c);
+      }
+      p.append(l);
+    }
+    const badge = document.createElement('span');
+    badge.className = 'fx-badge';
+    badge.textContent = '+ at the end · hold to open';
+    p.append(badge);
+    const open = (): void => {
+      this.setDrawerOpen(v.d.id, true);
+      this.ev.onLayout(this.patch);
+      this.clearForDrawer(v.d.id);
+    };
+    p.addEventListener('pointerdown', (e) => e.stopPropagation());   // (no rubber band from it)
+    p.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!(e.target as HTMLElement).closest('.dot')) open();
+    });
+    p.addEventListener('keydown', (e) => {
+      if (e.target !== p || (e.key !== 'Enter' && e.key !== ' ')) return;
+      e.preventDefault();
+      open();
+    });
+    v.plug = p;
+  }
+
+  /** the open drawer: its header (▼, name, CPU, ⏻), each effect as a full live card in signal order, the + slot */
+  private drawerEl(v: DrawerView, effects: AssemblyInst[], perVoice: number): void {
+    const el = document.createElement('div');
+    const narrow = this.canvas.clientWidth > 0 && this.canvas.clientWidth < FX_NARROW;
+    el.className = `fx-drawer side-${v.side}` + (narrow ? ' under' : '') + (this.asmOffShown(v.d) ? ' off' : '') + (this.sliding.has(v.d.id) ? ' shut' : '');
+    el.dataset.drawer = String(v.d.id);
+    el.innerHTML = '<svg class="fx-shape" aria-hidden="true"><g><path class="body"/><path class="gut"/><path class="gutl"/><path class="edge"/></g></svg>';
+    const layer = document.createElementNS(SVGNS, 'svg') as SVGSVGElement;
+    layer.setAttribute('class', 'cables fx-layer');
+    layer.innerHTML = '<g class="fx-deco"></g>';
+    v.layer = layer;
+    const head = document.createElement('div');
+    head.className = 'fx-dh';
+    const close = this.button('▼', `Close the FX drawer of ${v.label}`, () => {
+      this.setDrawerOpen(v.d.id, false);
+      this.ev.onLayout(this.patch);
+    }, 'sm fx-close');
+    const name = document.createElement('span');
+    name.className = 'grow';
+    name.textContent = `FX · ${v.label}`;
+    const off = this.asmOffShown(v.d);
+    const pw = this.button('⏻', 'The whole drawer on / off (each effect keeps its own switch)', () => this.switchAssembly(v.d), 'pw');
+    pw.classList.toggle('on', !off);
+    pw.setAttribute('aria-pressed', String(!off));
+    head.append(close, name, this.costSlot(this.costs?.assemblies.get(v.d.id)), pw);
+    const row = document.createElement('div');
+    row.className = 'fx-row';
+    for (const e of effects) row.append(this.container(e, perVoice, undefined, { drawer: v.d }));
+    const slot = document.createElement('button');
+    slot.type = 'button';
+    slot.className = 'fx-slot' + (effects.length ? '' : ' empty');
+    slot.innerHTML = '<b>+</b><span>drop effects here</span>';
+    slot.title = 'Add an effect to this drawer (or drag one here from the canvas or the Library)';
+    slot.onclick = (e) => {
+      e.stopPropagation();
+      this.ev.onAddEffect?.(v.d.id, effects.length);
+    };
+    const mark = document.createElement('div');
+    mark.className = 'fx-mark';
+    mark.hidden = true;
+    row.append(slot);
+    el.append(layer, head, row, mark);
+    el.addEventListener('pointerdown', (e) => { if (e.target === el || (e.target as Element).closest('.fx-dh, .fx-shape')) e.stopPropagation(); });
+    v.drawer = el;
+    if (this.sliding.delete(v.d.id)) requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('shut')));
+  }
+
+  /** the plugs and open drawers drawn and placed */
+  private drawerBoxes(): HTMLElement[] {
+    return [...this.drawerViews.values()].flatMap((v) => (v.geom ? [v.plug, v.drawer].filter((el): el is HTMLElement => !!el) : []));
+  }
+
+  private layoutDrawers(): void {
+    for (const v of this.drawerViews.values()) if (v.host.isConnected) this.layoutDrawer(v);
+  }
+
+  /**
+   * Place a drawer on its card (layout px), from where the card and its jacks are now. Closed: the plug 18 px under the
+   * card's edge, as tall as the jacks it covers; jacks not next to each other get two lobes joined by a band along their
+   * outer edge, round a window where the free jack stays (fxdrawer4 design E). Open: the drawer 10 px shorter than the card
+   * at each end, taller only for a taller effect (then shown below the card as a corner the card sits on), with a gutter
+   * beside the card for its other outputs; on a narrow canvas, below the card.
+   */
+  private layoutDrawer(v: DrawerView): void {
+    const z = this.zoom;
+    const hr = v.host.getBoundingClientRect();
+    const hx = v.host.offsetLeft, hy = v.host.offsetTop, hw = v.host.offsetWidth, hh = v.host.offsetHeight;
+    const at = (el: Element): Pt => {
+      const r = el.getBoundingClientRect();
+      return { x: (r.left + r.width / 2 - hr.left) / z, y: Math.round((r.top + r.height / 2 - hr.top) / z) };
+    };
+    const ys = [...new Set(v.taps.map((t) => at(t).y))].sort((a, b) => a - b);
+    const edge = v.side === 'r' ? hw : 0;
+    const others = [...v.host.querySelectorAll<HTMLElement>(`.dot[data-dir="${v.side === 'r' ? 'out' : 'in'}"]`)]
+      .filter((d) => !v.taps.includes(d) && d.dataset.edge !== 'bottom' && !d.closest('.embedded') && Math.abs(at(d).x - edge) < 12)
+      .map((d) => ({ d, y: at(d).y })).sort((a, b) => a.y - b.y);
+    const row = v.drawer?.querySelector<HTMLElement>(':scope > .fx-row');
+    const narrow = !!v.drawer?.classList.contains('under');
+    const geom = [hx, hy, hw, hh, ys, others.map((o) => o.y), row?.offsetWidth, row?.offsetHeight, narrow && this.canvas.clientWidth / z].join(' ');
+    if (geom === v.geom) return;
+    v.geom = geom;
+    const place = (el: HTMLElement, x: number, y: number): void => {
+      el.style.left = `${x}px`;
+      el.style.top = `${y}px`;
+    };
+    const R = FX_R;
+    if (v.plug) {
+      const p = v.plug;
+      const W = FX_TUCK + (p.classList.contains('empty') ? FX_PLUG_EMPTY_W : FX_PLUG_W);
+      const y0 = ys[0], y1 = ys[ys.length - 1], H = y1 - y0 + 30;
+      const win = others.some((o) => o.y > y0 + 6 && o.y < y1 - 6);
+      place(p, v.side === 'r' ? hx + hw - FX_TUCK : hx - W + FX_TUCK, hy + y0 - 15);
+      p.style.width = `${W}px`;
+      p.style.height = `${H}px`;
+      p.classList.toggle('window', win);
+      const svg = p.querySelector('svg')!, path = svg.querySelector('path')!;
+      svg.setAttribute('width', String(W));
+      svg.setAttribute('height', String(H));
+      const hx1 = W - FX_BAND, wy0 = 28, wy1 = H - 28;
+      path.setAttribute('d', `M0 0 H${W - 9} A9 9 0 0 1 ${W} 9 V${H - 9} A9 9 0 0 1 ${W - 9} ${H} H0 Z` +
+        (win ? ` M2 ${wy0} H${hx1 - 4} A4 4 0 0 1 ${hx1} ${wy0 + 4} V${wy1 - 4} A4 4 0 0 1 ${hx1 - 4} ${wy1} H2 Z` : ''));
+      path.setAttribute('transform', v.side === 'r' ? '' : `translate(${W} 0) scale(-1 1)`);
+      const mid = FX_TUCK + (W - FX_TUCK - (win ? FX_BAND : 0)) / 2;
+      const lx = v.side === 'r' ? mid : W - mid;
+      const labels = p.querySelectorAll<HTMLElement>(':scope > .fx-pl');
+      labels.forEach((l, i) => {
+        l.hidden = i > 0 && !win;
+        l.classList.toggle('roomy', !win && H > 40);
+        place(l, lx, win ? (i ? H - 15 : 15) : H / 2);
+      });
+      v.ends.forEach((dot, i) => place(dot.parentElement!, v.side === 'r' ? W : 0, ys[Math.min(i, ys.length - 1)] - y0 + 15));
+    }
+    const el = v.drawer;
+    if (!el || !row) return;
+    const gut = others.length ? FX_GUTTER : FX_GUTTER_BARE;
+    el.style.setProperty('--fx-lead', `${FX_TUCK + gut}px`);
+    el.style.setProperty('--fx-band', `${FX_TUCK + 36}px`);
+    if (narrow) {
+      el.style.minWidth = `${hw}px`;
+      el.style.maxWidth = `${Math.max(hw, this.canvas.clientWidth / z - 24)}px`;
+      place(el, hx, hy + hh - FX_TUCK);
+    } else {
+      el.style.minHeight = `${hh - 2 * FX_INSET}px`;
+      el.style.top = `${hy + FX_INSET}px`;
+    }
+    const w = el.offsetWidth, h = el.offsetHeight;
+    if (!narrow) el.style.left = `${v.side === 'r' ? hx + hw - FX_TUCK : hx + FX_TUCK - w}px`;
+    const svg = el.querySelector<SVGSVGElement>(':scope > .fx-shape')!;
+    svg.setAttribute('width', String(w));
+    svg.setAttribute('height', String(h));
+    const set = (cls: string, d: string): void => svg.querySelector(`.${cls}`)!.setAttribute('d', d);
+    if (narrow) {
+      const band = FX_TUCK + 36, wide = w > hw + 1;
+      const body = wide
+        ? `M0 0 H${hw - 2} V${FX_TUCK} H${w - R} A${R} ${R} 0 0 1 ${w} ${FX_TUCK + R} V${h - R} A${R} ${R} 0 0 1 ${w - R} ${h} H${R} A${R} ${R} 0 0 1 0 ${h - R} Z`
+        : `M0 0 H${w} V${h - R} A${R} ${R} 0 0 1 ${w - R} ${h} H${R} A${R} ${R} 0 0 1 0 ${h - R} Z`;
+      set('body', body);
+      set('edge', body);
+      set('gut', wide ? `M0 0 H${hw - 2} V${FX_TUCK} H${w - R} A${R} ${R} 0 0 1 ${w} ${FX_TUCK + R} V${band} H0 Z` : `M0 0 H${w} V${band} H0 Z`);
+      set('gutl', `M0 ${band} H${w}`);
+      svg.querySelector('g')!.removeAttribute('transform');
+    } else {
+      // the card's bottom in the drawer's own coordinates: a taller drawer shows below it as a rounded corner
+      const below = h > hh - FX_INSET + 0.5;
+      const foot = below ? `H${R} A${R} ${R} 0 0 1 0 ${h - R}` : 'H0';
+      const body = `M0 0 H${w - R} A${R} ${R} 0 0 1 ${w} ${R} V${h - R} A${R} ${R} 0 0 1 ${w - R} ${h} ${foot} Z`;
+      const g = FX_TUCK + gut;
+      set('body', body);
+      set('edge', body);
+      set('gut', `M0 0 H${g} V${h} ${foot} Z`);
+      set('gutl', `M${g} 0 V${h}`);
+      const t = svg.querySelector('g')!;
+      if (v.side === 'r') t.removeAttribute('transform');
+      else t.setAttribute('transform', `translate(${w} 0) scale(-1 1)`);
+    }
+    // the drawer's jacks: level with the chain's ends on the last (first, for the Output) effect card, else with the card's
+    const cards = [...row.querySelectorAll<HTMLElement>(':scope > .fx-card')];
+    const endCard = v.side === 'r' ? cards[cards.length - 1] : cards[0];
+    const chainDots = endCard ? [...endCard.querySelectorAll<HTMLElement>(`.dot.chain[data-dir="${v.side === 'r' ? 'out' : 'in'}"]`)] : [];
+    const inDrawer = (dot: HTMLElement): Pt => this.center(dot, el);
+    const deco = v.layer!.querySelector('.fx-deco')!;
+    deco.replaceChildren();
+    v.ends.forEach((dot, i) => {
+      const from = chainDots[Math.min(i, chainDots.length - 1)];
+      const tap = v.taps[Math.min(i, v.taps.length - 1)];
+      const y = from ? inDrawer(from).y : narrow ? FX_TUCK + 36 + FX_HEAD + 50 + i * 24 : ys[Math.min(i, ys.length - 1)] - FX_INSET;
+      place(dot.parentElement!, v.side === 'r' ? w : 0, y);
+      // a dashed stub from the chain's end (or, empty, from the card's jack) to the drawer's jack
+      const a = from ? inDrawer(from) : tap && !narrow ? inDrawer(tap) : null;
+      if (!a) return;
+      const b = { x: v.side === 'r' ? w : 0, y };
+      const stub = document.createElementNS(SVGNS, 'path');
+      stub.setAttribute('class', 'cable chain fixed');
+      stub.setAttribute('d', v.side === 'r' ? this.curve(a, b) : this.curve(b, a));
+      deco.append(stub);
+    });
+    // the card's other outputs stay on its edge, over the gutter: their cables run down it and out under the drawer
+    if (!narrow && v.side === 'r') others.forEach((o, k) => this.gutterJacks.set(o.d, { v, k }));
+  }
+
+  /** a gutter jack's cable: along to its lane in the gutter, down past the drawer's bottom, then out to its far end */
+  private gutterRoute(from: HTMLElement, to: HTMLElement): Pt[] | undefined {
+    const g = this.gutterJacks.get(from);
+    if (!g?.v.drawer?.isConnected || !from.isConnected) return undefined;
+    const s = this.center(from), t = this.center(to), r = this.worldRect(g.v.drawer);
+    const gx = s.x + 14 + g.k * 12, ey = r.y + r.h + 18 + g.k * 10;
+    const line = (a: Pt, b: Pt): Pt[] => [{ x: a.x + (b.x - a.x) / 3, y: a.y + (b.y - a.y) / 3 }, { x: a.x + (2 * (b.x - a.x)) / 3, y: a.y + (2 * (b.y - a.y)) / 3 }, b];
+    const c1 = { x: gx, y: s.y }, p1 = { x: gx - 6, y: s.y }, p2 = { x: gx, y: s.y + 6 };
+    const c2 = { x: gx, y: ey }, p3 = { x: gx, y: ey - 6 }, p4 = { x: gx + 6, y: ey };
+    return [s, ...line(s, p1), c1, c1, p2, ...line(p2, p3), c2, c2, p4, ...this.curvePts(p4, t, 'side', this.endOf(to)).slice(1)];
+  }
+
+  /** which cables are an FX drawer's chain wiring (fx-drawer.ts rewire): drawn dashed inside the drawer, never grabbed */
+  private chainTest(): (c: Cable) => boolean {
+    const outs = new Set<string>(), ins = new Set<string>(), into = new Set<number>();
+    const k = (t: Endpoint): string => `${t.module}:${t.port}`;
+    for (const d of drawers(this.patch)) {
+      const es = effectsOf(this.patch, d);
+      const output = ownerOf(this.patch, d) === 'output';
+      if (!es.length) continue;
+      if (output) {
+        for (const m of this.patch.modules) if (m.type === 'output') into.add(m.id);
+      } else for (const t of d.drawer?.taps ?? []) outs.add(k(t));
+      es.forEach((e, i) => {
+        if (!e.chain) return;
+        for (const ix of e.chain.ins) if (e.inputs[ix]) for (const t of targetsOf(e.inputs[ix])) ins.add(k(t));
+        if (output || i < es.length - 1) for (const ix of e.chain.outs) if (e.outputs[ix]) for (const t of targetsOf(e.outputs[ix])) outs.add(k(t));
+      });
+    }
+    return (c) => outs.has(k(c.from)) && (ins.has(k(c.to)) || into.has(c.to.module));
+  }
+
+  /** the layers a cable needs a copy in, over a drawer or a card with embedded cards: it ends on a jack inside one (it would
+   *  run under it otherwise), or leaves by an open drawer's gutter */
+  private coverLayers(from: HTMLElement, to: HTMLElement): { layer: SVGSVGElement; origin: HTMLElement }[] {
+    const out = new Map<HTMLElement, SVGSVGElement>();
+    for (const j of [from, to]) {
+      const box = j.closest<HTMLElement>('.fx-drawer');
+      const v = box ? this.drawerViews.get(Number(box.dataset.drawer)) : undefined;
+      if (box && v?.layer && !j.classList.contains('fx-end')) out.set(box, v.layer);
+      const host = j.closest('.embed-cards')?.closest<HTMLElement>('.module:not(.embedded)');
+      if (host) out.set(host, this.embedLayer(host));
+    }
+    const g = this.gutterJacks.get(from);
+    if (g?.v.drawer && g.v.layer) out.set(g.v.drawer, g.v.layer);
+    return [...out].map(([origin, layer]) => ({ origin, layer }));
+  }
+
+  /** a card's layer for the cables to its embedded cards' jacks, over its rows and under the embedded cards */
+  private embedLayer(card: HTMLElement): SVGSVGElement {
+    let svg = card.querySelector<SVGSVGElement>(':scope > svg.embed-cables');
+    if (!svg) {
+      svg = document.createElementNS(SVGNS, 'svg') as SVGSVGElement;
+      svg.setAttribute('class', 'cables embed-cables');
+      card.append(svg);
+    }
+    return svg;
+  }
+
+  /** a drawer's element where it shows (the plug while closed); null when it is not drawn (Quick patch, Q3) */
+  drawerElement(drawerId: number): HTMLElement | null {
+    const v = this.drawerViews.get(drawerId);
+    const el = v?.drawer ?? v?.plug;
+    return el?.isConnected ? el : null;
+  }
+
+  /** slide a drawer out from behind its card, or back (0.2 s): a view change, not an undo step (the plug, ▼, Quick patch Q3,
+   *  a drag held over the plug). The patch keeps the state (`open`) */
+  setDrawerOpen(drawerId: number, open: boolean): void {
+    const d = assemblyById(this.patch, drawerId);
+    if (!d?.drawer || !!d.open === open) return;
+    const still = typeof matchMedia !== 'function' || matchMedia('(prefers-reduced-motion: reduce)').matches;
+    d.open = open;
+    if (open) {
+      if (!still) this.sliding.add(drawerId);
+      return this.rebuild();
+    }
+    const el = this.drawerViews.get(drawerId)?.drawer;
+    if (!el || still) return this.rebuild();
+    el.classList.add('shut');
+    window.setTimeout(() => { if (!assemblyById(this.patch, drawerId)?.open) this.rebuild(); }, FX_SLIDE_MS + 10);
+  }
+
+  /** once a drawer the user opened has slid out: the cards it covers move aside (as an expanded assembly's frame pushes
+   *  them, tidy.ts pushAside), so their jacks stay in reach; one undo step */
+  private clearForDrawer(drawerId: number): void {
+    window.setTimeout(() => {
+      const v = this.drawerViews.get(drawerId);
+      if (!v?.drawer?.isConnected) return;
+      const before = this.mark();
+      const own = ownerOf(this.patch, v.d);
+      const inAsm = new Set(assembliesOf(this.patch).flatMap((a) => a.modules));
+      const docked = this.docked();
+      const rect = (el: HTMLElement): Rect => ({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight });
+      const items: { r: Rect; move: (dx: number, dy: number) => void }[] = [];
+      for (const m of this.patch.modules) {
+        const el = this.cards.get(m.id);
+        if (el && el !== v.host && m !== docked && !inAsm.has(m.id)) items.push({ r: rect(el), move: (dx, dy) => { m.x += dx; m.y += dy; } });
+      }
+      for (const a of assembliesOf(this.patch)) {
+        const el = a.open ? this.frames.get(a.id) : this.containers.get(a.id);
+        if (el && a !== own && !a.drawer && !parentOf(this.patch, a.id)) items.push({ r: rect(el), move: (dx, dy) => moveAssembly(this.patch, a, dx, dy) });
+      }
+      pushAside(rect(v.drawer), items.map((it) => it.r)).forEach((r, k) => {
+        if (r.x !== items[k].r.x || r.y !== items[k].r.y) items[k].move(r.x - items[k].r.x, r.y - items[k].r.y);
+      });
+      if (!this.commit(before)) return;
+      this.rebuild();
+      this.ev.onLayout(this.patch);
+    }, FX_SLIDE_MS + 40);
+  }
+
+  /** what a card drag can put into a drawer: one audio effect on its own (a module, or an assembly at the top level) */
+  private fxCandidate(set: { mods: ModuleInst[]; asms: AssemblyInst[] }): { module: number } | { assembly: number } | null {
+    if (set.mods.length + set.asms.length !== 1) return null;
+    const m = set.mods[0];
+    if (m) return !assemblyOf(this.patch, m.id) && effectKind(m.type) ? { module: m.id } : null;
+    const a = set.asms[0];
+    if (parentOf(this.patch, a.id) || a.drawer || childrenOf(this.patch, a).some((c) => c.drawer)) return null;
+    return a.chain || effectKind(a.name) ? { assembly: a.id } : null;
+  }
+
+  /** the drawer spot at a point (client px): a gap in an open drawer's chain, or a closed plug (a margin round it); `skip`:
+   *  the effect being dragged, left out of the gaps */
+  private fxSpotAt(x: number, y: number, skip?: number): FxSpot | null {
+    const m = 16 * this.zoom;
+    for (const v of this.drawerViews.values()) {
+      if (v.drawer) {
+        const r = v.drawer.getBoundingClientRect();
+        if (x < r.left || x > r.right || y < r.top || y > r.bottom) continue;
+        let at = 0;
+        for (const c of v.drawer.querySelectorAll<HTMLElement>(':scope > .fx-row > .fx-card')) {
+          if (Number(c.dataset.asm) === skip) continue;
+          const b = c.getBoundingClientRect();
+          if (y > b.bottom || (y >= b.top && x > b.left + b.width / 2)) at++;
+        }
+        return { id: v.d.id, at };
+      }
+      const r = v.plug?.getBoundingClientRect();
+      if (r && x >= r.left - m && x <= r.right + m && y >= r.top - m && y <= r.bottom + m) return { id: v.d.id, at: null };
+    }
+    return null;
+  }
+
+  /** a drag's spot shown: the plug lit (with what a drop does), or the purple line at the gap */
+  private fxShow(spot: FxSpot | null): void {
+    for (const v of this.drawerViews.values()) {
+      const hot = spot?.id === v.d.id;
+      v.plug?.classList.toggle('hot', hot);
+      v.drawer?.classList.toggle('hot', hot);
+      const mark = v.drawer?.querySelector<HTMLElement>(':scope > .fx-mark');
+      const row = v.drawer?.querySelector<HTMLElement>(':scope > .fx-row');
+      if (!mark || !row) continue;
+      mark.hidden = !hot || spot!.at === null;
+      if (mark.hidden) continue;
+      const at = spot!.at!;
+      const cards = [...row.querySelectorAll<HTMLElement>(':scope > .fx-card')].filter((c) => !c.classList.contains('lifting'));
+      const next = cards[at], prev = cards[at - 1], slot = row.querySelector<HTMLElement>(':scope > .fx-slot')!;
+      const ref = next ?? prev ?? slot;
+      const x = next ? next.offsetLeft - FX_GAP / 2 : prev ? prev.offsetLeft + prev.offsetWidth + FX_GAP / 2 : slot.offsetLeft - 8;
+      mark.style.left = `${x - 2}px`;
+      mark.style.top = `${ref.offsetTop}px`;
+      mark.style.height = `${Math.max(ref.offsetHeight, 40)}px`;
+    }
+  }
+
+  /**
+   * A drag that can drop an effect moved (client px, null: off the canvas): the spot under it shown; held over a closed plug
+   * for 0.45 s, the drawer springs open; leaving a drawer that sprung open closes it again.
+   */
+  private fxDragMove(pt: Pt | null, skip?: number): FxSpot | null {
+    const st = this.fxDrag;
+    const spot = pt ? this.fxSpotAt(pt.x, pt.y, skip) : null;
+    if (spot && spot.at === null) {
+      if (!st.timer || st.spot?.id !== spot.id) {
+        clearTimeout(st.timer);
+        const id = spot.id;
+        st.timer = window.setTimeout(() => {
+          st.timer = 0;
+          st.sprung = id;
+          this.setDrawerOpen(id, true);
+        }, FX_SPRING_MS);
+      }
+    } else if (st.timer) {
+      clearTimeout(st.timer);
+      st.timer = 0;
+    }
+    if (st.sprung !== null && spot?.id !== st.sprung) {
+      const id = st.sprung;
+      st.sprung = null;
+      this.setDrawerOpen(id, false);
+    }
+    st.spot = spot;
+    this.fxShow(spot);
+    return spot;
+  }
+
+  /** the end of such a drag (at `pt`, null: cancelled): the spot it was let go over; a drawer that sprung open for it and
+   *  got nothing closes again */
+  private fxDragEnd(pt: Pt | null, skip?: number): FxSpot | null {
+    const spot = pt ? this.fxSpotAt(pt.x, pt.y, skip) : null;
+    clearTimeout(this.fxDrag.timer);
+    const sprung = this.fxDrag.sprung;
+    this.fxDrag = { spot: null, timer: 0, sprung: null };
+    this.fxShow(null);
+    if (sprung !== null && spot?.id !== sprung) this.setDrawerOpen(sprung, false);
+    return spot;
+  }
+
+  /** an effect into a drawer at a spot (its end, over the closed plug): one undo step; fx-drawer.ts wraps a module or a
+   *  mono assembly for the stereo chain and rewires it */
+  private fxInsert(spot: FxSpot, what: { module: number } | { assembly: number } | { type: string } | { def: AssemblyDef }): boolean {
+    const d = assemblyById(this.patch, spot.id);
+    return !!d && this.change(() => insertEffect(this.patch, d, what, spot.at ?? undefined));
+  }
+
+  /** a drag from the Library's effects moved over the canvas (client px; null: it was cancelled or left): plugs light up,
+   *  a held plug springs its drawer open, an open drawer shows the gap a drop goes to */
+  dragEffectOver(x: number | null, y = 0): void {
+    if (x === null) this.fxDragEnd(null);
+    else this.fxDragMove({ x, y });
+  }
+
+  /** that drag let go (client px): into the drawer under it (at the gap, or the end over a plug), else a new card at the
+   *  point; false when the point is off the canvas. One undo step */
+  dropEffect(source: { type: string } | { def: AssemblyDef }, x: number, y: number): boolean {
+    const spot = this.fxDragEnd({ x, y });
+    if (spot) return this.fxInsert(spot, source);
+    const c = this.canvas.getBoundingClientRect();
+    if (x < c.left || x > c.right || y < c.top || y > c.bottom) return false;
+    const w = this.world.getBoundingClientRect();
+    return !!this.placeCard(source, { x: (x - w.left) / this.zoom, y: (y - w.top) / this.zoom });
+  }
+
+  /** an effect card's header in a drawer: drag it to another gap, into another drawer, or out onto the canvas (an ordinary
+   *  card again; the chain closes the gap) */
+  private effectDrag(head: HTMLElement, card: HTMLElement, d: AssemblyInst, a: AssemblyInst): void {
+    head.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || (e.target as HTMLElement).closest('button, input, select, .preset-chip')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const x0 = e.clientX, y0 = e.clientY;
+      let moving = false;
+      const lift = (ev: PointerEvent): void => {
+        const el = this.embeds.get(a.id) ?? card;   // (a drawer springing open draws it again)
+        el.classList.add('lifting');
+        el.closest('.fx-drawer')?.classList.add('dragging');   // (shown past the drawer's edge on its way out)
+        el.style.transform = `translate(${(ev.clientX - x0) / this.zoom}px, ${(ev.clientY - y0) / this.zoom}px)`;
+      };
+      const move = (ev: PointerEvent): void => {
+        if (!moving && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
+        if (!moving) {
+          moving = true;
+          this.touch();
+          const host = this.drawerViews.get(d.id)?.host;
+          if (host) this.raiseCard(host);
+        }
+        lift(ev);
+        this.fxDragMove({ x: ev.clientX, y: ev.clientY }, a.id);
+      };
+      const up = (ev: PointerEvent): void => {
+        removeEventListener('pointermove', move);
+        removeEventListener('pointerup', up);
+        removeEventListener('pointercancel', up);
+        if (!moving) return;
+        const spot = this.fxDragEnd(ev.type === 'pointerup' ? { x: ev.clientX, y: ev.clientY } : null, a.id);
+        const el = this.embeds.get(a.id);
+        const box = el?.isConnected ? this.worldRect(el) : null;
+        const own = assemblyById(this.patch, d.id);
+        const done = ev.type !== 'pointerup' || !own ? false
+          : spot?.id === own.id ? spot.at !== null && this.change(() => moveEffect(this.patch, own, a.id, spot.at!))
+          : spot ? this.change(() => {
+            takeOut(this.patch, a.id, a.x, a.y);
+            insertEffect(this.patch, assemblyById(this.patch, spot.id)!, { assembly: a.id }, spot.at ?? undefined);
+          })
+          : !!box && this.change(() => takeOut(this.patch, a.id, Math.round(box.x), Math.round(box.y)));
+        if (!done) this.rebuild();
+      };
+      addEventListener('pointermove', move);
+      addEventListener('pointerup', up);
+      addEventListener('pointercancel', up);
+    });
+  }
+
+  /** an effect card's ⋯ in a drawer */
+  private effectMenu(d: AssemblyInst, a: AssemblyInst, at: Pt): void {
+    this.popMenu([
+      { text: a.bypass ? 'Turn on' : 'Bypass', run: () => this.switchAssembly(a) },
+      { text: 'Rename', key: 'dbl-click', run: () => this.rename(a) },
+      { text: 'Take out onto the canvas', run: () => this.takeOutEffect(d, a) },
+      { text: 'Save to library', rule: true, run: () => this.saveAssembly(a) },
+      ...this.presetItems(a),
+      { text: 'Remove', danger: true, rule: true, run: () => this.change(() => removeEffect(this.patch, a.id)) },
+    ], at);
+  }
+
+  /** an effect out of its drawer onto the canvas, beside the drawer: an ordinary card with its own cables */
+  private takeOutEffect(d: AssemblyInst, a: AssemblyInst): void {
+    const el = this.drawerViews.get(d.id)?.drawer;
+    const r = el?.isConnected ? this.worldRect(el) : { x: a.x, y: a.y, w: 0, h: 0 };
+    this.change(() => takeOut(this.patch, a.id, Math.round(r.x + r.w + 24), Math.round(r.y)));
   }
 
   // ---- arranging a collapsed assembly card: the order of its rows and jacks, column breaks, headings
@@ -6284,6 +7001,7 @@ export class Editor {
           clearTimeout(press);
           press = 0;
         }
+        this.dragPointer = { x: ev.clientX, y: ev.clientY };
         move((ev.clientX - lx) / this.zoom, (ev.clientY - ly) / this.zoom);
         lx = ev.clientX;
         ly = ev.clientY;
@@ -6348,6 +7066,8 @@ export class Editor {
   /** a press on a card's or frame's handle: shift toggles the item in the selection, else the drag takes the selection with it */
   private groupDrag(handle: HTMLElement, item: { module?: ModuleInst; asm?: AssemblyInst }, drop: (set: { mods: ModuleInst[]; asms: AssemblyInst[] }) => void): void {
     let set: { mods: ModuleInst[]; asms: AssemblyInst[] } = { mods: [], asms: [] };
+    // one audio effect dragged alone can go into an FX drawer: dropped on a plug or into an open drawer
+    let fx: { module: number } | { assembly: number } | null = null;
     this.dragOn(
       handle,
       (e) => {
@@ -6359,14 +7079,21 @@ export class Editor {
         }
         if (!on) this.select(item.module ? [item.module.id] : [], item.asm ? [item.asm.id] : []);
         set = this.dragSet();
+        fx = this.fxCandidate(set);
+        this.dragPointer = null;
         this.touch();
         return true;
       },
-      (dx, dy) => this.moveSet(set, dx, dy),
+      (dx, dy) => {
+        this.moveSet(set, dx, dy);
+        if (fx) this.fxDragMove(this.dragPointer);
+      },
       () => {
         this.sizeCanvas();
         this.ev.onLayout(this.patch);
-        drop(set);
+        const spot = fx ? this.fxDragEnd(this.dragPointer) : null;
+        if (fx && spot) this.fxInsert(spot, fx);
+        else drop(set);
       },
     );
   }
@@ -7121,7 +7848,7 @@ export class Editor {
     for (const v of armDrawing(this.patch, this.armedSet).virtual) {
       const jack = this.inputJack(v.to);
       // (the jack on a collapsed card, else the device's card: a Steps track's grid, a module's or an assembly's card)
-      const card = this.containers.get(assembliesOf(this.patch).find((a) => allModules(this.patch, a).includes(v.to.module))?.id ?? -1)
+      const card = (this.containers.get(assembliesOf(this.patch).find((a) => deviceModules(this.patch, a).includes(v.to.module))?.id ?? -1) ?? this.embeds.get(drawers(this.patch).flatMap((d) => effectsOf(this.patch, d)).find((e) => allModules(this.patch, e).includes(v.to.module))?.id ?? -1))
         ?? this.stepGrids.get(v.to.module)?.el ?? this.cards.get(v.to.module);
       const to = [jack, card].find((e) => e?.isConnected && e.offsetParent !== null);
       if (!to) continue;
@@ -7175,11 +7902,12 @@ export class Editor {
     this.positionSideCables();
     this.positionBindings();
     this.positionTraces();
+    this.layoutDrawers();
     const w = this.world.getBoundingClientRect();
     const o = this.dockCables?.getBoundingClientRect();
     const routed = this.ribbonRoutes();
     for (const { path, from, to, origin } of this.cablePaths) {
-      let pts = routed.get(from)?.get(to);
+      let pts = routed.get(from)?.get(to) ?? this.gutterRoute(from, to);
       if (pts && origin !== this.world) {
         // a copy on a card: the same route in the card's coordinates
         const a = this.center(to, origin), b = this.center(to);
@@ -7328,7 +8056,7 @@ export class Editor {
     this.overPaths.clear();
     // a removed path gets no pointerleave: the hovered cable's glow would stay behind (#150)
     this.glow([]);
-    for (const svg of this.modulesEl.querySelectorAll('.internal-cables, .entry-cables')) svg.remove();
+    for (const svg of this.modulesEl.querySelectorAll('.internal-cables, .entry-cables, .embed-cables')) svg.remove();
     // a card's cables are drawn over its thumbs (a layer that takes no pointer events), while their click areas lie
     // under the thumbs, so a thumb under a cable still drags and patches
     const cardLayers = new Map<HTMLElement, Map<string, SVGSVGElement>>();
@@ -7346,7 +8074,7 @@ export class Editor {
       return svg;
     };
     for (const dot of [...this.ports.values(), ...this.sliderPorts.map((p) => p.jack)]) dot.classList.remove('connected');
-    const add = (from: HTMLElement, to: HTMLElement, kind: string, remove: (() => void) | null, titleOf: string | (() => string), internal = false, cable?: Cable): void => {
+    const add = (from: HTMLElement, to: HTMLElement, kind: string, remove: (() => void) | null, titleOf: string | (() => string), internal = false, cable?: Cable, own?: { layer: SVGSVGElement; origin: HTMLElement }): void => {
       const title = typeof titleOf === 'string' ? titleOf : titleOf();
       // Alt-click on a cable: listen to its source (#939) instead of disconnecting it
       const listen = (e: MouseEvent): boolean => !!cable && e.altKey && (this.toggleListen(cable.from), true);
@@ -7374,6 +8102,11 @@ export class Editor {
           origin = card;
           layer = cardLayer(card, 'internal-cables');
         }
+      }
+      // an FX drawer's chain wire: in the drawer's own layer only
+      if (own) {
+        origin = own.origin;
+        layer = own.layer;
       }
       layer.prepend(path);
       this.cablePaths.push({ path, from, to, origin, cable });
@@ -7449,6 +8182,21 @@ export class Editor {
           this.cablePaths.push({ path: hit, from, to, origin: card });
         }
       }
+      // a cable to a jack inside an open drawer or an embedded card, or down a drawer's gutter, runs under that drawer or
+      // card like every cable: a copy in its layer draws the stretch over it
+      if (origin === this.world) for (const cover of this.coverLayers(from, to)) {
+        const copy = document.createElementNS(SVGNS, 'path');
+        copy.setAttribute('class', path.getAttribute('class')!);
+        cover.layer.append(copy);
+        this.cablePaths.push({ path: copy, from, to, origin: cover.origin, cable });
+        group.push(copy, ...inner(copy, cover.origin));
+        copy.addEventListener('pointerenter', () => hover(true));
+        copy.addEventListener('pointerleave', () => hover(false));
+        if (remove) {
+          copy.addEventListener('pointerdown', (e) => e.stopPropagation());
+          copy.addEventListener('click', (e) => { e.stopPropagation(); if (!listen(e)) remove(); });
+        }
+      }
       if (internal && remove) {
         // a thin route is hard to hit: an invisible path 1.5x as wide takes the clicks, above the card's controls but
         // under its thumbs
@@ -7473,11 +8221,26 @@ export class Editor {
       }), `Disconnect ${this.nameOf(m)} ${port} → ${pd.name}`, true);
     }
     const physicalCables = new Set<string>();
+    const chain = this.chainTest();
     for (const c of this.patch.cables) {
-      const a = this.outputJack(c.from, c.to);
-      const b = this.inputJack(c.to);
+      if (chain(c)) {
+        // an FX drawer's chain wire: drawn dashed inside its open drawer, never grabbed (closed: not drawn)
+        const a = this.outputJack(c.from, c.to), b = this.inputJack(c.to);
+        const box = b?.closest<HTMLElement>('.fx-drawer') ?? a?.closest<HTMLElement>('.fx-drawer');
+        const v = box ? this.drawerViews.get(Number(box.dataset.drawer)) : undefined;
+        if (!a || !b || !box || !v?.layer || a.classList.contains('fx-end') || b.classList.contains('fx-end')) continue;
+        a.classList.add('connected');
+        b.classList.add('connected');
+        add(a, b, 'chain', null, `${v.label}’s FX chain, wired by the drawer: drag an effect to change it`, false, c, { layer: v.layer, origin: box });
+        continue;
+      }
       const thumbs = this.sliderPorts.filter(({ m, pd }) => m.id === c.to.module && parameterInputs(m, pd).includes(c.to.port));
-      a?.classList.add('connected'); b?.classList.add('connected');
+      // (a closed drawer's effects: their cables end on its plug)
+      const a = this.outputJack(c.from, c.to) ?? this.fxAnchors.get(c.from.module);
+      const b = this.inputJack(c.to) ?? (thumbs.length ? undefined : this.fxAnchors.get(c.to.module));
+      // (both ends inside the same closed drawer: its own wiring, hidden with it)
+      if ((a && a === b) || (this.fxAnchors.has(c.from.module) && this.fxAnchors.get(c.from.module) === this.fxAnchors.get(c.to.module))) continue;
+      for (const j of [a, b]) if (j?.classList.contains('dot')) j.classList.add('connected');
       for (const { jack } of thumbs) jack.classList.add('connected');
       if (!a) continue;
       const src = this.patch.modules.find((m) => m.id === c.from.module)!;
@@ -7642,13 +8405,20 @@ export class Editor {
     const sources: Endpoint[] = [{ module: Number(out.dataset.mod), port: out.dataset.port! },
       ...(out.dataset.also ? JSON.parse(out.dataset.also) as Target[] : [])];
     this.change(() => {
+      // a chain jack of an FX drawer is wired by the drawer: refused with the reason (fx-drawer.ts chainCableProblem)
+      const refuse = (from: Endpoint, to?: Endpoint): void => {
+        const why = to ? chainCableProblem(this.patch, from, to) : chainJackProblem(this.patch, from, 'out');
+        if (why) throw new Error(why);
+      };
       const wire = (from: Endpoint, to: Endpoint): void => {
+        refuse(from, to);
         if (!this.patch.cables.some((c) => sameEnd(c.from, from) && sameEnd(c.to, to)) && !connect(this.patch, DEFS, from, to))
           throw new Error(from.port === 'keys' ? keyRouteError(this.patch, { from, to }) ?? 'Cannot connect these ports.' : 'Cannot connect these ports.');
       };
       for (const from of sources) {
         let to: Endpoint;
         if (input.dataset.param) {
+          refuse(from);
           to = connectParameter(this.patch, DEFS, from, Number(input.dataset.mod), input.dataset.param);
           // A card row that sets several parameters: the cable reaches every one of them.
           for (const t of tiedTo(this.patch, Number(input.dataset.mod), input.dataset.param).slice(1)) connectParameter(this.patch, DEFS, from, t.module, t.param);
@@ -7664,6 +8434,9 @@ export class Editor {
           for (const target of JSON.parse(also) as Target[]) wire(from, target);
         }
       }
+      // a cable into the Output while it has a drawer goes into the drawer's first effect
+      const od = outputDrawer(this.patch);
+      if (od && this.patch.modules.find((m) => m.id === Number(input.dataset.mod))?.type === 'output') rewire(this.patch, od);
     });
   }
 
