@@ -1262,9 +1262,15 @@ static void panel_edges(uint32_t p, uint32_t rel)
         seq_held_used = 1;
         seq_copy_press();
     }
-    if ((p & (1u << BTN_SAVE)) && page == PAGE_SEQ && !sr_on && pt_on && (panel_held & (1u << BTN_SEL | 1u << BTN_ACC))) {
-        p &= ~(1u << BTN_SAVE);                     /* SEL / FX held + SAVE on the SEQ page: the pattern into the store (#901) */
-        seq_pattern_save((int)(panel_held >> BTN_ACC & 1u));
+    if ((p & (1u << BTN_SAVE)) && page == PAGE_SEQ && !sr_on && pt_on && (panel_held >> BTN_ACC & 1u)) {
+        p &= ~(1u << BTN_SAVE);                     /* FX held + SAVE on the SEQ page: the pattern kept as a copy in the
+                                                     * store (#901, #1202 P1) */
+        seq_pattern_keep();
+    }
+    if ((p & (1u << BTN_SAVE)) && page == PAGE_SEQ && (panel_held >> BTN_SEL & 1u)) {
+        p &= ~(1u << BTN_SAVE);                     /* SEL held + SAVE: nothing (its pattern save went, #1202 P1); SEL's
+                                                     * release then opens nothing */
+        seq_pen_ms = fm1_ms | 1u;
     }
     if (p & (1u << BTN_SAVE)) {
         int menu = page == PAGE_MENU;

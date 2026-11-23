@@ -207,7 +207,6 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_RUN_ROW: return a->updates != b->updates;
     case CE_ANALOG_OUT: return a->out_off != b->out_off && a->page == b->page && a->sr_on == b->sr_on && a->octave == b->octave && !help_on;   /* (HOME
                                                          * and the OCTs did nothing of their own, no sheet) */
-    case CE_PATTERN_SAVE: return a->msg_sum != b->msg_sum && a->store_sum != b->store_sum;   /* (a new entry, or one written over) */
     case CE_PATTERN_NEW: return a->stored == b->stored + 1u;
     case CE_PATTERN_LOAD: return a->msg_sum != b->msg_sum && a->pat_sum != b->pat_sum;
     case CE_CONDITION: return a->cond_n != b->cond_n;
