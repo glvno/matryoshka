@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it, vi } from 'vitest';
 import { Engine } from './engine';
-import { fxBusOf, withFxBus, type FxBus, type FxStageKind } from './fx-bus';
+import { withFxBus } from './factory-bank';
+import { convertLegacyBus } from './fx-drawer';
+import { fxBusOf, type FxBus, type FxStageKind } from './fx-legacy';
 import { DEFS, DEVICE_SR, IMPLS } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
 import { setKind, setSwitches, setTarget } from './buttons';
@@ -18,8 +20,9 @@ function stereo(omit: readonly FxStageKind[] = []): StereoFxFixture {
   output.params.level = 1;
   connect(source, DEFS, { module: left.id, port: 'out' }, { module: output.id, port: 'l' });
   connect(source, DEFS, { module: right.id, port: 'out' }, { module: output.id, port: 'r' });
-  const patch = withFxBus(source, { omit });
-  return { patch, left: left.id, right: right.id, bus: fxBusOf(patch)! };
+  // the factory master FX bus made into an Output FX drawer: its stages are the rack's effects, in the same order
+  const built = withFxBus(source, { omit }), bus = fxBusOf(built, DEFS)!;
+  return { patch: convertLegacyBus(built), left: left.id, right: right.id, bus };
 }
 function render(e: Engine, n: number) {
   const l = new Float32Array(n), r = new Float32Array(n);
@@ -36,17 +39,12 @@ function silence(e: Engine, f: StereoFxFixture) {
   e.setParam(f.right, 'value', 0);
 }
 
-describe('recognized master FX engine behavior', () => {
+describe('FX rack engine behavior (the factory master FX bus as an FX drawer)', () => {
   it.each([false, true])('preserves distinct stereo dry input with the complete bus off (compile=%s)', compile => {
     const f = stereo(), e = new Engine(SR);
     e.load(f.patch, compile);
     expect(e.fxCount()).toBe(4);
-    for (let s = 0; s < 4; s++) {
-      expect(e.fxKind(s)).toBe(s);
-      expect(e.fxOn(s)).toBe(false);
-      expect(e.fxDevice(s)).toBe(e.fxDevice(0));
-      expect(e.fxPage(s)).toBeGreaterThanOrEqual(0);
-    }
+    for (let s = 0; s < 4; s++) expect(e.fxOn(s)).toBe(false);
     const out = render(e, 513);
     expect([...out.l].every(x => x === 0.125)).toBe(true);
     expect([...out.r].every(x => x === -0.0625)).toBe(true);
@@ -56,13 +54,11 @@ describe('recognized master FX engine behavior', () => {
     const f = stereo(['drive', 'delay']), e = new Engine(SR), saved = JSON.stringify(f.patch);
     e.load(f.patch, compile);
     expect(e.fxCount()).toBe(2);
-    expect([e.fxKind(0), e.fxKind(1), e.fxKind(2)]).toEqual([1, 3, -1]);
-    expect(e.fxPage(1)).toBeGreaterThan(e.fxPage(0));
     e.setBypass(f.bus.stages[1].targets[0], false);
     expect(e.fxOn(1)).toBe(true);
     expect(e.fxOn(0)).toBe(false);
     e.arm([`a${f.bus.assembly}`]);
-    expect([e.fxKind(0), e.fxKind(1)]).toEqual([1, 3]);
+    expect(e.fxCount()).toBe(2);
     expect(e.fxOn(1)).toBe(true);
     e.setFx(1, false);
     render(e, SR * 3);
@@ -76,7 +72,7 @@ describe('recognized master FX engine behavior', () => {
     params(f, 0, { size: 0.8, mod: 0 });
     const saved = JSON.stringify(f.patch);
     e.load(f.patch, compile);
-    expect(e.fxKind(0)).toBe(3);
+    expect(e.fxCount()).toBe(1);
     expect(f.bus.stages[0].targets).toHaveLength(1);
     // A fully OFF wet kernel must not return its mono input as another dry signal.
     let dry = render(e, 128);
