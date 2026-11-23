@@ -620,7 +620,7 @@ Serum 2's Voicing panel in this modular's terms, plus the parts of an analog pol
 ## MIDI in and out (#64, 2026-10-18)
 
 - In (USB and TRS): one channel (MENU > MIDI > MIDI CHANNEL, omni by default): notes (but see the key range below), pitch bend, CC 1 (mod), aftertouch, program change n = bank slot n, counted from 0 (program change 0 = slot 01; an empty slot, or while the editor's Live is on: ignored), CC 16..19 = K1..K4 (the rows of the page in focus), CC 22 = morph, CC 80..86 = presses (64 and up) and releases of the patch buttons FX..ARP, CC 123 = all notes off; clock, Start / Continue / Stop (MENU > CLOCK IN).
-- Out (USB only; MENU > MIDI > MIDI OUT, on by default; TRS has no out): every panel control, the "MIDI out map" below (#115), and MIDI clock (MENU > MIDI > CLOCK OUT, "MIDI clock out" below). What came in is not sent out again. Not verified: USB is not emulated.
+- Out (USB only; MENU > MIDI > MIDI OUT, on by default; TRS has no out): every panel control, the "MIDI out map" below (#115), and MIDI clock (MENU > MIDI > CLOCK OUT, "MIDI clock out" below). A patch's Note Out modules send their notes whatever MIDI OUT says ("Sidechain across FM-1s" below). What came in is not sent out again. Not verified: USB is not emulated.
 
 ### MIDI out map (#115, 2026-10-19)
 
@@ -639,6 +639,7 @@ checked by `tools/panel_test.sh`.
 | OCT- OCT+ | CC 92, 93 |
 | PLAY starting / stopping the transport | also Start 0xFA / Stop 0xFC (not when PLAY held + PRESET set the tempo), sent with the clock's tick 0 (below) |
 | the clock (MENU > MIDI > CLOCK OUT, on by default) | Clock 0xF8, 24 a quarter note at the tempo that plays, all the time ([D-477](ledger/link-and-midi.md#D-477)) |
+| a Note Out module's gate (any MIDI OUT setting) | note on (its channel and note, velocity from `vel`, 100 with nothing in it) as the gate rises, note off as it falls, at the gate's sample ([D-1353](ledger/link-and-midi.md#D-1353)) |
 
 While the quick start or the controls sheet shows, only OCT, PLAY and the sheet's HOME go out, and a release only
 when its press went out ([D-245](ledger/device-ui.md#D-245)).
@@ -657,7 +658,7 @@ tick in, with the transport stopped, it sends its own again at its tempo ([D-477
 [D-493](ledger/link-and-midi.md#D-493)).
 
 - Timing (`firmware/src/clock_out.h`): the ticks are the engine's (`eng_clock_out`: the ticks the last render made and
-  their samples), so they follow the audio clock, not the main loop. The audio ISR puts each in a ring of 8 with the
+  their samples), so they follow the audio clock, not the main loop. The audio ISR puts each in a ring of 32 with the
   time it is due: the ISR's start, plus a half buffer (128 samples, when that render begins to sound), plus the tick's
   sample. The 2 kHz timer, just before `usb_poll`, hands the due ones to the USB MIDI ring (`midi_out_event`). So a tick
   leaves within 0.5 ms of its sample sounding, whatever the render's length; the host's USB frame (1 ms) adds its own.
@@ -681,6 +682,34 @@ tick in, with the transport stopped, it sends its own again at its tempo ([D-477
 - Tests: `tools/clock_out_test.sh` (ticks counted and timed at 20..300 bpm, a tempo change, global against patch tempo,
   Start / Stop and tick 0, clock in, CLOCK OUT off, MIDI OUT off, a host that stops reading, the settings bit),
   `panel_test` (the MIDI tab's K4).
+
+### Sidechain across FM-1s (2026-11-23)
+
+One FM-1 can duck another, the way a kick ducks a pad. The sending FM-1 has a **Note Out** module
+([D-1253](ledger/modules.md#D-1253)): a gate into it (say the kick's trigger) sends a MIDI note over USB as it rises, and
+its Note Off as it falls. Nothing is added on the receiving FM-1, and the editor sends nothing: the module does nothing
+in the browser.
+
+1. Sender: cable the gate that should duck (a Steps track's gate, a Drum map row's trig, an Euclid's trig) into a Note
+   Out. Leave it at channel 5, note C1 (36), or set your own.
+2. A host forwards the sender's USB MIDI to the receiver: a DAW or an iPad routing one FM-1's port to the other, or a USB
+   MIDI host box with the sender on its USB port and its MIDI out into the receiver's TRS in.
+3. Receiver: a Voicing set to channel 5, with `low` and `high` both on C1, plays only that note. Cable its `gate` (or
+   `trig`) into a Pulse's `trig`, and the Pulse's `out` into a Compressor's `side`: each note from the sender ducks what
+   goes through that Compressor.
+4. Set the receiver's MIDI channel (GLO > MIDI > MIDI CHANNEL) to its own channel. While it is omni, its other Voicings,
+   Drum maps and Steps tracks hear the sender's note too.
+
+- Timing (`firmware/src/engine.c` `m_nout`, `eng_note_out`; `firmware/src/clock_out.h`): the engine reports each Note On
+  and Note Off with its sample in the render, as it does the clock's ticks, and `clk_out_block` queues them in the same
+  due ring, merged with the ticks in the order of their samples. So a note leaves within about 0.5 ms of its sample
+  sounding. The ring holds two renders of the most a render makes: a Song Position and a Start or Stop, 4 ticks and 8
+  notes (32 places). A render reports at most 8 notes, a Note On only among the first 4 and only while 8 places stay
+  free in the ring, so a Note Off always finds room. One that does not fit a render goes out in the next.
+- A patch change, a bypass or the transport stopping sends the Note Off of every note a Note Out left on.
+- Tests: `tools/note_out_test.sh` (edges to notes at their due times, velocity, MIDI OUT and CLOCK OUT off, a bypass, a
+  stop and a patch change, eight Note Outs with the clock and PLAY / STOP). Not verified on a device: USB is not
+  emulated, and the timing has not been measured on the test rig.
 
 ### Following the FM-1's panel, any firmware (#120, 2026-10-19)
 

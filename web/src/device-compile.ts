@@ -5,7 +5,7 @@
 //   - dead modules go (D-361, #801): a module stays when something heard depends on it, directly or through other
 //     modules. Heard: the Output and the Main module (its morph input). Kept for what they do of their own, whatever
 //     their outputs reach: every Steps track (the FM-1's SEQ page lists every track, one not cabled yet too, #83),
-//     Arpeggiator and Drum map, the Arpeggiator or track a poly group plays
+//     Arpeggiator, Drum map and Note Out (it sends MIDI, D-1253), the Arpeggiator or track a poly group plays
 //     (DeviceGroup.src: its keys cables are gone in the device form), and what the FM-1 addresses by index and would
 //     otherwise lose (device-shown.ts shownModules: a P-lock's target, which the FM-1 hands back with the track's locks;
 //     a Toggle's targets, whose bypass is its light). Part modules always stay (a poly group's notes need them). A module
@@ -64,7 +64,7 @@ export interface Shown { held: Set<number>; sets: Map<number, Set<string>> }
 export const SHOWN: { of: ((p: Patch) => Shown) | null } = { of: null };
 
 /** module types kept for what they do of their own, whatever their outputs reach (see the top of this file) */
-const KEPT = new Set(['output', 'fm1', 'steps', 'arp', 'drummap']);
+const KEPT = new Set(['output', 'fm1', 'steps', 'arp', 'drummap', 'nout']);
 
 /** what the FM-1 addresses, or a function that works it out when the pass first needs it (most patches never need it:
  * every module is heard, and no oscillator in a poly group is a candidate to run once) */

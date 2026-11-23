@@ -1617,6 +1617,38 @@ const eq: ModuleImpl<EqState> = {
   },
 };
 
+/** Note Out's channel (1..16) and note (0..127) when a patch leaves them alone: channel 5, C1 (a kick's note) */
+export const NOTE_OUT_CHANNEL = 5;
+export const NOTE_OUT_NOTE = 36;
+/** Note Out's velocity with nothing in `vel` */
+export const NOTE_OUT_VEL = 100;
+/**
+ * Note Out: sends a MIDI note from a gate, on the FM-1 only (for a sidechain across FM-1s: a host forwards it to another
+ * FM-1, whose Voicing on that channel hears it). A rising `gate` (at 0.5, as every gate input) sends Note On `note` on
+ * `channel` over USB, its velocity `vel` x 127 at that sample (1..127; nothing in vel: NOTE_OUT_VEL); a falling one sends
+ * its Note Off. A note already on is turned off first; a patch change, a bypass or the transport stopping turns off what
+ * it left on. engine.c m_nout reports each message with its sample (eng_note_out), clock_out.h sends it when that sample
+ * sounds; MENU > MIDI OUT does not apply (that is the panel's controls). It has no outputs. The browser's engines send no
+ * MIDI: here it does nothing. It runs once (SHARED_TYPES): a gate from a poly voice reaches it summed.
+ */
+const nout: ModuleImpl<null> = {
+  def: {
+    type: 'nout',
+    label: 'Note Out',
+    since: 66,
+    inputs: [gate('gate'), control('vel')],
+    outputs: [],
+    params: [
+      param('channel', 1, 16, NOTE_OUT_CHANNEL, { step: 1 }),
+      param('note', 0, 127, NOTE_OUT_NOTE, { step: 1, choices: NOTE_NAMES }),
+    ],
+  },
+  init: () => null,
+  process() {
+    /* the FM-1 only (engine.c m_nout) */
+  },
+};
+
 /** Quantize one audio sample to a signed 16-bit word for bitwise operations. */
 const xorWord = (x: number): number => Math.max(-32768, Math.min(32767, Math.floor(x * 32768)));
 
@@ -5057,7 +5089,7 @@ const lpg: ModuleImpl<LpgState> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm, lpg, limit, euclid, eq];
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm, lpg, limit, euclid, eq, nout];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

@@ -105,6 +105,7 @@
     "usb": ["tools/usb_test.sh"],
     "clock": ["tools/clock_out_test.sh"],
     "clock-in": ["tools/clock_in_test.sh"],
+    "note-out": ["tools/note_out_test.sh"],
     "peak": ["tools/peak_test.sh"],
     "audio": ["tools/audio_out_test.sh"],
     "frame": ["tools/frame_test.sh"],
@@ -135,7 +136,7 @@
     "floor": ["sh", "tools/floor_test.sh"],
     "worktree-gc": ["python3", "tools/worktree_gc_test.py"]
   },
-  "full_host": ["pan", "golden", "buffer-budget", "sched-record", "aot", "usb", "usb_return", "clock", "clock-in", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "preset-pattern", "bank", "patstore", "ui", "fx-tail", "harness-compile", "patlink", "factory", "font-area", "floor", "palette", "pal-fade", "pal-preset"],
+  "full_host": ["pan", "golden", "buffer-budget", "sched-record", "aot", "usb", "usb_return", "clock", "clock-in", "note-out", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "preset-pattern", "bank", "patstore", "ui", "fx-tail", "harness-compile", "patlink", "factory", "font-area", "floor", "palette", "pal-fade", "pal-preset"],
   "optional_host": {"usb_return": "firmware/src/usb_return.h"},
   "rules": [
     {"name": "Pan arithmetic", "paths": ["firmware/src/engine.c", "firmware/test/pan_exact_test.c", "tools/pan_test.sh"], "host": ["pan"], "web": []},
@@ -184,6 +185,7 @@
     {"name": "Host test usb", "paths": ["tools/usb_test.sh", "firmware/test/usb_test.c"], "host": ["usb"], "web": []},
     {"name": "Host test clock", "paths": ["tools/clock_out_test.sh", "firmware/test/clock_out_test.c"], "host": ["clock"], "web": []},
     {"name": "Host test clock in (#870)", "paths": ["tools/clock_in_test.sh", "firmware/test/clock_in_test.c"], "host": ["clock-in"], "web": []},
+    {"name": "Note Out (D-1253, D-1353): gates to MIDI notes timed by their samples, the velocity, the Note Offs on a bypass, a stop and a patch change, format 66", "paths": ["web/src/modules.ts", "web/src/patchbin.ts", "web/src/device-compile.ts", "web/src/labels.ts", "web/scripts/note-out-kits.ts", "firmware/src/engine.c", "firmware/src/engine.h", "firmware/src/clock_out.h", "firmware/test/note_out_test.c", "tools/note_out_test.sh"], "host": ["note-out", "clock", "golden"], "web": ["web/src/note-out.test.ts", "web/src/eq.test.ts", "web/src/cpu.test.ts", "web/src/device-compile.test.ts"]},
     {"name": "The factory patches' 1.24.1 patterns in the host tests and the factory measurements (#1202 G8): the 808 Kit's song, pattern 1's origin and the levels, headroom and CPU counts with them", "paths": ["firmware/test/pattern_cases.h", "firmware/test/clock_in_test.c", "firmware/test/preset_pattern_test.c", "firmware/test/preset_pattern_panel_test.c", "web/src/measured-presets.ts", "web/src/cpu-checks.ts"], "host": ["clock-in", "preset-pattern"], "web": ["web/src/shared-levels.test.ts", "web/src/headroom-1.test.ts", "web/src/headroom-2.test.ts", "web/src/headroom-3.test.ts", "web/src/headroom-4.test.ts", "web/src/cpu.test.ts"]},
     {"name": "Host test peak", "paths": ["tools/peak_test.sh", "firmware/test/peak_test.c"], "host": ["peak"], "web": []},
     {"name": "Host test audio", "paths": ["tools/audio_out_test.sh", "firmware/test/audio_out_test.c"], "host": ["audio"], "web": []},

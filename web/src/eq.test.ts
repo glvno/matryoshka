@@ -74,7 +74,7 @@ const peak = (x: Float32Array): number => x.reduce((m, v) => Math.max(m, Math.ab
 
 describe('EQ (#1107)', () => {
   it('is appended after the Euclid: in -> out, freq, gain, q, shape; the parameter inputs move freq and gain', () => {
-    expect(TYPE_ORDER.slice(-2)).toEqual(['euclid', 'eq']);
+    expect(TYPE_ORDER.slice(TYPE_ORDER.indexOf('euclid'), TYPE_ORDER.indexOf('euclid') + 2)).toEqual(['euclid', 'eq']);
     expect(DEFS.eq.label).toBe('EQ');
     expect(DEFS.eq.inputs.map((i) => i.name)).toEqual(['in', 'p1', 'p2']);
     expect(DEFS.eq.outputs.map((o) => o.name)).toEqual(['out']);

@@ -16,9 +16,17 @@
  * engine starts the transport, just before that render's tick 0; Stop in the render where it stops. Play once (#632)
  * starts and stops the transport itself: its Start and Stop go out the same way, unasked.
  *
+ * The Note Out modules' notes (D-1353, eng_note_out) go the same way: each is due when its sample sounds, merged with the
+ * render's ticks in the order of their samples. They go out whatever MIDI OUT, CLOCK OUT and TRANSPORT OUT say: the
+ * patch asks for them.
+ *
  * The time base is TIMER4's 24 MHz count (fm1_ticks), which wraps every 179 s: times are compared as differences. */
 
-#define CO_N 8u                         /* the due ring: a Song Position, a Start or Stop and a tick a render, two renders deep */
+/* the due ring: two renders deep (a message waits at most a half buffer plus its sample, under two renders), each render
+ * a Song Position and a Start / Continue / Stop, CKO_MAX ticks and ENG_NOUT_EV notes: 2 x (2 + 4 + 8) = 28, rounded up
+ * to a power of two. A Note On takes a place only while CO_OFF_ROOM stay free, so a Note Off always finds one */
+#define CO_N 32u
+#define CO_OFF_ROOM ENG_NOUT_EV
 #define CO_LAT_SAMPLES 128u             /* a half buffer (audio.c HALF_FRAMES): the rendered half begins to sound after it */
 #define CO_KEEP 8u                      /* at most this many ticks wait in the USB ring: the host stopped reading */
 #define CO_TICK (0x0Fu | 0xF8u << 8)    /* a clock as a USB MIDI packet (code index 0xF: one byte) */
@@ -89,17 +97,41 @@ static __attribute__((noinline)) void co_transport(uint32_t t0, uint32_t first, 
         co_push(t0 + (CO_LAT_SAMPLES + (edge > 0 ? first : 0u)) * 1000000u / ENG_SR * FM1_TICKS_PER_US, co_rt(edge > 0 ? 0xFAu : 0xFCu));
 }
 
+/* clk_out_block's notes (D-1353): the render's ticks (when CLOCK OUT is on) and its Note Out messages in the order of
+ * their samples (a tick first on the same sample). Out of line: a render with a note is rare */
+static __attribute__((noinline)) void co_notes(uint32_t t0, const uint32_t *off, uint32_t n, const uint32_t *noff,
+                                               const uint32_t *pkt, uint32_t nn)
+{
+    uint32_t k = 0, j = 0;
+    if (!cfg.clock_out)
+        n = 0;
+    while (k < n || j < nn) {
+        if (k < n && (j >= nn || off[k] <= noff[j])) {
+            co_push(t0 + (CO_LAT_SAMPLES + off[k]) * 1000000u / ENG_SR * FM1_TICKS_PER_US, CO_TICK);
+            k++;
+        } else {
+            if ((pkt[j] & 0x0Fu) != 0x09u || CO_N - (co_w - co_r) > CO_OFF_ROOM)
+                co_push(t0 + (CO_LAT_SAMPLES + noff[j]) * 1000000u / ENG_SR * FM1_TICKS_PER_US, pkt[j]);
+            j++;
+        }
+    }
+}
+
 /* the audio ISR, after eng_render (`rendered`: the engine ran this half; t0: fm1_ticks at the ISR's start). CLOCK OUT and
  * TRANSPORT OUT are read here, as the messages are made. */
 static void clk_out_block(uint32_t t0, int rendered)
 {
-    uint32_t off[CKO_MAX], n = 0, k;
+    uint32_t off[CKO_MAX], noff[ENG_NOUT_EV], pkt[ENG_NOUT_EV], n = 0, nn = 0, k;
     int32_t edge = 0;
-    if (rendered)
+    if (rendered) {
         n = eng_clock_out(off, CKO_MAX, &edge);
+        nn = eng_note_out(noff, pkt, ENG_NOUT_EV);
+    }
     if (co_play || edge == 2 || edge == -2)
         co_transport(t0, n ? off[0] : 0u, edge);
-    if (cfg.clock_out)
+    if (nn)
+        co_notes(t0, off, n, noff, pkt, nn);
+    else if (cfg.clock_out)
         for (k = 0; k < n; k++)
             co_push(t0 + (CO_LAT_SAMPLES + off[k]) * 1000000u / ENG_SR * FM1_TICKS_PER_US, CO_TICK);
 }
