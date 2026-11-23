@@ -14,7 +14,7 @@ import { keyReach } from './key-routing';
 // section's second group). Groups fill in fours; a row's `group` flag (Arrange's "new group") or a column break ends one
 // early. An envelope's shape on the card (adsr / env `view`) is drawn above the page that holds its rows. Pure model code: the editor, the binary
 // format (patchbin.ts) and the tests use it.
-import { assembliesOf, assemblyById, childrenOf, copyStarts, deviceModules, parentOf, ties, type AssemblyInst, type RowTarget } from './assembly';
+import { assembliesOf, childrenOf, copyStarts, deviceModules, drawerOf, drawers, effectsOf, outputDrawer, parentOf, ties, type AssemblyInst, type RowTarget } from './assembly';
 import { longName, moduleName } from './labels';
 import { EDITOR_ONLY, rowDef, type ModuleDef, type ModuleInst, type Patch } from './patch';
 
@@ -273,7 +273,7 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
     if (pages.length) items.push({ ...placeOf(p, a), dev: { key: `a${a.id}`, name: a.label, asm: a.id, pages, ...(inner !== undefined ? { track: inner } : {}) } });
   }
   // each drawer's effects as devices, in chain order
-  const effectDevices = (d: AssemblyInst | undefined): Device[] => (d ? childrenOf(p, d) : []).flatMap((e) => {
+  const effectDevices = (d: AssemblyInst | undefined): Device[] => (d ? effectsOf(p, d) : []).flatMap((e) => {
     const pages = assemblyPages(p, e, defs);
     return pages.length ? [{ key: `a${e.id}`, name: e.label, asm: e.id, pages }] : [];
   });
@@ -317,12 +317,12 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   // Output, with those of an instrument that is no device itself)
   const placedDrawers = new Set<number>();
   const withFx = out.flatMap((d) => {
-    const drawer = d.asm !== undefined ? childrenOf(p, assemblyById(p, d.asm)!).find((c) => c.drawer) : undefined;
+    const drawer = d.asm !== undefined ? drawerOf(p, d.asm) : undefined;
     if (drawer) placedDrawers.add(drawer.id);
     return [d, ...effectDevices(drawer)];
   });
-  const rest = assembliesOf(p).filter((a) => a.drawer?.taps && !placedDrawers.has(a.id));
-  const output = [...rest, ...assembliesOf(p).filter((a) => a.drawer && !a.drawer.taps)].flatMap(effectDevices);
+  const rest = drawers(p).filter((a) => a.drawer!.taps && !placedDrawers.has(a.id));
+  const output = [...rest, outputDrawer(p)].flatMap(effectDevices);
   const at = withFx.findIndex((d) => d.kind === 'output');
   withFx.splice(at < 0 ? withFx.length : at, 0, ...output);
   return withFx;
