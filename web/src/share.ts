@@ -7,8 +7,7 @@
 import { validatePatch, type ModuleDef, type Patch } from './patch';
 import { SITE_URL } from './site';
 import { b64url, inflateCapped, isStoreId, STORE_MAX } from './share-store';
-import { withoutLinks } from './track';
-import { withFactoryPatterns, withoutFactoryPatterns } from './pattern-store';
+import { portablePatch, withFactoryPatterns } from './pattern-store';
 
 export const LINK_MAX = 8000;
 
@@ -63,12 +62,12 @@ const here = (): string => (typeof location === 'undefined' ? PAGES_URL : locati
 /**
  * A patch as a link, with its layout (`layout`, the default) while that fits under LINK_MAX characters, else without it
  * (the assemblies are always kept). `stores`: the layout was asked for and does not fit, or even the lean link does not:
- * `handOut` stores the full form on the site. The patch's links to user entries of a pattern store are left out: their
- * ids belong to one FM-1 (#901), and the patterns' notes are in the patch anyway. Its links to factory entries stay, and
- * the patterns they hold as those entries are go: decodeShare puts them back (#923).
+ * `handOut` stores the full form on the site. The link carries every pattern inside the patch and no link to a pattern
+ * store (portablePatch, G2 of #1202): a link belongs to one FM-1, and whoever opens it may have another or none. A link
+ * made before 1.26 left out the patterns its factory links held: decodeShare puts them back (#923).
  */
 export async function encodeShare(patch: Patch, opts: { layout?: boolean; base?: string } = {}): Promise<Share> {
-  const p = withoutFactoryPatterns(withoutLinks(patch));
+  const p = portablePatch(patch);
   const base = opts.base ?? here();
   const make = (code: string): { code: string; link: string; length: number } => {
     const link = shareLink(code, base);

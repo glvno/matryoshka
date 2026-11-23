@@ -2,12 +2,12 @@
 // The pattern store over the link (#901, protocol.ts, device.ts): PATS / PAT, PAT_GET / PAT_DATA, PAT_PUT / PAT_STORED,
 // PAT_DEL, PAT_LINK_NOW, INFO's feature bit 25 and bytes 15..19, against a stand-in FM-1 with a store.
 import { describe, expect, it } from 'vitest';
-import { DeviceLink, type DeviceEvent } from './device';
+import { DeviceLink, PatchRefused, storeFullText, type DeviceEvent } from './device';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
-import { encodePatch, FLAG_LINKS } from './patchbin';
+import { deviceBudget, encodePatch, FLAG_LINKS, FLAG_PATTERNS } from './patchbin';
 import { encodePayload, fnv, FNV0, payloadHash } from './pattern-store';
-import { CMD, FEATURE_PATTERN_STORE, frame, parse, parseInfo, parseLinkNow, parsePatData, parsePatEntry, parsePatStored, PAT_CHUNK, PAT_MISSING, PAT_OK, PAT_RANGE, PAT_USED, patDelFrame, patGetFrame, patPutFrames, patsFrame, slotCount, SLOTS_MAX } from './protocol';
+import { CMD, FEATURE_PATTERN_STORE, FEATURE25_PATTERNS_STORED, frame, parse, parseInfo, parseLinkNow, parsePatData, parsePatEntry, parsePatStored, PAT_CHUNK, PAT_FULL, PAT_KEPT, PAT_MISSING, PAT_OK, PAT_RANGE, PAT_USED, patDelFrame, patGetFrame, patPutFrames, patsFrame, slotCount, SLOTS_MAX } from './protocol';
 
 const u16 = (v: number): number[] => [v & 0xff, (v >> 8) & 0xff];
 const u32 = (v: number): number[] => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, v >>> 24];
@@ -30,6 +30,20 @@ describe('pattern store frames', () => {
     expect(frames[1].payload.slice(0, 6)).toEqual([0, 0, ...u16(300), ...u16(256)]);
     expect(frames[1].payload.slice(22)).toEqual(payload.slice(256));
     expect(patPutFrames(9, 'X', [1, 2, 3])).toHaveLength(1);
+  });
+
+  it('marks a kept copy with bit 15 of total in every chunk (#1202 P1)', () => {
+    const payload = Array.from({ length: 300 }, (_, i) => (i * 7) & 0xff);
+    const frames = patPutFrames(0, 'KEEP ME', payload, true).map((f) => parse(f)!);
+    expect(PAT_KEPT).toBe(0x8000);
+    expect(frames).toHaveLength(2);
+    // total 300 | 0x8000 = 0x812C: byte 2 the low byte, byte 3 bit 7 the kept bit
+    expect(frames[0].payload.slice(0, 22)).toEqual([0, 0, 0x2c, 0x81, 0, 0, ...name16('KEEP ME')]);
+    expect(frames[0].payload.slice(22)).toEqual(payload.slice(0, PAT_CHUNK));
+    expect(frames[1].payload.slice(0, 6)).toEqual([0, 0, 0x2c, 0x81, ...u16(256)]);
+    expect(frames[1].payload.slice(22)).toEqual(payload.slice(256));
+    // (not kept: the bit is clear)
+    expect(parse(patPutFrames(0, 'KEEP ME', payload)[0])!.payload[3]).toBe(1);
   });
 
   it('reads PAT, PAT_DATA, PAT_STORED and PAT_LINK_NOW', () => {
@@ -57,6 +71,10 @@ describe('pattern store frames', () => {
     expect(old.slots).toBeUndefined();
     expect(slotCount(old)).toBe(SLOTS_MAX);
     expect(slotCount(null)).toBe(64);
+    expect(old.features25).toBe(0);
+    const stored = parseInfo({ cmd: CMD.info, payload: [...base, 2, 48, ...u16(9000), ...u16(60000), 0, 0, 0, 0, 0, 2] })!;
+    expect(stored.features25 & FEATURE25_PATTERNS_STORED).toBe(FEATURE25_PATTERNS_STORED);
+    expect(slotCount(stored)).toBe(48);
   });
 });
 
@@ -64,9 +82,11 @@ describe('pattern store frames', () => {
 
 type Port = { id: string; name: string; manufacturer: string; state: string; onmidimessage: ((ev: { data: Uint8Array }) => void) | null; send: (d: Uint8Array) => void };
 
-/** an FM-1 whose store holds `entries` (payloads by id); `store`: feature bit 25 on, 60 slots */
-function standIn(store: boolean) {
-  const entries = new Map<number, { name: string; payload: number[] }>();
+/** an FM-1 whose store holds `entries` (payloads by id); `store`: feature bit 25 on, 60 slots; `every`: firmware 1.26, which
+ *  stores every pattern (INFO byte 25 bit 1), 48 slots, `room` payload bytes for new entries, and kept copies (PAT_KEPT:
+ *  written over only by a kept put; older firmware refuses the bit) */
+function standIn(store: boolean | 'every', room = Infinity) {
+  const entries = new Map<number, { name: string; payload: number[]; kept?: boolean }>();
   const used = new Map<number, number>();
   const sent: { cmd: number; payload: number[] }[] = [];
   let next = 1, put: number[] = [];
@@ -76,7 +96,7 @@ function standIn(store: boolean) {
     const p = parse(d)!;
     sent.push(p);
     const x = p.payload, id = x[0] | (x[1] << 8);
-    if (p.cmd === CMD.hello) reply(CMD.info, [1, 128, 255, 3, 1, 0, 1, 31, 59, 0, 0, 0, 0, 0, store ? 2 : 0, store ? 60 : 0, ...u16(8000), ...u16(12000)]);
+    if (p.cmd === CMD.hello) reply(CMD.info, [1, 128, 255, 3, 1, 0, 1, 31, 59, 0, 0, 0, 0, 0, store ? 2 : 0, store === 'every' ? 48 : store ? 60 : 0, ...u16(8000), ...u16(12000), ...(store === 'every' ? [0, 0, 0, 0, 0, 2] : [])]);
     else if (p.cmd === CMD.chunk || p.cmd === CMD.commit || p.cmd === CMD.slot) reply(CMD.ack, [p.cmd, p.cmd === CMD.chunk ? x[0] : p.cmd === CMD.slot ? x[0] : 0, 0, 0]);
     else if (p.cmd === CMD.pats) {
       const list = [...entries].map(([k, e]) => [...u16(k), ...u16(e.payload.length), ...u32(fnv(FNV0, e.payload)), 0, 0, 0, 0, 1, 0, ...name16(e.name)]);
@@ -86,14 +106,16 @@ function standIn(store: boolean) {
       const e = entries.get(id), off = x[2] | (x[3] << 8);
       reply(CMD.patData, e ? [...u16(id), ...u16(e.payload.length), ...u16(off), ...e.payload.slice(off, off + PAT_CHUNK)] : [...u16(id), 0xff, 0xff, 0, 0]);
     } else if (p.cmd === CMD.patPut) {
-      const total = x[2] | (x[3] << 8), off = x[4] | (x[5] << 8);
+      const kept = !!(x[3] & 0x80), total = (x[2] | (x[3] << 8)) & 0x7fff, off = x[4] | (x[5] << 8);
       if (!off) put = [];
       put.push(...x.slice(22));
       if (put.length < total) return reply(CMD.patStored, [0xff, 0xff, PAT_OK, 0]);
-      if (id >= 0xf000) return reply(CMD.patStored, [...u16(id), PAT_RANGE, 0]);
-      if (id && !entries.has(id)) return reply(CMD.patStored, [...u16(id), PAT_MISSING, 0]);
+      if (id >= 0xf000 || (kept && store !== 'every')) return reply(CMD.patStored, [...u16(id), PAT_RANGE, 0]);
+      if (id && (!entries.has(id) || !!entries.get(id)!.kept !== kept)) return reply(CMD.patStored, [...u16(id), PAT_MISSING, 0]);
       const at = id || next++;
-      entries.set(at, { name: String.fromCharCode(...x.slice(6, 22).filter(Boolean)), payload: put });
+      if (!id && put.length > room) return reply(CMD.patStored, [...u16(0), PAT_FULL, 0]);
+      if (!id) room -= put.length;
+      entries.set(at, { name: String.fromCharCode(...x.slice(6, 22).filter(Boolean)), payload: put, ...(kept ? { kept } : {}) });
       reply(CMD.patStored, [...u16(at), PAT_OK, 0]);
     } else if (p.cmd === CMD.patDel) {
       if (!entries.has(id)) return reply(CMD.patStored, [...u16(id), PAT_MISSING, 0]);
@@ -152,6 +174,22 @@ describe('DeviceLink and the pattern store', () => {
     await expect(link.deletePattern(1, true)).rejects.toThrow('no such pattern');
   });
 
+  it('keeps a copy with PAT_KEPT on a 1.26 FM-1 and renames it with a kept put; older firmware refuses it (#1202 P1)', async () => {
+    const fm1 = standIn('every');
+    const link = await linked(fm1);
+    const payload = encodePayload(patch(), 1);
+    const id = await link.putPattern(0, 'KEPT ONE', payload, true);
+    expect(fm1.entries.get(id)).toEqual({ name: 'KEPT ONE', payload: Array.from(payload), kept: true });
+    fm1.sent.length = 0;
+    expect(await link.putPattern(id, 'RENAMED', payload)).toBe(id);
+    // (the plain put is refused as missing, the kept one goes through)
+    expect(fm1.sent.filter((s) => s.cmd === CMD.patPut).map((s) => s.payload[3] & 0x80)).toEqual([0, 0x80]);
+    expect(fm1.entries.get(id)).toMatchObject({ name: 'RENAMED', kept: true });
+    await expect(link.putPattern(99, 'GONE', payload)).rejects.toThrow('no such pattern');
+    const old = await linked(standIn(true));
+    await expect(old.putPattern(0, 'KEPT ONE', payload, true)).rejects.toThrow('refused');
+  });
+
   it('sends a clean link as a reference to an FM-1 that holds it, the pattern whole otherwise, and no links without a store', async () => {
     const p = patch();
     const main = p.modules.find((m) => m.type === 'fm1')!;
@@ -183,5 +221,49 @@ describe('DeviceLink and the pattern store', () => {
     fm1.linkNow(2, 5, 0x1234);
     expect(events).toEqual([{ kind: 'link', pattern: 2, id: 5, hash: 0x1234 }]);
     expect(link.linkStore).toEqual(new Map([[5, 0x1234]]));
+  });
+
+  const flagsOf = (b: Uint8Array): number => b[6] | (b[7] << 8);
+  const cmds = (fm1: ReturnType<typeof standIn>): number[] => fm1.sent.map((s) => s.cmd).filter((c) => c !== CMD.hello);
+
+  it('to an FM-1 that stores every pattern (#1202): the patterns go into its store first, then the patch, which carries references', async () => {
+    const fm1 = standIn('every');
+    const link = await linked(fm1);
+    expect([link.patternsStored, link.budgetStore, link.bankSlots]).toEqual([true, 'every', 48]);
+    const p = patch();
+    const sent = await link.upload(p);
+    expect(sent.inline).toEqual([]);
+    expect(cmds(fm1)).toEqual([CMD.pats, CMD.patPut, CMD.chunk, CMD.commit]);
+    expect([...fm1.entries.values()].map((e) => [e.name, e.payload])).toEqual([['LINKED P02', Array.from(encodePayload(p, 1))]]);
+    const bin = Uint8Array.from(fm1.sent.filter((s) => s.cmd === CMD.chunk).flatMap((s) => s.payload.slice(5)));
+    expect(Array.from(bin)).toEqual(Array.from(sent.bin));
+    expect(flagsOf(bin) & (FLAG_LINKS | FLAG_PATTERNS)).toBe(FLAG_LINKS);
+    expect(Array.from(link.encodeFor(p))).toEqual(Array.from(sent.bin));   // (what the FM-1 holds now: Live sends nothing more)
+    // a slot write links the same entry: nothing more is stored. Each patch: its patterns, then its slot
+    fm1.sent.length = 0;
+    const other = patch();
+    other.name = 'OTHER';
+    other.modules.find((m) => m.type === 'steps')!.patterns = [null, { notes: [{ at: 2, len: 1, note: 50, vel: 90 }] }];
+    await link.uploadSlot(3, 'LINKED', p);
+    await link.uploadSlot(4, 'OTHER', other);
+    expect(cmds(fm1)).toEqual([CMD.pats, CMD.chunk, CMD.slot, CMD.pats, CMD.patPut, CMD.chunk, CMD.slot]);
+    expect(fm1.entries.get(2)?.name).toBe('OTHER P03');
+  });
+
+  it('a full store sends that pattern inside the patch and says so; a patch too big then is refused before its slot', async () => {
+    const fm1 = standIn('every', 0);
+    const link = await linked(fm1);
+    const sent = await link.upload(patch());
+    expect(sent.inline).toEqual([1]);
+    expect(storeFullText('LINKED', sent.inline)).toContain('P02');
+    expect(flagsOf(sent.bin) & (FLAG_LINKS | FLAG_PATTERNS)).toBe(FLAG_PATTERNS);
+    const big = patch();
+    big.modules.find((m) => m.type === 'steps')!.patterns = Array.from({ length: 60 }, (_, i) => ({ notes: Array.from({ length: 16 }, (_, at) => ({ at, len: 1, note: 40 + ((at + i) % 40), vel: 100, chance: 50 })) }));
+    expect(deviceBudget(big, 0, 'every').fits).toBe(true);
+    expect(deviceBudget(big).fits).toBe(false);
+    fm1.sent.length = 0;
+    await expect(link.uploadSlot(0, 'BIG', big)).rejects.toThrow(PatchRefused);
+    expect(cmds(fm1)).not.toContain(CMD.slot);
+    expect(cmds(fm1)).not.toContain(CMD.chunk);
   });
 });

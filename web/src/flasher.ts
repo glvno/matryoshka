@@ -8,9 +8,13 @@ import { OPEN_RELEASES, logicalImage, productOf, validateOpenPackage, validateSt
 import { FELUCCA_WARNING, firmwareKind, runsFelucca } from './felucca-store';
 import { runningVersion, updateOffer } from './fm1-version';
 import { type MvaveTarget, TARGET_NAME, WHICH_TARGET, rememberTarget, targetGuard } from './mvave-target';
-import { CMD, editorSkips, FEATURE_FACTORY, helloFrame, parse, parseInfo } from './protocol';
-import { factoryInfo, fetchFactoryImage, installFactory, linkAsk, loadFactorySets, pickSet } from './factory-content';
+import { BANK_SLOTS, CMD, editorSkips, FEATURE_FACTORY, helloFrame, parse, parseInfo, parseSlot, readStoredPattern, slotCount, slotEraseFrame, slotInfoFrame, slotLabel, type SlotInfo } from './protocol';
+import { factoryInfo, fetchFactoryImage, installFactory, linkAsk, loadFactorySets, pickSet, type Ask } from './factory-content';
 import { fm1Label, installPlan, OTHER_CHANGED, readFm1Id, type Fm1Choice, type FoundFm1, type InstallPlan } from './fm1-choice';
+import { BACKUP_TEXT, bankBackup, bankPlan, movesText, needsBankCheck, OLDER_FIRMWARE_TEXT, packageBeforeStore, packageHasSmallBank, slotList, storesEveryPattern, tooManyText, type BankBackup } from './install-bank';
+import { bankCandidates, knownCopy } from './bank';
+import { backupFile } from './migrate';
+import { savePatch } from './saved';
 
 /** the Install panel's factory sounds box (#915): ticked by default; unticked, this warning shows */
 export const FACTORY_LABEL = ' Install factory instruments and presets (recommended)';
@@ -194,6 +198,17 @@ async function readFile(f: File): Promise<Uint8Array> {
   return new Uint8Array(await f.arrayBuffer());
 }
 
+/** every slot of the bank as SLOT_INFO tells it, over the Install panel's link */
+async function readSlots(ask: Ask, n: number): Promise<SlotInfo[]> {
+  const out: SlotInfo[] = [];
+  for (let s = 0; s < n; s++) {
+    const got = parseSlot(await ask(slotInfoFrame(s), (p) => p?.cmd === CMD.slotReply && p.payload[0] === s, 800, 3));
+    if (!got) throw new Error('unexpected answer to SLOT_INFO');
+    out.push(got);
+  }
+  return out;
+}
+
 /** the firmware package that comes with this copy of the app (web/public/firmware, made by `npm run firmware`) */
 interface Bundle {
   version: string;
@@ -367,10 +382,174 @@ export function buildFlashTab(root: HTMLElement, choice: () => Fm1Choice | null 
     if (product === STOCK_PRODUCT) throw new Error('this is the official V15: use Return to stock');
     await overFelucca();
     const matryoshka = /^FM-1_7/.test(product);
+    if (matryoshka && packageHasSmallBank(product)) await checkBank();
+    else if (packageBeforeStore(product)) await checkOlder();
     meter = installMeter(show, matryoshka && factory);
     await installImage(logicalImage(raw), product);
     if (matryoshka && factory) await installFactoryAfter();
     else if (matryoshka) log('factory sounds: not installed (the box is unticked). The editor offers them when the FM-1 connects.');
+  };
+
+  /** before firmware 1.26 or later (#1202, G9): the bank of an FM-1 that runs older firmware with more than 48 slots. Its
+   *  slots past 48 move to free lower slots at the first start, which the log says; with more than 48 patches the user
+   *  keeps 48 (chooseKept) and the rest are erased, or nothing is installed */
+  const checkBank = async (): Promise<void> => {
+    const dev = await (await access()).find();
+    if (!dev) return;   // (install() reports a missing device itself)
+    try {
+      if (/^ota-/i.test(dev.id.model)) return log(`the bank was not checked: the FM-1 waits in update mode. Firmware 1.26 has ${BANK_SLOTS} slots: an FM-1 that holds more patches keeps its old bank until slots are freed`);
+      if (firmwareKind(dev.id.text) !== 'matryoshka') return;   // (no Matryoshka bank on it)
+      const ask = linkAsk(dev.link);
+      const hello = await ask(helloFrame(), (p) => p?.cmd === CMD.info, 800, 2).catch(() => null);
+      const info = hello && parseInfo(hello);
+      if (!info) return log(`the bank was not checked: the FM-1 did not answer. Firmware 1.26 has ${BANK_SLOTS} slots: an FM-1 that holds more patches keeps its old bank until slots are freed`);
+      if (!needsBankCheck(info)) return;
+      log('reading the bank…');
+      const slots = await readSlots(ask, slotCount(info));
+      const plan = bankPlan(slots);
+      if (plan.kind === 'install') return;
+      if (plan.kind === 'moves') return log(movesText(plan.moving));
+      const erase = await chooseKept(plan.used);
+      if (!erase) throw new Error(`nothing was installed, nothing was erased: ${tooManyText(plan.used)}`);
+      for (const s of erase) {
+        const a = await ask(slotEraseFrame(s), (p) => p?.cmd === CMD.ack && p.payload[0] === CMD.slotErase && p.payload[1] === s, 4000, 1);
+        if (a.payload[2]) throw new Error(`nothing was installed: slot ${slotLabel(s)} could not be erased (status ${a.payload[2]})`);
+        log(`slot ${slotLabel(s)} erased`);
+      }
+      const after = bankPlan(await readSlots(ask, slotCount(info)));
+      if (after.kind === 'choose') throw new Error(`nothing was installed: ${tooManyText(after.used)}`);
+      if (after.kind === 'moves') log(movesText(after.moving));
+    } finally {
+      dev.link.close();
+    }
+  };
+
+  /** a bank of more than 48 patches (#1202, G9): every used slot ticked to keep at first; for each one this browser has a
+   *  copy of (Library > Patches' match: the slot's name and length), Save to this browser keeps it in Your patches (the FM-1
+   *  cannot send a patch). The slots to erase once at most 48 are kept, or null on Cancel */
+  const chooseKept = (used: SlotInfo[]): Promise<number[] | null> => {
+    const known = bankCandidates();
+    const keep = new Map(used.map((s) => [s.slot, true]));
+    const saved = new Set<number>();
+    const copies = new Map(used.map((s) => [s.slot, knownCopy(s, known)]));
+    const count = el('p', { class: 'muted' });
+    const go = el('button', { class: 'primary' });
+    const cancel = el('button', { textContent: 'Cancel' });
+    const erasing = (): SlotInfo[] => used.filter((s) => !keep.get(s.slot));
+    const sync = (): void => {
+      const n = used.length - erasing().length;
+      count.textContent = `Keeping ${n} of ${BANK_SLOTS}.${n > BANK_SLOTS ? ` Untick ${n - BANK_SLOTS} more.` : ''}`;
+      go.disabled = n > BANK_SLOTS;
+      go.textContent = `Erase ${erasing().length} and install`;
+    };
+    const rows = used.map((s) => {
+      const copy = copies.get(s.slot);
+      const box = el('input', { type: 'checkbox', checked: true, ariaLabel: `keep slot ${slotLabel(s.slot)}` });
+      box.onchange = () => { keep.set(s.slot, box.checked); sync(); };
+      const save = copy && el('button', { textContent: 'Save to this browser', title: `Keep "${copy.name}" in Your patches: this browser's copy of it (the FM-1 cannot send a patch)` });
+      if (save && copy) save.onclick = () => {
+        const r = savePatch({ ...copy.patch, name: copy.name });
+        log(r.msg);
+        if (!r.ok) return;
+        saved.add(s.slot);
+        save.textContent = 'Saved in this browser';
+        save.disabled = true;
+      };
+      return el('div', { class: 'bank-row' },
+        el('label', { class: 'grow' }, box, ` ${slotLabel(s.slot)}  ${s.name || '(no name)'}`),
+        save || el('span', { class: 'muted', textContent: 'no copy in this browser, and the FM-1 cannot send it' }));
+    });
+    const dlg = el('dialog', { class: 'help sync-ask flash-bank' },
+      el('div', { class: 'sync-ask-body' },
+        el('h2', { textContent: `Keep ${BANK_SLOTS} patches` }),
+        el('p', { textContent: `${tooManyText(used)} Untick the patches to erase, then install; Cancel leaves the FM-1 as it is. Save to this browser keeps a patch in Your patches first, where this browser has a copy.` }),
+        el('div', { class: 'bank-list' }, ...rows),
+        count,
+        el('div', { class: 'sync-ask-actions' }, go, cancel)));
+    sync();
+    let result: number[] | null = null;
+    cancel.onclick = () => dlg.close();
+    go.onclick = () => {
+      const gone = erasing().filter((s) => !saved.has(s.slot));
+      if (gone.length && !window.confirm(`Erase ${slotList(gone)}? ${gone.some((s) => !copies.get(s.slot)) ? 'This browser has no copy of some of them, so they are gone for good.' : 'They were not saved to this browser.'}`)) return;
+      result = erasing().map((s) => s.slot);
+      dlg.close();
+    };
+    return new Promise((done) => {
+      dlg.addEventListener('close', () => { dlg.remove(); done(result); }, { once: true });
+      root.append(dlg);
+      dlg.showModal();
+    });
+  };
+
+  /** before firmware older than 1.26 (#1202, P2): over an FM-1 that keeps every pattern 2..64 in its pattern store, the
+   *  warning first, with a backup of the bank offered (bankBackup: read now, the FM-1 cannot send its patches); nothing is
+   *  installed until the user presses Install anyway. An FM-1 in update mode or one that does not answer cannot be asked:
+   *  the log says so, and the install goes on, as the bank check of 1.26 does */
+  const checkOlder = async (): Promise<void> => {
+    const dev = await (await access()).find();
+    if (!dev) return;   // (install() reports a missing device itself)
+    try {
+      if (/^ota-/i.test(dev.id.model)) return log('the patterns were not checked: the FM-1 waits in update mode. Firmware older than 1.26 cannot read the patterns 2 to 64 that firmware 1.26 keeps in the pattern store');
+      if (firmwareKind(dev.id.text) !== 'matryoshka') return;
+      const ask = linkAsk(dev.link);
+      const hello = await ask(helloFrame(), (p) => p?.cmd === CMD.info, 800, 2).catch(() => null);
+      const info = hello && parseInfo(hello);
+      if (!info) return log('the patterns were not checked: the FM-1 did not answer. Firmware older than 1.26 cannot read the patterns 2 to 64 that firmware 1.26 keeps in the pattern store');
+      if (!storesEveryPattern(info)) return;
+      log('this FM-1 keeps its patterns in the pattern store: reading the bank and its patterns for a backup…');
+      const backup = await bankBackup(await readSlots(ask, slotCount(info)), bankCandidates(), (id) => readStoredPattern((f, m) => ask(f, m, 800, 3), id));
+      if (!(await olderAsk(backup))) throw new Error(`nothing was installed: ${OLDER_FIRMWARE_TEXT}`);
+      log('installing firmware older than 1.26 anyway: it does not read the patterns in the pattern store');
+    } finally {
+      dev.link.close();
+    }
+  };
+
+  /** the warning before firmware older than 1.26 goes onto a 1.26 FM-1: Back up to this browser (Your patches), Back up to
+   *  a file (a browser backup file of those patches, which Load patch from .json takes), Install anyway (true) or Cancel */
+  const olderAsk = (backup: BankBackup): Promise<boolean> => {
+    const n = backup.patches.length;
+    const toBrowser = el('button', { textContent: 'Back up to this browser', disabled: !n, title: 'Keep each patch, with every pattern inside it, in Your patches' });
+    const toFile = el('button', { textContent: 'Back up to a file', disabled: !n, title: 'Save the patches, with every pattern inside each, as a file: Load patch from .json brings them back' });
+    const go = el('button', { class: 'primary', textContent: 'Install anyway' });
+    const cancel = el('button', { textContent: 'Cancel' });
+    toBrowser.onclick = () => {
+      const failed = backup.patches.map((x) => savePatch(x.patch)).filter((r) => (log(r.msg), !r.ok));
+      if (failed.length) return;
+      toBrowser.textContent = 'Backed up in this browser';
+      toBrowser.disabled = true;
+    };
+    toFile.onclick = () => {
+      const saved = Date.now();
+      const file = backupFile({ 'matryoshka.patches': JSON.stringify(backup.patches.map((x) => ({ name: x.patch.name, patch: x.patch, saved }))) }, location.origin);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }));
+      a.download = `matryoshka-fm1-bank-${file.saved.slice(0, 10)}.json`;
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      log(`the bank's ${n} patch${n === 1 ? '' : 'es'} saved to ${a.download}`);
+    };
+    const missing = backup.missing.length;
+    const dlg = el('dialog', { class: 'help sync-ask flash-bank' },
+      el('div', { class: 'sync-ask-body' },
+        el('h2', { textContent: 'Firmware older than 1.26' }),
+        el('p', { textContent: `${OLDER_FIRMWARE_TEXT} ${BACKUP_TEXT}` }),
+        el('p', { textContent: `The backup holds ${n} patch${n === 1 ? '' : 'es'}.${missing ? ` This browser has no copy of ${slotList(backup.missing)}, so ${missing === 1 ? 'it' : 'they'} cannot be backed up.` : ''}` }),
+        el('div', { class: 'sync-ask-actions' }, toBrowser, toFile, go, cancel)));
+    let result = false;
+    cancel.onclick = () => dlg.close();
+    go.onclick = () => {
+      result = true;
+      dlg.close();
+    };
+    return new Promise((done) => {
+      dlg.addEventListener('close', () => { dlg.remove(); done(result); }, { once: true });
+      root.append(dlg);
+      dlg.showModal();
+    });
   };
 
   /** the factory sounds after a Matryoshka install (#915): the FM-1 found again once it runs the new firmware, then

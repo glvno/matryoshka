@@ -216,6 +216,7 @@ static void m1_arms(eng_mset_t mask) { arms_calls++; arms_last = mask; eng_arm_m
                                                               * glue (patlink.c) and a store in RAM itself */
 static void m1_pat_load(void) {}
 static uint64_t m1_pat_clean(void) { return 0; }
+static int m1_pat_spill(void) { return 0; }
 static void m1_pat_info(uint8_t *p) { p[1] = 64; p[2] = p[3] = p[4] = p[5] = 0; }
 static uint32_t m1_pat_list(uint32_t after, uint8_t *e) { (void)after; (void)e; return 0; }
 static const uint8_t *m1_pat_get(uint32_t id, uint32_t *len) { (void)id; (void)len; return 0; }
@@ -224,12 +225,16 @@ static uint32_t m1_pat_del(uint32_t id, uint32_t force, uint32_t *count) { (void
 #else
 static void m1_pat_load(void);
 static uint64_t m1_pat_clean(void);
+static int m1_pat_spill(void);
 static void m1_pat_info(uint8_t *p);
 static uint32_t m1_pat_list(uint32_t after, uint8_t *e);
 static const uint8_t *m1_pat_get(uint32_t id, uint32_t *len);
 static uint32_t m1_pat_put(uint32_t *id, const char *name, const uint8_t *p, uint32_t len);
 static uint32_t m1_pat_del(uint32_t id, uint32_t force, uint32_t *count);
 #endif
+static int patch_full_calls;
+static void m1_patch_full(void) { patch_full_calls++; }        /* (main.c's, #1199) */
+static const char *m1_patch_name(void) { return "TEST"; }      /* (main.c's) */
 /* the factory region (#915): proto.c calls these; without PROTO_TEST_FACTORY stand-ins after proto.c keep what the frames
  * carried, with it patlink_test.c and preset_pattern_test.c bring factory.c over RAM themselves (factory_test.c tests it) */
 static uint32_t m1_fact_info(uint8_t *out);
@@ -1199,7 +1204,7 @@ int main(int argc, char **argv)
         CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 4 && replies[0][4] == R_INFO && replies[1][4] == R_TEMPO_NOW);
         n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
         CHECK(n == 26u && p[7] == ENG_PATCH_COMPAT_VERSION && p[8] == ENG_PATCH_VERSION && p[12] == M1_FEATURES3 && p[13] == ENG_BUFFER_ALLOCATION && p[14] == M1_FEATURES4);
-        CHECK(!p[20] && !p[21] && !p[22] && !p[23] && !p[24] && p[25] == M1_FEATURES5 && (p[25] & 1u));   /* (bytes 20..24 the font area's, #1203,
+        CHECK(!p[20] && !p[21] && !p[22] && !p[23] && !p[24] && (p[25] & M1_FEATURES5) == M1_FEATURES5 && (p[25] & 1u));   /* (bytes 20..24 the font area's, #1203,
                                                      * none here; byte 25 bit 0: a card holding its track is its device, #1202 K2) */
         { uint32_t j; uint8_t origin[6];
           for (j = 0; j < 2u; j++) {

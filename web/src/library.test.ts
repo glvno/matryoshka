@@ -29,7 +29,11 @@ function fakeDevice(connected: boolean, bankSlots = SLOTS): DeviceLink & { slots
     get connected() { return connected; },
     readBank: async () => slots.map((s) => ({ ...s })),
     readSlot: async (i: number) => ({ ...slots[i] }),
-    uploadSlot: async (i: number, name: string, p: Patch) => void (slots[i] = { slot: i, used: true, name: name.slice(0, 20), length: encodePatch(p).length }),
+    uploadSlot: async (i: number, name: string, p: Patch) => {
+      const bin = encodePatch(p);
+      slots[i] = { slot: i, used: true, name: name.slice(0, 20), length: bin.length };
+      return { bin, inline: [] };
+    },
     eraseSlot: async (i: number) => void (slots[i] = { slot: i, used: false, length: 0, name: '' }),
   } as unknown as DeviceLink & { slots: SlotInfo[] };
 }

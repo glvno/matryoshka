@@ -14,15 +14,15 @@ pub const RAM_SIZE: usize = 1 << 20;
 pub const ENTRY: u32 = 0x0200_0120;
 pub const XIP_PAD: usize = 0x120;
 pub const FLASH_SIZE: usize = 1 << 20;
-/// The factory region's image (web/public/firmware/matryoshka-factory.bin, export-defs) and where it lives (#915,
-/// firmware/src/factory.c)
-pub const FACTORY_REGION: &[u8] = include_bytes!("../../../web/public/firmware/matryoshka-factory.bin");
+/// The factory region's image (web/public/firmware/matryoshka-factory.bin, export-defs; read when m1emu runs, repo.rs)
+/// and where it lives (#915, firmware/src/factory.c)
+pub static FACTORY_REGION: std::sync::LazyLock<Vec<u8>> = std::sync::LazyLock::new(crate::repo::factory);
 pub const FACTORY_BASE: usize = 0xEA000;
 
 /// An erased flash chip holding the factory region: an FM-1 the editor or tools/fm1_install.py set up (#915)
 pub fn installed_flash() -> Vec<u8> {
     let mut f = vec![0xffu8; FLASH_SIZE];
-    f[FACTORY_BASE..FACTORY_BASE + FACTORY_REGION.len()].copy_from_slice(FACTORY_REGION);
+    f[FACTORY_BASE..FACTORY_BASE + FACTORY_REGION.len()].copy_from_slice(&FACTORY_REGION);
     f
 }
 /// Stack paint (#273): the firmware paints its stacks with this word at boot (main.c `stack_paint`); the emulator also

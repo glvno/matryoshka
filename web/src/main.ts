@@ -19,7 +19,7 @@ import { cardCosts, cardCostTitle, CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
-import { chipState, DeviceLink, deviceIndex, deviceLayoutKey, IGNORED_NOW, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
+import { chipState, DeviceLink, deviceIndex, deviceLayoutKey, IGNORED_NOW, liveSync, sandboxChip, storeFullText, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
 import { fm1Label } from './fm1-choice';
 import { chooseFm1 } from './fm1-pick';
 import { SITE_URL } from './site';
@@ -42,8 +42,8 @@ import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
 import { buildPresetsSection } from './library-presets';
 import { buildPatternsSection } from './pattern-library';
-import { factoryEntries, payloadHash } from './pattern-store';
-import { PATTERNS_MAX, READ_ONLY_ID, withoutLinks, type PatternLink } from './track';
+import { factoryEntries, payloadHash, portablePatch } from './pattern-store';
+import { PATTERNS_MAX, READ_ONLY_ID, type PatternLink } from './track';
 import { bindPatchPresetTransfer } from './patch-presets';
 import { buildCommunitySection } from './library-community';
 import { isSaved, onSavedChange, putBackSaved, removeSaved, restoreSaved, savedPatches, savePatch as keepPatch, unsavedChanges } from './saved';
@@ -96,7 +96,7 @@ import { inlineWordmarks } from './brand';
 import { clipText, parseClip, type Clip } from './clipboard';
 import { isGlobalTempo, patchTempo, readTempo, tempo, TEMPO_KEY, tempoNow } from './tempo';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
-import { binaryPage, deviceBudget, editorPage, encodePatch, kb, linesAdvice, overText, POLY_ROW, POLY_ROW_PARAMS, SANITY_CAPS, toQ16 } from './patchbin';
+import { binaryPage, deviceBudget, editorPage, encodePatch, kb, linesAdvice, overText, POLY_ROW, POLY_ROW_PARAMS, SANITY_CAPS, toQ16, type BudgetStore } from './patchbin';
 import { UploadGate } from './upload-gate';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
@@ -168,6 +168,9 @@ device.choose = (found, first) => chooseFm1($<HTMLDialogElement>('fm1-pick'), fo
 const fm1Name = (): string => (device.connected && device.identity ? fm1Label(device.identity) : 'FM-1');
 /** the patch fits the FM-1 (deviceBudget); one that does not plays only in the browser and is never sent */
 let fitsDevice = true;
+/** the pattern store the budget last counted with (patchbin.ts BudgetStore: `every` while an FM-1 that stores every pattern
+ *  is connected, #1202) */
+let budgetStore: BudgetStore = 'assume';
 /** the budget's cost list (#942, showBudget): its order, and whether every module is listed or the first CPU_ROWS */
 let cpuSort: 'cost' | 'name' = 'cost';
 let cpuAll = false;
@@ -264,13 +267,13 @@ function liveEdited(): void {
   clearTimeout(gateTimer);
   gateTimer = window.setTimeout(() => {
     if (!live()) return uploadGate.forget();
-    try { uploadGate.refresh(encodePatch(editor.patch, false, 0, device.bufferAllocation, device.linkStore)); } catch { uploadGate.forget(); }
+    try { uploadGate.refresh(device.encodeFor(editor.patch)); } catch { uploadGate.forget(); }
   }, GATE_MS);
 }
 /** a structural change under Live: the patch goes to the FM-1 again only when its encoded bytes changed */
 function structureChanged(): void {
   let bin: Uint8Array | null = null;
-  try { bin = encodePatch(editor.patch, false, 0, device.bufferAllocation, device.linkStore); } catch { /* over the budget: sendPatch says so */ }
+  try { bin = device.encodeFor(editor.patch); } catch { /* over the budget: sendPatch says so */ }
   if (bin && onEditorPatch && !uploadGate.needs(bin)) return;
   uploadGate.forget();   // (until the upload: the FM-1 holds the old bytes)
   queueUpload();
@@ -615,17 +618,17 @@ async function sendPatch(): Promise<boolean> {
       dirty = false;
       devStatus('sending patch…');
       const load = loadsSeen;
-      const bin = encodePatch(editor.patch, false, 0, device.bufferAllocation, device.linkStore);
       const layout = deviceLayoutKey(editor.patch);
       uploadGate.forget();
       installedLayout = null;
-      await device.upload(editor.patch, bin);
-      uploadGate.took(bin);
+      // (to an FM-1 that stores every pattern, the patterns go into its store first: what it was sent comes back, #1202)
+      const sent = await device.upload(editor.patch);
+      uploadGate.took(sent.bin);
       installedLayout = layout;
       onEditorPatch = true;
       baseline = JSON.stringify(editor.patch);
       uploadedLoad = load;
-      devStatus('patch on the FM-1');
+      devStatus(sent.inline.length ? `patch on the FM-1. ${storeFullText(editor.patch.name, sent.inline)}` : 'patch on the FM-1');
       if (dirty) continue;   // the next upload must finish before sending indices from the changed patch
       const at = editor.focus && binaryPage(editor.patch, editor.focus.device, editor.focus.page);
       if (at) device.focus(at[0], at[1]);   // the FM-1 opens on the page the knobs edit here
@@ -726,7 +729,9 @@ function offerSync(asked = false): void {
     if (fitsDevice) void sendPatch();
     return syncChip();
   }
-  const d = syncOnConnect({ fits: fitsDevice, declined: !asked && syncDeclined(), editorBin: fitsDevice ? encodePatch(editor.patch, false, 0, device.bufferAllocation, device.linkStore) : new Uint8Array(), deviceBin: null });
+  let editorBin: Uint8Array = new Uint8Array();
+  if (fitsDevice) try { editorBin = device.encodeFor(editor.patch); } catch { /* (patterns its store has not got yet go whole: sendPatch says when that does not fit) */ }
+  const d = syncOnConnect({ fits: fitsDevice, declined: !asked && syncDeclined(), editorBin, deviceBin: null });
   if (d === 'sync') return setLive(true);
   if (d === 'ask' && !syncAsk.open) {
     const name = editor.patch.name.trim() || 'Untitled';
@@ -1070,6 +1075,9 @@ const editor = new Editor($('canvas'), firstPatch, {
     if (!fromEmu) queueEmu();
     queueSave(editor.patch);
     if (fromDevice) return;
+    // (#1199: a step edit can fill the patch; the budget first, so one past the FM-1's bytes says PATCH FULL and stays here
+    // instead of going out to be dropped)
+    if (device.connected && liveOn) showBudget();
     if (live() && indexedLiveReady()) { device.track(editor.patch, id, notes, pat); liveEdited(); }
     else if (live()) dirty = true;
   },
@@ -1302,7 +1310,7 @@ const fillPicker = (): void => {
   chipsDue = [];
   presetSel.replaceChildren(
     new Option('Open a patch…', ''),
-    ...openableGroups(device.bufferAllocation).map(({ label, items }) => {
+    ...openableGroups(device.bufferAllocation, device.budgetStore).map(({ label, items }) => {
       const g = document.createElement('optgroup');
       g.label = label;
       g.append(...items.map((o) => {
@@ -1448,10 +1456,11 @@ function budgetLine(name: string, frac: number, figure: string, title = '', warn
 }
 
 function showBudget(): void {
-  const allocationChanged = editor.bufferAllocation !== device.bufferAllocation;
+  const countChanged = editor.bufferAllocation !== device.bufferAllocation || budgetStore !== device.budgetStore;
   editor.bufferAllocation = device.bufferAllocation;
-  if (allocationChanged) fillPicker();
-  const b = deviceBudget(editor.patch, device.bufferAllocation);
+  budgetStore = device.budgetStore;
+  if (countChanged) fillPicker();
+  const b = deviceBudget(editor.patch, device.bufferAllocation, budgetStore);
   const was = fitsDevice;
   fitsDevice = b.fits;
   syncChip();
@@ -1547,7 +1556,14 @@ function showBudget(): void {
     : 'A sandbox patch: it plays here in the browser with no FM-1 limits. It goes to the FM-1 once it fits under the bars; Library > Patches marks it SANDBOX.';
   list.append(note);
   showSandbox(b);
-  if (was && !b.fits && device.connected) devStatus('over the FM-1 budget: Live paused until the patch fits');
+  if (was && !b.fits && device.connected) {
+    // (#1199: an edit that fills the patch is never lost without a word: it plays here, and the FM-1 does not get it)
+    const bytes = b.over.find((i) => i.key === 'bytes');
+    const msg = !bytes ? 'over the FM-1 budget: Live paused until the patch fits'
+      : `PATCH FULL: the patch takes ${bytes.used} of the FM-1's ${bytes.max} bytes, so the last change plays here and does not go to the FM-1. Live is paused until the patch fits.${device.patternsStored ? '' : ' Firmware 1.26 keeps patterns 2–64 in the pattern store, outside the patch.'}`;
+    devStatus(msg);
+    if (bytes) showToast(msg, 8000);
+  }
   requestAnimationFrame(placeBudget);
 }
 // a sandbox patch (over the FM-1 budget, sandbox.ts): the status line's gold SANDBOX pill and its plain words; the first
@@ -2061,7 +2077,7 @@ const commands = (): Command[] => {
     // the help card at it
     { kind: 'how to', tags: ['module'], label: 'Splitter / mult: cable an output again', detail: 'an output feeds any number of inputs; in an assembly, card · N › merge… makes one jack feed several', keywords: 'split splitter mult multiple multiply fan out fanout y cable copy duplicate one to many distribute stackable buffered', run: () => { help.showModal(); $('help-mult').scrollIntoView({ block: 'center' }); } },
     ...assemblyShelves().filter((a, i, all) => all.findIndex((b) => b.def === a.def) === i).map((a) => assembly(a.def, a.shelf)), // the drum kit once
-    ...openableGroups(device.bufferAllocation).flatMap((g) => g.items.map((o) => ({ kind: 'load patch', label: o.author ? `${o.name} · ${o.author}` : o.name, detail: g.label, run: () => loadNamed(o.load(), { from: o.from }) }))),
+    ...openableGroups(device.bufferAllocation, device.budgetStore).flatMap((g) => g.items.map((o) => ({ kind: 'load patch', label: o.author ? `${o.name} · ${o.author}` : o.name, detail: g.label, run: () => loadNamed(o.load(), { from: o.from }) }))),
   ];
 };
 /**
@@ -2781,7 +2797,7 @@ function emuParam(id: number, name: string, value: number): void {
  *  over sandbox patches as the FM-1's PRESET does: they never go into its bank */
 function stepOpenList(d: number): void {
   if (!d) return;
-  const list = openableGroups(device.bufferAllocation).flatMap((g) => g.items).filter((o) => o.chip().fits);
+  const list = openableGroups(device.bufferAllocation, device.budgetStore).flatMap((g) => g.items).filter((o) => o.chip().fits);
   if (!list.length) return;
   const i = list.findIndex((o) => o.name === editor.patch.name);
   const next = list[(((i < 0 ? (d > 0 ? -1 : 0) : i) + d) % list.length + list.length) % list.length];
@@ -3122,8 +3138,8 @@ async function storeToSlot(): Promise<void> {
     const was = await device.readSlot(n - 1);
     const shown = slots.find((s) => s.slot === pick);
     if (was.used && !(shown?.used && shown.name === was.name) && !window.confirm(`FM-1 slot ${slotLabel(n - 1)} holds "${was.name}". Replace it with "${editor.patch.name}"?`)) return devStatus('nothing stored');
-    await device.uploadSlot(n - 1, editor.patch.name.toUpperCase().slice(0, 20), editor.patch);
-    devStatus(`"${editor.patch.name}" stored into FM-1 slot ${slotLabel(n - 1)}`);
+    const sent = await device.uploadSlot(n - 1, editor.patch.name.toUpperCase().slice(0, 20), editor.patch);
+    devStatus(`"${editor.patch.name}" stored into FM-1 slot ${slotLabel(n - 1)}${sent.inline.length ? `. ${storeFullText(editor.patch.name, sent.inline)}` : ''}`);
   } catch (e) {
     devStatus((e as Error).message);
   }
@@ -3201,7 +3217,7 @@ const saveCard = async (by?: string): Promise<void> => {
   }
 };
 const savePatch = (): void => {
-  const blob = new Blob([JSON.stringify(withoutLinks(editor.patch), null, 2)], { type: 'application/json' });   // (link ids belong to one FM-1, #901)
+  const blob = new Blob([JSON.stringify(portablePatch(editor.patch), null, 2)], { type: 'application/json' });   // (every pattern inside, no link: a link belongs to one FM-1, #1202)
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `${fileStem(editor.patch)}.json`;
@@ -3747,7 +3763,7 @@ try {
 // Library > Patches list those, once decoded)
 libraryPanes.patches = buildPatchesSection($('lib-patches'), device, { remove: deleteSaved });
 if (addedTitles().length) void loadCommunity().then(() => { fillPicker(); libraryPanes.patches?.refresh(); });
-libraryPanes.community = buildCommunitySection($('lib-community'), { status: (msg) => { status.textContent = msg; } }, () => device.bufferAllocation);
+libraryPanes.community = buildCommunitySection($('lib-community'), { status: (msg) => { status.textContent = msg; } }, () => device.bufferAllocation, () => device.budgetStore);
 libraryPanes.presets = buildPresetsSection($('lib-presets'), device, { changed: () => editor.rebuild() });
 patternsPane = libraryPanes.patterns = buildPatternsSection($('lib-patterns'), device, {
   patch: () => editor.patch,
@@ -3962,7 +3978,7 @@ if (import.meta.env.DEV) {
     // owner keeps them; the Open picker's chip of one (FM-1 · NN % or SANDBOX)
     save: (json: string): boolean => keepPatch(validatePatch(JSON.parse(json), DEFS)).ok,
     unsave: (name: string): boolean => !!removeSaved(name),
-    chip: (name: string): string | null => openableGroups(device.bufferAllocation).flatMap((g) => g.items).find((x) => x.name === name)?.chip().text ?? null,
+    chip: (name: string): string | null => openableGroups(device.bufferAllocation, device.budgetStore).flatMap((g) => g.items).find((x) => x.name === name)?.chip().text ?? null,
     // the FM-1's bank: its slots (SLOT_INFO), a slot emptied, a binary stored as it is (an older format's, as a bank an earlier
     // firmware wrote holds)
     slots: async (): Promise<SlotInfo[]> => device.readBank(),

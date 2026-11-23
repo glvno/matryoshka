@@ -292,8 +292,8 @@ describe('DeviceLink.connect', () => {
     await withMidi([fm1.i], [fm1.o], async () => {
       await link.connect();
       expect(link.bufferAllocation).toBe(1);
-      await expect(link.upload(patch)).resolves.toBeUndefined();
-      await expect(link.uploadSlot(0, 'TEST', patch)).resolves.toBeUndefined();
+      await expect(link.upload(patch)).resolves.toMatchObject({ inline: [] });
+      await expect(link.uploadSlot(0, 'TEST', patch)).resolves.toMatchObject({ inline: [] });
       const changing = structuredClone(patch);
       const pending = link.upload(changing, shared);
       Object.assign(changing, newPatch(DEFS));
@@ -353,7 +353,7 @@ describe('DeviceLink.connect', () => {
       inp.onmidimessage?.({ data: frame(CMD.originNow, data) });
     };
     origin(255, 0, 1); origin(2, 0, 123);
-    let queued: Promise<void> | undefined;
+    let queued: Promise<unknown> | undefined;
     if (boundary === 'slot') inp.onmidimessage?.({ data: frame(CMD.slotNow, [1]) });
     else {
       const patch = newPatch(DEFS), track = addModule(patch, DEFS.steps, 0, 0);

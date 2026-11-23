@@ -25,6 +25,7 @@
 #define ENG_POOL
 enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE, S_FULL, S_MISSING, S_USED };
 static uint32_t bank_slots = M1_SLOTS;          /* (proto.c's) */
+static uint8_t m1_up[M1_PATCH_MAX];             /* (proto.c's: the store's scan keeps half its table there) */
 static uint8_t flash_ok = 1;
 static uint16_t m1_crc16(const uint8_t *p, uint32_t n)
 {
@@ -122,7 +123,7 @@ static void boot(void)
     cut_hit = 0;
     sl_next = 0;
     sl_seq = 0;
-    bank_slots = M1_SLOTS;
+    sl_layout(0);
     bank_mask = 0;
     pt_on = 0;
     pt_scanned = 0;
@@ -130,6 +131,8 @@ static void boot(void)
     memset(pt_tail, 0, sizeof pt_tail);
     sl_scan();
     pt_claim();
+    if (pt_on)
+        pt_scan();
 }
 
 /* name padded to M1_NAME bytes */

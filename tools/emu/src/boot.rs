@@ -46,12 +46,11 @@ const C_FACT_COMMIT: u8 = 0x1A;
 const C_FACT_INFO: u8 = 0x3F;
 const R_ACK: u8 = 0x40;
 const R_FACT_INFO: u8 = 0x5F;
-/// What the firmware compiles in of the factory content (#915): the firmware tier's image FC_TIER
-const FACTORY_TIER_H: &str = include_str!("../../../firmware/src/factory_tier.h");
 
-/// The firmware tier's image (factory_tier.h FC_TIER)
+/// The firmware tier's image (factory_tier.h FC_TIER: what the firmware compiles in of the factory content, #915)
 fn tier_image() -> Vec<u8> {
-    let s = &FACTORY_TIER_H[FACTORY_TIER_H.find("FC_TIER[").expect("FC_TIER")..];
+    let h = crate::repo::text("firmware/src/factory_tier.h");
+    let s = &h[h.find("FC_TIER[").expect("FC_TIER")..];
     s[s.find('{').unwrap() + 1..s.find('}').unwrap()].split(',').map(|x| x.trim().parse().unwrap()).collect()
 }
 
@@ -165,7 +164,7 @@ fn blank_region(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     t.check("blank region: then CONNECT TO MATRYOSHKA.LOL", connect, format!("at {} ms", m.ms()));
     let f = m.flash();
     let tier = image_patches(&tier_image());
-    let region = image_patches(FACTORY_REGION);
+    let region = image_patches(&FACTORY_REGION);
     let missing_tier: Vec<_> = tier.iter().filter(|(_, s)| bank_record(&f, *s).is_none()).map(|(n, _)| n.clone()).collect();
     let written_region: Vec<_> = region_only(&tier, &region).into_iter().filter(|(_, s)| bank_record(&f, *s).is_some()).map(|(n, _)| n).collect();
     t.check("blank region: each firmware-tier patch is written into its own slot", !tier.is_empty() && missing_tier.is_empty(), format!("missing {missing_tier:?}"));
@@ -426,12 +425,12 @@ fn factory_install(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), St
     quick_start(&mut m, 8000)?;
     l.run(&mut m, 500)?;
     let tier = image_patches(&tier_image());
-    let region = image_patches(FACTORY_REGION);
+    let region = image_patches(&FACTORY_REGION);
     l.send(&frame(C_FACT_INFO, &[]));
     let before = l.wait(&mut m, 1500, |x| reply(x, R_FACT_INFO))?;
     t.check("factory link: FACT_INFO on a blank flash: no region, the firmware tier alone plays",
         before.as_ref().is_some_and(|p| p.len() >= 26 && p[0] == 0 && p[16] & 2 != 0), format!("{before:?}"));
-    let img = FACTORY_REGION;
+    let img = &FACTORY_REGION[..];
     let (begin, pages, commit) = install(&mut m, &mut l, img)?;
     t.check("factory link: FACT_BEGIN is acknowledged S_OK", begin == Some(0), format!("{begin:?}"));
     t.check("factory link: FACT_WRITE takes every page of the image", pages.is_ok(), pages.map_or_else(|e| e, |n| format!("{n} pages")));
@@ -459,11 +458,11 @@ fn slot_upgrade(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     const OLD_SET: u32 = 0x55ce34;              // (1.20.1's factory set: an earlier one than today's)
     const EDITED: u32 = 30;
     const RENAMED: u32 = 31;
-    let version: u8 = include_str!("../../../firmware/src/engine.h").split("#define ENG_PATCH_VERSION ").nth(1).and_then(|s| s.split_whitespace().next()?.parse().ok()).ok_or("ENG_PATCH_VERSION")?;
+    let version: u8 = crate::repo::text("firmware/src/engine.h").split("#define ENG_PATCH_VERSION ").nth(1).and_then(|s| s.split_whitespace().next()?.parse().ok()).ok_or("ENG_PATCH_VERSION")?;
     let cases = released_cases();
     let presets = factory();
     let tier = image_patches(&tier_image());
-    let region = image_patches(FACTORY_REGION);
+    let region = image_patches(&FACTORY_REGION);
     // each case: its name, its own slot (the image's record), the released copy, today's bytes
     let mut own = Vec::new();
     for (k, (name, old)) in cases.iter().enumerate() {
@@ -495,7 +494,7 @@ fn slot_upgrade(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), Strin
     l.run(&mut m, 500)?;
     t.check("slot upgrade: a bank an earlier release left, no factory region: every slot as it was, the bar says FACTORY SOUNDS MISSING:",
         missing && unchanged(&m.flash()), String::new());
-    let (begin, pages, commit) = install(&mut m, &mut l, FACTORY_REGION)?;
+    let (begin, pages, commit) = install(&mut m, &mut l, &FACTORY_REGION)?;
     t.check("slot upgrade: the editor installs today's region while it runs", begin == Some(0) && pages.is_ok() && commit == Some(0),
         format!("{begin:?} {pages:?} {commit:?}"));
     let said = wait_text(&mut m, "FACTORY PATCHES UPDATED", 8000)?;
@@ -556,7 +555,7 @@ mod tests {
     #[test]
     fn the_shipped_region_and_tier_merge() {
         let tier = image_patches(&tier_image());
-        let region = image_patches(FACTORY_REGION);
+        let region = image_patches(&FACTORY_REGION);
         let union: std::collections::HashSet<_> = tier.iter().chain(&region).map(|(n, _)| n.clone()).collect();
         assert_eq!(merged_count(&tier, &region), union.len());
         for (n, s) in overrides(&tier, &region) {

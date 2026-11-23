@@ -5164,6 +5164,43 @@ int main(void)
         panel_edges(0, 1u << BTN_SEQ);
         loop();
         check("  SEQ let go: the SEQ page stays, the patch not saved", page == PAGE_SEQ);
+        {                                               /* (#1202 P1: SEL held + SAVE's pattern save went) */
+            int was = saved, pat = eng_pattern();
+            panel_held |= 1u << BTN_SEL;
+            panel_edges(1u << BTN_SEL, 0);
+            tap(BTN_SAVE);
+            loop();
+            panel_held &= ~(1u << BTN_SEL);
+            panel_edges(0, 1u << BTN_SEL);
+            loop();
+            check("SEL held + SAVE on the SEQ page: nothing, the patch not saved, SEL's release opens nothing",
+                  saved == was && page == PAGE_SEQ && eng_pattern() == pat);
+        }
+        {                                               /* a pattern the track takes on its own (queued, at once while
+                                                         * stopped: PRESET, a demo set), after the page was drawn with the
+                                                         * old one: the cells follow, not only the bar */
+            static uint16_t keep[240 * 240];
+            int pat = eng_pattern(), mod = eng_steps_module(0), was, to;
+            blocks(2);
+            later(200);
+            was = eng_pattern_playing((uint32_t)mod);
+            to = was ? 0 : 1;                           /* (P01 holds other notes than P02 and its copy P05) */
+            eng_pattern_set((uint32_t)to);
+            ui_dirty = ui_dirty ? ui_dirty : 1;
+            loop();                                     /* (drawn before the engine takes it) */
+            blocks(2);
+            seq_shown_pos = (int8_t)eng_steps_pos((uint32_t)mod);   /* (the playhead as drawn: only the pattern changed,
+                                                         * as with the demo set's P02 in emu:smoke seq-50) */
+            later(1700);
+            memcpy(keep, fb, sizeof keep);
+            ui_dirty = 2;
+            loop();
+            check("a pattern the track takes while stopped, after a redraw: the SEQ page shows its cells (what a whole "
+                  "redraw draws)", eng_pattern_playing((uint32_t)mod) == to && !memcmp(keep, fb, sizeof keep));
+            eng_pattern_set((uint32_t)pat);
+            blocks(2);
+            later(1700);
+        }
         enc(6, -1);
         later(1100);
         panel_held |= 1u << BTN_SEQ;
