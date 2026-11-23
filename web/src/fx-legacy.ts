@@ -247,12 +247,20 @@ export function convertLegacyBus(p: Patch, defs: Record<string, ModuleDef>): Pat
     a.inputs = stage.inputs.map((e, ch) => port(a.inputs, [e], ch ? 'in R' : 'in L'));
     a.outputs = stage.outputs.map((ends, ch) => port(a.outputs, ends, ch ? 'out R' : 'out L'));
     a.chain = { ins: [0, 1], outs: [0, 1], ...(stage.helpers.length ? { helpers: [...stage.helpers] } : {}) };
+    // the fields fixAssemblies writes after `chain` move behind it: the converted patch is then the one the editor opens
+    // (factory-reconciled.test.ts, #465), key for key
+    const rec = a as unknown as Record<string, unknown>;
+    for (const k of ['cards', 'preset', 'bypass', 'kept']) if (k in rec) {
+      const v = rec[k];
+      delete rec[k];
+      rec[k] = v;
+    }
   }
   const at = p.assemblies!.indexOf(root);
   const drawer: AssemblyInst = {
     v: 1, id: root.id, name: root.name, label: root.label, x: owner?.instrument.x ?? root.x, y: owner?.instrument.y ?? root.y, open: false,
-    modules: [], children: bus.stages.map((s) => s.assembly), inputs: [], outputs: [], params: [],
-    drawer: owner ? { taps: owner.taps } : {},
+    modules: [], inputs: [], outputs: [], params: [],
+    drawer: owner ? { taps: owner.taps } : {}, children: bus.stages.map((s) => s.assembly),
   };
   // (the drawer takes the root's id: Toggles that switched the root switch the drawer)
   p.assemblies!.splice(at, 1, drawer);
