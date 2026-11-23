@@ -2447,12 +2447,21 @@ async function main() {
       await check('device preset: the first PRESET turn left loads the last of its list, not INIT', shown && !(await emu.text('PRESET INIT')));
       await emu.elapse(1200);
     },
-    // #1214 (the FX drawer, 1.26.2): Oracle V's master FX bus became its FX drawer when the editor opened it; on the FM-1
-    // FX opens the drawer's first effect and SELECT walks its effects in chain order (devices right after the instrument);
-    // a patch with no FX rack and FX set to Nothing says NO FX IN THE RACK
+    // #1214 (the FX drawer, 1.26.2): Oracle V with the old master FX bus (factory-bank.ts withFxBus, as the factory bank
+    // shipped it) becomes Oracle V with its FX drawer when the editor opens it (validatePatch); on the FM-1 FX opens the
+    // drawer's first effect and SELECT walks its effects in chain order (devices right after the instrument); a patch with
+    // no FX rack and FX set to Nothing says NO FX IN THE RACK
     async fxDrawer() {
       const shown = (name) => emu.waitText(name.toUpperCase().slice(0, 10), 2000);
-      await check('fx drawer: Oracle V opens converted, synced', await openSynced('Oracle V'));
+      const legacy = await page.evaluate(async () => {
+        const { PRESETS } = await import('/src/presets.ts');
+        const { withFxBus } = await import('/src/factory-bank.ts');
+        const p = withFxBus(PRESETS['Oracle V']());
+        p.name = 'T1214 ORACLE BUS';
+        window.__m1test.save(JSON.stringify(p));
+        return p.name;
+      });
+      await check('fx drawer: Oracle V with the old master FX bus opens converted, synced', await openSynced(legacy));
       const { instrument, effects } = await page.evaluate(() => {
         const p = JSON.parse(window.__m1test.patchJson()), all = (p.assemblies ?? []).filter(Boolean);
         const drawer = all.find((a) => a.drawer?.taps);
@@ -2473,11 +2482,11 @@ async function main() {
       await check('fx drawer: FX on an effect goes to the first effect of its drawer', await shown(effects[0]));
       await emu.tap(B.fx);
       await check(`fx drawer: FX again goes back to ${effects.at(-1)}`, await shown(effects.at(-1)));
-      const plain = await page.evaluate(async () => {
-        const { PRESETS } = await import('/src/presets.ts');
+      const plain = await page.evaluate(async () => {   // (Main and the Output only: no effect, no drawer)
+        const { newPatch } = await import('/src/patch.ts');
+        const { DEFS } = await import('/src/modules.ts');
         const { setKind } = await import('/src/buttons.ts');
-        const p = PRESETS['Silver Box']();
-        p.name = 'T1214 NO RACK';
+        const p = newPatch(DEFS, 'T1214 NO RACK');
         setKind(p, 'fx', 'nothing');
         window.__m1test.save(JSON.stringify(p));
         return p.name;
