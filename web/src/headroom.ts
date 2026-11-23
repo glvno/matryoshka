@@ -8,7 +8,7 @@
 import { applyPreset, currentValues, presetsOf } from './device-presets';
 import { Engine } from './engine';
 import { instIsEngine } from './engines';
-import { allModules, parentOf } from './assembly';
+import { deviceModules, parentOf } from './assembly';
 import { DEVICE_SR } from './modules';
 import type { Patch } from './patch';
 import { COND_FILL, COND_NOT } from './track';
@@ -89,7 +89,7 @@ export function plays(p: Patch): Play[] {
       const q = structuredClone(p);
       const a = (q.assemblies ?? []).filter((x) => !parentOf(q, x.id) && (instIsEngine(q, x) || x.name === '808 kit' || x.name === '909 kit'))[ei];
       if (!applyPreset(q, a, preset)) continue;
-      out.push(...ways(q, `${a.name ?? 'engine'} ${preset.name}`, voicesIn(q, allModules(q, a))));
+      out.push(...ways(q, `${a.name ?? 'engine'} ${preset.name}`, voicesIn(q, deviceModules(q, a))));
     }
   });
   return out;

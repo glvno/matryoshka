@@ -7,7 +7,7 @@
 // body (a bell, a pluck) reaches only what the cap allows. Each engine's level rows (LEVEL_ROWS, after any drive) carry
 // its presets' levels; the patch's Output carries its Init's. scripts/factory-build.ts `loudness` sets both;
 // levels-*.test.ts keeps them so.
-import { allModules, parentOf, toDef, type AssemblyInst } from './assembly';
+import { deviceModules, parentOf, toDef, type AssemblyInst } from './assembly';
 import { applyPreset, currentValues, presetsOf } from './device-presets';
 import { instIsEngine } from './engines';
 import { HEADROOM, patterns, peakOfPlay, renderPlay, voicesIn, ways, type Play } from './headroom';
@@ -147,7 +147,7 @@ function measureAsIs(p: Patch): Loudness {
   // (an engine listed in EIGHT_VOICES also with its Voicing at eight voices and eight keys held, as its test plays it)
   for (const a of (p.assemblies ?? []).filter((x) => EIGHT_VOICES.has(x.name ?? ''))) {
     const q = structuredClone(p);
-    const ids = new Set(allModules(q, (q.assemblies ?? []).find((x) => x.id === a.id)!));
+    const ids = new Set(deviceModules(q, (q.assemblies ?? []).find((x) => x.id === a.id)!));   // (its Voicings; the drawer holds none)
     for (const m of q.modules) if (m.type === 'alloc' && ids.has(m.id)) m.params.voices = 8;
     all.push(...ways(q, '', 8).slice(0, 1));
   }

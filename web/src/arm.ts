@@ -6,7 +6,7 @@
 // transform (armView): Main's keys cables into unarmed devices go, Main's keys into each armed device's keys input come;
 // the editor draws exactly what the arm routes (armDrawing, #418, docs/ledger/editor.md D-641). Not saved, no undo.
 // An engine no keys cable reaches is not armed, in the editor or on the FM-1 (noKeysReach, docs/ledger/steps.md D-818).
-import { allModules, assembliesOf, assemblyById, parentOf, targetsOf, type AssemblyInst } from './assembly';
+import { assembliesOf, assemblyById, deviceModules, parentOf, targetsOf, type AssemblyInst } from './assembly';
 import { instIsEngine } from './engines';
 import { DEFS } from './modules';
 import { ARM_WORDS, type Cable, type ModuleDef, type Patch } from './patch';
@@ -50,7 +50,7 @@ export function keysTargets(p: Patch, key: DeviceKey, defs: Record<string, Modul
  * play it from the keys (#215) */
 export function engineUnreached(p: Patch, a: AssemblyInst): boolean {
   if (!instIsEngine(p, a)) return false;
-  const ids = new Set(allModules(p, a));
+  const ids = new Set(deviceModules(p, a));   // (its FX drawer holds no Voicing or Drum map)
   return !p.modules.some((m) => ids.has(m.id) && ((m.type === 'alloc' && keyed(p, m)) || (m.type === 'drummap' && keysInto(p, m) !== null)));
 }
 
@@ -180,7 +180,7 @@ export function armMask(p: Patch, armed: Iterable<DeviceKey>, defs: Record<strin
   for (const k of armedWith(p, armed, defs)) {
     const id = Number(k.slice(1));
     const a = k[0] === 'a' ? assemblyById(p, id) : undefined;
-    for (const m of a ? allModules(p, a) : [id]) {
+    for (const m of a ? deviceModules(p, a) : [id]) {   // (an instrument's device: its drawer's effects are devices of their own, never armed)
       const i = index.get(m);
       if (i !== undefined && i < 32 * ARM_WORDS) words[i >> 5] |= 1 << (i & 31);
     }

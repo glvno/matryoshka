@@ -317,6 +317,7 @@ describe('drawers', () => {
     bypassAssembly(p, d, false);
     expect(p.modules.find((m) => m.id === rv.modules[0])!.bypass).toBeUndefined();
     expect(dl.modules.filter((id) => !helpers.has(id)).every((id) => p.modules.find((m) => m.id === id)!.bypass)).toBe(true);
+    expect(dl.bypass).toBe(true);
     bypassAssembly(p, inst, true);
     expect(p.modules.find((m) => m.id === rv.modules[0])!.bypass).toBeUndefined();
     expect(inst.modules.every((id) => p.modules.find((m) => m.id === id)!.bypass)).toBe(true);
@@ -339,12 +340,14 @@ describe('drawers', () => {
   });
 
   it('a factory instrument keeps its structure with any drawer (presets keep matching)', () => {
-    const p = PRESETS['Hera 6']();
-    fixAssemblies(p, DEFS);
-    const inst = assembliesOf(p).find((a) => a.label === 'Hera 6')!;
-    const q = roundTrip(p);   // (its bus becomes its drawer)
-    const qi = assemblyById(q, inst.id)!;
-    expect(drawerOf(q, qi.id)).toBeDefined();
+    // (a 1.14 factory patch with its master FX bus, before and after it opens as a drawer)
+    const [p, q] = Object.values(survey.patches).map((raw) => {
+      const p = structuredClone(raw);
+      fixAssemblies(p, DEFS);
+      return [p, roundTrip(raw)];
+    }).find(([, q]) => drawers(q).some((d) => d.drawer!.taps))!;
+    const qi = ownerOf(q, drawers(q).find((d) => d.drawer!.taps)!) as AssemblyInst;
+    const inst = assemblyById(p, qi.id)!;
     expect(structureOf(q, qi)).toBe(structureOf(p, inst));
     insertEffect(q, drawerOf(q, qi.id)!, { type: 'phaser' }, 0);
     expect(structureOf(q, qi)).toBe(structureOf(p, inst));
@@ -450,6 +453,12 @@ describe('legacy bus conversion', () => {
     ...Object.entries(survey.patches).map(([n, raw]): [string, Patch] => [`1.14 ${n}`, structuredClone(raw)]),
     ...Object.entries(PRESETS).map(([n, make]): [string, Patch] => [n, make()]),
   ];
+  /** a 1.14 factory patch that has its master FX bus */
+  const withBus = (): Patch => {
+    const p = structuredClone(Object.values(survey.patches).find((raw) => { const q = structuredClone(raw); fixAssemblies(q, DEFS); return fxBusOf(q, DEFS)?.stages.length === 4; })!);
+    fixAssemblies(p, DEFS);
+    return p;
+  };
 
   it('every factory patch with a bus converts: same modules in the same order, cables, values and switches (helpers on)', () => {
     let converted = 0;
@@ -495,8 +504,7 @@ describe('legacy bus conversion', () => {
   });
 
   it('remaps the panel: a Toggle on the bus switches the drawer, Page lists move to the effects, the factory FX Page does nothing', () => {
-    const p = PRESETS['Hera 6']();
-    fixAssemblies(p, DEFS);
+    const p = withBus();
     const bus = fxBusOf(p, DEFS)!;
     const main = p.modules.find((m) => m.type === 'fm1')!;
     main.panel = {

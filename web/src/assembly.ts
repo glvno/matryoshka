@@ -578,7 +578,8 @@ export function bypassAssembly(p: Patch, a: AssemblyInst, off: boolean): number[
   const helpers = chainHelpers(p);
   const members = (base ? deviceModules(p, a) : allModules(p, a)).filter((id) => !helpers.has(id));
   const mods = members.map((id) => p.modules.find((m) => m.id === id)!);
-  const nested = descendants(p, a, base);
+  // (a drawer's switch keeps each effect's own: an effect that was off stays off, its switch untouched)
+  const nested = a.drawer ? [] : descendants(p, a, base);
   if (off) {
     a.kept = mods.filter((m) => m.bypass).map((m) => m.id);
     for (const m of mods) if (!m.bypass) {
