@@ -98,7 +98,7 @@ The FM-1's controls, by where it is (the same table makes the FM-1's controls sh
 
 <!-- controls: end -->
 
-* **FX, LFO, EDIT, ARP** are patch buttons: the patch decides what each does (a gate, a Toggle that bypasses a module or assembly, or a list of device pages). Left at Nothing, FX shows the effects in the FX drawers; patches keep the mappings they have.
+* **FX, LFO, EDIT, ARP** are patch buttons: the patch decides what each does (a gate, a Toggle that bypasses a module or assembly, or a list of device pages). In a patch with FX drawers or effects, FX opens the effects instead of its own mapping; without them it does what the patch maps it to, and set to Nothing it says `NO FX IN THE RACK`.
 * **SAVE held at power-on** boots in safe mode: it plays the fallback patch compiled into the firmware and reads nothing from flash (`SAFE MODE: RESTART TO EXIT`); the stored state stays in flash for the next normal boot, MENU > SYSTEM > FACTORY RESET erases it. A boot that did not get through makes the next one safe by itself; two failed boots in a row go to update mode. See [D-154](docs/ledger/firmware-install.md#D-154) and [D-155](docs/ledger/firmware-install.md#D-155).
 
 ## Install on the FM-1
