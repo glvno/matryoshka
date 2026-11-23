@@ -5,6 +5,7 @@ import { migratePatchParts, migrateVoicing } from './poly';
 import { migrateKnobs } from './knob-migrate';
 import { fixLocks, fixNotes, fixPatterns, fixSeq, migrateSteps, type Pattern, type SeqState, type StepLock, type StepNote } from './track';
 import { fixMidiLearn, type MidiBinding } from './midi-learn';
+import { convertLegacyBus } from './fx-legacy';
 // Patch data model, shared by the editor, the WebAudio engine and (later) the firmware encoder.
 
 /** keys: the held keys from Main to a Voice allocator (only into a keys input) */
@@ -928,6 +929,7 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
   p.cables = p.cables.filter((c) => kindsFit(defs, byId.get(c.from.module)!.type, c.from.port, byId.get(c.to.module)!.type, c.to.port));
   const routingError = keyRouteError(p as Patch);
   if (routingError) throw new Error(routingError);
+  convertLegacyBus(p as Patch, defs); // a D-1010 master FX bus becomes an FX drawer (fx-legacy.ts); nothing that plays changes
   {   // a Toggle's target that is gone: the button keeps its kind, without a target
     const main = p.modules.find((m) => m.type === 'fm1');
     const t = main?.panel?.targets;
