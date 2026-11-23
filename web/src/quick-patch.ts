@@ -833,7 +833,8 @@ export function farEnds(p: Patch, defs: Record<string, ModuleDef>, c: Card, port
   for (const x of portCables(p, defs, c, port)) {
     const end = port.dir === 'out' ? x.to : x.from;
     const card = cardOf(p, end.module);
-    if (sameCard(card, c) || out.some((o) => sameCard(o.card, card) && o.port === end.port)) continue;
+    // (a merged jack's several inner ends, such as a drawer effect's out L with its correction, reach a card once)
+    if (sameCard(card, c) || out.some((o) => sameCard(o.card, card) && (o.port === end.port || port.ends.length > 1))) continue;
     out.push({ card, port: end.port, title: cardTitle(p, defs, card) });
   }
   return out;
