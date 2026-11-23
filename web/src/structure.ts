@@ -76,30 +76,71 @@ function rowOrderFrom(def: AssemblyDef, lab: Map<number, string>): number[] {
   });
 }
 
-/** a definition's structure fingerprint */
-export const defStructure = (def: AssemblyDef): string => structureFrom(def, labels(def));
+/** a definition without its FX drawers and all they hold (fx-drawer.ts): an instrument's structure is its own part's, so
+ *  an instrument keeps its structure (and its presets keep loading) whatever its drawer holds */
+function withoutDrawers(def: AssemblyDef): AssemblyDef {
+  const nested = def.assemblies ?? [];
+  if (!nested.some((n) => n.drawer)) return def;
+  const byId = new Map(nested.map((n) => [n.id, n]));
+  const gone = new Set<number>();
+  const walk = (id: number): void => {
+    if (gone.has(id)) return;
+    gone.add(id);
+    for (const c of byId.get(id)?.children ?? []) walk(c);
+  };
+  for (const n of nested) if (n.drawer) walk(n.id);
+  const goneMods = new Set(nested.filter((n) => gone.has(n.id)).flatMap((n) => n.modules));
+  return {
+    ...def,
+    modules: def.modules.filter((m) => !goneMods.has(m.id)),
+    cables: def.cables.filter((c) => !goneMods.has(c.from.module) && !goneMods.has(c.to.module)),
+    children: def.children?.filter((id) => !gone.has(id)),
+    assemblies: nested.filter((n) => !gone.has(n.id)).map((n) => (n.children ? { ...n, children: n.children.filter((id) => !gone.has(id)) } : n)),
+  };
+}
 
-/** an assembly's structure fingerprint, in a patch */
-export const structureOf = (p: Patch, a: AssemblyInst): string => defStructure(toDef(p, a));
+/** a definition's structure fingerprint (FX drawers left out) */
+export function defStructure(def: AssemblyDef): string {
+  const base = withoutDrawers(def);
+  return structureFrom(base, labels(base));
+}
+
+/** an assembly's structure fingerprint, in a patch (its FX drawer left out) */
+export const structureOf = (p: Patch, a: AssemblyInst): string => defStructure(toDef(p, a, true));
 
 /** a definition's card rows in their canonical order (the order a preset keeps its values in), as indices into def.params */
-export const defRowOrder = (def: AssemblyDef): number[] => rowOrderFrom(def, labels(def));
+export function defRowOrder(def: AssemblyDef): number[] {
+  const base = withoutDrawers(def);
+  return rowOrderFrom(base, labels(base));
+}
 
 /** defStructure and defRowOrder together, the labels worked out once */
 export function defStructureAndOrder(def: AssemblyDef): { structure: string; order: number[] } {
-  const lab = labels(def);
-  return { structure: structureFrom(def, lab), order: rowOrderFrom(def, lab) };
+  const base = withoutDrawers(def);
+  const lab = labels(base);
+  return { structure: structureFrom(base, lab), order: rowOrderFrom(base, lab) };
 }
 
 /** an assembly's card rows in canonical order: (module id in the patch, parameter) */
 export function rowOrder(p: Patch, a: AssemblyInst): { module: number; param: string }[] {
-  return rowsOf(a, defRowOrder(toDef(p, a)));
+  return rowsOf(a, defRowOrder(toDef(p, a, true)));
 }
 
 const rowsOf = (a: AssemblyInst, order: number[]): { module: number; param: string }[] => order.map((i) => ({ module: a.params[i].module, param: a.params[i].param }));
 
 /** structureOf and rowOrder together (one copy of the definition, the labels worked out once) */
 export function structureAndRows(p: Patch, a: AssemblyInst): { structure: string; rows: { module: number; param: string }[] } {
-  const { structure, order } = defStructureAndOrder(toDef(p, a));
+  const { structure, order } = defStructureAndOrder(toDef(p, a, true));
   return { structure, rows: rowsOf(a, order) };
+}
+
+/**
+ * The structure of an instrument with its FX drawer, as an instrument preset (FXD1) keys on it: FNV-1a, 32 bits, over the
+ * bytes 'F' 'X' 'D' '1', the instrument's own structure (u32, little-endian), the number of effects (u8) and each effect's
+ * structure in chain order (u32, little-endian), as 8 hex digits. The FM-1 works it out the same way from its devices.
+ */
+export function drawerPresetStructure(base: string, effects: string[]): string {
+  const u32 = (hex: string): number[] => { const v = parseInt(hex, 16) >>> 0; return [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, v >>> 24]; };
+  const bytes = [...'FXD1'].map((c) => c.charCodeAt(0)).concat(u32(base), [effects.length & 255], ...effects.map(u32));
+  return fnv(String.fromCharCode(...bytes));
 }
