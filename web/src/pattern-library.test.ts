@@ -6,7 +6,7 @@ import type { DeviceLink } from './device';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
 import { buildPatternsSection, LOCKS_LEFT_OUT } from './pattern-library';
-import { applyPayload, encodePayload, factoryEntries, fnv, FNV0 } from './pattern-store';
+import { applyPayload, encodePayload, entryName, factoryEntries, fnv, FNV0 } from './pattern-store';
 import type { StoredPatternEntry } from './protocol';
 import type { PatternLink } from './track';
 
@@ -20,18 +20,19 @@ function patch(): Patch {
   return p;
 }
 
-/** an FM-1 with a pattern store in memory */
-function fakeDevice(connected: boolean) {
-  const store = new Map<number, { name: string; payload: Uint8Array }>();
+/** an FM-1 with a pattern store in memory; `every`: one that stores every pattern 2..64 (1.26) */
+function fakeDevice(connected: boolean, every = false) {
+  const store = new Map<number, { name: string; payload: Uint8Array; kept?: boolean }>();
   let next = 1, used = 0;
   const list = (): StoredPatternEntry[] => [...store].map(([id, e]) => ({ id, name: e.name, len: e.payload.length, hash: fnv(FNV0, e.payload), layout: 0, tracks: 1, readOnly: false }));
   const dev = {
     get connected() { return connected; },
     hasPatternStore: connected,
+    patternsStored: connected && every,
     info: { store: { free: 9000, total: 12000 } },
     listPatterns: async () => [...list(), ...factoryEntries().slice(0, 2)],
     getPattern: async (id: number) => store.get(id)?.payload ?? null,
-    putPattern: async (id: number, name: string, payload: Uint8Array) => { const at = id || next++; store.set(at, { name, payload }); return at; },
+    putPattern: async (id: number, name: string, payload: Uint8Array, kept = false) => { const at = id || next++; store.set(at, { name, payload, kept }); return at; },
     deletePattern: async (id: number, force: boolean) => (used && !force ? { deleted: false, used } : (store.delete(id), { deleted: true, used: 0 })),
   };
   return { dev: dev as unknown as DeviceLink, store, setUsed: (n: number) => { used = n; } };
@@ -39,12 +40,14 @@ function fakeDevice(connected: boolean) {
 const flush = async (): Promise<void> => { for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0)); };
 const rows = (root: HTMLElement, col: number): HTMLElement[] => [...root.querySelectorAll<HTMLElement>('.lib-col')[col].querySelectorAll<HTMLElement>('.bank-row')];
 const button = (el: Element, text: string): HTMLButtonElement => [...el.querySelectorAll('button')].find((b) => b.textContent === text)!;
+/** the buttons the This patch column's foot shows */
+const foot = (root: HTMLElement): string[] => [...root.querySelectorAll<HTMLButtonElement>('.lib-foot button')].filter((b) => !b.hidden).map((b) => b.textContent!);
 
-function section(connected: boolean, pattern = 2) {
+function section(connected: boolean, pattern = 2, every = false) {
   const p = patch();
   const loads: [number, PatternLink | null][] = [];
   const links: [number, PatternLink | null][] = [];
-  const fake = fakeDevice(connected);
+  const fake = fakeDevice(connected, every);
   const root = document.createElement('div');
   document.body.append(root);
   const pane = buildPatternsSection(root, fake.dev, {
@@ -122,4 +125,27 @@ it('Delete asks, and asks again with how many slots use a pattern the bank links
   expect(asked).toHaveLength(2);
   expect(asked[1]).toContain('used by 2 slots');
   expect(store.size).toBe(0);
+});
+
+it('an FM-1 before 1.26 keeps Save to FM-1, Save as new and Upload file', async () => {
+  const { root, pane } = section(true);
+  pane.enter();
+  await flush();
+  expect(foot(root)).toEqual(['Save to FM-1', 'Save as new', 'Upload file…']);
+});
+
+it('a 1.26 FM-1 offers Load, Keep a copy and Load file; Keep a copy stores a kept entry no pattern links (#1202 P1, P3)', async () => {
+  const { root, pane, store, links, p } = section(true, 2, true);
+  pane.enter();
+  await flush();
+  expect(foot(root)).toEqual(['Keep a copy', 'Load file…']);
+  expect(button(rows(root, 1)[0], 'Load')).toBeTruthy();
+  let offered = '';
+  vi.stubGlobal('prompt', (_q: string, name: string) => ((offered = name), name));
+  button(root, 'Keep a copy').click();
+  await flush();
+  expect(offered).toBe(entryName('Groove', 2));
+  expect([...store.values()]).toEqual([{ name: 'GROOVE P03', payload: encodePayload(p, 2), kept: true }]);
+  expect(links).toEqual([]);
+  expect(rows(root, 1)[0].textContent).toContain('GROOVE P03');
 });

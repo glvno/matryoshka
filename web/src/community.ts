@@ -15,6 +15,7 @@ import { instIsEngine } from './engines';
 import { DEFS } from './modules';
 import type { Patch } from './patch';
 import { chipOf, type Chip } from './sandbox';
+import type { BudgetStore } from './patchbin';
 import { decodeShare } from './share';
 import { OLD_SITE_URL, PAGES_DEV_URL, SITE_URL } from './site';
 
@@ -119,9 +120,9 @@ export function enginesOf(p: Patch): string[] {
 /** its chip, FM-1 · NN % or SANDBOX (sandbox.ts): worked out once per entry when first shown, as the bundled entries do not
  *  change while the page is open (never stored) */
 const chips = new Map<string, Chip>();
-export function chipOfEntry(c: CommunityPatch, allocation: BufferAllocation = 0): Chip {
-  let chip = chips.get(allocation + c.entry.title);
-  if (!chip) chips.set(allocation + c.entry.title, (chip = c.patch ? chipOf(c.patch, allocation) : { fits: false, text: 'SANDBOX' }));
+export function chipOfEntry(c: CommunityPatch, allocation: BufferAllocation = 0, store: BudgetStore = 'assume'): Chip {
+  let chip = chips.get(allocation + store + c.entry.title);
+  if (!chip) chips.set(allocation + store + c.entry.title, (chip = c.patch ? chipOf(c.patch, allocation, store) : { fits: false, text: 'SANDBOX' }));
   return chip;
 }
 
