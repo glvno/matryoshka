@@ -7,25 +7,35 @@ import { PRESET_NEEDS_UPDATE, type DeviceLink } from './device';
 import { FACTORY } from './assemblies';
 import { addUserPreset, deletePreset, importPresets, presetsFor, PRESETS_FORMAT, renamePreset, sameName, shortPresetText, userPresets, type Preset } from './device-presets';
 import { devicePresetName, type DevicePresetEntry } from './protocol';
-import { defStructure } from './structure';
+import { defStructure, structureOf } from './structure';
 import { showUndo } from './toast';
 import type { LibrarySection } from './bank';
 import { fxPresetStructure } from './fx-preset-format';
+import { soleInstrument } from './fx-preset';
+import { FM1_PRESETS } from './presets';
 
 let engineNames: Map<string, string> | undefined;
 
-/** which engine (or factory assembly) a structure is, by name; '' when it is the user's own */
+/** which factory instrument a structure is, by name; '' when it is the user's own. A factory patch's instrument goes by the
+ *  patch's name, as the bank shows it (its library engine may differ: the Hera 6 patch's is the library's Hera 4 at six
+ *  voices, one structure, D-873); then each factory assembly by its own. With any master FX rack, "<name> + FX". */
 export function engineOf(structure: string): string {
   if (!engineNames) {
-    engineNames = new Map();
-    for (const def of FACTORY) {
-      const base = defStructure(def);
-      if (!engineNames.has(base)) engineNames.set(base, def.name);
+    const names = new Map<string, string>();
+    const add = (base: string, name: string): void => {
+      if (names.has(base)) return;
+      names.set(base, name);
       for (let mask = 1; mask < 16; mask++) {
         const scoped = fxPresetStructure(base, mask);
-        if (!engineNames.has(scoped)) engineNames.set(scoped, `${def.name} + FX`);
+        if (!names.has(scoped)) names.set(scoped, `${name} + FX`);
       }
+    };
+    for (const [name, make] of Object.entries(FM1_PRESETS)) {
+      const p = make(), id = soleInstrument(p), a = p.assemblies?.find((x) => x.id === id);
+      if (a) add(structureOf(p, a), name);
     }
+    for (const def of FACTORY) add(defStructure(def), def.name);
+    engineNames = names;
   }
   return engineNames.get(structure) ?? '';
 }

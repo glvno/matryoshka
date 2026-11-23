@@ -9,12 +9,16 @@ import { structureOf } from './structure';
 
 export interface FxPresetScope { baseStructure: string; structure: string; mask: number; bus: FxBus }
 
+/** The patch's one assembly device besides its master rack (`bus`), by id; undefined when it has none or several. */
+export function soleInstrument(p: Patch, bus = fxBusOf(p)): number | undefined {
+  const owners = devicesOf(p, DEFS).filter(d => d.asm !== undefined && d.asm !== bus?.assembly);
+  return owners.length === 1 ? owners[0].asm : undefined;
+}
+
 /** A master rack belongs to a sound only when exactly one other assembly device exists. */
 export function fxPresetScope(p: Patch, a: AssemblyInst): FxPresetScope | null {
   const bus = fxBusOf(p);
-  if (!bus) return null;
-  const owners = devicesOf(p, DEFS).filter(d => d.asm !== undefined && d.asm !== bus.assembly);
-  if (owners.length !== 1 || owners[0].asm !== a.id) return null;
+  if (!bus || soleInstrument(p, bus) !== a.id) return null;
   const baseStructure = structureOf(p, a);
   const mask = bus.stages.reduce((bits, s) => bits | 1 << FX_PRESET_KINDS.indexOf(s.kind), 0);
   return { baseStructure, structure: fxPresetStructure(baseStructure, mask), mask, bus };
