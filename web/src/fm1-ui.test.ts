@@ -287,6 +287,8 @@ describe('the FM-1 UI as WebAssembly', () => {
     tap(BUTTONS.home);                            // again within 3 s: cleared
     expect(ops.at(-1)).toEqual([2, 0, 0]);
     expect(pats.at(-1)).toBe(0);
+    tap(BUTTONS.octUp);                           // D-838: pattern 1 of every track doubled
+    expect(ops.at(-1)).toEqual([4, 0, 0]);
     ui.button(BUTTONS.seq, false);
     ui.tick(t += 50);
     expect(ui.page).toBe(8);                      // (SEQ's release: the SEQ page stays)

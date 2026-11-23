@@ -29,7 +29,7 @@ export async function fetchFont(base = './firmware/'): Promise<Uint8Array | null
 }
 
 /** what the editor says on connect about the screen font when the FM-1 has no room for it yet (INFO's font area bit 3):
- *  its bank holds more than 48 patches, and the font needs three of the bank's old sectors (#602, D-180) */
+ *  its bank holds more than 48 patches, and the font needs three of the bank's old sectors (#602, D-184) */
 export const FONT_BLOCKED =
   "This FM-1 has more than 48 patches, so there isn't room for the screen font yet, and it shows only its small type. " +
   'Delete patches until 48 or fewer are left, restart the FM-1, then install the screen font.';

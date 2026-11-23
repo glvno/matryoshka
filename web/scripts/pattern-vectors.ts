@@ -8,10 +8,10 @@ import { DEFS } from '../src/modules';
 import { addModule, connect, emptyPatch, removeModule, type ModuleInst, type Patch } from '../src/patch';
 import { encodePatch } from '../src/patchbin';
 import { encodePayload, layoutOf } from '../src/pattern-store';
-import { clearAllPatterns, copyPattern, nextEmptyPattern } from '../src/pattern-ops';
+import { clearAllPatterns, copyPattern, doublePattern, nextEmptyPattern, type DoubleRefusal } from '../src/pattern-ops';
 import { demoSetFor, factoryWithDemoSet, FM1_PRESETS } from '../src/presets';
 import { deviceView } from '../src/poly';
-import type { StepNote } from '../src/track';
+import { condAB, type StepNote } from '../src/track';
 
 const n = (at: number, len: number, note: number, vel = 100, chance?: number): StepNote => ({ at, len, note, vel, ...(chance ? { chance } : {}) });
 
@@ -81,19 +81,43 @@ export function patternCases(): PatternCase[] {
     p.modules.find((m) => m.type === 'fm1')!.seq = { pattern: 1, songs: [[{ pat: 0, shift: 0 }, { pat: 1, shift: 2 }], [], [{ pat: 3, shift: -1 }]], links: { 3: { id: 7, hash: 1 } } };
     out.push({ name: 'SONGS LINKS', patch: p, pattern: 1 });
   }
+  {   // (for the double, D-838: every note attribute and P-locks on an own length of 12, a track on the track's length with a
+      // drone, and a track of 8 steps without pattern 2, which gets it from its pattern 1; notes and a lock past the length)
+    const { p, st, k } = rig('DOUBLE ALL', 3);
+    st[0].patterns = [{ len: 12, notes: [n(0, 1, 36, 100, 50), { at: 2, len: 3, note: 40, vel: 90, cond: condAB(1, 2) }, { at: 4, len: 1, note: 42, vel: 100, ratchet: 3, micro: 5 },
+      { at: 6, len: 1, note: 44, vel: 127, micro: -4 }, { at: 9, len: 5, note: 49, vel: 100, wrap: true }, n(10, 6, 47), n(14, 1, 50), n(30, 1, 51)],
+    locks: [{ at: 0, module: k.id, param: 'value', value: 0.25 }, { at: 10, module: k.id, param: 'value', value: -0.5 }, { at: 13, module: k.id, param: 'value', value: 0.75 }] }];
+    st[1].notes = [n(2, 1, 30)];
+    st[1].patterns = [{ notes: [n(0, 1, 48), { at: 3, len: 64, note: 55, vel: 100, wrap: true }, n(8, 2, 50, 127)] }];
+    st[2].params.len = 8;
+    st[2].notes = [n(1, 1, 60), n(5, 1, 62, 127)];
+    st[2].locks = [{ at: 5, module: k.id, param: 'value', value: 1 }];
+    out.push({ name: 'DOUBLE ALL', patch: p, pattern: 1 });
+  }
+  {   // (the double of pattern 1: the track's length doubles, pattern 2 on the track's length keeps it as its own, pattern 3's
+      // own stays; a track of 32 steps to 64 with a note tied across the loop point)
+    const { p, st, k } = rig('DOUBLE ONE', 2);
+    st[0].notes = [n(0, 1, 36), n(12, 8, 40)];
+    st[0].locks = [{ at: 3, module: k.id, param: 'value', value: 0.5 }];
+    st[0].patterns = [{ notes: [n(0, 1, 37)] }, { notes: [n(1, 1, 38)], len: 10 }];
+    st[1].params.len = 32;
+    st[1].notes = [n(20, 1, 45), { at: 31, len: 4, note: 47, vel: 100, wrap: true }];
+    out.push({ name: 'DOUBLE ONE', patch: p, pattern: 0 });
+  }
   return out;
 }
 
-/** the pattern commands (#1177, #1178) on a case's patch as the editor runs them: its pattern copied to the first empty
- *  number after it and selected, and everything cleared */
-export function patternOps(c: PatternCase): { to: number; copied: Patch; cleared: Patch } {
-  const copied = structuredClone(c.patch), cleared = structuredClone(c.patch);
+/** the pattern commands (#1177, #1178, D-838) on a case's patch as the editor runs them: its pattern copied to the first
+ *  empty number after it and selected, everything cleared, and its pattern doubled (`refused`: why not) */
+export function patternOps(c: PatternCase): { to: number; copied: Patch; cleared: Patch; doubled: Patch; refused?: DoubleRefusal } {
+  const copied = structuredClone(c.patch), cleared = structuredClone(c.patch), doubled = structuredClone(c.patch);
   const to = nextEmptyPattern(copied, c.pattern);
   copyPattern(copied, c.pattern, to);
   const main = copied.modules.find((m) => m.type === 'fm1')!;
   main.seq = { ...(main.seq ?? {}), pattern: to };
   clearAllPatterns(cleared);
-  return { to, copied, cleared };
+  const r = doublePattern(doubled, c.pattern);
+  return { to, copied, cleared, doubled, ...('refused' in r ? { refused: r.refused } : {}) };
 }
 
 /** a patch as the FM-1 gets it (export-defs.ts's factory binaries) */
@@ -149,13 +173,15 @@ export function patternCasesHeader(cases: PatternCase[] = patternCases()): strin
   // the pattern commands as the editor runs them (pattern-ops.ts): the FM-1 running them on the same patch must hold the
   // same patterns, songs, P-locks, links and origins (firmware/test/patlink_test.c ops)
   const ops = cases.map((c, i) => {
-    const { to, copied, cleared } = patternOps(c);
-    const a = encodePatch(copied, true), b = encodePatch(cleared, true);
+    const { to, copied, cleared, doubled, refused } = patternOps(c);
+    const a = encodePatch(copied, true), b = encodePatch(cleared, true), d = encodePatch(doubled, true);
     L.push(`static const uint8_t PTC_COPIED_${i}[${a.length}] = {${a.join(',')}};`);
     L.push(`static const uint8_t PTC_CLEARED_${i}[${b.length}] = {${b.join(',')}};`);
-    return `    {${c.pattern}, ${to}, PTC_COPIED_${i}, ${a.length}, PTC_CLEARED_${i}, ${b.length}},`;
+    L.push(`static const uint8_t PTC_DOUBLED_${i}[${d.length}] = {${d.join(',')}};`);
+    const rc = refused ? -1 - ['steps', 'notes', 'locks'].indexOf(refused) : 0;
+    return `    {${c.pattern}, ${to}, PTC_COPIED_${i}, ${a.length}, PTC_CLEARED_${i}, ${b.length}, PTC_DOUBLED_${i}, ${d.length}, ${rc}},`;
   });
-  L.push('static const struct { uint32_t from, to; const uint8_t *copied; uint32_t copied_len; const uint8_t *cleared; uint32_t cleared_len; } PATTERN_OPS[N_PATTERN_CASES] = {');
+  L.push('static const struct { uint32_t from, to; const uint8_t *copied; uint32_t copied_len; const uint8_t *cleared; uint32_t cleared_len; const uint8_t *doubled; uint32_t doubled_len; int doubled_rc; } PATTERN_OPS[N_PATTERN_CASES] = {');
   L.push(...ops, '};', '');
   // the demo sets (#1179): the FM-1 loading one (patlink.c pl_demo_set, from the factory region) must give the binary the
   // editor gives (firmware/test/patlink_test.c demo_sets)

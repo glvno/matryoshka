@@ -96,7 +96,10 @@
 //   3D PAT_PUT  id u16 (0 new), total u16, offset u16, name 16 bytes, then up to 256 payload bytes (pattern-store.ts)
 //                                                    the chunks gather on the FM-1 (offset 0 starts a put); each chunk but the
 //                                                    last answers PAT_STORED with id 0xFFFF, the last stores it and answers
-//                                                    PAT_STORED with its id. A rename is a put of the same id and payload
+//                                                    PAT_STORED with its id. A rename is a put of the same id and payload.
+//                                                    total bit 15 in every chunk (PAT_KEPT, a new entry, #1202 P1): store it
+//                                                    as a kept copy, which the FM-1 never frees and never writes over; the
+//                                                    low 15 bits are the total. Firmware before 1.26 refuses it (S_RANGE)
 //   3E PAT_DEL  id u16, force u8                     delete it; PAT_STORED. Without force, an id the bank's patches link
 //                                                    answers S_USED with how many slots link it
 // device -> host
@@ -169,7 +172,8 @@
 //                                                    op 1 pattern `from` of every track copied to `to` (SEQ held + SAVE), op 2
 //                                                    every pattern and song cleared (SEQ held + HOME); hash 0 for both; op 3
 //                                                    the patch's demo set loaded (SEQ held + SEL, then SEL, #1179,
-//                                                    demo-sets.ts): hash = the set's region record hash, from 0 and to 0
+//                                                    demo-sets.ts): hash = the set's region record hash, from 0 and to 0; op
+//                                                    4 pattern `from` of every track doubled (SEQ held + OCT+, D-838), to 0
 //   68 FONT_SUM  sector u8, ok u8, CRC-16 u16          the CRC-16 of a sector of the font area (#602): the install skips one
 //                                                    that holds its bytes already
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
@@ -182,11 +186,14 @@
 //               GUIDE_NOW, bit19 flags bit3 says EDITOR, bit20 ARMS, bit21 ARMS wide, bit22 DEVICE_SETTINGS, bit23 PATTERN_ORIGIN],
 //               [byte13 allocation rule: 0 separate signal buffers, 1 physical lifetime buffers; unknown/missing means 0],
 //               [features 24..31: bit24 FX presets, bit25 the pattern store is on, bit28 MAP / MAP_NOW, bit29 PADS / PADS_NOW, bit30 PATTERN_OP],
-//               [byte15 the bank's slots (absent: 64)],
+//               [byte15 the bank's slots (absent: 64; 60 with the pattern store before 1.26; 48 from 1.26, or 60 on a 1.26
+//               FM-1 that kept the older layout because it holds more than 48 patches)],
 //               [bytes16..19 the pattern store's bytes free and in all, u16 LE each],
 //               [byte20 the font area (#602): bit0 the firmware reads its type's larger sizes from it (FONT), bit1 the FM-1
 //               has that font, bit2 an install began and did not commit, bit3 no room for it yet (the bank holds more than
-//               48 patches: FONT BEGIN answers status 10); bytes21..24 the font's id, u32 LE]. Also unasked
+//               48 patches: FONT BEGIN answers status 10); bytes21..24 the font's id, u32 LE],
+//               [byte25 features from 1.26 on: bit1 every pattern 2..64 lives in the pattern store (#1202: SAVE stores
+//               and links them, the editor sends them as stored entries)]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8), and when EDITOR changed after
 //               a HELLO (feature bit 19)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
@@ -283,8 +290,10 @@ export const paramFrame = (module: number, param: number, q16: number): Uint8Arr
 
 /** the most slots a bank has: an FM-1 whose pattern store is on has fewer (INFO byte 15, slotCount) */
 export const SLOTS_MAX = 64;
-/** the slots of the FM-1's bank (INFO byte 15: 60 with the pattern store on, #901); firmware that does not say, and the
- *  offline copy of the bank, have SLOTS_MAX */
+/** the bank of firmware 1.26 (#1202, G3): 48 slots. The offline copy of the bank takes no more new entries than this */
+export const BANK_SLOTS = 48;
+/** the slots of the FM-1's bank (INFO byte 15: 48 from 1.26, 60 with the pattern store before it or on a 1.26 FM-1 that
+ *  kept that layout, #901, #1202); firmware that does not say has SLOTS_MAX */
 export const slotCount = (info: Info | null): number => info?.slots ?? SLOTS_MAX;
 /** a slot as people see it: internal slot 0..63 shows as 01..64 (the protocol, the firmware and program change count from 0) */
 export const slotLabel = (slot: number): string => String(slot + 1).padStart(2, '0');
@@ -417,6 +426,9 @@ export interface Info {
    *  holds more than 48 patches, whose sectors the font needs); absent from firmware with its type compiled in (1.25 and
    *  older) */
   font?: { valid: boolean; writing: boolean; blocked: boolean; id: number };
+  /** INFO byte 25, the feature bits from 1.26 on (bytes 20..24 are the font area's, #1203; bit 0 folded kits, bit 1
+   *  FEATURE25_PATTERNS_STORED); absent from firmware that sends fewer bytes */
+  features25?: number;
 }
 export interface Ack {
   cmd: number;
@@ -445,6 +457,10 @@ export const FEATURE_FX_PRESETS = 1 << 24;
 /** INFO feature bit 25 (byte 14 bit 1, #901): the pattern store is on (PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW and
  *  format 59's links section) */
 export const FEATURE_PATTERN_STORE = 1 << 25;
+/** INFO byte 25 bit 1 (Info.features25; 1.26, #1202): every pattern 2..64 lives in the pattern store. SAVE on the FM-1
+ *  stores and links each one with content, the editor sends each as a stored entry (device.ts) and counts only pattern 1,
+ *  the songs and the links against the patch's bytes (patchbin.ts LinkStore 'every') */
+export const FEATURE25_PATTERNS_STORED = 2;
 /** INFO feature bit 26 (byte 14 bit 2, #915, D-490): the factory region's commands (firmware/src/factory.c) */
 export const FEATURE_FACTORY = 1 << 26;
 /** INFO feature bit 27 (byte 14 bit 3, #1107): MASTER_EQ, the FM-1's master EQ (GLO › EQ) over the link */
@@ -523,7 +539,7 @@ export function parsePadsNow(payload: number[]): PadMap | null {
 /** INFO feature bit 30 (byte 14 bit 6, #1177, #1178): the FM-1 reports the SEQ page's pattern commands (PATTERN_OP) */
 export const FEATURE_PATTERN_OP = 1 << 30;
 /** PATTERN_OP's id and ops */
-export const PATTERN_OP = { report: 0x65, copy: 1, clearAll: 2, demoSet: 3 } as const;
+export const PATTERN_OP = { report: 0x65, copy: 1, clearAll: 2, demoSet: 3, double: 4 } as const;
 /** a PATTERN_OP payload, null when short */
 export function parsePatternOp(payload: number[]): { op: number; from: number; to: number; hash: number } | null {
   if (payload.length < 7) return null;
@@ -590,7 +606,8 @@ export function parseInfo(p: Parsed): Info | null {
     ...(p.payload.length >= 16 && p.payload[15] ? { slots: p.payload[15] } : {}),
     ...(p.payload.length >= 20 ? { store: { free: p.payload[16] | (p.payload[17] << 8), total: p.payload[18] | (p.payload[19] << 8) } } : {}),
     ...(p.payload.length >= 25 && p.payload[20] & 1 ? { font: { valid: !!(p.payload[20] & 2), writing: !!(p.payload[20] & 4),
-      blocked: !!(p.payload[20] & 8), id: (p.payload[21] | p.payload[22] << 8 | p.payload[23] << 16 | p.payload[24] << 24) >>> 0 } } : {}) };
+      blocked: !!(p.payload[20] & 8), id: (p.payload[21] | p.payload[22] << 8 | p.payload[23] << 16 | p.payload[24] << 24) >>> 0 } } : {}),
+    ...(p.payload.length >= 26 ? { features25: p.payload[25] } : {}) };
 }
 /** the test tools drive the editor's own page against the test rig, which is set to IGNORE so the site leaves it alone
  *  (#702): their page (scripts/emu-scenarios.mjs --device) sets this before it loads. Nothing else does */
@@ -654,12 +671,18 @@ const u16le = (v: number): number[] => [v & 0xff, (v >> 8) & 0xff];
 const u32at = (p: number[], at: number): number => (p[at] | (p[at + 1] << 8) | (p[at + 2] << 16) | (p[at + 3] << 24)) >>> 0;
 export const patsFrame = (): Uint8Array => frame(CMD.pats);
 export const patGetFrame = (id: number, offset: number): Uint8Array => frame(CMD.patGet, [...u16le(id), ...u16le(offset)]);
-/** a payload as PAT_PUT chunks (`id` 0: a new entry); an empty payload is one chunk with nothing in it */
-export function patPutFrames(id: number, name: string, payload: ArrayLike<number>): Uint8Array[] {
+/** total's bit 15 in PAT_PUT (#1202 P1): a new entry kept as a copy (Keep a copy, FX+SAVE on the FM-1), never freed by the
+ *  FM-1's cleanup of unlinked entries and never written over by SAVE. Only for an FM-1 that stores every pattern
+ *  (FEATURE25_PATTERNS_STORED): older firmware refuses it */
+export const PAT_KEPT = 0x8000;
+/** a payload as PAT_PUT chunks (`id` 0: a new entry; `kept`: as a kept copy, every chunk with PAT_KEPT); an empty payload
+ *  is one chunk with nothing in it */
+export function patPutFrames(id: number, name: string, payload: ArrayLike<number>, kept = false): Uint8Array[] {
   const key = Array.from({ length: 16 }, (_, i) => (name.charCodeAt(i) >= 32 && name.charCodeAt(i) < 127 ? name.charCodeAt(i) : 0));
+  const total = payload.length | (kept ? PAT_KEPT : 0);
   const out: Uint8Array[] = [];
   for (let off = 0; off < payload.length || !out.length; off += PAT_CHUNK)
-    out.push(frame(CMD.patPut, [...u16le(id), ...u16le(payload.length), ...u16le(off), ...key, ...Array.from(payload).slice(off, off + PAT_CHUNK)]));
+    out.push(frame(CMD.patPut, [...u16le(id), ...u16le(total), ...u16le(off), ...key, ...Array.from(payload).slice(off, off + PAT_CHUNK)]));
   return out;
 }
 export const patDelFrame = (id: number, force: boolean): Uint8Array => frame(CMD.patDel, [...u16le(id), force ? 1 : 0]);
@@ -680,6 +703,21 @@ export function parsePatData(p: Parsed): { id: number; total: number | null; off
   if (p.cmd !== CMD.patData || x.length < 6) return null;
   const total = x[2] | (x[3] << 8);
   return { id: x[0] | (x[1] << 8), total: total === 0xffff ? null : total, offset: x[4] | (x[5] << 8), bytes: x.slice(6) };
+}
+/** a stored pattern's payload, read with PAT_GET in pieces over `ask` (a request that resends until an answer matches);
+ *  null when the FM-1 has no such id. The editor link (device.ts) and the Install panel's link both read this way */
+export async function readStoredPattern(ask: (frame: Uint8Array, match: (p: Parsed | null) => boolean) => Promise<Parsed>, id: number): Promise<Uint8Array | null> {
+  const out: number[] = [];
+  let total = Infinity;
+  while (out.length < total) {
+    const at = out.length;
+    const d = parsePatData(await ask(patGetFrame(id, at), (x) => { const r = x && parsePatData(x); return !!r && r.id === id && (r.total === null || r.offset === at); }))!;
+    if (d.total === null) return null;
+    if (!d.bytes.length && at < d.total) throw new Error('the FM-1 sent the pattern short');
+    total = d.total;
+    out.push(...d.bytes);
+  }
+  return Uint8Array.from(out.slice(0, total));
 }
 export const parsePatStored = (p: Parsed): { id: number; status: number; count: number } | null =>
   p.cmd === CMD.patStored && p.payload.length >= 4 ? { id: p.payload[0] | (p.payload[1] << 8), status: p.payload[2], count: p.payload[3] } : null;

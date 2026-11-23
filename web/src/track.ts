@@ -464,9 +464,9 @@ export interface SeqState {
   names?: '303';
   /** patterns 2..64 linked to the FM-1's pattern store (#901, format 59), by pattern index (1..63): the stored pattern's id
    * and its payload hash as the store holds it (pattern-store.ts). The pattern's notes stay in the patch too; while its
-   * payload hash equals `hash` the binary carries only the reference (patchbin.ts linkPlan). A user entry's id belongs to
-   * one FM-1, so share links and files leave those links out (withoutLinks); a factory patch's links to read-only entries
-   * (READ_ONLY_ID.., #923) stay */
+   * payload hash equals `hash` the binary carries only the reference (patchbin.ts linkPlan). A link belongs to one FM-1's
+   * store, so what leaves the editor (share links, files, Community) carries every pattern inside and no link
+   * (pattern-store.ts portablePatch, G2 of #1202); the browser's own copy keeps them */
   links?: Record<number, PatternLink>;
 }
 /** a pattern's link to a stored pattern: its id (1..LINK_ID_MAX) and payload hash (u32) */
@@ -546,16 +546,13 @@ export function fixLinks(raw: unknown): Record<number, PatternLink> | undefined 
   return Object.keys(out).length ? out : undefined;
 }
 
-/** a patch without its links to user entries of a pattern store (share links and files: those ids belong to one FM-1); the
- * patch itself when it has none */
+/** a patch without its links to a pattern store (pattern-store.ts portablePatch: what leaves the editor carries its patterns
+ * inside, #1202); the patch itself when it has none */
 export function withoutLinks<P extends { modules: { type: string; seq?: SeqState }[] }>(p: P): P {
-  const user = (links?: Record<number, PatternLink>): boolean => Object.values(links ?? {}).some((l) => l.id < READ_ONLY_ID);
-  if (!p.modules.some((m) => user(m.seq?.links))) return p;
+  if (!p.modules.some((m) => m.seq?.links)) return p;
   return { ...p, modules: p.modules.map((m) => {
-    if (!user(m.seq?.links)) return m;
-    const kept = Object.fromEntries(Object.entries(m.seq!.links!).filter(([, l]) => l.id >= READ_ONLY_ID));
-    const { links: _l, ...seq } = m.seq!;
-    if (Object.keys(kept).length) return { ...m, seq: { ...seq, links: kept } };
+    if (!m.seq?.links) return m;
+    const { links: _l, ...seq } = m.seq;
     const { seq: _s, ...rest } = m;
     return Object.keys(seq).length ? { ...rest, seq } : rest;
   }) } as P;

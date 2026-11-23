@@ -26,6 +26,7 @@ typedef struct {
                                                          * the selected pattern's notes on every track */
     int mlen;
     uint32_t learn;                                     /* MIDI learn (#1067, midi_learn.c learn_live): 0 none, 1 a row, 2 a control */
+    int32_t slen;                                       /* the shown track's length (D-838: a double), 0 none */
 } ct_snap_t;
 static int ct_mod;                                      /* the track shown when the gesture began, -1 none */
 static uint32_t ct_pre_dev, ct_pre_pg;                  /* the device page before the Page button's press (ct_page_button) */
@@ -113,6 +114,7 @@ static void ct_take(ct_snap_t *s)
     for (k = 0; msg_text[k]; k++)
         s->msg_sum = ct_fnv(s->msg_sum, (uint8_t)msg_text[k]);
     s->mlen = mlen;
+    s->slen = ct_mod >= 0 ? seq_len(ct_mod) : 0;
     {
         pt_info_t in;
         uint32_t id = 0, t;
@@ -218,6 +220,8 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_CLEAR_ALL: return b->notes_n > 0 && a->notes_n == 0 && !a->pattern && !a->song_len && !a->song && a->page == b->page;
     case CE_DEMO_SET: return (a->notes_n > 0 || a->song_len > 0) && !a->pattern && !a->song && a->page == b->page && a->msg_sum != b->msg_sum;
                                                         /* (the set's pattern 1 selected, its notes or songs there, no song playing; the page stays) */
+    case CE_PATTERN_DOUBLE: return b->slen > 0 && a->slen == 2 * b->slen && a->pattern == b->pattern && a->page == b->page
+                                   && a->octave == b->octave && a->seq_pg == b->seq_pg;   /* (twice as long; OCT+'s own jobs not done) */
     case CE_DRUM_BANK: return a->bank != b->bank && a->octave == b->octave && a->seq_pg == b->seq_pg && a->page == b->page;
     case CE_FILL: return a->msg_sum != b->msg_sum && a->page == b->page && a->notes_sum == b->notes_sum && a->mutes == b->mutes
                          && a->params == b->params && !eng_fill_on();   /* (FILL said, and let go with FX; FX's own job not done) */

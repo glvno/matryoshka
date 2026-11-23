@@ -39,7 +39,7 @@ SS = 4
 # The font area (#602): the sizes whose tables a device build reads from flash outside the firmware. FONT_S stays in the
 # firmware: the menu, the lists and the messages use it, and without the font area every size draws its letters.
 AREA = ["FONT_M", "FONT_L", "FONT_F", "FONT_H", "FONT_N", "FONT_V", "FONT_T"]
-# its flash sectors (offset / 4096, run length; D-180): 0x93..0x96 between the firmware's area and the bank, never written
+# its flash sectors (offset / 4096, run length; D-184): 0x93..0x96 between the firmware's area and the bank, never written
 # before; 0xD0..0xD2, the three lowest sectors of the bank's old range that the pattern store's 1.26 layout leaves out
 # (slotstore.c: the font area's only once the bank fits 48 slots); 0xFC..0xFE between the factory region and the flash
 # chip's key sector (0xFF), Felucca's globals. Never 0xE7..0xE9: the stock firmware's VM (the radio's calibration) and

@@ -36,7 +36,7 @@ static inline void *fl_far(void *p) { void *volatile q = p; return q; }
 #define T4_CNT          REG32(0x10804u)            /* TIMER4, 24 MHz free-running */
 
 #define FL_XIP(off)     FM1_XIP(off)              /* fm1_xip.h */
-#define FL_FONT_LO      0x00093000u                /* Matryoshka (#602, D-180): the font area's first run, 4 sectors (src/font_area.c;
+#define FL_FONT_LO      0x00093000u                /* Matryoshka (#602, D-184): the font area's first run, 4 sectors (src/font_area.c;
                                                     * its second, 0xD0000 .. 0xD2FFF, is in Felucca's store, its third in the globals) */
 #define FL_DATA_LO      0x00097000u                /* Felucca main store */
 #define FL_DATA_HI      0x000E0000u

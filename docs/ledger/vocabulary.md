@@ -224,7 +224,7 @@ The status-line indicator that shows the editor's link to the FM-1 (not connecte
 
 ### Font area
 
-The 10 flash sectors outside the firmware that hold the screen type's larger sizes, from 1.26. The installer writes them after the firmware, and without them the FM-1 shows only its small type ([D-180](firmware-install.md#D-180)).
+The 10 flash sectors outside the firmware that hold the screen type's larger sizes, from 1.26. The installer writes them after the firmware, and without them the FM-1 shows only its small type ([D-184](firmware-install.md#D-184)).
 
 ### Format 35
 
@@ -285,6 +285,10 @@ A part of a poly group that is released, has finished its envelopes and stayed s
 ### Install panel
 
 The editor's firmware install page, shown as a panel over the main area and closed with its Close button (`#flash`). It is not a view of the top switch. Also called the Flash view or the Flash tab.
+
+### Kept copy
+
+A stored pattern in the [pattern store](#pattern-store) that the user keeps under its own name, made by FX + SAVE on the FM-1 or Keep a copy in the editor (firmware 1.26). No patch has to link it. The FM-1 never frees it and never writes over it; only Delete removes it.
 
 ### Key source
 

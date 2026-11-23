@@ -5,20 +5,23 @@ import type { BufferAllocation } from './signal-buffers';
 // marked SANDBOX and has no working →. The community patches added in Library > Community (community.ts) are listed there
 // too, with their authors, until saved as the user's own: their Delete takes them out again (un-adds them). Add from factory ▾ under the list puts a factory patch into the FM-1 column (the
 // factory patches are only a source for it). "FM-1" always shows: without a device it is the offline copy of the bank
-// (`matryoshka.bank`, up to 64 entries, each a factory patch by name or a copy of a patch), edited here (order, rename,
+// (`matryoshka.bank`, each entry a factory patch by name or a copy of a patch; it takes new entries up to the 48 slots of a
+// 1.26 FM-1, BANK_SLOTS, and keeps the up to 64 an older one could hold), edited here (order, rename,
 // remove) and sent whole with Send bank to FM-1; with a device it is what the FM-1's slots really hold (readBank: read on
-// connect and on entering the section), named after the bank when it holds the offline copy, else "Unsaved bank" with
+// connect and on entering the section; 48 slots on a 1.26 FM-1, 60 on an older one or a 1.26 one that kept that layout),
+// named after the bank when it holds the offline copy, else "Unsaved bank" with
 // Save as bank…. Nothing merges on its own. The FM-1 cannot send a patch back (SLOT_INFO gives a name and a length), so ←
-// copies this browser's own copy of the slot's patch: one with the slot's name and binary length. One bank for now; several
-// named banks are #220.
+// copies this browser's own copy of the slot's patch: one with the slot's name and binary length (bankCopy). One bank for
+// now; several named banks are #220. To a 1.26 FM-1 each patch's patterns go into its pattern store first, then the patch
+// (DeviceLink.uploadSlot, #1202).
 // HOME + PRESET on the FM-1 steps through the bank; with an empty bank it steps through the factory patches built into
 // the firmware.
-import type { DeviceLink } from './device';
+import { PatchRefused, storeFullText, type DeviceLink } from './device';
 import { DEFS } from './modules';
 import { validatePatch, type Patch } from './patch';
-import { deviceBudget, encodePatch } from './patchbin';
+import { deviceBudget, encodePatch, type BudgetStore } from './patchbin';
 import { EXAMPLE_PRESETS, FM1_PRESETS, PRESETS } from './presets';
-import { NAME_BYTES, SLOTS_MAX, slotLabel, type SlotInfo } from './protocol';
+import { BANK_SLOTS, NAME_BYTES, SLOTS_MAX, slotLabel, type SlotInfo } from './protocol';
 import { renamedKey } from './storage-key';
 import { addCommunity, addedCommunity, onAddedChange, openCommunity, removeCommunity } from './community';
 import { relocatedPatches } from './community-factory';
@@ -38,14 +41,14 @@ const STORE = renamedKey('matryoshka.bank', 'modular-1.bank');
 /** the old list of patches over the FM-1's budget (before #218): folded into Your patches on the next read */
 const STORE_OVER = 'matryoshka.bank-over';
 
-/** whether a patch fits the FM-1, remembered by its content (a patch's budget takes a while to work out, and the Library
- *  rows ask again on every change) */
+/** whether a patch fits the FM-1 (`store`: patchbin.ts BudgetStore), remembered by its content (a patch's budget takes a
+ *  while to work out, and the Library rows ask again on every change) */
 const fitsKnown = new Map<string, boolean>();
-const fits = (p: Patch, allocation: BufferAllocation = 0): boolean => {
-  const key = allocation + JSON.stringify(p);
+const fits = (p: Patch, allocation: BufferAllocation = 0, store: BudgetStore = 'assume'): boolean => {
+  const key = allocation + store + JSON.stringify(p);
   let ok = fitsKnown.get(key);
   if (ok === undefined) {
-    ok = deviceBudget(p, allocation).fits;
+    ok = deviceBudget(p, allocation, store).fits;
     if (fitsKnown.size >= 256) fitsKnown.clear();
     fitsKnown.set(key, ok);
   }
@@ -81,7 +84,7 @@ function load(): Entry[] {
   } catch {
     /* fall through to the default */
   }
-  return Object.keys(FM1_PRESETS).slice(0, SLOTS_MAX).map((name) => ({ name }));
+  return Object.keys(FM1_PRESETS).slice(0, BANK_SLOTS).map((name) => ({ name }));
 }
 
 function save(list: Entry[]): void {
@@ -96,10 +99,11 @@ const patchOf = (e: Entry): Patch => (e.patch ? e.patch : (FM1_PRESETS[e.name] ?
 const copyOf = (p: Patch): Patch => validatePatch(JSON.parse(JSON.stringify(p)), DEFS);
 
 /** the bank, with the patches that cannot go to the FM-1 moved out: the old over-budget list, and a copy that no longer
- *  fits (saved before the budget, or a larger factory build), go to Your patches (unless a patch of that name is there) */
+ *  fits (saved before the budget, or a larger factory build), go to Your patches (unless a patch of that name is there). A
+ *  copy that fits a 1.26 FM-1 with its patterns stored stays (#1202) */
 function reread(): Entry[] {
   let list = load();
-  const misfit = list.filter((e) => e.patch && !fits(e.patch));
+  const misfit = list.filter((e) => e.patch && !fits(e.patch, 0, 'every'));
   const over = loadOver();
   for (const e of [...over, ...misfit]) if (!isSaved(e.name)) savePatch({ ...e.patch!, name: e.name });
   if (over.length) {
@@ -125,7 +129,7 @@ function putEntry(list: Entry[], e: Entry, overFactory = false): string | null {
     list[i] = e;
     return null;
   }
-  if (list.length >= SLOTS_MAX) return `the bank is full (${SLOTS_MAX} slots): "${e.name}" was not added`;
+  if (list.length >= BANK_SLOTS) return `the bank is full (${BANK_SLOTS} slots): "${e.name}" was not added`;
   list.push(e);
   return null;
 }
@@ -171,10 +175,11 @@ export function bankMatches(have: SlotInfo[], copy: { name: string; length: numb
     && copy.every((e, i) => have[i]?.used && have[i].name === deviceName(e.name) && have[i].length === e.length);
 }
 
-/** the binary's length (a patch that cannot be encoded: -1, which no slot has) */
-const binLength = (p: Patch): number => {
+/** the length of the binary a patch takes in a slot of an FM-1 that counts with `store` (patchbin.ts BudgetStore: `every`
+ *  on a 1.26 FM-1, whose slots link every pattern 2..64); a patch that cannot be encoded: -1, which no slot has */
+export const binLength = (p: Patch, store: BudgetStore = 'assume'): number => {
   try {
-    return encodePatch(p, true).length;
+    return encodePatch(p, true, 0, 0, store).length;
   } catch {
     return -1;
   }
@@ -187,9 +192,20 @@ export interface Candidate {
   factory?: boolean;
 }
 
+/** the candidates for a slot's patch: the offline copy (`list`), Your patches, the added community patches, the factory
+ *  patches and the examples */
+const candidatesOf = (list: Entry[]): Candidate[] => [
+  ...list.map((e) => ({ name: e.name, patch: () => patchOf(e), factory: !e.patch })),
+  ...savedPatches().map((s) => ({ name: s.name, patch: () => s.patch })),
+  ...addedCommunity().map((c) => ({ name: c.entry.title, patch: () => openCommunity(c) })),
+  ...Object.entries(FM1_PRESETS).map(([name, make]) => ({ name, patch: make, factory: true })),
+  ...Object.entries(EXAMPLE_PRESETS).map(([name, make]) => ({ name, patch: make })),
+];
+/** the candidates for a slot's patch as this browser keeps them now (the Install panel's check of the bank, #1202 G9) */
+export const bankCandidates = (): Candidate[] => candidatesOf(load());
 /** this browser's copy of a slot's patch: the first candidate with the slot's name and binary length; null when there is
  *  none (the FM-1 cannot send the patch itself) */
-export function knownCopy(s: SlotInfo, candidates: Candidate[], length: (p: Patch) => number = binLength): { name: string; patch: Patch; factory: boolean } | null {
+export function knownCopy(s: SlotInfo, candidates: Candidate[], length: (p: Patch) => number = (p) => binLength(p)): { name: string; patch: Patch; factory: boolean } | null {
   if (!s.used) return null;
   for (const c of candidates) {
     if (deviceName(c.name) !== s.name) continue;
@@ -252,19 +268,16 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
   const emptyList = el('button', { textContent: 'Empty the list', title: 'Empty the offline copy' });
 
   const live = (): boolean => device.connected;
-  /** the candidates for a slot's patch: the offline copy, Your patches, the factory patches */
-  const candidates = (): Candidate[] => [
-    ...list.map((e) => ({ name: e.name, patch: () => patchOf(e), factory: !e.patch })),
-    ...savedPatches().map((s) => ({ name: s.name, patch: () => s.patch })),
-    ...addedCommunity().map((c) => ({ name: c.entry.title, patch: () => openCommunity(c) })),
-    ...Object.entries(FM1_PRESETS).map(([name, make]) => ({ name, patch: make, factory: true })),
-    ...Object.entries(EXAMPLE_PRESETS).map(([name, make]) => ({ name, patch: make })),
-  ];
-  const factoryLength = new Map<string, number>(); // a factory patch's binary length, by name
+  /** the store the FM-1's budget and its slots' lengths count with (patchbin.ts BudgetStore) */
+  const store = (): BudgetStore => device.budgetStore;
+  const candidates = (): Candidate[] => candidatesOf(list);
+  const lengthIn = (p: Patch): number => binLength(p, store());
+  const factoryLength = new Map<string, number>(); // a factory patch's binary length, by store and name
   const lengthOf = (e: Entry): number => {
-    if (e.patch) return binLength(e.patch);
-    if (!factoryLength.has(e.name)) factoryLength.set(e.name, binLength(patchOf(e)));
-    return factoryLength.get(e.name)!;
+    if (e.patch) return lengthIn(e.patch);
+    const key = store() + e.name;
+    if (!factoryLength.has(key)) factoryLength.set(key, lengthIn(patchOf(e)));
+    return factoryLength.get(key)!;
   };
   const matches = (): boolean => !!slots && bankMatches(slots, list.map((e) => ({ name: e.name, length: lengthOf(e) })));
 
@@ -323,14 +336,16 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     if (to.replaces && !window.confirm(`FM-1 slot ${slotLabel(to.slot)} holds "${to.replaces.name}". Replace it with "${name}"?`)) return say('Nothing was sent');
     void run('Sending', async () => {
       status.textContent = `Sending "${name}" to slot ${slotLabel(to.slot)}…`;
+      let full = '';
       try {
-        await device.uploadSlot(to.slot, name.toUpperCase(), patch);
+        const sent = await device.uploadSlot(to.slot, name.toUpperCase(), patch);
+        if (sent.inline.length) full = ` ${storeFullText(name, sent.inline)}`;
         slots![to.slot] = await device.readSlot(to.slot);
       } catch (e) {
         showToast(`Sending "${name}" failed: ${(e as Error).message}`);
         throw e;
       }
-      say(to.replaces ? `"${name}" replaced FM-1 slot ${slotLabel(to.slot)}` : `"${name}" added to FM-1 slot ${slotLabel(to.slot)}`);
+      say((to.replaces ? `"${name}" replaced FM-1 slot ${slotLabel(to.slot)}` : `"${name}" added to FM-1 slot ${slotLabel(to.slot)}`) + full);
     });
   };
   /** a copy into Your patches; one of that name is replaced, with Undo */
@@ -353,7 +368,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     const total = mine.length + added.length;
     mineCount.textContent = `${total} patch${total === 1 ? '' : 'es'}`;
     // a full bank leaves → working: it can still replace a patch of the same name, and else says the bank is full
-    const full = live() ? !!slots && !slots.some((s) => !s.used) : list.length >= SLOTS_MAX;
+    const full = live() ? !!slots && !slots.some((s) => !s.used) : list.length >= BANK_SLOTS;
     const waiting = live() && !slots;
     const sandbox = (): HTMLElement => chipEl({ fits: false, text: 'SANDBOX' });
     const toFm1Btn = (name: string, ok: boolean, patch: () => Patch): HTMLElement =>
@@ -362,7 +377,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
         disabled: !ok || busy || waiting, onclick: () => toFm1(name, patch(), false) });
     mineEl.replaceChildren(
       ...(total ? [...mine.map((e) => {
-        const ok = fits(e.patch, device.bufferAllocation);
+        const ok = fits(e.patch, device.bufferAllocation, store());
         return el('div', { class: 'bank-row' },
           el('span', { class: 'grow', textContent: e.name }),
           ...(ok ? [] : [sandbox()]),
@@ -377,7 +392,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
         );
       }), ...added.map((c) => {
         const name = c.entry.title;
-        const ok = fits(c.patch, device.bufferAllocation);
+        const ok = fits(c.patch, device.bufferAllocation, store());
         return el('div', { class: 'bank-row' },
           el('span', { class: 'grow' }, name, el('span', { class: 'muted', textContent: ` · ${c.entry.author}` })),
           ...(ok ? [] : [sandbox()]),
@@ -410,7 +425,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
       const used = slots!.filter((s) => s.used);
       const known = candidates();
       bankEl.replaceChildren(...(used.length ? used.map((s) => {
-        const copy = knownCopy(s, known);
+        const copy = knownCopy(s, known, lengthIn);
         return el('div', { class: 'bank-row' },
           el('span', { class: 'slot', textContent: slotLabel(s.slot) }),
           el('span', { class: 'grow', textContent: s.name }),
@@ -445,7 +460,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
         el('button', { class: 'delete', textContent: '×', title: 'take it out of the bank (Your patches keep theirs)', ariaLabel: `take "${e.name}" out of the bank`, disabled: busy, onclick: () => { list.splice(i, 1); changed(); } }),
         el('button', { class: 'lib-move', textContent: '←', ariaLabel: `copy "${e.name}" into Your patches`, title: 'Copy into Your patches', disabled: busy, onclick: () => toBrowser(e.name, patchOf(e)) }),
       )) : [el('p', { class: 'muted', textContent: 'Empty. → beside a patch, or Add from factory, puts one here.' })]));
-      countEl.textContent = live() ? '' : `${list.length} of ${SLOTS_MAX} slots`;
+      countEl.textContent = live() ? '' : `${list.length} of ${BANK_SLOTS} slots${list.length > BANK_SLOTS ? `: the last ${list.length - BANK_SLOTS} do not fit the ${BANK_SLOTS} slots of a 1.26 FM-1` : ''}`;
     }
   };
 
@@ -460,7 +475,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     if (!slots) return;
     const used = slots.filter((s) => s.used);
     const known = candidates();
-    const kept = used.map((s) => ({ s, copy: knownCopy(s, known) }));
+    const kept = used.map((s) => ({ s, copy: knownCopy(s, known, lengthIn) }));
     const missing = kept.filter((k) => !k.copy);
     const lose = missing.length ? ` This browser has no copy of ${missing.length} of them (${missing.slice(0, 6).map((k) => `${slotLabel(k.s.slot)} ${k.s.name}`).join(', ')}${missing.length > 6 ? ', …' : ''}): they are left out, since the FM-1 cannot send a patch back.` : '';
     if (!window.confirm(`Keep the ${used.length} patches on the FM-1 as the ${BANK_NAME.toLowerCase()} in this browser? This replaces its offline copy (${list.length} patches).${lose}`)) return;
@@ -469,7 +484,8 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     status.textContent = `the ${BANK_NAME.toLowerCase()} is what the FM-1 holds${missing.length ? `, less ${missing.length} this browser has no copy of` : ''}`;
   };
   send.onclick = () => void run('Sending the bank', async () => {
-    // an FM-1 whose pattern store is on has fewer slots than the offline copy can hold (#901): the entries past them stay
+    // an FM-1 whose pattern store is on has fewer slots than the offline copy can hold (#901, 48 from 1.26): the entries
+    // past them stay
     const room = device.bankSlots;
     if (list.length > room && !window.confirm(`This FM-1 has ${room} slots: the last ${list.length - room} entr${list.length - room === 1 ? 'y' : 'ies'} of the ${BANK_NAME.toLowerCase()} (${list.slice(room, room + 6).map((e) => e.name).join(', ')}${list.length - room > 6 ? ', …' : ''}) do not fit and are not sent. Send the first ${room}?`)) {
       status.textContent = 'Nothing was sent.';
@@ -486,10 +502,19 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
       return;
     }
     bar.hidden = false;
+    // (to a 1.26 FM-1 each patch's patterns go into its store, then the patch, before the next patch's: #1202. A patch the
+    // store has no room for and that does not fit with its patterns inside is refused, its slot left as it was)
+    const notes: string[] = [];
     for (let i = 0; i < total; i++) {
       status.textContent = `Sending ${i + 1} of ${total}: ${list[i].name}`;
       bar.value = (100 * i) / total;
-      await device.uploadSlot(i, list[i].name.toUpperCase(), patchOf(list[i]));
+      try {
+        const sent = await device.uploadSlot(i, list[i].name.toUpperCase(), patchOf(list[i]));
+        if (sent.inline.length) notes.push(storeFullText(list[i].name, sent.inline));
+      } catch (e) {
+        if (!(e instanceof PatchRefused)) throw e;
+        notes.push(`Slot ${slotLabel(i)} was left as it was: ${e.message}`);
+      }
     }
     for (let i = total; i < have.length; i++)
       if (have[i].used) {
@@ -498,7 +523,8 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
       }
     bar.value = 100;
     slots = await device.readBank();
-    status.textContent = `${total} patches are on the FM-1. Hold HOME and turn PRESET to step through them.`;
+    status.textContent = `${total} patches are on the FM-1. Hold HOME and turn PRESET to step through them.${notes.length ? ` ${notes.join(' ')}` : ''}`;
+    if (notes.length) showToast(notes.join(' '));
   });
   readBtn.onclick = () => void readDevice();
   erase.onclick = () => {
@@ -510,7 +536,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
       status.textContent = 'The FM-1 bank is empty.';
     });
   };
-  resetList.onclick = () => { list = Object.keys(FM1_PRESETS).slice(0, SLOTS_MAX).map((name) => ({ name })); changed(); };
+  resetList.onclick = () => { list = Object.keys(FM1_PRESETS).slice(0, BANK_SLOTS).map((name) => ({ name })); changed(); };
   emptyList.onclick = () => { list = []; changed(); };
 
   onSavedChange(refresh);

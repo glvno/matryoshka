@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 glvno */
-/* The font area (#602, docs/ledger/firmware-install.md D-180): the screen type's larger sizes (FONT_M .. FONT_T, about
+/* The font area (#602, docs/ledger/firmware-install.md D-184): the screen type's larger sizes (FONT_M .. FONT_T, about
  * 37 KB) live in 10 flash sectors outside the firmware, which the installer writes after the firmware, as it does the
  * factory region. The sectors (font_bc.h FA_SECTOR_LIST, tools/gen_font.py AREA_RUNS) are three runs: 0x93000 .. 0x96FFF
  * (never written before), 0xD0000 .. 0xD2FFF (the three lowest of the bank's old sectors, which the 1.26 layout of
