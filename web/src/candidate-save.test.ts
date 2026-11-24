@@ -69,11 +69,22 @@ describe('Save… on a candidate (owner 2026-11-24: "if it can be saved as an ex
     expect(saveCandidate(sound, base, 'Monolith D B', encode)).toEqual({ kind: 'patch', why: 'its modules, cables or name differ from Monolith D' });
     expect(userPresets()).toEqual([]);
   });
-  it('a tempo change takes no patch: with a tweak it is a preset, and the line says tempo is in no preset', () => {
+  it('a tempo change takes a patch, alone or with a tweak (no preset holds tempo), and saves no preset', () => {
     const { base, sound } = pair();
     sound.modules.find((m) => m.type === 'fm1')!.params.tempo = 151;
-    expect(saveCandidate(sound, base, 'Monolith D B', encode)).toEqual({ kind: 'same', line: 'Monolith D B has the sound of Monolith D, nothing saved. Tempo changes aren\'t in a preset' });
+    const patch = { kind: 'patch', why: 'tempo/pattern changes need a patch' };
+    expect(saveCandidate(sound, base, 'Monolith D B', encode)).toEqual(patch);
     tweak(sound, synth(sound));
-    expect(saveCandidate(sound, base, 'Monolith D B', encode)).toMatchObject({ kind: 'presets', line: 'Saved preset Monolith D B on Monolith D. Tempo changes aren\'t in a preset' });
+    expect(saveCandidate(sound, base, 'Monolith D B', encode)).toEqual(patch);
+    expect(userPresets()).toEqual([]);
+  });
+  it('a pattern change takes a patch: a track\'s pattern, or the selected pattern', () => {
+    const { base, sound } = pair();
+    const steps = sound.modules.find((m) => m.type === 'steps')!;
+    steps.params.len = steps.params.len === 8 ? 16 : 8;
+    expect(saveCandidate(sound, base, 'Monolith D B', encode)).toEqual({ kind: 'patch', why: 'tempo/pattern changes need a patch' });
+    const picked = pair().sound;
+    picked.modules.find((m) => m.type === 'fm1')!.seq = { pattern: 2 };
+    expect(saveCandidate(picked, base, 'Monolith D C', encode)).toEqual({ kind: 'patch', why: 'tempo/pattern changes need a patch' });
   });
 });
