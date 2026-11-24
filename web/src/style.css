@@ -468,6 +468,23 @@ body:has(.snap-column:not([hidden])) .workspace { margin-right: var(--snap-col-w
 .palette-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
 .palette-title { font: 600 13px/1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .palette-keys { margin-left: auto; font: 400 11px/1 'Barlow', system-ui, sans-serif; color: var(--muted); opacity: .8; }
+/* after Send to FM-1, the saved palette it came from; Save as a palette (#1236) */
+.palette-from { font: 400 11px/1 'Barlow', system-ui, sans-serif; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.palette-from[hidden], .palette-save[hidden], .palette-keys[hidden] { display: none; }
+.palette-save { margin-left: auto; flex: none; height: 20px; padding: 0 7px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--ink);
+  font: 500 11px/1 'Barlow', system-ui, sans-serif; cursor: pointer; }
+.palette-save:hover { border-color: var(--secondary); color: var(--secondary); }
+/* the name a sound goes into a palette under (name-prompt.ts): a small popover by what the add came from */
+.name-prompt { position: fixed; inset: auto; margin: 0; display: flex; flex-direction: column; gap: 8px; width: 260px; padding: 10px; border: 1px solid var(--muted); border-radius: 8px;
+  background: var(--panel); color: var(--ink); box-shadow: 0 6px 18px var(--shadow); font: 400 12px/1.3 'Barlow', system-ui, sans-serif; }
+.name-prompt-title { display: flex; flex-direction: column; gap: 6px; font-weight: 600; }
+.name-prompt-input { height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); font: 500 13px/1 'Barlow', system-ui, sans-serif; }
+.name-prompt-input:focus { outline: none; border-color: var(--secondary); }
+.name-prompt-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.name-prompt-actions button { height: 26px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink); cursor: pointer; }
+.name-prompt-actions .primary { border-color: var(--secondary); background: var(--secondary); color: var(--accent-ink); }
+.palette-send-keep { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.palette-send-keep[hidden] { display: none; }
 .palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .pal-chip { position: relative; display: grid; grid-template-columns: 16px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 6px; align-items: center; min-height: 38px;
   padding: 4px 18px 4px 6px; border-radius: 7px; background: var(--pal-tile); color: var(--ink); cursor: pointer; user-select: none; -webkit-user-select: none; outline: none; }
@@ -1678,6 +1695,47 @@ html.panning, html.panning * { cursor: grabbing !important; user-select: none; }
 #tab-library .bank-row button.lib-move { min-width: 26px; color: var(--secondary); font-size: 14px; }
 @media (max-width: 700px) {
   .lib-cols { grid-template-columns: minmax(0, 1fr); }
+}
+/* Library › Palettes (#1236, library-palettes.ts): the saved palettes as rows, Recently deleted under them; a palette open
+   shows its name, its 8 chips large (the sidebar's square, scaled), and the open patch's candidates to drag in beside them */
+#tab-library .lpal-list { padding-top: 12px; }
+.lpal-list[hidden] { display: none; }
+#tab-library .lpal-row { cursor: pointer; }
+#tab-library .lpal-row .lpal-count { flex: none; white-space: nowrap; }
+#tab-library .lpal-row .lpal-pname, #tab-library .lpal-row-deleted .lpal-pname { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lpal-empty { margin: 4px 0 0; font-size: 13px; }
+.lpal-empty[hidden], .lpal-rows[hidden], .lpal-deleted[hidden] { display: none; }
+.lpal-deleted { margin-top: 16px; }
+.lpal-sub { margin: 0 0 6px; font: 600 13px/1.2 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+#tab-library .lpal-row-deleted { opacity: .75; }
+#tab-library .lpal-row-deleted:hover { opacity: 1; }
+#tab-library .lpal-open { padding-top: 12px; }
+.lpal-open[hidden] { display: none; }
+.lpal-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+#tab-library .lpal-bar .toolbar { margin: 0 0 0 auto; }
+.lpal-back { min-height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--bar); color: var(--ink); font: 500 13px/1.2 'Barlow', system-ui, sans-serif; cursor: pointer; }
+.lpal-back:hover { border-color: var(--ink); }
+.lpal-name { flex: 1 1 200px; min-width: 0; max-width: 340px; min-height: 30px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--bar); color: var(--ink);
+  font: 600 16px/1.2 'Barlow', system-ui, sans-serif; }
+.lpal-name:focus { outline: none; border-color: var(--secondary); }
+.lpal-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 260px); gap: 18px; align-items: start; }
+.palette.lpal-chips { padding: 0; border-top: 0; }
+.lpal-chips .palette-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.lpal-chips .pal-chip { grid-template-columns: 22px minmax(0, 1fr); column-gap: 8px; min-height: 76px; padding: 8px 24px 8px 10px; border-radius: 9px; }
+.lpal-chips .pal-num { font-size: 22px; }
+.lpal-chips .pal-name { font-size: 15px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.lpal-chips .pal-meta { font-size: 12px; }
+.lpal-chips .pal-x { top: 4px; right: 4px; width: 20px; height: 20px; font-size: 15px; }
+.lpal-hint { margin: 0 0 8px; font-size: 12px; line-height: 1.4; }
+.lpal-cand-list { display: grid; gap: 3px; }
+.lpal-cand { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 8px; border-radius: 5px; background: var(--bar); font: 500 13px/1.2 'Barlow', system-ui, sans-serif;
+  user-select: none; -webkit-user-select: none; }
+.lpal-cand:hover { background: color-mix(in srgb, var(--secondary) 12%, var(--bar)); }
+.lpal-letter { flex: none; width: 18px; font: 700 14px/1 'Barlow Condensed', system-ui, sans-serif; color: var(--secondary); text-align: center; }
+.lpal-cand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 900px) {
+  .lpal-body { grid-template-columns: minmax(0, 1fr); }
+  .lpal-chips .palette-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 /* the cable into the cable slack's thumb: over the sidebar, unlike every other cable (z-index under panels and menus) */
 svg.slack-cable { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 15; overflow: visible; pointer-events: none; }
