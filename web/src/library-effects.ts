@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The effects to add (FX drawer, #1214): Library › Effects, the Patch tab's Effects panel and the + list's effect rows all
-// read fx-drawer.ts EFFECT_CATALOG, grouped by how each effect sits in a drawer's stereo chain. Every add path puts the
+// The effects to add (FX drawer, #1214): Library › Effects, the sidebar's Add effect dialog and the + list's effect rows
+// all read fx-drawer.ts EFFECT_CATALOG, grouped by how each effect sits in a drawer's stereo chain. Every add path puts the
 // effect on the canvas first, an ordinary card cabled by hand as + Module and + Assembly make it; an FX drawer is the
 // second choice. Dragging a row (pointer events, as patch-drag.ts) drops it on the canvas as a new card, or on an FX plug
 // or open drawer to put it there (editor.ts dropEffect).
 import { insertAssembly, parentOf, toDef, assembliesOf, type AssemblyDef, type AssemblyInst } from './assembly';
 import { applyPreset, presetsFor, userPresets, type Preset } from './device-presets';
 import { cardCosts, cpuEstimate } from './cpu';
+import { keyOf, type CommandKey } from './commands';
 import { addDrawer, catalogEffectDef, CHAIN_MODE_LABELS, drawerOf, drawerOfEffect, EFFECT_CATALOG, effectKind, insertEffect, outputDrawer, ownerOf, type ChainMode, type EffectEntry } from './fx-drawer';
+import { score } from './fuzzy';
 import { popMenu } from './menu';
 import { DEFS } from './modules';
 import { newPatch, type Patch } from './patch';
@@ -169,7 +171,8 @@ export interface EffectDragHooks {
   start(): void;
   over(x: number, y: number): void;
   end(): void;
-  drop(source: EffectSource, x: number, y: number): void;
+  /** the release; true when the effect landed (in a drawer, or on the canvas) */
+  drop(source: EffectSource, x: number, y: number): boolean;
 }
 
 /** follow the pointer from this press: a drag once it moved DRAG_START_PX; a press that never moved stays a click */
@@ -207,6 +210,7 @@ export function startEffectDrag(e: PointerEvent, name: string, source: () => Eff
   const key = (ev: KeyboardEvent): void => {
     if (ev.key !== 'Escape') return;
     ev.stopPropagation();
+    ev.preventDefault();   // (Escape ends the drag only: a dialog the drag came from stays open)
     end(ev);
   };
   addEventListener('pointermove', move);
@@ -323,16 +327,144 @@ export function buildEffectsSection(root: HTMLElement, act: EffectActions): { re
   return { refresh };
 }
 
-/** the Patch tab's Effects panel, built into the panel's body: one chip per effect, by group; a click adds it to the
- *  canvas, a drag drops it on the canvas, an FX plug or an open drawer */
-export function buildEffectsPanel(body: HTMLElement, act: EffectActions): void {
-  body.append(...effectGroups().flatMap((g) => [
-    el('div', { class: 'fxlib-chip-group', textContent: g.title }),
-    el('div', { class: 'fxlib-chips' }, ...g.entries.map((entry) => {
-      const chip = el('button', { type: 'button', class: `fxlib-chip ${entry.mode}`, textContent: entry.name, title: `${entry.blurb} Click: add it to the canvas. Drag: onto the canvas, an FX plug or an open drawer.` });
-      chip.onclick = () => act.canvas(entry.source, entry.name);
-      chip.onpointerdown = (e) => { if (e.button === 0) startEffectDrag(e, entry.name, () => entry.source, act.drag); };
-      return chip;
-    })),
-  ]), el('p', { class: 'muted fxlib-hint', textContent: 'Library › Effects has their presets and Add to an FX drawer.' }));
+// ---- Add effect: the sidebar's + Effect opens the same list as a dialog
+
+/** what Add effect does besides the lists: the instrument ⇧⏎ fills */
+export interface EffectDialogActions extends EffectActions {
+  /** the instrument whose FX drawer ⇧⏎ fills (currentInstrument), if any */
+  current(): AssemblyInst | undefined;
+}
+
+/** how a row ranks for a query: each word in its name (fuzzy, as Commands) or as written in its group, kind or blurb (a
+ *  fuzzy match in a whole sentence would keep nearly every row); -1 = left out */
+export function effectRank(query: string, name: string, context: string): number {
+  const text = context.toLowerCase();
+  let rank = 0;
+  for (const word of query.trim().toLowerCase().split(/\s+/).filter(Boolean)) {
+    const s = score(word, name);
+    if (s >= 0) rank += s + 100;
+    else if (text.includes(word)) rank += 1;
+    else return -1;
+  }
+  return rank;
+}
+
+/** a row of Add effect: what the search reads, and what it adds */
+interface PickRow { row: HTMLElement; name: string; context: string; make: () => EffectSource }
+
+/** Add effect, built into `dialog`: a search field over Library › Effects' rows (the effects by group, then the user's
+ *  effect presets). ↑ ↓ choose a row; ⏎ (or a click on it) adds it to the canvas, ⇧⏎ into the current instrument's FX
+ *  drawer, ⌥⏎ into the Output FX, as in the + list. Adding closes it, as do Esc and a click outside. A drag from it fades
+ *  it until the release, and brings it back when the effect did not land */
+export function buildEffectsDialog(dialog: HTMLDialogElement, host: EffectDialogActions): { open(): void } {
+  const input = el('input', { type: 'text', placeholder: 'Find an effect or one of your effect presets…', autocomplete: 'off', spellcheck: false });
+  for (const [k, v] of [['role', 'combobox'], ['aria-label', 'Search effects'], ['aria-controls', 'fxpick-list'], ['aria-expanded', 'true'], ['aria-autocomplete', 'list']]) input.setAttribute(k, v);
+  const list = el('div', { class: 'fxpick-list', id: 'fxpick-list' });
+  list.setAttribute('role', 'listbox');
+  list.setAttribute('aria-label', 'Effects');
+  const hint = el('div', { class: 'fxpick-hint' });
+  dialog.replaceChildren(
+    el('div', { class: 'fxpick-head' },
+      el('span', { class: 'mtag fx', textContent: 'FX' }), input,
+      el('button', { type: 'button', class: 'fxpick-close', textContent: '×', ariaLabel: 'Close Add effect', onclick: () => dialog.close() })),
+    list, hint);
+
+  const act: EffectActions = {
+    ...host,
+    canvas(s, name) { dialog.close(); host.canvas(s, name); },
+    drawer(s, to, name) { dialog.close(); host.drawer(s, to, name); },
+    drag: {
+      // (shown without the backdrop while faded, so the canvas, its plugs and drawers show through)
+      start() { dialog.close(); dialog.show(); dialog.classList.add('fxpick-dragging'); host.drag.start(); },
+      over: (x, y) => host.drag.over(x, y),
+      end() { host.drag.end(); dialog.classList.remove('fxpick-dragging'); dialog.close(); dialog.showModal(); input.focus(); },
+      drop(s, x, y) {
+        const landed = host.drag.drop(s, x, y);
+        if (landed) dialog.close();
+        return landed;
+      },
+    },
+  };
+
+  let groups: { head: HTMLElement; rows: PickRow[] }[] = [];
+  let shown: PickRow[] = [];
+  let sel = 0;
+  let ids = 0;
+  const pick = (row: HTMLElement, name: string, context: string, make: () => EffectSource): PickRow => {
+    row.id = `fxpick-${ids++}`;
+    row.setAttribute('role', 'option');
+    row.onclick = (e) => { if (!(e.target as HTMLElement).closest('button')) made(act, make, (s) => act.canvas(s, name)); };
+    // a finger drags from the grip only: elsewhere it scrolls the list (style.css)
+    const press = row.onpointerdown!;
+    row.onpointerdown = (e) => { if (e.pointerType !== 'touch' || (e.target as HTMLElement).closest('.fxlib-grip')) press.call(row, e); };
+    return { row, name, context, make };
+  };
+  const select = (i: number, scroll = true): void => {
+    sel = i;
+    shown.forEach((r, j) => {
+      r.row.classList.toggle('sel', j === i);
+      r.row.setAttribute('aria-selected', String(j === i));
+    });
+    const r = shown[i];
+    if (!r) return input.removeAttribute('aria-activedescendant');
+    input.setAttribute('aria-activedescendant', r.row.id);
+    if (scroll) r.row.scrollIntoView?.({ block: 'nearest' });
+  };
+  const render = (): void => {
+    const q = input.value.trim();
+    const all = groups.flatMap((g) => g.rows);
+    shown = q ? all.map((r) => ({ r, rank: effectRank(q, r.name, r.context) })).filter((x) => x.rank >= 0).sort((a, b) => b.rank - a.rank).map((x) => x.r) : all;
+    list.replaceChildren(...(q ? shown.map((r) => r.row) : groups.flatMap((g) => [g.head, ...g.rows.map((r) => r.row)])));
+    if (!shown.length) list.append(el('p', { class: 'muted fxpick-none', textContent: `No effect matches “${q}”.` }));
+    list.scrollTop = 0;
+    select(0, false);
+  };
+  const add = (r: PickRow, key: CommandKey | null): void => {
+    const into = key === 'shift' ? host.current()?.id : key === 'alt' && host.patch().modules.some((m) => m.type === 'output') ? 'output' : undefined;
+    made(act, r.make, (s) => (into === undefined ? act.canvas(s, r.name) : act.drawer(s, into, r.name)));
+  };
+  const key = (k: string): HTMLElement => el('kbd', { textContent: k });
+
+  input.oninput = render;
+  dialog.addEventListener('keydown', (e) => {
+    e.stopPropagation();   // (the canvas's shortcuts wait until it closes)
+    if (e.target !== input) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (shown.length) select((sel + (e.key === 'ArrowDown' ? 1 : shown.length - 1)) % shown.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (shown[sel]) add(shown[sel], keyOf(e));
+    }
+  });
+  // a press on the backdrop (outside the dialog's box) closes it
+  dialog.addEventListener('pointerdown', (e) => {
+    if (e.target !== dialog) return;
+    const b = dialog.getBoundingClientRect();
+    if (e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom) dialog.close();
+  });
+
+  return {
+    open() {
+      groups = effectGroups().map((g) => ({
+        head: el('div', { class: 'fxlib-group', textContent: g.title }),
+        rows: g.entries.map((e) => pick(effectRow(act, e), e.name, `${g.title} ${modeOf(e.mode).tag} ${e.blurb}`, () => e.source)),
+      }));
+      const presets = effectPresets();
+      if (presets.length) groups.push({
+        head: el('div', { class: 'fxlib-group', textContent: 'Your effect presets' }),
+        rows: presets.map((ep) => pick(presetRow(act, ep), ep.preset.name, `preset ${ep.entry.name} ${modeOf(ep.entry.mode).title}`, () => presetSource(ep))),
+      });
+      const p = host.patch(), current = host.current();
+      hint.replaceChildren(
+        el('span', {}, key('↑ ↓'), ' choose · ', key('⏎'), ' on the canvas',
+          ...(current ? [' · ', key('⇧⏎'), ` into ${drawerName(p, current.id)}`] : []),
+          ...(p.modules.some((m) => m.type === 'output') ? [' · ', key('⌥⏎'), ' into the Output FX'] : [])),
+        el('span', { textContent: 'Drag a row onto the canvas or an FX plug · Esc to close' }));
+      input.value = '';
+      render();
+      dialog.showModal();
+      input.focus();
+    },
+  };
 }

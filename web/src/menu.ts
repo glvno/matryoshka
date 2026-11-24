@@ -64,7 +64,8 @@ export function popMenu(items: MenuItem[], anchor: HTMLElement): void {
       close(true);
     } else if (e.key === 'Tab') close(false);
   };
-  document.body.append(menu);
+  // (inside a modal dialog, such as Add effect, the menu goes into it: the page under a modal takes no clicks)
+  (anchor.closest('dialog[open]') ?? document.body).append(menu);
   const a = anchor.getBoundingClientRect();
   const r = menu.getBoundingClientRect();
   const below = a.bottom + 4 + r.height <= innerHeight - 8;
