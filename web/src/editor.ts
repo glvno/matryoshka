@@ -4199,7 +4199,7 @@ export class Editor {
   }
 
   /** candidate `letter` of the open set heard, as an open: `follow` a switch (showSnapshot); else it loads as an opened
-   *  patch does (load), the set and each candidate's undo steps kept, the canvas layout kept as a switch keeps it */
+   *  patch does (load), the set and each candidate's undo steps kept */
   private openOwn(letter: string, follow: boolean): void {
     if (follow) {
       this.showSnapshot(letter);
@@ -4210,7 +4210,9 @@ export class Editor {
       this.swapStacks(letter);
       this.snaps.current = letter;
       this.madeNow = null;
-      this.patch = flipPlan(this.patch, JSON.parse(this.snaps.shown.patch) as Patch).patch;
+      this.patch = JSON.parse(this.snaps.shown.patch) as Patch;
+      if (this.dock) ensureMain(this.patch, DEFS);
+      this.report(fixAssemblies(this.patch, DEFS));
     }
     this.load();
   }
