@@ -2,11 +2,11 @@
 // Presets of an instrument with its FX drawer (FXD1): round trips, rebuilding the drawer on load, the "no FX" presets,
 // effect presets, old "+ FX" (FXP1) presets converted, and the factory ones regenerated for the converted factory drawers.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AssemblyInst } from './assembly';
+import { bypassAssembly, type AssemblyInst } from './assembly';
 import { DeviceLink, PRESET_NEEDS_UPDATE } from './device';
 import {
   addUserPreset, applyPreset, capturePreset, currentValues, exportPresets, importPresets, matchesPreset, migrateUserPresets,
-  presetChoices, presetsOf, presetView, setFactoryPresets, storePreset, userPresets, type Preset,
+  presetChoices, presetDiff, presetsOf, presetView, setFactoryPresets, storePreset, userPresets, type Preset, type PresetDiff,
 } from './device-presets';
 import { buildSelectedFactoryBank } from './factory-bank';
 import { FACTORY_FX_MASKS } from './factory-fx-recipes';
@@ -178,6 +178,31 @@ describe('loading rebuilds the drawer (one undo step in the editor)', () => {
     const { list, unloadable } = presetChoices(patch, a);
     expect(list.some(p => p.name === 'Odd')).toBe(false);
     expect(unloadable).toEqual([{ preset: expect.objectContaining({ name: 'Odd' }), reason: UNKNOWN_EFFECTS }]);
+  });
+
+  it('presetDiff names each effect’s change in the chain’s order after the load, the removed ones where they stand', () => {
+    const { patch, a } = instrument();
+    expect(applyPreset(patch, a, sound(patch, a, 'Wheel Furnace'))).toBe(true);
+    storePreset(patch, a, 'Full');
+    const full = userPresets()[0];
+    for (const label of ['Drive', 'Chorus']) removeEffect(patch, effect(patch, a, label).id);
+    storePreset(patch, a, 'Two');
+    const two = userPresets().find(p => p.name === 'Two')!;
+    // Full into Delay, Reverb with Delay off and one of Reverb's rows moved: Drive and Chorus come back
+    const delay = effect(patch, a, 'Delay'), reverb = effect(patch, a, 'Reverb');
+    bypassAssembly(patch, delay, true);
+    const row = rowOrder(patch, reverb)[0];
+    param(patch, row.module)[row.param] += 0.01;
+    const kinds = (d: PresetDiff | null) => d!.fx.map(c => `${c.name} ${c.kind}${c.values ? ` ${c.values}` : ''}${c.effect ? '' : ' (new)'}`);
+    expect(kinds(presetDiff(patch, a, full))).toEqual(['Drive add (new)', 'Chorus add (new)', 'Delay on', 'Reverb values 1']);
+    expect(presetDiff(patch, a, full)!.rows).toBe(0);
+    // Two into Full: Drive and Chorus go, shown before Delay where they stand
+    expect(applyPreset(patch, a, full, true)).toBe(true);
+    expect(kinds(presetDiff(patch, a, two))).toEqual(['Drive gone', 'Chorus gone', 'Delay same', 'Reverb same']);
+    // an instrument-only preset leaves the drawer: only its rows count
+    const plain = { structure: structureOf(patch, a), name: 'Plain', values: currentValues(patch, a).map((v, i) => (i ? v : v + 0.01)) };
+    expect(presetDiff(patch, a, plain)).toMatchObject({ rows: 1, noFx: true });
+    expect(presetDiff(patch, a, plain)!.fx.every(c => c.kind === 'same')).toBe(true);
   });
 });
 

@@ -5,7 +5,9 @@
 
 import { closeFloat, floatOpen, openFloat } from './popover';
 
-export type MenuItem = { text: string; run: () => void; key?: string; danger?: boolean; rule?: boolean };
+/** `hover`: called with true while the item is pointed at or (after the first move) has the focus, false when that ends
+ *  or the menu closes: a preview of what it does (an instrument's preset, D-1403) */
+export type MenuItem = { text: string; run: () => void; key?: string; danger?: boolean; rule?: boolean; hover?: (on: boolean) => void };
 
 /** open `items` under `anchor` (above it when there is no room below), or at a point of the window (`at`: a right-click's;
  *  `end`: the menu's right edge there). A second call for the same anchor closes it. The first item takes the focus; the
@@ -19,6 +21,14 @@ export function popMenu(items: MenuItem[], anchor: HTMLElement | null, at?: { x:
   menu.setAttribute('role', 'menu');
   const label = anchor?.getAttribute('aria-label');
   if (label) menu.setAttribute('aria-label', label);
+  // the item being previewed (MenuItem.hover): one at a time, none once the menu closes
+  let hovered: MenuItem | null = null, keyed = false;
+  const point = (it: MenuItem | null): void => {
+    if (it === hovered) return;
+    hovered?.hover?.(false);
+    hovered = it;
+    it?.hover?.(true);
+  };
   const buttons = items.map((it) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -33,6 +43,8 @@ export function popMenu(items: MenuItem[], anchor: HTMLElement | null, at?: { x:
       k.textContent = it.key;
       b.append(k);
     }
+    b.addEventListener('pointerenter', () => point(it.hover ? it : null));
+    b.addEventListener('focus', () => { if (keyed) point(it.hover ? it : null); });
     b.onclick = (e) => {
       e.stopPropagation();
       closeFloat();
@@ -50,9 +62,10 @@ export function popMenu(items: MenuItem[], anchor: HTMLElement | null, at?: { x:
       buttons[to].focus();
     } else if (e.key === 'Tab') closeFloat();
   };
+  menu.addEventListener('pointerleave', () => point(null));
   // (inside a modal dialog, such as Add effect, the menu goes into it: the page under a modal takes no clicks)
   (anchor?.closest('dialog[open]') ?? document.body).append(menu);
-  openFloat(menu, { owner: anchor ?? menu, anchor, onClose: () => anchor?.setAttribute('aria-expanded', 'false') });
+  openFloat(menu, { owner: anchor ?? menu, anchor, onClose: () => { point(null); anchor?.setAttribute('aria-expanded', 'false'); } });
   const r = menu.getBoundingClientRect();
   const left = at ? (at.end ? at.x - r.width : at.x) : anchor!.getBoundingClientRect().left;
   // under its button (or the point), else above it, on the side with more room; scrolling when taller than that room, so it
@@ -66,4 +79,5 @@ export function popMenu(items: MenuItem[], anchor: HTMLElement | null, at?: { x:
   Object.assign(menu.style, { left: `${Math.max(8, Math.min(left, innerWidth - r.width - 8))}px`, top: `${Math.max(8, top)}px` });
   anchor?.setAttribute('aria-expanded', 'true');
   buttons[0]?.focus();
+  keyed = true;   // (the first item's focus on opening previews nothing; the arrows' do)
 }

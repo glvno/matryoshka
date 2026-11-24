@@ -244,11 +244,11 @@ What an FM-1 factory instrument would take of the FM-1 with every open gap close
 
 ### FX drawer
 
-A purple tray of audio effects that slides out from an instrument card. It holds the instrument's effects in signal order, and the editor wires them as one stereo chain itself, so the chain never goes silent. It belongs to the instrument: its presets include it, and on the FM-1 each effect in it is a device right after the instrument. An [Output drawer](#output-drawer) is the patch's own.
+A tray of audio effects that slides out from an instrument card, neutral and raised like the card's own material. It holds the instrument's effects in signal order, and the editor wires them as one stereo chain itself, so the chain never goes silent. It belongs to the instrument: its presets include it, and on the FM-1 each effect in it is a device right after the instrument. An [Output drawer](#output-drawer) is the patch's own.
 
 ### FX plug
 
-The closed [FX drawer](#fx-drawer): a tab on the instrument card's edge that covers only the output jacks the chain uses. Its other outputs stay free. When those jacks are not side by side, the plug is two lobes joined by a band, with a window that shows the free jack between them.
+The closed [FX drawer](#fx-drawer): a tab on the instrument card's edge that covers only the output jacks the chain uses and lists the chain, each effect with its ⏻ and a mini bar of its mix, with a level meter. On a narrow canvas it is a small plug, with the chain on a strip under the card. Its other outputs stay free. When those jacks are not side by side, a window shows the free jack between them.
 
 ### Global
 

@@ -84,10 +84,12 @@ import { fixLocks, fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, pattern
 import { applyPayload, type LocksLoaded } from './pattern-store';
 import { clearAllPatterns as clearAllPatternsIn, copyPattern as copyPatternIn, doublePattern as doublePatternIn, halvePattern as halvePatternIn, nextEmptyPattern as nextEmptyAfter, patternsEmpty, type ResizeRefusal } from './pattern-ops';
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
-import { addPresetOf, applyPreset, capturePreset, deletePreset, drawerChangeText, matchesPreset, nextPresetName, PRESET_NAME_MAX, presetChoices, presetsOf, presetView, rememberedPreset, replaceUserPresets, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset, type Preset } from './device-presets';
+import { addPresetOf, applyPreset, capturePreset, deletePreset, drawerChangeText, matchesPreset, nextPresetName, PRESET_NAME_MAX, presetChoices, presetDiff, presetsOf, presetView, rememberedPreset, replaceUserPresets, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset, type EffectChange, type Preset, type PresetDiff } from './device-presets';
 import { snapshotPreset } from './snapshot-presets';
 import { engineOf } from './library-presets';
 import { drawerScope } from './fx-preset';
+import { effectAmount, planTab, TAB_FOOT, TAB_HEAD, TAB_W } from './fx-tab';
+import type { FxMeterSpec } from './fx-meter';
 import { chainCableProblem, chainJackProblem, drawerOutput, drawers, effectKind, effectsOf, insertEffect, moveEffect, outputDrawer, ownerOf, removeEffect, rewire, takeOut } from './fx-drawer';
 import { PRESET_VALUES_MAX } from './protocol';
 import { armable, armDrawing, armedWith, deviceOfModule, keepArmed, keysTargets, noKeysReach, type DeviceKey } from './arm';
@@ -242,6 +244,8 @@ export interface EditorEvents {
   onLayout(p: Patch): void;
   /** the displays drawn this time (after every rebuild): Scope screens with what is cabled into each input, envelope shapes */
   onScreens?(screens: ScreenSpec[], envs: EnvSpec[]): void;
+  /** the level meters on the closed FX drawers drawn this time (after every rebuild, fx-meter.ts) */
+  onFxMeters?(meters: FxMeterSpec[]): void;
   /** listening to one signal changed (#939, listen.ts): the outputs heard instead of the Output and their name; null: the Output */
   onListen?(srcs: ListenSource[] | null, label: string): void;
   /** MIDI learn (#1067): a row waits for its source (its name) or stopped waiting (null) */
@@ -329,15 +333,20 @@ const LONG_PRESS_MS = 500;
  *  collapsed parent shows as an embedded card (spec Model 6) */
 type Embed = { drawer: AssemblyInst } | { embedIn: AssemblyInst };
 /**
- * An FX drawer as drawn: closed, the purple plug on the card that shows the jacks its chain takes (`taps`: an instrument's
- * outputs on its right edge, the Output's l / r on its left); open, the drawer with the effect cards. `ends`: the drawer's
- * own jacks on its far edge, the instrument's sound after its effects (or, for the Output drawer, where sources come in).
- * `layer`: the chain's dashed wires and copies of the cables over the drawer. `geom`: the last layout, to skip unchanged.
+ * An FX drawer as drawn: closed, the plug on the card that shows the jacks its chain takes (`taps`: an instrument's
+ * outputs on its right edge, the Output's l / r on its left), the FX tab with the chain on a wide canvas (fx-tab.ts), the
+ * small plug with the chain on a strip under the card (`lip`) on a narrow one; open, the drawer with the effect cards.
+ * `ends`: the drawer's own jacks on its far edge, the instrument's sound after its effects (or, for the Output drawer,
+ * where sources come in). `layer`: the chain's dashed wires and copies of the cables over the drawer. `geom`: the last
+ * layout, to skip unchanged.
  */
 type DrawerView = {
   d: AssemblyInst; label: string; side: 'r' | 'l'; host: HTMLElement; taps: HTMLElement[];
-  plug: HTMLElement | null; drawer: HTMLElement | null; ends: HTMLElement[]; layer: SVGSVGElement | null; geom: string;
+  plug: HTMLElement | null; lip: HTMLElement | null; drawer: HTMLElement | null; ends: HTMLElement[]; layer: SVGSVGElement | null; geom: string;
 };
+/** what a drawer shows of a preset's change to it (presetDiff): while the preset is pointed at in its menu, or just after
+ *  it loaded (while its note shows); each change's `effect` is the effect it is on now */
+type FxMarks = { mode: 'preview' | 'loaded'; fx: EffectChange[] };
 /** where a dragged effect would go: a drawer, at a gap of its chain, or at its end (`at` null: over the closed plug) */
 type FxSpot = { id: number; at: number | null };
 /** FX drawer geometry, px (designs fxdrawer3 and fxdrawer4): the plug and the drawer start this far under the card's edge */
@@ -361,8 +370,25 @@ const FX_R = 10;
 const FX_SPRING_MS = 450;
 /** the drawer slides out from behind the card in this time */
 const FX_SLIDE_MS = 200;
-/** a canvas narrower than this opens drawers below their card */
+/** a canvas narrower than this opens drawers below their card, and shows a closed one as the small plug with its chain on
+ *  a strip under the card instead of the FX tab */
 const FX_NARROW = 760;
+/** the note after a preset loaded into an instrument with a drawer stays this long (or until the next press) */
+const FX_NOTE_MS = 5000;
+/** how a closed drawer's row shows a preset's change to an effect (fxsound design C): new, changed (•), struck through */
+const FX_MARK: Record<EffectChange['kind'], '' | 'new' | 'chg' | 'gone'> = { same: '', add: 'new', gone: 'gone', off: 'chg', on: 'chg', values: 'chg' };
+
+/** a preset's change to one effect as its mark says it, before the load (`preview`) or after; '' none */
+function changeText(c: EffectChange, preview: boolean): string {
+  switch (c.kind) {
+    case 'add': return preview ? '+ adds' : 'new';
+    case 'gone': return '− removes';
+    case 'off': return preview ? 'turns off' : 'switched off';
+    case 'on': return preview ? 'turns on' : 'switched on';
+    case 'values': return `${c.values} value${c.values === 1 ? '' : 's'}`;
+    default: return '';
+  }
+}
 
 /**
  * An open drawer's height beside its card (D-1342), layout px: `content`, its header, tallest effect card (or empty, its
@@ -437,6 +463,14 @@ export class Editor {
   private sliding = new Set<number>();
   /** a drag that can drop an effect into a drawer: the spot under the pointer, the spring-open timer, the drawer it opened */
   private fxDrag: { spot: FxSpot | null; timer: number; sprung: number | null } = { spot: null, timer: 0, sprung: null };
+  /** each drawer's preview of a preset pointed at in its menu, or the marks of the one just loaded, by drawer id */
+  private fxMarks = new Map<number, FxMarks>();
+  /** the note after a preset loaded (with Undo): it goes after FX_NOTE_MS or at the next press */
+  private fxNote: { el: HTMLElement; drop: () => void } | null = null;
+  /** the canvas was narrow (FX_NARROW) at the last rebuild: drawers are drawn again when that changes */
+  private fxNarrow = false;
+  /** the closed drawers' level meters drawn this time (onFxMeters) */
+  private fxMeters: FxMeterSpec[] = [];
   /** the pointer during a card drag (client px) */
   private dragPointer: Pt | null = null;
   private drag: { path: SVGPathElement; cancel: () => void } | null = null;
@@ -485,7 +519,11 @@ export class Editor {
     this.world = canvas.querySelector('#patch-world')!;
     this.spaceEl = canvas.querySelector('#canvas-space')!;
     this.report(fixAssemblies(this.patch, DEFS));
-    new ResizeObserver(() => { this.sizeCanvas(); this.positionCables(); }).observe(canvas);
+    new ResizeObserver(() => {
+      this.sizeCanvas();
+      this.positionCables();
+      if (this.drawerViews.size && this.narrowCanvas() !== this.fxNarrow) this.rebuild();   // (the tab or the plug and its strip)
+    }).observe(canvas);
     if (dock) {
       // the docked jacks stay put while the canvas scrolls under them
       canvas.addEventListener('scroll', () => this.positionCables(), { passive: true });
@@ -939,6 +977,8 @@ export class Editor {
   }
 
   private restore(s: string): void {
+    this.fxMarks.clear();
+    this.dropNote();
     this.dropGesture();
     this.patch = this.revive(s);
     if (!this.patch.slackFrom) this.slackMod = 0;
@@ -1050,6 +1090,8 @@ export class Editor {
     }
     for (const a of visible) if (!a.open) this.modulesEl.append(this.container(a, perVoice(a), parentOf(this.patch, a.id)));
     // the FX drawers, on the cards that show their jacks (FxModel hides every drawer's subtree from the cards above)
+    this.fxNarrow = this.narrowCanvas();
+    this.fxMeters = [];
     for (const d of drawers(this.patch)) this.buildDrawer(d, perVoice(d));
     for (const id of this.selectedComments) if (!this.patch.comments?.some((c) => c.id === id)) this.selectedComments.delete(id);
     for (const c of this.patch.comments ?? []) this.modulesEl.append(this.commentBox(c));
@@ -1064,6 +1106,7 @@ export class Editor {
     closeOrphanFloat();                     // (a menu whose card was redrawn or deleted)
     this.flawPanel?.sync();
     this.ev.onScreens?.(this.screens, this.envScreens);
+    this.ev.onFxMeters?.(this.fxMeters);
     this.sizeCanvas();
     requestAnimationFrame(() => {
       this.layoutFrames();
@@ -1082,12 +1125,12 @@ export class Editor {
     this.stack = [...keys.filter((key) => !this.stack.includes(key)), ...this.stack];
     for (const el of elements) el.style.zIndex = String(2 + this.stack.indexOf(this.layerKey(el)));
     // a drawer and its plug sit just under their card: its layer, before it in the document
-    for (const v of this.drawerViews.values()) for (const el of [v.plug, v.drawer]) if (el) el.style.zIndex = v.host.style.zIndex;
+    for (const v of this.drawerViews.values()) for (const el of [v.plug, v.lip, v.drawer]) if (el) el.style.zIndex = v.host.style.zIndex;
   }
 
   private raiseCard(card: HTMLElement): void {
     // a press in a drawer raises the card it belongs to, one on an embedded card the card it is on
-    const box = card.closest<HTMLElement>('.fx-drawer, .fx-plug');
+    const box = card.closest<HTMLElement>('.fx-drawer, .fx-plug, .fx-lip');
     const el = (box && this.drawerViews.get(Number(box.dataset.drawer))?.host) || card.closest<HTMLElement>('.module:not(.embedded)') || card;
     let raised = [this.layerKey(el)];
     if (el.classList.contains('frame')) {
@@ -1184,7 +1227,7 @@ export class Editor {
     for (const [id, el] of this.containers) fill(el, costs.assemblies.get(id));
     for (const [id, el] of this.embeds) fill(el, costs.assemblies.get(id));
     for (const [id, v] of this.drawerViews) {
-      const chip = v.drawer?.querySelector<HTMLElement>(':scope > .fx-dh .mcpu');
+      const chip = (v.drawer ?? v.plug)?.querySelector<HTMLElement>(':scope > :is(.fx-dh, .fx-th) .mcpu');
       if (chip) this.fillCost(chip, costs.assemblies.get(id));
     }
   }
@@ -4869,7 +4912,8 @@ export class Editor {
     }
     for (const [id, v] of this.drawerViews) {
       const off = !!asmOff.get(id);
-      for (const el of [v.plug, v.drawer]) el?.classList.toggle('off', off);
+      for (const el of [v.plug, v.lip, v.drawer]) el?.classList.toggle('off', off);
+      if (!v.drawer) this.refreshDrawer(v);   // (the tab's ⏻ and rows, the strip's names)
       power(v.drawer?.querySelector(':scope > .fx-dh button.pw'), !off);
     }
     const panel = this.patch.modules.find((x) => x.type === 'fm1')?.panel;
@@ -5209,7 +5253,8 @@ export class Editor {
       const pr = stepPreset(this.patch, a, dir);
       if (pr) this.loadPreset(a, pr);
     };
-    const name = this.button('', '', () => this.popMenu(this.presetItems(a), { x: 0, y: 0, from: name }), 'sm preset-name');
+    // (an instrument with a drawer: the list ends under the chip, over the card, so the tab beside it shows the preview)
+    const name = this.button('', '', () => this.popMenu(this.presetItems(a), { x: 0, y: 0, from: name, end: !!drawerScope(this.patch, a) }), 'sm preset-name');
     const show = (): void => {
       const edited = !!a.preset && !matchesPreset(this.patch, a);
       // (the preset's own spelling: the FM-1 names it in capitals)
@@ -5230,22 +5275,139 @@ export class Editor {
   private chips = new Map<number, () => void>();
   private chipsQueued = false;
   private chipsSoon(): void {
-    if (this.chipsQueued || !this.chips.size) return;
+    if (this.chipsQueued || (!this.chips.size && !this.drawerViews.size)) return;
     this.chipsQueued = true;
     requestAnimationFrame(() => {
       this.chipsQueued = false;
       for (const show of this.chips.values()) show();
+      // the tabs' mini bars follow their effects' values
+      for (const v of this.drawerViews.values()) v.plug?.querySelectorAll<HTMLElement>(':scope > .fx-tr[data-asm]').forEach((row) => {
+        const e = assemblyById(this.patch, Number(row.dataset.asm));
+        if (e) row.style.setProperty('--p', String(effectAmount(this.patch, e) ?? 0));
+      });
     });
   }
 
-  /** load the selected preset into an assembly: one undo step (an FX drawer preset rebuilds the drawer to match first) */
+  /** load the selected preset into an assembly: one undo step (an FX drawer preset rebuilds the drawer to match first).
+   *  An instrument with a drawer then shows a note of what changed, with Undo, and marks the changes on its drawer
+   *  (fxsound design D, owner 2026-11-24) */
   private loadPreset(a: AssemblyInst, pr: Preset): void {
     const missing = shortBy(this.patch, a, pr);
-    const view = presetView(this.patch, a, pr);
-    const change = view && !view.noFx ? drawerChangeText(view.adds, view.removes, true) : '';
-    if (this.change(() => applyPreset(this.patch, a, pr, true)))
-      this.ev.onError(missing ? shortPresetText(engineOf(pr.structure) || a.label, missing, pr.values.length + missing)
-        : `${a.label}: preset "${pr.name}"${view?.noFx ? ' (no FX: the drawer stays as it was)' : change ? ` (FX drawer: ${change})` : ''}`);
+    const scope = drawerScope(this.patch, a);
+    const diff = scope && presetDiff(this.patch, a, pr, scope);
+    this.dropNote();
+    if (!this.change(() => applyPreset(this.patch, a, pr, true))) return;
+    const step = this.history[this.history.length - 1];
+    if (missing) this.ev.onError(shortPresetText(engineOf(pr.structure) || a.label, missing, pr.values.length + missing));
+    if (!scope || !diff) {
+      if (!missing) this.ev.onError(`${a.label}: preset "${pr.name}"`);
+      return;
+    }
+    // the changes on the effects as they are after the load (the chain in the preset's order)
+    const chain = effectsOf(this.patch, scope.drawer);
+    let k = 0;
+    const fx = diff.fx.map((c) => (c.kind === 'gone' ? c : { ...c, effect: chain[k++] ?? null }));
+    if (!diff.noFx) {
+      this.fxMarks.set(scope.drawer.id, { mode: 'loaded', fx });
+      this.showFxMarks(scope.drawer.id);
+    }
+    this.presetNote(a, pr, diff, scope.drawer.id, step);
+  }
+
+  /** a preset pointed at in an instrument's menu (null: none any more): its drawer previews the change, the open drawer
+   *  with ghosts of the effects it adds and removes and marks on those it switches or changes, the closed one on its tab's
+   *  list (or its strip) */
+  private previewPreset(a: AssemblyInst, pr: Preset | null): void {
+    const scope = drawerScope(this.patch, a);
+    if (!scope) return;
+    const id = scope.drawer.id;
+    const diff = pr && presetDiff(this.patch, a, pr, scope);
+    if (diff && !diff.noFx) this.fxMarks.set(id, { mode: 'preview', fx: diff.fx });
+    else if (this.fxMarks.get(id)?.mode === 'preview') this.fxMarks.delete(id);
+    else return;
+    this.showFxMarks(id);
+  }
+
+  /** a drawer's marks (fxMarks) shown again at once, without a rebuild (a menu stays open over it) */
+  private showFxMarks(id: number): void {
+    const v = this.drawerViews.get(id);
+    if (!v) return;
+    this.refreshDrawer(v);
+    this.drawCables();
+  }
+
+  /**
+   * The note after a preset loaded into an instrument with a drawer, under the card (or the drawer below it): what the
+   * load changed, the instrument's values and each effect, and Undo, one step back to before the load. It goes after
+   * FX_NOTE_MS (not while pointed at) or at the next press elsewhere; the drawer's marks go with it.
+   */
+  private presetNote(a: AssemblyInst, pr: Preset, diff: PresetDiff, drawerId: number, step: UndoStep | undefined): void {
+    const el = document.createElement('div');
+    el.className = 'fx-note';
+    el.setAttribute('role', 'status');
+    const undo = document.createElement('button');
+    undo.type = 'button';
+    undo.className = 'fx-note-undo';
+    undo.textContent = 'Undo';
+    undo.title = `Back to before "${pr.name}" was loaded`;
+    undo.onclick = (e) => {
+      e.stopPropagation();
+      const last = this.history[this.history.length - 1] === step;
+      this.dropNote();
+      if (last) this.undo();
+      else this.ev.onError(`Other changes came after "${pr.name}" was loaded: undo them first with Undo`);
+    };
+    const name = document.createElement('b');
+    name.textContent = pr.name;
+    const values = diff.rows ? `${diff.rows} value${diff.rows === 1 ? '' : 's'}` : 'same values';
+    el.append(undo, 'Loaded ', name, `: ${a.label}, ${values} · its FX: `);
+    const changed = diff.fx.filter((c) => c.kind !== 'same');
+    if (diff.noFx) el.append('stay as they were (an instrument-only preset)');
+    else if (!changed.length) el.append('unchanged');
+    const words: string[] = [];
+    for (const c of changed) {
+      if (c.kind === 'add' || c.kind === 'gone') {
+        const chip = document.createElement('span');
+        chip.className = `fx-mini ${c.kind}`;
+        chip.textContent = `${c.kind === 'add' ? '+' : '−'} ${c.name}`;
+        el.append(chip);
+      } else words.push(c.kind === 'values' ? `${c.name}: ${c.values} value${c.values === 1 ? '' : 's'}` : `${c.name} ${c.kind}`);
+    }
+    if (words.length) el.append(words.join(' · '));
+    this.world.append(el);
+    let timer = 0;
+    const later = (): void => { timer = window.setTimeout(() => this.dropNote(), FX_NOTE_MS); };
+    const press = (e: PointerEvent): void => { if (!el.contains(e.target as Node)) this.dropNote(); };
+    el.addEventListener('pointerenter', () => clearTimeout(timer));
+    el.addEventListener('pointerleave', later);
+    document.addEventListener('pointerdown', press, true);
+    later();
+    this.fxNote = { el, drop: () => {
+      clearTimeout(timer);
+      document.removeEventListener('pointerdown', press, true);
+      el.remove();
+    } };
+    // under the card, or under what hangs below it (the strip, the drawer opened below it), once laid out
+    requestAnimationFrame(() => {
+      const v = this.drawerViews.get(drawerId);
+      if (!v?.host.isConnected || !el.isConnected) return;
+      const box = (b: HTMLElement | null): number => (b?.isConnected ? b.offsetTop + b.offsetHeight : 0);
+      const below = Math.max(box(v.host), box(v.lip), v.drawer?.classList.contains('under') ? box(v.drawer) : 0);
+      el.style.left = `${v.host.offsetLeft}px`;
+      el.style.top = `${below + 12}px`;
+      el.style.width = `${this.fxNarrow ? v.host.offsetWidth : 400}px`;
+    });
+  }
+
+  /** the note after a load gone, and the marks of the load with it */
+  private dropNote(): void {
+    if (!this.fxNote) return;
+    this.fxNote.drop();
+    this.fxNote = null;
+    for (const [id, m] of this.fxMarks) if (m.mode === 'loaded') {
+      this.fxMarks.delete(id);
+      this.showFxMarks(id);
+    }
   }
 
   /** the presets menu of an assembly device: load one, store, rename, delete. An instrument with an FX drawer lists its
@@ -5261,7 +5423,8 @@ export class Editor {
       const lit = view ? view.chain.filter((_, i) => view.on[i]) : [];
       const tail = !view ? '' : view.noFx ? ' · no FX · instrument only, your drawer stays'
         : ` · ${!view.chain.length ? 'empty drawer' : lit.length ? lit.join(', ') : 'all effects off'}${change ? ` · ${change}` : ''}`;
-      return { text: `${pr === cur ? '● ' : ''}${pr.name}${pr.factory ? ' (factory)' : ''}${tail}`, run: () => this.loadPreset(a, pr) };
+      return { text: `${pr === cur ? '● ' : ''}${pr.name}${pr.factory ? ' (factory)' : ''}${tail}`, run: () => this.loadPreset(a, pr),
+        ...(scope ? { hover: (on: boolean) => this.previewPreset(a, on ? pr : null) } : {}) };
     });
     for (const u of unloadable) items.push({ text: `${u.preset.name} · cannot be loaded`, run: () => this.ev.onError(`${a.label}: preset "${u.preset.name}" cannot be loaded. ${u.reason}.`) });
     items.push({ text: cur && !cur.factory ? `Store over "${cur.name}"` : 'Store preset…', rule: list.length + unloadable.length > 0, run: () => {
@@ -5589,7 +5752,8 @@ export class Editor {
       dot.dataset.dir === dir && dot.dataset.also && (JSON.parse(dot.dataset.also) as Target[]).some((x) => sameEnd(x, t)));
   }
 
-  /** a drawer on the card that shows its jacks: the plug, or the open drawer with its effects; placed by layoutDrawer */
+  /** a drawer on the card that shows its jacks: the tab (or the plug and its strip), or the open drawer with its effects;
+   *  placed by layoutDrawer */
   private buildDrawer(d: AssemblyInst, perVoice: number): void {
     const own = ownerOf(this.patch, d);
     const output = this.patch.modules.find((m) => m.type === 'output');
@@ -5599,7 +5763,7 @@ export class Editor {
     const host = taps[0]?.closest<HTMLElement>('.module');
     if (!host || host.parentElement !== this.modulesEl) return;   // (its card is not on the canvas: inside a collapsed assembly)
     const effects = effectsOf(this.patch, d);
-    const v: DrawerView = { d, label: owner ? owner.label : 'Output', side: owner ? 'r' : 'l', host, taps, plug: null, drawer: null, ends: [], layer: null, geom: '' };
+    const v: DrawerView = { d, label: owner ? owner.label : 'Output', side: owner ? 'r' : 'l', host, taps, plug: null, lip: null, drawer: null, ends: [], layer: null, geom: '' };
     this.drawerViews.set(d.id, v);
     for (const t of taps) t.classList.add('plugged');
     if (d.open) this.drawerEl(v, effects, perVoice);
@@ -5607,9 +5771,25 @@ export class Editor {
       this.plugEl(v, effects.length);
       // the effects' jacks are hidden: their modulation cables end on the plug
       for (const id of allModules(this.patch, d)) this.fxAnchors.set(id, v.plug!);
+      const meter = (v.lip ?? v.plug)!.querySelector<HTMLElement>('.fx-meter');
+      if (meter) this.fxMeters.push({ key: `fxmeter:${d.id}`, el: meter, chans: this.meterChans(effects, owner, output) });
     }
+    if (v.plug || v.lip) this.fillClosed(v);
+    if (v.drawer) this.markDrawer(v);
     this.drawerEnds(v, effects, output, owner);
-    for (const el of [v.plug, v.drawer]) if (el) host.before(el);
+    for (const el of [v.lip, v.plug, v.drawer]) if (el) host.before(el);
+  }
+
+  /** what a closed drawer's meter measures, per side: the sound after its effects (an instrument's drawer outputs; for the
+   *  Output drawer its last effect's, else what feeds the Output) */
+  private meterChans(effects: AssemblyInst[], owner: AssemblyInst | null, output: ModuleInst | undefined): { id: number; port: string }[][] {
+    return ([0, 1] as const).map((ch) => {
+      const last = effects[effects.length - 1];
+      const ref = last?.chain && last.outputs[last.chain.outs[ch]];
+      const list: Endpoint[] = owner ? drawerOutput(this.patch, owner.id, ch) : ref ? targetsOf(ref)
+        : this.patch.cables.filter((c) => c.to.module === output?.id && c.to.port === (ch ? 'r' : 'l')).map((c) => c.from);
+      return list.map((t) => ({ id: t.module, port: t.port }));
+    });
   }
 
   /**
@@ -5658,18 +5838,61 @@ export class Editor {
     });
   }
 
-  /** the closed drawer: the FX plug on the card's edge, over the jacks the chain takes; a click opens it */
+  /** the canvas is narrow (FX_NARROW): drawers open below their card, a closed one is the plug with its strip */
+  private narrowCanvas(): boolean {
+    return this.canvas.clientWidth > 0 && this.canvas.clientWidth < FX_NARROW;
+  }
+
+  /**
+   * The closed drawer (D-1341): on the card's edge over the jacks the chain takes, the FX tab with the chain (fxsound
+   * design C, filled by fillClosed); on a narrow canvas the small FX plug, with the chain on a strip under the card
+   * (`lip`). A click on either opens the drawer; an effect dropped on either goes in at the end, held there it springs the
+   * drawer open.
+   */
   private plugEl(v: DrawerView, n: number): void {
+    const tab = !this.fxNarrow;
     const p = document.createElement('div');
-    p.className = `fx-plug side-${v.side}` + (n ? '' : ' empty') + (this.asmOffShown(v.d) ? ' off' : '');
-    p.dataset.drawer = String(v.d.id);
-    p.tabIndex = 0;
-    p.setAttribute('role', 'button');
+    p.className = `fx-plug side-${v.side}` + (tab ? ' fx-tab' : '') + (n ? '' : ' empty') + (this.asmOffShown(v.d) ? ' off' : '');
     const what = n ? `${n} effect${n === 1 ? '' : 's'}` : 'no effects yet';
-    p.title = `FX drawer of ${v.label}: ${what}. Click to open it. Drop an effect here to add it at the end, or hold it here to pick its place`;
-    p.setAttribute('aria-label', `Open the FX drawer of ${v.label} (${what})`);
+    const open = (): void => {
+      this.setDrawerOpen(v.d.id, true);
+      this.ev.onLayout(this.patch);
+      this.clearForDrawer(v.d.id);
+    };
+    const meter = (): HTMLElement => {
+      const m = document.createElement('span');
+      m.className = 'fx-meter';
+      m.title = `The level of ${v.label} after its effects`;
+      m.append(document.createElement('i'));
+      return m;
+    };
+    for (const el of [p, ...(tab ? [] : [document.createElement('div')])]) {
+      el.dataset.drawer = String(v.d.id);
+      el.tabIndex = 0;
+      el.setAttribute('role', 'button');
+      el.title = `FX drawer of ${v.label}: ${what}. Click to open it. Drop an effect here to add it at the end, or hold it here to pick its place`;
+      el.setAttribute('aria-label', `Open the FX drawer of ${v.label} (${what})`);
+      el.addEventListener('pointerdown', (e) => e.stopPropagation());   // (no rubber band from it)
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!(e.target as HTMLElement).closest('.dot, button')) open();
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.target !== el || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        open();
+      });
+      if (el !== p) {
+        el.className = 'fx-lip' + (this.asmOffShown(v.d) ? ' off' : '');
+        const row = document.createElement('div');
+        row.className = 'fx-lrow';
+        el.append(row, meter());
+        v.lip = el;
+      }
+    }
     p.innerHTML = '<svg class="fx-plug-shape" aria-hidden="true"><path/></svg>';
-    for (let i = 0; i < 2; i++) {
+    if (tab) p.append(meter());
+    else for (let i = 0; i < 2; i++) {
       const l = document.createElement('span');
       l.className = 'fx-pl';
       l.textContent = n ? 'FX' : 'FX +';
@@ -5684,28 +5907,139 @@ export class Editor {
     badge.className = 'fx-badge';
     badge.textContent = '+ at the end · hold to open';
     p.append(badge);
-    const open = (): void => {
-      this.setDrawerOpen(v.d.id, true);
-      this.ev.onLayout(this.patch);
-      this.clearForDrawer(v.d.id);
-    };
-    p.addEventListener('pointerdown', (e) => e.stopPropagation());   // (no rubber band from it)
-    p.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!(e.target as HTMLElement).closest('.dot')) open();
-    });
-    p.addEventListener('keydown', (e) => {
-      if (e.target !== p || (e.key !== 'Enter' && e.key !== ' ')) return;
-      e.preventDefault();
-      open();
-    });
     v.plug = p;
+  }
+
+  /**
+   * A closed drawer's chain, from the patch or from its marks (fxMarks: a preset pointed at in the menu, or just loaded).
+   * The tab: its header (FX and the count, the CPU share, the drawer's ⏻) and a row per effect in signal order (its ⏻,
+   * its name, its mix as a mini bar); layoutDrawer places the rows. The strip under a narrow card: FX, the count, the names.
+   */
+  private fillClosed(v: DrawerView): void {
+    const marks = this.fxMarks.get(v.d.id);
+    const preview = marks?.mode === 'preview';
+    const items = marks
+      ? marks.fx.map((c) => {
+        const effect = c.effect && assemblyById(this.patch, c.effect.id) ? c.effect : null;
+        return { name: c.name, effect, on: effect && !preview ? !this.asmOffShown(effect) : c.on, mark: FX_MARK[c.kind], says: changeText(c, preview) };
+      })
+      : effectsOf(this.patch, v.d).map((e) => ({ name: e.label || e.name, effect: e as AssemblyInst | null, on: !this.asmOffShown(e), mark: '', says: '' }));
+    const count = items.filter((it) => it.mark !== 'gone').length;
+    for (const el of [v.plug, v.lip]) el?.classList.toggle('previewing', preview);
+    if (v.lip) {
+      const row = v.lip.querySelector<HTMLElement>(':scope > .fx-lrow')!;
+      const head = document.createElement('b');
+      head.textContent = `FX ${count || '+'}`;
+      row.replaceChildren(head);
+      if (!items.length) row.append(Object.assign(document.createElement('span'), { className: 'none', textContent: 'no effects' }));
+      items.forEach((it, i) => {
+        if (i) row.append(' · ');
+        row.append(Object.assign(document.createElement('span'), { className: (it.on ? '' : 'off ') + it.mark, textContent: it.name, title: it.says }));
+      });
+    }
+    const p = v.plug;
+    if (!p?.classList.contains('fx-tab')) return;
+    p.querySelectorAll(':scope > :is(.fx-th, .fx-tr)').forEach((el) => el.remove());
+    const meter = p.querySelector(':scope > .fx-meter');
+    const head = document.createElement('div');
+    head.className = 'fx-th';
+    const title = document.createElement('span');
+    title.className = 'grow';
+    title.textContent = `FX ${count || '+'}`;
+    const off = this.asmOffShown(v.d);
+    const pw = this.button('⏻', 'The whole drawer on / off (each effect keeps its own switch)', () => this.switchAssembly(v.d), 'pw');
+    pw.classList.toggle('on', !off);
+    pw.setAttribute('aria-pressed', String(!off));
+    head.append(title, this.costSlot(this.costs?.assemblies.get(v.d.id)), pw);
+    p.insertBefore(head, meter);
+    for (const it of items) {
+      const row = document.createElement('div');
+      row.className = 'fx-tr' + (it.on ? '' : ' off') + (it.mark ? ` ${it.mark}` : '');
+      const amount = it.effect && it.mark !== 'gone' ? effectAmount(this.patch, it.effect) : null;
+      if (it.effect && it.mark !== 'gone') row.dataset.asm = String(it.effect.id);
+      row.style.setProperty('--p', String(amount ?? 0));
+      if (it.says) row.title = `${it.name}: ${it.says}`;
+      const sw = it.effect && !preview && it.mark !== 'gone'
+        ? this.button('⏻', `${it.name} on / off (bypass)`, () => this.switchAssembly(it.effect!), 'pw')
+        : document.createElement('span');
+      sw.classList.add('pw');
+      sw.classList.toggle('on', it.on);
+      if (sw instanceof HTMLButtonElement) sw.setAttribute('aria-pressed', String(it.on));
+      else sw.textContent = '⏻';
+      const name = document.createElement('span');
+      name.className = 'n';
+      name.textContent = it.name;
+      const bar = document.createElement('span');
+      bar.className = 'mb';
+      bar.hidden = amount === null;
+      bar.append(document.createElement('i'));
+      row.append(sw, name, bar);
+      p.insertBefore(row, meter);
+    }
+    const last = document.createElement('div');
+    last.className = items.length ? 'fx-tr more' : 'fx-tr none';
+    last.textContent = items.length ? '' : 'drop effects here';
+    p.insertBefore(last, meter);
+  }
+
+  /** an open drawer's marks (fxMarks): on each effect card what the preset does to it, and while previewing a ghost card
+   *  where it adds an effect; none without marks */
+  private markDrawer(v: DrawerView): void {
+    const el = v.drawer!, row = el.querySelector<HTMLElement>(':scope > .fx-row')!;
+    row.querySelectorAll(':scope > .fx-ghost').forEach((g) => g.remove());
+    row.querySelectorAll(':scope > .fx-card > .fx-mkb').forEach((b) => b.remove());
+    row.querySelectorAll(':scope > .fx-card').forEach((c) => c.classList.remove('fx-gone', 'fx-new', 'fx-chg'));
+    const marks = this.fxMarks.get(v.d.id);
+    const preview = marks?.mode === 'preview';
+    el.classList.toggle('previewing', preview);
+    if (!marks) return;
+    const badge = (c: EffectChange): HTMLElement => {
+      const b = document.createElement('span');
+      b.className = 'fx-mkb' + (c.kind === 'gone' ? ' red' : '');
+      b.textContent = changeText(c, preview);
+      return b;
+    };
+    // from the end: each ghost goes before the card (or ghost) of the change after it
+    let next: Element = row.querySelector(':scope > .fx-slot')!;
+    for (const c of [...marks.fx].reverse()) {
+      const card = c.effect && row.querySelector(`:scope > .fx-card[data-asm="${c.effect.id}"]`);
+      if (card) {
+        if (c.kind !== 'same') {
+          card.classList.add(c.kind === 'gone' ? 'fx-gone' : c.kind === 'add' ? 'fx-new' : 'fx-chg');
+          card.append(badge(c));
+        }
+        next = card;
+      } else if (c.kind === 'add' && preview) {
+        const ghost = document.createElement('div');
+        ghost.className = 'fx-ghost';
+        ghost.title = `Loading the preset adds ${c.name} here`;
+        const tag = document.createElement('span');
+        tag.className = 'mtag fx fx-own';
+        tag.textContent = 'FX';
+        const name = document.createElement('span');
+        name.textContent = c.name;
+        const head = document.createElement('div');
+        head.className = 'gh';
+        head.append(tag, name);
+        ghost.append(head, badge(c));
+        row.insertBefore(ghost, next);
+        next = ghost;
+      }
+    }
+  }
+
+  /** a drawer's chain or marks drawn again in place (a switch, a preset pointed at or loaded) and placed at once */
+  private refreshDrawer(v: DrawerView): void {
+    if (v.plug || v.lip) this.fillClosed(v);
+    if (v.drawer) this.markDrawer(v);
+    v.geom = '';
+    if (v.host.isConnected && (v.plug ?? v.drawer)?.isConnected) this.layoutDrawer(v);
   }
 
   /** the open drawer: its header (▼, name, CPU, ⏻), each effect as a full live card in signal order, the + slot */
   private drawerEl(v: DrawerView, effects: AssemblyInst[], perVoice: number): void {
     const el = document.createElement('div');
-    const narrow = this.canvas.clientWidth > 0 && this.canvas.clientWidth < FX_NARROW;
+    const narrow = this.fxNarrow;
     el.className = `fx-drawer side-${v.side}` + (narrow ? ' under' : '') + (this.asmOffShown(v.d) ? ' off' : '') + (this.sliding.has(v.d.id) ? ' shut' : '');
     el.dataset.drawer = String(v.d.id);
     el.innerHTML = '<svg class="fx-shape" aria-hidden="true"><g><path class="body"/><path class="gut"/><path class="gutl"/><path class="edge"/></g></svg>';
@@ -5749,9 +6083,9 @@ export class Editor {
     if (this.sliding.delete(v.d.id)) requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('shut')));
   }
 
-  /** the plugs and open drawers drawn and placed */
+  /** the plugs (tabs, strips) and open drawers drawn and placed */
   private drawerBoxes(): HTMLElement[] {
-    return [...this.drawerViews.values()].flatMap((v) => (v.geom ? [v.plug, v.drawer].filter((el): el is HTMLElement => !!el) : []));
+    return [...this.drawerViews.values()].flatMap((v) => (v.geom ? [v.plug, v.lip, v.drawer].filter((el): el is HTMLElement => !!el) : []));
   }
 
   private layoutDrawers(): void {
@@ -5759,9 +6093,11 @@ export class Editor {
   }
 
   /**
-   * Place a drawer on its card (layout px), from where the card and its jacks are now. Closed: the plug 18 px under the
-   * card's edge, as tall as the jacks it covers; jacks not next to each other get two lobes joined by a band along their
-   * outer edge, round a window where the free jack stays (fxdrawer4 design E). Open: the drawer starts 10 px below the
+   * Place a drawer on its card (layout px), from where the card and its jacks are now. Closed on a wide canvas: the FX
+   * tab 18 px under the card's edge, from beside the header (as far up as the free jacks above the chain's jacks allow)
+   * down past the chain's jacks and its rows (planTab); a free jack between the chain's jacks shows through a window, the
+   * band along the tab's outer edge passing it (fxdrawer4 design E). On a narrow canvas: the small plug, as tall as the
+   * jacks it covers (two lobes round such a window), and the strip under the card. Open: the drawer starts 10 px below the
    * card's top and is as tall as its tallest effect card with its header and padding (drawerHeight), with a gutter beside
    * the card for the outputs it passes; on a narrow canvas, below the card, as tall as its rows.
    */
@@ -5780,7 +6116,8 @@ export class Editor {
       .map((d) => ({ d, y: at(d).y })).sort((a, b) => a.y - b.y);
     const row = v.drawer?.querySelector<HTMLElement>(':scope > .fx-row');
     const narrow = !!v.drawer?.classList.contains('under');
-    const geom = [hx, hy, hw, hh, ys, outs.map((o) => o.y), row?.offsetWidth, row?.offsetHeight, narrow && this.canvas.clientWidth / z].join(' ');
+    const tabRows = v.plug?.querySelectorAll(':scope > .fx-tr').length;
+    const geom = [hx, hy, hw, hh, ys, outs.map((o) => o.y), row?.offsetWidth, row?.offsetHeight, narrow && this.canvas.clientWidth / z, tabRows].join(' ');
     if (geom === v.geom) return;
     v.geom = geom;
     const place = (el: HTMLElement, x: number, y: number): void => {
@@ -5788,7 +6125,39 @@ export class Editor {
       el.style.top = `${y}px`;
     };
     const R = FX_R;
-    if (v.plug) {
+    if (v.lip) {
+      place(v.lip, hx + 10, hy + hh - FX_TUCK);
+      v.lip.style.width = `${hw - 20}px`;
+    }
+    if (v.plug?.classList.contains('fx-tab')) {
+      const p = v.plug;
+      const rows = [...p.querySelectorAll<HTMLElement>(':scope > .fx-tr:not(.more, .none)')];
+      const plan = planTab(ys, outs.map((o) => o.y), hh, rows.length);
+      const W = FX_TUCK + TAB_W, H = plan.h;
+      place(p, v.side === 'r' ? hx + hw - FX_TUCK : hx - W + FX_TUCK, hy + plan.top);
+      p.style.width = `${W}px`;
+      p.style.height = `${H}px`;
+      p.classList.toggle('window', !!plan.win);
+      const svg = p.querySelector('svg')!, path = svg.querySelector('path')!;
+      svg.setAttribute('width', String(W));
+      svg.setAttribute('height', String(H));
+      const hx1 = W - FX_BAND;
+      path.setAttribute('d', `M0 0 H${W - R} A${R} ${R} 0 0 1 ${W} ${R} V${H - R} A${R} ${R} 0 0 1 ${W - R} ${H} H0 Z` + (plan.win
+        ? ` M2 ${plan.win[0]} H${hx1 - 4} A4 4 0 0 1 ${hx1} ${plan.win[0] + 4} V${plan.win[1] - 4} A4 4 0 0 1 ${hx1 - 4} ${plan.win[1]} H2 Z` : ''));
+      path.setAttribute('transform', v.side === 'r' ? '' : `translate(${W} 0) scale(-1 1)`);
+      rows.forEach((r, i) => {
+        r.hidden = i >= plan.shown;
+        if (i < plan.shown) r.style.top = `${plan.rows[i]}px`;
+      });
+      const last = p.querySelector<HTMLElement>(':scope > .fx-tr:is(.more, .none)')!;
+      last.hidden = last.classList.contains('more') && plan.shown >= rows.length;
+      last.textContent = last.classList.contains('more') ? `+${rows.length - plan.shown} more` : last.textContent;
+      last.style.top = `${plan.rows[plan.shown] ?? plan.rows[0]}px`;
+      const meter = p.querySelector<HTMLElement>(':scope > .fx-meter')!;
+      meter.style.top = `${TAB_HEAD}px`;
+      meter.style.height = `${Math.max(8, (plan.win ? plan.win[0] - 4 : H - TAB_FOOT) - TAB_HEAD)}px`;
+      v.ends.forEach((dot, i) => place(dot.parentElement!, v.side === 'r' ? W : 0, ys[Math.min(i, ys.length - 1)] - plan.top));
+    } else if (v.plug) {
       const p = v.plug;
       const W = FX_TUCK + (p.classList.contains('empty') ? FX_PLUG_EMPTY_W : FX_PLUG_W);
       const y0 = ys[0], y1 = ys[ys.length - 1], H = y1 - y0 + 30;
@@ -6025,8 +6394,10 @@ export class Editor {
         }
         return { id: v.d.id, at };
       }
-      const r = v.plug?.getBoundingClientRect();
-      if (r && x >= r.left - m && x <= r.right + m && y >= r.top - m && y <= r.bottom + m) return { id: v.d.id, at: null };
+      for (const el of [v.plug, v.lip]) {
+        const r = el?.getBoundingClientRect();
+        if (r && x >= r.left - m && x <= r.right + m && y >= r.top - m && y <= r.bottom + m) return { id: v.d.id, at: null };
+      }
     }
     return null;
   }
@@ -6035,7 +6406,7 @@ export class Editor {
   private fxShow(spot: FxSpot | null): void {
     for (const v of this.drawerViews.values()) {
       const hot = spot?.id === v.d.id;
-      v.plug?.classList.toggle('hot', hot);
+      for (const el of [v.plug, v.lip]) el?.classList.toggle('hot', hot);
       v.drawer?.classList.toggle('hot', hot);
       const mark = v.drawer?.querySelector<HTMLElement>(':scope > .fx-mark');
       const row = v.drawer?.querySelector<HTMLElement>(':scope > .fx-row');

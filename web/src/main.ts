@@ -35,6 +35,7 @@ import { navKey, WHEEL_SETTINGS, type NavKey, type WheelSetting } from './canvas
 import { snapshotKey, snapshotRecord, storedSnapshots, type Snapshot, type SnapshotKey } from './snapshots';
 import { ScopeScreens } from './scope-view';
 import { OUTPUT_SCOPE_KEY, OutputScope } from './output-scope';
+import { FxMeters } from './fx-meter';
 import { candidateTitle, renderList, renderProgress, renderRail, SnapSidebar, type SideActions, type SideView } from './snap-side';
 import { OutputLoudness } from './loudness-view';
 import { LimiterMeters } from './limit-view';
@@ -875,7 +876,11 @@ const screens = new ScopeScreens((msg) => host.send(msg), () => host.running && 
 // the Output scope (#1029): a Scope screen of what is heard, at the top of the snapshot sidebar; its own screens, kept through rebuilds
 const outScreens = new ScopeScreens((msg) => host.send(msg), () => host.running && !host.muted);
 const outScope = new OutputScope($('output-scope'), outScreens);
-host.onView = (key, chans, sr, voices) => (key === OUTPUT_SCOPE_KEY ? outScreens : screens).receive(key, chans, sr, voices);
+// the level meters on the closed FX drawers' tabs (fx-meter.ts): a short stream of each drawer's outputs
+const fxMeters = new FxMeters((msg) => host.send(msg));
+host.onView = (key, chans, sr, voices) => {
+  if (!fxMeters.receive(key, chans)) (key === OUTPUT_SCOPE_KEY ? outScreens : screens).receive(key, chans, sr, voices);
+};
 // the Output card's loudness readout (#940): the reading carries on through rebuilds, a patch opened starts it again
 const loudness = new OutputLoudness();
 host.onLoud = (steps) => loudness.push(steps);
@@ -1185,6 +1190,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     if (toggles) { device.cc(80 + i, 127); device.cc(80 + i, 0); }
     else device.cc(80 + i, on ? 127 : 0);
   },
+  onFxMeters: (list) => fxMeters.sync(list),
   onScreens(list, envList) {
     screens.sync(list);
     envs.sync(envList);
@@ -3515,7 +3521,7 @@ const syncAudioBtn = (): void => {
   audioBtn.title = on ? 'Stop all playing notes and silence the audio' : 'Start the audio';
   audioBtn.classList.toggle('on', on);
 };
-host.onState = () => { syncAudioBtn(); screens.state(); outScreens.state(); envs.state(); };
+host.onState = () => { syncAudioBtn(); screens.state(); outScreens.state(); envs.state(); fxMeters.reset(); };
 syncAudioBtn();
 // the Listen block (#945, #946, #1048): the test phrase and WAV export, at the top of the Sound design sidebar
 const audition = new Audition({

@@ -236,14 +236,68 @@ export function presetView(p: Patch, a: AssemblyInst, preset: Preset, scope = dr
   return { noFx: false, chain: r.map((e) => e.name), on: split?.effects.map((e) => e.on) ?? r.map(() => true), ...drawerChange(scope, r) };
 }
 
+/** one effect as loading a preset would change it: kept as it is (`same`), added, removed, switched off or on, or with
+ *  `values` of its card rows changed (also with `off` / `on`). `effect`: the drawer's effect it is now (null: an addition) */
+export interface EffectChange {
+  name: string;
+  kind: 'same' | 'add' | 'gone' | 'off' | 'on' | 'values';
+  values: number;
+  /** on after the load (a removed one: as it is now) */
+  on: boolean;
+  effect: AssemblyInst | null;
+}
+
+/** What loading a preset into an instrument with a drawer changes (fxsound design D, owner 2026-11-24): how many of the
+ *  instrument's card rows (`rows`), and each effect, in the chain's order after the load with the removed ones where they
+ *  stand now. `noFx`: an instrument-only preset, the drawer stays. */
+export interface PresetDiff {
+  rows: number;
+  fx: EffectChange[];
+  noFx: boolean;
+}
+
+/** a preset's PresetDiff; null without a drawer, or for a preset that cannot load */
+export function presetDiff(p: Patch, a: AssemblyInst, preset: Preset, scope = drawerScope(p, a)): PresetDiff | null {
+  if (!scope) return null;
+  const rows = rowOrder(p, a), now = currentValues(p, a);
+  const differ = (was: readonly number[], next: readonly number[]): number => next.reduce((n, v, i) => n + (Math.abs(v - (was[i] ?? v)) > 1e-9 ? 1 : 0), 0);
+  const same = (e: AssemblyInst): EffectChange => ({ name: e.label || e.name, kind: 'same', values: 0, on: !e.bypass, effect: e });
+  if (!drawerPresetInfo(preset)) {
+    if (preset.structure !== scope.base || preset.values.length > rows.length) return null;
+    return { rows: differ(now, boundedValues(p, a, rows, preset.values)), fx: scope.effects.map(same), noFx: true };
+  }
+  const effects = resolveEffects(p, a, preset, scope);
+  const split = typeof effects === 'string' ? null : checkDrawerPreset(p, a, preset, effects);
+  if (!split || typeof effects === 'string') return null;
+  // each preset effect takes the first unused effect of its structure, as rebuildDrawer does
+  const used = scope.effects.map(() => false);
+  const keyed: { at: number; c: EffectChange }[] = effects.map((want, k) => {
+    const i = scope.effectStructures.findIndex((s, j) => !used[j] && s === want.structure);
+    const next = split.effects[k];
+    if (i < 0) return { at: k, c: { name: want.name, kind: 'add', values: 0, on: next.on, effect: null } };
+    used[i] = true;
+    const e = scope.effects[i];
+    const values = differ(rowOrder(p, e).map((r) => p.modules.find((m) => m.id === r.module)?.params[r.param] ?? 0), next.values);
+    const kind = !e.bypass && !next.on ? 'off' : !!e.bypass && next.on ? 'on' : values ? 'values' : 'same';
+    return { at: k, c: { name: e.label || e.name, kind, values, on: next.on, effect: e } };
+  });
+  // a removed effect stands before the kept one that follows it now (at the end without one)
+  scope.effects.forEach((e, i) => {
+    if (used[i]) return;
+    const after = scope.effects.findIndex((x, j) => j > i && used[j]);
+    const at = after < 0 ? effects.length + i : keyed.find((x) => x.c.effect === scope.effects[after])!.at - 0.5 + i / 1000;
+    keyed.push({ at, c: { ...same(e), kind: 'gone' } });
+  });
+  return { rows: differ(now, boundedValues(p, a, rows, split.rows)), fx: keyed.sort((x, y) => x.at - y.at).map((x) => x.c), noFx: false };
+}
+
 /** names in a sentence: "Drive", "Drive and Delay", "Drive, Chorus and Delay" */
 const listed = (names: readonly string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
 
-/** what loading a preset does to the drawer, as its menu row says it ("loading adds Drive, removes Chorus"), or once done
- *  ("added Drive, removed Chorus"); '' nothing */
-export function drawerChangeText(adds: readonly string[], removes: readonly string[], done = false): string {
-  const parts = [adds.length ? `${done ? 'added' : 'adds'} ${listed(adds)}` : '', removes.length ? `${done ? 'removed' : 'removes'} ${listed(removes)}` : ''].filter(Boolean);
-  return !parts.length ? '' : done ? parts.join(', ') : `loading ${parts.join(', ')}`;
+/** what loading a preset does to the drawer, as its menu row says it ("loading adds Drive, removes Chorus"); '' nothing */
+export function drawerChangeText(adds: readonly string[], removes: readonly string[]): string {
+  const parts = [adds.length ? `adds ${listed(adds)}` : '', removes.length ? `removes ${listed(removes)}` : ''].filter(Boolean);
+  return parts.length ? `loading ${parts.join(', ')}` : '';
 }
 
 /** an assembly's card row values, in canonical order */
