@@ -2689,7 +2689,7 @@ async function main() {
       const mine = await page.evaluate(async () => {
         const { savePatch } = await import('/src/saved.ts');
         const { addUserPreset, currentValues } = await import('/src/device-presets.ts');
-        const { paletteDevices } = await import('/src/palette.ts');
+        const { paletteDevices } = await import('/src/preset-fit.ts');
         const { structureOf } = await import('/src/structure.ts');
         const p = { ...JSON.parse(window.__m1test.patchJson()), name: 'Pal Test' };
         const name = `Pal ${Date.now() % 100000}`;   // (a name no earlier run left on the FM-1)
