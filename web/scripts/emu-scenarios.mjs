@@ -2729,6 +2729,44 @@ async function main() {
       await check('palette editor: under Live the editor follows to its copy, Pal Test', !!(await until(async () => (await T()).patch === 'Pal Test', 4000)), (await T()).patch);
       await check('palette editor: following sent the patch nowhere (no COMMIT)', !(await sentSince(t2)).some((s) => s[0] === 0x11));
       await emu.tap(B.play);
+      // a full palette (#1258): Add to palette fills the empty positions, then says so beside the chips (a toast there, and
+      // the status line) and offers a position to replace (the 1.26.3 editor said it only in the status line: unseen)
+      const addInCommands = async () => {
+        await page.keyboard.down('Control'); await page.keyboard.press('k'); await page.keyboard.up('Control');
+        await page.waitForSelector('#commands[open]', { timeout: 3000 }).catch(() => {});
+        await page.fill('#commands-input', 'add to palette');
+        await page.keyboard.press('Enter');
+      };
+      for (let free = (await pal()).chips.findIndex((c) => c.state === 'empty'), n = 0; free >= 0 && n < 8; n++) {
+        await addInCommands();
+        await until(async () => (await chip(free))?.state !== 'empty', 8000);
+        free = (await pal()).chips.findIndex((c) => c.state === 'empty');
+      }
+      await check('palette editor: Add to palette fills every empty position', (await pal()).chips.every((c) => c.state !== 'empty'), JSON.stringify((await pal()).chips.map((c) => c.state)));
+      const FULL = 'Palette full: drag onto a chip to replace';
+      /** the toast shown, its text, its action, and whether it sits on the sidebar's palette (just above it, across it) */
+      const toast = () => page.evaluate(() => {
+        const t = document.querySelector('.toast'), chips = document.querySelector('#snap-column .palette');
+        if (!t) return null;
+        const a = t.getBoundingClientRect(), b = chips?.getBoundingClientRect();
+        return { text: t.querySelector('span')?.textContent ?? '', near: !!b && a.bottom <= b.top + 2 && b.top - a.bottom < 40 && a.right > b.left && a.left < b.right, button: t.querySelector('button:not(.toast-close)')?.textContent ?? '' };
+      });
+      const statusText = () => page.evaluate(() => document.getElementById('audio-status')?.textContent ?? '');
+      await addInCommands();
+      const t3 = await until(async () => { const t = await toast(); return t?.text.startsWith('Palette full') ? t : null; }, 4000);
+      await check('palette editor: Commands > Add to palette, palette full: a toast over the chips says so', !!t3?.near, JSON.stringify(t3 ?? await toast()));
+      await check('palette editor: and the status line says so', (await statusText()) === FULL, await statusText());
+      await page.evaluate(() => document.querySelector('.toast .toast-close')?.click());
+      await page.click('#patch-menu-btn');
+      await page.locator('.ctx-fixed [role="menuitem"]', { hasText: 'Add to palette' }).click({ timeout: 3000 }).catch(() => {});
+      const t4 = await until(async () => { const t = await toast(); return t?.text.startsWith('Palette full') ? t : null; }, 4000);
+      await check('palette editor: the patch menu\'s Add to palette, palette full: the toast over the chips, with Replace…', !!t4?.near && t4.button === 'Replace…', JSON.stringify(t4 ?? await toast()));
+      await shot('palette-full-toast');
+      // Replace… lists the positions; one picked takes the patch there (chip 6 holds SILVER BOX)
+      await page.locator('.toast button', { hasText: 'Replace…' }).click({ timeout: 3000 }).catch(() => {});
+      await shot('palette-full-replace');
+      await page.locator('.ctx-fixed [role="menuitem"]', { hasText: '6 · SILVER BOX' }).click({ timeout: 3000 }).catch(() => {});
+      await check('palette editor: Replace… > 6 · SILVER BOX puts the patch there', !!(await until(async () => (await chip(5))?.name === 'PAL TEST', 8000)), JSON.stringify(await chip(5)));
       await page.screenshot({ path: join(OUT, 'palette-editor-page.png') }).catch(() => {});
     },
     async editorIgnore() {   // #702: GLO > SYSTEM > EDITOR at IGNORE: the editor lets go, Connect skips the FM-1 and says why

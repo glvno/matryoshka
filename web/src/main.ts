@@ -1692,6 +1692,9 @@ $('tab-library').append(paletteLib.el);
 const paletteRail = document.createElement('div');
 paletteRail.className = 'pal-rail';
 snapSide.rail.after(paletteRail);
+/** the palette on screen: the Library's copy, the sidebar's square or the folded sidebar's dots (null: none shows) */
+const paletteShown = (): HTMLElement | null =>
+  [paletteLib.el, paletteSide.el, paletteRail].find((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }) ?? null;
 /** how the chips work now: live with an FM-1 that keeps a palette, disabled with one whose firmware has none, read-only
  *  (the last palette read) with none */
 const paletteMode = (): PaletteMode => (palette?.linked ? 'live' : device.connected && device.info ? 'old' : 'offline');
@@ -1733,6 +1736,16 @@ palette = new Palette({
     showToast(why);
   },
   say: (text) => { status.textContent = text; },
+  // Add to palette with every position taken (#1258): said just above the chips, where the user looks, and in the status
+  // line; Replace… lists the positions, and the one picked takes the sound
+  full(text, replace) {
+    status.textContent = text;
+    const at = paletteShown() ?? undefined;
+    showAction(text, 'Replace…', () => popMenu(palette!.chips().map((c) => ({
+      text: `${c.pos + 1} · ${c.state === 'empty' ? 'EMPTY' : c.state === 'missing' ? `${c.name} (MISSING)` : c.name}`,
+      run: () => replace(c.pos),
+    })), at ?? status), undefined, at);
+  },
   changed: renderPalette,
   banked: () => libraryPanes.patches?.deviceChanged(currentView === 'library' && librarySection === 'patches'),
 });
