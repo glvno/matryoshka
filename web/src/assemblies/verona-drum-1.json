@@ -4600,7 +4600,6 @@
       "module": 18,
       "param": "r2",
       "label": "decay",
-      "col": true,
       "head": "drum 1"
     },
     {
@@ -4647,7 +4646,6 @@
       "module": 78,
       "param": "r2",
       "label": "decay",
-      "col": true,
       "head": "drum 2"
     },
     {
@@ -4741,7 +4739,6 @@
       "module": 45,
       "param": "r2",
       "label": "decay rev",
-      "col": true,
       "head": "snare"
     },
     {
@@ -4844,7 +4841,6 @@
       "module": 91,
       "param": "r3",
       "label": "decay",
-      "col": true,
       "head": "hi hat 2"
     },
     {
@@ -4947,7 +4943,6 @@
       "module": 2,
       "param": "value",
       "label": "master",
-      "col": true,
       "head": "master"
     }
   ],

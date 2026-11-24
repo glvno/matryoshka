@@ -4058,7 +4058,7 @@ asm('Scrounge', 'Drums', (b) => {
   b.output('l', meltL, 'out');
   b.output('r', meltR, 'out');
   voices.forEach((v, i) => {
-    b.param(v.k1[2], v.k1[0], v.k1[1], { head: `voice ${i + 1}`, ...(i === 0 || i === 3 ? { col: true } : {}) });
+    b.param(v.k1[2], v.k1[0], v.k1[1], { head: `voice ${i + 1}`, ...(i % 2 === 0 ? { col: true } : {}) });
     b.param(v.k2[2], v.k2[0], v.k2[1]);
     b.param('tilt', v.env, 'r1');
     b.param('gate', v.env, 'r2');
@@ -4069,15 +4069,15 @@ asm('Scrounge', 'Drums', (b) => {
     b.param('a-b', v.ab, 'pos');
     b.param('x-y', v.xy, 'pos');
   });
-  b.param('x gate', modX, 'r2', { col: true, head: 'mod' });
+  b.param('x gate', modX, 'r2', { head: 'mod' });
   b.param('x slew', slewX, 'time');
   b.param('y gate', modY, 'r2');
   b.param('y slew', slewY, 'time');
-  b.param('chop', chop, 'rate', { head: 'ctl all' });
+  b.param('chop', chop, 'rate', { col: true, head: 'ctl all' });
   b.param('chop depth', chop, 'depth');
   b.param('melt', melt, 'value');
   b.param('vol', L, 'level', { head: 'out' });
-  b.param('out', scope, 'view', { col: true });
+  b.param('out', scope, 'view');
   scroungeR.id = R;
 });
 // the out section's vol is both saturators' level (a row's `also`); the switches' positions named as on the Scrooge
@@ -4294,7 +4294,7 @@ asm('Meridian 8', 'Drums', (b) => {
   b.output('l', L, 'out');
   b.output('r', R, 'out');
   chs.forEach((c, i) => {
-    b.param('main', c.s1[0], c.s1[1], { head: `${i + 1} ${c.name}`, ...(i % 4 === 0 ? { col: true } : {}) });
+    b.param('main', c.s1[0], c.s1[1], { head: `${i + 1} ${c.name}`, ...(i % 3 === 0 ? { col: true } : {}) });
     b.param('secondary', c.s2[0], c.s2[1]);
     b.param('decay', c.env, 'd');
     b.param('release', c.env, 'r');
@@ -4305,7 +4305,7 @@ asm('Meridian 8', 'Drums', (b) => {
   buttons.forEach((sw, i) => b.param(i < 7 ? `${i + 1}-${i + 2}` : i === 7 ? '8>1' : '1>8', sw, 'pos', i === 0 ? { col: true, head: 'link' } : {}));
   b.param('drive', L, 'drive', { head: 'out' });
   b.param('main volume', L, 'level');
-  b.param('out', scope, 'view', { col: true });
+  b.param('out', scope, 'view');
   meridianR.id = R;
 });
 // the drive and the main volume are both saturators' drive and level (a row's `also`); the buttons' positions named as in
@@ -4695,11 +4695,11 @@ asm('Verona Drum 1', 'Drums', (b) => {
   b.output('l', outL, 'out');
   b.output('r', outR, 'out');
   channels.forEach(([name, , v], i) => {
-    v.rows.forEach(([label, m, param], k) => b.param(label, m, param, k === 0 ? { head: name, col: true } : {}));
+    v.rows.forEach(([label, m, param], k) => b.param(label, m, param, k === 0 ? { head: name, ...(i === 3 || i === 5 || i === 7 ? { col: true } : {}) } : {}));
     b.param('pan', pans[i], 'pan');
     b.param('volume', v.out[0], 'gain');
   });
-  b.param('master', master, 'value', { head: 'master', col: true });
+  b.param('master', master, 'value', { head: 'master' });
 });
 namePositions('Verona Drum 1', { trig: TRIG_NAMES });
 
