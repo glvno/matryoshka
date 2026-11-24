@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.26.4 — 2026-11-24
 
 - **The editor follows every palette switch, to any instrument.** With Live on, switching to a palette sound made from another patch (on the FM-1 or with a chip) moved the FM-1 to that instrument but left the editor on the old one, with Live sync turned off ("no copy in this browser"). This happened once you had opened another patch since adding that sound, because opening a patch drops its candidates. The browser now keeps its own copy of each sound it puts into the palette, and of each sound you save there from the FM-1 (HOME and a black key held). A switch opens that sound as the current patch whatever the editor shows by then, with Live on and your candidates kept. Only a palette sound this browser never had still turns Live off and says so ([D-1427](docs/ledger/editor.md#D-1427)).
 - **Add to palette says when the palette is full, next to the chips.** With all eight positions taken, Add to palette in the patch ⋯ menu or in Commands seemed to do nothing: it said so only in the status line at the bottom of the window. A message now shows just above the palette chips, and in the status line: "Palette full: drag onto a chip to replace". Its **Replace…** button lists the eight positions, and the one you pick takes the patch ([D-1319](docs/ledger/editor.md#D-1319), #1258).
