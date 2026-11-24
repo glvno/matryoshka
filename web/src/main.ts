@@ -81,7 +81,7 @@ import { addModule, newPatch, NOTE_NAMES, trackLabel, validatePatch, type Patch,
 import { diffCount, diffLines, diffPatches } from './diff';
 import { loadLibrary, summary } from './assemblies';
 import { assembliesOf, type AssemblyDef, type AssemblyInst } from './assembly';
-import { addToDrawer, buildEffectsPanel, buildEffectsSection, currentInstrument, drawerName, entryOf, modeOf, ownerTarget, type EffectActions, type EffectSource } from './library-effects';
+import { addToDrawer, buildEffectsDialog, buildEffectsSection, currentInstrument, drawerName, entryOf, modeOf, ownerTarget, type EffectActions, type EffectSource } from './library-effects';
 import { EFFECT_CATALOG } from './fx-drawer';
 import { defIsEngine, feedsOutput } from './engines';
 import { EngineStart } from './engine-start';
@@ -2062,7 +2062,7 @@ const keepBlueprint = (): void => {
   const name = window.prompt('Name of the blueprint', 'my-chain')?.trim();
   if (name) quick.keepAs(name);
 };
-/** an added effect shows on the canvas, from whichever view it was added (the sidebar's Effects panel shows in every view) */
+/** an added effect shows on the canvas, from whichever view it was added (Library › Effects, Add effect from any view) */
 const toCanvas = (): void => {
   closeSidebar();
   if (currentView !== 'patch') setView('patch');
@@ -2072,7 +2072,7 @@ const addEffectToDrawer = (s: EffectSource, to: number | 'output', name: string,
   toCanvas();
   if (editor.transact(() => addToDrawer(editor.patch, s, to, at))) status.textContent = `${name} is in ${drawerName(editor.patch, to)}`;
 };
-/** what the Library's Effects section and the Patch tab's Effects panel do: the canvas first, a drawer second */
+/** what Library › Effects and the sidebar's Add effect do: the canvas first, a drawer second */
 const effectActions: EffectActions = {
   patch: () => editor.patch,
   canvas(s) {
@@ -2085,10 +2085,14 @@ const effectActions: EffectActions = {
     start: toCanvas,
     over: (x, y) => editor.dragEffectOver(x, y),
     end: () => editor.dragEffectOver(null),
-    drop: (s, x, y) => void editor.dropEffect(s, x, y),
+    drop: (s, x, y) => editor.dropEffect(s, x, y),
   },
   error(msg) { status.textContent = msg; },
 };
+/** the instrument ⇧⏎ puts an effect into, in the + list and Add effect: the selected one, the owner of the selected drawer
+ *  or effect, the focused one, an armed one, else the only one (D-1412) */
+const instrumentNow = () => currentInstrument(editor.patch, { assemblies: editor.selectedAsm, focus: editor.focus?.device, armed: editor.armedSet });
+const effectsDialog = buildEffectsDialog($<HTMLDialogElement>('effects-dialog'), { ...effectActions, current: instrumentNow });
 /** the + list opened by a drawer's + slot: effects only, ⏎ puts one into that drawer at that place (null: the whole list) */
 let cmdScope: { drawer: number; at: number } | null = null;
 /** the effect rows of the + list scoped to a drawer */
@@ -2104,7 +2108,7 @@ const drawerCommands = (scope: { drawer: number; at: number }): Command[] => {
 const commands = (): Command[] => {
   if (cmdScope) return drawerCommands(cmdScope);
   // an effect goes on the canvas with ⏎ (as any card), into the current instrument's FX drawer with ⇧⏎, into the Output FX with ⌥⏎
-  const current = currentInstrument(editor.patch, { assemblies: editor.selectedAsm, focus: editor.focus?.device, armed: editor.armedSet });
+  const current = instrumentNow();
   const output = editor.patch.modules.some((m) => m.type === 'output');
   const effect = (s: EffectSource, c: Command): Command => {
     const e = entryOf(s);
@@ -2385,13 +2389,14 @@ const engineStart = new EngineStart($<HTMLDialogElement>('engine-start'), {
 });
 const startNew = (): void => (tutorial.active ? emptyNew() : engineStart.open());
 $('new-patch-btn').onclick = () => { closeSidebar(); startNew(); };
-// the sidebar is the same in every view: + Module, + Assembly and the Canvas panel go to the canvas first
+// the sidebar is the same in every view: + Module, + Assembly, + Effect and the Canvas panel go to the canvas first
 const onCanvas = (run: () => void) => (): void => {
   if (currentView !== 'patch') setView('patch');
   run();
 };
 $('add-btn').onclick = onCanvas(() => openCommands('module'));
 $('add-assembly-btn').onclick = onCanvas(() => openCommands('assembly'));
+$('add-effect-btn').onclick = onCanvas(() => { closeSidebar(); effectsDialog.open(); });
 $('tidy-btn').onclick = onCanvas(() => editor.tidyUp());
 $('fit-btn').onclick = onCanvas(() => editor.zoomToFit());
 $('expand-all-btn').onclick = onCanvas(() => editor.setAllOpen(true));
@@ -3970,13 +3975,12 @@ libraryPanes.patches = buildPatchesSection($('lib-patches'), device, { remove: d
 if (addedTitles().length) void loadCommunity().then(() => { fillPicker(); libraryPanes.patches?.refresh(); });
 libraryPanes.community = buildCommunitySection($('lib-community'), { status: (msg) => { status.textContent = msg; } }, () => device.bufferAllocation, () => device.budgetStore);
 libraryPanes.presets = buildPresetsSection($('lib-presets'), device, { changed: () => editor.rebuild() });
-// Library › Effects is built when it first shows (each effect's CPU share is estimated then); the Patch tab's Effects panel now
+// Library › Effects is built when it first shows (each effect's CPU share is estimated then), Add effect when it opens
 let effectsSection: { refresh(): void } | null = null;
 refreshEffects = () => {
   if (effectsSection) effectsSection.refresh();
   else effectsSection = buildEffectsSection($('lib-effects'), effectActions);
 };
-buildEffectsPanel($('effects-panel'), effectActions);
 patternsPane = libraryPanes.patterns = buildPatternsSection($('lib-patterns'), device, {
   patch: () => editor.patch,
   pattern: () => editor.pattern,

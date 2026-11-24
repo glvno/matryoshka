@@ -46,7 +46,8 @@
             <!-- Save, Share and ⋯ sit beside New patch, so the header strip is the tag and the name, as on the other panels -->
             <div class="patch-row"><button id="new-patch-btn">New patch</button><button id="save-patch-btn" class="icon-btn" title="Save patch to Your patches (Ctrl/Cmd+S)" aria-label="Save patch"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M2.5 1.5h8.6l2.4 2.4v10.6h-11z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M4.8 1.5v3.8h5.6V1.5M4.5 14.5V9.3h7v5.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button><button id="share-patch-btn" class="icon-btn" type="button" title="Share: copy a link, post to Reddit, submit to the Community shelf" aria-label="Share patch"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 10V1.8M5 4.6l3-3 3 3M5.5 7H3.5v7.5h9V7h-2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg></button><button id="patch-menu-btn" class="icon-btn" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Patch actions" title="Share, save, load, FM-1"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="3.2" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="12.8" cy="8" r="1.4" fill="currentColor"/></svg></button></div>
             <select id="preset" aria-label="Open one of your patches or a factory patch" title="Open one of your patches or a factory patch"></select>
-            <div class="add-row"><button id="add-btn" class="primary" title="Add module" aria-label="Add module">+ Module</button><button id="add-assembly-btn" class="primary" title="Add assembly" aria-label="Add assembly">+ Assembly</button></div>
+            <!-- + Effect, under them: Add effect, the effects to add as a dialog (library-effects.ts buildEffectsDialog) -->
+            <div class="add-row"><button id="add-btn" class="primary" title="Add module" aria-label="Add module">+ Module</button><button id="add-assembly-btn" class="primary" title="Add assembly" aria-label="Add assembly">+ Assembly</button><button id="add-effect-btn" class="primary" title="Add effect: on the canvas, or into an FX drawer" aria-label="Add effect" aria-haspopup="dialog">+ Effect</button></div>
           </div>
         </section>
         <section class="spanel" aria-label="View">
@@ -58,12 +59,6 @@
             <div id="zoom-bar" class="param bar side-bar"><span>Zoom</span><output id="zoom-out">100 %</output><input id="zoom-input" type="range" min="0" max="1" step="any" value="0.63" aria-label="Zoom" /></div>
             <div class="wheel-row" title="What a plain scroll wheel does over the canvas. Auto: a mouse wheel zooms at the pointer, a trackpad's two-finger scroll pans. Ctrl/Cmd + wheel always zooms, Shift + wheel pans sideways, right- or middle-drag pans"><label for="wheel-mode">Scroll wheel</label><select id="wheel-mode"><option value="auto">auto</option><option value="zoom">zoom</option><option value="pan">pan</option></select></div>
           </div>
-        </section>
-        <!-- the effects to add (library-effects.ts buildEffectsPanel): a click puts one on the canvas, a drag drops it on the
-             canvas, an FX plug or an open drawer -->
-        <section class="spanel fxlib-panel" aria-label="Effects">
-          <div class="shead"><span class="mtag fx">FX</span><span class="stitle">Effects</span></div>
-          <div id="effects-panel" class="sbody"></div>
         </section>
         <section class="spanel" aria-label="Learn">
           <div class="shead"><span class="mtag mod">LEARN</span><span class="stitle">Get started</span></div>
@@ -154,6 +149,8 @@
     </div>
   </div>
   <input id="load-file" type="file" accept="application/json,.json" hidden />
+  <!-- Add effect (the sidebar's + Effect): built by library-effects.ts buildEffectsDialog -->
+  <dialog id="effects-dialog" class="fxpick" aria-label="Add effect"></dialog>
   <dialog id="commands" class="commands" aria-label="Commands">
     <div class="commands-search"><input id="commands-input" type="text" role="combobox" aria-label="Search commands" aria-controls="commands-list" aria-expanded="true" aria-autocomplete="list" placeholder="Find a command, module, assembly or patch…" autocomplete="off" /><button id="commands-close" aria-label="Close commands">×</button></div>
     <div class="commands-filters" aria-label="Filter commands">

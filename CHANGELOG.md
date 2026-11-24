@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **The Effects panel is gone from the sidebar: a + Effect button under + Module and + Assembly opens the effects as a dialog instead.** The panel took up most of the sidebar. The dialog lists every effect by how it sits in the stereo chain, with its CPU share, preset count and your effect presets, as Library › Effects does. Type to search it, choose with the arrow keys, and press Enter to add the effect to the canvas, Shift+Enter to put it into the current instrument's FX drawer or Option+Enter (Alt+Enter) for the Output drawer. A click on an effect adds it to the canvas, and Escape or a click outside closes the dialog. You can still drag an effect from it onto the canvas, a plug or an open drawer: the dialog fades while you drag ([D-1401](docs/ledger/editor.md#D-1401)).
+
 ## 1.26.3 — 2026-11-23
 
 - **Update your FM-1 to firmware 1.26.3 before you sync it with this editor.** The editor now writes patch format 66, which only the 1.26.3 firmware reads, so an FM-1 still on 1.26.0, 1.26.1 or 1.26.2 does not sync until it is updated: the editor says "update it to sync" and the Install panel offers the update. The patches and palette already on the FM-1 keep playing as before, and the update keeps them.
