@@ -1,7 +1,7 @@
 {
   "name": "matryoshka-web",
   "private": true,
-  "version": "1.26.4",
+  "version": "1.26.5",
   "type": "module",
   "license": "GPL-3.0-only",
   "scripts": {
