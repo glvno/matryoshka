@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "version": "1.26.4",
+  "kind": "web-only release (D-1160), cut from main (D-1175)",
+  "firmware_product": "FM-1_7012603",
+  "source_commit": "a96e303c73135ddb415e0465872bc4d12eb7266f",
+  "source_branch": "main",
+  "source_tree": "aa70098652eb3b5d34d7c579411c3f6359a560cd",
+  "tag_branch": "release/1.26.4: the frozen commit + v1.26.3's web/public/firmware/matryoshka-factory.bin and factory-sets.json byte for byte + this record and its coverage (D-1175, D-1163)",
+  "status": "automated checks passed; awaiting the owner's go for publication",
+  "release_approval": {
+    "status": "pending",
+    "scope": "Publication of v1.26.4 on a96e303c + v1.26.3's factory region files + this record and its coverage, with v1.26.3's firmware package, screen font and factory region."
+  },
+  "plan": "D-1175",
+  "contents": [
+    "A full palette says so in a toast above the chips, with Replace… (PR #1260, issue #1258, D-1319)",
+    "The editor follows a palette switch to a sound of another instrument; the browser keeps a copy of each palette sound (PR #1263, issue #1261, D-1427)",
+    "Candidates all alike: edits save into the candidate heard, tweaked + revert, per-candidate undo, Recently deleted, Breed with picked parents, Save preset / Add to palette on the heard row, sets kept per patch in IndexedDB (PR #1262, D-970, D-972, D-1425, D-1426)",
+    "v1.26.3 listed among the released factory sets (PR #1259; its regenerated region image is not shipped)",
+    "freeze: version 1.26.4, CHANGELOG heading, D-1175 (PR #1264, frozen cbbfcb36: failed emu:scenarios, re-open did nothing)",
+    "An open that stays in the open set loads like any open: home device, whole upload, set and undo kept (PR #1265, D-972 amended)",
+    "re-freeze: D-1175 amended (PR #1266)"
+  ],
+  "bundled_firmware": {
+    "release": "v1.26.3",
+    "package": {
+      "name": "web/public/firmware/matryoshka.fwsc",
+      "size": 610628,
+      "sha256": "ac7e716c28a794644ad8536d80dba9206151b2a9915afd92cb7cef41d3ad0d88"
+    },
+    "check": "D-1160 check 1: every file in web/public/firmware/ of the tag commit is byte-identical to the v1.26.3 tag's: the package, its sidecar, the font (528f1926), the factory region v22 3af59e (57,451 bytes), factory-sets.json and the frozen older images. main's regenerated region (#1259, 57,463 bytes) is replaced by v1.26.3's on release/1.26.4"
+  },
+  "factory_content": "unchanged from v1.26.3 (version 22, set 3af59e, layout 4): the image is byte-identical; no CPU survey, no slot upgrade",
+  "ci_runs": {
+    "web_rc": 45453706461,
+    "freeze_pr": 1266
+  },
+  "full_web": {
+    "rc_run": 45453706461,
+    "run_success": true,
+    "result": "D-1160 check 2: the editor suite in rc mode (test job, the slow-render jobs and the coverage seal, D-1157) passed on a96e303c",
+    "coverage_record": "release/coverage/v1.26.4: current, measured on a96e303c (D-147)"
+  },
+  "full_scenarios": {
+    "passed": 449,
+    "failed": 0,
+    "seconds": 532,
+    "on_tree": "aa70098652eb3b5d34d7c579411c3f6359a560cd",
+    "on_bridge_sha256": "a015ba1c3beb53b3a7a4b1f8711cfb2f7bd291aff1411778dbb8174b35f3f15b",
+    "note": "D-1160 check 3: the full emu:scenarios on v1.26.3's release bridge (release run 45353901600)",
+    "per_pr_scenarios": "the 7 per-PR scenarios of D-1158 (signalBuffers liveCompile rollPen mirrorKeys longPreset abFlip editorIgnore), since #1262/#1265 changed abFlip: 69 of 69 on the same bridge and tree"
+  },
+  "rig_scenarios": "on the test rig (0x01140000, firmware 1.26.3, font 528f1926, region v22 3af59e) from a scratch checkout of a96e303c73135ddb415e0465872bc4d12eb7266f plus two throwaway scenarios: paletteHoldSave (the #1244 cases) 18 of 18; paletteCandidates (edits kept in the candidate heard, tweaked, Add to palette from C, a chip click hears C with the set kept, a hold-save while D plays keeps the set, the #1261 switch to Oracle V by chip click and by HOME + black key, a patch's set back on reopen) 24 of 24",
+  "not_run": "firmware build, emu:smoke and the full device check: the firmware is 1.26.3's, already qualified (release/qualification/v1.26.3.json; D-1160)",
+  "owner_checks": {
+    "status": "pending",
+    "steps": "D-1160 check 4: candidates carried over from 1.26.3; edits kept across switches; tweaked + revert; per-candidate undo; delete + Undo + Recently deleted; Breed with picked parents; Save preset and Add to palette from a candidate; a patch's set back on reopen and after a reload; a full palette's toast + Replace…; a palette switch to another instrument with Live on"
+  }
+}
