@@ -1191,6 +1191,13 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
   --bar: color-mix(in srgb, var(--ink) 7%, var(--panel));
   --bar-fill: color-mix(in srgb, var(--control) 24%, transparent);
   --tag-src: var(--audio); --tag-shp: var(--control); --tag-mod: var(--gate); --tag-fx: var(--ref-lilac); --tag-util: var(--ref-blue); --tag-asm: var(--accent);
+  /* the FX tab and drawer: neutral, raised (the fxsound design's swatch, owner 2026-11-24, D-1340): the card's material a
+     shade darker, lifted by a shadow; the mixes are of the theme's own tokens, so each theme, light and dark, gets its own */
+  --fx: color-mix(in srgb, var(--ink) 58%, var(--line));
+  --fx-bg: color-mix(in srgb, var(--ink) 4%, var(--panel));
+  --fx-bg2: color-mix(in srgb, var(--ink) 10%, var(--panel));
+  --fx-line: color-mix(in srgb, var(--ink) 30%, var(--line));
+  --fx-lift: 0 5px 14px var(--shadow);
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --tag-fx: var(--ref-lilac-light); --tag-util: var(--ref-blue-light); } }
 :root[data-theme="dark"] { --tag-fx: var(--ref-lilac-light); --tag-util: var(--ref-blue-light); }
@@ -1234,37 +1241,86 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 :is(.mhead, .fhead) button.vc-btn:hover { color: var(--ink); border-color: var(--secondary); }
 :is(.mhead, .fhead) button.vc-btn.set { color: var(--gate); }
 :is(.mhead, .fhead) button.vc-btn.over { color: var(--danger); border-color: var(--danger); }
-/* FX drawers (the fxdrawer3 / fxdrawer4 designs): purple, under their card (the editor gives them the card's layer, before
-   it), starting 18 px under its edge. Closed: the plug over the jacks the chain takes; open: the drawer with the effects. */
-.fx-plug, .fx-drawer { position: absolute; box-sizing: border-box; --fx-fill: color-mix(in srgb, var(--tag-fx) 26%, var(--bg)); }
-.fx-plug { cursor: pointer; touch-action: none; }
-.fx-plug > svg { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
-.fx-plug > svg path { fill: var(--fx-fill); stroke: var(--tag-fx); stroke-width: 1.5; fill-rule: evenodd; }
-.fx-plug.empty > svg path { stroke-dasharray: 4 3; --fx-fill: color-mix(in srgb, var(--tag-fx) 14%, var(--bg)); }
-.fx-plug:hover > svg path { fill: color-mix(in srgb, var(--tag-fx) 38%, var(--bg)); }
-.fx-plug.hot > svg path { fill: color-mix(in srgb, var(--tag-fx) 45%, var(--bg)); }
-.fx-plug.hot > svg { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--tag-fx) 70%, transparent)); }
+/* FX drawers (the fxdrawer3 / fxdrawer4 designs; the fxsound design for the closed tab and the colours, owner 2026-11-24):
+   neutral and raised, the card's own material a shade darker with a shadow, under their card (the editor gives them the
+   card's layer, before it), starting 18 px under its edge. Closed: the FX tab over the jacks the chain takes (on a narrow
+   canvas the small plug, with the chain on a strip under the card); open: the drawer with the effects. */
+.fx-plug, .fx-drawer, .fx-lip { position: absolute; box-sizing: border-box; }
+.fx-plug, .fx-lip { cursor: pointer; touch-action: none; }
+.fx-plug > svg { position: absolute; inset: 0; overflow: visible; pointer-events: none; filter: drop-shadow(var(--fx-lift)); }
+.fx-plug > svg path { fill: var(--fx-bg2); stroke: var(--fx); stroke-width: 1.5; fill-rule: evenodd; }
+.fx-plug.fx-tab > svg path, .fx-plug.empty > svg path { fill: var(--fx-bg); }
+.fx-plug.empty > svg path { stroke-dasharray: 4 3; }
+.fx-plug:hover > svg path, .fx-plug.hot > svg path { fill: color-mix(in srgb, var(--ink) 14%, var(--panel)); }
+.fx-plug.fx-tab:hover > svg path { fill: var(--fx-bg2); }
+.fx-plug.hot > svg { filter: drop-shadow(var(--fx-lift)) drop-shadow(0 0 3px color-mix(in srgb, var(--fx) 70%, transparent)); }
+.fx-plug.previewing > svg path { stroke: var(--secondary); stroke-dasharray: 5 3; }
 .fx-plug:focus-visible { outline: none; }
 .fx-plug:focus-visible > svg path { stroke-width: 2.5; }
-.fx-plug.off { opacity: .55; }
+.fx-plug.off, .fx-lip.off { opacity: .55; }
 .fx-pl { position: absolute; transform: translate(-50%, -50%); text-align: center; pointer-events: none; white-space: nowrap;
-  font: 700 12.5px/1 'Barlow Condensed', sans-serif; letter-spacing: .08em; color: var(--tag-fx); }
+  font: 700 12.5px/1 'Barlow Condensed', sans-serif; letter-spacing: .08em; color: var(--fx); }
 .fx-pl[hidden] { display: none; }
 .fx-pl small { display: none; font-size: 9.5px; font-weight: 600; opacity: .85; margin-top: 2px; }
 .fx-pl.roomy small { display: block; }
 .fx-plug.empty .fx-pl { font-size: 10.5px; letter-spacing: .04em; }
-.fx-badge { display: none; position: absolute; left: calc(100% + 12px); top: 50%; transform: translateY(-50%); padding: 3px 7px; border-radius: 4px; background: var(--tag-fx); color: var(--panel);
+.fx-badge { display: none; position: absolute; left: calc(100% + 12px); top: 50%; transform: translateY(-50%); padding: 3px 7px; border-radius: 4px; background: var(--fx); color: var(--panel);
   font: 600 11px/1.2 'Barlow Condensed', sans-serif; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; pointer-events: none; }
 .fx-plug.side-l .fx-badge { left: auto; right: calc(100% + 12px); }
 .fx-plug.hot .fx-badge { display: block; }
+/* the FX tab (fxsound design C, D-1341): the header (FX n, the CPU share, the drawer's ⏻), a row per effect (its ⏻, name and
+   mix as a mini bar; the editor places them round a window), the level after the effects as a meter on the outer edge */
+.fx-th { position: absolute; left: 30px; right: 12px; top: 5px; height: 16px; display: flex; align-items: center; gap: 4px;
+  font: 700 12.5px/1 'Barlow Condensed', sans-serif; letter-spacing: .09em; color: var(--fx); white-space: nowrap; }
+.fx-th .grow { flex: 1; min-width: 0; overflow: hidden; }
+.fx-th .mcpu { font: 500 10px/1 'Barlow', system-ui, sans-serif; font-variant-numeric: tabular-nums; color: var(--muted); letter-spacing: 0; cursor: help; }
+.fx-th .mcpu[hidden] { display: none; }
+.fx-tab .pw { display: grid; place-items: center; flex: none; min-height: 0; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); line-height: 1; }
+.fx-tab button.pw { cursor: pointer; }
+.fx-tab .pw.on { color: var(--accent); }
+.fx-tab button.pw:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); }
+.fx-th .pw { width: 18px; height: 16px; font-size: 12px; }
+.fx-tr { position: absolute; left: 28px; right: 22px; height: 17px; display: flex; align-items: center; gap: 4px;
+  font: 600 11.5px/1 'Barlow Condensed', sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ink); white-space: nowrap; }
+.fx-tr[hidden] { display: none; }
+.fx-tr .pw { width: 13px; height: 15px; font-size: 10px; }
+.fx-tr .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fx-tr .mb { position: relative; flex: none; width: 22px; height: 4px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--fx) 22%, var(--panel)); }
+.fx-tr .mb[hidden] { display: block; visibility: hidden; }
+.fx-tr .mb i { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--p, 0) * 100%); background: var(--fx); }
+.fx-tr.off { color: var(--muted); }
+.fx-tr.off .mb i { background: var(--muted); }
+.fx-tr.new .n { color: var(--secondary); }
+.fx-tr.chg .n::after { content: ' •'; color: var(--secondary); }
+.fx-tr.gone { color: var(--danger); }
+.fx-tr.gone .n { text-decoration: line-through; }
+.fx-tr:is(.more, .none) { padding-left: 17px; color: var(--muted); font-size: 11px; }
+.fx-meter { position: absolute; right: 9px; width: 4px; border-radius: 2px; overflow: hidden; pointer-events: none; background: color-mix(in srgb, var(--fx) 20%, var(--panel)); }
+.fx-meter i { position: absolute; left: 0; right: 0; bottom: 0; height: var(--lv, 0%); background: linear-gradient(to top, var(--secondary), var(--gate)); }
+.fx-tab.side-l .fx-th { left: 12px; right: 30px; }
+.fx-tab.side-l .fx-tr { left: 22px; right: 28px; }
+.fx-tab.side-l .fx-meter { right: auto; left: 9px; }
+/* the strip under a narrow card (fxsound design C on a phone): FX and the count, the effects' names, the level */
+.fx-lip { height: 44px; border: 1.5px solid var(--fx); border-top-width: 0; border-radius: 0 0 10px 10px; background: var(--fx-bg); box-shadow: var(--fx-lift); }
+.fx-lip:hover, .fx-lip.hot { background: var(--fx-bg2); }
+.fx-lip.hot { box-shadow: var(--fx-lift), 0 0 0 2px color-mix(in srgb, var(--fx) 50%, transparent); }
+.fx-lip.previewing { border-style: dashed; border-color: var(--secondary); }
+.fx-lrow { position: absolute; left: 8px; right: 50px; bottom: 5px; height: 16px; display: flex; align-items: center; gap: 4px; overflow: hidden;
+  font: 600 10.5px/1 'Barlow Condensed', sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ink); white-space: nowrap; }
+.fx-lrow b { color: var(--fx); letter-spacing: .09em; margin-right: 2px; }
+.fx-lrow :is(.off, .none) { color: var(--muted); }
+.fx-lrow :is(.new, .chg) { color: var(--secondary); }
+.fx-lrow .gone { color: var(--danger); text-decoration: line-through; }
+.fx-lip .fx-meter { right: 8px; bottom: 11px; width: 34px; height: 4px; }
+.fx-lip .fx-meter i { right: auto; top: 0; width: var(--lv, 0%); height: auto; background: linear-gradient(to right, var(--secondary), var(--gate)); }
 /* the drawer's own jacks, half outside its far edge */
 .fx-jack { position: absolute; z-index: 3; display: flex; transform: translate(-50%, -50%); }
 .fx-jack > .dot { margin: 0; }
-/* the instrument's jacks the plug takes: plugged (purple) */
-.module .dot.plugged { color: var(--tag-fx); background: var(--tag-fx); box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--tag-fx) 30%, var(--panel)); }
-.module .port:has(> .dot.plugged) > span { color: var(--tag-fx); }
+/* the instrument's jacks the tab takes: plugged, in the drawer's colour */
+.module .dot.plugged { color: var(--fx); background: var(--fx); box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--fx) 30%, var(--panel)); }
+.module .port:has(> .dot.plugged) > span { color: var(--fx); }
 /* an effect's chain jacks in a drawer: the drawer wires them */
-.fx-card .dot.chain { color: var(--tag-fx); background: var(--tag-fx); cursor: not-allowed; }
+.fx-card .dot.chain { color: var(--fx); background: var(--fx); cursor: not-allowed; }
 .fx-drawer { padding: 40px var(--fx-tail, 58px) 14px var(--fx-lead, 62px); display: flex; transition: clip-path .2s ease-out, transform .2s ease-out;
   clip-path: inset(-20px -40px -40px -20px); }
 .fx-drawer.side-l { padding-left: 30px; padding-right: var(--fx-lead, 38px); }
@@ -1273,18 +1329,18 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .fx-drawer.under { padding: calc(var(--fx-band, 54px) + 40px) 58px 14px 30px; }
 .fx-drawer.under.shut { clip-path: inset(-20px -40px 100% -20px); transform: translateY(-26px); }
 @media (prefers-reduced-motion: reduce) { .fx-drawer { transition: none; } }
-.fx-drawer > svg.fx-shape { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
-.fx-shape .body { fill: color-mix(in srgb, var(--tag-fx) 9%, var(--bg)); stroke: none; }
-.fx-shape .gut { fill: color-mix(in srgb, var(--tag-fx) 16%, var(--bg)); }
-.fx-shape .gutl { fill: none; stroke: color-mix(in srgb, var(--tag-fx) 45%, transparent); stroke-width: 1; stroke-dasharray: 3 3; }
-.fx-shape .edge { fill: none; stroke: var(--tag-fx); stroke-width: 1.5; }
+.fx-drawer > svg.fx-shape { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; filter: drop-shadow(var(--fx-lift)); }
+.fx-shape .body { fill: var(--fx-bg); stroke: none; }
+.fx-shape .gut { fill: color-mix(in srgb, var(--fx) 9%, var(--fx-bg)); }
+.fx-shape .gutl { fill: none; stroke: var(--fx-line); stroke-width: 1; stroke-dasharray: 3 3; }
+.fx-shape .edge { fill: none; stroke: var(--fx); stroke-width: 1.5; }
 .fx-drawer.hot .fx-shape .edge { stroke-width: 2.5; }
 .fx-drawer.off > :is(.fx-row, .fx-layer) { opacity: .55; }
 /* the chain's wires and the copies of the cables over the drawer, clipped to it, under the effect cards */
 .fx-drawer > svg.fx-layer { z-index: 1; overflow: hidden; }
-.cable.chain { stroke: var(--tag-fx); stroke-width: 2.5; stroke-dasharray: 6 4; opacity: 1; pointer-events: none; cursor: default; }
+.cable.chain { stroke: var(--fx); stroke-width: 2.5; stroke-dasharray: 6 4; opacity: 1; pointer-events: none; cursor: default; }
 .fx-dh { position: absolute; top: 0; left: var(--fx-lead, 62px); right: 0; z-index: 2; height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 6px 0 8px; box-sizing: border-box;
-  border-bottom: 1px solid color-mix(in srgb, var(--tag-fx) 40%, transparent); font: 600 13.5px/1 'Barlow Condensed', sans-serif; text-transform: uppercase; letter-spacing: .08em; color: var(--tag-fx); }
+  border-bottom: 1px solid var(--fx-line); font: 600 13.5px/1 'Barlow Condensed', sans-serif; text-transform: uppercase; letter-spacing: .08em; color: var(--fx); }
 .fx-drawer.side-l .fx-dh { left: 0; right: var(--fx-lead, 38px); }
 .fx-drawer.under .fx-dh { top: var(--fx-band, 54px); left: 0; }
 .fx-dh .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1301,16 +1357,36 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .fx-drawer.dragging > svg.fx-layer { overflow: visible; }
 .fx-card .mhead { cursor: grab; }
 .fx-card .mhead > .grip { color: var(--muted); letter-spacing: -2px; flex: none; contain: none; overflow: visible; font-size: 13px; }
-.mtag.fx.fx-own { background: color-mix(in srgb, var(--tag-fx) 22%, transparent); }
+.fx-drawer .mtag.fx, .fx-ghost .mtag.fx { --tag: var(--fx); }
+.mtag.fx.fx-own { background: color-mix(in srgb, var(--tag) 22%, transparent); }
 /* the + slot right after the last effect card, level with its top; the drawer is as tall as its tallest card (D-1342) */
 .fx-slot { position: relative; z-index: 2; align-self: flex-start; width: 150px; height: 38px; display: flex; align-items: center; justify-content: center; gap: 6px; flex: none;
-  border: 1.5px dashed color-mix(in srgb, var(--tag-fx) 65%, transparent); border-radius: 8px; background: transparent; color: var(--tag-fx); cursor: pointer;
+  border: 1.5px dashed var(--fx-line); border-radius: 8px; background: transparent; color: var(--fx); cursor: pointer;
   font: var(--cap, 600 11.5px/1 'Barlow Condensed', sans-serif); font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em; }
 .fx-slot b { font-size: 15px; }
 .fx-slot.empty { align-self: stretch; width: 160px; height: auto; min-height: 120px; flex-direction: column; }
-.fx-slot:hover, .fx-drawer.hot .fx-slot { background: color-mix(in srgb, var(--tag-fx) 16%, transparent); border-color: var(--tag-fx); }
-.fx-mark { position: absolute; z-index: 8; width: 4px; border-radius: 2px; background: var(--tag-fx); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tag-fx) 28%, transparent); pointer-events: none; }
+.fx-slot:hover, .fx-drawer.hot .fx-slot { background: color-mix(in srgb, var(--fx) 12%, transparent); border-color: var(--fx); }
+.fx-mark { position: absolute; z-index: 8; width: 4px; border-radius: 2px; background: var(--fx); box-shadow: 0 0 0 3px color-mix(in srgb, var(--fx) 28%, transparent); pointer-events: none; }
 .fx-mark[hidden] { display: none; }
+/* a preset's change in an open drawer (fxsound design D): pointed at in its menu, a ghost card where it adds an effect and
+   a mark on each effect it removes, switches or changes; just loaded, the same marks on the effects as they are now */
+.fx-ghost { position: relative; z-index: 2; flex: none; align-self: stretch; width: 150px; min-height: 112px; box-sizing: border-box; border: 1.5px dashed var(--secondary); border-radius: 8px;
+  background: color-mix(in srgb, var(--secondary) 6%, transparent); opacity: .85; }
+.fx-ghost .gh { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px; font: 600 13px/1 'Barlow Condensed', sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ink); }
+.fx-mkb { position: absolute; top: -9px; right: 8px; z-index: 6; padding: 2px 5px; border-radius: 3px; background: var(--secondary); color: var(--panel); pointer-events: none;
+  font: var(--cap); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; }
+.fx-mkb.red { background: var(--danger); }
+.fx-card.fx-gone { opacity: .6; box-shadow: 0 0 0 1.5px var(--danger); }
+.fx-card.fx-new { box-shadow: 0 0 0 2px var(--secondary), 0 2px 6px var(--shadow); }
+.fx-card.fx-chg { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--secondary) 70%, transparent), 0 2px 6px var(--shadow); }
+/* the note after a preset loaded into an instrument with a drawer (fxsound design D): what changed, and Undo */
+.fx-note { position: absolute; z-index: 9000; box-sizing: border-box; padding: 7px 10px; border: 1px solid var(--line); border-left: 4px solid var(--secondary); border-radius: 7px;
+  background: var(--panel); color: var(--ink); box-shadow: 0 8px 22px var(--shadow); font-size: 12.5px; line-height: 1.6; }
+.fx-note-undo { float: right; min-height: 0; margin-left: 10px; padding: 0 4px; border: 0; background: transparent; color: var(--secondary); font-weight: 700; cursor: pointer; }
+.fx-note-undo:hover { text-decoration: underline; }
+.fx-mini { display: inline-block; margin: 0 3px; padding: 0 4px; border-radius: 3px; font: 600 11px/1.5 'Barlow Condensed', sans-serif; letter-spacing: .05em; text-transform: uppercase; }
+.fx-mini.add { color: var(--secondary); border: 1px dashed var(--secondary); }
+.fx-mini.gone { color: var(--danger); border: 1px dashed var(--danger); }
 /* a child shown whole on its parent's card (spec Model 6), and Arrange mode's switches for it */
 .module .embed-cards { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 10px 10px; position: relative; }
 .embed-cards > .module.embedded { position: relative; z-index: 2; left: auto; top: auto; box-shadow: 0 1px 3px var(--shadow); }

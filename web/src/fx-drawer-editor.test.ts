@@ -5,9 +5,12 @@
 // shown whole on its parent's card (spec Model 6).
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { exposePort, makeAssembly, promote, type AssemblyInst } from './assembly';
+import { assemblyById, exposePort, makeAssembly, promote, type AssemblyInst } from './assembly';
+import { applyPreset, presetsOf, storePreset } from './device-presets';
 import { drawerHeight, Editor, type EditorEvents } from './editor';
-import { addDrawer, drawers, effectsOf, insertEffect } from './fx-drawer';
+import { addDrawer, drawerOutput, drawers, effectsOf, insertEffect } from './fx-drawer';
+import type { FxMeterSpec } from './fx-meter';
+import { effectAmount } from './fx-tab';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, validatePatch, type Patch } from './patch';
 
@@ -50,30 +53,78 @@ const drawerEl = () => document.querySelector<HTMLElement>('.fx-drawer');
 const drawerOf = (e: Editor) => drawers(e.patch)[0];
 
 beforeEach(() => localStorage.clear());
+afterEach(() => vi.restoreAllMocks());
 /** the editor's undo steps */
 const steps = (e: Editor): number => (e as unknown as { history: unknown[] }).history.length;
 
-describe('the closed FX plug', () => {
-  it('sits just before the instrument’s card, over the jacks its chain takes, with the effect count', () => {
-    const { p, inst } = rig();
-    editorOn(p);
+describe('the closed FX tab (fxsound design C, D-1341)', () => {
+  it('sits just before the instrument’s card, over the jacks its chain takes, with the chain in signal order', () => {
+    const { p, inst } = rig(['shape', 'chorus', 'delay']);
+    const meters: FxMeterSpec[][] = [];
+    const e = editorOn(p, [], { onFxMeters: (m) => meters.push(m) });
     const card = document.querySelector<HTMLElement>(`#modules > .module.assembly[data-asm="${inst.id}"]`)!;
     expect(plug()!.nextElementSibling).toBe(card);
-    expect(plug()!.querySelector('small')!.textContent).toBe('2');
+    expect(plug()!.classList.contains('fx-tab')).toBe(true);
+    expect(plug()!.querySelector('.fx-th .grow')!.textContent).toBe('FX 3');
+    // a row per effect: its ⏻, its name, its mix as a mini bar
+    const fx = effectsOf(e.patch, drawerOf(e));
+    const rows = [...plug()!.querySelectorAll<HTMLElement>('.fx-tr[data-asm]')];
+    expect(rows.map((r) => r.querySelector('.n')!.textContent)).toEqual(fx.map((x) => x.label));
+    rows.forEach((r, i) => {
+      expect(r.querySelector('button.pw.on')).not.toBeNull();
+      expect(Number(r.style.getPropertyValue('--p'))).toBeCloseTo(effectAmount(e.patch, fx[i])!);
+    });
     // the taps (out L, out R) are plugged; lfo stays an ordinary jack
     expect(card.querySelectorAll('.dot.plugged')).toHaveLength(2);
     expect([...card.querySelectorAll<HTMLElement>('.dot[data-dir="out"]')].filter((d) => !d.classList.contains('plugged'))).toHaveLength(1);
-    // its own jacks: the instrument's sound after the effects
+    // its own jacks: the instrument's sound after the effects; its meter measures them
     expect(plug()!.querySelectorAll('.fx-jack > .dot.fx-end[data-dir="out"]')).toHaveLength(2);
+    expect(meters.at(-1)).toEqual([{ key: `fxmeter:${drawerOf(e).id}`, el: plug()!.querySelector('.fx-meter'), chans: ([0, 1] as const).map((ch) => drawerOutput(e.patch, inst.id, ch).map((t) => ({ id: t.module, port: t.port }))) }]);
     expect(drawerEl()).toBeNull();
     expect(document.querySelector('.fx-stages')).toBeNull();
   });
 
-  it('an empty drawer stays as a thin “FX +” plug', () => {
+  it('switches an effect, or the whole drawer, from its ⏻ without opening; a click elsewhere opens it', () => {
+    const { p } = rig(['shape', 'delay']);
+    const e = editorOn(p);
+    const d = drawerOf(e);
+    const [, second] = effectsOf(e.patch, d);
+    plug()!.querySelector<HTMLButtonElement>(`.fx-tr[data-asm="${second.id}"] button.pw`)!.click();
+    expect(assemblyById(e.patch, second.id)!.bypass).toBe(true);
+    expect(plug()!.querySelector(`.fx-tr[data-asm="${second.id}"]`)!.classList.contains('off')).toBe(true);
+    plug()!.querySelector<HTMLButtonElement>('.fx-th button.pw')!.click();
+    expect(assemblyById(e.patch, d.id)!.bypass).toBe(true);
+    expect(plug()!.classList.contains('off')).toBe(true);
+    expect(drawerEl()).toBeNull();
+    plug()!.querySelector<HTMLElement>('.fx-tr .n')!.click();
+    expect(drawerEl()).not.toBeNull();
+  });
+
+  it('an empty drawer stays as a dashed “FX +” tab that says where effects go', () => {
     const { p } = rig([]);
     editorOn(p);
     expect(plug()!.classList.contains('empty')).toBe(true);
-    expect(plug()!.querySelector('.fx-pl')!.textContent).toBe('FX +');
+    expect(plug()!.querySelector('.fx-th .grow')!.textContent).toBe('FX +');
+    expect(plug()!.querySelector('.fx-tr.none')!.textContent).toBe('drop effects here');
+  });
+
+  it('on a narrow canvas it is the small plug, with the chain on a strip under the card that also opens it and takes drops', () => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) { return this.id === 'canvas' ? 400 : 0; });
+    const { p, inst } = rig(['shape', 'delay']);
+    const e = editorOn(p);
+    const card = document.querySelector<HTMLElement>(`#modules > .module.assembly[data-asm="${inst.id}"]`)!;
+    expect(plug()!.classList.contains('fx-tab')).toBe(false);
+    expect(plug()!.querySelector('small')!.textContent).toBe('2');
+    const lip = document.querySelector<HTMLElement>('.fx-lip')!;
+    expect(lip.nextElementSibling).toBe(plug());
+    expect(lip.querySelector('.fx-lrow')!.textContent).toBe(`FX 2${effectsOf(e.patch, drawerOf(e)).map((x) => x.label).join(' · ')}`);
+    expect(lip.querySelector('.fx-meter')).not.toBeNull();
+    expect(card.querySelectorAll('.dot.plugged')).toHaveLength(2);
+    vi.spyOn(lip, 'getBoundingClientRect').mockReturnValue(new DOMRect(500, 500, 200, 44));
+    expect(e.dropEffect({ type: 'chorus' }, 550, 520)).toBe(true);
+    expect(effectsOf(e.patch, drawerOf(e))).toHaveLength(3);
+    document.querySelector<HTMLElement>('.fx-lip')!.click();
+    expect(drawerEl()!.classList.contains('under')).toBe(true);
   });
 });
 
@@ -163,8 +214,6 @@ const factory = (f: string): Patch => validatePatch(JSON.parse(readFileSync(`pre
 const outline = (el: HTMLElement): string => el.querySelector('.fx-shape .edge')!.getAttribute('d')!;
 
 describe('the open drawer’s height', () => {
-  afterEach(() => vi.restoreAllMocks());
-
   it('Monolith D: as tall as its tallest effect card and padding, its bottom edge beside the card', () => {
     const el = openLaidOut(factory('00-monolith-d.json'), 617, [146, 112, 199, 189]);
     expect(padTop + 199 + padBottom).toBe(253);
@@ -212,7 +261,7 @@ describe('drawerHeight', () => {
 });
 
 describe('adding and removing', () => {
-  it('a drop on the closed plug appends the effect, one undo step', () => {
+  it('a drop on the closed tab appends the effect, one undo step', () => {
     const { p } = rig(['shape']);
     const e = editorOn(p);
     const d = drawerOf(e);
@@ -220,7 +269,7 @@ describe('adding and removing', () => {
     expect(e.dropEffect({ type: 'delay' }, r.left + 1, r.top + 1)).toBe(true);
     expect(effectsOf(e.patch, drawerOf(e)).map((x) => x.label)).toEqual([effectsOf(p, d)[0].label, expect.stringMatching(/Delay/)]);
     expect(steps(e)).toBe(1);
-    expect(plug()!.querySelector('small')!.textContent).toBe('2');
+    expect(plug()!.querySelector('.fx-th .grow')!.textContent).toBe('FX 2');
   });
 
   it('⋯ → Remove deletes the effect and the chain closes; Take out makes it an ordinary card', () => {
@@ -273,5 +322,133 @@ describe('a child shown whole on its parent’s card (spec Model 6)', () => {
     const shown = document.querySelector<HTMLElement>(`.module.assembly[data-asm="${parent.id}"] .embed-cards > .module.embedded[data-asm="${child.id}"]`);
     expect(shown).not.toBeNull();
     expect(e.jackElement({ module: f.id, port: 'in' }, 'in')!.closest('.embedded')).toBe(shown);
+  });
+});
+
+// fxsound design D (owner 2026-11-24): pointing at an instrument's preset in its menu previews what it does to the
+// drawer; loading it shows a note of the changes with Undo, one step back to before the load.
+describe('a preset’s FX change: previewed from its menu, then a note with Undo', () => {
+  /** Hera 4 with its drawer and two stored presets: "Two" (Shape, Delay) and "Three" (Shape, Delay, Chorus), set to Three */
+  function sounds(): { e: Editor; a: AssemblyInst; labels: string[] } {
+    const { p, inst } = rig(['shape', 'delay']);
+    const e = editorOn(p);
+    const a = assemblyById(e.patch, inst.id)!;
+    storePreset(e.patch, a, 'Two');
+    e.transact(() => insertEffect(e.patch, drawerOf(e), { type: 'chorus' }));
+    storePreset(e.patch, a, 'Three');
+    e.rebuild();
+    return { e, a, labels: effectsOf(e.patch, drawerOf(e)).map((x) => x.label) };
+  }
+  const card = (a: AssemblyInst) => document.querySelector<HTMLElement>(`#modules > .module.assembly[data-asm="${a.id}"]`)!;
+  /** the instrument's preset menu opened from its chip, and its row for preset `name` */
+  function item(a: AssemblyInst, name: string): HTMLButtonElement {
+    if (!document.querySelector('.ctx')) card(a).querySelector<HTMLButtonElement>('.preset-chip .preset-name')!.click();
+    return [...document.querySelectorAll<HTMLButtonElement>('.ctx button')].find((b) => b.textContent!.replace(/^● /, '').startsWith(`${name} ·`))!;
+  }
+  const rows = () => [...plug()!.querySelectorAll<HTMLElement>('.fx-tr:not(.more, .none)')].map((r) => `${r.querySelector('.n')!.textContent}${r.classList.contains('gone') ? ' (gone)' : r.classList.contains('new') ? ' (new)' : r.classList.contains('chg') ? ' (chg)' : ''}`);
+
+  it('pointing at a preset shows its change on the closed tab’s list, and leaving it puts the list back', () => {
+    const { e, a, labels: [shape, delay, chorus] } = sounds();
+    const two = item(a, 'Two');
+    two.dispatchEvent(new Event('pointerenter'));
+    expect(rows()).toEqual([shape, delay, `${chorus} (gone)`]);
+    expect(plug()!.querySelector('.fx-th .grow')!.textContent).toBe('FX 2');
+    expect(plug()!.classList.contains('previewing')).toBe(true);
+    expect(plug()!.querySelector(`.fx-tr.gone`)!.getAttribute('title')).toBe(`${chorus}: − removes`);
+    document.querySelector('.ctx')!.dispatchEvent(new Event('pointerleave'));
+    expect(rows()).toEqual([shape, delay, chorus]);
+    expect(plug()!.classList.contains('previewing')).toBe(false);
+    expect(effectsOf(e.patch, drawerOf(e))).toHaveLength(3);   // (a preview changes nothing)
+  });
+
+  it('with the drawer open, ghosts the effect it adds and marks the one it switches', () => {
+    const { e, a, labels: [, delay, chorus] } = sounds();
+    e.transact(() => applyPreset(e.patch, a, presetsOf(e.patch, a).find((x) => x.name === 'Two')!, true));
+    const d = drawerOf(e);
+    const dl = effectsOf(e.patch, d).find((x) => x.label === delay)!;
+    plug()!.querySelector<HTMLButtonElement>(`.fx-tr[data-asm="${dl.id}"] button.pw`)!.click();   // (Delay off)
+    e.setDrawerOpen(d.id, true);
+    item(a, 'Three').dispatchEvent(new Event('pointerenter'));
+    const ghost = drawerEl()!.querySelector<HTMLElement>('.fx-row > .fx-ghost')!;
+    expect(ghost.querySelector('.gh')!.textContent).toBe(`FX${chorus}`);
+    expect(ghost.querySelector('.fx-mkb')!.textContent).toBe('+ adds');
+    expect(ghost.nextElementSibling!.classList.contains('fx-slot')).toBe(true);
+    expect(drawerEl()!.querySelector(`.fx-card[data-asm="${dl.id}"] > .fx-mkb`)!.textContent).toBe('turns on');
+    item(a, 'Two').dispatchEvent(new Event('pointerenter'));
+    expect(drawerEl()!.querySelector('.fx-ghost')).toBeNull();
+    expect([...drawerEl()!.querySelectorAll('.fx-mkb')].map((b) => b.textContent)).toEqual(['turns on']);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(document.querySelector('.ctx')).toBeNull();
+    expect(drawerEl()!.classList.contains('previewing')).toBe(false);
+    expect(drawerEl()!.querySelector('.fx-mkb')).toBeNull();
+    // a preset that removes an effect marks its card red
+    e.transact(() => applyPreset(e.patch, a, presetsOf(e.patch, a).find((x) => x.name === 'Three')!, true));
+    item(a, 'Two').dispatchEvent(new Event('pointerenter'));
+    const gone = effectsOf(e.patch, d).find((x) => x.label === chorus)!;
+    expect(drawerEl()!.querySelector(`.fx-card.fx-gone[data-asm="${gone.id}"] > .fx-mkb.red`)!.textContent).toBe('− removes');
+  });
+
+  it('loading shows a note of what changed, with Undo one step back to before the load', () => {
+    const { e, a, labels: [shape, delay, chorus] } = sounds();
+    const before = steps(e);
+    item(a, 'Two').click();
+    expect(effectsOf(e.patch, drawerOf(e)).map((x) => x.label)).toEqual([shape, delay]);
+    expect(steps(e)).toBe(before + 1);
+    expect(document.querySelector('.ctx')).toBeNull();
+    const note = document.querySelector<HTMLElement>('#patch-world > .fx-note')!;
+    expect(note.getAttribute('role')).toBe('status');
+    expect(note.textContent).toBe(`UndoLoaded Two: Hera 4, same values · its FX: − ${chorus}`);
+    // the tab keeps the removed effect struck through while the note shows
+    expect(rows()).toEqual([shape, delay, `${chorus} (gone)`]);
+    note.querySelector<HTMLButtonElement>('.fx-note-undo')!.click();
+    expect(effectsOf(e.patch, drawerOf(e)).map((x) => x.label)).toEqual([shape, delay, chorus]);
+    expect(steps(e)).toBe(before);
+    expect(document.querySelector('.fx-note')).toBeNull();
+    expect(rows()).toEqual([shape, delay, chorus]);
+  });
+
+  it('the note goes after 5 s or at the next press, and the marks with it', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { a, labels: [shape, delay, chorus] } = sounds();
+      item(a, 'Two').click();
+      item(a, 'Three').click();
+      expect(document.querySelectorAll('.fx-note')).toHaveLength(1);
+      expect(document.querySelector('.fx-note')!.textContent).toContain(`+ ${chorus}`);
+      expect(rows()).toEqual([shape, delay, `${chorus} (new)`]);
+      vi.advanceTimersByTime(5000);
+      expect(document.querySelector('.fx-note')).toBeNull();
+      expect(rows()).toEqual([shape, delay, chorus]);
+      item(a, 'Two').click();
+      document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      expect(document.querySelector('.fx-note')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// The neutral, raised palette (fxsound Q3, owner 2026-11-24): the swatch's mixes as the editor's variables, and no purple
+// left on the tab, the strip, the drawer, its chain wires or the jacks the chain takes.
+describe('the FX colours', () => {
+  it('are the design’s neutral, raised swatch, mixes of each theme’s own tokens', () => {
+    const root = /\n:root \{([^}]*)\}/.exec(css.slice(css.indexOf('--tag-fx:') - 400))![1];
+    expect(root).toContain('--fx: color-mix(in srgb, var(--ink) 58%, var(--line));');
+    expect(root).toContain('--fx-bg: color-mix(in srgb, var(--ink) 4%, var(--panel));');
+    expect(root).toContain('--fx-bg2: color-mix(in srgb, var(--ink) 10%, var(--panel));');
+    expect(root).toContain('--fx-line: color-mix(in srgb, var(--ink) 30%, var(--line));');
+    expect(root).toContain('--fx-lift: 0 5px 14px var(--shadow);');
+  });
+
+  it('are the only colours of the tab, the strip, the drawer and its dashed chain wires', () => {
+    const rules = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter(([, sel]) => /\.fx-(plug|tab|lip|lrow|tr|th|meter|drawer|shape|dh|slot|mark|pl|badge|ghost|mkb|card)\b|\.cable\.chain|\.dot\.(plugged|chain)/.test(sel));
+    expect(rules.length).toBeGreaterThan(40);
+    for (const [, sel, body] of rules) expect(body, sel.trim()).not.toMatch(/tag-fx|lilac/);
+    const rule = (sel: string): string => rules.find(([, s]) => s.trim() === sel)![2];
+    const chain = rule('.cable.chain');
+    expect(chain).toContain('stroke: var(--fx)');
+    expect(chain).toContain('stroke-dasharray: 6 4');
+    expect(rule('.fx-shape .edge')).toContain('stroke: var(--fx)');
+    expect(rule('.fx-drawer > svg.fx-shape')).toContain('drop-shadow(var(--fx-lift))');
   });
 });
