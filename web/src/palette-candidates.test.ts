@@ -245,3 +245,64 @@ describe('the owner\'s palette of 2026-11-24 (his v1.26.3 test editor\'s storage
     expect(state().list.map(([, l]) => l)).toEqual(expect.arrayContaining([0.31, 0.23, level(hera)]));
   });
 });
+
+describe('a switch to a sound of another instrument (owner 2026-11-24: "the fm1 switches to that instrument but the editor does not switch with it")', () => {
+  /** a factory patch at output level `v`: no saved patch and no factory slot holds its bytes */
+  const edited = (name: string, v: number): Patch => {
+    const p = FM1_PRESETS[name]();
+    p.modules.find((m) => m.type === 'output')!.params.level = v;
+    return p;
+  };
+  /** the candidates' patch names */
+  const names = (editor: Editor): string[] => editor.snaps.list.map((s) => (JSON.parse(s.patch) as Patch).name);
+  it('Monolith D, Silver Box and Hera 6 added, other patches opened since: an FM-1 tap and a chip click follow to each, Live and the candidates stay', async () => {
+    // (the sound added from a patch the editor left: opening another patch forgets its candidates, D-972, so the editor's
+    // versions no longer hold it, and no saved patch does; the copy this browser kept when it added it opens it)
+    const mono = edited('Monolith D', 0.31), box = edited('Silver Box', 0.32), hera = edited('Hera 6', 0.33);
+    const { editor, fm1, palette, off, live, grip } = await rig([], mono, []);
+    expect(await grip(0)).toBe(true);
+    editor.setPatch(structuredClone(box));   // (as main.ts's loadNamed opens a patch from the Library)
+    expect(await grip(1)).toBe(true);
+    editor.setPatch(structuredClone(hera));
+    expect(await grip(2)).toBe(true);
+    await fm1.quiet();
+    fm1.tap(0);   // (HOME + black key 1 on the FM-1: Monolith D)
+    await fm1.quiet();
+    expect([editor.patch.name, level(editor.patch), off, live()]).toEqual(['Monolith D', 0.31, [], true]);
+    expect(names(editor)).toEqual(['Hera 6']);   // (the patch it replaced joins the candidates, as Use does)
+    await palette.click(1);   // (chip 2: Silver Box)
+    await fm1.quiet();
+    expect([editor.patch.name, level(editor.patch), off, live()]).toEqual(['Silver Box', 0.32, [], true]);
+    expect(names(editor)).toEqual(['Hera 6', 'Monolith D']);
+    fm1.tap(2);   // (Hera 6: a candidate holds it, so it leaves the list as it becomes the current patch)
+    await fm1.quiet();
+    expect([editor.patch.name, level(editor.patch), off, live()]).toEqual(['Hera 6', 0.33, [], true]);
+    expect(names(editor)).toEqual(['Monolith D', 'Silver Box']);
+  });
+  it('a hold-save of a kit on the FM-1, then Hera 6 opened and saved there too: a switch back opens the kit', async () => {
+    const kit = edited('808 Kit', 0.32), hera = edited('Hera 6', 0.33);
+    const { editor, fm1, link, palette, off, live } = await rig([], kit, []);
+    fm1.holdSave(0, link.encodeFor(editor.patch), '808 KIT', entryOf(editor.patch, 0));
+    await fm1.quiet();
+    editor.setPatch(structuredClone(hera));
+    fm1.holdSave(1, link.encodeFor(editor.patch), 'HERA 6', entryOf(editor.patch, 0));
+    await fm1.quiet();
+    expect([editor.patch.name, off, live()]).toEqual(['Hera 6', [], true]);
+    await palette.click(0);
+    await fm1.quiet();
+    expect([editor.patch.name, level(editor.patch), off, live()]).toEqual(['808 Kit', 0.32, [], true]);
+    expect(names(editor)).toEqual(['Hera 6']);
+  });
+  it('a position this browser has no copy of (a slot another program stored): Live goes off and says so, the editor keeps its patch', async () => {
+    const { editor, fm1, link, off, live } = await rig([], edited('Hera 6', 0.33), []);
+    const kit = edited('808 Kit', 0.32);
+    fm1.bins[9] = link.encodeFor(kit);
+    fm1.slots[9] = { slot: 9, used: true, length: fm1.bins[9]!.length, name: 'STRANGER' };
+    fm1.entries[4] = entryOf(kit, 9, 'STRANGER');
+    fm1.report();
+    await fm1.quiet();
+    fm1.tap(4);
+    await fm1.quiet();
+    expect([editor.patch.name, off, live()]).toEqual(['Hera 6', ['FM-1 switched to palette 5 · STRANGER: no copy in this browser, so Live sync is off'], false]);
+  });
+});
