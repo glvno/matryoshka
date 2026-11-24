@@ -307,11 +307,12 @@ dialog.about .hsec h3 { margin-bottom: 10px; font-size: 22px; letter-spacing: .0
 .help-btn[hidden] { display: none; }
 /* the Sound design sidebar at the window's right edge (snap-side.ts, #1040, #1048): one panel the window's whole height,
    its head (Sound design, ⋯, »), the Listen block (audition.ts), the Output scope, the candidates' head with the Aim chip,
-   the list (A, the current patch, first), the progress line while a Generate round renders, and the footer's Generate and
-   Nominate. It is as wide as its left edge was dragged (--snap-side-w), the narrowest at first; folded it is a 52 px rail.
+   the list (the candidates, all alike), the progress line while a Generate round renders, and the footer's Generate and
+   Duplicate. It is as wide as its left edge was dragged (--snap-side-w), the narrowest at first; folded it is a 52 px rail.
    The workspace (the canvas, the deck, Connect FM-1 and the ? button) gives up its width (main.ts sets --snap-col-w).
    Everything in it shrinks to fit its height, so only the list ever scrolls.
-   Colours: coral (--accent) Generate, seafoam (--secondary) Nominate, play and what you hear, gold (--gate) only for kept */
+   Colours: coral (--accent) Generate and the parents picked for it, seafoam (--secondary) Duplicate, play and what you
+   hear, gold (--gate) "sounds like" */
 .snap-column { --snap-tile: color-mix(in oklab, var(--ink) 9%, var(--panel)); --snap-hover: color-mix(in oklab, var(--ink) 5%, var(--panel));
   --snap-head: 600 13px/1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; --snap-body: 'Barlow', system-ui, sans-serif;
   position: fixed; right: 0; top: 0; bottom: 0; z-index: 8; width: var(--snap-side-w, 300px); display: flex; flex-direction: column;
@@ -405,30 +406,29 @@ body:has(.snap-column:not([hidden])) .workspace { margin-right: var(--snap-col-w
 .snap-meta .fit { color: var(--gate); }
 .snap-right { display: flex; align-items: center; gap: 6px; }
 .snap-ch { font: 500 12px/1 var(--snap-body); color: var(--muted); font-variant-numeric: tabular-nums; }
-.snap-tick { width: 18px; height: 18px; display: grid; place-items: center; padding: 0; border: 1.5px solid var(--line); border-radius: 50%; background: transparent;
-  color: transparent; font-size: 11px; line-height: 1; cursor: pointer; }
-.snap-tick:hover { border-color: var(--gate); color: var(--gate); }
-.snap.kept .snap-tick { border-color: var(--gate); background: var(--gate); color: var(--panel); }
-.snap.kept .snap-let { box-shadow: inset 0 0 0 1.5px var(--gate); }
-/* changed since taken: a coral dot on the letter */
-.snap.edited .snap-let::after { content: ''; position: absolute; right: -4px; top: -2px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
-/* the row you hear: a teal letter and edge bar, and Keep · Use · ✕ on a line of their own */
+/* the ✕ of a row you do not hear: shown on hover, and while the row or the ✕ has the keyboard focus */
+.snap-x { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; opacity: 0; }
+.snap:hover .snap-x, .snap:focus-within .snap-x { opacity: 1; }
+@media (hover: none) { .snap-x { opacity: .7; } }
+.snap-x:hover { color: var(--ink); background: var(--snap-tile); }
+.snap-x:disabled { display: none; }
+/* picked as a parent for Generate (⌘ or Shift-click): a coral ring round the letter */
+.snap.picked .snap-let { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--accent); }
+/* "tweaked" and its revert, and Recently deleted's "put back": small links */
+.snap-revert, .snap-put-back { padding: 0; border: 0; background: none; color: var(--secondary); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.snap-revert:hover, .snap-put-back:hover { color: var(--ink); }
+/* the row you hear: a teal letter and edge bar, and Save preset · Add to palette · ⋯ · ✕ on a line of their own (they wrap
+   in the narrowest sidebar) */
 .snap.shown { grid-template-columns: 26px minmax(0, 1fr); padding-bottom: 8px; background: color-mix(in oklab, var(--secondary) 14%, var(--panel)); }
 .snap.shown::before { content: ''; position: absolute; left: -6px; top: 8px; bottom: 8px; width: 3px; border-radius: 2px; background: var(--secondary); }
 .snap.shown .snap-let { background: var(--secondary); color: var(--accent-ink); }
-.snap-acts { grid-column: 2; display: flex; gap: 4px; margin-top: 4px; }
+.snap-acts { grid-column: 2; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .snap-acts button { height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink);
-  font: 600 11px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+  font: 600 11px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
 .snap-acts button:hover { border-color: var(--secondary); }
-.snap-acts .snap-keep-b.on { background: var(--gate); border-color: var(--gate); color: var(--panel); }
-/* A, the current patch: an outlined letter, first and held at the top of the list as it scrolls, a rule under it; never
-   kept, removed or dragged */
-.snap.current { position: sticky; top: 0; z-index: 2; margin-bottom: 6px; background: var(--panel); box-shadow: 0 6px 0 var(--panel); }
-.snap.current:hover { background: var(--snap-hover); }
-.snap.current.shown { background: color-mix(in oklab, var(--secondary) 14%, var(--panel)); }
-.snap.current::after { content: ''; position: absolute; left: 6px; right: 6px; bottom: -4px; height: 1px; background: var(--line); }
-.snap.current .snap-let { background: transparent; box-shadow: inset 0 0 0 1.5px var(--muted); }
-.snap.current.shown .snap-let { background: var(--secondary); box-shadow: none; }
+.snap-acts .main { border-color: var(--secondary); color: var(--secondary); }
+.snap-acts button:disabled { opacity: .35; cursor: default; }
+.snap-acts button:disabled:hover { border-color: var(--line); }
 /* being judged in an aimed Generate round: dashed and faded */
 .snap.pending { opacity: .55; cursor: default; }
 .snap.pending:hover { background: none; }
@@ -438,14 +438,20 @@ body:has(.snap-column:not([hidden])) .workspace { margin-right: var(--snap-col-w
 .snap.lifted { position: absolute; left: 14px; right: 0; z-index: 3; pointer-events: none; background: color-mix(in oklab, var(--secondary) 10%, var(--panel));
   box-shadow: 0 8px 22px var(--shadow); transform: rotate(-1.2deg); }
 .snap-drop { flex: none; height: 2px; margin: 0 8px; border-radius: 1px; background: var(--secondary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 18%, transparent); }
-.snap-empty { margin: auto 0; padding: 24px 18px; text-align: center; color: var(--muted); font: 400 14px/1.45 var(--snap-body); }
+/* Recently deleted (this session only), under the list, folded at first; each with "put back" */
+.snap-deleted { flex: none; margin: 8px 6px 0; padding-top: 6px; border-top: 1px solid var(--line); font: 400 12px/1.35 var(--snap-body); color: var(--muted); }
+.snap-deleted summary { cursor: pointer; padding: 2px 0; }
+.snap-deleted summary:hover { color: var(--ink); }
+.snap-deleted-item { padding: 2px 0 2px 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.snap-deleted-name { color: var(--ink); }
+.snap-deleted .dim { font-style: italic; }
 /* the progress line, only while a Generate round renders: a coral bar, "N of M found", Stop */
 .snap-progress { flex: none; display: flex; align-items: center; gap: 8px; margin: 4px 12px 6px; font: 400 12px/1 var(--snap-body); color: var(--muted); }
 .snap-progress[hidden] { display: none; }
 .snap-progress-bar { flex: 1; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .snap-progress-bar span { display: block; width: 0; height: 100%; background: var(--accent); transition: width .2s; }
 .snap-progress-stop { padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
-/* the footer: Generate (coral, wide; its ×N sets the count) and Nominate (seafoam) */
+/* the footer: Generate (coral, wide; its ×N sets the count) and Duplicate (seafoam) */
 .snap-foot { flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 10px; border-top: 1px solid var(--line); }
 .snap-generate { display: flex; min-width: 0; }
 .snap-btn { height: 34px; padding: 0 12px; border: 0; border-radius: 7px; font: 600 13px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
@@ -514,28 +520,24 @@ body:has(.palette.lib-dock:not([hidden])) #tab-library { padding-right: 312px; }
 /* the grip beside the patch name: drag the current patch onto a chip */
 .patch-grip { flex: none; padding: 0 4px; border: 0; background: transparent; color: var(--muted); font-size: 14px; line-height: 1; }
 .patch-grip:hover { color: var(--ink); }
-/* folded: the 52 px rail. The letter you hear (A outlined), N / M, ▲, a dot per candidate (A a square, gold kept, dashed
-   being judged; a click plays it), ▼, then Keep, remove and +N (Generate) */
+/* folded: the 52 px rail. The letter you hear, N / M, play, ▲, a dot per candidate (coral picked, dashed being judged; a
+   click makes it current), ▼, then PRE (Save preset), PAL (Add to palette), delete and +N (Generate) */
 .snap-rail { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0; }
 .snap-rail-body { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .snap-rail-open, .snap-rail-step { width: 34px; height: 30px; flex: none; }
 .snap-rail-tile { flex: none; width: 40px; height: 44px; margin-top: 4px; display: grid; place-items: center; border-radius: 9px; background: var(--secondary); color: var(--accent-ink);
   font: 700 24px/1 'Barlow Condensed', system-ui, sans-serif; }
-.snap-rail-tile.current { background: transparent; box-shadow: inset 0 0 0 2px var(--secondary); color: var(--secondary); }
 .snap-rail-pos { font: 500 11px/1 var(--snap-body); color: var(--muted); font-variant-numeric: tabular-nums; }
 .snap-rail-dots { flex: 0 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 6px 0; }
 .snap-dot { flex: none; width: 10px; height: 10px; padding: 0; border: 0; border-radius: 50%; background: color-mix(in oklab, var(--ink) 22%, var(--panel)); cursor: pointer; }
-.snap-dot.kept { background: var(--gate); }
+.snap-dot.picked { background: var(--accent); }
 .snap-dot.shown { width: 14px; height: 14px; background: var(--secondary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--secondary) 25%, transparent); }
-.snap-dot.kept.shown { box-shadow: 0 0 0 3px color-mix(in srgb, var(--gate) 55%, transparent); }
+.snap-dot.picked.shown { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent); }
 .snap-dot.pending { background: transparent; border: 1.5px dashed var(--muted); cursor: default; }
-.snap-dot.current { width: 12px; height: 12px; border-radius: 3px; background: transparent; border: 2px solid var(--muted); }
-.snap-dot.current.shown { border-color: var(--secondary); background: var(--secondary); }
 .snap-rail-sep { flex: none; width: 24px; height: 1px; margin-top: auto; background: var(--line); }
 .snap-rail-btn { flex: none; width: 36px; height: 30px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 7px; background: transparent;
-  color: var(--ink); font-size: 14px; line-height: 1; cursor: pointer; }
+  color: var(--ink); font: 700 12px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; cursor: pointer; }
 .snap-rail-btn:disabled { opacity: .3; cursor: default; }
-.snap-rail-btn.on { background: var(--gate); border-color: var(--gate); color: var(--panel); }
 .snap-rail-btn.generate { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font: 700 13px/1 'Barlow Condensed', system-ui, sans-serif; }
 dialog.help .shead { flex: none; height: 34px; padding: 0 6px 0 10px; }
 dialog.help .shead form { margin: 0; }
@@ -715,6 +717,10 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .slider-base::after { content: ''; position: absolute; top: calc(50% - 6px); width: 3px; height: 12px; border-radius: 2px; background: var(--secondary);
   left: calc((var(--base) - min(var(--position), var(--base))) / max(0.000001, max(var(--position), var(--base)) - min(var(--position), var(--base))) * 100% - 1.5px); }
 .slider-base[hidden] { display: none; }
+/* As made (D11): a thin grey tick where the value was when the candidate was made, shown while it is tweaked; behind the thumb, above the track. */
+.slider-made { position: absolute; z-index: 1; pointer-events: none; top: calc(50% - 5px); width: 2px; height: 10px; border-radius: 1px; background: var(--muted); opacity: .7;
+  left: calc(var(--made) * (100% - var(--jack-size)) + var(--jack-size) / 2 - 1px); }
+.slider-made[hidden] { display: none; }
 /* A knob tick: centred on the track like the base tick, where that FM-1 knob alone leaves the parameter at rest; a thumb over it hides it. */
 .slider-knob { position: absolute; z-index: 1; pointer-events: auto; top: calc(50% - 6px); width: 3px; height: 12px; border-radius: 2px; background: currentColor;
   left: calc(var(--at) * (100% - var(--jack-size)) + var(--jack-size) / 2 - 1.5px); }
@@ -1464,6 +1470,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .param.bar .slider-port { border-width: 2.5px; box-shadow: inset 0 0 0 2px var(--panel), 0 0 0 1.5px var(--bar); }
 .param.bar .slider-base { top: 0; height: 100%; border-radius: 0; background: color-mix(in srgb, var(--secondary) 16%, transparent); }
 .param.bar .slider-base::after { top: 0; height: 100%; width: 2px; border-radius: 1px; }
+.param.bar .slider-made { top: 0; height: 100%; border-radius: 0; }
 .param.bar .slider-knob { top: auto; bottom: -3px; height: 4px; width: 6px; left: calc(var(--at) * (100% - var(--jack-size)) + var(--jack-size) / 2 - 3px); }
 /* the routing menu (⋮): always shown, in its own slot right of the bar, so it never covers the thumb. Every bar of a card
    (or a dock column) that has one keeps the slot, so the bars stay the same width */

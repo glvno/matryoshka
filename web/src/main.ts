@@ -8,7 +8,8 @@ import { openMasterEq } from './master-eq';
 import { renderFm1Help } from './controls-help';
 import { ControlsStrip, stripPatch, type StripPatch } from './controls-strip';
 import { addUserPreset, capturePreset, exportPresets, importPresets, migrateUserPresets, nextPresetName, presetsOf } from './device-presets';
-import { presetEngines, snapshotPreset } from './snapshot-presets';
+import { presetEngines } from './snapshot-presets';
+import { CandidateStore, idbBackend, legacySet, LEGACY_STORE, memoryBackend, SET_STORE } from './candidate-store';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
 import { chainHelpers, rackOf } from './assembly';
@@ -30,13 +31,13 @@ import { Fm1View } from './fm1-view';
 import { panelPlay, EmuKeys } from './emu-keys';
 import { keysDrumRows, keysHarm, SandboxKeys } from './sandbox-keys';
 import { LinkedHarmKeys } from './linked-harm-keys';
-import { Editor, NOTHING_TO_MOVE, ZOOM_MAX, ZOOM_MIN } from './editor';
+import { Editor, NOTHING_TO_MOVE, ZOOM_MAX, ZOOM_MIN, type OpenHow } from './editor';
 import { navKey, WHEEL_SETTINGS, type NavKey, type WheelSetting } from './canvas-nav';
-import { snapshotKey, snapshotRecord, storedSnapshots, type Snapshot, type SnapshotKey } from './snapshots';
+import { CANDIDATE_LIMIT, originText, paletteName, snapshotKey, type CandidateSet, type Snapshot, type SnapshotKey } from './snapshots';
 import { ScopeScreens } from './scope-view';
 import { OUTPUT_SCOPE_KEY, OutputScope } from './output-scope';
 import { FxMeters } from './fx-meter';
-import { candidateTitle, renderList, renderProgress, renderRail, SnapSidebar, type SideActions, type SideView } from './snap-side';
+import { candidateTitle, countText, generateText, renderList, renderProgress, renderRail, SnapSidebar, type SideActions, type SideView } from './snap-side';
 import { OutputLoudness } from './loudness-view';
 import { LimiterMeters } from './limit-view';
 import { EnvScreens } from './env-view';
@@ -123,9 +124,9 @@ const STORE = renamedKey('matryoshka.patch', 'modular-1.patch');
 /** the address's fragment as the page opened (a share link's #p=, stripped once loaded): the reload after an import opens it again */
 const openedHash = location.hash;
 
-/** the snapshots of the remembered patch (D-972): kept beside it, tied to its text, never in the patch itself */
-const SNAP_STORE = 'matryoshka.snapshots';
-/** the remembered patch's text as the page opened (its snapshots come back only for it) */
+/** the candidates of the last 8 patches opened (D-972): this browser's IndexedDB, never in the patch itself */
+const candidateStore = new CandidateStore(idbBackend() ?? memoryBackend(), (p) => validatePatch(p, DEFS));
+/** the remembered patch's text as the page opened (today's candidates record, LEGACY_STORE, is tied to it) */
 let savedText: string | null = null;
 
 function loadSaved(): Patch | null {
@@ -137,18 +138,29 @@ function loadSaved(): Patch | null {
   }
 }
 
-/** remember the patch, and with it its snapshots; while a snapshot is on screen the current patch is the one remembered,
- *  so a reload brings back the current patch, never a snapshot in its place (#943) */
+/** remember the patch, the candidate heard (D-1425: every exit takes it), and with it its candidates and which set they
+ *  are, so a reload brings them back (D-972) */
 function save(p: Patch): void {
   try {
-    const text = JSON.stringify(p === editor.patch ? editor.currentPatch() : p);
-    localStorage.setItem(STORE, text);
-    const record = p === editor.patch ? snapshotRecord(text, editor.snaps.list) : null;
-    if (record) localStorage.setItem(SNAP_STORE, record);
-    else localStorage.removeItem(SNAP_STORE);
+    localStorage.setItem(STORE, JSON.stringify(p));
+    if (p === editor.patch) localStorage.setItem(SET_STORE, editor.snaps.id);
   } catch {
     /* private mode or storage blocked: the patch just isn't remembered */
   }
+  if (p === editor.patch) keepSet(editor.exportSet());
+}
+
+/** keep a set of candidates (candidate-store.ts); `opened`: it was opened just now (the 8 kept are the most recently
+ *  opened). The oldest set it pushes out is said in a toast that can bring it back */
+function keepSet(set: CandidateSet, opened = false): void {
+  const gone = candidateStore.save(set, { opened });
+  if (opened && set.id === editor.snaps.id) editor.snaps.opened = set.opened;
+  if (!gone) return;
+  const n = gone.list.length;
+  showUndo(`Put away for good: the ${n} candidate${n === 1 ? '' : 's'} of "${gone.name || 'Untitled'}" (8 patches keep theirs)`, () => {
+    candidateStore.restore(gone);
+    status.textContent = `the candidates of "${gone.name || 'Untitled'}" are kept again`;
+  });
 }
 
 const host = new AudioHost();
@@ -164,8 +176,8 @@ const queueSave = (p: Patch): void => {
   if (suppressSave) return;
   clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => {
-    save(p);
-    if (editor.snaps.list.length) renderSnapshots();   // (each snapshot's count of changes, and the mark of one changed since it was taken)
+    save(editor.patch);   // (as it is then: a switch in between makes another candidate the patch heard)
+    renderSnapshots();   // (each candidate's count of changes, and whether it is tweaked)
   }, 300);
 };
 
@@ -984,7 +996,7 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
   paletteSave: (pos) => {
     if (mirror.following) return;
     if (!palette?.linked) return void (status.textContent = 'Connect an FM-1 with firmware 1.26 to save to its palette');
-    const p = structuredClone(editor.currentPatch());
+    const p = structuredClone(editor.patch);
     void palette.add(p.name.trim() || 'Untitled', p, { pos });
   },
   // REC held + a black key on the emulated FM-1 (#139): the editor arms the same track, so the keys the page plays (the
@@ -1249,12 +1261,13 @@ const editor = new Editor($('canvas'), firstPatch, {
     else tutorial.redone();
   },
   onSnapshots() {
-    nameInput.value = editor.patch.name;   // (each stop has its own name, D-970)
+    nameInput.value = editor.patch.name;   // (each candidate has its own name, D-970)
     renderSnapshots();
-    queueSave(editor.patch);   // (the snapshots are kept beside the patch)
+    queueSave(editor.patch);   // (the candidates are kept with the patch, D-972)
     palette?.findCopies();   // (a chip added from a candidate has its copy there)
     renderPalette();
   },
+  onPutAway: (set) => keepSet(set),
   onSilence(p) {
     // a snapshot switch (D-970): both engines start the stop from silence. A Live FM-1 gets All Notes Off (MIDI CC 123), the
     // only silence the link has: it lets go of its notes, while its effect tails ring out unless the switch reloads it
@@ -1286,7 +1299,8 @@ editor.dockPlay = arpBtn;
 initStatusline($('statusline'));
 editor.rebuild();
 showBudget();
-snapshotCandidates = () => editor.snaps.list.map((s) => ({ name: `Candidate ${s.letter}`, patch: { ...JSON.parse(s.patch) as Patch, name: `Candidate ${s.letter}` } }));
+// the morph picker's B side offers the other candidates of the patch (D-970)
+snapshotCandidates = () => editor.snaps.list.filter((s) => s.letter !== editor.snaps.current).map((s) => ({ name: `Candidate ${s.letter}`, patch: { ...JSON.parse(s.patch) as Patch, name: `Candidate ${s.letter}` } }));
 host.setPatch(editor.patch);
 const tutorial = new Tutorial({
   editor,
@@ -1294,7 +1308,7 @@ const tutorial = new Tutorial({
   mute: (on) => host.mute(on),
   startAudio: () => startAudio(),
   preview: (p) => host.setPatch(p ?? editor.patch),
-  load: (p) => { sink.send({ t: 'panic' }); loadNamed(p, { quiet: true }); },
+  load: (p) => { sink.send({ t: 'panic' }); loadNamed(p, { quiet: true, fresh: true }); },
   note: (on, note = 60, vel = 0.8) => sink.send(on ? { t: 'on', note, vel } : { t: 'off', note }),
   library: loadLibrary,
   saveAssembly: (def) => {
@@ -1665,10 +1679,10 @@ const showDiff = (): void => {
   diffPanel.append(h, ul);
   diffPanel.hidden = false;
 };
-// ---- candidates (#943, #1048; snapshots in the code): versions of the patch kept with it (kept beside the remembered
-// patch: save, D-972). The Sound design sidebar at the canvas's right edge lists them under the Output scope, the current
-// patch first as A (#1040); Alt+B or Alt+J goes down the list and round to A, Alt+K the other way (#1028), Shift+Alt+B
-// nominates the patch heard, Alt+X removes the candidate heard, Alt+C uses it, a drag puts one elsewhere in the list
+// ---- candidates (#943, #1048, owner 2026-11-24; snapshots in the code): versions of the patch, all alike, the one heard
+// the current patch (D-970, D-1425), kept per patch in this browser (candidate-store.ts, D-972). The Sound design sidebar
+// at the canvas's right edge lists them under the Output scope; Alt+B or Alt+J goes down the list and round, Alt+K the
+// other way (#1028), Shift+Alt+B duplicates the one heard, Alt+X deletes it, a drag puts one elsewhere in the list
 const snapStrip = $('snapshot-strip');
 // the sidebar: its width and its fold; the canvas gives up its width (style.css .snap-column)
 const snapColumn = $('snap-column');
@@ -1710,16 +1724,16 @@ function renderPalette(): void {
 palette = new Palette({
   device,
   candidates: () => bankCandidates(),
-  versions: () => [editor.patch, editor.currentPatch(), ...editor.snaps.list.map((s) => JSON.parse(s.patch) as Patch)],
+  versions: () => editor.snaps.list.map((s) => editor.snapshotVersion(s)),
   live: () => live() && onEditorPatch,
   current: () => editor.patch,   // (what the FM-1 plays under Live: the candidate on screen, A or another)
   open(p, o) {
     // a switch keeps the candidates: the patch it replaces joins them (owner 2026-11-24, D-1321)
-    if (!o.adopt) return loadNamed(p, { from: o.from, keep: true });
+    if (!o.adopt) return loadNamed(p, { from: o.from, palette: true });
     // the FM-1 switched under Live: it plays this patch already, so the editor takes it as the FM-1's (nothing is sent
     // back: a second upload would cost a second gap and make the FM-1's patch FROM EDITOR), and Live edits go to it
     fromDevice = true;
-    try { loadNamed(p, { from: o.from, keep: true }); } finally { fromDevice = false; }
+    try { loadNamed(p, { from: o.from, palette: true }); } finally { fromDevice = false; }
     uploadGate.forget();
     onEditorPatch = true;
     installedLayout = deviceLayoutKey(editor.patch);
@@ -1750,10 +1764,11 @@ palette = new Palette({
   banked: () => libraryPanes.patches?.deviceChanged(currentView === 'library' && librarySection === 'patches'),
 });
 renderPalette();
-/** Add to palette (the patch menu, Commands): the patch heard (the candidate on screen) into the first empty position */
+/** the name the candidate heard goes into the palette under (D-1319): the patch's, with the candidate's name or letter */
+const heardName = (): string => paletteName(editor.patch.name, editor.snaps.shown, editor.snaps.list.length);
+/** Add to palette (the row heard, the rail, the patch menu, Commands): the candidate heard into the first empty position */
 const addCurrentToPalette = (): void => {
-  const p = structuredClone(editor.patch);
-  void palette?.add(p.name.trim() || 'Untitled', p);
+  void palette?.add(heardName(), structuredClone(editor.patch));
 };
 // the grip beside the patch name: the canvas's patch dragged onto a chip
 const patchGrip = document.createElement('button');
@@ -1762,7 +1777,7 @@ patchGrip.className = 'patch-grip';
 patchGrip.textContent = '⠿';
 patchGrip.title = 'Drag the patch onto a palette chip (the Sound design sidebar)';
 patchGrip.setAttribute('aria-label', 'Drag the patch onto a palette chip');
-patchDragSource(patchGrip, () => ({ name: editor.patch.name.trim() || 'Untitled', patch: () => structuredClone(editor.patch) }));
+patchDragSource(patchGrip, () => ({ name: heardName(), patch: () => structuredClone(editor.patch) }));
 $('patch-name').after(patchGrip);
 /** the Listen block's phrase plays (the rail's play button); its Audition is made further down */
 let listenPlaying = (): boolean => false;
@@ -1791,7 +1806,7 @@ const pickCount = (anchor: HTMLElement): void => popMenu(CANDIDATE_COUNTS.map((c
 /** a pointer drag of a candidate's row is under way and has moved: the click that ends it does not switch */
 let snapDragged = false;
 /** a drag of a candidate's row up or down the list puts it there (#1040, D-970): the keys go through the candidates in
- *  the list's order and the letters stay; A stays first. The row lifts and follows the pointer, its place fades, and a
+ *  the list's order and the letters stay. The row lifts and follows the pointer, its place fades, and a
  *  teal line shows where it lands; near the list's top or bottom the list scrolls */
 function dragSnapshot(e: PointerEvent, row: HTMLElement, letter: string): void {
   if (e.button !== 0) return;
@@ -1839,177 +1854,154 @@ function dragSnapshot(e: PointerEvent, row: HTMLElement, letter: string): void {
   addEventListener('pointerup', up);
   addEventListener('pointercancel', up);
 }
-/** how many changes the candidate is from the current patch, counted as Show changes counts them */
-const snapChanges = (s: Snapshot): number => diffCount(diffPatches(editor.currentPatch(), JSON.parse(s.patch) as Patch, DEFS));
+/** how many changes the candidate is from the one heard, counted as Show changes counts them */
+const snapChanges = (s: Snapshot): number => diffCount(diffPatches(editor.patch, editor.snapshotVersion(s), DEFS));
 const snapTitle = (s: Snapshot): string => candidateTitle(s.letter, s.name);
 /** the Generate round rendering by ear now (a category, #1033), for the progress line and the row being judged */
 let round: SideView['round'] = null;
+/** the candidates picked as parents (⌘, Ctrl or Shift-click, D-987), in pick order: a selection, gone after a round and
+ *  when another patch opens */
+let picks: string[] = [];
+/** the set the picks belong to */
+let picksOf = '';
 const sideActions: SideActions = {
   hear: (letter) => { if (!snapDragged) showStop(letter); },
-  keep: (letter, on) => {
-    editor.setKeep(letter, on);
-    status.textContent = `${letter}: ${on ? 'kept, Generate breeds from the kept ones' : 'not kept'}`;
+  pick: (letter) => {
+    if (snapDragged) return;
+    picks = picks.includes(letter) ? picks.filter((l) => l !== letter) : [...picks, letter];
+    renderSnapshots();
+    status.textContent = picks.length ? `${generateText(picks)}: Generate makes candidates from ${picks.length > 1 ? 'the picked ones' : letter}` : 'no parent picked: Generate varies the candidate you hear';
   },
-  use: (letter) => makeCurrent(letter),
-  remove: (letter) => (letter === editor.snaps.shown ? removeShown() : removeCandidate(letter)),
+  remove: (letter) => removeCandidate(letter),
+  putBack: (i) => putBack(i),
+  revert: (letter) => revertCandidate(letter),
+  savePreset: (anchor) => savePreset(anchor),
+  addToPalette: addCurrentToPalette,
   more: (s, anchor) => popMenu(snapshotMenu(s), anchor),
-  currentMore: (anchor, e) => {
-    const items = keptPresetItems();
-    if (!items.length) return;
-    e.preventDefault();
-    popMenu(items, anchor);
-  },
   drag: dragSnapshot,
   step: (dir) => cycleSnapshots(dir),
   generate: () => makeCandidates(),
   play: () => audition.toggle(),
 };
 function renderSnapshots(): void {
-  const { list, shown } = editor.snaps;
-  const view: SideView = { list, shown, edited: editor.shownEdited(), currentName: editor.currentPatch().name, changes: snapChanges, round, count: candidates, playing: listenPlaying() };
+  if (picksOf !== editor.snaps.id) [picks, picksOf] = [[], editor.snaps.id];
+  picks = picks.filter((l) => editor.snaps.get(l));
+  const { list, current, deleted } = editor.snaps;
+  const view: SideView = { list, current, tweaked: (s) => editor.tweaked(s), changes: snapChanges, picks, deleted, engines: presetEngines(editor.patch).length, round, count: candidates, playing: listenPlaying() };
   renderList(snapStrip, view, sideActions);
   renderRail(snapSide.rail, view, sideActions);
   renderProgress($('snap-progress'), round);
-  $('cand-count').textContent = list.length ? String(list.length) : '';
+  $('cand-count').textContent = countText(list.length);
   $('snap-count').textContent = `×${candidates}`;
+  $('snap-generate').textContent = generateText(picks);
 }
 $('snap-generate').onclick = () => makeCandidates();
 $('snap-count').onclick = (e) => pickCount(e.currentTarget as HTMLElement);
-$('snap-nominate').onclick = () => takeSnapshot();
+$('snap-duplicate').onclick = () => duplicate();
 $('snap-stop').onclick = () => { if (byEar) byEar.stop = true; };
-/** the head's ⋯ menu (#1048): Mutate and its settings, candidates per round, then storing and saving, the row heard last */
-const sideMenu = (anchor: HTMLElement): MenuItem[] => {
-  const s = editor.snaps.get(editor.snaps.shown);
-  const heard = s ? [
-    { text: `Save ${s.letter} as a patch…`, rule: true, run: () => saveSnapshotPatch(s) },
-    ...presetEngines(editor.currentPatch()).map((a) => ({ text: `Store ${s.letter} as a preset of ${a.label}…`, run: () => storeSnapshotPreset(s, a) })),
-  ] : [{ text: 'Save A, the current patch', rule: true, run: saveCurrent }];
+/** the head's ⋯ menu (#1048): Mutate and its settings, candidates per round, then Duplicate and saving the one heard */
+const sideMenu = (anchor: HTMLElement): MenuItem[] => [
+  { text: 'Mutate', key: 'Alt+M', run: inPatch(() => void editor.mutate('mutate')) },
+  { text: 'Randomize', run: inPatch(() => void editor.mutate('randomize')) },
+  { text: 'Lock envelopes', run: inPatch(() => void editor.lockEnvelopes()) },
+  { text: `Mutate amount: ±${Math.round(editor.mutateAmount * 100)} % …`, rule: true, run: () => popMenu(MUTATE_AMOUNTS.map((a) => ({ text: `${a === editor.mutateAmount ? '✓ ' : ''}±${Math.round(a * 100)} %`, run: () => setMutateAmount(a) })), anchor) },
+  { text: `Mutate pitch: ${editor.mutatePitch ? 'on' : 'off'}`, run: () => setMutatePitch(!editor.mutatePitch) },
+  { text: `Candidates per round: ${candidates} …`, run: () => pickCount(anchor) },
+  { text: 'Duplicate', key: 'Shift+Alt+B', rule: true, run: () => duplicate() },
+  { text: `Save ${editor.snaps.current} as a patch…`, run: () => saveSnapshotPatch(editor.snaps.shown) },
+];
+/** a candidate's menu (right-click, double-click, ⋯ on the row heard) */
+const snapshotMenu = (s: Snapshot): MenuItem[] => {
+  const heard = s.letter === editor.snaps.current;
   return [
-    { text: 'Mutate', key: 'Alt+M', run: inPatch(() => void editor.mutate('mutate')) },
-    { text: 'Randomize', run: inPatch(() => void editor.mutate('randomize')) },
-    { text: 'Lock envelopes', run: inPatch(() => void editor.lockEnvelopes()) },
-    { text: `Mutate amount: ±${Math.round(editor.mutateAmount * 100)} % …`, rule: true, run: () => popMenu(MUTATE_AMOUNTS.map((a) => ({ text: `${a === editor.mutateAmount ? '✓ ' : ''}±${Math.round(a * 100)} %`, run: () => setMutateAmount(a) })), anchor) },
-    { text: `Mutate pitch: ${editor.mutatePitch ? 'on' : 'off'}`, run: () => setMutatePitch(!editor.mutatePitch) },
-    { text: `Candidates per round: ${candidates} …`, run: () => pickCount(anchor) },
-    ...keptPresetItems(),
-    ...heard,
+    { text: heard ? 'Generate from it' : 'Hear it, then Generate from it', key: heard ? 'Alt+N' : undefined, run: () => { picks = []; showStop(s.letter); makeCandidates(); } },
+    { text: picks.includes(s.letter) ? 'Unpick as a parent' : 'Pick as a parent', key: '⌘/Shift-click', run: () => sideActions.pick(s.letter) },
+    { text: 'Rename…', rule: true, run: () => {
+      const to = window.prompt(`Name of candidate ${s.letter} (empty: none)`, s.name ?? '');
+      if (to !== null) editor.renameSnapshot(s.letter, to.trim());
+    } },
+    ...(editor.tweaked(s) ? [{ text: 'Revert to how it was made', run: () => revertCandidate(s.letter) }] : []),
+    ...(heard ? [{ text: 'Duplicate', key: 'Shift+Alt+B', run: () => duplicate() }] : []),
+    { text: 'Save as a patch…', run: () => saveSnapshotPatch(s) },
+    { text: 'Delete', key: heard ? 'Alt+X' : undefined, danger: true, run: () => removeCandidate(s.letter) },
   ];
 };
-const snapshotMenu = (s: Snapshot): MenuItem[] => [
-  { text: s.mark === 'keep' ? 'Unkeep' : 'Keep', run: () => sideActions.keep(s.letter, s.mark !== 'keep') },
-  { text: 'Generate from it', key: 'Alt+N', rule: true, run: () => { showStop(s.letter); makeCandidates(); } },
-  { text: 'Rename…', run: () => {
-    const to = window.prompt(`Name of candidate ${s.letter} (empty: none)`, s.name ?? '');
-    if (to !== null) editor.renameSnapshot(s.letter, to.trim());
-  } },
-  { text: 'Use it as the current patch', key: s.letter === editor.snaps.shown ? 'Alt+C' : undefined, run: () => makeCurrent(s.letter) },
-  { text: 'Save as a patch…', run: () => saveSnapshotPatch(s) },
-  ...presetEngines(editor.currentPatch()).map((a, i) => ({ text: `Store as a preset of ${a.label}…`, rule: i === 0, run: () => storeSnapshotPreset(s, a) })),
-  ...keptPresetItems(),
-  { text: 'Remove', danger: true, run: () => removeCandidate(s.letter) },
-];
 /** save candidate `s` to Your patches, under a name the user gives */
 const saveSnapshotPatch = (s: Snapshot): void => {
   const p = editor.snapshotVersion(s);
-  const name = window.prompt(`Save candidate ${s.letter} to Your patches as`, s.name ?? `${editor.currentPatch().name} ${s.letter}`)?.trim();
+  const name = window.prompt(`Save candidate ${s.letter} to Your patches as`, paletteName(p.name, s, Math.max(2, editor.snaps.list.length)))?.trim();
   if (name) status.textContent = keepPatch({ ...p, name }).msg;
 };
-/** forget candidate `letter` (its menu's Remove); the one heard goes as Alt+X removes it */
+/** delete candidate `letter` (✕, its menu, Alt+X on the one heard): into Recently deleted, with Undo in a toast. The one
+ *  heard hands over to the next */
 const removeCandidate = (letter: string): void => {
-  if (letter === editor.snaps.shown) return removeShown();
-  editor.removeSnapshot(letter);
-  status.textContent = `candidate ${letter} removed`;
-  queueSave(editor.patch);
+  const heard = letter === editor.snaps.current;
+  const d = editor.deleteSnapshot(letter);
+  if (!d) return void (status.textContent = 'the last candidate stays: one is always the current patch');
+  if (heard) switched();
+  const title = snapTitle(d.s);
+  status.textContent = `candidate ${title} deleted${heard ? `, you hear ${snapTitle(editor.snaps.shown)}` : ''} (Undo, or Recently deleted under the list, puts it back)`;
+  showUndo(`Candidate ${title} deleted`, () => {
+    const i = editor.snaps.deleted.findIndex((x) => x.s === d.s);
+    if (i >= 0) putBack(i);
+  });
 };
-// ---- presets from candidates (#1031, D-993): a candidate's values for an engine become a preset of the current patch's
-// engine, without a switch; one undo step takes them out again
-/** store candidate `s`'s values for the engine `a` as a preset of the current patch's `a`, under a name the user gives */
-const storeSnapshotPreset = (s: Snapshot, a: AssemblyInst): void => {
-  const cur = editor.currentPatch();
-  if (!snapshotPreset(cur, a, editor.snapshotVersion(s), a.label))
-    return void (status.textContent = `${a.label} or the effects in its FX drawer in candidate ${s.letter} are built differently from the current patch's: a preset holds values only, so it cannot be one of its presets`);
-  const name = window.prompt(`Store candidate ${s.letter}’s ${a.label} as a preset of the current patch’s ${a.label}`, s.name ?? nextPresetName(cur, a))?.trim();
-  if (!name) return;
-  const [done] = editor.storeSnapshotPresets(a.id, [{ letter: s.letter, name }], false).stored;
-  if (done) status.textContent = `candidate ${s.letter}’s ${a.label} stored as the preset “${done.name}” of ${a.label} (Ctrl/Cmd+Z takes it out)`;
+/** Recently deleted's `i`th back in its place */
+const putBack = (i: number): void => {
+  const s = editor.putBack(i);
+  status.textContent = s ? `candidate ${snapTitle(s)} is back` : `${CANDIDATE_LIMIT} candidates is the most for one patch: delete one first`;
 };
-/** every kept candidate becomes a preset of the current patch's engine `a`, named after the candidate */
-const storeKeptPresets = (a: AssemblyInst): void => {
-  const keeps = editor.snaps.list.filter((s) => s.mark === 'keep');
-  if (!keeps.length) return void (status.textContent = 'no candidate is kept: tick a candidate (or hear it and press Keep), then each kept one becomes a preset');
-  const { stored, skipped } = editor.storeSnapshotPresets(a.id, keeps.map((s) => ({ letter: s.letter, name: s.name ?? s.letter })), true);
-  if (!stored.length && !skipped.length) return;   // (an error: the status line says it)
-  const done = stored.length ? `${stored.length} preset${stored.length === 1 ? '' : 's'} of ${a.label} stored: ${stored.map((x) => `${x.letter} as “${x.name}”`).join(', ')} (Ctrl/Cmd+Z takes ${stored.length === 1 ? 'it' : 'them'} out)` : `no preset of ${a.label} stored`;
-  status.textContent = done + (skipped.length ? ` · skipped ${skipped.join(', ')}: ${a.label} or the effects in its FX drawer are built differently there from the current patch's, and a preset holds values only` : '');
+/** revert (D-1425): candidate `letter` heard, then back to how it was made (one undo step of it) */
+const revertCandidate = (letter: string): void => {
+  showStop(letter);
+  if (editor.revert()) status.textContent = `${snapTitle(editor.snaps.shown)} is back to how it was made (Ctrl/Cmd+Z undoes it)`;
 };
-/** Store kept candidates as presets, one item per engine of the current patch that has presets */
-const keptPresetItems = (): MenuItem[] => presetEngines(editor.currentPatch()).map((a, i) => ({ text: `Store kept candidates as presets of ${a.label}`, rule: i === 0, run: () => storeKeptPresets(a) }));
-/** Nominate (Shift+Alt+B): the patch heard becomes a new candidate */
-const takeSnapshot = (): void => {
-  const s = editor.takeSnapshot();
-  editor.rebuild();   // (the morph picker offers the candidates)
-  status.textContent = `${s.letter} nominated: Alt+J goes on to it, Alt+K back to A`;
+/** Save preset (D-1426): the candidate heard as a preset of one of its engines, an instrument with its FX drawer; with one
+ *  engine its Store dialog opens at once, with more a list under `anchor` */
+const savePreset = (anchor: HTMLElement): void => {
+  const engines = presetEngines(editor.patch);
+  if (engines.length === 1) return editor.savePreset(engines[0].id);
+  if (!engines.length) return void (status.textContent = 'Save preset: this patch has no engine with presets');
+  popMenu(engines.map((a) => ({ text: `${a.label}…`, run: () => editor.savePreset(a.id) })), anchor);
 };
-/** after a switch: the name, the status line (what the stop is, and where changes to the candidate left went) */
-const switched = (r: { kept?: Snapshot } | null): void => {
-  if (!r) return;
-  audition.restart();   // (a test phrase starts again: each stop hears the same notes from the top, #945)
+/** Duplicate (Shift+Alt+B): a copy of the candidate heard, under it, heard; what is done next goes to the copy */
+const duplicate = (): void => {
+  const from = editor.snaps.current;
+  const s = editor.duplicate();
+  if (s) status.textContent = `${s.letter} is a copy of ${from}: what you do now goes to ${s.letter}, and ${from} stays as it is`;
+};
+/** after a switch: the test phrase from the top, the tutorial, the status line, the save */
+const switched = (): void => {
+  audition.restart();   // (a test phrase starts again: each candidate hears the same notes from the top, #945)
   tutorial.flipped();
-  const s = editor.snaps.get(editor.snaps.shown);
-  const n = s ? snapChanges(s) : 0;
-  const where = s ? `candidate ${snapTitle(s)}: ${n ? `${n} change${n === 1 ? '' : 's'} from the current patch` : 'the same as the current patch'}` : 'A, the current patch';
-  status.textContent = where + (r.kept ? ` · your changes are kept as candidate ${r.kept.letter}` : '');
+  const s = editor.snaps.shown;
+  status.textContent = `candidate ${snapTitle(s)}, ${originText(s)}${editor.tweaked(s) ? ', tweaked' : ''}: the current patch`;
   queueSave(editor.patch);
 };
-const showStop = (letter: string | null): void => switched(editor.showSnapshot(letter));
-/** the next stop (`step` -1: the one before) */
+const showStop = (letter: string): void => { if (editor.showSnapshot(letter)) switched(); };
+/** the next candidate (`step` -1: the one before) */
 const cycleSnapshots = (step: 1 | -1 = 1): void => {
-  const r = editor.cycleSnapshots(step);
-  if (r) switched(r);
-  else status.textContent = 'A, the current patch, is the only candidate: Generate (Alt+N) or Nominate (Shift+Alt+B) adds more, then Alt+J goes through them';
+  if (editor.cycleSnapshots(step)) switched();
+  else status.textContent = 'this is the only candidate: Generate (Alt+N) or Duplicate (Shift+Alt+B) makes more, then Alt+J goes through them';
 };
-/** Alt+X (#1028): remove the candidate heard at once (one undo step) and go on to the next stop */
-const removeShown = (): void => {
-  const r = editor.removeShown();
-  if (!r) return void (status.textContent = editor.snaps.list.length ? 'you are hearing A, the current patch: Alt+X removes a candidate, never A (Alt+J or Alt+K goes to one)' : 'no candidate to remove');
-  switched(r);
-  status.textContent = `candidate ${r.removed.letter} removed (Ctrl/Cmd+Z puts it back) · ${status.textContent}`;
-};
-/** Use: a candidate becomes the current patch, A, and leaves the list; the patch it replaces takes its place there (#1040) */
-const makeCurrent = (letter: string): void => {
-  const kept = editor.makeCurrent(letter);
-  audition.restart();   // (a switch: silenced, then the test phrase from the top)
-  status.textContent = `${letter} is now A, the current patch (Ctrl/Cmd+Z puts it back)${kept ? `; the patch it replaces is kept as ${kept.letter}, in its place` : ''}`;
-  queueSave(editor.patch);
-};
-/** Alt+C (#1040): Use the candidate heard */
-const makeShownCurrent = (): void => {
-  const shown = editor.snaps.shown;
-  if (shown === null) return void (status.textContent = editor.snaps.list.length ? 'you are hearing A, the current patch, already: Alt+C uses the candidate you hear (Alt+J or Alt+K goes to one)' : 'no candidate to use');
-  makeCurrent(shown);
-};
-const snapshotKeyRun: Record<SnapshotKey, () => void> = { next: () => cycleSnapshots(1), previous: () => cycleSnapshots(-1), take: () => takeSnapshot(), remove: removeShown, current: makeShownCurrent };
-// ---- rank and cut (#996): Generate (Alt+N) mutates the patch heard into new candidates; Alt+J / Alt+K go through them,
-// Alt+X removes a loser at once; the keep mark chooses what the next round breeds from
-const toggleKeepShown = (): void => {
-  const s = editor.snaps.get(editor.snaps.shown);
-  if (!s) return void (status.textContent = 'hear a candidate first (Alt+J): A, the current patch, is never kept');
-  sideActions.keep(s.letter, s.mark !== 'keep');
-};
+const snapshotKeyRun: Record<SnapshotKey, () => void> = { next: () => cycleSnapshots(1), previous: () => cycleSnapshots(-1), duplicate, remove: () => removeCandidate(editor.snaps.current) };
+// ---- Generate (Alt+N) mutates the candidate heard, or breeds the picked ones, into new candidates; Alt+J / Alt+K go
+// through them, Alt+X deletes one at once
 /** the round of Generate rendering now (a category, #1033): set `stop` to end it early */
 let byEar: { stop: boolean } | null = null;
 const makeCandidates = (): void => {
   if (byEar) return void (byEar.stop = true);   // (Generate again while a round renders: stop it there)
-  const keeps = editor.snaps.list.filter((s) => s.mark === 'keep').map((s) => s.letter);
-  const from = keeps.length >= 2 ? `the kept ${keeps.join(', ')}` : editor.snaps.shown ?? 'A, the current patch';
-  const how = keeps.length >= 2 ? `bred, then mutated by up to ±${Math.round(editor.mutateAmount * 50)} %` : `each mutated by up to ±${Math.round(editor.mutateAmount * 100)} %`;
-  const tail = `${editor.mutatePitch ? '' : ', pitch held'}: Alt+J listens on, Alt+K back, Alt+X removes`;
+  const chosen = picks.filter((l) => editor.snaps.get(l));
+  const n = Math.min(candidates, editor.snaps.room());
+  const from = chosen.length >= 2 ? chosen.join(' × ') : chosen[0] ?? editor.snaps.current;
+  const how = chosen.length >= 2 ? `bred, then mutated by up to ±${Math.round(editor.mutateAmount * 50)} %` : `each mutated by up to ±${Math.round(editor.mutateAmount * 100)} %`;
+  const tail = `${editor.mutatePitch ? '' : ', pitch held'}${n < candidates ? ` (${CANDIDATE_LIMIT} is the most for one patch)` : ''}: Alt+J listens on, Alt+K back, Alt+X deletes`;
   const category = editor.mutateCategory;
-  if (category !== 'any') return void makeByEar(category, from, how, tail);
-  const made = editor.makeCandidates(candidates);
+  if (category !== 'any' && n > 0) return void makeByEar(category, chosen, n, from, how, tail);
+  const made = editor.makeCandidates(candidates, chosen);
   if (!made.length) return;
-  editor.rebuild();   // (the morph picker offers the candidates)
-  switched({});
+  picks = [];
+  switched();
   status.textContent = `${made.length} candidates from ${from}, ${made[0].letter}–${made.at(-1)!.letter}, ${how}${tail}`;
 };
 /**
@@ -2018,56 +2010,71 @@ const makeCandidates = (): void => {
  * list as they pass, the nearest fill the round. The render keeps no sound: only a few numbers per candidate, for this
  * round. The progress line and a row being judged show it while it runs.
  */
-async function makeByEar(category: Exclude<Category, 'any'>, from: string, how: string, tail: string): Promise<void> {
-  const r0 = editor.candidateRound(), probe = probePhrase(r0.parent), me = { stop: false };
-  const ids = editor.patch.modules.map((m) => m.id).join();
+async function makeByEar(category: Exclude<Category, 'any'>, chosen: readonly string[], n: number, from: string, how: string, tail: string): Promise<void> {
+  const r0 = editor.candidateRound(chosen), probe = probePhrase(r0.parent), me = { stop: false };
+  const set = editor.snaps.id;
   const made: Snapshot[] = [];
   byEar = me;
-  round = { found: 0, of: candidates, rendered: 0, most: candidates * OVERSAMPLE };
+  round = { found: 0, of: n, rendered: 0, most: n * OVERSAMPLE };
   renderSnapshots();
   const by = `the probe (${NOTE_NAMES[probe.notes[0].note]} held ${PROBE_HOLD} s)`;
   status.textContent = `Generate aimed at ${category}: rendering each with ${by}…`;
   try {
     const r = await filterRound({
-      n: candidates, profile: PROFILES[category], parent: r0.parent, next: r0.next, sr: WAV_RATE,
+      n, profile: PROFILES[category], parent: r0.parent, next: r0.next, sr: WAV_RATE,
       render: (p) => audition.renderWith(p, probe, PROBE_RENDER),
       keep: (p, fit) => {
         made.push(editor.takeCandidate(p, r0.from, { kind: category, fits: fit <= PASS }));
         if (round) round.found = made.length;
       },
       progress: (k, of, passed) => {
-        round = { found: passed, of: candidates, rendered: k, most: of };
+        round = { found: passed, of: n, rendered: k, most: of };
         renderSnapshots();
-        status.textContent = `Generate aimed at ${category}: ${k} of up to ${of} rendered with ${by}, ${passed} of ${candidates} sound like ${category === 'keys' ? 'keys' : `a ${category}`} so far (Alt+N or Stop stops)`;
+        status.textContent = `Generate aimed at ${category}: ${k} of up to ${of} rendered with ${by}, ${passed} of ${n} sound like ${category === 'keys' ? 'keys' : `a ${category}`} so far (Alt+N or Stop stops)`;
       },
       // (another patch opened under the round: its candidates would not be of it)
-      cancelled: () => me.stop || editor.patch.modules.map((m) => m.id).join() !== ids,
+      cancelled: () => me.stop || editor.snaps.id !== set,
     });
     round = null;
-    if (editor.patch.modules.map((m) => m.id).join() !== ids) return void (status.textContent = `Generate aimed at ${category}: stopped, another patch is open`);
+    if (editor.snaps.id !== set) return void (status.textContent = `Generate aimed at ${category}: stopped, another patch is open`);
     if (!made.length) return void (status.textContent = r.rendered ? `Generate aimed at ${category}: stopped before any candidate` : `Generate: nothing to move there (${NOTHING_TO_MOVE})`);
     editor.endCandidates(made);
-    editor.rebuild();   // (the morph picker offers the candidates)
-    switched({});
+    picks = [];
+    switched();
     const fit = `${r.passed} of ${r.rendered} rendered sound like ${category === 'keys' ? 'keys' : `a ${category}`}${r.filled ? `, ${r.filled} kind of do (the nearest)` : ''}`;
     status.textContent = `${made.length} candidates from ${from}, ${made[0].letter}–${made.at(-1)!.letter}, ${how}, aimed at ${category} (${fit})${tail}`;
   } catch (e) {
     round = null;
     status.textContent = `Generate aimed at ${category}: a render failed (${(e as Error).message})`;
-    if (made.length && editor.patch.modules.map((m) => m.id).join() === ids) editor.endCandidates(made);
+    if (made.length && editor.snaps.id === set) editor.endCandidates(made);
   } finally {
     byEar = null;
     round = null;
     renderSnapshots();
   }
 }
-// the candidates the browser kept with the remembered patch, when the page opened on it (each is checked as a patch is;
-// a record from before A was the current patch is lettered once more, storedSnapshots)
-if (firstPatch === editor.patch && savedText !== null) {
-  const kept = storedSnapshots((() => { try { return localStorage.getItem(SNAP_STORE); } catch { return null; } })(), savedText).flatMap((s) => {
-    try { return [{ ...s, patch: JSON.stringify(validatePatch(JSON.parse(s.patch), DEFS)) }]; } catch { return []; }
+// the candidates come back with the remembered patch (D-972): its set, by the id kept beside it. Before 1.26.4 this
+// browser kept them in localStorage (LEGACY_STORE), tied to the remembered patch's text: they become its set, once
+{
+  const opened = editor.snaps.id;
+  void candidateStore.ready.then(() => {
+    let id: string | null = null, legacy: string | null = null;
+    try { [id, legacy] = [localStorage.getItem(SET_STORE), localStorage.getItem(LEGACY_STORE)]; } catch { /* storage blocked */ }
+    let set = id ? candidateStore.get(id) : undefined;
+    if (legacy !== null) {
+      const was = legacySet(legacy, savedText, (p) => validatePatch(p, DEFS));
+      if (was && !set) {
+        candidateStore.save(was);
+        set = was;
+      }
+      try { localStorage.removeItem(LEGACY_STORE); } catch { /* storage blocked */ }
+    }
+    // (only while the page still shows the remembered patch as it opened: a link or another open came first otherwise)
+    if (set && firstPatch === editor.patch && editor.snaps.id === opened) {
+      editor.takeSet(set);
+      keepSet(editor.exportSet(), true);
+    }
   });
-  if (kept.length) editor.restoreSnapshots(kept);
 }
 renderSnapshots();
 outScope.update(true);
@@ -2186,22 +2193,18 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Delete selection', detail: 'Delete', run: inPatch(() => editor.removeSelected()) },
     { kind: 'command', label: 'Bypass selection', detail: 'B', run: inPatch(() => editor.bypassSelected()) },
     { kind: 'command', label: 'Show changes since last load / upload', keywords: 'diff', run: inPatch(showDiff) },
-    { kind: 'command', label: 'Nominate', detail: 'Shift+Alt+B · the patch you hear as a new candidate', keywords: 'take snapshot candidate compare ab a/b set version keep sound design', run: inPatch(takeSnapshot) },
-    { kind: 'command', label: 'Generate', detail: `Alt+N · ${candidates} candidates`, keywords: 'make candidates rank cut mutate variations breed snapshots audition sound design', run: inPatch(makeCandidates) },
+    { kind: 'command', label: 'Duplicate this candidate', detail: 'Shift+Alt+B · a copy of the one you hear, to go on from', keywords: 'copy take snapshot candidate compare ab a/b set version keep nominate sound design', run: inPatch(duplicate) },
+    { kind: 'command', label: generateText(picks), detail: `Alt+N · ${candidates} candidates`, keywords: 'generate make candidates breed parents mutate variations snapshots audition sound design', run: inPatch(makeCandidates) },
     ...CANDIDATE_COUNTS.map((c) => ({ kind: 'command' as const, label: `Candidates per round: ${c}`, detail: c === candidates ? 'now' : undefined, keywords: 'generate rank cut make how many', run: () => setCandidates(c) })),
-    { kind: 'command', label: editor.snaps.get(editor.snaps.shown)?.mark === 'keep' ? 'Unkeep this candidate' : 'Keep this candidate', keywords: 'rank mark winner snapshot breed', run: inPatch(toggleKeepShown) },
-    { kind: 'command', label: 'Remove this candidate', detail: 'Alt+X', keywords: 'rank loser drop cut delete snapshot', run: inPatch(removeShown) },
-    { kind: 'command', label: 'Use this candidate', detail: 'Alt+C · it becomes A, the current patch', keywords: 'rank winner keep set current snapshot make', run: inPatch(makeShownCurrent) },
+    { kind: 'command', label: 'Delete this candidate', detail: 'Alt+X · Undo or Recently deleted puts it back', keywords: 'remove drop cut loser snapshot', run: inPatch(() => removeCandidate(editor.snaps.current)) },
+    ...(editor.tweaked(editor.snaps.shown) ? [{ kind: 'command' as const, label: 'Revert this candidate', detail: 'back to how it was made', keywords: 'original as made undo reset tweaked candidate', run: inPatch(() => revertCandidate(editor.snaps.current)) }] : []),
+    ...editor.snaps.deleted.map((d, i) => ({ kind: 'command' as const, label: `Put back candidate ${snapTitle(d.s)}`, keywords: 'recently deleted restore undo candidate', run: inPatch(() => putBack(i)) })),
     { kind: 'command', label: 'Next candidate', detail: 'Alt+B · Alt+J', keywords: 'compare ab a/b switch flip cycle current patch snapshot', run: inPatch(() => cycleSnapshots(1)) },
     { kind: 'command', label: 'Previous candidate', detail: 'Alt+K', keywords: 'compare ab a/b switch flip cycle back current patch snapshot', run: inPatch(() => cycleSnapshots(-1)) },
-    ...editor.snaps.list.map((s) => ({ kind: 'command' as const, label: `Hear candidate ${snapTitle(s)}`, keywords: 'compare ab a/b switch show snapshot', run: inPatch(() => showStop(s.letter)) })),
-    ...(editor.snaps.shown !== null ? [{ kind: 'command' as const, label: 'Back to A, the current patch', keywords: 'compare ab a/b switch snapshot candidate', run: inPatch(() => showStop(null)) }] : []),
+    ...editor.snaps.list.filter((s) => s.letter !== editor.snaps.current).map((s) => ({ kind: 'command' as const, label: `Hear candidate ${snapTitle(s)}`, keywords: 'compare ab a/b switch show snapshot current patch', run: inPatch(() => showStop(s.letter)) })),
     { kind: 'command', label: snapSide.folded ? 'Open the Sound design sidebar' : 'Fold the Sound design sidebar', keywords: 'candidates rail snapshots side panel output scope', run: () => snapSide.setFolded(!snapSide.folded) },
-    // presets from candidates (#1031): of each engine of the current patch that has presets, without a switch
-    ...(editor.snaps.list.length ? presetEngines(editor.currentPatch()).flatMap((a) => [
-      ...editor.snaps.list.map((s) => ({ kind: 'command' as const, label: `Store candidate ${snapTitle(s)} as a preset of ${a.label}…`, keywords: 'preset save engine sound current patch snapshot', run: inPatch(() => storeSnapshotPreset(s, a)) })),
-      { kind: 'command' as const, label: `Store kept candidates as presets of ${a.label}`, keywords: 'preset save engine sound keep marked rank batch snapshots', run: inPatch(() => storeKeptPresets(a)) },
-    ]) : []),
+    // Save preset (D-1426): the candidate heard, one item per engine
+    ...presetEngines(editor.patch).map((a) => ({ kind: 'command' as const, label: `Save preset of ${a.label}…`, detail: 'the candidate you hear', keywords: 'preset store save engine sound candidate', run: inPatch(() => editor.savePreset(a.id)) })),
     // Mutate and Randomize (#944): the selected cards' parameters, one undo step
     { kind: 'command', label: 'Mutate selection', detail: `Alt+M · ±${Math.round(editor.mutateAmount * 100)} %${editor.mutateCategory === 'any' ? '' : ` · ${editor.mutateCategory}`}`, keywords: 'vary variation nudge random sound design', run: inPatch(() => void editor.mutate('mutate')) },
     { kind: 'command', label: 'Randomize selection', keywords: 'random dice new sound design', run: inPatch(() => void editor.mutate('randomize')) },
@@ -2270,27 +2273,35 @@ const commands = (): Command[] => {
 /**
  * Open a patch in the editor (every load of the user's goes through here). `from`: the Your patches name it came from;
  * `once`: it cannot be opened again as it is (a share link, an Undo's patch); `stay`: keep the current tab; `quiet`: no
- * Undo (the tutorial, the lesson editor, an Undo itself). A load over a patch with unsaved changes offers Undo (#148).
- * `keep`: the candidates stay and the patch replaced joins them (a palette switch, Editor.openKeeping): nothing is lost, so
- * no Undo.
+ * Undo (the tutorial, the lesson editor, an Undo itself); `palette`: a palette switch (D-1321: no Undo either); `fresh`:
+ * a set of its own, whatever patch it is (New patch, the tutorial, the lesson editor). Otherwise the candidates' open rules
+ * place it (Editor.openPatch, D-972): nothing is thrown away. A load into another set over a patch with unsaved changes
+ * offers Undo (#148).
  */
-const loadNamed = (p: Patch, o: { from?: string; once?: boolean; stay?: boolean; quiet?: boolean; keep?: boolean } = {}): void => {
+const loadNamed = (p: Patch, o: { from?: string; once?: boolean; stay?: boolean; quiet?: boolean; palette?: boolean; fresh?: boolean } = {}): void => {
   const prev = structuredClone(editor.patch);
   const prevFrom = openedFrom;
+  const prevSet = editor.snaps.id;
   const chained = loadUndo?.open() && loadUndo.loaded === asLoaded(prev) ? loadUndo : null;
   const losing = !chained && losesWork(prev);
   if (!o.stay) toPatch();
-  let kept: Snapshot | null = null;
-  if (o.keep) kept = editor.openKeeping(p);
-  else editor.setPatch(p);
+  let how: OpenHow = 'fresh';
+  if (o.fresh) editor.setPatch(p);
+  else ({ how } = editor.openPatch(p, (q, except) => candidateStore.find(q, except)));
+  keepSet(editor.exportSet(), true);
+  if (how !== 'fresh' && how !== 'switched') editor.rebuild();   // (the morph picker offers the candidates)
   setBaseline();
   nameInput.value = editor.patch.name;
   openedFrom = o.from ?? '';
   lastLoad = { patch: asLoaded(editor.patch), reopen: !o.once };
   loadUndo = null;
+  const n = editor.snaps.list.length;
   if (!feedsOutput(editor.patch)) status.textContent = 'Nothing makes sound yet. Add an engine, then play a key.';
-  else if (kept) status.textContent = `the patch it replaces is kept as candidate ${kept.letter}`;
-  if (o.quiet || o.keep || !(chained || losing)) return;
+  else if (how === 'switched') status.textContent = `"${editor.patch.name}" is candidate ${editor.snaps.current} of this patch: you hear it`;
+  else if (how === 'added' && editor.snaps.id === prevSet) status.textContent = `"${editor.patch.name}" joins this patch's candidates as ${editor.snaps.current}`;
+  else if (how !== 'fresh') status.textContent = `"${editor.patch.name}" opens with its ${n} candidates: you hear ${editor.snaps.current}`;
+  if (how !== 'fresh') { audition.restart(); tutorial.flipped(); }
+  if (o.quiet || o.palette || editor.snaps.id === prevSet || !(chained || losing)) return;
   const back = chained ?? { prev, prevFrom };
   const name = back.prev.name.trim() || 'Untitled';
   const open = showUndo(`Opened "${editor.patch.name}". "${name}" was not saved`, () => {
@@ -2401,9 +2412,9 @@ cmdInput.onkeydown = (e) => {
 };
 $('commands-btn').onclick = () => openCommands();
 // New patch: outside the tutorial, "Start with an engine" first (#160; the tutorial's steps expect a bare Main + Output)
-const emptyNew = (): void => { loadNamed(newPatch(DEFS)); tutorial.newPatchPressed(); };
+const emptyNew = (): void => { loadNamed(newPatch(DEFS), { fresh: true }); tutorial.newPatchPressed(); };
 const engineStart = new EngineStart($<HTMLDialogElement>('engine-start'), {
-  pick(def) { loadNamed(newPatch(DEFS)); editor.insert(def); tutorial.newPatchPressed(); },
+  pick(def) { loadNamed(newPatch(DEFS), { fresh: true }); editor.insert(def); tutorial.newPatchPressed(); },
   empty: emptyNew,
   openPicker() {
     // the Open picker is in the sidebar: expand it (wide) or slide it in (phone)
@@ -4080,8 +4091,8 @@ if (import.meta.env.DEV) {
   // the lesson editor's live link: it checks steps against this synth and loads patches into it
   tutorial.observer = synthLink(() => ({
     patch: editor.patch, selected: [...editor.selected], arpPlay: editor.playing, audio: host.running && !host.muted,
-    snapshots: { A: editor.snaps.list.length >= 1, B: editor.snaps.list.length >= 2 }, zoom: editor.zoom, library: loadLibrary(),   // (the first and second candidate: A is the current patch, D-666)
-  }), (p) => { sink.send({ t: 'panic' }); loadNamed(p, { quiet: true }); });
+    snapshots: { A: editor.snaps.list.length >= 2, B: editor.snaps.list.length >= 3 }, zoom: editor.zoom, library: loadLibrary(),   // (a candidate made beside the opened patch, and a second, D-666)
+  }), (p) => { sink.send({ t: 'panic' }); loadNamed(p, { quiet: true, fresh: true }); });
   const link = document.createElement('a');
   link.href = '/lesson-editor'; link.target = '_blank'; link.rel = 'noopener';
   link.textContent = 'Edit lessons';

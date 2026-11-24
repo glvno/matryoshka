@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The Sound design sidebar (#1040, #1048, D-984): the panel at the canvas's right edge. Its head says "Sound design" and
 // holds the ⋯ menu and the fold; under it the Output scope (output-scope.ts), the candidates' list with the Mutate
-// category's Aim chip, a progress line while a Generate round renders, and the footer's Generate and Nominate. The current
-// patch is candidate A, the first row, always there. A drag on the panel's left edge sets its width; » folds it to a
-// 52 px rail that keeps the audition loop playable: the letter heard, where it is among the stops, one dot per candidate,
-// previous and next, play, Keep, remove and Generate. It starts open at its narrowest width. It runs the window's whole
-// height, and the workspace beside it (the canvas, the deck, Connect FM-1, ?) gives up its width (style.css .snap-column).
-// This browser remembers the width and the fold; nothing about it is
+// category's Aim chip, a progress line while a Generate round renders, and the footer's Generate and Duplicate. The
+// candidates are all alike (owner 2026-11-24): the one you hear is the current patch. A drag on the panel's left edge sets
+// its width; » folds it to a 52 px rail that keeps the audition loop playable: the letter heard, where it is in the list,
+// one dot per candidate, previous and next, play, Save preset, Add to palette, delete and Generate. It starts open at its
+// narrowest width. It runs the window's whole height, and the workspace beside it (the canvas, the deck, Connect FM-1, ?)
+// gives up its width (style.css .snap-column). This browser remembers the width and the fold; nothing about it is
 // saved in the patch. main.ts fills it (renderSnapshots) through renderList, renderRail and renderProgress.
-import { CURRENT_LETTER, fitText, originText, type Snapshot } from './snapshots';
+import { CANDIDATE_LIMIT, fitText, originText, type Deleted, type Snapshot } from './snapshots';
 
 /** where this browser keeps it */
 export const SNAP_SIDE_STORE = 'matryoshka.snapSidebar';
@@ -17,8 +17,6 @@ export const SIDE_W = { default: 300, min: 300, max: 640 };
 /** what the widest leaves of the window beside it: the room the workspace needs (the left sidebar, the canvas and the
  *  deck with Main's K1..K4 unclipped), measured at 1280 CSS px windows (#1048) */
 export const WORKSPACE_MIN = 980;
-/** the sentence of an empty list (the mockup's, #1048) */
-export const EMPTY_TEXT = 'Make a few variations of this sound, listen to each, keep the good ones.';
 
 interface Saved {
   w: number;
@@ -157,17 +155,21 @@ export class SnapSidebar {
   }
 }
 
-/** what the sidebar shows: the candidates and the stop heard */
+/** what the sidebar shows: the candidates, the one heard and the picks */
 export interface SideView {
   readonly list: readonly Snapshot[];
-  /** the letter heard; null: the current patch, A */
-  shown: string | null;
-  /** the candidate heard has been changed since it was taken */
-  edited: boolean;
-  /** the current patch's name */
-  currentName: string;
-  /** how many settings a candidate differs from the current patch by */
+  /** the letter heard: the current candidate, the current patch */
+  current: string;
+  /** its version differs from its original ("tweaked") */
+  tweaked(s: Snapshot): boolean;
+  /** how many settings it differs by from the one heard */
   changes(s: Snapshot): number;
+  /** the rows picked as parents (⌘/Ctrl/Shift-click), in pick order */
+  picks: readonly string[];
+  /** Recently deleted, newest first */
+  deleted: readonly Deleted[];
+  /** the engines Save preset lists (0: no Save preset button; 1: it opens the Store dialog, no ▾) */
+  engines: number;
   /** a Generate round that renders by ear (a category, #1033): found so far of the round's count, and how many were
    *  rendered of the most it renders; null when none runs */
   round: { found: number; of: number; rendered: number; most: number } | null;
@@ -179,16 +181,20 @@ export interface SideView {
 
 /** what the sidebar's controls do */
 export interface SideActions {
-  /** hear a candidate, or the current patch (null) */
-  hear(letter: string | null): void;
-  keep(letter: string, on: boolean): void;
-  /** make the candidate the current patch (it becomes A) */
-  use(letter: string): void;
+  /** make a candidate the current patch */
+  hear(letter: string): void;
+  /** toggle a pick (⌘, Ctrl or Shift held on a row click) */
+  pick(letter: string): void;
+  /** ✕ */
   remove(letter: string): void;
-  /** the candidate's menu (right-click, double-click) */
+  /** Recently deleted's ith back */
+  putBack(i: number): void;
+  /** the 'revert' link next to 'tweaked' (on any tweaked row; the integrator makes that candidate current, then reverts) */
+  revert(letter: string): void;
+  savePreset(anchor: HTMLElement): void;
+  addToPalette(): void;
+  /** the candidate's menu (right-click, double-click, ⋯) */
   more(s: Snapshot, anchor: HTMLElement): void;
-  /** the current patch's menu (right-click on A) */
-  currentMore(anchor: HTMLElement, e: Event): void;
   /** a pointer down on a candidate's row: maybe a drag to reorder */
   drag(e: PointerEvent, row: HTMLElement, letter: string): void;
   step(dir: 1 | -1): void;
@@ -196,6 +202,14 @@ export interface SideActions {
   /** play or stop the test phrase (Q) */
   play(): void;
 }
+
+/** the footer's Generate button (D5): Generate with no pick, "Generate from D" with one, "Breed B × D" with two or more */
+export function generateText(picks: readonly string[]): string {
+  return picks.length === 0 ? 'Generate' : picks.length === 1 ? `Generate from ${picks[0]}` : `Breed ${picks.join(' × ')}`;
+}
+
+/** the head's count: "N of 32" (a set holds up to CANDIDATE_LIMIT) */
+export const countText = (n: number): string => `${n} of ${CANDIDATE_LIMIT}`;
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag);
@@ -206,144 +220,168 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: s
 
 const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`;
 
-/** a candidate's (or A's) title: its letter and its name */
+/** a candidate's title: its letter and its name */
 export const candidateTitle = (letter: string, name?: string): string => (name ? `${letter} “${name}”` : letter);
 
-/** the list: A (the current patch) first, then the candidates in the order the user set, then the candidate being judged
- *  while an aimed round renders. The row heard has a teal letter and edge bar and is the only one with Keep · Use · ✕;
- *  the others show their change count and their keep tick */
+/** a click with ⌘, Ctrl or Shift picks a parent (D5) instead of switching, on a row and on a rail dot alike */
+const picking = (e: MouseEvent): boolean => e.metaKey || e.ctrlKey || e.shiftKey;
+
+const ONLY_ONE = 'The only candidate: one is always the current patch';
+
+/** the list: the candidates in the order the user set, all alike, then the candidate being judged while an aimed round
+ *  renders, then Recently deleted. The row heard has a teal letter and edge bar and is the only one with Save preset ·
+ *  Add to palette · ⋯ · ✕; the others show their change count and a ✕ on hover. Picked rows have a coral ring */
 export function renderList(strip: HTMLElement, v: SideView, act: SideActions): void {
-  const button = (cls: string, text: string, title: string, run: () => void): HTMLButtonElement => {
+  const button = (cls: string, text: string, title: string, run: (b: HTMLButtonElement) => void): HTMLButtonElement => {
     const b = el('button', cls, text);
     b.type = 'button';
     b.title = title;
     b.onclick = (e) => {
       e.stopPropagation();
-      run();
+      run(b);
     };
+    b.ondblclick = (e) => e.stopPropagation();
     b.onpointerdown = (e) => e.stopPropagation();   // (no drag from a button)
     return b;
   };
-  const row = (letter: string, name: string, dim: boolean, meta: (string | [string, string])[], title: string): HTMLElement => {
+  const only = v.list.length < 2;
+  const items: HTMLElement[] = v.list.map((s) => {
+    const shown = v.current === s.letter;
+    const picked = v.picks.includes(s.letter);
+    const tweaked = v.tweaked(s);
+    const fit = fitText(s);
+    const n = v.changes(s);
     const r = el('div', 'snap');
     r.tabIndex = 0;
     r.setAttribute('role', 'button');
-    r.title = title;
-    const body = el('div', 'snap-body');
-    const n = el('div', `snap-name${dim ? ' dim' : ''}`, name);
-    const m = el('div', 'snap-meta');
-    meta.forEach((x, i) => m.append(...(i ? [' · '] : []), typeof x === 'string' ? x : el('span', x[0], x[1])));
-    body.append(n, m);
-    r.append(el('span', 'snap-let', letter), body);
-    return r;
-  };
-  const shownA = v.shown === null;
-  const a = row(CURRENT_LETTER, v.currentName || 'Current patch', false, ['the current patch, your latest edits'],
-    `A, the current patch: your latest edits.${shownA ? ' You are hearing it.' : ' Click to hear it.'} Alt+J goes on to the candidates and round again, Alt+K goes back`);
-  a.classList.add('current');
-  if (shownA) a.classList.add('shown');
-  a.setAttribute('aria-current', String(shownA));
-  a.onclick = () => act.hear(null);
-  a.onkeydown = (e) => { if (e.key === 'Enter') act.hear(null); };
-  a.oncontextmenu = (e) => act.currentMore(a, e);
-  const rows = v.list.map((s) => {
-    const shown = v.shown === s.letter;
-    const kept = s.mark === 'keep';
-    const edited = shown && v.edited;
-    const fit = fitText(s);
-    const meta: (string | [string, string])[] = [s.from && s.from !== 'mutate' && s.from !== 'use' ? ['src', originText(s)] : originText(s)];
-    if (fit) meta.push([s.aim!.fits ? 'fit' : 'miss', fit]);
-    if (edited) meta.push('changed since');
-    const n = v.changes(s);
-    const r = row(s.letter, s.name ?? 'unnamed', !s.name, meta, `${candidateTitle(s.letter, s.name)}: ${n ? `${plural(n, 'change')} from the current patch` : 'the same as the current patch'}, ${originText(s)}${fit ? `, ${fit}` : ''}${kept ? '. Kept: Generate breeds from the kept ones' : ''}${edited ? '. Changed since it was taken: switching away keeps the changes as a new candidate' : ''}. ${shown ? 'You are hearing it' : 'Click to hear it'}; drag it up or down to change the order; right-click or double-click for more`);
     r.dataset.letter = s.letter;
     r.classList.toggle('shown', shown);
-    r.classList.toggle('kept', kept);
-    r.classList.toggle('edited', edited);
+    r.classList.toggle('picked', picked);
     r.setAttribute('aria-current', String(shown));
-    r.onclick = () => act.hear(s.letter);
-    r.onkeydown = (e) => { if (e.key === 'Enter') act.hear(s.letter); };
+    r.title = `${candidateTitle(s.letter, s.name)}: ${originText(s)}${fit ? `, ${fit}` : ''}${tweaked ? ', tweaked since it was made' : ''}${picked ? ', picked as a parent' : ''}. `
+      + (shown ? 'The current patch, the one you hear (Alt+J / Alt+K: the next / the one before)' : `${n ? `${plural(n, 'setting')} differ from the one you hear` : 'The same as the one you hear'}; click to make it the current patch`)
+      + '; ⌘ or Shift-click to pick it as a parent for Generate; drag it up or down to change the order; right-click or double-click for more';
+    const body = el('div', 'snap-body');
+    const meta = el('div', 'snap-meta');
+    const parts: HTMLElement[] = [];
+    if (s.name) parts.push(el('span', 'src', originText(s)));
+    if (fit) parts.push(el('span', s.aim!.fits ? 'fit' : 'miss', fit));
+    if (tweaked) {
+      const t = el('span', 'snap-tweaked', 'tweaked');
+      t.append(' ', button('snap-revert', 'revert', 'Back to how it was made (Ctrl/Cmd+Z undoes it)', () => act.revert(s.letter)));
+      parts.push(t);
+    }
+    parts.forEach((x, i) => meta.append(...(i ? [' · '] : []), x));
+    body.append(el('div', `snap-name${s.name ? '' : ' dim'}`, s.name ?? originText(s)), meta);
+    r.append(el('span', 'snap-let', s.letter), body);
+    r.onclick = (e) => (picking(e) ? act.pick(s.letter) : act.hear(s.letter));
+    r.onkeydown = (e) => { if (e.key === 'Enter' && e.target === r) act.hear(s.letter); };
     r.onpointerdown = (e) => act.drag(e, r, s.letter);
     const more = (e: Event): void => { e.preventDefault(); act.more(s, r); };
     r.oncontextmenu = more;
     r.ondblclick = more;
+    const remove = (cls: string, title: string): HTMLButtonElement => {
+      const x = button(cls, '✕', only ? ONLY_ONE : title, () => act.remove(s.letter));
+      x.disabled = only;
+      return x;
+    };
     if (shown) {
       const acts = el('div', 'snap-acts');
-      const k = button(`snap-keep-b${kept ? ' on' : ''}`, kept ? 'Kept' : 'Keep', kept ? 'Kept: Generate breeds from it. Click to unkeep' : 'Keep it: Generate breeds from the kept ones', () => act.keep(s.letter, !kept));
-      k.setAttribute('aria-pressed', String(kept));
-      acts.append(k, button('snap-use', 'Use', 'Make it the current patch, A (Alt+C); the current patch takes its place with a new letter', () => act.use(s.letter)),
-        button('snap-remove', '✕', 'Remove it (Alt+X)', () => act.remove(s.letter)));
+      if (v.engines > 0) {
+        acts.append(button('snap-preset main', v.engines === 1 ? 'Save preset' : 'Save preset ▾',
+          v.engines === 1 ? 'Save its instrument, with its FX drawer, as a preset' : 'Save one of its instruments, with its FX drawer, as a preset', (b) => act.savePreset(b)));
+      }
+      acts.append(button('snap-palette main', 'Add to palette', 'Add it to the FM-1’s palette', () => act.addToPalette()),
+        button('snap-more', '⋯', 'More: also on a right-click or double-click of a row', (b) => act.more(s, b)),
+        remove('snap-remove', 'Delete it (Alt+X)'));
       r.append(acts);
     } else {
       const right = el('div', 'snap-right');
-      const tick = button('snap-tick', '✓', kept ? `${s.letter} is kept: click to unkeep` : `Keep ${s.letter}`, () => act.keep(s.letter, !kept));
-      tick.setAttribute('aria-pressed', String(kept));
-      right.append(el('span', 'snap-ch', String(n)), tick);
+      const ch = el('span', 'snap-ch', n ? String(n) : '=');
+      ch.title = n ? `${plural(n, 'setting')} differ from the one you hear` : 'The same as the one you hear';
+      right.append(ch, remove('snap-x', `Delete ${s.letter}`));
       r.append(right);
     }
     return r;
   });
-  const items: HTMLElement[] = [a, ...rows];
   if (v.round) {
-    const p = row('·', 'listening…', true, [`candidate ${Math.min(v.round.rendered + 1, v.round.most)} of up to ${v.round.most}`], 'Being judged: rendered silently with the test phrase; it joins the list if it fits, or the nearest fill the round at its end');
-    p.classList.add('pending');
-    p.removeAttribute('role');
-    p.tabIndex = -1;
+    const p = el('div', 'snap pending');
+    p.title = 'Being judged: rendered silently with the test phrase; it joins the list if it fits, or the nearest fill the round at its end';
+    const body = el('div', 'snap-body');
+    body.append(el('div', 'snap-name dim', 'listening…'), el('div', 'snap-meta', `candidate ${Math.min(v.round.rendered + 1, v.round.most)} of up to ${v.round.most}`));
+    p.append(el('span', 'snap-let', '·'), body);
     items.push(p);
   }
-  if (!v.list.length && !v.round) items.push(el('p', 'snap-empty', EMPTY_TEXT));
+  if (v.deleted.length) {
+    // (open or closed as the user left it, across redraws)
+    const box = el('details', 'snap-deleted');
+    box.open = strip.querySelector<HTMLDetailsElement>('.snap-deleted')?.open ?? false;
+    box.append(el('summary', '', `Recently deleted (${v.deleted.length})`));
+    // opened by the user (not drawn open again): its entries come into view of the list (only the list scrolls)
+    const was = box.open;
+    box.ontoggle = () => { if (box.open && !was) strip.scrollTop = Math.max(strip.scrollTop, box.offsetTop + box.offsetHeight - strip.clientHeight); };
+    v.deleted.forEach((d, i) => {
+      const line = el('div', 'snap-deleted-item');
+      line.append(el('span', 'snap-deleted-name', candidateTitle(d.s.letter, d.s.name)));
+      if (!d.s.name) line.append(' ', el('span', 'dim', originText(d.s)));
+      line.append(' · ', button('snap-put-back', 'put back', `Put ${d.s.letter} back where it was`, () => act.putBack(i)));
+      box.append(line);
+    });
+    items.push(box);
+  }
   const focused = strip.contains(document.activeElement);
   strip.replaceChildren(...items);
   // the list had the focus (a row clicked, or ↑ ↓ pressed in it): the row heard takes it, so the keys stay in the sidebar
   if (focused) strip.querySelector<HTMLElement>('.snap.shown')?.focus({ preventScroll: true });
-  // the row heard stays in view of the list when it scrolls, under A (which stays at the top); only the list scrolls
-  // (scrollIntoView could scroll the page)
-  const on = strip.querySelector<HTMLElement>('.snap.shown:not(.current)');
-  const under = a.offsetHeight + 8;   // (A and the rule under it, which cover the top of the list)
-  if (on && on.offsetTop < strip.scrollTop + under) strip.scrollTop = on.offsetTop - under;
+  // the row heard stays in view of the list when it scrolls; only the list scrolls (scrollIntoView could scroll the page)
+  const on = strip.querySelector<HTMLElement>('.snap.shown');
+  if (on && on.offsetTop < strip.scrollTop) strip.scrollTop = on.offsetTop;
   else if (on && on.offsetTop + on.offsetHeight > strip.scrollTop + strip.clientHeight) strip.scrollTop = on.offsetTop + on.offsetHeight - strip.clientHeight;
 }
 
-/** the folded rail: the letter heard (A outlined for the current patch), its place among the stops, ▲, one dot per stop
- *  (A a square, gold for kept, dashed while being judged; a click plays it), ▼, then Keep, remove and Generate (+N) */
+/** the folded rail: the letter heard, its place in the list, play, ▲, one dot per candidate (coral for picked, dashed while
+ *  being judged; a click makes it current, ⌘ or Shift-click picks it), ▼, then Save preset, Add to palette, delete and
+ *  Generate (+N) */
 export function renderRail(body: HTMLElement, v: SideView, act: SideActions): void {
-  const button = (cls: string, text: string, title: string, run: () => void, disabled = false): HTMLButtonElement => {
+  const button = (cls: string, text: string, title: string, run: (b: HTMLButtonElement, e: MouseEvent) => void, disabled = false): HTMLButtonElement => {
     const b = el('button', cls, text);
     b.type = 'button';
     b.title = title;
     b.setAttribute('aria-label', title);
     b.disabled = disabled;
-    b.onclick = run;
+    b.onclick = (e) => run(b, e);
     return b;
   };
-  const s = v.list.find((x) => x.letter === v.shown);
-  const letter = s?.letter ?? CURRENT_LETTER;
-  const tile = el('div', `snap-rail-tile${s ? '' : ' current'}`, letter);
-  tile.title = s ? `Hearing ${candidateTitle(s.letter, s.name)}` : 'Hearing A, the current patch';
-  const at = s ? v.list.indexOf(s) + 2 : 1;
-  const pos = el('span', 'snap-rail-pos', `${at} / ${v.list.length + 1}`);
-  pos.title = `Stop ${at} of ${v.list.length + 1}: A, the current patch, then the candidates`;
+  // (a set is never empty)
+  const s = v.list.find((x) => x.letter === v.current) ?? v.list[0];
+  const at = v.list.indexOf(s) + 1;
+  const tile = el('div', 'snap-rail-tile', s.letter);
+  tile.title = `Hearing ${candidateTitle(s.letter, s.name)}: the current patch`;
+  const pos = el('span', 'snap-rail-pos', `${at} / ${v.list.length}`);
+  pos.title = `Candidate ${at} of ${v.list.length}`;
   const dots = el('div', 'snap-rail-dots');
-  const dot = (cls: string, title: string, run?: () => void): HTMLElement => {
-    const d = run ? button(`snap-dot ${cls}`, '', title, run) : el('span', `snap-dot ${cls}`);
-    d.title = title;
-    return d;
-  };
-  dots.append(dot(`current${s ? '' : ' shown'}`, 'A, the current patch', () => act.hear(null)),
-    ...v.list.map((x) => dot(`${x.mark === 'keep' ? 'kept' : ''}${x === s ? ' shown' : ''}`, `${candidateTitle(x.letter, x.name)}${x.mark === 'keep' ? ', kept' : ''}${x === s ? ', hearing' : ''}`, () => act.hear(x.letter))),
-    ...(v.round ? [dot('pending', 'being judged')] : []));
-  const kept = s?.mark === 'keep';
-  const keep = button(`snap-rail-btn${kept ? ' on' : ''}`, '✓', s ? (kept ? `${s.letter} is kept: click to unkeep` : `Keep ${s.letter}`) : 'Keep: hear a candidate first (A is the current patch)', () => s && act.keep(s.letter, !kept), !s);
-  keep.setAttribute('aria-pressed', String(kept));
+  dots.append(...v.list.map((x) => {
+    const picked = v.picks.includes(x.letter);
+    return button(`snap-dot${picked ? ' picked' : ''}${x === s ? ' shown' : ''}`, '',
+      `${candidateTitle(x.letter, x.name)}${x === s ? ', the one you hear' : ''}${picked ? ', picked as a parent' : ''}: click to make it the current patch; ⌘ or Shift-click to pick it as a parent`,
+      (_b, e) => (picking(e) ? act.pick(x.letter) : act.hear(x.letter)));
+  }));
+  if (v.round) {
+    const d = el('span', 'snap-dot pending');
+    d.title = 'being judged';
+    dots.append(d);
+  }
   const play = button(`snap-rail-play${v.playing ? ' on' : ''}`, v.playing ? '■' : '▶', v.playing ? 'Stop the test phrase (Q)' : 'Play the test phrase (Q)', () => act.play());
   play.setAttribute('aria-pressed', String(v.playing));
+  const only = v.list.length < 2;
   body.replaceChildren(tile, pos, play,
-    button('snap-rail-step', '▲', 'Previous (Alt+K)', () => act.step(-1)),
+    button('snap-rail-step', '▲', 'The one before (Alt+K)', () => act.step(-1)),
     dots,
-    button('snap-rail-step', '▼', 'Next (Alt+J)', () => act.step(1)),
+    button('snap-rail-step', '▼', 'The next (Alt+J)', () => act.step(1)),
     el('div', 'snap-rail-sep'),
-    keep,
-    button('snap-rail-btn', '✕', s ? `Remove ${s.letter} (Alt+X)` : 'Remove: hear a candidate first (A is the current patch)', () => s && act.remove(s.letter), !s),
+    button('snap-rail-btn', 'PRE', v.engines ? 'Save preset: its instrument, with its FX drawer' : 'Save preset: this patch has no instrument', (b) => act.savePreset(b), !v.engines),
+    button('snap-rail-btn', 'PAL', 'Add to palette: the one you hear', () => act.addToPalette()),
+    button('snap-rail-btn', '✕', only ? ONLY_ONE : `Delete ${s.letter}, the one you hear (Alt+X)`, () => act.remove(s.letter), only),
     button('snap-rail-btn generate', `+${v.count}`, `Generate ${v.count} candidates (Alt+N)`, () => act.generate()));
 }
 

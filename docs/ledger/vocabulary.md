@@ -56,7 +56,11 @@ What a configurable patch button does in a patch: Nothing, Gate, Toggle (bypasse
 
 ### Candidate
 
-A version of the patch kept to compare by ear, listed in the Sound design sidebar. The [current patch](#current-patch) is candidate A, always the first. The others are lettered B, C… in the order they come: made by Generate, added by Nominate, kept by the first Mutate of a run ("before mutate"), kept from an edit when the switch leaves a candidate, or left by Use. The browser keeps them with the open patch, also after a reload, and forgets them when another patch opens; they are never saved in the patch. The code and the browser's storage call them snapshots (`Snapshot`, `matryoshka.snapshots`). Not the same as the [B side](#b-side) of patch morphing.
+A version of the patch to compare by ear, listed in the Sound design sidebar. Every candidate is alike: the one heard is the [current patch](#current-patch), and every edit goes into it at once. The patch as it was opened is candidate A, and the others are lettered B, C… in the order they are made, by Generate or Duplicate. A candidate stays until it is deleted. Each keeps a hidden original, the patch as it was made, which only revert uses. The candidates of one patch form its [candidate set](#candidate-set). They are never saved in the patch. The code calls them snapshots (`Snapshot`). Not the same as the [B side](#b-side) of patch morphing.
+
+### Candidate set
+
+The [candidates](#candidate) of one patch, kept in this browser (IndexedDB) and put away when another patch opens. Opening the patch again brings its set back. A set holds up to 32 candidates, and the browser keeps the sets of the 8 patches opened most recently. `CandidateSet` in the code.
 
 ### Capability
 
@@ -112,7 +116,7 @@ The whole tutorial as data: every chapter and step in `web/src/tutorial/course.j
 
 ### Current patch
 
-The patch being worked on, with its latest edits. It is [candidate](#candidate) A. While another candidate is on screen the editor keeps the current patch aside, and the switch always comes back to it.
+The patch being worked on: the [candidate](#candidate) heard, with its latest edits. No candidate is special; a switch makes another candidate the current patch. Save, Store, Send, Share, the palette and the other exits take it.
 
 ### Cursor entry
 

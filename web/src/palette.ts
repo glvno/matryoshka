@@ -459,17 +459,19 @@ export class Palette {
     }
   }
 
-  /** where `patch` goes in the FM-1's bank under `label` (its device name): a slot that holds it byte for byte (of that
-   *  name or that name numbered; firmware that cannot send a slot back has none), else the first free slot under `label`,
-   *  numbered when a used slot has that name (`clash`: that slot); null when the bank is full. Nothing is written */
+  /** where `patch` goes in the FM-1's bank under `label` (its device name): a slot that holds it byte for byte, of that
+   *  name or of the patch's own name (a candidate's label adds its letter or name to it, D-1319), either numbered;
+   *  firmware that cannot send a slot back has none. Else the first free slot under `label`, numbered when a used slot
+   *  has that name (`clash`: that slot); null when the bank is full. Nothing is written */
   private async placeFor(patch: Patch, label: string): Promise<{ slot: number; label: string; store: boolean; clash?: number } | null> {
     const d = this.ports.device;
     const bank = await d.readBank();
     const bin = d.encodeFor(patch);
     if (d.readsSlots) {
+      const names = [label, deviceName(patch.name.trim() || 'PATCH')];
       for (const s of bank) {
         const n = deviceName(s.name);
-        if (!s.used || s.length !== bin.length || (n !== label && !isNumbered(n, label))) continue;
+        if (!s.used || s.length !== bin.length || !names.some((x) => n === x || isNumbered(n, x))) continue;
         const held = await d.readSlotBin(s.slot);
         if (held && sameBytes(held, bin)) return { slot: s.slot, label: s.name, store: false };
       }

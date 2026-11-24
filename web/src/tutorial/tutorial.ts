@@ -134,7 +134,7 @@ export class Tutorial {
     const e = this.host.editor;
     return {
       patch: e.patch, entry: this.entry ?? e.patch, zoom: e.zoom, arpPlay: e.playing, audio: this.host.audioOn(),
-      lastSaved: this.lastSaved, selected: e.selected, library: this.host.library(), snapshots: { A: e.snaps.list[0]?.patch ?? null, B: e.snaps.list[1]?.patch ?? null }, seen: this.seen,   // (the first and second candidate, D-666)
+      lastSaved: this.lastSaved, selected: e.selected, library: this.host.library(), snapshots: { A: e.snaps.list[1]?.patch ?? null, B: e.snaps.list[2]?.patch ?? null }, seen: this.seen,   // (a candidate made beside the opened patch, and a second, D-666)
     };
   }
 

@@ -7,6 +7,8 @@ export function sliderJack(input: HTMLInputElement, onPatch: (e: PointerEvent, j
   element: HTMLElement; jack: HTMLElement; update(): void;
   /** marks the base value on the track while the thumb shows the modulated value; null hides the tick */
   setBase(unit: number | null): void;
+  /** a thin grey tick where the value was when the candidate was made (D11: the candidate is tweaked); null hides it */
+  setMade(unit: number | null): void;
   /** ticks under the track where the FM-1 knobs put the parameter at rest, each in its knob's colour (CSS `--k1`..) */
   setKnobTicks(ticks: { knob: string; unit: number }[]): void;
 } {
@@ -18,6 +20,9 @@ export function sliderJack(input: HTMLInputElement, onPatch: (e: PointerEvent, j
   const base = document.createElement('span');
   base.className = 'slider-base';
   base.setAttribute('aria-hidden', 'true');
+  const made = document.createElement('span');
+  made.className = 'slider-made';
+  made.setAttribute('aria-hidden', 'true');
   input.classList.add('jack-range');
   const update = (): void => {
     const unit = (Number(input.value) - Number(input.min)) / (Number(input.max) - Number(input.min));
@@ -28,6 +33,11 @@ export function sliderJack(input: HTMLInputElement, onPatch: (e: PointerEvent, j
     if (unit !== null) element.style.setProperty('--base', String(Math.max(0, Math.min(1, unit))));
   };
   setBase(null);
+  const setMade = (unit: number | null): void => {
+    made.hidden = unit === null;
+    if (unit !== null) element.style.setProperty('--made', String(Math.max(0, Math.min(1, unit))));
+  };
+  setMade(null);
   const knobTicks: HTMLElement[] = [];
   const setKnobTicks = (ticks: { knob: string; unit: number }[]): void => {
     while (knobTicks.length > ticks.length) knobTicks.pop()!.remove();
@@ -108,7 +118,7 @@ export function sliderJack(input: HTMLInputElement, onPatch: (e: PointerEvent, j
     input.focus({ preventScroll: true });
     drag(e, Number(input.min) + unit * (Number(input.max) - Number(input.min)));
   });
-  element.append(base, input, jack);
+  element.append(made, base, input, jack);
   update();
-  return { element, jack, update, setBase, setKnobTicks };
+  return { element, jack, update, setBase, setMade, setKnobTicks };
 }
