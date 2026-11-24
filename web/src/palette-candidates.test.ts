@@ -259,6 +259,39 @@ describe('a sound added to the palette from a candidate (owner 2026-11-24: "FM-1
     await fm1.quiet();
     expect([editor.snaps.current, editor.snaps.list.length, values(), off, live()]).toEqual(['B', 3, before, [], true]);
   });
+  it('generated Monolith D candidates, C edited (its tempo or pattern too), added with presets: a click on its chip makes C heard (1.26.5 rig)', async () => {
+    // (Release1265 on the rig: the C edited was a candidate with its own tempo, kept from an earlier step; the entry plays
+    // the slot's tempo, as D-1240 says, and the switch opened that as a new candidate instead of making C heard)
+    let seed = 7;
+    vi.spyOn(Math, 'random').mockImplementation(() => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 2 ** 32; });
+    const mono = FM1_PRESETS['Monolith D'];
+    const fails: string[] = [];
+    for (let run = 0; run < 8; run++) {
+      localStorage.clear();
+      const { editor, fm1, link, palette, said } = await rig([{ name: 'Monolith D', patch: mono, factory: true }], mono(), []);
+      fm1.bins[0] = link.encodeFor(mono());
+      fm1.slots[0] = { slot: 0, used: true, length: fm1.bins[0].length, name: 'Monolith D' };
+      editor.makeCandidates(4);
+      editor.showSnapshot('C');
+      const p = editor.patch, main = p.modules.find((m) => m.type === 'fm1')!, steps = p.modules.find((m) => m.type === 'steps')!;
+      if (run % 2) main.params.tempo = (main.params.tempo ?? 120) + 17;   // (the patch's own tempo: setParam sets the global one, D-907)
+      if (run % 3 === 1) editor.setParam(steps.id, 'len', (steps.params.len ?? 16) === 8 ? 16 : 8);
+      const r = (p.assemblies ?? []).flatMap((a) => a.params ?? []).find((x) => typeof p.modules.find((m) => m.id === x.module)?.params?.[x.param] === 'number')!;
+      const v = p.modules.find((m) => m.id === r.module)!.params[r.param];
+      editor.setParam(r.module, r.param, v + (v < 0.5 ? 0.137 : -0.137));   // (as the rig scenario edits C)
+      const n = editor.snaps.list.length, c = JSON.stringify(editor.patch.modules.map((m) => m.params));
+      await palette.add(paletteName(editor.patch.name, editor.snaps.shown, n), structuredClone(editor.patch), { pos: 0 });
+      await fm1.quiet();
+      if (fm1.entries[0]?.slot !== 0) { fails.push(`${run}: a patch: ${said.at(-1)}`); continue; }
+      editor.showSnapshot('B');
+      await palette.click(0);
+      await fm1.quiet();
+      const plays = run % 2 && run % 3 === 1 ? 'tempo and patterns' : run % 2 ? 'tempo' : run % 3 === 1 ? 'patterns' : '';
+      const heard = [editor.snaps.current, editor.snaps.list.length, JSON.stringify(editor.patch.modules.map((m) => m.params)) === c, plays ? said.at(-1) : ''];
+      if (JSON.stringify(heard) !== JSON.stringify(['C', n, true, plays ? `Palette 1 · Monolith D plays the ${plays} of slot 1` : ''])) fails.push(`${run}: ${JSON.stringify(heard)}`);
+    }
+    expect(fails).toEqual([]);
+  }, 120000);
 });
 
 describe('the owner\'s palette of 2026-11-24 (his v1.26.3 test editor\'s storage, build/palette-repro)', () => {
