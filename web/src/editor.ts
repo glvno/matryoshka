@@ -163,6 +163,9 @@ const MUTATE_TRIES = 8;
 const fullText = (verb: string): string => `${verb}: ${CANDIDATE_LIMIT} candidates is the most for one patch, delete some first`;
 /** a patch's name as a set's key (candidate-store.ts find): trimmed, any case; an empty name matches none */
 const sameSetName = (a: string, b: string): boolean => !!a.trim() && a.trim().toLowerCase() === b.trim().toLowerCase();
+/** how Editor.openPatch placed a patch: a candidate of the open patch held it, it joined a set, a stored set came back
+ *  with it, or it has a set of its own */
+export type OpenHow = 'switched' | 'added' | 'reopened' | 'fresh';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 /** a tooltip with the range of the output it is about (ranges.ts) on a line of its own */
@@ -2638,7 +2641,7 @@ export class Editor {
     // a slider with nothing to patch keeps the bar and a plain thumb (not a jack: no cable lands on it)
     const plain = !thumb && !pd.toggle && !choice ? sliderJack(input, () => {}) : null;
     plain?.jack.classList.replace('slider-port', 'slider-thumb');
-    // the grey tick where the value was when the candidate heard was made, while it is elsewhere (D-971 as superseded)
+    // the grey tick where the value was when the candidate heard was made, while it is elsewhere (D-1425)
     const made = this.madeValue(m.id, m.type, pd.name);
     const showMade = (): void => (thumb ?? plain)?.setMade(made !== undefined && Math.abs(made - m.params[pd.name]) > 1e-9 ? trackOf(made) : null);
     showMade();
@@ -4031,7 +4034,7 @@ export class Editor {
   }
 
   /** the value parameter `name` of module `id` (of type `type`) had when the current candidate was made: the slider's grey
-   *  tick (D-971 as superseded); undefined when the module was not there then */
+   *  tick (D-1425); undefined when the module was not there then */
   private madeValue(id: number, type: string, name: string): number | undefined {
     this.madeNow ??= JSON.parse(this.snaps.shown.original) as Patch;
     const m = this.madeNow.modules.find((x) => x.id === id);
@@ -4156,7 +4159,7 @@ export class Editor {
    * stored set of its name, as a new candidate heard; else a fresh set of `p` alone. Nothing is thrown away: another set
    * puts the open one away (setPatch). How it went, and the letter heard.
    */
-  openPatch(p: Patch, find: (p: Patch, except: string) => { set: CandidateSet; letter: string | null } | null): { how: 'switched' | 'added' | 'reopened' | 'fresh'; letter: string } {
+  openPatch(p: Patch, find: (p: Patch, except: string) => { set: CandidateSet; letter: string | null } | null): { how: OpenHow; letter: string } {
     this.endGesture();
     this.endPass();
     this.syncShown();
