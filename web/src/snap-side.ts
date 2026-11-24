@@ -317,6 +317,9 @@ export function renderList(strip: HTMLElement, v: SideView, act: SideActions): v
     const box = el('details', 'snap-deleted');
     box.open = strip.querySelector<HTMLDetailsElement>('.snap-deleted')?.open ?? false;
     box.append(el('summary', '', `Recently deleted (${v.deleted.length})`));
+    // opened by the user (not drawn open again): its entries come into view of the list (only the list scrolls)
+    const was = box.open;
+    box.ontoggle = () => { if (box.open && !was) strip.scrollTop = Math.max(strip.scrollTop, box.offsetTop + box.offsetHeight - strip.clientHeight); };
     v.deleted.forEach((d, i) => {
       const line = el('div', 'snap-deleted-item');
       line.append(el('span', 'snap-deleted-name', candidateTitle(d.s.letter, d.s.name)));

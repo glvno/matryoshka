@@ -103,7 +103,7 @@ import { scopeTools, type ScreenSpec } from './scope-view';
 import { listenable, type ListenSource } from './listen';
 import type { EnvSpec } from './env-view';
 import { flipPlan } from './ab';
-import { body, CANDIDATE_LIMIT, sameVersion, Snapshots, type CandidateSet, type Deleted, type Snapshot } from './snapshots';
+import { CANDIDATE_LIMIT, sameVersion, Snapshots, tweakBody, type CandidateSet, type Deleted, type Snapshot } from './snapshots';
 import { isGlobalTempo, patchTempo, tempo } from './tempo';
 import { rowOrder } from './structure';
 import type { Card } from './quick-patch';
@@ -3997,7 +3997,7 @@ export class Editor {
     let b = this.bodies.get(text);
     if (b === undefined) {
       if (this.bodies.size > 4 * CANDIDATE_LIMIT) this.bodies.clear();
-      this.bodies.set(text, (b = body(JSON.parse(text) as Patch)));
+      this.bodies.set(text, (b = tweakBody(JSON.parse(text) as Patch)));
     }
     return b;
   }
@@ -4009,7 +4009,7 @@ export class Editor {
 
   /** candidate `s` sounds or is wired differently from how it was made (the layout and the name are not tweaks) */
   tweaked(s: Snapshot): boolean {
-    return (s.letter === this.snaps.current ? body(this.patch) : this.bodyOf(s.patch)) !== this.bodyOf(s.original);
+    return (s.letter === this.snaps.current ? tweakBody(this.patch) : this.bodyOf(s.patch)) !== this.bodyOf(s.original);
   }
 
   /** the current candidate's stored patch brought up to the patch heard */

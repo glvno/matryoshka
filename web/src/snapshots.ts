@@ -94,6 +94,14 @@ export function fitText(s: Pick<Snapshot, 'aim'>): string | null {
   return `${s.aim.fits ? '' : 'kind of '}sounds like ${what}`;
 }
 
+/** what "tweaked" compares (D-1425): the body without the preset each card shows, which Store preset names without
+ *  changing the sound */
+export function tweakBody(p: Patch): string {
+  const q = JSON.parse(body(p)) as Patch;
+  for (const a of q.assemblies ?? []) delete a.preset;
+  return JSON.stringify(q);
+}
+
 /** what two versions of the patch have in common when they sound and are wired the same: the patch without the canvas
  *  layout (positions, frame sizes, open or closed, the view, the octave), which a switch keeps as it is on screen, and
  *  without the name */
