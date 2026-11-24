@@ -11,7 +11,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FACTORY } from './assemblies';
 import { insertAssembly } from './assembly';
 import { DeviceLink } from './device';
-import { setFactoryPresets } from './device-presets';
+import { currentValues, setFactoryPresets } from './device-presets';
+import { setRows } from './fx-preset';
+import { rowOrder } from './structure';
 import { Editor, type EditorEvents } from './editor';
 import { DEFS } from './modules';
 import { connect, newPatch, type Patch } from './patch';
@@ -226,6 +228,36 @@ describe('a sound added to the palette from a candidate (owner 2026-11-24: "FM-1
     await fm1.quiet();
     expect([off, live()]).toEqual([[], true]);
     expect(state()).toEqual({ list: [['A', 0.15], ['B', 0.45], ['C', 0.6], ['D', 0.4]], current: 'D', level: 0.4 });
+  });
+  it('candidates that are Monolith D tweaks go in on its slot with presets; a switch to each makes that candidate heard (owner 2026-11-24)', async () => {
+    const mono = FM1_PRESETS['Monolith D'];
+    /** Monolith D with card row `row` of its instrument moved, as the card moves it */
+    const tweaked = (row: number): Patch => {
+      const p = mono(), a = p.assemblies!.find((x) => x.name === 'Monolith D')!;
+      const rows = rowOrder(p, a), values = currentValues(p, a);
+      values[row] += values[row] >= 0.5 ? -0.1 : 0.1;
+      setRows(p, rows, values);
+      return p;
+    };
+    const { editor, fm1, link, palette, off, live, grip } = await rig([{ name: 'Monolith D', patch: mono, factory: true }], mono(), [tweaked(4), tweaked(5)]);
+    fm1.bins[0] = link.encodeFor(mono());
+    fm1.slots[0] = { slot: 0, used: true, length: fm1.bins[0].length, name: 'Monolith D' };
+    const values = (): number[] => editor.snaps.list.map((s) => currentValues(editor.snapshotVersion(s), editor.snapshotVersion(s).assemblies!.find((x) => x.name === 'Monolith D')!)[4]);
+    const before = values();
+    editor.showSnapshot('C');
+    expect(await grip(0)).toBe(true);
+    editor.showSnapshot('B');
+    expect(await grip(1)).toBe(true);
+    await fm1.quiet();
+    expect(fm1.entries.slice(0, 2)).toMatchObject([{ slot: 0, devices: [{ name: 'Monolith D C' }] }, { slot: 0, devices: [{ name: 'Monolith D B' }] }]);
+    expect(fm1.slots[1].used).toBe(false);
+    editor.showSnapshot('A');
+    await palette.click(0);
+    await fm1.quiet();
+    expect([editor.snaps.current, editor.snaps.list.length, off, live()]).toEqual(['C', 3, [], true]);
+    fm1.tap(1);
+    await fm1.quiet();
+    expect([editor.snaps.current, editor.snaps.list.length, values(), off, live()]).toEqual(['B', 3, before, [], true]);
   });
 });
 

@@ -8,15 +8,17 @@ import { FACTORY } from './assemblies';
 import { insertAssembly, type AssemblyInst } from './assembly';
 import { binLength, slotMoves, type Candidate } from './bank';
 import { DeviceLink } from './device';
-import { addUserPreset, applyPreset, currentValues, presetsOf, setFactoryPresets } from './device-presets';
+import { addUserPreset, applyPreset, capturePreset, currentValues, presetsOf, replaceUserPresets, setFactoryPresets, userPresets } from './device-presets';
+import { drawerScope, setRows } from './fx-preset';
+import { drawerPresetInfo } from './fx-preset-format';
 import { DEFS } from './modules';
 import { connect, newPatch, type Patch } from './patch';
-import { applyEntry, entryOf, moveOrder, Palette, PALETTE_FULL, PALETTE_STORE, paletteDevices, repointed, type PalettePorts } from './palette';
+import { applyEntry, entryOf, moveOrder, NO_SAME_STRUCTURE, Palette, PALETTE_FULL, PALETTE_STORE, paletteDevices, repointed, type PalettePorts } from './palette';
 import { chipMeta } from './palette-view';
 import { FM1_PRESETS } from './presets';
 import { invalidatePresetPatterns } from './preset-patterns';
-import { CMD, PALETTE, type PaletteEntry } from './protocol';
-import { structureOf } from './structure';
+import { CMD, FEATURE25_SLOT_GET, FEATURE5_FX_DRAWERS, PALETTE, type PaletteEntry } from './protocol';
+import { rowOrder, structureOf } from './structure';
 import { PaletteFm1 } from './test-palette-fm1';
 
 const mem = new Map<string, string>();
@@ -132,7 +134,7 @@ describe('the palette over the link (#1196)', () => {
     expect(fm1.slots[1]).toMatchObject({ used: true, name: 'MY PAD', length: binLength(p) });
     expect(fm1.entries[0]).toMatchObject({ slot: 1, name: 'MY PAD', devices: [{ name: 'Warm1' }] });
     expect(palette.chips()[0]).toMatchObject({ state: 'ok', name: 'MY PAD', presets: ['Warm1'] });
-    expect(said.at(-1)).toBe('"My Pad" is palette 1 (preset Warm1 sent to the FM-1)');
+    expect(said.at(-1)).toBe(`"My Pad" is palette 1 (stored as a new patch in slot 2, as ${NO_SAME_STRUCTURE}; preset Warm1 sent to the FM-1)`);
     expect(fm1.ops.filter((op) => op === PALETTE.entryGet)).toEqual([]);   // (its hash was known: no ENTRY_GET)
   });
   it('points at a slot that holds the same patch, byte for byte, under the slot\'s own name, and at a dragged FM-1 slot', async () => {
@@ -380,7 +382,7 @@ describe('adding to the palette saves what the FM-1 needs to play the sound (own
     expect(fm1.entries[0]).toMatchObject({ devices: [{ name: 'Warm1' }] });
     const cmds = sentCmds(fm1);
     expect(cmds.indexOf(CMD.presetPut)).toBeLessThan(cmds.indexOf(PALETTE.cmd, cmds.indexOf(CMD.presetPut)));
-    expect(said.at(-1)).toBe('"My Pad" is palette 1 (preset Warm1 sent to the FM-1)');
+    expect(said.at(-1)).toBe(`"My Pad" is palette 1 (stored as a new patch in slot 1, as ${NO_SAME_STRUCTURE}; preset Warm1 sent to the FM-1)`);
   });
   it('replaces an FM-1 preset of that name whose values differ, and leaves one that agrees', async () => {
     const { fm1, palette, said } = await linked();
@@ -391,7 +393,7 @@ describe('adding to the palette saves what the FM-1 needs to play the sound (own
     await fm1.quiet();
     expect(fm1.presets).toHaveLength(1);
     expect(fm1.findPreset(s, 'Warm1')?.q16).toEqual(now);
-    expect(said.at(-1)).toBe('"My Pad" is palette 1 (preset Warm1 updated on the FM-1)');
+    expect(said.at(-1)).toBe(`"My Pad" is palette 1 (stored as a new patch in slot 1, as ${NO_SAME_STRUCTURE}; preset Warm1 updated on the FM-1)`);
     const puts = sentCmds(fm1).filter((c) => c === CMD.presetPut).length;
     await palette.add('My Pad', p, { pos: 1 });
     await fm1.quiet();
@@ -424,7 +426,7 @@ describe('adding to the palette saves what the FM-1 needs to play the sound (own
     expect(fm1.slots[1]).toMatchObject({ used: true, name: 'MY PAD 2' });
     expect(fm1.bins[1]).toEqual(link.encodeFor(p));
     expect(fm1.entries[0]).toMatchObject({ slot: 1, name: 'MY PAD 2' });
-    expect(said.at(-1)).toBe('"My Pad" is palette 1 (preset Warm1 sent to the FM-1; slot 1 holds another "MY PAD", so it is stored as "MY PAD 2" in slot 2)');
+    expect(said.at(-1)).toBe(`"My Pad" is palette 1 (stored as a new patch in slot 2, as ${NO_SAME_STRUCTURE}; preset Warm1 sent to the FM-1; slot 1 holds another "MY PAD", so it is stored as "MY PAD 2")`);
   });
   it('finds this browser\'s copy of a numbered slot by the name before the number', async () => {
     const { p } = padPatch();
@@ -480,7 +482,7 @@ describe('adding to the palette saves what the FM-1 needs to play the sound (own
     expect(fm1.presets).toEqual([]);
     expect(fm1.bins[0]).toEqual(link.encodeFor(p));
     expect(fm1.entries[0]).toMatchObject({ slot: 0, name: 'MY PAD', devices: [] });
-    expect(said.at(-1)).toBe('"My Pad" is palette 1. The FM-1 could not take preset Warm1 (its preset store is full): palette 1 plays the values stored with the patch in slot 1');
+    expect(said.at(-1)).toBe(`"My Pad" is palette 1 (stored as a new patch in slot 1, as ${NO_SAME_STRUCTURE}). The FM-1 could not take preset Warm1 (its preset store is full): palette 1 plays the values stored with the patch in slot 1`);
   });
   it('with firmware that keeps no presets, sends none and falls back the same way', async () => {
     const { fm1, palette, said } = await linked({ features: 1 << 31 });
@@ -489,7 +491,7 @@ describe('adding to the palette saves what the FM-1 needs to play the sound (own
     await fm1.quiet();
     expect(sentCmds(fm1).some((c) => c >= CMD.presets && c <= CMD.presetDel)).toBe(false);
     expect(fm1.entries[0]).toMatchObject({ devices: [] });
-    expect(said.at(-1)).toBe('"My Pad" is palette 1. The FM-1 could not take preset Warm1 (update the FM-1 to store presets on it): palette 1 plays the values stored with the patch in slot 1');
+    expect(said.at(-1)).toBe(`"My Pad" is palette 1 (stored as a new patch in slot 1, as ${NO_SAME_STRUCTURE}). The FM-1 could not take preset Warm1 (update the FM-1 to store presets on it): palette 1 plays the values stored with the patch in slot 1`);
   });
   it('a refused entry takes back the slot it stored and the preset it sent, and says what happened', async () => {
     const { fm1, palette, said } = await linked();
@@ -568,5 +570,173 @@ describe('this browser\'s copy of each sound it put into the palette (owner 2026
     await palette.click(0);
     await fm1.quiet();
     expect(opened.map((x) => link.encodeFor(x.patch))).toEqual([fm1.bins[3]]);
+  });
+});
+
+describe('a sound the FM-1 reaches with device presets takes no new slot (owner 2026-11-24: "adding a candidate to palette should only send a patch to the fm1 if the current sound doesn\'t fit as a preset on an instrument the fm1 already has")', () => {
+  /** the FM-1 with factory Monolith D in slot 1 as the firmware writes it, its presets and FX drawer presets, and this
+   *  browser's factory copy of it */
+  async function monolith(o: { features?: number; presetRoom?: number } = {}) {
+    const factory = (): Patch => FM1_PRESETS['Monolith D']();
+    const r = await linked({ ...o, features25: FEATURE25_SLOT_GET | FEATURE5_FX_DRAWERS, candidates: [{ name: 'Monolith D', patch: factory, factory: true }] });
+    const held = factory(), bin = r.link.encodeFor(held);
+    r.fm1.slots[0] = { slot: 0, used: true, length: bin.length, name: 'Monolith D' };
+    r.fm1.bins[0] = bin;
+    const synth = (p: Patch): AssemblyInst => p.assemblies!.find((a) => a.name === 'Monolith D')!;
+    return { ...r, held, synth, puts: () => sentCmds(r.fm1).filter((c) => c === CMD.presetPut).length, slotWrites: () => sentCmds(r.fm1).filter((c) => c === CMD.slot).length };
+  }
+  /** card row `row` of assembly `a` of `p` moved by a step, as the card moves it (with every parameter the row sets) */
+  function tweak(p: Patch, a: AssemblyInst, row = 0): void {
+    const rows = rowOrder(p, a), values = currentValues(p, a), r = rows[row];
+    const pd = DEFS[p.modules.find((x) => x.id === r.module)!.type].params.find((x) => x.name === r.param)!;
+    const by = pd.step ?? (pd.max - pd.min) / 10;
+    values[row] += values[row] + by <= pd.max ? by : -by;
+    setRows(p, rows, values);
+  }
+  /** the patch the FM-1 plays for palette position `pos`: its slot's patch with the entry applied */
+  const plays = (held: Patch, entry: PaletteEntry): Patch => { const p = structuredClone(held); applyEntry(p, entry); return p; };
+
+  it('a tweak of Monolith D: one preset (the instrument with its drawer) uploaded and kept here, the entry on its slot, no slot written', async () => {
+    const { fm1, link, palette, said, held, synth, puts, slotWrites, opened } = await monolith();
+    const sound = structuredClone(held);
+    tweak(sound, synth(sound));
+    expect(await palette.add('Monolith D C', sound)).toBe(true);
+    await fm1.quiet();
+    expect([puts(), slotWrites(), fm1.slots[1].used]).toEqual([1, 0, false]);
+    const scope = drawerScope(sound, synth(sound))!;
+    expect(fm1.presets).toEqual([{ structure: scope.structure, name: 'Monolith D C', q16: q16(capturePreset(sound, synth(sound), '').values) }]);
+    expect(fm1.entries[0]).toMatchObject({ slot: 0, name: 'Monolith D', devices: [{ name: 'Monolith D C' }] });
+    expect(userPresets().map((x) => [x.structure, x.name, !!drawerPresetInfo(x)])).toEqual([[scope.structure, 'Monolith D C', true]]);
+    expect(said.at(-1)).toBe('"Monolith D C" is palette 1: slot 1 · Monolith D with preset Monolith D C (preset Monolith D C sent to the FM-1)');
+    // (what the FM-1 plays is the sound, its device under the preset's name; a click opens the same)
+    const named = structuredClone(sound);
+    synth(named).preset = 'Monolith D C';
+    expect(link.encodeFor(plays(held, fm1.entries[0]!))).toEqual(link.encodeFor(named));
+    await palette.click(0);
+    await fm1.quiet();
+    expect(opened.map((x) => link.encodeFor(x.patch))).toEqual([link.encodeFor(named)]);
+  });
+  it('the same tweak added twice reuses the preset it made', async () => {
+    const { fm1, palette, held, synth, puts, slotWrites, said } = await monolith();
+    const sound = structuredClone(held);
+    tweak(sound, synth(sound));
+    await palette.add('Monolith D C', sound);
+    await fm1.quiet();
+    await palette.add('Monolith D E', sound, { pos: 1 });
+    await fm1.quiet();
+    expect([puts(), slotWrites(), userPresets().length]).toEqual([1, 0, 1]);
+    expect(fm1.entries[1]).toMatchObject({ slot: 0, devices: [{ name: 'Monolith D C' }] });
+    expect(said.at(-1)).toBe('"Monolith D E" is palette 2: slot 1 · Monolith D with preset Monolith D C');
+  });
+  it('a sound equal to a preset there already uploads nothing: a factory one, the user\'s, one only the FM-1 has', async () => {
+    const { fm1, palette, held, synth, puts, slotWrites } = await monolith();
+    const at = (row: number): Patch => { const s = structuredClone(held); tweak(s, synth(s), row); return s; };
+    const [lead, mine, theirs] = [at(0), at(1), at(2)];
+    const base = drawerScope(held, synth(held))!.base;
+    setFactoryPresets([], (b) => (b === base ? [{ ...capturePreset(lead, synth(lead), 'Lead'), factory: true }] : []));
+    replaceUserPresets([], [capturePreset(mine, synth(mine), 'Mine 1')]);
+    const t = capturePreset(theirs, synth(theirs), '');
+    fm1.presets.push({ structure: t.structure, name: 'THEIRS', q16: q16(t.values) });
+    fm1.presets.push({ structure: t.structure, name: 'MINE 1', q16: q16(capturePreset(mine, synth(mine), '').values) });
+    for (const [pos, s] of [lead, mine, theirs].entries()) expect(await palette.add(`Monolith D ${pos}`, s, { pos })).toBe(true);
+    await fm1.quiet();
+    expect([puts(), slotWrites()]).toEqual([0, 0]);
+    expect(fm1.entries.slice(0, 3).map((e) => [e?.slot, e?.devices.map((x) => x.name)])).toEqual([[0, ['Lead']], [0, ['Mine 1']], [0, ['THEIRS']]]);
+    expect(userPresets().map((x) => x.name).sort()).toEqual(['Mine 1', 'THEIRS']);   // (the FM-1's own joins this browser's)
+  });
+  it('a tweak of a drawer effect makes one preset of the instrument with its drawer', async () => {
+    const { fm1, palette, held, synth, puts } = await monolith();
+    const sound = structuredClone(held);
+    const scope = drawerScope(sound, synth(sound))!;
+    tweak(sound, scope.effects.find((e) => e.name === 'Delay')!);
+    expect(await palette.add('Monolith D B', sound)).toBe(true);
+    await fm1.quiet();
+    expect(puts()).toBe(1);
+    expect(fm1.presets.map((x) => [x.structure, x.name, x.q16.length])).toEqual([[scope.structure, 'Monolith D B', capturePreset(sound, synth(sound), '').values.length]]);
+    expect(fm1.entries[0]).toMatchObject({ slot: 0, devices: [{ name: 'Monolith D B' }] });
+  });
+  it('a tempo or pattern change alone takes no patch: the entry plays the slot\'s, with the sound\'s pattern number, and says so', async () => {
+    const { fm1, palette, held, said, puts, slotWrites } = await monolith();
+    const fast = structuredClone(held);
+    fast.modules.find((m) => m.type === 'fm1')!.params.tempo = 151;
+    expect(await palette.add('Monolith D B', fast)).toBe(true);
+    await fm1.quiet();
+    expect(said.at(-1)).toBe('"Monolith D B" is palette 1. It plays the tempo of slot 1');
+    const notes = structuredClone(held);
+    const steps = notes.modules.find((m) => m.type === 'steps')!;
+    steps.params.len = steps.params.len === 8 ? 16 : 8;
+    notes.modules.find((m) => m.type === 'fm1')!.seq = { pattern: 2 };
+    expect(await palette.add('Monolith D C', notes)).toBe(true);
+    await fm1.quiet();
+    expect(said.at(-1)).toBe('"Monolith D C" is palette 2. It plays the patterns of slot 1');
+    expect([puts(), slotWrites()]).toEqual([0, 0]);
+    expect(fm1.entries.slice(0, 2)).toMatchObject([{ slot: 0, pattern: 0, devices: [] }, { slot: 0, pattern: 2, devices: [] }]);
+  });
+  it('a tweak saved under another name is another patch: it is stored, and says why', async () => {
+    const { fm1, palette, held, synth, said, puts } = await monolith();
+    const sound = structuredClone(held);
+    sound.name = 'My Mono';
+    tweak(sound, synth(sound));
+    expect(await palette.add('My Mono', sound)).toBe(true);
+    await fm1.quiet();
+    expect([fm1.entries[0]?.slot, fm1.slots[1].name, puts()]).toEqual([1, 'MY MONO', 0]);
+    expect(said.at(-1)).toBe(`"My Mono" is palette 1 (stored as a new patch in slot 2, as ${NO_SAME_STRUCTURE})`);
+  });
+  it('a cable or module change stores a patch, and says why', async () => {
+    const { fm1, palette, held, said, puts } = await monolith();
+    const sound = structuredClone(held);
+    sound.cables.pop();
+    expect(await palette.add('Monolith D B', sound)).toBe(true);
+    await fm1.quiet();
+    expect(fm1.slots[1]).toMatchObject({ used: true, name: 'MONOLITH D B' });
+    expect(fm1.entries[0]).toMatchObject({ slot: 1 });
+    expect(puts()).toBe(0);
+    expect(said.at(-1)).toBe(`"Monolith D B" is palette 1 (stored as a new patch in slot 2, as ${NO_SAME_STRUCTURE})`);
+  });
+  it('a setting outside the device presets stores a patch, and names it', async () => {
+    const { fm1, palette, held, said } = await monolith();
+    const sound = structuredClone(held);
+    sound.modules.find((m) => m.type === 'output')!.params.level = 0.33;
+    expect(await palette.add('Monolith D B', sound)).toBe(true);
+    await fm1.quiet();
+    expect(fm1.entries[0]).toMatchObject({ slot: 1, name: 'MONOLITH D B' });
+    expect(said.at(-1)).toBe('"Monolith D B" is palette 1 (stored as a new patch in slot 2, as it changes Output settings no device preset holds)');
+  });
+  it('with the preset store full, a tweak stores a patch, and says why', async () => {
+    const { fm1, palette, held, synth, said } = await monolith({ presetRoom: 0 });
+    const sound = structuredClone(held);
+    tweak(sound, synth(sound));
+    expect(await palette.add('Monolith D C', sound)).toBe(true);
+    await fm1.quiet();
+    expect([fm1.presets, userPresets()]).toEqual([[], []]);
+    expect(fm1.entries[0]).toMatchObject({ slot: 1, name: 'MONOLITH D C', devices: [] });
+    expect(said.at(-1)).toBe('"Monolith D C" is palette 1 (stored as a new patch in slot 2, as the FM-1 could not take preset Monolith D C (its preset store is full))');
+  });
+  it('with firmware that keeps no presets, a tweak stores a patch, and says why', async () => {
+    const { fm1, palette, held, synth, said } = await monolith({ features: 1 << 31 });
+    const sound = structuredClone(held);
+    tweak(sound, synth(sound));
+    expect(await palette.add('Monolith D C', sound)).toBe(true);
+    await fm1.quiet();
+    expect(sentCmds(fm1).some((c) => c >= CMD.presets && c <= CMD.presetDel)).toBe(false);
+    expect(fm1.entries[0]).toMatchObject({ slot: 1, devices: [] });
+    expect(said.at(-1)).toBe('"Monolith D C" is palette 1 (stored as a new patch in slot 2, as the FM-1 could not take preset Monolith D C (update the FM-1 to store presets on it))');
+  });
+  it('the entry keeps working after the page loads again: its preset is in this browser, its slot\'s copy found', async () => {
+    const { fm1, link, held, synth, palette } = await monolith();
+    const sound = structuredClone(held);
+    tweak(sound, synth(sound));
+    await palette.add('Monolith D C', sound);
+    await fm1.quiet();
+    const again = await linked({ candidates: [{ name: 'Monolith D', patch: () => FM1_PRESETS['Monolith D'](), factory: true }] });
+    again.fm1.slots = fm1.slots.map((s) => ({ ...s }));
+    again.fm1.bins = [...fm1.bins];
+    again.fm1.entries = [...fm1.entries];
+    again.fm1.report();
+    await again.fm1.quiet();
+    await again.palette.click(0);
+    await again.fm1.quiet();
+    synth(sound).preset = 'Monolith D C';
+    expect(again.opened.map((x) => link.encodeFor(x.patch))).toEqual([link.encodeFor(sound)]);
   });
 });
