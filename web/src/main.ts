@@ -1910,7 +1910,7 @@ const sideMenu = (anchor: HTMLElement): MenuItem[] => [
   { text: `Mutate pitch: ${editor.mutatePitch ? 'on' : 'off'}`, run: () => setMutatePitch(!editor.mutatePitch) },
   { text: `Candidates per round: ${candidates} …`, run: () => pickCount(anchor) },
   { text: 'Duplicate', key: 'Shift+Alt+B', rule: true, run: () => duplicate() },
-  { text: `Save ${editor.snaps.current} as a patch…`, run: () => saveSnapshotPatch(editor.snaps.shown) },
+  { text: 'Save…', run: () => void saveSnapshot(editor.snaps.shown) },
 ];
 /** a candidate's menu (right-click, double-click, ⋯ on the row heard), under `anchor` */
 const snapshotMenu = (s: Snapshot, anchor: HTMLElement): MenuItem[] => {
