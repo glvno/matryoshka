@@ -85,7 +85,6 @@ import { applyPayload, type LocksLoaded } from './pattern-store';
 import { clearAllPatterns as clearAllPatternsIn, copyPattern as copyPatternIn, doublePattern as doublePatternIn, halvePattern as halvePatternIn, nextEmptyPattern as nextEmptyAfter, patternsEmpty, type ResizeRefusal } from './pattern-ops';
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
 import { addPresetOf, applyPreset, capturePreset, deletePreset, drawerChangeText, matchesPreset, nextPresetName, PRESET_NAME_MAX, presetChoices, presetDiff, presetsOf, presetView, rememberedPreset, replaceUserPresets, sameName, renamePreset, shortBy, shortPresetText, stepPreset, storePreset, type EffectChange, type Preset, type PresetDiff } from './device-presets';
-import { snapshotPreset } from './snapshot-presets';
 import { engineOf } from './library-presets';
 import { drawerScope } from './fx-preset';
 import { effectAmount, planTab, TAB_FOOT, TAB_HEAD, TAB_W } from './fx-tab';
@@ -104,7 +103,7 @@ import { scopeTools, type ScreenSpec } from './scope-view';
 import { listenable, type ListenSource } from './listen';
 import type { EnvSpec } from './env-view';
 import { flipPlan } from './ab';
-import { body, CURRENT_LETTER, sameVersion, Snapshots, type Snapshot } from './snapshots';
+import { body, CANDIDATE_LIMIT, sameVersion, Snapshots, type CandidateSet, type Deleted, type Snapshot } from './snapshots';
 import { isGlobalTempo, patchTempo, tempo } from './tempo';
 import { rowOrder } from './structure';
 import type { Card } from './quick-patch';
@@ -160,6 +159,10 @@ import { EXCLUDED_TYPES,
 export const NOTHING_TO_MOVE = 'locked, pitch held ("Mutate pitch" is off), or left alone: Main, the Output, voices, Steps, the Arpeggiator, Drum maps, the Harmonizer';
 /** how many times Mutate or one candidate is tried before nothing moving counts as nothing to move */
 const MUTATE_TRIES = 8;
+/** what Generate or Duplicate says with no room left in the set */
+const fullText = (verb: string): string => `${verb}: ${CANDIDATE_LIMIT} candidates is the most for one patch, delete some first`;
+/** a patch's name as a set's key (candidate-store.ts find): trimmed, any case; an empty name matches none */
+const sameSetName = (a: string, b: string): boolean => !!a.trim() && a.trim().toLowerCase() === b.trim().toLowerCase();
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 /** a tooltip with the range of the output it is about (ranges.ts) on a line of its own */
@@ -184,12 +187,8 @@ function kindMark(kind: ButtonKind | 'main'): SVGSVGElement {
   return svg;
 }
 const HISTORY = 40;
-/** snapshots a step added or removed, each with its place in the list (added: after the step; removed: before it) */
-type ListChange = { added: { s: Snapshot; at: number }[]; removed: { s: Snapshot; at: number }[] };
-/** an undo step: the patch (Editor.snap) and the stop it belongs to, a snapshot's letter or null for the current patch;
- *  `list`: a step that added, removed or moved candidates (Generate #996, Alt+X #1028, a drag in the list #1040), with the current patch kept aside;
- *  `presets`: the user presets a step stored from snapshots and those they replaced, taken out and put back by undo (#1031) */
-type UndoStep = { s: string; shown: string | null; list?: { change: ListChange; current: string | null }; presets?: { put: Preset[]; was: Preset[] } };
+/** an undo step: the patch (Editor.snap). Each candidate has its own steps (owner 2026-11-24): a switch is not a step */
+type UndoStep = { s: string };
 /** a logarithmic slider's value rounded to the parameter's step (a glide time to the ms, a cutoff to the Hz), not to a whole number */
 function snapTo(pd: ParamDef, v: number): number {
   const step = pd.step ?? 0;
@@ -264,8 +263,10 @@ export interface EditorEvents {
   onSaveAssembly(def: AssemblyDef): void;
   /** undo or redo happened (the tutorial counts them) */
   onHistory?(kind: 'undo' | 'redo'): void;
-  /** the snapshots or the stop on screen changed (taken, switched, renamed, removed, an undo across a switch) */
+  /** the candidates or the one heard changed (made, switched, renamed, deleted, put back, moved) */
   onSnapshots?(): void;
+  /** the open patch's candidates are put away because another patch opens (candidate-store.ts keeps them, D-972) */
+  onPutAway?(set: CandidateSet): void;
   /** a snapshot switch is about to happen (D-970): silence both engines on `p`, the patch on screen (voices let go, every
    *  tail cut), and the linked FM-1's notes; an ordinary edit never sends it */
   onSilence?(p: Patch): void;
@@ -478,10 +479,11 @@ export class Editor {
   private cablePaths: { path: SVGPathElement; from: HTMLElement; to: HTMLElement; origin: HTMLElement; cable?: Cable }[] = [];
   private stack: string[] = [];
   private routingOpen = new Set<string>();
-/** undo steps: the patch as an undo snapshot and the stop it belongs to, a snapshot's letter or null for the current patch
- * (a switch is a step; undoing it goes back to the stop it left) */
+  /** the current candidate's undo steps (owner 2026-11-24: undo is per candidate; a switch is not a step) */
   private history: UndoStep[] = [];
   private future: UndoStep[] = [];
+  /** the other candidates' undo steps, by letter (this session, the open patch's candidates only) */
+  private stacks = new Map<string, { history: UndoStep[]; future: UndoStep[] }>();
   private parameterDisplays: { id: number; update: (values: Record<string, number> | null) => void; el?: HTMLElement }[] = [];
   /** the patch's devices (pages.ts) and the page Main's knobs K1..K4 edit: the dock's DEVICE / PAGE pickers or a click on a
    * row choose it, the FM-1 too with Live on */
@@ -519,6 +521,7 @@ export class Editor {
     this.world = canvas.querySelector('#patch-world')!;
     this.spaceEl = canvas.querySelector('#canvas-space')!;
     this.report(fixAssemblies(this.patch, DEFS));
+    this.snaps = Snapshots.fresh(this.patch);
     new ResizeObserver(() => {
       this.sizeCanvas();
       this.positionCables();
@@ -587,17 +590,27 @@ export class Editor {
     this.restoreView();
   }
 
-  setPatch(p: Patch): void {
+  /**
+   * Open `p`, another patch. Its candidates are `set` (candidate-store.ts, whose current candidate `p` is), or a fresh set
+   * of `p` alone as A. The candidates on screen are put away first (onPutAway), so opening never throws them away (D-972);
+   * undo starts afresh.
+   */
+  setPatch(p: Patch, set?: CandidateSet): void {
     stopEntry(); // (cursor entry, the armed track and the roll belong to the patch they started in)
     this.armTrack(null);
     this.closeRoll();
+    this.dropGesture();
+    this.ev.onPutAway?.(this.exportSet());
     this.patch = p;
     if (this.dock) ensureMain(this.patch, DEFS);
     this.report(fixAssemblies(this.patch, DEFS));
     this.history = [];
     this.future = [];
-    this.dropGesture();
-    this.snaps.clear();   // (snapshots belong to the patch they were taken from)
+    this.stacks.clear();
+    this.snaps = set ? Snapshots.of(set) : Snapshots.fresh(this.patch);
+    this.snaps.shown.patch = JSON.stringify(this.patch);
+    this.madeNow = null;
+    this.mutateRun = null;
     this.ev.onSnapshots?.();
     this.stopListening();   // (another patch's module of the same id is another signal)
     this.routingOpen.clear();
@@ -798,10 +811,10 @@ export class Editor {
 
   /** one undo step from `before` (a snap) to now, if anything changed; inside an open gesture the gesture's step covers it,
    *  inside Quick patch's open chain the chain's step does (beginStep) */
-  private commit(before: string, shown = this.snaps.shown): boolean {
+  private commit(before: string): boolean {
     if (before === this.snap()) return false;
     if (this.gesture !== null || this.chain !== null) return true;
-    this.history.push({ s: before, shown });
+    this.history.push({ s: before });
     if (this.history.length > HISTORY) this.history.shift();
     this.future = [];
     return true;
@@ -870,9 +883,9 @@ export class Editor {
     this.endGesture();
     this.endPass(); // (a pass being recorded is a step of its own)
     const e = this.history.pop();
-    if (e === undefined) return this.ev.onError('nothing to undo');
-    this.future.push(this.stepNow(e));
-    this.goTo(e, -1);
+    if (e === undefined) return this.ev.onError(`nothing to undo${this.snaps.list.length > 1 ? ` on ${this.snaps.current}: each candidate has its own undo` : ''}`);
+    this.future.push({ s: this.snap() });
+    this.restore(e.s);
     this.ev.onHistory?.('undo');
   }
 
@@ -881,74 +894,10 @@ export class Editor {
     this.endGesture();
     this.endPass(); // (a pass being recorded is a step of its own)
     const e = this.future.pop();
-    if (e === undefined) return this.ev.onError('nothing to redo');
-    this.history.push(this.stepNow(e));
-    this.goTo(e, 1);
-    this.ev.onHistory?.('redo');
-  }
-
-  /** go to an undo (`dir` -1) or redo (1) step. Presets stored from snapshots go out of the library or come back; such a
-   *  step leaves the patch as it was, so the patch is not loaded again (#1031) */
-  private goTo(e: UndoStep, dir: -1 | 1): void {
-    if (e.presets) replaceUserPresets(e.presets.put, dir < 0 ? e.presets.was : e.presets.put);
-    if (e.list) this.unwind(e, dir);
-    else if (e.presets && e.s === this.snap() && e.shown === this.snaps.shown) this.rebuild();
-    else this.travel(e);
-  }
-
-  /**
-   * Go to an undo / redo step: its patch, on its stop. Arriving on a snapshot from the current patch keeps the current
-   * patch, as a switch does. Arriving on the current patch from a snapshot takes the step's version; a kept current patch
-   * that differs from it (after a snapshot was removed) becomes a new snapshot, so an undo never drops it (#943).
-   */
-  private travel(e: UndoStep): void {
-    const from = this.snaps.shown;
-    const to = e.shown !== null && this.snaps.get(e.shown) ? e.shown : null;
-    let name = this.patch.name;
-    if (from === null && to !== null) this.snaps.current = JSON.stringify(this.patch);
-    if (from !== null && to === null) {
-      const kept = JSON.parse(this.snaps.current!) as Patch;
-      if (body(kept) !== body(JSON.parse(e.s) as Patch)) this.keep(kept);
-      this.snaps.current = null;
-      name = kept.name;
-    }
-    if (to !== null && to !== from) name = (JSON.parse(this.snaps.get(to)!.patch) as Patch).name;
+    if (e === undefined) return this.ev.onError(`nothing to redo${this.snaps.list.length > 1 ? ` on ${this.snaps.current}` : ''}`);
+    this.history.push({ s: this.snap() });
     this.restore(e.s);
-    this.patch.name = name;   // (undo leaves the name alone, but each stop has its own)
-    this.snaps.shown = to;
-    this.ev.onSnapshots?.();
-  }
-
-  /** the state now as the counterpart of step `e` on the other stack (a list step keeps its change, a presets step its
-   *  presets) */
-  private stepNow(e: UndoStep): UndoStep {
-    return { s: this.snap(), shown: this.snaps.shown, ...(e.list ? { list: { change: e.list.change, current: this.snaps.current } } : {}), ...(e.presets ? { presets: e.presets } : {}) };
-  }
-
-  /** undo (`dir` -1) or redo (1) a list step: take its snapshots out or put them back, then its patch, stop and kept
-   *  current patch. A kept current patch with no snapshot left to show beside it becomes a snapshot (nothing is dropped) */
-  private unwind(e: UndoStep, dir: -1 | 1): void {
-    const { change, current } = e.list!;
-    const [out, back] = dir < 0 ? [change.added, change.removed] : [change.removed, change.added];
-    for (const x of out) this.snaps.remove(x.s.letter);
-    for (const x of [...back].sort((a, b) => a.at - b.at)) this.snaps.list.splice(Math.min(x.at, this.snaps.list.length), 0, x.s);
-    const to = e.shown !== null && this.snaps.get(e.shown) ? e.shown : null;
-    const name = to !== null ? (JSON.parse(this.snaps.get(to)!.patch) as Patch).name
-      : this.snaps.shown !== null && this.snaps.current !== null ? (JSON.parse(this.snaps.current) as Patch).name : this.patch.name;
-    if (to === null && current !== null) this.keep(JSON.parse(current) as Patch);
-    // (a step that only reordered the list leaves the patch on screen as it is: nothing loads again, #1040)
-    if (e.s !== this.snap() || to !== this.snaps.shown) this.restore(e.s);
-    this.patch.name = name;
-    this.snaps.shown = to;
-    this.snaps.current = to === null ? null : current;
-    this.ev.onSnapshots?.();
-  }
-
-  /** a step of its own on the undo stack (the future is dropped, as any new step drops it) */
-  private record(step: UndoStep): void {
-    this.history.push(step);
-    if (this.history.length > HISTORY) this.history.shift();
-    this.future = [];
+    this.ev.onHistory?.('redo');
   }
 
   /** a structural change from outside (the tutorial's "do it for me"): undoable like the editor's own */
@@ -2656,6 +2605,7 @@ export class Editor {
       // (the engine's reports run a poll behind, so they are not shown until the edit ends)
       show(!offset ? v : pd.log ? snapTo(pd, fromUnit(pd, at / 1000)) : Number(at.toFixed(6)));
       thumb?.setBase(offset ? trackOf(v) : null);
+      showMade();
       if (def.params.some((q) => q.altText?.when === pd.name)) for (const el of row.parentElement?.children ?? []) this.refreshers.get(el as HTMLElement)?.(); // (the LFO's range: how its rate shows)
       this.ev.onParam(m.id, pd.name, v);
       this.mirror(m.id, pd.name, v);
@@ -2688,6 +2638,10 @@ export class Editor {
     // a slider with nothing to patch keeps the bar and a plain thumb (not a jack: no cable lands on it)
     const plain = !thumb && !pd.toggle && !choice ? sliderJack(input, () => {}) : null;
     plain?.jack.classList.replace('slider-port', 'slider-thumb');
+    // the grey tick where the value was when the candidate heard was made, while it is elsewhere (D-971 as superseded)
+    const made = this.madeValue(m.id, m.type, pd.name);
+    const showMade = (): void => (thumb ?? plain)?.setMade(made !== undefined && Math.abs(made - m.params[pd.name]) > 1e-9 ? trackOf(made) : null);
+    showMade();
     // the selector: its jack is the live choice's marker (routes and cables end on it, as on a slider's thumb)
     const sel = choice ? selector({
       label: longName(def.type, pd.name),
@@ -4026,124 +3980,135 @@ export class Editor {
     return true;
   }
 
-  // ---- candidates (#943, #1048; snapshots in the code): versions of the patch to compare with the current patch, which is
-  // candidate A. The switch goes A, B, …, A…; a switch changes values in place when only values differ (ab.ts flipPlan)
+  // ---- candidates (#943, #1048, owner 2026-11-24; snapshots in the code): versions of the open patch, all alike. The one
+  // heard is the current patch and takes every edit at once. A switch changes values in place when only values differ
+  // (ab.ts flipPlan) and is not an undo step: each candidate has its own steps, which come back with it
 
-  readonly snaps = new Snapshots();
+  snaps = new Snapshots();
+  /** the current candidate's original, parsed for the sliders' as-made ticks (null: not parsed yet) */
+  private madeNow: Patch | null = null;
+  /** body() of stored patch texts (snapshots.ts), so the rows' "tweaked" costs a lookup */
+  private bodies = new Map<string, string>();
 
-  /** keep the patch on screen as a new candidate (Nominate); `from`: where it came from (Snapshot.from); returns it */
-  takeSnapshot(name?: string, from?: string): Snapshot {
+  private bodyOf(text: string): string {
+    let b = this.bodies.get(text);
+    if (b === undefined) {
+      if (this.bodies.size > 4 * CANDIDATE_LIMIT) this.bodies.clear();
+      this.bodies.set(text, (b = body(JSON.parse(text) as Patch)));
+    }
+    return b;
+  }
+
+  /** the version candidate `s` stands for: for the current one, the patch heard */
+  snapshotVersion(s: Snapshot): Patch {
+    return s.letter === this.snaps.current ? this.patch : JSON.parse(s.patch) as Patch;
+  }
+
+  /** candidate `s` sounds or is wired differently from how it was made (the layout and the name are not tweaks) */
+  tweaked(s: Snapshot): boolean {
+    return (s.letter === this.snaps.current ? body(this.patch) : this.bodyOf(s.patch)) !== this.bodyOf(s.original);
+  }
+
+  /** the current candidate's stored patch brought up to the patch heard */
+  private syncShown(): void {
+    this.snaps.shown.patch = JSON.stringify(this.patch);
+  }
+
+  /** the open patch's candidates as candidate-store.ts keeps them, the current one as heard */
+  exportSet(): CandidateSet {
+    this.syncShown();
+    return this.snaps.toSet();
+  }
+
+  /** the candidates came back after a reload (candidate-store.ts): `set`, whose current candidate is the patch on screen
+   *  (the remembered patch, newer than the set's copy, stays). Undo stays as it is */
+  takeSet(set: CandidateSet): void {
+    this.snaps = Snapshots.of(set);
+    this.syncShown();
+    this.madeNow = null;
+    this.rebuild();   // (the sliders' as-made ticks)
+    this.ev.onSnapshots?.();
+  }
+
+  /** the value parameter `name` of module `id` (of type `type`) had when the current candidate was made: the slider's grey
+   *  tick (D-971 as superseded); undefined when the module was not there then */
+  private madeValue(id: number, type: string, name: string): number | undefined {
+    this.madeNow ??= JSON.parse(this.snaps.shown.original) as Patch;
+    const m = this.madeNow.modules.find((x) => x.id === id);
+    const v = m?.type === type ? m.params[name] : undefined;
+    return typeof v === 'number' ? v : undefined;
+  }
+
+  /** this candidate's undo steps aside, `letter`'s back (none for one never edited this session) */
+  private swapStacks(letter: string): void {
+    this.stacks.set(this.snaps.current, { history: this.history, future: this.future });
+    const back = this.stacks.get(letter);
+    this.stacks.delete(letter);
+    this.history = back?.history ?? [];
+    this.future = back?.future ?? [];
+  }
+
+  /**
+   * Make candidate `letter` the current patch (D-970): what is on screen, what is saved and what Live sends. The one left
+   * keeps every edit made to it; nothing is made, and no undo step is taken. False when there is nothing to do.
+   */
+  showSnapshot(letter: string): boolean {
+    const to = this.snaps.get(letter);
+    if (!to || letter === this.snaps.current) return false;
+    // an open gesture or a REC pass is a step of the candidate left
     this.endGesture();
     this.endPass();
-    const s = this.snaps.take(this.patch, name, from);
+    this.syncShown();
+    this.swapStacks(letter);
+    this.snaps.current = letter;
+    this.madeNow = null;
+    this.swapTo(JSON.parse(to.patch) as Patch, true);
+    this.ev.onSnapshots?.();
+    return true;
+  }
+
+  /** the switch: the next candidate in the list's order, round again (`step` -1: the one before). False with only one */
+  cycleSnapshots(step: 1 | -1 = 1): boolean {
+    const to = this.snaps.next(step);
+    return to !== undefined && this.showSnapshot(to);
+  }
+
+  /** Duplicate (Shift+Alt+B): a copy of the current candidate right under it, made now, becomes the current one. The same
+   *  sound, so nothing is silenced or sent. Null at the limit (CANDIDATE_LIMIT) */
+  duplicate(): Snapshot | null {
+    if (!this.snaps.room()) return this.ev.onError(fullText('Duplicate')), null;
+    this.endGesture();
+    this.endPass();
+    this.syncShown();
+    const s = this.snaps.take(this.patch, `copy:${this.snaps.current}`, this.snaps.list.indexOf(this.snaps.shown) + 1);
+    this.swapStacks(s.letter);
+    this.snaps.current = s.letter;
+    this.madeNow = null;
+    this.rebuild();   // (no slider has moved since it was made)
     this.ev.onSnapshots?.();
     return s;
   }
 
-  /** put back the snapshots the browser kept for this patch (after a reload, D-972); the current patch is on screen */
-  restoreSnapshots(list: readonly Snapshot[]): void {
-    this.snaps.clear();
-    this.snaps.list.push(...list);
-    this.ev.onSnapshots?.();
-  }
-
-  /** the current patch, whether it is on screen or a snapshot is */
-  currentPatch(): Patch {
-    return this.snaps.current === null ? this.patch : JSON.parse(this.snaps.current) as Patch;
-  }
-
-  /** the snapshot on screen has been changed since it was taken (switching away keeps the change as a new snapshot) */
-  shownEdited(): boolean {
-    const s = this.snaps.get(this.snaps.shown);
-    return !!s && !sameVersion(JSON.parse(s.patch) as Patch, this.patch);
-  }
-
-  /** keep `p` as a new snapshot, unless a snapshot holds that version already */
-  private keep(p: Patch): Snapshot {
-    return this.snaps.holding(p) ?? this.snaps.take(p);
-  }
-
-  /**
-   * Show a snapshot (its letter) or the current patch (null). Null when there is nothing to do; else `kept`, the new
-   * snapshot that holds the changes made to the snapshot left (a snapshot never changes, and neither does the current
-   * patch while a snapshot is shown, so no switch loses work). One undo step, which belongs to the stop left.
-   */
-  showSnapshot(target: string | null): { kept?: Snapshot } | null {
-    const from = this.snaps.shown;
-    if (target === from || (target !== null && !this.snaps.get(target))) return null;
-    // an open gesture or a REC pass is a step of the stop we leave (the switch is a step of its own)
-    this.endGesture();
-    this.endPass();
-    let kept: Snapshot | undefined;
-    if (from === null) this.snaps.current = JSON.stringify(this.patch);
-    else if (this.shownEdited() && !sameVersion(JSON.parse(this.snaps.current!) as Patch, this.patch)) kept = this.keep(this.patch);
-    const to = JSON.parse(target === null ? this.snaps.current! : this.snaps.get(target)!.patch) as Patch;
-    this.snaps.shown = target;
-    this.applyLive(to, from, true);
-    if (target === null) this.snaps.current = null;
-    this.ev.onSnapshots?.();
-    return kept ? { kept } : {};
-  }
-
-  /** the switch: the next stop (`step` -1: the one before). Null when there is no snapshot */
-  cycleSnapshots(step: 1 | -1 = 1): { kept?: Snapshot } | null {
-    const to = this.snaps.next(step);
-    return to === undefined ? null : this.showSnapshot(to);
-  }
-
-  /**
-   * Use: make a candidate the current patch (#1040, D-971), so it becomes A: a swap. The candidate leaves the list and is
-   * shown as the current patch; the current patch it replaces takes the candidate's place in the list with the next letter
-   * (returned, from `use`), unless it is the same version or a candidate holds it already. The candidate on screen gives
-   * the version heard, changes made to it included; changes made to another candidate on screen are kept as a new
-   * candidate first, as a switch keeps them. One undo step, which puts both back. Null when nothing was added (or there is
-   * no such candidate)
-   */
-  makeCurrent(letter: string): Snapshot | null {
+  /** delete candidate `letter` into Recently deleted. Deleting the current one switches to the next (the one before when
+   *  it was last). Null for the last one (one is always the current patch) or none of that letter */
+  deleteSnapshot(letter: string): Deleted | null {
     const s = this.snaps.get(letter);
-    if (!s) return null;
-    this.endGesture();
-    this.endPass();
-    const list = this.snaps.list;
-    const from = this.snaps.shown;
-    const change: ListChange = { added: [], removed: [{ s, at: list.indexOf(s) }] };
-    const step: UndoStep = { s: this.snap(), shown: from, list: { change, current: this.snaps.current } };
-    const cur = this.currentPatch();
-    if (from !== null && from !== letter && this.shownEdited() && !sameVersion(cur, this.patch) && !this.snaps.holding(this.patch)) change.added.push({ s: this.snaps.take(this.patch), at: 0 });
-    const to = from === letter ? this.patch : JSON.parse(s.patch) as Patch;
-    const kept = sameVersion(cur, to) || list.some((x) => x !== s && sameVersion(JSON.parse(x.patch) as Patch, cur)) ? null : this.snaps.take(cur, undefined, 'use');
-    const at = list.indexOf(s);
-    this.snaps.remove(letter);
-    if (kept) list.splice(at, 0, ...list.splice(list.indexOf(kept), 1));
-    if (kept) change.added.push({ s: kept, at: 0 });
-    for (const a of change.added) a.at = list.indexOf(a.s);
-    this.ev.onSilence?.(this.patch);   // (Alt+C is a switch too: it is silenced even when the sound stays)
-    if (to !== this.patch) this.swapTo(to);
-    this.snaps.shown = this.snaps.current = null;
-    this.record(step);
+    if (!s || this.snaps.list.length < 2) return null;
+    if (letter === this.snaps.current) {
+      const i = this.snaps.list.indexOf(s);
+      this.showSnapshot((this.snaps.list[i + 1] ?? this.snaps.list[i - 1]).letter);
+    }
+    this.stacks.delete(letter);
+    const d = this.snaps.remove(letter)!;
     this.ev.onSnapshots?.();
-    return kept;
+    return d;
   }
 
-  /**
-   * Open `p` as the current patch, A, and keep the candidates (a palette switch, D-1321): as Use does (D-971), the patch it
-   * replaces joins the list as a new candidate, unless it is the same version or a candidate holds it already, and a
-   * candidate that holds `p` leaves the list (it is A now). Changes made to a candidate on screen are kept as a new
-   * candidate first, as a switch keeps them. The rest is opening a patch (setPatch: undo starts afresh). Returns the
-   * candidate that keeps the patch replaced, or null
-   */
-  openKeeping(p: Patch): Snapshot | null {
-    this.endGesture();
-    this.endPass();
-    const cur = this.currentPatch();
-    if (this.shownEdited() && !sameVersion(cur, this.patch)) this.keep(this.patch);
-    const kept = sameVersion(cur, p) || this.snaps.holding(cur) ? null : this.snaps.take(cur, undefined, 'use');
-    const same = this.snaps.holding(p);
-    if (same) this.snaps.remove(same.letter);
-    const list = [...this.snaps.list];
-    this.setPatch(p);
-    this.restoreSnapshots(list);
-    return kept;
+  /** put Recently deleted's `i`th (0: the newest) back at its place, not heard; null when there is none or no room */
+  putBack(i = 0): Snapshot | null {
+    const s = this.snaps.putBack(i) ?? null;
+    if (s) this.ev.onSnapshots?.();
+    return s;
   }
 
   renameSnapshot(letter: string, name: string): void {
@@ -4154,191 +4119,141 @@ export class Editor {
     this.ev.onSnapshots?.();
   }
 
-  /** forget a snapshot; when it is on screen the current patch comes back first (changes made to it are kept as a new
-   * snapshot, as any switch keeps them) */
-  removeSnapshot(letter: string): void {
-    if (!this.snaps.get(letter)) return;
-    if (this.snaps.shown === letter) this.showSnapshot(null);
-    this.snaps.remove(letter);   // (its letter is never given again: undo steps on it count as steps of the current patch)
-    this.ev.onSnapshots?.();
-  }
-
-  /** drag a snapshot to place `to` of the list (#1040): the switch's stops follow the list's order, letters stay, the
-   * current patch stays the last stop. One undo step, as Alt+X's removal is. False when nothing moves */
+  /** drag a candidate to place `to` of the list (#1040): the switch follows the list's order, letters stay. False when
+   *  nothing moves */
   moveSnapshot(letter: string, to: number): boolean {
     const list = this.snaps.list;
     const s = this.snaps.get(letter);
     const from = s ? list.indexOf(s) : -1;
     to = Math.max(0, Math.min(list.length - 1, to));
     if (!s || from === to) return false;
-    this.endGesture();
-    this.endPass();
-    this.record({ s: this.snap(), shown: this.snaps.shown, list: { change: { removed: [{ s, at: from }], added: [{ s, at: to }] }, current: this.snaps.current } });
     this.snaps.move(letter, to);
     this.ev.onSnapshots?.();
     return true;
   }
 
+  /** revert (owner 2026-11-24, Q1): the current candidate back to how it was made, its hidden original, with the layout
+   *  and the name kept; one undo step of it. False when it is as made */
+  revert(): boolean {
+    const s = this.snaps.shown;
+    if (!this.tweaked(s)) return false;
+    const was = JSON.parse(s.original) as Patch;
+    was.name = this.patch.name;
+    this.applyLive(was);
+    return true;
+  }
+
+  /** Save preset (D-325) on engine `asmId` of the patch heard: its Store dialog */
+  savePreset(asmId: number): void {
+    const a = assemblyById(this.patch, asmId);
+    if (a) this.storePresetDialog(a);
+  }
+
   /**
-   * Alt+X (#1028): remove the snapshot on screen at once and show the next stop, as one undo step. Changes made to it are
-   * kept as a new snapshot first (D-971), unless a snapshot holds that version already. Null when the current patch is on
-   * screen (it is never removed); else the snapshot removed and, when the changes went to one, `kept`.
+   * Open `p` as the candidates' rules say (owner 2026-11-24, D-972, D-1321). A candidate of the open patch that holds it
+   * becomes current. Else a stored set that holds it comes back with that candidate current (`find`: candidate-store.ts,
+   * the sets other than the open one). Else `p` joins the open patch's candidates when it has their name, or else a
+   * stored set of its name, as a new candidate heard; else a fresh set of `p` alone. Nothing is thrown away: another set
+   * puts the open one away (setPatch). How it went, and the letter heard.
    */
-  removeShown(): { removed: Snapshot; kept?: Snapshot } | null {
-    const s = this.snaps.get(this.snaps.shown);
-    if (!s) return null;
+  openPatch(p: Patch, find: (p: Patch, except: string) => { set: CandidateSet; letter: string | null } | null): { how: 'switched' | 'added' | 'reopened' | 'fresh'; letter: string } {
     this.endGesture();
     this.endPass();
-    const list = this.snaps.list;
-    const to = this.snaps.next()!;   // (the stop after it, before anything is added)
-    const change: ListChange = { added: [], removed: [{ s, at: list.indexOf(s) }] };
-    const step: UndoStep = { s: this.snap(), shown: s.letter, list: { change, current: this.snaps.current } };
-    const cur = JSON.parse(this.snaps.current!) as Patch;
-    let kept: Snapshot | undefined;
-    if (this.shownEdited() && !sameVersion(cur, this.patch)) {
-      kept = this.snaps.holding(this.patch);
-      if (!kept) change.added.push({ s: (kept = this.snaps.take(this.patch)), at: 0 });
+    this.syncShown();
+    const own = this.snaps.list.find((s) => sameVersion(this.snapshotVersion(s), p));
+    if (own) return this.showSnapshot(own.letter), { how: 'switched', letter: own.letter };
+    const hit = find(p, this.snaps.id);
+    if (hit?.letter) {
+      this.setPatch(JSON.parse(hit.set.list.find((s) => s.letter === hit.letter)!.patch) as Patch, { ...hit.set, current: hit.letter });
+      return { how: 'reopened', letter: hit.letter };
     }
-    this.snaps.remove(s.letter);
-    for (const a of change.added) a.at = list.indexOf(a.s);
-    this.snaps.shown = to;
-    this.swapTo(to === null ? cur : JSON.parse(this.snaps.get(to)!.patch) as Patch, true);
-    if (to === null) this.snaps.current = null;
-    this.record(step);
-    this.ev.onSnapshots?.();
-    return kept ? { removed: s, kept } : { removed: s };
-  }
-
-  // ---- rank and cut (#996): Generate candidates, listen to each and remove the losers at once (Alt+X), again from a
-  // survivor. Every candidate is alike, whatever made it (nominated, kept from an edit, made by Generate)
-
-  /** mark a candidate keep (Generate breeds from the kept ones, D-987), or take the mark off */
-  setKeep(letter: string, keep: boolean): void {
-    const s = this.snaps.get(letter);
-    if (!s) return;
-    if (keep) s.mark = 'keep';
-    else delete s.mark;
-    this.ev.onSnapshots?.();
-  }
-
-  /** the version a snapshot stands for: for the snapshot on screen the patch heard, changes made to it included */
-  snapshotVersion(s: Snapshot): Patch {
-    return s.letter === this.snaps.shown ? this.patch : JSON.parse(s.patch) as Patch;
+    if (sameSetName(this.snaps.name, p.name)) {
+      const s = this.snaps.take(p, 'opened');
+      this.showSnapshot(s.letter);
+      return { how: 'added', letter: s.letter };
+    }
+    if (hit) {
+      const set = Snapshots.of(hit.set);
+      const s = set.take(p, 'opened');
+      set.current = s.letter;
+      this.setPatch(p, set.toSet());
+      return { how: 'added', letter: s.letter };
+    }
+    this.setPatch(p);
+    return { how: 'fresh', letter: this.snaps.current };
   }
 
   /**
-   * Store snapshots' values for the engine `asmId` of the current patch as its presets (#1031, D-993): each `from` (a
-   * snapshot's letter and the name to store it under) becomes a user preset of that engine, named as Store as a preset
-   * names one; `fresh`: a name taken already takes the next number instead of storing over a user preset. The snapshot on
-   * screen gives the values heard, changes made to it included. Nothing switches and the current patch keeps its sound. A
-   * snapshot whose engine has another structure than the current patch's is skipped. One undo step, which takes the
-   * stored presets out again. The presets stored (by letter) and the letters skipped
+   * Make `n` candidates (as many as there is room for) at the amount chosen for Mutate, on the selected cards or, with
+   * none selected, on the cards the canvas shows (cardScope); locks hold (D-976). From `picks` (letters in pick order):
+   * two or more are bred (breedPatch), one is varied; none: the current candidate is varied (D-987). They go to the end
+   * and the first is heard. Empty when nothing can move or there is no room.
    */
-  storeSnapshotPresets(asmId: number, from: readonly { letter: string; name: string }[], fresh: boolean): { stored: { letter: string; name: string }[]; skipped: string[] } {
-    this.endGesture();
-    this.endPass();
-    const cur = this.currentPatch();
-    const a = assemblyById(cur, asmId);
-    const stored: { letter: string; name: string }[] = [], skipped: string[] = [], put: Preset[] = [], was: Preset[] = [];
-    try {
-      for (const f of from) {
-        const s = this.snaps.get(f.letter);
-        const preset = a && s && snapshotPreset(cur, a, this.snapshotVersion(s), f.name);
-        if (!a || !preset) {
-          skipped.push(f.letter);
-          continue;
-        }
-        const r = addPresetOf(cur, a, preset, fresh);
-        put.push(r.put);
-        if (r.was) was.push(r.was);
-        stored.push({ letter: f.letter, name: r.put.name });
-      }
-    } catch (e) {
-      replaceUserPresets(put, was);   // (none of them: the batch is one step or nothing)
-      this.ev.onError(String((e as Error).message ?? e));
-      return { stored: [], skipped };
-    }
-    if (put.length) {
-      this.record({ s: this.snap(), shown: this.snaps.shown, presets: { put, was } });
-      this.rebuild();   // (the engine's preset chip counts them)
-    }
-    return { stored, skipped };
-  }
-
-  /**
-   * Make `n` candidates from the patch on screen (a snapshot or the current patch), at the amount chosen for Mutate, on the
-   * selected cards or, with none selected, on the cards the canvas shows (cardScope); locks hold (D-976). With two or more
-   * snapshots marked keep each candidate is bred from them (breedPatch), else it is a Mutate (D-987). One undo step, then
-   * the first candidate is shown (a switch, a step of its own). Empty when nothing can move.
-   */
-  makeCandidates(n: number): Snapshot[] {
-    const round = this.candidateRound();
+  makeCandidates(n: number, picks: readonly string[] = []): Snapshot[] {
+    n = Math.min(n, this.snaps.room());
+    if (n <= 0) return this.ev.onError(fullText('Generate')), [];
+    const round = this.candidateRound(picks);
     const made: Snapshot[] = [];
     // (a Mutate moves few rows, and a row chosen at the end of its range may stay: one that moved nothing is made again)
     for (let tries = 0; made.length < n && tries < n * MUTATE_TRIES; tries++) {
       const patch = round.next();
-      if (patch) made.push(this.snaps.take(patch, undefined, round.from));
+      if (patch) made.push(this.snaps.take(patch, round.from));
     }
     if (!made.length) return this.ev.onError(`Generate: nothing to move there (${NOTHING_TO_MOVE})`), [];
     this.endCandidates(made);
     return made;
   }
 
-  /** a round of Generate from the patch on screen, as makeCandidates makes them: `next` makes one more (null: it
-   *  moved nothing), `from` names its parents, at the category chosen for Mutate with the parent as the anchor */
-  candidateRound(): { from: string; parent: Patch; next: () => Patch | null } {
+  /** a round of Generate, as makeCandidates makes them: `next` makes one more (null: it moved nothing), `from` names its
+   *  parents, at the category chosen for Mutate with the (first) parent as the anchor */
+  candidateRound(picks: readonly string[] = []): { from: string; parent: Patch; next: () => Patch | null } {
     this.endGesture();
     this.endPass();
-    const parent = structuredClone(this.patch);
+    const chosen = picks.flatMap((l) => this.snaps.get(l) ?? []);
+    const parents = chosen.map((s) => structuredClone(this.snapshotVersion(s)));
+    const parent = parents[0] ?? structuredClone(this.patch);
     const scope: MutateScope = this.selected.size || this.selectedAsm.size ? { modules: [...this.selected], assemblies: [...this.selectedAsm] } : cardScope(parent);
-    const keeps = this.snaps.list.filter((s) => s.mark === 'keep');
-    const breed = keeps.length >= 2;
-    const keptPatches = keeps.map((s) => JSON.parse(s.patch) as Patch);
+    const breed = parents.length >= 2;
     const opts: MutateOptions = { ...this.mutateOptions(parent), anchor: parent };
     return {
-      from: breed ? keeps.map((s) => s.letter).join('+') : this.snaps.shown ?? CURRENT_LETTER,
+      from: chosen.length ? chosen.map((s) => s.letter).join('+') : this.snaps.current,
       parent,
       next: () => {
-        const { patch, moved } = breed ? breedPatch(parent, keptPatches, scope, this.mutateAmount, DEFS, Math.random, opts) : mutatePatch(parent, scope, 'mutate', this.mutateAmount, DEFS, Math.random, opts);
+        const { patch, moved } = breed ? breedPatch(parent, parents, scope, this.mutateAmount, DEFS, Math.random, opts) : mutatePatch(parent, scope, 'mutate', this.mutateAmount, DEFS, Math.random, opts);
         return moved ? patch : null;
       },
     };
   }
 
-  /** a candidate of a round into the list, before the round's undo step (endCandidates); `aim`: its category and whether
-   *  it passed */
+  /** a candidate of a round into the list (endCandidates ends the round); `aim`: its category and whether it passed */
   takeCandidate(patch: Patch, from: string, aim?: Snapshot['aim']): Snapshot {
-    const s = this.snaps.take(patch, undefined, from);
+    const s = this.snaps.take(patch, from);
     if (aim) s.aim = aim;
     this.ev.onSnapshots?.();
     return s;
   }
 
-  /** end a round: one undo step that takes its candidates (those still in the strip) out again, then the first is shown */
+  /** end a round: its first candidate still in the list is heard */
   endCandidates(made: readonly Snapshot[]): void {
-    const added = made.filter((s) => this.snaps.list.includes(s)).map((s) => ({ s, at: this.snaps.list.indexOf(s) }));
-    if (!added.length) return;
-    this.record({ s: this.snap(), shown: this.snaps.shown, list: { change: { added, removed: [] }, current: this.snaps.current } });
-    this.showSnapshot(added[0].s.letter);
+    const first = made.find((s) => this.snaps.list.includes(s));
+    if (first) this.showSnapshot(first.letter);
   }
 
   /**
-   * Switch to `target`, keeping the canvas layout (ab.ts flipPlan, #103): when only values differ they go out as onParam /
-   * onAtt / onBypass / onRange / onTrack (no reload: an edit keeps the voices sounding), else a full load through
-   * onStructure; `silence` (a snapshot switch): onSilence first. One undo step, which belongs to `shown` (the stop before a
-   * switch; Mutate's change belongs to the stop on screen).
+   * Put `target` on screen as an edit of the current candidate, keeping the canvas layout (ab.ts flipPlan, #103): when
+   * only values differ they go out as onParam / onAtt / onBypass / onRange / onTrack (no reload: the voices keep
+   * sounding), else a full load through onStructure. One undo step.
    */
-  private applyLive(target: Patch, shown = this.snaps.shown, silence = false): void {
+  private applyLive(target: Patch): void {
     this.endGesture();
     this.endPass();
     const before = this.mark();
-    this.swapTo(target, silence);
-    this.commit(before, shown);
+    this.swapTo(target);
+    this.commit(before);
   }
 
   /** put `target` on screen with the canvas layout kept (ab.ts flipPlan): live messages when only values differ, else a
-   *  full load; `silence` (a snapshot switch, D-970): both engines silenced first (onSilence); no undo step (the caller
-   *  makes it) */
+   *  full load; `silence` (a switch, D-970): both engines silenced first (onSilence); no undo step */
   private swapTo(target: Patch, silence = false): void {
     if (silence) this.ev.onSilence?.(this.patch);
     const plan = flipPlan(this.patch, target);
@@ -4387,31 +4302,30 @@ export class Editor {
     return { pitch: this.mutatePitch, pools, category: this.mutateCategory };
   }
 
-  /** the patch (Editor.snap) and the stop on screen right after the last Mutate or Randomize: while they still match, the
-   *  next one belongs to the same run and keeps no further snapshot */
+  /** the candidate and the patch (Editor.snap) right after the last Mutate or Randomize: while they still match, the next
+   *  one belongs to the same run (its category's anchor stays) */
   private mutateRun: string | null = null;
   /** the patch before the run of Mutates on screen: a category's cutoff range is measured from it (MutateOptions.anchor) */
   private mutateAnchor: Patch | null = null;
 
-  /** mutate or randomize `scope` (default: the selected cards) as one undo step, sent live (the structure stays, so the
-   *  voices keep sounding and the selection stays, to go again); the number of parameters moved. The first of a run keeps
-   *  the patch as it was as a candidate, "before mutate", unless a candidate holds that version already (D-975) */
+  /** mutate or randomize `scope` (default: the selected cards) as one undo step of the candidate heard, sent live (the
+   *  structure stays, so the voices keep sounding and the selection stays, to go again); the number of parameters moved.
+   *  It edits the candidate in place: undo and revert bring it back (owner 2026-11-24, D4) */
   mutate(mode: MutateMode, scope: MutateScope = { modules: [...this.selected], assemblies: [...this.selectedAsm] }): number {
     const verb = mode === 'mutate' ? 'Mutate' : 'Randomize';
     if (!scope.modules.length && !scope.assemblies.length) return this.ev.onError(`${verb}: select the cards first`), 0;
-    const run = (): string => `${this.snaps.shown}|${this.snap()}`;
+    const run = (): string => `${this.snaps.current}|${this.snap()}`;
     const sameRun = this.mutateRun === run();
     if (!sameRun || !this.mutateAnchor) this.mutateAnchor = structuredClone(this.patch);
     const opts: MutateOptions = { ...this.mutateOptions(this.patch), anchor: this.mutateAnchor };
     let { patch, moved, roles } = mutatePatch(this.patch, scope, mode, this.mutateAmount, DEFS, Math.random, opts);
     for (let tries = 1; !moved && tries < MUTATE_TRIES; tries++) ({ patch, moved, roles } = mutatePatch(this.patch, scope, mode, this.mutateAmount, DEFS, Math.random, opts));
     if (!moved) return this.ev.onError(`${verb}: nothing to move there (${NOTHING_TO_MOVE})`), 0;
-    const kept = sameRun ? null : this.snaps.holding(this.patch) ? null : this.takeSnapshot('before mutate', 'mutate');
     this.applyLive(patch);
     this.mutateRun = run();
     const amount = mode === 'mutate' ? ` by up to ±${Math.round(this.mutateAmount * 100)} %` : '';
     const aim = this.mutateCategory === 'any' ? '' : `, aimed at ${this.mutateCategory}: ${roles ? `${roles} envelope, cutoff or glide row${roles === 1 ? '' : 's'} in its ranges` : 'no envelope, cutoff or glide row on these cards'}`;
-    this.ev.onError(`${mode === 'mutate' ? 'Mutated' : 'Randomized'} ${moved} parameter${moved === 1 ? '' : 's'}${amount}${aim}${kept ? `; the patch before is candidate ${kept.letter}` : ''}. Ctrl/Cmd+Z puts them back`);
+    this.ev.onError(`${mode === 'mutate' ? 'Mutated' : 'Randomized'} ${moved} parameter${moved === 1 ? '' : 's'}${amount}${aim}. Ctrl/Cmd+Z puts them back`);
     return moved;
   }
 
@@ -5447,7 +5361,7 @@ export class Editor {
   /** The Store dialog: the preset's name, and what it holds. An instrument with an FX drawer: the instrument and its
    *  chain as one sound, with the count of values against the 176 a preset holds; the Output drawer belongs to the patch
    *  and is not stored. An effect: its own controls, loadable onto any copy of it. */
-  private storePresetDialog(a: AssemblyInst): void {
+  storePresetDialog(a: AssemblyInst): void {
     const p = this.patch;
     const scope = drawerScope(p, a);
     const values = capturePreset(p, a, a.label).values.length;

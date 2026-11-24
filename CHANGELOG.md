@@ -3,6 +3,11 @@
 ## Unreleased
 
 - **Add to palette says when the palette is full, next to the chips.** With all eight positions taken, Add to palette in the patch ⋯ menu or in Commands seemed to do nothing: it said so only in the status line at the bottom of the window. A message now shows just above the palette chips, and in the status line: "Palette full: drag onto a chip to replace". Its **Replace…** button lists the eight positions, and the one you pick takes the patch ([D-1319](docs/ledger/editor.md#D-1319), #1258).
+- **Candidates are all alike, and your edits go straight into the one you hear.** There is no Keep and no Use: a candidate you do not delete is kept, and the one you hear is your current patch. Switching away keeps your edits in that candidate and never makes a new one. A candidate that differs from how it was made says "tweaked", with "revert" beside it, and each slider shows a grey tick where it started. Undo works per candidate, and switching is not an undo step. Mutate changes the candidate you hear and keeps no "before mutate" copy ([D-970](docs/ledger/editor.md#D-970), [D-1425](docs/ledger/editor.md#D-1425)).
+- **Save preset and Add to palette sit on the candidate you hear,** and Save, Store, Send, Share and the .json file take it too. Save preset offers one item per engine, an instrument with its FX drawer, and opens the Store dialog at once when there is one engine. A palette slot is named after the patch and the candidate's name or letter ("NIGHT BUS D") ([D-1426](docs/ledger/editor.md#D-1426), [D-1319](docs/ledger/editor.md#D-1319)).
+- **Delete any candidate, A included, with ✕ or Alt+X,** and bring it back with the toast's Undo or from Recently deleted. Shift+Alt+B is now Duplicate, a copy of the candidate you hear ([D-984](docs/ledger/editor.md#D-984), [D-986](docs/ledger/editor.md#D-986)).
+- **Breed by picking:** ⌘-click or Shift-click candidates, and Generate becomes "Generate from D" for one or "Breed B × D" for two or more ([D-987](docs/ledger/editor.md#D-987)).
+- **Candidates come back with their patch.** Open another patch and your candidates are put away with it; open it again and they return, for the 8 patches you opened most recently, up to 32 candidates each. Candidates now live in the browser's IndexedDB, and the ones you have today are kept ([D-972](docs/ledger/editor.md#D-972)).
 
 ## 1.26.3 — 2026-11-24
 

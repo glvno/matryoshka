@@ -147,7 +147,7 @@ const pinsOf = (m: M, part: { pin?: 'p1' | 'p2'; param?: string }): ('p1' | 'p2'
 const EVENT_LABEL: Record<EventName, string> = {
   notes: 'Play a note', undos: 'Press Ctrl+Z to undo', redos: 'Press Shift+Ctrl+Z to redo', zooms: 'Zoom the canvas (Ctrl+wheel, or Fit patch to screen)',
   flips: 'Press Alt+B', shares: 'Copy a share link (the PATCH panel’s Share → Copy link)', bypasses: 'Bypass a module (B)', news: 'Press New patch', saves: 'Save an assembly',
-  audio: 'Enable audio', arpPlay: 'Start the arpeggiator (Space)', snapshotA: 'Nominate a candidate (Shift+Alt+B)', snapshotB: 'Nominate a second candidate (Shift+Alt+B)',
+  audio: 'Enable audio', arpPlay: 'Start the arpeggiator (Space)', snapshotA: 'Make a candidate (Generate, Alt+N, or Duplicate, Shift+Alt+B)', snapshotB: 'Make a second candidate (Generate, Alt+N, or Duplicate, Shift+Alt+B)',
   selected: 'Select the modules', bypassed: 'Switch the module back on',
 };
 const COUNTERS: EventName[] = ['notes', 'undos', 'redos', 'zooms', 'flips', 'shares', 'bypasses', 'news', 'saves'];
