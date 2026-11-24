@@ -16,7 +16,7 @@ import { FEATURE_FX_PRESETS, FX_BYPASS_PARAM } from './protocol';
 import { applyImport, backupFile, backupKeys, collectKeys, importSummary, receiveMigration } from './migrate';
 import { moveOffer, onPagesDev } from './move-offer';
 import { cardCosts, cardCostTitle, CPU, CPU_WARN } from './cpu';
-import { setupPopoverPositioning } from './popover';
+import { closeFloat, openFloat, setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
 import { chipState, DeviceLink, deviceIndex, deviceLayoutKey, IGNORED_NOW, liveSync, sandboxChip, storeFullText, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
@@ -1612,8 +1612,8 @@ function showSandbox(b: ReturnType<typeof deviceBudget>): void {
   // not go over another card, and waits for the next sandbox patch
   if (!b.fits && sandboxCardDue()) setTimeout(() => { if (sandboxCardDue() && !document.querySelector('.tutorial-offer')) sandboxCard(); });
 }
-// the open budget is a card above the status line, over the meter; a
-// click elsewhere or Escape closes it
+// the open budget is a card above the status line, over the meter, under the rule of every menu and popover (popover.ts):
+// a click elsewhere, the meter again or Escape closes it
 const budgetEl = $('budget') as HTMLDetailsElement;
 function placeBudget(): void {
   const budgetEl = $('budget') as HTMLDetailsElement;
@@ -1622,14 +1622,12 @@ function placeBudget(): void {
   const r = budgetEl.getBoundingClientRect();
   list.style.left = `${Math.max(8, Math.min(innerWidth - list.offsetWidth - 8, r.left + r.width / 2 - list.offsetWidth / 2))}px`;
 }
-budgetEl.addEventListener('toggle', placeBudget);
-addEventListener('resize', placeBudget);
-document.addEventListener('pointerdown', (e) => {
-  if (budgetEl.open && !budgetEl.contains(e.target as Node)) budgetEl.open = false;
+budgetEl.addEventListener('toggle', () => {
+  if (!budgetEl.open) return closeFloat(false, budgetEl);
+  openFloat(budgetEl.querySelector<HTMLElement>('.budget-list')!, { owner: budgetEl, anchor: budgetEl.querySelector('summary'), keep: true, onClose: () => { budgetEl.open = false; } });
+  placeBudget();
 });
-addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && budgetEl.open) budgetEl.open = false;
-}, true);
+addEventListener('resize', placeBudget);
 const browser = new AssemblyBrowser((d) => { toPatch(); editor.insert(d); });
 
 // ---- diff against the baseline (the patch as last loaded, uploaded or stored) and snapshots

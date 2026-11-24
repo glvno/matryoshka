@@ -1,6 +1,14 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 @import './tokens.css';
 * { box-sizing: border-box; }
+/* menus and popovers (popover.ts, D-1423): in the top layer, placed by what opens them; a closed one never shows, whatever
+   display its own rules give it */
+[popover] { inset: auto; margin: 0; color: inherit; }
+[popover]:not(:popover-open) { display: none !important; }
+/* a popover's × (popover.ts closeButton) */
+.float-close { display: grid; place-items: center; width: 22px; height: 22px; min-height: 0; padding: 0; border: 0; border-radius: 5px; background: transparent;
+  color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; flex: none; }
+.float-close:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 10%, transparent); }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
 /* no page zoom (#153): a pinch zooms the canvas only; scrolling still works everywhere. iOS zooms the page in on a focused
    text field under 16px and does not zoom back, so on touch screens the fields are 16px */
@@ -919,8 +927,9 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .panel-btn:hover .pb-more, .panel-btn:focus-visible .pb-more { opacity: 1; }
 /* the button editor (board F), in the parameter menus' popover frame */
 .button-editor { width: 280px; display: flex; flex-direction: column; gap: 10px; }
-.button-editor .be-head { display: flex; justify-content: space-between; align-items: baseline; font: var(--cap); text-transform: uppercase; letter-spacing: .06em; }
-.button-editor .be-head span { font-size: 11px; color: var(--muted); text-transform: none; letter-spacing: 0; }
+.button-editor .be-head { display: flex; align-items: center; gap: 8px; font: var(--cap); text-transform: uppercase; letter-spacing: .06em; }
+.button-editor .be-head span { margin-left: auto; font-size: 11px; color: var(--muted); text-transform: none; letter-spacing: 0; }
+.button-editor .be-head .float-close { margin-right: -4px; }
 .button-editor .be-field { display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin: 0; }
 .button-editor .be-label { font: var(--cap); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .button-editor .be-seg { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
@@ -1201,6 +1210,8 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 /* the header: ▸ (an assembly), the tag and the title (the drag handle), then poly (an assembly), ⏻ and ⋯, always shown */
 .mhead { padding: 0 4px 0 6px; }
 .mhead > span:not(.tools), .fhead > span:not(.tools) { flex: 1; contain: inline-size; }
+/* an assembly's name is shortened last: the preset chip gives way first (an effect card in a drawer is narrow) */
+.mhead > span.asm-title { flex: 1 1 auto; contain: none; min-width: min-content; }
 /* an assembly's title: tag, name (shortened first), ×N, the voice control drop-down */
 :is(.mhead, .fhead) .asm-title { display: flex; align-items: center; gap: 4px; min-width: 0; }
 :is(.mhead, .fhead) .asm-name { min-width: 2.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1350,6 +1361,9 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
   font: var(--cap); text-transform: uppercase; letter-spacing: .06em; pointer-events: none; }
 /* only the name itself renames: the rest of the bar stays the slider */
 .param.bar > span:first-child.rename { pointer-events: auto; position: relative; z-index: 3; justify-self: start; max-width: 100%; }
+/* the name is drawn over the thumb, so a row near its lowest value (the thumb at its left end) still reads whole; a press
+   there still reaches the thumb (the name takes no presses, except a renamable one) */
+.module .param.bar > span:first-child, .module .param.bar > span:first-child.rename { z-index: 5; }
 .param.bar > output { grid-area: 1 / 2; padding-right: 6px; font-size: 11.5px; color: var(--ink); pointer-events: none; }
 .param.bar > output:empty { display: none; }
 .param.bar .unit { margin-left: 2px; font-size: 9.5px; color: var(--muted); }
@@ -1469,7 +1483,7 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 /* New patch, then Save, Share and ⋯ as square buttons: the header strip keeps the whole width for the name */
 .patch-row { display: flex; gap: 4px; }
 .patch-row #new-patch-btn { flex: 1; min-width: 0; }
-#save-patch-btn, #share-patch-btn, #patch-menu-btn { flex: none; display: grid; place-items: center; width: 30px; padding: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); }
+#save-patch-btn, #share-patch-btn, #patch-menu-btn { flex: none; display: grid; place-items: center; width: 26px; padding: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); }
 #save-patch-btn:hover, #share-patch-btn:hover, #patch-menu-btn:hover, #patch-menu-btn[aria-expanded="true"] { color: var(--ink); border-color: var(--secondary); filter: none; }
 #save-patch-btn.saved { color: var(--secondary); }
 /* the Undo toast (toast.ts) */
@@ -1484,14 +1498,17 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 .sbody { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 8px; }
 .sbody > *, .sbody select { min-width: 0; max-width: 100%; }
 .sbody button { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.sidebar button { min-height: 30px; padding: 4px 8px; border-radius: 5px; white-space: nowrap; }
+.sidebar button { min-height: 30px; padding: 4px 6px; border-radius: 5px; white-space: nowrap; }
+/* the buttons two to a row (and New patch beside its three squares) in a smaller caps size, so every label reads whole at
+   the default sidebar width */
+.sidebar :is(.patch-row, .add-row, .learn-row) button { font-size: 12px; letter-spacing: .05em; }
 /* the plain buttons in the (muted) gate colour: a grey fill read as a slider's bar */
 .sidebar button:not(.primary), .sidebar #tour-btn, .sidebar #commands-btn { background: var(--btn-yellow); border-color: var(--btn-yellow); color: var(--accent-ink); }
 .sidebar button:not(.primary):hover, .sidebar #tour-btn:hover, .sidebar #commands-btn:hover { border-color: var(--ink); color: var(--accent-ink); filter: brightness(1.08); }
 .sidebar #commands-btn kbd { color: inherit; opacity: .7; }
 #add-assembly-btn, .sidebar #demo-btn { background: var(--secondary); border-color: var(--secondary); color: var(--panel); }
 /* the canvas panel's buttons (TIDY, FIT) look like the dock's octave buttons: outlined on the panel, the border teal on hover */
-.sidebar .view-row button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); font-size: 11px; letter-spacing: .06em; }
+.sidebar .view-row button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); font-size: 11px; letter-spacing: .04em; }
 .sidebar .view-row button:hover { border-color: var(--secondary); color: var(--ink); filter: none; }
 .view-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 /* VIEW: Scroll wheel: auto / zoom / pan (#1075) */
@@ -1510,7 +1527,7 @@ html.panning, html.panning * { cursor: grabbing !important; user-select: none; }
 /* the cable slack and zoom sliders are cards' value bars (sliderJack; main.ts sideSlider) with a small name and a thumb as tall
    as the bar. Their thumbs are jacks (the easter egg): a cable from any output dropped on one moves it (Patch.slackFrom / zoomFrom) */
 .side-bar > .slider-jack { --jack-size: 18px; }
-.side-bar > span:first-child { font: var(--cap); font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; }
+.side-bar > span:first-child { position: relative; z-index: 3; font: var(--cap); font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; }   /* (over the thumb, as on a card's bar) */
 .side-bar .slider-port { background: var(--panel); }
 .patching-any .side-bar, .patching-any .side-bar .slider-port { cursor: crosshair; }
 /* PATCH: the Open picker under New patch */
@@ -1832,7 +1849,7 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .arm-dot.no-keys::before { border-style: dashed; }
 .arm-dot.no-keys:hover::before { border-color: var(--muted); }
 /* the preset chip on an assembly device's header (#192): ‹ name › */
-:is(.mhead, .fhead) span.preset-chip { display: inline-flex; contain: none; font: inherit; text-transform: none; letter-spacing: normal; align-items: stretch; flex: none; width: 124px; height: 20px; margin-left: auto; margin-right: 6px;
+:is(.mhead, .fhead) span.preset-chip { display: inline-flex; contain: none; font: inherit; text-transform: none; letter-spacing: normal; align-items: stretch; flex: 0 1000 124px; min-width: 56px; height: 20px; margin-left: auto; margin-right: 6px;
   border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
 :is(.mhead, .fhead) .preset-chip button.sm { min-height: 0; border: 0; border-radius: 0; background: transparent; }
 :is(.mhead, .fhead) .preset-chip .preset-step { flex: none; width: 18px; padding: 0; color: var(--muted); font-size: 11px; }
@@ -1890,7 +1907,7 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   background: var(--secondary); box-shadow: 0 0 0 1px var(--bar); cursor: pointer; }
 .step.locked > u { display: block; }
 .steps-screen { position: relative; }
-.lock-pop { position: absolute; z-index: 20; min-width: 220px; max-width: 320px; padding: 6px; border-radius: 6px; background: var(--panel);
+.lock-pop { position: fixed; min-width: 220px; max-width: 320px; padding: 6px; border-radius: 6px; background: var(--panel);
   border: 1px solid var(--line); box-shadow: 0 4px 14px rgb(0 0 0 / .35); font-size: 12px; }
 .lock-pop .lock-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font: var(--cap); font-size: 10px;
   letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }

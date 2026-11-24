@@ -25,7 +25,7 @@ it('a locked step shows a dot; its list edits, removes and adds locks', () => {
   expect(cells[0].classList.contains('locked')).toBe(true);
   expect(cells[1].classList.contains('locked')).toBe(false);
   cells[0].querySelector<HTMLElement>('.lock-dot')!.dispatchEvent(new MouseEvent('pointerdown', { button: 0, bubbles: true }));
-  const pop = (): HTMLElement => g.el.querySelector('.lock-pop')!;
+  const pop = (): HTMLElement => document.querySelector('.lock-pop')!;   // (a popover in the top layer: popover.ts)
   expect(pop().textContent).toContain('step 1');
   const input = pop().querySelector<HTMLInputElement>('.lock-row input')!;
   expect(input.value).toBe('500');
