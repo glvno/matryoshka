@@ -2657,6 +2657,11 @@ async function main() {
         await page.mouse.up();
         return true;
       };
+      /** every add from the editor asks for the name first (owner 2026-11-24): the automatic name, accepted with Enter */
+      const acceptName = async () => {
+        await page.waitForSelector('.name-prompt input', { timeout: 4000 }).catch(() => {});
+        await page.keyboard.press('Enter');
+      };
       await check('palette editor: Silver Box opens, synced', await openSynced('Silver Box'));
       await check('palette editor: the chips are live with an FM-1 that keeps a palette (feature bit 31)', !!(await until(async () => (await pal())?.linked, 4000)));
       // a clean palette: each full chip's × (one empty PUT each)
@@ -2676,6 +2681,7 @@ async function main() {
       await page.waitForSelector('#commands[open]', { timeout: 3000 }).catch(() => {});
       await page.type('#commands-input', 'add to palette');
       await page.keyboard.press('Enter');
+      await acceptName();
       await check('palette editor: Commands > Add to palette puts the patch into palette 1', !!(await until(async () => (await chip(0))?.name === 'SILVER BOX', 6000)), JSON.stringify(await chip(0)));
       // a patch this FM-1 has not got, dragged from Library > Patches onto chip 4: its device set to a preset only this
       // browser has (Mine), so the drop sends that preset (PRESET_PUT), stores the patch into a free slot (SLOT), then PUTs
@@ -2708,6 +2714,7 @@ async function main() {
       });
       const t0 = await now();
       await check('palette editor: Pal Test dragged from Your patches onto chip 4', sel && (await drag('#pal-test-row', '.lib-dock .pal-chip[data-pos="3"]')));
+      await acceptName();
       await check('palette editor: chip 4 holds PAL TEST', !!(await until(async () => (await chip(3))?.name === 'PAL TEST', 15000)), JSON.stringify(await chip(3)));
       await check('palette editor: its entry names the browser-only preset', !!mine && !!(await chip(3))?.presets.includes(mine.name), JSON.stringify(await chip(3)));
       const sent = await sentSince(t0);
@@ -2737,6 +2744,7 @@ async function main() {
         await page.waitForSelector('#commands[open]', { timeout: 3000 }).catch(() => {});
         await page.fill('#commands-input', 'add to palette');
         await page.keyboard.press('Enter');
+        await acceptName();
       };
       /** HOME held, black key k (0..7: palette 1..8) tapped, both let go: the FM-1 switches */
       const homeTap = async (k) => {
@@ -2785,6 +2793,7 @@ async function main() {
       await page.waitForSelector('#commands[open]', { timeout: 3000 }).catch(() => {});
       await page.fill('#commands-input', 'add to palette');
       await page.keyboard.press('Enter');
+      await acceptName();
       const cName = `${base} C`;
       /** chip `c` holds the sound heard as `name`: stored as a patch of that name, or on its slot with a preset of that name
        *  (a candidate that differs only in device preset values, owner 2026-11-24) */
@@ -2822,7 +2831,8 @@ async function main() {
       await check('palette editor: and the status line says so', (await statusText()) === FULL, await statusText());
       await page.evaluate(() => document.querySelector('.toast .toast-close')?.click());
       await page.click('#patch-menu-btn');
-      await page.locator('.ctx-fixed [role="menuitem"]', { hasText: 'Add to palette' }).click({ timeout: 3000 }).catch(() => {});
+      await page.locator('.ctx-fixed [role="menuitem"]', { hasText: /^Add to palette$/ }).click({ timeout: 3000 }).catch(() => {});
+      await acceptName();
       const t4 = await until(async () => { const t = await toast(); return t?.text.startsWith('Palette full') ? t : null; }, 4000);
       await check('palette editor: the patch menu\'s Add to palette, palette full: the toast over the chips, with Replace…', !!t4?.near && t4.button === 'Replace…', JSON.stringify(t4 ?? await toast()));
       await shot('palette-full-toast');
@@ -2871,6 +2881,46 @@ async function main() {
       await check('palette editor: and the editor hears B again, Live on', !!(await until(async () => (await hearing()) === 'B' && (await T()).live, 4000)), JSON.stringify([await hearing(), (await T()).live, (await T()).status]));
       await shot('palette-preset-tweak');
       await page.screenshot({ path: join(OUT, 'palette-editor-page.png') }).catch(() => {});
+      // saved palettes (#1236): Save as a palette on the ON THE FM-1 square keeps the FM-1's palette as a new saved palette,
+      // each sound read back (SLOT_GET, the entry's presets and pattern); the FM-1's palette then changes (chip 1's ×), and
+      // Send to FM-1 puts the saved one back after a confirm that saves the FM-1's palette first: only what the FM-1 lacks
+      // is uploaded (every sound is on it already: no SLOT), and the square says where its palette came from
+      const fm1Names = (await pal()).chips.map((c) => (c.state === 'ok' ? c.name : null));
+      const savedBefore = (await T()).palettes.length;
+      await page.click('#snap-column .palette-save');
+      const saved = await until(async () => { const s = (await T()).palettes; return s.length > savedBefore ? s[0] : null; }, 20000);
+      await check('palette editor: Save as a palette: a new saved palette holding each chip\'s sound, under its slot\'s name', !!saved && JSON.stringify(saved.sounds) === JSON.stringify(fm1Names), JSON.stringify([saved, fm1Names, await statusText()]));
+      await shot('palette-save-from-fm1');
+      await page.evaluate(() => document.querySelector('#snap-column .pal-chip[data-pos="0"] .pal-x')?.click());
+      await check('palette editor: chip 1\'s × changes the FM-1\'s palette', !!(await until(async () => (await chip(0))?.state === 'empty', 6000)));
+      await page.click('#view-switch [data-view="library"]');
+      await page.click('#library-tabs [data-section="palettes"]');
+      await page.evaluate((id) => [...document.querySelectorAll('.lpal-row')].find((r) => r.querySelector('.lpal-pname')?.textContent === id)?.click(), saved?.name);
+      await page.waitForSelector('.lpal-open:not([hidden])', { timeout: 3000 }).catch(() => {});
+      await shot('palette-saved-open');
+      await page.evaluate(() => [...document.querySelectorAll('.lpal-actions button')].find((b) => b.textContent === 'Send to FM-1')?.click());
+      await page.waitForSelector('#palette-send[open]', { timeout: 3000 }).catch(() => {});
+      const ask = await page.evaluate(() => ({ open: !!document.querySelector('#palette-send[open]'), keep: !document.getElementById('palette-send-keep').hidden, ticked: document.getElementById('palette-send-first').checked, title: document.getElementById('palette-send-title').textContent }));
+      await check('palette editor: Send to FM-1 asks first, offering (ticked) to save the FM-1\'s current palette first', ask.open && ask.keep && ask.ticked && ask.title === `Send ${saved?.name} to the FM-1?`, JSON.stringify(ask));
+      await shot('palette-send-confirm');
+      const t6 = await now();
+      const keptBefore = (await T()).palettes.length;
+      await page.click('#palette-send button[value="send"]');
+      await check('palette editor: Send to FM-1 puts every sound back where it was', !!(await until(async () => JSON.stringify((await pal()).chips.map((c) => (c.state === 'ok' ? c.name : null))) === JSON.stringify(fm1Names), 30000)), JSON.stringify([(await pal()).chips.map((c) => c.name), await statusText()]));
+      const after = await T();
+      await check('palette editor: the FM-1\'s palette was saved first, as one more saved palette', after.palettes.length === keptBefore + 1, JSON.stringify(after.palettes));
+      const first = after.palettes.find((p) => p.sounds[0] === null);
+      await check('palette editor: that saved palette holds the FM-1\'s palette as it was (chip 1 empty, the rest kept)', !!first && JSON.stringify(first.sounds.slice(1)) === JSON.stringify(fm1Names.slice(1)), JSON.stringify(first));
+      const sent6 = await sentSince(t6);
+      await check('palette editor: Send to FM-1 stored no patch: the FM-1 had every sound (no SLOT)', !sent6.some((s) => s[0] === 0x13), JSON.stringify(sent6.map((s) => s[0].toString(16))));
+      await check('palette editor: the palette says where it came from', after.palette?.from?.name === saved?.name, JSON.stringify(after.palette?.from));
+      await page.click('#view-switch [data-view="patch"]');
+      const head = await page.evaluate(() => document.querySelector('#snap-column .palette-head')?.innerText ?? '');
+      await check(`palette editor: the sidebar reads ON THE FM-1 · from ${saved?.name}`, head.includes('ON THE FM-1') && head.includes(`from ${saved?.name}`), head);
+      await shot('palette-from-saved');
+      // (the palette as last read and the copies kept, for the offline save's browser check)
+      await page.evaluate(() => JSON.stringify({ palette: localStorage.getItem('matryoshka.palette'), copies: localStorage.getItem('matryoshka.palette-copies') }))
+        .then((s) => writeFileSync(join(OUT, 'palette-kept.json'), s)).catch(() => {});
     },
     async editorIgnore() {   // #702: GLO > SYSTEM > EDITOR at IGNORE: the editor lets go, Connect skips the FM-1 and says why
       // (the rig tools' page connects to an FM-1 at IGNORE all the same: the test rig is set so, D-123)

@@ -192,10 +192,8 @@ export interface SideActions {
   /** the 'revert' link next to 'tweaked' (on any tweaked row; the integrator makes that candidate current, then reverts) */
   revert(letter: string): void;
   savePreset(anchor: HTMLElement): void;
-  /** Add to palette: the default (the FM-1's palette when one is linked, else the choice) by `anchor` */
+  /** Add to palette: the default (the FM-1's palette when one is linked, else the choice of a saved palette) by `anchor` */
   addToPalette(anchor: HTMLElement): void;
-  /** ▾ beside it: the choice of the FM-1's palette or a saved palette */
-  paletteChoice(anchor: HTMLElement): void;
   /** the candidate's menu (right-click, double-click, ⋯) */
   more(s: Snapshot, anchor: HTMLElement): void;
   /** a pointer down on a candidate's row: maybe a drag to reorder */
@@ -294,8 +292,7 @@ export function renderList(strip: HTMLElement, v: SideView, act: SideActions): v
         acts.append(button('snap-preset main', v.engines === 1 ? 'Save preset' : 'Save preset ▾',
           v.engines === 1 ? 'Save its instrument, with its FX drawer, as a preset' : 'Save one of its instruments, with its FX drawer, as a preset', (b) => act.savePreset(b)));
       }
-      acts.append(button('snap-palette main', 'Add to palette', 'Add it to the FM-1’s palette (with no FM-1: choose a saved palette)', (b) => act.addToPalette(b)),
-        button('snap-palette-choice main', '▾', 'Add it to the FM-1’s palette or to a saved palette', (b) => act.paletteChoice(b)),
+      acts.append(button('snap-palette main', 'Add to palette', 'Add it to the FM-1’s palette (with no FM-1: to a saved palette); ⋯ has the choice', (b) => act.addToPalette(b)),
         button('snap-more', '⋯', 'More: also on a right-click or double-click of a row', (b) => act.more(s, b)),
         remove('snap-remove', 'Delete it (Alt+X)'));
       r.append(acts);

@@ -1710,7 +1710,8 @@ let dockState = (): { hidden: boolean; saved: SavedPalette | null } | null => nu
 /** the name a sound goes into a palette under (owner 2026-11-24: "saving to palette from the web editor, either by
  *  dragging chip or selecting a menu item, should prompt you to give it a name"): `initial` the automatic name */
 const askPaletteName = (initial: string, anchor?: HTMLElement | null): Promise<string | null> =>
-  askName({ title: 'Name it in the palette', initial, anchor });
+  // (a menu's closing can redraw the button it opened from, the candidate row's: the prompt opens by the one drawn now)
+  askName({ title: 'Name it in the palette', initial, anchor: anchor && !anchor.isConnected && anchor.className ? document.querySelector<HTMLElement>(`.${[...anchor.classList].join('.')}`) : anchor });
 /** chip `pos` of the square on screen (where a name prompt for it opens) */
 const chipAt = (pos: number): HTMLElement | null => paletteShown()?.querySelector<HTMLElement>(`.pal-chip[data-pos="${pos}"]`) ?? null;
 /** a patch dropped on a chip of the FM-1's palette: named first (a slot from the FM-1 column is pointed at as it is, under
@@ -2056,7 +2057,6 @@ const sideActions: SideActions = {
   revert: (letter) => revertCandidate(letter),
   savePreset: (anchor) => savePreset(anchor),
   addToPalette: (anchor) => addCurrentToPalette(anchor),
-  paletteChoice: (anchor) => popMenu(paletteChoiceItems(anchor), anchor),
   more: (s, anchor) => popMenu(snapshotMenu(s, anchor), anchor),
   drag: dragSnapshot,
   step: (dir) => cycleSnapshots(dir),
@@ -2104,7 +2104,10 @@ const snapshotMenu = (s: Snapshot, anchor: HTMLElement): MenuItem[] => {
     } },
     ...(editor.tweaked(s) ? [{ text: 'Revert to how it was made', run: () => revertCandidate(s.letter) }] : []),
     ...(heard ? [{ text: 'Duplicate', key: 'Shift+Alt+B', run: () => duplicate() }] : []),
-    { text: heard ? 'Add to palette' : 'Hear it, then Add to palette', run: onHeard(() => addCurrentToPalette()) },
+    // Add to palette: the default (the FM-1's palette when linked, else the choice); ▸ the choice (#1236): the FM-1's
+    // palette, a saved palette or a new one. Both ask for the name
+    { text: heard ? 'Add to palette' : 'Hear it, then Add to palette', run: onHeard(() => addCurrentToPalette(anchor)) },
+    { text: heard ? 'Add to palette ▸' : 'Hear it, then Add to palette ▸', run: onHeard(() => popMenu(paletteChoiceItems(anchor), anchor.isConnected ? anchor : document.querySelector<HTMLElement>('#snapshot-strip .snap.shown .snap-more') ?? status)) },
     ...(presetEngines(editor.patch).length ? [{ text: heard ? 'Save preset…' : 'Hear it, then Save preset…', run: onHeard(() => savePreset(anchor)) }] : []),
     { text: 'Save…', run: () => void saveSnapshot(s) },
     { text: 'Delete', key: heard ? 'Alt+X' : undefined, danger: true, run: () => removeCandidate(s.letter) },
