@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "version": "1.26.6",
+  "kind": "web-only release (D-1160), cut from main (D-1177)",
+  "firmware_product": "FM-1_7012603",
+  "source_commit": "55b402da332d6d7d7199c10e22da5d3ca868c956",
+  "source_branch": "main",
+  "source_tree": "99f9031f4ac6c348fa94e97904b01221ad225175",
+  "tag_branch": "release/1.26.6: the frozen commit + v1.26.3's web/public/firmware/matryoshka-factory.bin and factory-sets.json byte for byte + this record and its coverage (D-1177, D-1163)",
+  "status": "automated checks passed; awaiting the owner's go for publication",
+  "release_approval": {
+    "status": "pending",
+    "scope": "Publication of v1.26.6 on 55b402da + v1.26.3's factory region files + this record and its coverage, with v1.26.3's firmware package, screen font and factory region."
+  },
+  "plan": "D-1177",
+  "contents": [
+    "the candidate menu's Add to palette and Save preset…, and Save… deciding as Add to palette: presets when only card values differ (PR #1278, D-1426, D-1240)",
+    "Save…: tempo and pattern changes need a patch; the header ⋯ menu's Save… too (PR #1280)",
+    "palettes in the browser: Library › Palettes, a name for every add, Add to palette ▸ a saved palette, Send to FM-1 with save-first, ON THE FM-1 · from Palette N, Save from FM-1 incl. the offline copy, export/import, delete + Undo + Recently deleted (PR #1281, issue #1236, D-1428–D-1435)",
+    "factory drum kit cards near 16:9 (PR #1279, issue #1237)",
+    "ledger rulings (PRs #1275, #1277)",
+    "v1.26.5 listed among the released factory sets (PR #1276; its regenerated region image is not shipped)",
+    "freeze: version 1.26.6, CHANGELOG heading, D-1177 (PR #1282)"
+  ],
+  "bundled_firmware": {
+    "release": "v1.26.3",
+    "package": {
+      "name": "web/public/firmware/matryoshka.fwsc",
+      "size": 610628,
+      "sha256": "ac7e716c28a794644ad8536d80dba9206151b2a9915afd92cb7cef41d3ad0d88"
+    },
+    "check": "D-1160 check 1: every file in web/public/firmware/ of the tag commit is byte-identical to the v1.26.3 tag's: the package, its sidecar, the font (528f1926), the factory region v22 3af59e (57,451 bytes), factory-sets.json and the frozen older images. main's regenerated region (#1259, #1268, #1276) is replaced by v1.26.3's on release/1.26.6"
+  },
+  "factory_content": "unchanged from v1.26.3 (version 22, set 3af59e, layout 4): the image is byte-identical; no CPU survey, no slot upgrade",
+  "ci_runs": {
+    "web_rc": 45509474399,
+    "freeze_pr": 1282
+  },
+  "full_web": {
+    "rc_run": 45509474399,
+    "run_success": true,
+    "result": "D-1160 check 2: the editor suite in rc mode (test job, the slow-render jobs and the coverage seal, D-1157) passed on 55b402da",
+    "coverage_record": "release/coverage/v1.26.6: current, measured on 55b402da (D-147)"
+  },
+  "full_scenarios": {
+    "passed": 468,
+    "failed": 0,
+    "seconds": 557,
+    "on_tree": "99f9031f4ac6c348fa94e97904b01221ad225175",
+    "on_bridge_sha256": "a015ba1c3beb53b3a7a4b1f8711cfb2f7bd291aff1411778dbb8174b35f3f15b",
+    "note": "D-1160 check 3: the full emu:scenarios on v1.26.3's release bridge (release run 45353901600)",
+    "per_pr_scenarios": "run, 69/69 on v1.26.3's bridge (signalBuffers, liveCompile, rollPen, mirrorKeys, longPreset, abFlip, editorIgnore): #1278 and #1281 rewrote the candidate (snapshot) menu and the preset upload paths in main.ts"
+  },
+  "rig_scenarios": "test rig 0x01140000 on 1.26.3 (font 528f1926, region v22 3af59e), throwaway scenario palettesRig on 55b402da in a fresh browser: 27/27 (a named add of a tweak: one PRESET_PUT, no SLOT, the FM-1's preset takes the typed name; a named add of a cable change: a SLOT named as typed; the candidate's Save… on a tweak: a preset saved and sent to the FM-1 with this browser's values, no SLOT; Save… on a tempo change: asks for a patch with its reason, nothing sent; Save as a palette keeps the FM-1's palette; Send to FM-1 with the save first puts it back, no SLOT, the sidebar reads ON THE FM-1 · from <name>). Tries 1–2 failed on scenario bugs (the reopened patch's candidate set came back, so Save… hit an already-saved candidate; the tempo needed Tempo: Patch), not the editor. Rig left as found (palette empty, test slots and presets removed)",
+  "not_run": "firmware build, emu:smoke and the full device check: the firmware is 1.26.3's, already qualified (release/qualification/v1.26.3.json; D-1160)",
+  "owner_checks": {
+    "status": "pending",
+    "steps": "D-1160 check 4: Library › Palettes (new, open, drag candidates in, the name prompt); Add to palette ▸ a saved palette; a saved chip heard; Send to FM-1 with save-first and the from-palette label; Save from FM-1; export/import; delete + Undo; the candidate menu's Save… (preset vs patch with its reason) and Add to palette; the drum kits' card shapes"
+  }
+}
