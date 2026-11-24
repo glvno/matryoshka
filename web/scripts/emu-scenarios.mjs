@@ -2906,6 +2906,8 @@ async function main() {
       const t6 = await now();
       const keptBefore = (await T()).palettes.length;
       await page.click('#palette-send button[value="send"]');
+      // (the save first, then each position through the add rules: done when the status line gives the Send's summary)
+      await check('palette editor: Send to FM-1 ends with its summary line', !!(await until(async () => (await statusText()).startsWith(`${saved?.name} is on the FM-1`), 60000)), await statusText());
       await check('palette editor: Send to FM-1 puts every sound back where it was', !!(await until(async () => JSON.stringify((await pal()).chips.map((c) => (c.state === 'ok' ? c.name : null))) === JSON.stringify(fm1Names), 30000)), JSON.stringify([(await pal()).chips.map((c) => c.name), await statusText()]));
       const after = await T();
       await check('palette editor: the FM-1\'s palette was saved first, as one more saved palette', after.palettes.length === keptBefore + 1, JSON.stringify(after.palettes));
