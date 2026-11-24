@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **A tweak of a sound the FM-1 already has goes into the palette as a preset, not as a new patch.** Adding a candidate that differs from an FM-1 slot's patch only in its engines' card values (an instrument's FX drawer included) used to store a whole new patch each time ("MONOLITH D C", "MONOLITH D E"…). Now the palette entry points at that slot, the FM-1 plays it with a preset of the candidate's values, and the preset is sent to the FM-1 and kept in Library > Presets (Mine), named after the candidate ("Monolith D C"). A preset with exactly those values is reused, whether the editor or the FM-1 has it. A different tempo or pattern needs no patch either: the entry plays the slot's, and the status line says so. When a patch is still needed (another module or cable, a setting outside the cards, a full preset store), the status line says why ([D-1240](docs/ledger/patches-and-presets.md#D-1240), [D-1319](docs/ledger/editor.md#D-1319)).
+
 ## 1.26.4 — 2026-11-24
 
 - **The editor follows every palette switch, to any instrument.** With Live on, switching to a palette sound made from another patch (on the FM-1 or with a chip) moved the FM-1 to that instrument but left the editor on the old one, with Live sync turned off ("no copy in this browser"). This happened once you had opened another patch since adding that sound, because opening a patch drops its candidates. The browser now keeps its own copy of each sound it puts into the palette, and of each sound you save there from the FM-1 (HOME and a black key held). A switch opens that sound as the current patch whatever the editor shows by then, with Live on and your candidates kept. Only a palette sound this browser never had still turns Live off and says so ([D-1427](docs/ledger/editor.md#D-1427)).

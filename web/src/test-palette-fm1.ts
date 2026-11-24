@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // A stand-in FM-1 that keeps a palette (#1196) as build/palette/spec.md §5 says the firmware does, for the editor's
-// tests: HELLO (INFO with feature bit 31, the presets' bits 7 and 17, and byte 25's SLOT_GET), the bank (SLOT_INFO, CHUNK,
+// tests: HELLO (INFO with feature bit 31, the presets' bits 7 and 17, and byte 25's SLOT_GET and FX drawer presets), the bank (SLOT_INFO, CHUNK,
 // SLOT, SLOT_ERASE, SLOT_GET of the bytes stored), a Live upload (CHUNK, COMMIT: `playing`), the user preset store
 // (PRESETS, PRESET_GET, PRESET_PUT, PRESET_DEL; a room of `presetRoom` presets, then the store is full), and PALETTE's six
 // ops with their ACKs, PALETTE_NOW (unasked only after a GET) and PALETTE_ENTRY; and the panel's switch (`tap`) and
 // hold-save (`holdSave`). It answers on a fake Web MIDI input, a millisecond later.
-import { CMD, crc16, decodePaletteEntry, encodePaletteEntry, FEATURE25_SLOT_GET, FEATURE_LONG_PRESETS, frame, NAME_BYTES, PALETTE, PALETTE_SIZE, parse, PRESET_NAME_BYTES, type PaletteEntry, type SlotInfo } from './protocol';
+import { CMD, crc16, decodePaletteEntry, encodePaletteEntry, FEATURE25_SLOT_GET, FEATURE5_FX_DRAWERS, FEATURE_LONG_PRESETS, frame, NAME_BYTES, PALETTE, PALETTE_SIZE, parse, PRESET_NAME_BYTES, type PaletteEntry, type SlotInfo } from './protocol';
 import { FORMAT_RACK } from './patchbin';
 
 /** a user preset as the stand-in keeps it: its structure (8 hex digits), its name as sent, its values in Q16 */
@@ -79,8 +79,8 @@ export class PaletteFm1 {
     this.slots = o.slots ?? Array.from({ length: 64 }, (_, slot) => ({ slot, used: false, length: 0, name: '' }));
     this.bins = this.slots.map(() => null);
     this.presetRoom = o.presetRoom ?? 32;
-    const features = o.features ?? PALETTE_FM1_FEATURES, features25 = o.features25 ?? FEATURE25_SLOT_GET;
-    // (it reads patch formats 48 to 66, FX drawers included, as firmware 1.26.3 does)
+    const features = o.features ?? PALETTE_FM1_FEATURES, features25 = o.features25 ?? FEATURE25_SLOT_GET | FEATURE5_FX_DRAWERS;
+    // (it reads patch formats 48 to 66, FX drawers included, and stores FX drawer presets, as firmware 1.26.3 does)
     this.info = frame(CMD.info, [1, 64, 255, 3, 1, features & 0xff, (features >> 8) & 0xff, 48, FORMAT_RACK, 1, 26, 0, (features >> 16) & 0xff, 1, (features >>> 24) & 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, features25]);
     this.o.send = (d) => {
       const bytes = Uint8Array.from(d);

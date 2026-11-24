@@ -2786,8 +2786,11 @@ async function main() {
       await page.fill('#commands-input', 'add to palette');
       await page.keyboard.press('Enter');
       const cName = `${base} C`;
-      const cPos = await until(async () => { const i = (await pal()).chips.findIndex((c) => c.name === cName); return i >= 0 ? i + 1 : null; }, 8000);
-      await check(`palette editor: Commands > Add to palette from C: a chip named ${cName}`, !!cPos, JSON.stringify((await pal()).chips.map((c) => c.name)));
+      /** chip `c` holds the sound heard as `name`: stored as a patch of that name, or on its slot with a preset of that name
+       *  (a candidate that differs only in device preset values, owner 2026-11-24) */
+      const holds = (c, name) => !!c && (c.name === name || c.presets.some((p) => p.toUpperCase() === name));
+      const cPos = await until(async () => { const i = (await pal()).chips.findIndex((c) => holds(c, cName)); return i >= 0 ? i + 1 : null; }, 8000);
+      await check(`palette editor: Commands > Add to palette from C: a chip named ${cName}, or with a preset of that name`, !!cPos, JSON.stringify((await pal()).chips.map((c) => [c.name, c.presets])));
       await shot('candidates-add-to-palette');
       await page.click('#snapshot-strip .snap[data-letter="B"]');
       await check('palette editor: a click on B: the editor hears B', !!(await until(async () => (await hearing()) === 'B', 3000)));
@@ -2827,7 +2830,46 @@ async function main() {
       await page.locator('.toast button', { hasText: 'Replace…' }).click({ timeout: 3000 }).catch(() => {});
       await shot('palette-full-replace');
       await page.locator('.ctx-fixed [role="menuitem"]', { hasText: '6 · SILVER BOX' }).click({ timeout: 3000 }).catch(() => {});
-      await check('palette editor: Replace… > 6 · SILVER BOX puts the patch there (candidate C, heard since the chip click)', !!(await until(async () => (await chip(5))?.name === cName, 8000)), JSON.stringify(await chip(5)));
+      await check('palette editor: Replace… > 6 · SILVER BOX puts the patch there (candidate C, heard since the chip click)', !!(await until(async () => holds(await chip(5), cName), 8000)), JSON.stringify(await chip(5)));
+      // a tweak of Monolith D's card values (owner 2026-11-24: "slight tweaks to the monolith send new patches"): Add to
+      // palette sends one preset (PRESET_PUT, the instrument with its FX drawer) and points the chip at the FM-1's own
+      // Monolith D slot (no SLOT written); a chip click then switches the FM-1 to it, and the editor hears that candidate
+      await page.evaluate(() => document.querySelector('#snap-column .pal-chip[data-pos="1"] .pal-x')?.click());
+      await check('palette editor: chip 2\'s × empties it for the Monolith D tweak', !!(await until(async () => (await chip(1))?.state === 'empty', 6000)));
+      // (the factory patch, as the FM-1's own slot holds it: a saved patch of that name in this browser is another patch)
+      await check('palette editor: factory Monolith D opens, synced', await openSynced('Monolith D', (n) => page.evaluate((x) => window.__m1test.openFactory(x), n)));
+      await page.click('#snap-duplicate');
+      await check('palette editor: Duplicate: B, a copy of A, heard', !!(await until(async () => (await hearing()) === 'B', 3000)), String(await hearing()));
+      await page.evaluate(async () => {
+        const { rowOrder } = await import('/src/structure.ts');
+        const { DEFS } = await import('/src/modules.ts');
+        const p = JSON.parse(window.__m1test.patchJson());
+        const a = p.assemblies.find((x) => x.name === 'Monolith D');
+        const r = rowOrder(p, a)[0], m = p.modules.find((x) => x.id === r.module);
+        const pd = DEFS[m.type].params.find((x) => x.name === r.param), v = m.params[r.param] ?? pd.min;
+        const by = pd.step ?? (pd.max - pd.min) / 10;
+        window.__m1test.param(m.id, r.param, v + by <= pd.max ? v + by : v - by);
+      });
+      const t5 = await now();
+      await addInCommands();
+      const tweakName = 'MONOLITH D B';
+      await check('palette editor: Add to palette from the tweaked B: chip 2 on the Monolith D slot with preset Monolith D B', !!(await until(async () => { const c = await chip(1); return c?.name.toUpperCase() === 'MONOLITH D' && holds(c, tweakName); }, 8000)), JSON.stringify([await chip(1), await statusText()]));
+      const sent5 = await sentSince(t5);
+      await check('palette editor: it sent one preset (PRESET_PUT) and stored no patch (no SLOT)', sent5.filter((s) => s[0] === 0x2f).length === 1 && !sent5.some((s) => s[0] === 0x13), JSON.stringify(sent5.map((s) => s[0].toString(16))));
+      const kept = await page.evaluate(async () => {
+        const { userPresets } = await import('/src/device-presets.ts');
+        const { drawerPresetInfo } = await import('/src/fx-preset-format.ts');
+        const mine = userPresets().find((x) => x.name === 'Monolith D B');
+        const held = mine ? await window.__m1test.fm1Preset(mine.structure, mine.name) : null;
+        return { mine: !!mine, drawer: !!mine && !!drawerPresetInfo(mine), same: !!held && held.length === mine.values.length && held.every((v, i) => Math.abs(v - mine.values[i]) < 1e-4) };
+      });
+      await check('palette editor: the preset is the instrument with its drawer, in this browser\'s presets and on the FM-1 with the same values', kept.mine && kept.drawer && kept.same, JSON.stringify(kept));
+      await page.click('#snapshot-strip .snap[data-letter="A"]');
+      await check('palette editor: a click on A: the editor hears A', !!(await until(async () => (await hearing()) === 'A', 3000)));
+      await page.click('#snap-column .pal-chip[data-pos="1"]');
+      await check('palette editor: a click on chip 2: the FM-1 plays the Monolith D tweak', !!(await until(async () => (await pal()).cur === 1, 6000)) && (await emu.waitText('MONOLITH', 3000)));
+      await check('palette editor: and the editor hears B again, Live on', !!(await until(async () => (await hearing()) === 'B' && (await T()).live, 4000)), JSON.stringify([await hearing(), (await T()).live, (await T()).status]));
+      await shot('palette-preset-tweak');
       await page.screenshot({ path: join(OUT, 'palette-editor-page.png') }).catch(() => {});
     },
     async editorIgnore() {   // #702: GLO > SYSTEM > EDITOR at IGNORE: the editor lets go, Connect skips the FM-1 and says why
