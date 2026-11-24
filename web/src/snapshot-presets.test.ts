@@ -114,5 +114,6 @@ describe('Save preset on the candidate heard (D-1426)', () => {
     const preset = userPresets().find((x) => x.name === 'Dry')!;
     expect(drawerPresetInfo(preset)).toBeFalsy();
     expect(preset.values).toHaveLength(rowOrder(editor.patch, a).length);
+    expect(editor.tweaked(editor.snaps.shown)).toBe(false);   // (the card names the preset now; the sound is as made)
   });
 });
