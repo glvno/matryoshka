@@ -1,0 +1,293 @@
+{
+  "schema": 1,
+  "version": "1.26.3",
+  "firmware_product": "FM-1_7012603",
+  "source_commit": "ea27f53b4ad59f1a64bc80a1d6e4154a103e64b1",
+  "source_tree": "7bf8c79ec52f7586f601e384264b6e6c4476f229",
+  "frozen_commit": "ea27f53b4ad59f1a64bc80a1d6e4154a103e64b1",
+  "status": "automated and rig checks passed; the owner's device check (D-139, D-1174) and the go for publication pending",
+  "firmware_vs_last_candidate": "byte-identical to release run 45285834572 (the candidate 292f3f7c, itself byte-identical to the first candidate 7a5c63a9's run 45273195030): matryoshka-1.26.3.fwsc matryoshka-1.26.3-app.bin matryoshka-1.26.3-font.bin matryoshka-emu.bin",
+  "rig_results_reused": "the firmware is byte-identical to 292f3f7c's, so its firmware-only rig results carry over (measured 2026-11-23 on that package; build/release-1.26.3/qual-292f3f7c): the upgrades from 1.26.1 and 1.25.0, the palette landings, older firmware refused, port names, interrupt windows, the CPU surveys, clock in, the cores, the FX sound and bypass from USB audio (patch binaries from link uploads; #1250-#1254 change no encoder or factory file). Rerun on 4be4fcb1 because the editor drives them: device:scenarios (the rig's set, fxDrawer, fxDrawerRig, paletteHoldSave, paletteCandidates)",
+  "release_approval": {
+    "status": "pending",
+    "scope": "Publication of v1.26.3 from the tag on release/1.26: the frozen commit plus only this record, the qualified package and its screen font in web/public/firmware/, the coverage record and the rig measurements (D-1163); its firmware/ and tools/ equal the qualified source (D-105)."
+  },
+  "plan": "D-1174 (freeze PR #1257)",
+  "patch_format": 66,
+  "factory_content": {
+    "version": 22,
+    "set": "3af59e",
+    "layout": 4,
+    "format": 66,
+    "kept_for_1.26.0_and_1.26.1": "web/public/firmware/factory/matryoshka-factory-v21-f81fee.bin, v1.26.1's image byte for byte (D-1020)"
+  },
+  "artifacts": {
+    "package": {
+      "name": "matryoshka-1.26.3.fwsc",
+      "size": 610628,
+      "sha256": "ac7e716c28a794644ad8536d80dba9206151b2a9915afd92cb7cef41d3ad0d88"
+    },
+    "screen_font": {
+      "name": "matryoshka-1.26.3-font.bin",
+      "size": 40946,
+      "sha256": "765b681ae53c51855791860e8f1c6b7eb8113fdb8e6d8aec96261f4d8a7cc3fa",
+      "id": "528f1926"
+    },
+    "normal": {
+      "name": "matryoshka-1.26.3-app.bin",
+      "size": 555760,
+      "sha256": "45c83626ca18b01a101500f6148ccb2fea024af5d3d432efbbc3ef6ec416b52e"
+    },
+    "normal_elf": {
+      "name": "matryoshka-1.26.3-app.elf",
+      "size": 629300,
+      "sha256": "cd6803570971cb0c1d7f6f9f8db8c4d3e5a1ff94689663330702f49fe02a325f"
+    },
+    "normal_sidecar": {
+      "name": "matryoshka-1.26.3.json",
+      "size": 431,
+      "sha256": "2ec2295f3cd412acea74eed6ee0f7a2e72e73b026de120ef07910f483f1779a3"
+    },
+    "bridge": {
+      "name": "matryoshka-emu.bin",
+      "size": 552704,
+      "sha256": "a015ba1c3beb53b3a7a4b1f8711cfb2f7bd291aff1411778dbb8174b35f3f15b"
+    }
+  },
+  "build_manifest_sha256": "0b206570019c3ecb3d64e309aad998e11eb4777445f29a92144ed08e1a29d0ef",
+  "build": "release run 45353901600: image 555760 B; RAM .data+.bss 19040 B of 24576 (5536 B free); pool 409564 B of 417792 (8228 B headroom, the floor 8192)",
+  "ci_runs": {
+    "release": 45353901600,
+    "web_rc": 45353905119,
+    "freeze_pr": 1257
+  },
+  "coverage": "release/coverage/v1.26.3: coverage record: current, measured ea27f53b, fingerprint matches the frozen commit (web RC run 45353905119, D-147)",
+  "full_scenarios": "427 of 427 checks passed",
+  "smoke": [
+    "emu:smoke on /Users/mg/projects/music/fm1/modular-1/build/release-1.26.3/dl/matryoshka-release-1.26.3/matryoshka-1.26.3-app.bin beside the scenarios (/Users/mg/projects/music/fm1/wt/rel1263/build/emu/smoke.log)"
+  ],
+  "boot": "boot check: PASS (49 checks, 0 failed; the editor link and the update handshake checked on the M1_EMU_MIDI build; 82.3 s emulated in 71.7 s; snapshots in /Users",
+  "old_format": "older format ok: 672 binaries load, upgrade and render bit-identically; 0 upgraded as today's encoder writes them, 332 differ, 340 too big to upgrade, 0 already in today's format; 2245 records grown to all their parameters render the same; 1 over a slot skipped",
+  "hardware": {
+    "upgrade_from_1.26.1": {
+      "checks": "12 of 12",
+      "rechecked": "build/release-1.26.3/prep/carry.py recheck: the first run compared the palette rows byte for byte, so a row on a factory slot that took factory content 22 (slot 1 MONOLITH D, 2758 -> 2654 B) failed; the row keeps its slot, name, pattern and hash",
+      "method": "build/release-1.26.3/prep/carry.py: on 1.26.1 (installed this session over a fresh 1.25.0 with 1.26.0's bank125.py bank, upgrade1261.py, palette_rig.py) every slot, the pattern store, the palette and each palette entry's sound recorded; after the 1.26.3 install all of it as on 1.26.1 (an untouched factory slot whose patch changed at factory content 22's version, D-887), the font, the region, INFO with FEATURE5 bit 3"
+    },
+    "upgrade_from_1.25.0": {
+      "checks": "70 of 70",
+      "method": "build/release-1.26.3/prep/upgrade1263.py (1.26.1's upgrade1261.py): 1.25.0 installed fresh from its own checkout with the 1.25.0 bank (master FX bus patches, formats 55..65), then 1.26.3 over it; INFO, the font, the region, 48 slots, the moves, the factory upgrades (D-887), the store entries (D-1031, D-1033), each sound as on 1.25.0 (the FM-1 reads the old format)"
+    },
+    "palette": {
+      "checks": "9 of 9",
+      "landings": [
+        {
+          "t": 4.47,
+          "tick": 192,
+          "bar": 96,
+          "switches": 2
+        },
+        {
+          "t": 6.52,
+          "tick": 288,
+          "bar": 96,
+          "switches": 3
+        },
+        {
+          "t": 8.52,
+          "tick": 384,
+          "bar": 96,
+          "switches": 4
+        },
+        {
+          "t": 10.56,
+          "tick": 480,
+          "bar": 96,
+          "switches": 5
+        },
+        {
+          "t": 12.55,
+          "tick": 576,
+          "bar": 96,
+          "switches": 6
+        },
+        {
+          "t": 14.62,
+          "tick": 672,
+          "bar": 96,
+          "switches": 7
+        },
+        {
+          "t": 16.61,
+          "tick": 768,
+          "bar": 96,
+          "switches": 8
+        },
+        {
+          "t": 18.67,
+          "tick": 864,
+          "bar": 96,
+          "switches": 9
+        }
+      ]
+    },
+    "fx_sound_vs_1.26.1": {
+      "shipped": {
+        "run 1": "19 of 21; FAILED: 10 Io 4: sounds as on 1.26.1 (held -37.78 / -37.66 dB, tail -65.87 / -62.13 dB, spectrum 0.29 dB mean over 9 bands); 18 Cassia 1: sounds as on 1.26.1 (held -39.08 / -39.09 dB, tail -62.06 / -58.89 dB, spectrum 0.22 dB mean over 3 bands)",
+        "run 2 (the candidate again, same session)": "21 of 21"
+      },
+      "every_effect_on": "13 of 22; FAILED: 03 Hera 6: sounds as on 1.26.1 (held -37.0 / -37.59 dB, tail -60.02 / -55.38 dB, spectrum 0.49 dB mean over 12 bands); 07 Canvas: sounds as on 1.26.1 (held -39.84 / -42.75 dB, tail -97.76 / -99.93 dB, spectrum 1.98 dB mean over 10 bands); 12 8 Lire: measured on both (missing); 13 Elvira 2: measured on both (missing); 14 Scrounge: measured on both (missing); 15 Meridian 8: measured on both (missing); 17 909 Kit: measured on both (missing); 19 Verona Drum 1: measured on both (missing); 21 Scrounge p10: measured on both (missing) (as compared: the 7 'measured on both: missing' are the patches without a bus, which the converted set does not hold; Hera 6 and Canvas are the rig's variance, not a change: see variance, 5 recordings each in one session on both firmwares)",
+      "variance": {
+        "method": "build/release-1.26.3/prep/variance.sh: one session, nothing else on the link: 5 recordings each on 1.26.3 of the converted binaries (format 66) and of 1.26.1's bus binaries (format 55), then on 1.26.1 (installed) of the bus binaries; fxaudio.py rec (C4 held 2 s, 2.5 s tail)",
+        "patches": {
+          "01 Oracle V": {
+            "new-1263": {
+              "held": [
+                -43.63,
+                -43.53
+              ],
+              "tail": [
+                -65.47,
+                -63.58
+              ]
+            },
+            "old-1263": {
+              "held": [
+                -43.65,
+                -43.59
+              ],
+              "tail": [
+                -64.39,
+                -63.23
+              ]
+            },
+            "old-1261": {
+              "held": [
+                -43.66,
+                -43.52
+              ],
+              "tail": [
+                -65.45,
+                -62.55
+              ]
+            },
+            "rig.sh 1.26.1 baseline (bankfx-old, the same binary)": {
+              "held": -43.61,
+              "tail": -62.24
+            },
+            "1.26.1 and 1.26.3 ranges overlap (within 0.5 dB)": true
+          },
+          "03 Hera 6": {
+            "new-1263": {
+              "held": [
+                -37.62,
+                -37.49
+              ],
+              "tail": [
+                -56.69,
+                -55.18
+              ]
+            },
+            "old-1263": {
+              "held": [
+                -37.59,
+                -37.45
+              ],
+              "tail": [
+                -56.91,
+                -55.34
+              ]
+            },
+            "old-1261": {
+              "held": [
+                -37.6,
+                -37.49
+              ],
+              "tail": [
+                -56.56,
+                -55.39
+              ]
+            },
+            "rig.sh 1.26.1 baseline (bankfx-old, the same binary)": {
+              "held": -37.0,
+              "tail": -60.02
+            },
+            "1.26.1 and 1.26.3 ranges overlap (within 0.5 dB)": true
+          },
+          "07 Canvas": {
+            "new-1263": {
+              "held": [
+                -42.56,
+                -41.88
+              ],
+              "tail": [
+                -99.6,
+                -98.94
+              ]
+            },
+            "old-1263": {
+              "held": [
+                -42.28,
+                -41.54
+              ],
+              "tail": [
+                -99.32,
+                -98.83
+              ]
+            },
+            "old-1261": {
+              "held": [
+                -42.68,
+                -41.35
+              ],
+              "tail": [
+                -99.88,
+                -98.76
+              ]
+            },
+            "rig.sh 1.26.1 baseline (bankfx-old, the same binary)": {
+              "held": -39.84,
+              "tail": -97.76
+            },
+            "1.26.1 and 1.26.3 ranges overlap (within 0.5 dB)": true
+          }
+        }
+      },
+      "method": "build/release-1.26.3/prep/fxaudio.py, beside the owner's ears: each factory patch sent to the running patch and C4 held 2 s, then 2.5 s of tail, recorded from the rig's USB audio; held RMS within 1.5 dB, tail within 3 dB, the 1/3-octave spectrum within 3 dB on average (a patch silent at C4 on both, the drum kits, counts as the same). Shipped: 1.26.1's tree's binary (bus, all stages off as shipped) on 1.26.1 against the frozen tree's (drawer) on 1.26.3; run 1 had Io 4 and Cassia 1 tails 3.2 to 3.7 dB louder at -58 to -62 dB, run 2 on the candidate matched 1.26.1 for all 21, and the candidate against itself matched for all 21 (aud-ship-repeat.json). Every effect on: 1.26.1's tree's patch with every bus stage on (setFxStageEnabled), its binary on 1.26.1, the same JSON opened by the frozen tree (validatePatch, D-1036) on 1.26.3 (genaudio.ts oldjson / conv; 15 bus patches, the 7 without a bus are not in that set). Hera 6 (tail) and Canvas (held) missed it against rig.sh's one 1.26.1 run; variance.sh then recorded each 5 times in one session on 1.26.3 (converted and 1.26.1's own binary) and on 1.26.1 reinstalled (its binary): the three agree (Hera 6 held -37.45..-37.62, tail -55.2..-56.9 dB; Canvas held -41.35..-42.68 dB on both firmwares), so that one 1.26.1 run was an outlier, not a change; build/fxdrawer-proof.txt renders Hera 6 ~fx and Canvas ~fx sample-identically in engine.ts and engine.c (opened at v22 and converted)"
+    },
+    "bypass": {
+      "checks": "5 of 5",
+      "method": "fxaudio.py ov: Oracle V's drawer (Chorus > Delay > Reverb, all on): the drawer's ⏻ off sounds as the patch without effects, the last effect's ⏻ off as the patch without it, a switching Toggle on the LFO button pressed on the panel (TEST_KEY) likewise for the drawer and for the effect, and all on differs from dry"
+    },
+    "fx_drawer_on_the_fm1": {
+      "scenarios": [
+        "110 of 113 checks passed, 3 skipped (1.2 output: MONO, both sounds on both sides, each a bit quieter: the rig's USB audio is taken before OUTPUT's mix (audio.c): the emulator's I2S proves it, the owner hears it; 1.3 output: MONO L, both sounds on the left, the right silent: the rig's USB audio is ta"
+      ],
+      "method": "device:scenarios on the rig with fxDrawer and the throwaway fxDrawerRig (a scratch checkout of the frozen commit whose only change is those two in RIG_SCENARIOS and fxDrawerRig itself): FX opens the first effect, SELECT walks the chain in order, FX with Main on screen and the instrument armed, FX with nothing armed to the Output drawer, FX on an empty drawer to the Output drawer, no MASTER FX page, drawer presets only on a matching chain, NO FX IN THE RACK"
+    },
+    "palette_hold_save": {
+      "result": "18 of 18 checks",
+      "method": "build/release-1.26.3/prep/palette_holdsave.md (#1244, #1246) as the throwaway device scenario paletteHoldSave in the same scratch checkout: with Live on, HOME + a black key held on the panel (TEST_KEY) saves the editor's patch to the palette: an unsaved patch, a patch with an older saved copy, a patch with factory pattern origins; Live stays on, the editor's patch stays, nothing reopens"
+    },
+    "palette_candidates": {
+      "result": "14 of 14 checks",
+      "method": "the throwaway device scenario paletteCandidates in the same scratch checkout (#1252, D-1319, D-1321): with Live on, Monolith D, Generate, candidate C heard, Add to palette fills chip 1; candidate B heard, a click on chip 1 switches the FM-1 and the editor opens C's sound, Live stays on and every candidate stays; a hold-save while candidate D plays keeps every candidate, D and Live"
+    },
+    "older_firmware_refused": true,
+    "midi_endpoint_names": {
+      "1.26.1": true,
+      "1.26.3": true
+    },
+    "irq_vs_1.26.1": "D-1165, one session: program 18 1948.7 -> 1965.9 us; program 6 1838.7 -> 1820.1 us; program 1 2173.7 -> 2199.0 us; 18 Cassia 1 fx 2144.5 -> 2174.4 us; 05 Expander S fx 2330.9 -> 2353.3 us; 03 Hera 6 fx 2096.0 -> 2098.3 us; 06 Algo Four fx 2183.6 -> 2183.7 us; differences [-18.6, 29.9]",
+    "cpu_survey": "vs 1.26.1 same session, stopped: 1.22.0's FX patches [-0.4, 1.9] mean 0.47; factory patches [-1.0, 1.2] mean 0.21. Every effect on, the FX drawers against 1.26.1's master FX bus on the same patches (1.26.1's binary on 1.26.1, the converted one on 1.26.3; 13 patches, Silver Box and 808 Kit left out because only 1.26.1's set carries their 1.24.1 patterns): stopped [-1.2, 0.1] mean -0.48, running [-1.2, 1.3] mean -0.12 points; every factory patch with every effect on (genaudio.ts fx): worst 82.3 % stopped, 83.8 % running (1.26.1 with every stage on: 82.1 %, 83.8 %; bar 85 %), dropped 0",
+    "clock_in_at_0": "raw steady offset 39.17 ms against 1.26.1's 39.72 ms (difference -0.55 ms)",
+    "cores": [
+      "2 CORES; barred no; trace 0xc1000002; split on",
+      "self-test passed 16435, failed 0; refused jobs 0; jobs done 598381; core 1 stack 2160 B used; longest wait 2221 us since the last read"
+    ]
+  },
+  "owner_checks": {
+    "status": "pending",
+    "steps": "https://lighght-3.tail5744df.ts.net:8443/crate/ and the record pull request's body (D-139, D-1174): a converted patch's effects heard unchanged, the FX tab, a preset's FX preview, note and Undo, the + Effect dialog, the menus, FX to the first effect and SELECT through the chain, an effect and a drawer bypassed by a Toggle, candidates added to the palette, a hold-save with Live on, a power cycle"
+  }
+}

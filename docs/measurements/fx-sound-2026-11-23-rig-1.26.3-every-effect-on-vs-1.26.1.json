@@ -1,0 +1,115 @@
+{
+ "checks": [
+  {
+   "name": "00 Monolith D: sounds as on 1.26.1",
+   "ok": true,
+   "detail": "held -36.29 / -36.48 dB, tail -55.91 / -57.32 dB, spectrum 0.42 dB mean over 9 bands"
+  },
+  {
+   "name": "01 Oracle V: sounds as on 1.26.1",
+   "ok": true,
+   "detail": "held -43.61 / -43.66 dB, tail -62.24 / -62.36 dB, spectrum 0.67 dB mean over 5 bands"
+  },
+  {
+   "name": "02 Silver Box: sounds as on 1.26.1",
+   "ok": true,
+   "detail": "held -38.06 / -38.26 dB, tail -83.25 / -79.72 dB, spectrum 2.26 dB mean over 7 bands"
+  },
+  {
+   "name": "03 Hera 6: sounds as on 1.26.1",
+   "ok": false,
+   "detail": "held -37.0 / -37.59 dB, tail -60.02 / -55.38 dB, spectrum 0.49 dB mean over 12 bands"
+  },
+  {
+   "name": "04 Sallen 20: sounds as on 1.26.1",
+   "ok": true,
+   "detail": "held -38.34 / -38.21 dB, tail -58.42 / -57.58 dB, spectrum 0.60 dB mean over 10 bands"
+  },
+  {
+   "name": "05 Expander S: sounds as on 1.26.1",
+   "ok": true,
+   "detail": "held -38.65 / -38.88 dB, tail -55.16 / -56.82 dB, spectrum 0.40 dB mean over 9 bands"
+  },
+  {
+   "name": "06 Algo Four: sounds as on 1.26.1",
+   "ok": true,
+   "detail": "held -46.71 / -45.21 dB, tail -70.9 / -72.25 dB, spectrum 1.39 dB mean over 2 bands"
+  },
+  {
+   "name": "07 Canvas: sounds as on 1.26.1",
+   "ok": false,
+   "detail": "held -39.84 / -42.75 dB, tail -97.76 / -99.93 dB, spectrum 1.98 dB mean over 10 bands"
+  },
+  {
+   "name": "08 Wanderer: sounds as on 1.26.1",
+   "ok": true,
+   "detail": "held -35.39 / -35.49 dB, tail -53.34 / -55.57 dB, spectrum 0.25 dB mean over 6 bands"
+  },
+  {
+   "name": "09 Briefcase 3: sounds as on 1.26.1",
+   "ok": true,
+   "detail": "held -41.09 / -41.17 dB, tail -54.98 / -55.57 dB, spectrum 0.41 dB mean over 13 bands"
+  },
+  {
+   "name": "10 Io 4: sounds as on 1.26.1",
+   "ok": true,
+   "detail": "held -38.41 / -38.27 dB, tail -56.69 / -58.93 dB, spectrum 0.35 dB mean over 9 bands"
+  },
+  {
+   "name": "11 Vernon 100: sounds as on 1.26.1",
+   "ok": true,
+   "detail": "held -38.45 / -38.28 dB, tail -59.11 / -57.33 dB, spectrum 0.22 dB mean over 4 bands"
+  },
+  {
+   "name": "12 8 Lire: measured on both",
+   "ok": false,
+   "detail": "missing"
+  },
+  {
+   "name": "13 Elvira 2: measured on both",
+   "ok": false,
+   "detail": "missing"
+  },
+  {
+   "name": "14 Scrounge: measured on both",
+   "ok": false,
+   "detail": "missing"
+  },
+  {
+   "name": "15 Meridian 8: measured on both",
+   "ok": false,
+   "detail": "missing"
+  },
+  {
+   "name": "16 808 Kit: sounds as on 1.26.1",
+   "ok": true,
+   "detail": "silent on both: held -77.05 / -76.41 dB"
+  },
+  {
+   "name": "17 909 Kit: measured on both",
+   "ok": false,
+   "detail": "missing"
+  },
+  {
+   "name": "18 Cassia 1: sounds as on 1.26.1",
+   "ok": true,
+   "detail": "held -36.4 / -36.42 dB, tail -56.77 / -56.23 dB, spectrum 0.70 dB mean over 4 bands"
+  },
+  {
+   "name": "19 Verona Drum 1: measured on both",
+   "ok": false,
+   "detail": "missing"
+  },
+  {
+   "name": "20 Shush 101: sounds as on 1.26.1",
+   "ok": true,
+   "detail": "held -35.74 / -35.85 dB, tail -57.1 / -57.36 dB, spectrum 0.44 dB mean over 10 bands"
+  },
+  {
+   "name": "21 Scrounge p10: measured on both",
+   "ok": false,
+   "detail": "missing"
+  }
+ ],
+ "all_ok": false
+}
