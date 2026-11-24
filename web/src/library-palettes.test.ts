@@ -82,8 +82,9 @@ const chip = (pos: number): HTMLElement => document.querySelector<HTMLElement>(`
 const nameInput = (): HTMLInputElement => document.querySelector<HTMLInputElement>('input[aria-label="Palette name"]')!;
 const key = (el: HTMLElement, k: string): void => void el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
 const names = (p: SavedPalette | undefined): (string | null)[] => p!.sounds.map((x) => x?.name ?? null);
-/** the drop's microtasks run (askName's answer, then the store); no timers involved */
-const settle = async (): Promise<void> => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
+/** the drop runs (on the timeout that ends the release's click swallow, patch-drag.ts), then its microtasks (askName's
+ *  answer, then the store) */
+const settle = async (): Promise<void> => { await new Promise((r) => setTimeout(r)); for (let i = 0; i < 10; i++) await Promise.resolve(); };
 
 /** a pointer drag: `press` pressed, moved, released over `target` */
 function drag(press: HTMLElement, target: HTMLElement): void {
