@@ -347,7 +347,8 @@ const FX_PLUG_W = 40;
 const FX_PLUG_EMPTY_W = 30;
 /** the band joining a plug's two lobes along their outer edge, round the free jack's window */
 const FX_BAND = 7;
-/** the open drawer is this much shorter than the card at each end, so its outline stays under the card's corners */
+/** the open drawer starts this much below the card's top, so its outline stays under the card's corner; one that ends
+ *  beside the card ends at least this much above its bottom, one that goes on below it at least FX_R below */
 const FX_INSET = 10;
 /** the strip beside the card where its other outputs' cables run down (without other outputs, a narrow one) */
 const FX_GUTTER = 44;
@@ -362,6 +363,17 @@ const FX_SPRING_MS = 450;
 const FX_SLIDE_MS = 200;
 /** a canvas narrower than this opens drawers below their card */
 const FX_NARROW = 760;
+
+/**
+ * An open drawer's height beside its card (D-1342), layout px: `content`, its header, tallest effect card (or empty, its
+ * drop target) and padding, at least down past the card's jack the drawer takes lowest (`lowestTap`, from the card's top;
+ * the drawer starts FX_INSET below it). One that would end in the card's bottom corner goes on below the card, far enough
+ * for its rounded corner to show there.
+ */
+export function drawerHeight(content: number, cardH: number, lowestTap: number): number {
+  const h = Math.max(content, lowestTap - FX_INSET + 15);
+  return h > cardH - 2 * FX_INSET ? Math.max(h, cardH - FX_INSET + FX_R) : h;
+}
 
 /** Main's jack captions on the dock that are shortened */
 const DOCK_SHORT: Record<string, string> = { vel: 'vel', at: 'aft' };
@@ -5749,9 +5761,9 @@ export class Editor {
   /**
    * Place a drawer on its card (layout px), from where the card and its jacks are now. Closed: the plug 18 px under the
    * card's edge, as tall as the jacks it covers; jacks not next to each other get two lobes joined by a band along their
-   * outer edge, round a window where the free jack stays (fxdrawer4 design E). Open: the drawer 10 px shorter than the card
-   * at each end, taller only for a taller effect (then shown below the card as a corner the card sits on), with a gutter
-   * beside the card for its other outputs; on a narrow canvas, below the card.
+   * outer edge, round a window where the free jack stays (fxdrawer4 design E). Open: the drawer starts 10 px below the
+   * card's top and is as tall as its tallest effect card with its header and padding (drawerHeight), with a gutter beside
+   * the card for the outputs it passes; on a narrow canvas, below the card, as tall as its rows.
    */
   private layoutDrawer(v: DrawerView): void {
     const z = this.zoom;
@@ -5763,12 +5775,12 @@ export class Editor {
     };
     const ys = [...new Set(v.taps.map((t) => at(t).y))].sort((a, b) => a - b);
     const edge = v.side === 'r' ? hw : 0;
-    const others = [...v.host.querySelectorAll<HTMLElement>(`.dot[data-dir="${v.side === 'r' ? 'out' : 'in'}"]`)]
+    const outs = [...v.host.querySelectorAll<HTMLElement>(`.dot[data-dir="${v.side === 'r' ? 'out' : 'in'}"]`)]
       .filter((d) => !v.taps.includes(d) && d.dataset.edge !== 'bottom' && !d.closest('.embedded') && Math.abs(at(d).x - edge) < 12)
       .map((d) => ({ d, y: at(d).y })).sort((a, b) => a.y - b.y);
     const row = v.drawer?.querySelector<HTMLElement>(':scope > .fx-row');
     const narrow = !!v.drawer?.classList.contains('under');
-    const geom = [hx, hy, hw, hh, ys, others.map((o) => o.y), row?.offsetWidth, row?.offsetHeight, narrow && this.canvas.clientWidth / z].join(' ');
+    const geom = [hx, hy, hw, hh, ys, outs.map((o) => o.y), row?.offsetWidth, row?.offsetHeight, narrow && this.canvas.clientWidth / z].join(' ');
     if (geom === v.geom) return;
     v.geom = geom;
     const place = (el: HTMLElement, x: number, y: number): void => {
@@ -5780,7 +5792,7 @@ export class Editor {
       const p = v.plug;
       const W = FX_TUCK + (p.classList.contains('empty') ? FX_PLUG_EMPTY_W : FX_PLUG_W);
       const y0 = ys[0], y1 = ys[ys.length - 1], H = y1 - y0 + 30;
-      const win = others.some((o) => o.y > y0 + 6 && o.y < y1 - 6);
+      const win = outs.some((o) => o.y > y0 + 6 && o.y < y1 - 6);
       place(p, v.side === 'r' ? hx + hw - FX_TUCK : hx - W + FX_TUCK, hy + y0 - 15);
       p.style.width = `${W}px`;
       p.style.height = `${H}px`;
@@ -5804,17 +5816,20 @@ export class Editor {
     }
     const el = v.drawer;
     if (!el || !row) return;
-    const gut = others.length ? FX_GUTTER : FX_GUTTER_BARE;
-    el.style.setProperty('--fx-lead', `${FX_TUCK + gut}px`);
-    el.style.setProperty('--fx-band', `${FX_TUCK + 36}px`);
     if (narrow) {
       el.style.minWidth = `${hw}px`;
       el.style.maxWidth = `${Math.max(hw, this.canvas.clientWidth / z - 24)}px`;
       place(el, hx, hy + hh - FX_TUCK);
     } else {
-      el.style.minHeight = `${hh - 2 * FX_INSET}px`;
+      el.style.minHeight = '';
+      el.style.minHeight = `${drawerHeight(el.offsetHeight, hh, ys[ys.length - 1] ?? 0)}px`;
       el.style.top = `${hy + FX_INSET}px`;
     }
+    // the card's other outputs beside the drawer stay on its edge over the gutter (those below it are not covered)
+    const others = narrow ? outs : outs.filter((o) => o.y < FX_INSET + el.offsetHeight + 8);
+    const gut = others.length ? FX_GUTTER : FX_GUTTER_BARE;
+    el.style.setProperty('--fx-lead', `${FX_TUCK + gut}px`);
+    el.style.setProperty('--fx-band', `${FX_TUCK + 36}px`);
     const w = el.offsetWidth, h = el.offsetHeight;
     if (!narrow) el.style.left = `${v.side === 'r' ? hx + hw - FX_TUCK : hx + FX_TUCK - w}px`;
     const svg = el.querySelector<SVGSVGElement>(':scope > .fx-shape')!;
@@ -5866,7 +5881,9 @@ export class Editor {
       stub.setAttribute('d', v.side === 'r' ? this.curve(a, b) : this.curve(b, a));
       deco.append(stub);
     });
-    // the card's other outputs stay on its edge, over the gutter: their cables run down it and out under the drawer
+    // the card's other outputs beside the drawer stay on its edge, over the gutter: their cables run down it and out under
+    // the drawer; the ones below it are not covered and cable as usual
+    for (const o of outs) this.gutterJacks.delete(o.d);
     if (!narrow && v.side === 'r') others.forEach((o, k) => this.gutterJacks.set(o.d, { v, k }));
   }
 

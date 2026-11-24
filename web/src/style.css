@@ -1302,7 +1302,8 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .fx-card .mhead { cursor: grab; }
 .fx-card .mhead > .grip { color: var(--muted); letter-spacing: -2px; flex: none; contain: none; overflow: visible; font-size: 13px; }
 .mtag.fx.fx-own { background: color-mix(in srgb, var(--tag-fx) 22%, transparent); }
-.fx-slot { position: relative; z-index: 2; align-self: flex-end; width: 150px; height: 38px; display: flex; align-items: center; justify-content: center; gap: 6px; flex: none;
+/* the + slot right after the last effect card, level with its top; the drawer is as tall as its tallest card (D-1342) */
+.fx-slot { position: relative; z-index: 2; align-self: flex-start; width: 150px; height: 38px; display: flex; align-items: center; justify-content: center; gap: 6px; flex: none;
   border: 1.5px dashed color-mix(in srgb, var(--tag-fx) 65%, transparent); border-radius: 8px; background: transparent; color: var(--tag-fx); cursor: pointer;
   font: var(--cap, 600 11.5px/1 'Barlow Condensed', sans-serif); font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em; }
 .fx-slot b { font-size: 15px; }
