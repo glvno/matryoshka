@@ -1246,6 +1246,8 @@ const editor = new Editor($('canvas'), firstPatch, {
     nameInput.value = editor.patch.name;   // (each stop has its own name, D-970)
     renderSnapshots();
     queueSave(editor.patch);   // (the snapshots are kept beside the patch)
+    palette?.findCopies();   // (a chip added from a candidate has its copy there)
+    renderPalette();
   },
   onSilence(p) {
     // a snapshot switch (D-970): both engines start the stop from silence. A Live FM-1 gets All Notes Off (MIDI CC 123), the
@@ -1699,14 +1701,16 @@ function renderPalette(): void {
 palette = new Palette({
   device,
   candidates: () => bankCandidates(),
+  versions: () => [editor.patch, editor.currentPatch(), ...editor.snaps.list.map((s) => JSON.parse(s.patch) as Patch)],
   live: () => live() && onEditorPatch,
-  current: () => editor.currentPatch(),
+  current: () => editor.patch,   // (what the FM-1 plays under Live: the candidate on screen, A or another)
   open(p, o) {
-    if (!o.adopt) return loadNamed(p, { from: o.from });
+    // a switch keeps the candidates: the patch it replaces joins them (owner 2026-11-24, D-1321)
+    if (!o.adopt) return loadNamed(p, { from: o.from, keep: true });
     // the FM-1 switched under Live: it plays this patch already, so the editor takes it as the FM-1's (nothing is sent
     // back: a second upload would cost a second gap and make the FM-1's patch FROM EDITOR), and Live edits go to it
     fromDevice = true;
-    try { loadNamed(p, { from: o.from }); } finally { fromDevice = false; }
+    try { loadNamed(p, { from: o.from, keep: true }); } finally { fromDevice = false; }
     uploadGate.forget();
     onEditorPatch = true;
     installedLayout = deviceLayoutKey(editor.patch);
@@ -1727,9 +1731,9 @@ palette = new Palette({
   banked: () => libraryPanes.patches?.deviceChanged(currentView === 'library' && librarySection === 'patches'),
 });
 renderPalette();
-/** Add to palette (the patch menu, Commands): the current patch into the first empty position */
+/** Add to palette (the patch menu, Commands): the patch heard (the candidate on screen) into the first empty position */
 const addCurrentToPalette = (): void => {
-  const p = structuredClone(editor.currentPatch());
+  const p = structuredClone(editor.patch);
   void palette?.add(p.name.trim() || 'Untitled', p);
 };
 // the grip beside the patch name: the canvas's patch dragged onto a chip
@@ -1739,7 +1743,7 @@ patchGrip.className = 'patch-grip';
 patchGrip.textContent = '⠿';
 patchGrip.title = 'Drag the patch onto a palette chip (the Sound design sidebar)';
 patchGrip.setAttribute('aria-label', 'Drag the patch onto a palette chip');
-patchDragSource(patchGrip, () => ({ name: editor.patch.name.trim() || 'Untitled', patch: () => structuredClone(editor.currentPatch()) }));
+patchDragSource(patchGrip, () => ({ name: editor.patch.name.trim() || 'Untitled', patch: () => structuredClone(editor.patch) }));
 $('patch-name').after(patchGrip);
 /** the Listen block's phrase plays (the rail's play button); its Audition is made further down */
 let listenPlaying = (): boolean => false;
@@ -2248,21 +2252,26 @@ const commands = (): Command[] => {
  * Open a patch in the editor (every load of the user's goes through here). `from`: the Your patches name it came from;
  * `once`: it cannot be opened again as it is (a share link, an Undo's patch); `stay`: keep the current tab; `quiet`: no
  * Undo (the tutorial, the lesson editor, an Undo itself). A load over a patch with unsaved changes offers Undo (#148).
+ * `keep`: the candidates stay and the patch replaced joins them (a palette switch, Editor.openKeeping): nothing is lost, so
+ * no Undo.
  */
-const loadNamed = (p: Patch, o: { from?: string; once?: boolean; stay?: boolean; quiet?: boolean } = {}): void => {
+const loadNamed = (p: Patch, o: { from?: string; once?: boolean; stay?: boolean; quiet?: boolean; keep?: boolean } = {}): void => {
   const prev = structuredClone(editor.patch);
   const prevFrom = openedFrom;
   const chained = loadUndo?.open() && loadUndo.loaded === asLoaded(prev) ? loadUndo : null;
   const losing = !chained && losesWork(prev);
   if (!o.stay) toPatch();
-  editor.setPatch(p);
+  let kept: Snapshot | null = null;
+  if (o.keep) kept = editor.openKeeping(p);
+  else editor.setPatch(p);
   setBaseline();
   nameInput.value = editor.patch.name;
   openedFrom = o.from ?? '';
   lastLoad = { patch: asLoaded(editor.patch), reopen: !o.once };
   loadUndo = null;
   if (!feedsOutput(editor.patch)) status.textContent = 'Nothing makes sound yet. Add an engine, then play a key.';
-  if (o.quiet || !(chained || losing)) return;
+  else if (kept) status.textContent = `the patch it replaces is kept as candidate ${kept.letter}`;
+  if (o.quiet || o.keep || !(chained || losing)) return;
   const back = chained ?? { prev, prevFrom };
   const name = back.prev.name.trim() || 'Untitled';
   const open = showUndo(`Opened "${editor.patch.name}". "${name}" was not saved`, () => {

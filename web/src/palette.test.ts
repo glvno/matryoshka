@@ -104,6 +104,7 @@ async function linked(o: { features?: number; features25?: number; presetRoom?: 
     candidates: () => o.candidates ?? [],
     live: () => live,
     current: o.current ?? (() => newPatch(DEFS)),
+    versions: () => [],
     open: (patch, x) => void opened.push({ patch, ...x }),
     kept: () => void kept++,
     liveOff: (why) => { live = false; off.push(why); },
