@@ -74,6 +74,7 @@ async function rig(saved: Candidate[] = [], start = pad('My Pad'), cands = [pad(
     kept: nop,
     liveOff: (why) => { live = false; off.push(why); },
     say: (t) => void said.push(t),
+    full: (t) => void said.push(t),
     changed: nop,
   };
   const palette = new Palette(ports, localStorage);

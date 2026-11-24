@@ -1573,6 +1573,8 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 .toast span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toast button { flex: none; min-height: 26px; padding: 0 10px; border: 1px solid var(--secondary); border-radius: 4px; background: transparent; color: var(--secondary); font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; }
 .toast button.toast-close { border-color: transparent; color: var(--muted); padding: 0 6px; }
+/* a toast about the palette, just above its chips (toast.ts place sets bottom and right) */
+.toast.toast-near { left: auto; transform: none; }
 /* a panel's contents never run past its edge, even when a scroll bar narrows the sidebar: the columns may shrink below
    their content (a select's widest option, a button's label), and a label too long is cut with an ellipsis */
 .sbody { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 8px; }

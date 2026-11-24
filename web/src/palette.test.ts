@@ -11,7 +11,7 @@ import { DeviceLink } from './device';
 import { addUserPreset, applyPreset, currentValues, presetsOf, setFactoryPresets } from './device-presets';
 import { DEFS } from './modules';
 import { connect, newPatch, type Patch } from './patch';
-import { applyEntry, entryOf, moveOrder, Palette, PALETTE_STORE, paletteDevices, repointed, type PalettePorts } from './palette';
+import { applyEntry, entryOf, moveOrder, Palette, PALETTE_FULL, PALETTE_STORE, paletteDevices, repointed, type PalettePorts } from './palette';
 import { chipMeta } from './palette-view';
 import { FM1_PRESETS } from './presets';
 import { invalidatePresetPatterns } from './preset-patterns';
@@ -97,7 +97,7 @@ async function linked(o: { features?: number; features25?: number; presetRoom?: 
   g.navigator.requestMIDIAccess = async () => ({ inputs: new Map([[fm1.i.id, fm1.i]]), outputs: new Map([[fm1.o.id, fm1.o]]), onstatechange: null });
   const link = new DeviceLink();
   await link.connect();
-  const said: string[] = [], opened: { patch: Patch; adopt: boolean; from: string }[] = [], off: string[] = [];
+  const said: string[] = [], opened: { patch: Patch; adopt: boolean; from: string }[] = [], off: string[] = [], full: { text: string; replace: (pos: number) => void }[] = [];
   let live = o.live ?? false, kept = 0;
   const ports: PalettePorts = {
     device: link,
@@ -109,6 +109,7 @@ async function linked(o: { features?: number; features25?: number; presetRoom?: 
     kept: () => void kept++,
     liveOff: (why) => { live = false; off.push(why); },
     say: (t) => void said.push(t),
+    full: (text, replace) => void full.push({ text, replace }),
     changed: () => {},
   };
   const palette = new Palette(ports, storage);
@@ -118,7 +119,7 @@ async function linked(o: { features?: number; features25?: number; presetRoom?: 
     if (e.kind === 'slot') { palette.slotNow(); o.onSlot?.(); }   // (as main.ts: then the editor drops its pattern origins)
   };
   await palette.connected();
-  return { fm1, link, palette, said, opened, off, kept: () => kept, live: () => live };
+  return { fm1, link, palette, said, opened, off, full, kept: () => kept, live: () => live };
 }
 
 describe('the palette over the link (#1196)', () => {
@@ -147,16 +148,27 @@ describe('the palette over the link (#1196)', () => {
     expect(fm1.entries[2]).toMatchObject({ slot: 5, name: 'My Pad' });
     expect(fm1.entries[3]).toEqual({ slot: 9, pattern: 0, name: '808 Kit', devices: [] });
   });
-  it('says so when the bank or the palette is full, and adds nothing', async () => {
+  it('says so when the bank is full, and adds nothing', async () => {
     const { fm1, palette, said } = await linked();
     fm1.slots = fm1.slots.map((s) => ({ ...s, used: true, length: 1, name: `P${s.slot}` }));
     expect(await palette.add('My Pad', padPatch().p)).toBe(false);
     expect(said.at(-1)).toMatch(/bank is full/);
+  });
+  it('a full palette: Add to palette adds nothing and says so where the chips are, offering a position to replace (#1258)', async () => {
+    const { fm1, palette, full } = await linked();
+    fm1.slots[0] = { slot: 0, used: true, length: 1, name: 'P0' };
     fm1.entries = fm1.entries.map(() => ({ slot: 0, pattern: 0, name: 'P0', devices: [] }));
     fm1.report();
     await fm1.quiet();
-    expect(await palette.add('My Pad', padPatch().p)).toBe(false);
-    expect(said.at(-1)).toBe('Palette full: drag onto a chip to replace');
+    const { p } = padPatch();
+    expect(await palette.add('My Pad', p)).toBe(false);
+    expect(full.map((f) => f.text)).toEqual([PALETTE_FULL]);
+    expect(fm1.entries.every((e) => e?.name === 'P0')).toBe(true);
+    // Replace… > position 3: the same sound goes there
+    full[0].replace(2);
+    await fm1.quiet();
+    expect(fm1.entries[2]).toMatchObject({ name: 'MY PAD', devices: [{ name: 'Warm1' }] });
+    expect(fm1.entries.filter((e) => e?.name === 'P0')).toHaveLength(7);
   });
   it('reorders with one ORDER, removes with an empty PUT, and reads a newer entry by its hash', async () => {
     const { fm1, palette } = await linked();

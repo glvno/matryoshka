@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Add to palette says when the palette is full, next to the chips.** With all eight positions taken, Add to palette in the patch ⋯ menu or in Commands seemed to do nothing: it said so only in the status line at the bottom of the window. A message now shows just above the palette chips, and in the status line: "Palette full: drag onto a chip to replace". Its **Replace…** button lists the eight positions, and the one you pick takes the patch ([D-1319](docs/ledger/editor.md#D-1319), #1258).
+
 ## 1.26.3 — 2026-11-24
 
 - **Update your FM-1 to firmware 1.26.3 before you sync it with this editor.** The editor now writes patch format 66, which only the 1.26.3 firmware reads, so an FM-1 still on 1.26.0, 1.26.1 or 1.26.2 does not sync until it is updated: the editor says "update it to sync" and the Install panel offers the update. The patches and palette already on the FM-1 keep playing as before, and the update keeps them.

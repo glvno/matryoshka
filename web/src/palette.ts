@@ -235,6 +235,9 @@ export interface PalettePorts {
   /** turn Live sync off and say why */
   liveOff(why: string): void;
   say(text: string): void;
+  /** Add to palette found no empty position: say `text` where the chips are, offering `replace` (the same sound into
+   *  the position picked) (#1258) */
+  full(text: string, replace: (pos: number) => void): void;
   /** a sound was stored into an FM-1 slot on its way into the palette: the Library's FM-1 column reads the bank again */
   banked?(): void;
   /** the chips changed: draw them again */
@@ -243,6 +246,8 @@ export interface PalettePorts {
 
 /** the reason the palette cannot be changed now, or null */
 const SWITCH_WAITS = 'The FM-1 is waiting to switch at the bar line: try again after it switched';
+/** what Add to palette says with no empty position */
+export const PALETTE_FULL = 'Palette full: drag onto a chip to replace';
 
 export class Palette {
   /** the palette as last read (from the FM-1, or kept in this browser); null never read */
@@ -389,7 +394,7 @@ export class Palette {
     const why = this.blocked();
     if (why) return this.ports.say(why), false;
     const pos = o.pos ?? this.firstEmpty();
-    if (pos === null) return this.ports.say('Palette full: drag onto a chip to replace'), false;
+    if (pos === null) return this.ports.full(PALETTE_FULL, (at) => void this.add(name, patch, { ...o, pos: at })), false;
     if (!patch && !o.slot) return false;
     const d = this.ports.device;
     /** what was written to the FM-1 for this sound, to take back on a failure */
