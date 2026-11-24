@@ -1876,7 +1876,7 @@ const paletteChoiceItems = (anchor?: HTMLElement | null): MenuItem[] => {
  *  a palette is linked; without one, the choice */
 const addCurrentToPalette = (anchor?: HTMLElement | null): void => {
   if (palette?.linked) return void addHeardToFm1(anchor);
-  popMenu(paletteChoiceItems(anchor), anchor ?? status);
+  popMenu(paletteChoiceItems(anchor), anchor?.isConnected ? anchor : status);
 };
 /** Library › Palettes with saved palette `id` open */
 function openSavedPalette(id: string): void {

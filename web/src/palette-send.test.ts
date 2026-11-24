@@ -10,7 +10,8 @@ import { DeviceLink } from './device';
 import { addUserPreset, applyPreset, currentValues, presetsOf, replaceUserPresets, setFactoryPresets, userPresets } from './device-presets';
 import { DEFS } from './modules';
 import { connect, newPatch, type Patch } from './patch';
-import { NO_SAME_STRUCTURE, Palette, PALETTE_FROM, paletteDevices, patchPattern, type PalettePorts } from './palette';
+import { Palette, PALETTE_FROM, type PalettePorts } from './palette';
+import { NO_SAME_STRUCTURE, paletteDevices, patchPattern } from './preset-fit';
 import { CMD, type PaletteEntry } from './protocol';
 import type { PaletteSound } from './saved-palettes';
 import { rowOrder, structureOf } from './structure';
@@ -240,6 +241,18 @@ describe('Send to FM-1 (#1236)', () => {
     expect(palette.from).toBeNull();
     expect(JSON.parse(mem.get(PALETTE_FROM)!)).toBeNull();
     expect(offline().palette.from).toBeNull();
+  });
+  it('`from` outlives a report older than the Send (a write during it, arriving late)', async () => {
+    const { fm1, palette } = await linked();
+    await palette.send([sound('My Pad', padPatch().p), null, null, null, null, null, null, null], { id: 'p3', name: 'Palette 3' });
+    await fm1.quiet();
+    const now = palette.now!;
+    palette.received({ ...now, seq: (now.seq - 1) & 0xffff, positions: now.positions.map((p, i) => (i ? p : { ...p, state: 0 as const, hash: 0 })) });
+    await fm1.quiet();
+    expect(JSON.parse(mem.get(PALETTE_FROM)!)).toMatchObject({ id: 'p3' });
+    palette.received(now);
+    await fm1.quiet();
+    expect(palette.from).toEqual({ id: 'p3', name: 'Palette 3' });
   });
 });
 

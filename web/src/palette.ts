@@ -120,8 +120,9 @@ function loadCopies(storage: Pick<Storage, 'getItem'> | null): PaletteCopy[] {
   }
 }
 
-/** what Send to FM-1 left on the FM-1 (PALETTE_FROM): the saved palette, and each position's hash then (0 empty) */
-interface SentFrom { id: string; name: string; hashes: number[] }
+/** what Send to FM-1 left on the FM-1 (PALETTE_FROM): the saved palette, each position's hash then (0 empty), and the
+ *  record's sequence number then (PALETTE_NOW seq) */
+interface SentFrom { id: string; name: string; hashes: number[]; seq?: number }
 function loadFrom(storage: Pick<Storage, 'getItem'> | null): SentFrom | null {
   try {
     const f = JSON.parse(storage?.getItem(PALETTE_FROM) ?? 'null') as Partial<SentFrom> | null;
@@ -290,7 +291,10 @@ export class Palette {
    *  than Send to FM-1 left drops `from` */
   private async take(now: PaletteNow, follow: boolean): Promise<void> {
     this.now = now;
-    if (this.sentFrom && !sameHashes(hashesOf(now), this.sentFrom.hashes)) this.storeFrom(null);
+    // (only a newer record than Send left drops it: a report of a write during the Send can arrive after it; the getter
+    // compares the hashes in any case)
+    const f = this.sentFrom, newer = !f || f.seq === undefined || (((now.seq - f.seq) & 0xffff) > 0 && ((now.seq - f.seq) & 0xffff) < 0x8000);
+    if (f && newer && !sameHashes(hashesOf(now), f.hashes)) this.storeFrom(null);
     this.entries = now.positions.map((p) => (p.state ? this.byHash.get(p.hash) ?? null : null));
     this.findCopies();
     this.ports.changed();
@@ -731,7 +735,7 @@ export class Palette {
     }
     try {
       await this.take(await d.readPalette(), false);
-      if (this.now) this.storeFrom({ id: from.id, name: from.name, hashes: hashesOf(this.now) });
+      if (this.now) this.storeFrom({ id: from.id, name: from.name, hashes: hashesOf(this.now), seq: this.now.seq });
     } catch {
       /* the FM-1's own reports keep the chips; `from` is not kept */
     }

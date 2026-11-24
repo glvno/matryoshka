@@ -7,7 +7,8 @@
 import { assemblyById } from './assembly';
 import { fixPreset, sameName, type Preset } from './device-presets';
 import { drawerScope } from './fx-preset';
-import { entryPresets, paletteDevices, patchPattern, type Chip } from './palette';
+import { entryPresets, type Chip } from './palette';
+import { paletteDevices, patchPattern } from './preset-fit';
 import type { Patch } from './patch';
 import { layout } from './patchbin';
 import { devicePresetName, PALETTE_SIZE } from './protocol';
