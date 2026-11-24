@@ -106,6 +106,7 @@
     <!-- LIBRARY: one section at a time (main.ts showLibrarySection): Patches and Presets in two columns, this browser and the FM-1 -->
     <section id="tab-library" class="tab" role="tabpanel" aria-label="Library" hidden>
       <div id="lib-patches" class="lib-section"><h2 class="lib-title">Patches</h2></div>
+      <div id="lib-palettes" class="lib-section" hidden><h2 class="lib-title">Palettes</h2></div>
       <div id="lib-assemblies" class="lib-section" hidden><h2 class="lib-title">Assemblies</h2></div>
       <div id="lib-presets" class="lib-section" hidden><h2 class="lib-title">Presets</h2></div>
       <div id="lib-effects" class="lib-section" hidden><h2 class="lib-title">Effects</h2></div>
@@ -117,7 +118,7 @@
     <!-- listening to one signal instead of the Output (#939, main.ts showListen): what plays, and the way back -->
     <div id="listen-chip" class="listen-chip" role="status" hidden><span class="listen-dot" aria-hidden="true"></span><span>Listening to <b id="listen-name"></b></span><button id="listen-stop" type="button" title="Back to the Output (Esc)">× Back to Output</button></div>
     <!-- LIBRARY's sections, tabs under the switch while LIBRARY shows (main.ts setLibrarySection) -->
-    <nav id="library-tabs" class="library-tabs view-switch" aria-label="Library sections" hidden><button type="button" data-section="patches" aria-current="true">Patches</button><button type="button" data-section="assemblies" aria-current="false">Assemblies</button><button type="button" data-section="presets" aria-current="false">Presets</button><button type="button" data-section="effects" aria-current="false">Effects</button><button type="button" data-section="patterns" aria-current="false">Patterns</button><button type="button" data-section="community" aria-current="false">Community</button></nav>
+    <nav id="library-tabs" class="library-tabs view-switch" aria-label="Library sections" hidden><button type="button" data-section="patches" aria-current="true">Patches</button><button type="button" data-section="palettes" aria-current="false">Palettes</button><button type="button" data-section="assemblies" aria-current="false">Assemblies</button><button type="button" data-section="presets" aria-current="false">Presets</button><button type="button" data-section="effects" aria-current="false">Effects</button><button type="button" data-section="patterns" aria-current="false">Patterns</button><button type="button" data-section="community" aria-current="false">Community</button></nav>
     <!-- Connect FM-1 (top right, in every view): connects as FM-1 & MIDI's Connect does; connected, it opens FM-1 & MIDI (main.ts syncChip) -->
     <button id="fm1-connect" class="fm1-connect" type="button" title="Connect the FM-1 over USB MIDI"><span class="sl-dot" aria-hidden="true"></span><span class="fm1-connect-text">Connect FM-1</span></button>
     <!-- the Install panel (Get started > Install firmware, Commands, #flash): flasher.ts's page over the main area -->
@@ -244,6 +245,15 @@
           <h2 id="sync-ask-title">Sync with the FM-1?</h2>
           <p id="sync-ask-text"></p>
           <div class="sync-ask-actions"><button value="sync" class="primary" autofocus>Sync</button><button value="later">Not now</button></div>
+        </form>
+      </dialog>
+      <!-- Send to FM-1 (#1236, main.ts sendSavedPalette): a saved palette replaces the FM-1's whole palette, after this -->
+      <dialog id="palette-send" class="help sync-ask" aria-labelledby="palette-send-title" aria-describedby="palette-send-text">
+        <form method="dialog" class="sync-ask-body">
+          <h2 id="palette-send-title">Send to the FM-1?</h2>
+          <p id="palette-send-text">It replaces the FM-1’s whole palette. Sounds the FM-1 lacks are stored on it: a preset on a slot it has where the sound fits, a patch otherwise.</p>
+          <label id="palette-send-keep" class="palette-send-keep"><input id="palette-send-first" type="checkbox" checked> Save the FM-1’s current palette first</label>
+          <div class="sync-ask-actions"><button value="send" class="primary" autofocus>Send</button><button value="">Cancel</button></div>
         </form>
       </dialog>
       <!-- "Store to an FM-1 slot…" (#635, store-slot.ts): the FM-1's slots with their names or EMPTY, the first empty one chosen -->

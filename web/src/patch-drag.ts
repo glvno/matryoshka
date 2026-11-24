@@ -76,11 +76,14 @@ export function startPatchDrag(e: PointerEvent, item: PatchDragItem): void {
     if (!label) return;
     label.remove();
     document.body.classList.remove('patch-dragging');
-    // (the release ends a drag, not a click on what was pressed: the click it makes, if any, comes before the timeout)
+    // (the release ends a drag, not a click on what was pressed: the click it makes, if any, comes before the timeout. The
+    // drop runs after it, so a name prompt the drop opens takes the next click, Enter's on its button too, #1236)
     const swallow = (c: MouseEvent): void => { c.stopPropagation(); c.preventDefault(); };
     addEventListener('click', swallow, true);
-    setTimeout(() => removeEventListener('click', swallow, true));
-    if (ev.type === 'pointerup' && target) drops.get(target)?.(item);
+    setTimeout(() => {
+      removeEventListener('click', swallow, true);
+      if (ev.type === 'pointerup' && target) drops.get(target)?.(item);
+    });
   };
   const key = (ev: KeyboardEvent): void => {
     if (ev.key !== 'Escape') return;

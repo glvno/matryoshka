@@ -192,7 +192,8 @@ export interface SideActions {
   /** the 'revert' link next to 'tweaked' (on any tweaked row; the integrator makes that candidate current, then reverts) */
   revert(letter: string): void;
   savePreset(anchor: HTMLElement): void;
-  addToPalette(): void;
+  /** Add to palette: the default (the FM-1's palette when one is linked, else the choice of a saved palette) by `anchor` */
+  addToPalette(anchor: HTMLElement): void;
   /** the candidate's menu (right-click, double-click, ⋯) */
   more(s: Snapshot, anchor: HTMLElement): void;
   /** a pointer down on a candidate's row: maybe a drag to reorder */
@@ -291,7 +292,7 @@ export function renderList(strip: HTMLElement, v: SideView, act: SideActions): v
         acts.append(button('snap-preset main', v.engines === 1 ? 'Save preset' : 'Save preset ▾',
           v.engines === 1 ? 'Save its instrument, with its FX drawer, as a preset' : 'Save one of its instruments, with its FX drawer, as a preset', (b) => act.savePreset(b)));
       }
-      acts.append(button('snap-palette main', 'Add to palette', 'Add it to the FM-1’s palette', () => act.addToPalette()),
+      acts.append(button('snap-palette main', 'Add to palette', 'Add it to the FM-1’s palette (with no FM-1: to a saved palette); ⋯ has the choice', (b) => act.addToPalette(b)),
         button('snap-more', '⋯', 'More: also on a right-click or double-click of a row', (b) => act.more(s, b)),
         remove('snap-remove', 'Delete it (Alt+X)'));
       r.append(acts);
@@ -380,7 +381,7 @@ export function renderRail(body: HTMLElement, v: SideView, act: SideActions): vo
     button('snap-rail-step', '▼', 'The next (Alt+J)', () => act.step(1)),
     el('div', 'snap-rail-sep'),
     button('snap-rail-btn', 'PRE', v.engines ? 'Save preset: its instrument, with its FX drawer' : 'Save preset: this patch has no instrument', (b) => act.savePreset(b), !v.engines),
-    button('snap-rail-btn', 'PAL', 'Add to palette: the one you hear', () => act.addToPalette()),
+    button('snap-rail-btn', 'PAL', 'Add to palette: the one you hear', (b) => act.addToPalette(b)),
     button('snap-rail-btn', '✕', only ? ONLY_ONE : `Delete ${s.letter}, the one you hear (Alt+X)`, () => act.remove(s.letter), only),
     button('snap-rail-btn generate', `+${v.count}`, `Generate ${v.count} candidates (Alt+N)`, () => act.generate()));
 }
