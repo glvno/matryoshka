@@ -601,6 +601,28 @@ export function checkScenarios(h) {
       });
       const row = page().locator(`.module[data-id="${shortId}"] input[aria-label="Delay length"]`);
       await row.scrollIntoViewIfNeeded();
+      // the pointer reaches the slider over the whole of each of SHORT's slider rows and the sidebar's Cable slack and Zoom:
+      // at its name (drawn over the thumb since #1251), its centre and its thumb (jsdom cannot hit-test, so the page does)
+      const reach = await page().evaluate((id) => {
+        // (the rows on screen: a card's rows past the window's edge, or a folded sidebar, have nothing to hit)
+        const seen = (r) => { const b = r.getBoundingClientRect(); return b.width > 0 && b.top >= 0 && b.left >= 0 && b.bottom <= innerHeight && b.right <= innerWidth; };
+        const rows = [...document.querySelectorAll(`.module[data-id="${id}"] .param.bar, .side-bar`)].filter((r) => r.querySelector(':scope > .slider-jack') && seen(r));
+        const mid = (el, left) => { const b = el.getBoundingClientRect(); return [b.x + (left ? Math.min(b.width / 2, 24) : b.width / 2), b.y + b.height / 2]; };
+        // (a point another element covers, a button of the page over the card, is no row's: said, not failed)
+        const covered = [];
+        const missed = rows.flatMap((r) => {
+          const name = r.querySelector(':scope > span:first-child'), slider = r.querySelector(':scope > .slider-jack');
+          return [['name', mid(name, true)], ['centre', mid(r)], ['thumb', mid(slider.querySelector(':scope > .dot'))]].flatMap(([where, [x, y]]) => {
+            const e = document.elementFromPoint(x, y), what = `${name.textContent} ${where}: ${e ? `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}` : 'nothing'}`;
+            if (!e || !r.contains(e)) return covered.push(what), [];
+            return e.closest('.slider-jack') === slider ? [] : [what];
+          });
+        });
+        return { card: rows.filter((r) => r.closest('.module')).length, side: rows.filter((r) => r.id === 'slack-bar').length, missed, covered };
+      }, shortId);
+      await check('4.5 delays: a press anywhere on a slider row reaches its slider (its name, its centre, its thumb), on SHORT\'s card and the sidebar\'s Cable slack and Zoom',
+        reach.card > 0 && reach.side > 0 && reach.missed.length === 0 && reach.covered.length < reach.card * 3,
+        `${reach.card} card rows, Cable slack ${reach.side ? 'shown' : 'not shown'}: ${reach.missed.join(' | ') || 'all reach it'}${reach.covered.length ? `; covered by the page: ${reach.covered.join(' | ')}` : ''}`);
       const box = await row.boundingBox();
       if (box) {
         await page().mouse.move(box.x + box.width / 2, box.y + box.height / 2);

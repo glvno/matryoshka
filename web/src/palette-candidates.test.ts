@@ -165,6 +165,24 @@ describe('a sound added to the palette from a candidate (owner 2026-11-24: "FM-1
     expect([off, live()]).toEqual([[], true]);
     expect(state()).toEqual({ list: [['C', 0.6], ['D', 0.15]], shown: null, current: 0.4 });
   });
+  it('Add to palette from candidate C changes no candidate and not A; the switch to that chip after makes C\'s sound A (1.26.3 qualification)', async () => {
+    // (Release1263's run on the emulator: Generate, C heard, Add to palette, B heard, chip 1 clicked; then A showed C's
+    // sound, not the opened patch's. The add leaves A and every candidate as they were; the switch is what makes the sound
+    // on that chip A, and the patch it replaces joins the list as a new candidate, as Use does: D-971, D-1321)
+    const { editor, fm1, palette, off, live, state, grip } = await rig(undefined, pad('My Pad'), [pad('My Pad', 0.4), pad('My Pad', 0.6), pad('My Pad', 0.8)]);
+    editor.showSnapshot('C');
+    expect(await grip(0)).toBe(true);   // (main.ts addCurrentToPalette: the patch heard into the first empty position)
+    await fm1.quiet();
+    expect(state()).toEqual({ list: [['B', 0.4], ['C', 0.6], ['D', 0.8]], shown: 'C', current: 0.15 });
+    editor.showSnapshot(null);   // (A clicked after the add: the opened patch's values)
+    expect(level(editor.patch)).toBe(0.15);
+    editor.showSnapshot('B');
+    await palette.click(0);   // (chip 1 while B plays: the FM-1 switches, the editor follows under Live)
+    await fm1.quiet();
+    expect([off, live()]).toEqual([[], true]);
+    expect(state()).toEqual({ list: [['B', 0.4], ['D', 0.8], ['E', 0.15]], shown: null, current: 0.6 });
+    expect(editor.snaps.get('E')!.from).toBe('use');
+  });
   it('the same after Use on each candidate before its drag: the chips hold candidates, and each opens', async () => {
     const { editor, fm1, off, live, state, grip } = await rig();
     await grip(0);
