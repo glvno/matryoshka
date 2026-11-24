@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "version": "1.26.5",
+  "kind": "web-only release (D-1160), cut from main (D-1176)",
+  "firmware_product": "FM-1_7012603",
+  "source_commit": "5ddc281e3871cc8ebad79a971e46f8efb84b334b",
+  "source_branch": "main",
+  "source_tree": "4656b7d49f1f9ae2ce9ee2d58e2d76e46d593f9b",
+  "tag_branch": "release/1.26.5: the frozen commit + v1.26.3's web/public/firmware/matryoshka-factory.bin and factory-sets.json byte for byte + this record and its coverage (D-1176, D-1163)",
+  "status": "automated checks passed; awaiting the owner's go for publication",
+  "release_approval": {
+    "status": "pending",
+    "scope": "Publication of v1.26.5 on 5ddc281e + v1.26.3's factory region files + this record and its coverage, with v1.26.3's firmware package, screen font and factory region."
+  },
+  "plan": "D-1176",
+  "contents": [
+    "Add to palette: a tweak of a sound the FM-1 has goes in as device presets on its slot, not a new patch; tempo/pattern differences never force a patch; otherwise a patch with a one-line reason (PR #1270, issue #1269, D-1240, D-1319 amended)",
+    "v1.26.4 listed among the released factory sets (PR #1268; its regenerated region image is not shipped)",
+    "freeze: version 1.26.5, CHANGELOG heading, D-1176 (PR #1271, frozen 5382a660: the rig's paletteCandidates found a generated candidate added as a preset opened as a new candidate on its chip's switch)",
+    "the fix (PR #1272)",
+    "re-freeze: D-1176 amended (PR #1273)"
+  ],
+  "bundled_firmware": {
+    "release": "v1.26.3",
+    "package": {
+      "name": "web/public/firmware/matryoshka.fwsc",
+      "size": 610628,
+      "sha256": "ac7e716c28a794644ad8536d80dba9206151b2a9915afd92cb7cef41d3ad0d88"
+    },
+    "check": "D-1160 check 1: every file in web/public/firmware/ of the tag commit is byte-identical to the v1.26.3 tag's: the package, its sidecar, the font (528f1926), the factory region v22 3af59e (57,451 bytes), factory-sets.json and the frozen older images. main's regenerated region (#1259, #1268) is replaced by v1.26.3's on release/1.26.5"
+  },
+  "factory_content": "unchanged from v1.26.3 (version 22, set 3af59e, layout 4): the image is byte-identical; no CPU survey, no slot upgrade",
+  "ci_runs": {
+    "web_rc": 45477738729,
+    "freeze_pr": 1271,
+    "refreeze_pr": 1273
+  },
+  "full_web": {
+    "rc_run": 45477738729,
+    "run_success": true,
+    "result": "D-1160 check 2: the editor suite in rc mode (test job, the slow-render jobs and the coverage seal, D-1157) passed on 5ddc281e",
+    "coverage_record": "release/coverage/v1.26.5: current, measured on 5ddc281e (D-147)"
+  },
+  "full_scenarios": {
+    "passed": 458,
+    "failed": 0,
+    "seconds": 476,
+    "on_tree": "4656b7d49f1f9ae2ce9ee2d58e2d76e46d593f9b",
+    "on_bridge_sha256": "a015ba1c3beb53b3a7a4b1f8711cfb2f7bd291aff1411778dbb8174b35f3f15b",
+    "note": "D-1160 check 3: the full emu:scenarios on v1.26.3's release bridge (release run 45353901600)",
+    "per_pr_scenarios": "not run: #1270 and the fix change paletteEditor, which the full run includes, and none of the 7 per-PR scenarios of D-1158"
+  },
+  "rig_scenarios": "test rig 0x01140000 on 1.26.3 (font 528f1926, region v22 3af59e), scratch scenarios on 5ddc281e: paletteCandidates 29/29 (candidates, Add to palette from a candidate, a chip click hears it, hold-save keeps the set, the switch to another instrument) and palettePresetTweak 24/24 (a tweak goes in as one preset on the Monolith D slot, no slot written, same values in this browser and on the FM-1; the same tweak again sends nothing; a chip click plays it and the editor hears it; the patch's own tempo changed: no patch, the line says it plays the slot's tempo; a cable less: a patch, with its reason). First freeze 5382a660 failed paletteCandidates (a switch opened a new candidate), fixed by #1272",
+  "not_run": "firmware build, emu:smoke and the full device check: the firmware is 1.26.3's, already qualified (release/qualification/v1.26.3.json; D-1160)",
+  "owner_checks": {
+    "status": "pending",
+    "steps": "D-1160 check 4: a candidate's tweak added to the palette goes in as a preset on the FM-1's slot (no new slot) and the chip plays it; the same tweak again makes no second preset; a tempo-only change takes no patch and says so; a cable change takes a patch with its reason; 1.26.4's palette and candidate flows"
+  }
+}
