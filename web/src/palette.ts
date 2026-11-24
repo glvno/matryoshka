@@ -218,11 +218,16 @@ export interface PalettePorts {
   };
   /** this browser's patches that can be an entry's copy (bank.ts bankCandidates) */
   candidates(): Candidate[];
+  /** the editor's own versions of its patch: the patch on screen, the current patch and the candidates (a sound added
+   *  from one has no other copy: its slot is matched byte for byte, ownCopy) */
+  versions(): Patch[];
   /** Live sync is on and the FM-1 plays the editor's patch */
   live(): boolean;
-  /** the editor's patch as it is now */
+  /** the patch the editor plays as it is now: the candidate on screen (A, the current patch, or another), which Live sends
+   *  to the FM-1 */
   current(): Patch;
-  /** open `patch` in the editor; `adopt`: the FM-1 plays it already (a switch under Live): no upload */
+  /** open `patch` in the editor as the current patch, keeping its candidates (the patch it replaces joins them);
+   *  `adopt`: the FM-1 plays it already (a switch under Live): no upload */
   open(patch: Patch, o: { adopt: boolean; from: string }): void;
   /** under Live the FM-1 plays a palette position that holds the editor's patch as it is (it saved it there: HOME + a
    *  black key held): the editor keeps its patch, and Live edits go on to the FM-1's */
@@ -328,9 +333,10 @@ export class Palette {
     }
   }
 
-  /** work out which positions this browser has a copy of (after the palette or the browser's patches changed) */
+  /** work out which positions this browser has a copy of (after the palette, the browser's patches or the candidates
+   *  changed): the editor's own versions count */
   findCopies(): void {
-    const known = this.ports.candidates();
+    const known = [...this.ports.versions().map((v) => ({ name: v.name, patch: () => v })), ...this.ports.candidates()];
     this.copies = (this.now?.positions ?? []).map((p) => !!positionCopy(p, known, undefined, this.numbered));
   }
 
@@ -555,20 +561,44 @@ export class Palette {
       if (ack.aux === PAL_GO_WAITING) this.ports.say(`The FM-1 switches to palette ${pos + 1} · ${p.name} at the next bar line`);
       if (this.ports.live()) return;   // (it follows the switch when the FM-1 reports it)
     } else if (p.state === 2) return this.ports.say(`Palette ${pos + 1} was MISSING when last read: slot ${p.slot + 1} no longer held "${p.name}"`);
-    if (!this.open(pos, false)) this.ports.say(`Palette ${pos + 1} · ${p.name}: no copy of this patch in this browser`);
+    if (!(await this.open(pos, false))) this.ports.say(`Palette ${pos + 1} · ${p.name}: no copy of this patch in this browser`);
   }
 
-  /** open position `pos` from this browser's copy, its presets and pattern applied; false without a copy */
-  private open(pos: number, adopt: boolean): boolean {
+  /** open position `pos` from this browser's copy, its presets and pattern applied; false without a copy (true, nothing
+   *  opened, when `stale` says a newer palette came meanwhile). The editor's own version its slot holds byte for byte
+   *  comes first (ownCopy: a sound added from a candidate has no other copy), then a saved patch of its name and length */
+  private async open(pos: number, adopt: boolean, stale = (): boolean => false): Promise<boolean> {
     const p = this.now?.positions[pos];
-    const copy = p && positionCopy(p, this.ports.candidates(), undefined, this.numbered);
-    if (!p || !copy) return false;
+    if (!p) return false;
+    const own = await this.ownCopy(p);
+    if (stale()) return true;   // (a newer palette came meanwhile: it follows on its own)
+    const copy = own ? { name: '', patch: own, factory: false } : positionCopy(p, this.ports.candidates(), undefined, this.numbered);
+    if (!copy) return false;
     const patch = structuredClone(copy.patch);
     const e = this.entries[pos];
     const gone = e ? applyEntry(patch, e) : [];
     this.ports.open(patch, { adopt, from: copy.factory ? '' : copy.name });
     if (gone.length) this.ports.say(`Palette ${pos + 1} · ${p.name}: this browser has not got the preset${gone.length > 1 ? 's' : ''} ${gone.join(', ')}`);
     return true;
+  }
+
+  /** the editor's own version (versions: the patch on screen, the current patch, the candidates) that the slot of `p`
+   *  holds byte for byte (SLOT_GET; firmware that cannot send a slot back: none) */
+  private async ownCopy(p: PalettePos): Promise<Patch | null> {
+    const d = this.ports.device;
+    if (p.state !== 1 || !d.readsSlots) return null;
+    const fits: { v: Patch; bin: Uint8Array }[] = [];
+    for (const v of this.ports.versions()) {
+      try {
+        const bin = d.encodeFor(v);
+        if (bin.length === p.len) fits.push({ v, bin });
+      } catch {
+        /* over the FM-1's budget: not a patch it plays */
+      }
+    }
+    if (!fits.length) return null;
+    const held = await d.readSlotBin(p.slot).catch(() => null);
+    return (held && fits.find((x) => sameBytes(held, x.bin))?.v) ?? null;
   }
 
   /**
@@ -583,7 +613,7 @@ export class Palette {
     const mine = await this.holds(pos, at);
     if (this.taken !== now) return;   // (a newer palette came meanwhile: it follows on its own)
     if (mine) return this.ports.kept();
-    if (this.open(pos, true)) return;
+    if (await this.open(pos, true, () => this.taken !== now)) return;
     this.ports.liveOff(`FM-1 switched to palette ${pos + 1} · ${p.name}: no copy in this browser, so Live sync is off`);
   }
 

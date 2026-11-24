@@ -4070,6 +4070,27 @@ export class Editor {
     return kept;
   }
 
+  /**
+   * Open `p` as the current patch, A, and keep the candidates (a palette switch, D-1321): as Use does (D-971), the patch it
+   * replaces joins the list as a new candidate, unless it is the same version or a candidate holds it already, and a
+   * candidate that holds `p` leaves the list (it is A now). Changes made to a candidate on screen are kept as a new
+   * candidate first, as a switch keeps them. The rest is opening a patch (setPatch: undo starts afresh). Returns the
+   * candidate that keeps the patch replaced, or null
+   */
+  openKeeping(p: Patch): Snapshot | null {
+    this.endGesture();
+    this.endPass();
+    const cur = this.currentPatch();
+    if (this.shownEdited() && !sameVersion(cur, this.patch)) this.keep(this.patch);
+    const kept = sameVersion(cur, p) || this.snaps.holding(cur) ? null : this.snaps.take(cur, undefined, 'use');
+    const same = this.snaps.holding(p);
+    if (same) this.snaps.remove(same.letter);
+    const list = [...this.snaps.list];
+    this.setPatch(p);
+    this.restoreSnapshots(list);
+    return kept;
+  }
+
   renameSnapshot(letter: string, name: string): void {
     const s = this.snaps.get(letter);
     if (!s) return;
