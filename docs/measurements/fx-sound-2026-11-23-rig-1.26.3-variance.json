@@ -1,0 +1,116 @@
+{
+ "method": "build/release-1.26.3/prep/variance.sh: one session, nothing else on the link: 5 recordings each on 1.26.3 of the converted binaries (format 66) and of 1.26.1's bus binaries (format 55), then on 1.26.1 (installed) of the bus binaries; fxaudio.py rec (C4 held 2 s, 2.5 s tail)",
+ "patches": {
+  "01 Oracle V": {
+   "new-1263": {
+    "held": [
+     -43.63,
+     -43.53
+    ],
+    "tail": [
+     -65.47,
+     -63.58
+    ]
+   },
+   "old-1263": {
+    "held": [
+     -43.65,
+     -43.59
+    ],
+    "tail": [
+     -64.39,
+     -63.23
+    ]
+   },
+   "old-1261": {
+    "held": [
+     -43.66,
+     -43.52
+    ],
+    "tail": [
+     -65.45,
+     -62.55
+    ]
+   },
+   "rig.sh 1.26.1 baseline (bankfx-old, the same binary)": {
+    "held": -43.61,
+    "tail": -62.24
+   },
+   "1.26.1 and 1.26.3 ranges overlap (within 0.5 dB)": true
+  },
+  "03 Hera 6": {
+   "new-1263": {
+    "held": [
+     -37.62,
+     -37.49
+    ],
+    "tail": [
+     -56.69,
+     -55.18
+    ]
+   },
+   "old-1263": {
+    "held": [
+     -37.59,
+     -37.45
+    ],
+    "tail": [
+     -56.91,
+     -55.34
+    ]
+   },
+   "old-1261": {
+    "held": [
+     -37.6,
+     -37.49
+    ],
+    "tail": [
+     -56.56,
+     -55.39
+    ]
+   },
+   "rig.sh 1.26.1 baseline (bankfx-old, the same binary)": {
+    "held": -37.0,
+    "tail": -60.02
+   },
+   "1.26.1 and 1.26.3 ranges overlap (within 0.5 dB)": true
+  },
+  "07 Canvas": {
+   "new-1263": {
+    "held": [
+     -42.56,
+     -41.88
+    ],
+    "tail": [
+     -99.6,
+     -98.94
+    ]
+   },
+   "old-1263": {
+    "held": [
+     -42.28,
+     -41.54
+    ],
+    "tail": [
+     -99.32,
+     -98.83
+    ]
+   },
+   "old-1261": {
+    "held": [
+     -42.68,
+     -41.35
+    ],
+    "tail": [
+     -99.88,
+     -98.76
+    ]
+   },
+   "rig.sh 1.26.1 baseline (bankfx-old, the same binary)": {
+    "held": -39.84,
+    "tail": -97.76
+   },
+   "1.26.1 and 1.26.3 ranges overlap (within 0.5 dB)": true
+  }
+ }
+}

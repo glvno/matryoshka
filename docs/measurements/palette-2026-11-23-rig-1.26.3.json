@@ -1,0 +1,301 @@
+{
+ "checks": [
+  {
+   "name": "palette 1: slot 22 MY 808 KIT, P02",
+   "ok": true,
+   "detail": "1  slot 22 MY 808 KIT, P02, 3659 bytes, hash 0xa1a4"
+  },
+  {
+   "name": "palette 2: slot 23 MY SCROUNGE, P03",
+   "ok": true,
+   "detail": "2  slot 23 MY SCROUNGE, P03, 3159 bytes, hash 0x4c55"
+  },
+  {
+   "name": "palette 3: slot 18 909 KIT, P01",
+   "ok": true,
+   "detail": "3  slot 18 909 KIT, P01, 3608 bytes, hash 0x58bb"
+  },
+  {
+   "name": "palette 4: slot 01 MONOLITH D, P01",
+   "ok": true,
+   "detail": "4  slot 01 MONOLITH D, P01, 2654 bytes, hash 0x2cb5"
+  },
+  {
+   "name": "8 switches while running, each counted",
+   "ok": true,
+   "detail": "[2, 3, 4, 5, 6, 7, 8, 9]"
+  },
+  {
+   "name": "each switch landed on a bar line (tick a multiple of the bar)",
+   "ok": true,
+   "detail": "[(192, 96), (288, 96), (384, 96), (480, 96), (576, 96), (672, 96), (768, 96), (864, 96)]"
+  },
+  {
+   "name": "no silent run of 250 ms or more while switching (the fades and the load)",
+   "ok": true,
+   "detail": "47 runs, longest 101.54 ms"
+  },
+  {
+   "name": "the recording is not silent",
+   "ok": true,
+   "detail": "5204"
+  },
+  {
+   "name": "stopped: palette go 4 switched at once (position 4 playing)",
+   "ok": true,
+   "detail": "4  slot 01 MONOLITH D, P01, 2654 bytes, hash 0x2cb5 < playing"
+  }
+ ],
+ "palette": [
+  "1  slot 22 MY 808 KIT, P02, 3659 bytes, hash 0xa1a4",
+  "2  slot 23 MY SCROUNGE, P03, 3159 bytes, hash 0x4c55",
+  "3  slot 18 909 KIT, P01, 3608 bytes, hash 0x58bb",
+  "4  slot 01 MONOLITH D, P01, 2654 bytes, hash 0x2cb5",
+  "5  empty",
+  "6  empty",
+  "7  empty",
+  "8  empty",
+  "record seq 109"
+ ],
+ "landings": [
+  {
+   "t": 4.47,
+   "tick": 192,
+   "bar": 96,
+   "switches": 2
+  },
+  {
+   "t": 6.52,
+   "tick": 288,
+   "bar": 96,
+   "switches": 3
+  },
+  {
+   "t": 8.52,
+   "tick": 384,
+   "bar": 96,
+   "switches": 4
+  },
+  {
+   "t": 10.56,
+   "tick": 480,
+   "bar": 96,
+   "switches": 5
+  },
+  {
+   "t": 12.55,
+   "tick": 576,
+   "bar": 96,
+   "switches": 6
+  },
+  {
+   "t": 14.62,
+   "tick": 672,
+   "bar": 96,
+   "switches": 7
+  },
+  {
+   "t": 16.61,
+   "tick": 768,
+   "bar": 96,
+   "switches": 8
+  },
+  {
+   "t": 18.67,
+   "tick": 864,
+   "bar": 96,
+   "switches": 9
+  }
+ ],
+ "silent_runs_ms": [
+  [
+   0.0,
+   2073.2
+  ],
+  [
+   6.072,
+   24.42
+  ],
+  [
+   6.414,
+   1.09
+  ],
+  [
+   6.422,
+   2.24
+  ],
+  [
+   6.442,
+   1.16
+  ],
+  [
+   6.453,
+   2.97
+  ],
+  [
+   7.495,
+   2.22
+  ],
+  [
+   7.501,
+   2.45
+  ],
+  [
+   7.506,
+   88.21
+  ],
+  [
+   7.655,
+   63.76
+  ],
+  [
+   8.09,
+   40.27
+  ],
+  [
+   10.125,
+   26.26
+  ],
+  [
+   10.469,
+   1.09
+  ],
+  [
+   10.477,
+   2.24
+  ],
+  [
+   10.497,
+   1.16
+  ],
+  [
+   10.508,
+   2.97
+  ],
+  [
+   11.55,
+   2.22
+  ],
+  [
+   11.556,
+   2.45
+  ],
+  [
+   11.56,
+   88.21
+  ],
+  [
+   11.71,
+   63.76
+  ],
+  [
+   12.144,
+   41.04
+  ],
+  [
+   14.182,
+   26.26
+  ],
+  [
+   14.51,
+   1.16
+  ],
+  [
+   14.527,
+   1.25
+  ],
+  [
+   14.534,
+   2.45
+  ],
+  [
+   14.555,
+   1.45
+  ],
+  [
+   14.564,
+   1.02
+  ],
+  [
+   14.566,
+   3.31
+  ],
+  [
+   14.579,
+   1.11
+  ],
+  [
+   15.391,
+   1.04
+  ],
+  [
+   15.605,
+   101.54
+  ],
+  [
+   15.767,
+   63.83
+  ],
+  [
+   16.202,
+   41.66
+  ],
+  [
+   18.239,
+   24.33
+  ],
+  [
+   18.565,
+   1.16
+  ],
+  [
+   18.581,
+   1.25
+  ],
+  [
+   18.589,
+   2.45
+  ],
+  [
+   18.61,
+   1.45
+  ],
+  [
+   18.618,
+   1.02
+  ],
+  [
+   18.62,
+   3.31
+  ],
+  [
+   18.634,
+   1.38
+  ],
+  [
+   18.635,
+   2.34
+  ],
+  [
+   19.662,
+   3.02
+  ],
+  [
+   19.668,
+   3.61
+  ],
+  [
+   19.672,
+   88.68
+  ],
+  [
+   19.822,
+   63.83
+  ],
+  [
+   20.258,
+   42.77
+  ]
+ ],
+ "all_ok": true
+}
