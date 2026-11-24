@@ -3,12 +3,13 @@
 // The FX drawer on the canvas (spec "The drawer (editor)"): the plug on the instrument's card, the open drawer with each
 // effect as a live card, the chain wired by the drawer and refused to cables, drops into it, removing from it, and a child
 // shown whole on its parent's card (spec Model 6).
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { exposePort, makeAssembly, promote, type AssemblyInst } from './assembly';
-import { Editor, type EditorEvents } from './editor';
+import { drawerHeight, Editor, type EditorEvents } from './editor';
 import { addDrawer, drawers, effectsOf, insertEffect } from './fx-drawer';
 import { DEFS } from './modules';
-import { addModule, connect, newPatch, type Patch } from './patch';
+import { addModule, connect, newPatch, validatePatch, type Patch } from './patch';
 
 vi.hoisted(() => {
   const g = globalThis as unknown as Record<string, unknown>;
@@ -133,6 +134,80 @@ describe('the open drawer', () => {
     (e as unknown as { connectJacks(a: HTMLElement, b: HTMLElement): void }).connectJacks(from, target);
     expect(log.at(-1)).toMatch(/FX chain/);
     expect(JSON.stringify(e.patch.cables)).toBe(before);
+  });
+});
+
+// The drawer hugs its effect cards (D-1342, amended 2026-11-24). jsdom has no layout, so the stub lays the drawer out as
+// style.css does: its top and bottom padding (read from the stylesheet) round its row, as tall as its tallest child (each
+// effect card at the height measured in Chromium, the + slot at its stylesheet height), at least its min-height.
+const css = readFileSync('src/style.css', 'utf8');   // (vitest runs in web/; jsdom's import.meta.url is no file URL)
+const [, padTop, padBottom] = /\n\.fx-drawer \{ padding: (\d+)px var\([^)]*\) (\d+)px/.exec(css)!.map(Number);
+const slotH = Number(/\n\.fx-slot \{[^}]*; height: (\d+)px/.exec(css)![1]);
+const emptySlotH = Number(/\n\.fx-slot\.empty \{[^}]*min-height: (\d+)px/.exec(css)![1]);
+
+/** open the patch's first drawer with its card `cardH` tall and its effect cards `cards` tall; the drawer laid out */
+function openLaidOut(p: Patch, cardH: number, cards: number[]): HTMLElement {
+  const e = editorOn(p);
+  e.setDrawerOpen(drawers(e.patch)[0].id, true);
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+    if (this.classList.contains('fx-card')) return cards[[...this.parentElement!.children].indexOf(this)];
+    if (this.classList.contains('fx-slot')) return this.classList.contains('empty') ? emptySlotH : slotH;
+    if (this.classList.contains('fx-row')) return Math.max(...[...this.children].map((c) => (c as HTMLElement).offsetHeight));
+    if (this.classList.contains('fx-drawer')) return Math.max(parseFloat(this.style.minHeight) || 0, padTop + this.querySelector<HTMLElement>(':scope > .fx-row')!.offsetHeight + padBottom);
+    return this.matches('#modules > .module.assembly') ? cardH : 0;
+  });
+  (e as unknown as { layoutDrawers(): void }).layoutDrawers();
+  return drawerEl()!;
+}
+const factory = (f: string): Patch => validatePatch(JSON.parse(readFileSync(`presets/${f}`, 'utf8')), DEFS);
+const outline = (el: HTMLElement): string => el.querySelector('.fx-shape .edge')!.getAttribute('d')!;
+
+describe('the open drawer’s height', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('Monolith D: as tall as its tallest effect card and padding, its bottom edge beside the card', () => {
+    const el = openLaidOut(factory('00-monolith-d.json'), 617, [146, 112, 199, 189]);
+    expect(padTop + 199 + padBottom).toBe(253);
+    expect(el.offsetHeight).toBe(253);
+    expect(el.style.top).toBe(`${10}px`);   // 10 px below the card's top, its corner under the card
+    // shorter than the card: the far corners rounded, the bottom edge running straight under the card's edge
+    expect(outline(el)).toBe(`M0 0 H${el.offsetWidth - 10} A10 10 0 0 1 ${el.offsetWidth} 10 V243 A10 10 0 0 1 ${el.offsetWidth - 10} 253 H0 Z`);
+    // the + slot right after the last card
+    const row = el.querySelector('.fx-row')!;
+    expect(row.lastElementChild!.classList.contains('fx-slot')).toBe(true);
+    expect(row.lastElementChild!.previousElementSibling!.classList.contains('fx-card')).toBe(true);
+  });
+
+  it('Oracle V: as tall as its tallest effect card and padding', () => {
+    const el = openLaidOut(factory('01-oracle-v.json'), 709, [112, 199, 189]);
+    expect(el.offsetHeight).toBe(padTop + 199 + padBottom);
+    expect(outline(el)).toMatch(/ H0 Z$/);
+  });
+
+  it('an empty drawer is as tall as its drop target and padding', () => {
+    const el = openLaidOut(rig([]).p, 617, []);
+    expect(el.querySelector('.fx-slot.empty')).not.toBeNull();
+    expect(el.offsetHeight).toBe(padTop + emptySlotH + padBottom);
+  });
+
+  it('a drawer taller than its card goes on below it, shown there as a rounded corner the card sits on', () => {
+    const el = openLaidOut(rig(['delay']).p, 74, [199]);
+    expect(el.offsetHeight).toBe(253);
+    expect(outline(el)).toMatch(/ H10 A10 10 0 0 1 0 243 Z$/);
+  });
+
+  it('the + slot sits level with the cards’ tops, not at the drawer’s bottom', () => {
+    expect(/\n\.fx-slot \{[^}]*align-self: flex-start;/.test(css)).toBe(true);
+  });
+});
+
+describe('drawerHeight', () => {
+  it('the content, at least down past the lowest jack it takes; never ending in the card’s bottom corner', () => {
+    expect(drawerHeight(253, 617, 40)).toBe(253);
+    expect(drawerHeight(174, 617, 300)).toBe(305);   // the jack at 300 px: 15 px below it, in the drawer's coordinates
+    expect(drawerHeight(253, 74, 40)).toBe(253);
+    expect(drawerHeight(253, 273, 40)).toBe(253);    // ends 10 px above the card's bottom
+    expect(drawerHeight(253, 260, 40)).toBe(260);    // would end in the card's corner: on below it, 10 px past its bottom
   });
 });
 
