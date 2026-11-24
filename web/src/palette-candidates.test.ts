@@ -215,7 +215,7 @@ describe('a sound added to the palette from a candidate (owner 2026-11-24: "FM-1
     expect([off, live()]).toEqual([[], true]);
     expect(state()).toEqual({ list: all, current: 'C', level: 0.6 });
   });
-  it('an edit made after the add stays in the candidate: the chip then finds no copy of it, and Live goes off rather than drop the edit', async () => {
+  it('an edit made after the add stays in the candidate: the chip then opens the copy this browser kept as a new candidate, Live on', async () => {
     const { editor, fm1, off, live, state, grip } = await rig();
     editor.showSnapshot('B');
     await grip(0);
@@ -224,9 +224,8 @@ describe('a sound added to the palette from a candidate (owner 2026-11-24: "FM-1
     editor.showSnapshot('A');
     fm1.tap(0);
     await fm1.quiet();
-    expect(live()).toBe(false);
-    expect(off[0]).toMatch(/no copy in this browser/);
-    expect(state()).toEqual({ list: [['A', 0.15], ['B', 0.45], ['C', 0.6]], current: 'A', level: 0.15 });
+    expect([off, live()]).toEqual([[], true]);
+    expect(state()).toEqual({ list: [['A', 0.15], ['B', 0.45], ['C', 0.6], ['D', 0.4]], current: 'D', level: 0.4 });
   });
 });
 
@@ -269,5 +268,69 @@ describe('the owner\'s palette of 2026-11-24 (his v1.26.3 test editor\'s storage
     expect([off, live()]).toEqual([[], true]);
     expect(state()).toMatchObject({ current: 'C', level: 0.47 });
     expect(state().list.map(([, l]) => l)).toEqual([0.23, 0.31, 0.47, level(hera)]);
+  });
+});
+
+describe('a switch to a sound of another instrument (owner 2026-11-24: "the fm1 switches to that instrument but the editor does not switch with it")', () => {
+  /** a factory patch at output level `v`: no saved patch and no factory slot holds its bytes */
+  const edited = (name: string, v: number): Patch => {
+    const p = FM1_PRESETS[name]();
+    p.modules.find((m) => m.type === 'output')!.params.level = v;
+    return p;
+  };
+  /** the candidates' patch names */
+  const names = (editor: Editor): string[] => editor.snaps.list.map((s) => (JSON.parse(s.patch) as Patch).name);
+  it('Monolith D, Silver Box and Hera 6 added, other patches opened since: an FM-1 tap and a chip click follow to each, Live on, each set kept', async () => {
+    // (the sound added from a patch the editor left: opening another patch puts its set away, D-972, so the current set's
+    // versions no longer hold it, and no saved patch does; the copy this browser kept when it added it opens it, through
+    // the open rules, so a set that holds it comes back)
+    const mono = edited('Monolith D', 0.31), box = edited('Silver Box', 0.32), hera = edited('Hera 6', 0.33);
+    const { editor, fm1, palette, store, off, live, grip } = await rig([], mono, []);
+    const open = (p: Patch): void => { editor.openPatch(p, (q, except) => store.find(q, except)); void store.save(editor.exportSet(), { opened: true }); };   // (as main.ts's loadNamed)
+    expect(await grip(0)).toBe(true);
+    open(structuredClone(box));
+    expect(await grip(1)).toBe(true);
+    open(structuredClone(hera));
+    editor.duplicate();   // (Hera 6's set: two candidates, B heard)
+    editor.showSnapshot('A');
+    expect(await grip(2)).toBe(true);
+    await fm1.quiet();
+    fm1.tap(0);   // (HOME + black key 1 on the FM-1: Monolith D)
+    await fm1.quiet();
+    expect([editor.patch.name, level(editor.patch), off, live()]).toEqual(['Monolith D', 0.31, [], true]);
+    expect(names(editor)).toEqual(['Monolith D']);
+    await palette.click(1);   // (chip 2: Silver Box)
+    await fm1.quiet();
+    expect([editor.patch.name, level(editor.patch), off, live()]).toEqual(['Silver Box', 0.32, [], true]);
+    fm1.tap(2);   // (Hera 6: its set comes back, both candidates, A heard)
+    await fm1.quiet();
+    expect([editor.patch.name, level(editor.patch), off, live()]).toEqual(['Hera 6', 0.33, [], true]);
+    expect([names(editor), editor.snaps.current]).toEqual([['Hera 6', 'Hera 6'], 'A']);
+  });
+  it('a hold-save of a kit on the FM-1, then Hera 6 opened and saved there too: a switch back opens the kit', async () => {
+    const kit = edited('808 Kit', 0.32), hera = edited('Hera 6', 0.33);
+    const { editor, fm1, link, palette, store, off, live } = await rig([], kit, []);
+    fm1.holdSave(0, link.encodeFor(editor.patch), '808 KIT', entryOf(editor.patch, 0));
+    await fm1.quiet();
+    editor.openPatch(structuredClone(hera), (q, except) => store.find(q, except));
+    fm1.holdSave(1, link.encodeFor(editor.patch), 'HERA 6', entryOf(editor.patch, 0));
+    await fm1.quiet();
+    expect([editor.patch.name, off, live()]).toEqual(['Hera 6', [], true]);
+    await palette.click(0);
+    await fm1.quiet();
+    expect([editor.patch.name, level(editor.patch), off, live()]).toEqual(['808 Kit', 0.32, [], true]);
+    expect(names(editor)).toEqual(['808 Kit']);
+  });
+  it('a position this browser has no copy of (a slot another program stored): Live goes off and says so, the editor keeps its patch', async () => {
+    const { editor, fm1, link, off, live } = await rig([], edited('Hera 6', 0.33), []);
+    const kit = edited('808 Kit', 0.32);
+    fm1.bins[9] = link.encodeFor(kit);
+    fm1.slots[9] = { slot: 9, used: true, length: fm1.bins[9]!.length, name: 'STRANGER' };
+    fm1.entries[4] = entryOf(kit, 9, 'STRANGER');
+    fm1.report();
+    await fm1.quiet();
+    fm1.tap(4);
+    await fm1.quiet();
+    expect([editor.patch.name, off, live()]).toEqual(['Hera 6', ['FM-1 switched to palette 5 · STRANGER: no copy in this browser, so Live sync is off'], false]);
   });
 });

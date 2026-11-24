@@ -2729,6 +2729,45 @@ async function main() {
       await check('palette editor: under Live the editor follows to its copy, Pal Test', !!(await until(async () => (await T()).patch === 'Pal Test', 4000)), (await T()).patch);
       await check('palette editor: following sent the patch nowhere (no COMMIT)', !(await sentSince(t2)).some((s) => s[0] === 0x11));
       await emu.tap(B.play);
+      const addInCommands = async () => {
+        await page.keyboard.down('Control'); await page.keyboard.press('k'); await page.keyboard.up('Control');
+        await page.waitForSelector('#commands[open]', { timeout: 3000 }).catch(() => {});
+        await page.fill('#commands-input', 'add to palette');
+        await page.keyboard.press('Enter');
+      };
+      /** HOME held, black key k (0..7: palette 1..8) tapped, both let go: the FM-1 switches */
+      const homeTap = async (k) => {
+        await emu.key(B.home, true);
+        await emu.elapse(100);
+        await emu.key(BLACK[k], true);
+        await emu.elapse(150);
+        await emu.key(BLACK[k], false);
+        await emu.elapse(60);
+        await emu.key(B.home, false);
+        await emu.elapse(200);
+      };
+      // a switch to a sound of another instrument (owner 2026-11-24: "if you switch to a palette item that does not use the
+      // current instrument, whether you switch using the fm1 or by clicking the palette button, the fm1 switches to that
+      // instrument but the editor does not switch with it"): an edited drum kit (no saved patch or factory slot holds it)
+      // into palette 1, then switches between it and Pal Test by a chip click and by HOME + a black key on the FM-1, also
+      // after another patch was opened from the Library (which forgets the candidates that held the kit); the editor follows
+      // each, Live stays on
+      const outLevel = () => page.evaluate(() => JSON.parse(window.__m1test.patchJson()).modules.find((m) => m.type === 'output')?.params.level ?? null);
+      await check('palette editor: the 808 Kit opens, synced', await openSynced('808 Kit'));
+      await page.evaluate(() => { const out = JSON.parse(window.__m1test.patchJson()).modules.find((m) => m.type === 'output'); window.__m1test.param(out.id, 'level', 0.37); });
+      await addInCommands();
+      await check('palette editor: Add to palette puts the edited 808 Kit into palette 1', !!(await until(async () => (await chip(0))?.name.startsWith('808 KIT'), 6000)), JSON.stringify(await chip(0)));
+      await page.click('#snap-column .pal-chip[data-pos="3"]');
+      await check('palette editor: chip 4 clicked on the 808 Kit: the FM-1 plays Pal Test', !!(await until(async () => (await pal()).cur === 3, 4000)) && (await emu.waitText('PAL TEST', 3000)));
+      await check('palette editor: and the editor follows to Pal Test, another instrument, Live on', !!(await until(async () => { const s = await T(); return s.patch === 'Pal Test' && s.live; }, 4000)), JSON.stringify(await T().then((s) => [s.patch, s.live, s.status])));
+      await homeTap(0);
+      await check('palette editor: HOME + black key 1 on Pal Test: the FM-1 plays the 808 Kit', !!(await until(async () => (await pal()).cur === 0, 4000)) && (await emu.waitText('808 KIT', 3000)));
+      await check('palette editor: and the editor follows to the edited 808 Kit, Live on', !!(await until(async () => { const s = await T(); return s.patch === '808 Kit' && s.live && Math.abs((await outLevel()) - 0.37) < 1e-6; }, 4000)), JSON.stringify(await T().then((s) => [s.patch, s.live, s.status])));
+      await check('palette editor: Silver Box opens from the Library, synced (the candidates go)', await openSynced('Silver Box'));
+      await homeTap(0);
+      await check('palette editor: HOME + black key 1 on Silver Box: the editor follows to the edited 808 Kit from the copy it kept, Live on', !!(await until(async () => { const s = await T(); return s.patch === '808 Kit' && s.live && s.palette?.cur === 0 && Math.abs((await outLevel()) - 0.37) < 1e-6; }, 6000)), JSON.stringify(await T().then((s) => [s.patch, s.live, s.status])));
+      await homeTap(3);
+      await check('palette editor: HOME + black key 4 on the 808 Kit: the editor follows back to Pal Test, Live on', !!(await until(async () => { const s = await T(); return s.patch === 'Pal Test' && s.live && s.palette?.cur === 3; }, 6000)), JSON.stringify(await T().then((s) => [s.patch, s.live, s.status])));
       // candidates and the palette (#1262): Generate, hear C, Add to palette → a chip named after the patch and C; hear B,
       // a click on that chip: the editor hears C again, its candidates kept, Live still on
       const rows = () => page.evaluate(() => [...document.querySelectorAll('#snapshot-strip .snap')].map((r) => [r.dataset.letter, r.getAttribute('aria-current') === 'true']));
@@ -2756,12 +2795,6 @@ async function main() {
       await check('palette editor: Live still on', (await T()).live === true);
       // a full palette (#1258): Add to palette fills the empty positions, then says so beside the chips (a toast there, and
       // the status line) and offers a position to replace (the 1.26.3 editor said it only in the status line: unseen)
-      const addInCommands = async () => {
-        await page.keyboard.down('Control'); await page.keyboard.press('k'); await page.keyboard.up('Control');
-        await page.waitForSelector('#commands[open]', { timeout: 3000 }).catch(() => {});
-        await page.fill('#commands-input', 'add to palette');
-        await page.keyboard.press('Enter');
-      };
       for (let free = (await pal()).chips.findIndex((c) => c.state === 'empty'), n = 0; free >= 0 && n < 8; n++) {
         await addInCommands();
         await until(async () => (await chip(free))?.state !== 'empty', 8000);
