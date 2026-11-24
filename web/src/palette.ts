@@ -170,13 +170,21 @@ const patternsOf = (p: Patch): string => JSON.stringify(p.modules.map((m) =>
   m.type === 'fm1' ? [m.seq?.song ?? 0, m.seq?.songs ?? []]
     : m.type === 'steps' ? [m.notes ?? [], m.patterns ?? [], m.locks ?? [], TRACK_PARAMS.map((k) => m.params[k])] : 0));
 
+/** what a palette entry plays from its slot `slot` instead of `sound`'s own: "tempo", "patterns", "tempo and patterns",
+ *  or '' (the same) */
+function slotPlays(sound: Patch, slot: Patch): string {
+  const [tempo, was] = [sound, slot].map((p) => p.modules.find((m) => m.type === 'fm1')?.params.tempo ?? 120);
+  const t = tempo !== was, n = patternsOf(sound) !== patternsOf(slot);
+  return t && n ? 'tempo and patterns' : t ? 'tempo' : n ? 'patterns' : '';
+}
+
 /** a device preset Add to palette names: one this browser has (`browser`, a user preset; `factory`), one only the FM-1
  *  has (`fm1`), or one it makes (`new`) */
 export interface PresetPick { preset: Preset; from: 'browser' | 'factory' | 'fm1' | 'new' }
 
 /** a sound reached from a slot's patch with device presets: the sound as the FM-1 plays it then (each device under the
- *  preset name the entry gives it), the presets named, and whether the slot's tempo or patterns differ from the sound's */
-export interface PresetFit { named: Patch; picks: PresetPick[]; tempo: boolean; patterns: boolean }
+ *  preset name the entry gives it), the presets named, and what the entry plays from the slot instead (slotPlays) */
+export interface PresetFit { named: Patch; picks: PresetPick[]; plays: string }
 
 /** why Add to palette stores a patch: no slot's patch has the sound's name (the patch's own, as the FM-1 keeps names),
  *  modules, cables and drawers */
@@ -270,8 +278,7 @@ export function presetFit(sound: Patch, held: Patch, name: string, encode: (p: P
     const who = differing(norm, played);
     return { why: who ? `it changes ${who} settings no device preset holds` : 'it changes settings no device preset holds' };
   }
-  const [tempo, was] = [sound, held].map((p) => p.modules.find((m) => m.type === 'fm1')?.params.tempo ?? 120);
-  return { named, picks, tempo: tempo !== was, patterns: patternsOf(sound) !== patternsOf(held) };
+  return { named, picks, plays: slotPlays(sound, held) };
 }
 
 /** this browser's copy of a position's patch by the slot's name and binary length now: the copy it kept of the sound it
@@ -716,8 +723,7 @@ export class Palette {
       ...(presets.sent.length ? [`${presetWord(presets.sent)} sent to the FM-1`] : []),
       ...(presets.updated.length ? [`${presetWord(presets.updated)} updated on the FM-1`] : []),
     ];
-    const plays = fit.tempo && fit.patterns ? 'tempo and patterns' : fit.tempo ? 'tempo' : fit.patterns ? 'patterns' : '';
-    this.ports.say(`"${name}" is palette ${pos + 1}${names.length ? `: slot ${fit.slot + 1} · ${fit.label} with ${presetWord(names)}` : ''}${notes.length ? ` (${notes.join('; ')})` : ''}${plays ? `. It plays the ${plays} of slot ${fit.slot + 1}` : ''}`);
+    this.ports.say(`"${name}" is palette ${pos + 1}${names.length ? `: slot ${fit.slot + 1} · ${fit.label} with ${presetWord(names)}` : ''}${notes.length ? ` (${notes.join('; ')})` : ''}${fit.plays ? `. It plays the ${fit.plays} of slot ${fit.slot + 1}` : ''}`);
     return true;
   }
 
@@ -848,15 +854,19 @@ export class Palette {
     const patch = structuredClone(copy.patch);
     const e = this.entries[pos];
     const gone = e ? applyEntry(patch, e) : [];
-    this.ports.open(this.ownVersion(patch) ?? patch, { adopt, from: copy.factory ? '' : copy.name });
+    const own = this.ownVersion(patch);
+    this.ports.open(own ?? patch, { adopt, from: copy.factory ? '' : copy.name });
+    // (the candidate heard keeps its own tempo and patterns, the FM-1 plays the slot's, D-1240: said, nothing sent back)
+    const plays = own ? slotPlays(own, patch) : '';
     if (gone.length) this.ports.say(`Palette ${pos + 1} · ${p.name}: this browser has not got the preset${gone.length > 1 ? 's' : ''} ${gone.join(', ')}`);
+    else if (plays) this.ports.say(`Palette ${pos + 1} · ${p.name} plays the ${plays} of slot ${p.slot + 1}`);
     return true;
   }
 
   /** the editor's own version that sounds as `patch` (a slot's patch with its entry applied) plays: the same patch
-   *  (samePatch) and binary but for the preset names its cards show and its pattern origins, which a palette entry gives
-   *  the FM-1's devices (a candidate added with presets, presetFit, keeps its own), so a switch to it opens that
-   *  candidate. A copy, or null */
+   *  (samePatch) and binary but for the preset names its cards show, its pattern origins, and its tempo and patterns,
+   *  which a palette entry takes from the slot (presetFit: they make no other sound in the palette, owner 2026-11-24),
+   *  so a switch to it opens that candidate. A copy, or null */
   private ownVersion(patch: Patch): Patch | null {
     const d = this.ports.device;
     let bin: Uint8Array;
@@ -874,12 +884,7 @@ export class Palette {
         if (n) a.preset = n;
         else delete a.preset;
       }
-      for (const m of q.modules) {
-        const o = m.type === 'steps' ? patch.modules.find((x) => x.id === m.id) : undefined;
-        if (!o) continue;
-        if (o.factoryPatterns) m.factoryPatterns = structuredClone(o.factoryPatterns);
-        else delete m.factoryPatterns;
-      }
+      takeTempoAndPatterns(q, patch);
       try {
         if (sameBytes(d.encodeFor(q), bin)) return structuredClone(v);
       } catch {
