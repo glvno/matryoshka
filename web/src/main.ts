@@ -2287,7 +2287,7 @@ const loadNamed = (p: Patch, o: { from?: string; once?: boolean; stay?: boolean;
   if (!o.stay) toPatch();
   let how: OpenHow = 'fresh';
   if (o.fresh) editor.setPatch(p);
-  else ({ how } = editor.openPatch(p, (q, except) => candidateStore.find(q, except)));
+  else ({ how } = editor.openPatch(p, (q, except) => candidateStore.find(q, except), o.palette));
   keepSet(editor.exportSet(), true);
   if (how !== 'fresh' && how !== 'switched') editor.rebuild();   // (the morph picker offers the candidates)
   setBaseline();

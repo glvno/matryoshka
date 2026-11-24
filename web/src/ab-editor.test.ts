@@ -56,6 +56,7 @@ function rig(start: Patch, store = new CandidateStore(memoryBackend(), (p) => p 
     onTrack(id, notes, pat) { log.push('track'); engine.setTrack(id, notes, pat); mod(id).notes = notes; },
     onSilence(p) { log.push('silence'); engine.load(p, false, true); },   // (main.ts: host.silence, both engines)
     onPutAway(set) { store.save(set); },
+    onLoad() { log.push('load'); },
     onTransport() {},
     onLayout() { log.push('layout'); },
     onError(m) { said.push(m); },
@@ -313,6 +314,29 @@ describe('candidates in the editor (D-970, D-1425)', () => {
     expect(editor.openPatch(tweakedAgain, find)).toEqual({ how: 'added', letter: 'C' });
     expect(editor.snaps.name).toBe(other.name);
     expect(store.get(nightSet)?.list.map((s) => s.letter)).toEqual(['A', 'B', 'C', 'D']);
+  });
+
+  it('an open of the candidate heard, or of another of the open set, loads as every open does: home device, a whole upload; the set and undo kept (D-217, #496)', () => {
+    const night = relocatedPatches['Oracle V']();
+    const { editor, log, find } = rig(night);
+    editor.makeCandidates(2);   // B, C; on B
+    const b = copy(editor.patch);
+    editor.mutate('mutate', { modules: [movable(editor.patch).id], assemblies: [] });   // (an undo step of B)
+    const edited = copy(editor.patch);
+    editor.focus = { device: 'm1', page: 0 };   // (Main in focus, as the FM-1 shows TEMPO)
+    log.length = 0;
+    expect(editor.openPatch(copy(edited), find)).toEqual({ how: 'switched', letter: 'B' });
+    expect([log, editor.focus?.device, letters(editor), editor.snaps.current]).toEqual([['load', 'structure'], 'a2', ['A', 'B', 'C'], 'B']);   // (its own engine, not Main)
+    editor.undo();   // (B's step kept)
+    expect(sound(editor.patch)).toBe(sound(b));
+    log.length = 0;
+    expect(editor.openPatch(copy(JSON.parse(editor.snaps.get('C')!.patch) as Patch), find)).toEqual({ how: 'switched', letter: 'C' });
+    expect([log, editor.snaps.current]).toEqual([['load', 'structure'], 'C']);
+    // a palette switch (follow): the FM-1 already plays it, so it switches as the candidates' switch does
+    log.length = 0;
+    editor.focus = { device: 'm1', page: 0 };
+    expect(editor.openPatch(copy(JSON.parse(editor.snaps.get('A')!.patch) as Patch), find, true)).toEqual({ how: 'switched', letter: 'A' });
+    expect([log.includes('load'), editor.focus]).toEqual([false, { device: 'm1', page: 0 }]);
   });
 });
 
