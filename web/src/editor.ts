@@ -599,10 +599,7 @@ export class Editor {
    * undo starts afresh.
    */
   setPatch(p: Patch, set?: CandidateSet): void {
-    stopEntry(); // (cursor entry, the armed track and the roll belong to the patch they started in)
-    this.armTrack(null);
-    this.closeRoll();
-    this.dropGesture();
+    this.leaveLoad();
     this.ev.onPutAway?.(this.exportSet());
     this.patch = p;
     if (this.dock) ensureMain(this.patch, DEFS);
@@ -613,7 +610,20 @@ export class Editor {
     this.snaps = set ? Snapshots.of(set) : Snapshots.fresh(this.patch);
     this.snaps.shown.patch = JSON.stringify(this.patch);
     this.madeNow = null;
-    this.mutateRun = null;
+    this.load();
+  }
+
+  /** what the patch on screen started (cursor entry, the armed track and the roll belong to the patch they started in) ends */
+  private leaveLoad(): void {
+    stopEntry();
+    this.armTrack(null);
+    this.closeRoll();
+    this.dropGesture();
+  }
+
+  /** `this.patch` loads as an opened patch does: on screen afresh, on its home device, and to the engines and the FM-1 whole
+   *  (onLoad, onStructure) */
+  private load(): void {
     this.ev.onSnapshots?.();
     this.stopListening();   // (another patch's module of the same id is another signal)
     this.routingOpen.clear();
@@ -629,8 +639,8 @@ export class Editor {
     this.rebuild();
     this.untangle();
     this.restoreView();
-    this.ev.onLoad?.(p);
-    this.ev.onStructure(p);
+    this.ev.onLoad?.(this.patch);
+    this.ev.onStructure(this.patch);
   }
 
   // ---- the patch remembers where it was looked at (Patch.view): the user's zoom and the canvas's scroll, in layout pixels
@@ -4157,14 +4167,16 @@ export class Editor {
    * becomes current. Else a stored set that holds it comes back with that candidate current (`find`: candidate-store.ts,
    * the sets other than the open one). Else `p` joins the open patch's candidates when it has their name, or else a
    * stored set of its name, as a new candidate heard; else a fresh set of `p` alone. Nothing is thrown away: another set
-   * puts the open one away (setPatch). How it went, and the letter heard.
+   * puts the open one away (setPatch). An open that stays in the open set still loads as every open does (on its home
+   * device, to the FM-1 whole: D-217, #496), the candidate already heard too; `follow` (a palette switch, D-1321: the FM-1
+   * already plays it) switches as the candidates' switch does instead. How it went, and the letter heard.
    */
-  openPatch(p: Patch, find: (p: Patch, except: string) => { set: CandidateSet; letter: string | null } | null): { how: OpenHow; letter: string } {
+  openPatch(p: Patch, find: (p: Patch, except: string) => { set: CandidateSet; letter: string | null } | null, follow = false): { how: OpenHow; letter: string } {
     this.endGesture();
     this.endPass();
     this.syncShown();
     const own = this.snaps.list.find((s) => sameVersion(this.snapshotVersion(s), p));
-    if (own) return this.showSnapshot(own.letter), { how: 'switched', letter: own.letter };
+    if (own) return this.openOwn(own.letter, follow), { how: 'switched', letter: own.letter };
     const hit = find(p, this.snaps.id);
     if (hit?.letter) {
       this.setPatch(JSON.parse(hit.set.list.find((s) => s.letter === hit.letter)!.patch) as Patch, { ...hit.set, current: hit.letter });
@@ -4172,7 +4184,7 @@ export class Editor {
     }
     if (sameSetName(this.snaps.name, p.name)) {
       const s = this.snaps.take(p, 'opened');
-      this.showSnapshot(s.letter);
+      this.openOwn(s.letter, follow);
       return { how: 'added', letter: s.letter };
     }
     if (hit) {
@@ -4184,6 +4196,23 @@ export class Editor {
     }
     this.setPatch(p);
     return { how: 'fresh', letter: this.snaps.current };
+  }
+
+  /** candidate `letter` of the open set heard, as an open: `follow` a switch (showSnapshot); else it loads as an opened
+   *  patch does (load), the set and each candidate's undo steps kept, the canvas layout kept as a switch keeps it */
+  private openOwn(letter: string, follow: boolean): void {
+    if (follow) {
+      this.showSnapshot(letter);
+      return;
+    }
+    this.leaveLoad();
+    if (letter !== this.snaps.current) {
+      this.swapStacks(letter);
+      this.snaps.current = letter;
+      this.madeNow = null;
+      this.patch = flipPlan(this.patch, JSON.parse(this.snaps.shown.patch) as Patch).patch;
+    }
+    this.load();
   }
 
   /**

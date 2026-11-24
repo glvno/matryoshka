@@ -74,7 +74,7 @@ async function rig(saved: Candidate[] = [], start = pad('My Pad'), cands = [pad(
     versions: () => editor.snaps.list.map((s) => editor.snapshotVersion(s)),   // (as main.ts)
     live: () => live,
     current: () => editor.patch,   // (as main.ts: the candidate heard, which Live sends to the FM-1)
-    open: (p) => { editor.openPatch(p, (q, except) => store.find(q, except)); store.save(editor.exportSet(), { opened: true }); },   // (as main.ts's loadNamed)
+    open: (p) => { editor.openPatch(p, (q, except) => store.find(q, except), true); store.save(editor.exportSet(), { opened: true }); },   // (as main.ts's loadNamed for a palette switch)
     kept: nop,
     liveOff: (why) => { live = false; off.push(why); },
     say: (t) => void said.push(t),
