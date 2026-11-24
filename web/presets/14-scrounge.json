@@ -4570,6 +4570,7 @@
      "module": 42,
      "param": "cutoff",
      "label": "tone",
+     "col": true,
      "head": "voice 3"
     },
     {
@@ -4635,7 +4636,6 @@
      "module": 53,
      "param": "coarse",
      "label": "pitch",
-     "col": true,
      "head": "voice 4"
     },
     {
@@ -4701,6 +4701,7 @@
      "module": 64,
      "param": "coarse",
      "label": "pitch",
+     "col": true,
      "head": "voice 5"
     },
     {
@@ -4766,7 +4767,6 @@
      "module": 3,
      "param": "r2",
      "label": "x gate",
-     "col": true,
      "head": "mod"
     },
     {
@@ -4788,6 +4788,7 @@
      "module": 66,
      "param": "rate",
      "label": "chop",
+     "col": true,
      "head": "ctl all"
     },
     {
@@ -4815,8 +4816,7 @@
     {
      "module": 74,
      "param": "view",
-     "label": "out",
-     "col": true
+     "label": "out"
     }
    ],
    "preset": "Init",

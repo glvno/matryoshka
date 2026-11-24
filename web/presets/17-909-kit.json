@@ -6794,7 +6794,7 @@
      "module": 35,
      "param": "grid",
      "label": "DRUMS",
-     "span": 4
+     "span": 2
     },
     {
      "module": 43,
@@ -6863,6 +6863,7 @@
      "module": 104,
      "param": "coarse",
      "label": "tune",
+     "col": true,
      "head": "low tom"
     },
     {
@@ -6923,6 +6924,7 @@
      "module": 38,
      "param": "gain",
      "label": "level",
+     "col": true,
      "head": "hihat",
      "also": [
       {

@@ -5889,7 +5889,7 @@
      "module": 2,
      "param": "grid",
      "label": "DRUMS",
-     "span": 4
+     "span": 2
     },
     {
      "module": 66,
@@ -5933,6 +5933,7 @@
      "module": 5,
      "param": "l2",
      "label": "level",
+     "col": true,
      "head": "low tom"
     },
     {
@@ -6008,6 +6009,7 @@
      "module": 4,
      "param": "l3",
      "label": "level",
+     "col": true,
      "head": "hand clap"
     },
     {

@@ -6183,6 +6183,7 @@
      "module": 55,
      "param": "coarse",
      "label": "main",
+     "col": true,
      "head": "4 plast"
     },
     {
@@ -6227,7 +6228,6 @@
      "module": 65,
      "param": "value",
      "label": "main",
-     "col": true,
      "head": "5 cympath"
     },
     {
@@ -6316,6 +6316,7 @@
      "module": 86,
      "param": "coarse",
      "label": "main",
+     "col": true,
      "head": "7 larynx"
     },
     {
@@ -6509,8 +6510,7 @@
     {
      "module": 16,
      "param": "view",
-     "label": "out",
-     "col": true
+     "label": "out"
     }
    ],
    "preset": "Init",

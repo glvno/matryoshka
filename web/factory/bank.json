@@ -50785,6 +50785,7 @@
        "module": 42,
        "param": "cutoff",
        "label": "tone",
+       "col": true,
        "head": "voice 3"
       },
       {
@@ -50850,7 +50851,6 @@
        "module": 53,
        "param": "coarse",
        "label": "pitch",
-       "col": true,
        "head": "voice 4"
       },
       {
@@ -50916,6 +50916,7 @@
        "module": 64,
        "param": "coarse",
        "label": "pitch",
+       "col": true,
        "head": "voice 5"
       },
       {
@@ -50981,7 +50982,6 @@
        "module": 3,
        "param": "r2",
        "label": "x gate",
-       "col": true,
        "head": "mod"
       },
       {
@@ -51003,6 +51003,7 @@
        "module": 66,
        "param": "rate",
        "label": "chop",
+       "col": true,
        "head": "ctl all"
       },
       {
@@ -51030,8 +51031,7 @@
       {
        "module": 74,
        "param": "view",
-       "label": "out",
-       "col": true
+       "label": "out"
       }
      ],
      "preset": "Init",
@@ -57346,6 +57346,7 @@
        "module": 55,
        "param": "coarse",
        "label": "main",
+       "col": true,
        "head": "4 plast"
       },
       {
@@ -57390,7 +57391,6 @@
        "module": 65,
        "param": "value",
        "label": "main",
-       "col": true,
        "head": "5 cympath"
       },
       {
@@ -57479,6 +57479,7 @@
        "module": 86,
        "param": "coarse",
        "label": "main",
+       "col": true,
        "head": "7 larynx"
       },
       {
@@ -57672,8 +57673,7 @@
       {
        "module": 16,
        "param": "view",
-       "label": "out",
-       "col": true
+       "label": "out"
       }
      ],
      "preset": "Init",
@@ -63443,7 +63443,7 @@
        "module": 2,
        "param": "grid",
        "label": "DRUMS",
-       "span": 4
+       "span": 2
       },
       {
        "module": 66,
@@ -63487,6 +63487,7 @@
        "module": 5,
        "param": "l2",
        "label": "level",
+       "col": true,
        "head": "low tom"
       },
       {
@@ -63562,6 +63563,7 @@
        "module": 4,
        "param": "l3",
        "label": "level",
+       "col": true,
        "head": "hand clap"
       },
       {
@@ -70879,7 +70881,7 @@
        "module": 35,
        "param": "grid",
        "label": "DRUMS",
-       "span": 4
+       "span": 2
       },
       {
        "module": 43,
@@ -70948,6 +70950,7 @@
        "module": 104,
        "param": "coarse",
        "label": "tune",
+       "col": true,
        "head": "low tom"
       },
       {
@@ -71008,6 +71011,7 @@
        "module": 38,
        "param": "gain",
        "label": "level",
+       "col": true,
        "head": "hihat",
        "also": [
         {
@@ -81265,7 +81269,6 @@
        "module": 19,
        "param": "r2",
        "label": "decay",
-       "col": true,
        "head": "drum 1"
       },
       {
@@ -81312,7 +81315,6 @@
        "module": 79,
        "param": "r2",
        "label": "decay",
-       "col": true,
        "head": "drum 2"
       },
       {
@@ -81406,7 +81408,6 @@
        "module": 46,
        "param": "r2",
        "label": "decay rev",
-       "col": true,
        "head": "snare"
       },
       {
@@ -81509,7 +81510,6 @@
        "module": 92,
        "param": "r3",
        "label": "decay",
-       "col": true,
        "head": "hi hat 2"
       },
       {
@@ -81612,7 +81612,6 @@
        "module": 3,
        "param": "value",
        "label": "master",
-       "col": true,
        "head": "master"
       }
      ],
