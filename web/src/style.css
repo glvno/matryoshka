@@ -1438,9 +1438,12 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
   font: var(--cap); text-transform: uppercase; letter-spacing: .06em; pointer-events: none; }
 /* only the name itself renames: the rest of the bar stays the slider */
 .param.bar > span:first-child.rename { pointer-events: auto; position: relative; z-index: 3; justify-self: start; max-width: 100%; }
-/* the name is drawn over the thumb, so a row near its lowest value (the thumb at its left end) still reads whole; a press
-   there still reaches the thumb (the name takes no presses, except a renamable one) */
+/* the name is drawn over the thumb, so a row near its lowest value (the thumb at its left end) still reads whole. On a row
+   with a slider it takes no pointer (the card's `.mbody` rule gives its spans the pointer): a press, a drag and the hover
+   go to the slider under it, wherever the thumb is (the name is part of the slider, #1025). A renamable name still takes
+   its click; a selector's or a switch's name (no slider under it) keeps its tooltip */
 .module .param.bar > span:first-child, .module .param.bar > span:first-child.rename { z-index: 5; }
+.module .param.bar:has(> .slider-jack) > span:first-child:not(.rename) { pointer-events: none; }
 .param.bar > output { grid-area: 1 / 2; padding-right: 6px; font-size: 11.5px; color: var(--ink); pointer-events: none; }
 .param.bar > output:empty { display: none; }
 .param.bar .unit { margin-left: 2px; font-size: 9.5px; color: var(--muted); }

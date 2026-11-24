@@ -135,6 +135,44 @@ describe('the effect cards in an open FX drawer', () => {
   });
 });
 
+describe('a row’s name over its thumb (1.26.3 device check 4.5)', () => {
+  // #1251 drew a row's name over its thumb so it reads whole; the name then took the presses, and a drag on the Delay
+  // card's length row (at its centre, under the name) never reached the slider. jsdom cannot hit-test: the cascade it
+  // computes from style.css says what takes the pointer (the device check's 4.5 hit-tests the rows in a real browser)
+  it('takes no pointer on a slider row, on the canvas cards, the FX drawer’s cards and the sidebar; a renamable name, a switch’s and a selector’s still do', () => {
+    const e = open(monolith());
+    const inst = assembliesOf(e.patch).find((a) => a.label === 'Monolith D')!;
+    e.setDrawerOpen(drawerOf(e.patch, inst.id)!.id, true);
+    document.body.insertAdjacentHTML('beforeend', `<aside class="sidebar">${readFileSync('index.html', 'utf8').match(/<div id="slack-bar"[^\n]*<\/div>/)![0]}</aside>`);
+    const style = document.createElement('style');
+    style.textContent = readFileSync('src/style.css', 'utf8').replace(/@import[^;]+;/g, '');   // (vitest runs in web/)
+    document.head.append(style);
+    const takes = (el: Element): string => getComputedStyle(el).pointerEvents;
+    const names = (sel: string): Element[] => [...document.querySelectorAll(`${sel} > span:first-child`)];
+    const sliders = names('.module .param.bar:has(> .slider-jack)');
+    const drawer = names('.fx-drawer .fx-card .param.bar:has(> .slider-jack)');
+    expect(sliders.length).toBeGreaterThan(20);
+    expect(drawer.length).toBeGreaterThan(5);
+    for (const n of sliders) expect(`${n.textContent}: ${takes(n)}`).toBe(`${n.textContent}: none`);
+    // the slider under it takes the press, and the name still draws over the thumb
+    const row = drawer[0].parentElement!;
+    expect(takes(row.querySelector('input.jack-range')!)).toBe('auto');
+    expect(Number(getComputedStyle(drawer[0]).zIndex)).toBeGreaterThan(Number(getComputedStyle(row.querySelector('.slider-port, .slider-thumb')!).zIndex));
+    const slack = document.querySelector('#slack-bar > span:first-child')!;
+    expect(slack.textContent).toBe('Cable slack');
+    expect(takes(slack)).toBe('none');
+    // a selector's or a switch's name has no slider under it: it keeps its tooltip (the status line reads its title)
+    const others = names('.module .param.bar:is(.sel, .toggle)');
+    expect(others.length).toBeGreaterThan(0);
+    for (const n of others) expect(`${n.textContent}: ${takes(n)}`).toBe(`${n.textContent}: auto`);
+    // a renamable name keeps its click (the rule's exception)
+    const rename = document.querySelector('.module .param.bar:has(> .slider-jack) > span:first-child')!;
+    rename.classList.add('rename');
+    expect(takes(rename)).toBe('auto');
+    style.remove();
+  });
+});
+
 describe('the Toggle’s BYPASSES list (owner device check S3)', () => {
   it('offers the devices: top-level assemblies and modules, the FX drawer and each effect, never a member inside', () => {
     const p = monolith();

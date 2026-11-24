@@ -395,9 +395,10 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
   - `checkDelays` (steps 4.1 to 4.5, [D-375](ledger/engine.md#D-375), [D-376](ledger/engine.md#D-376)): on
     `T111 TWO DELAYS`, one note gives an echo on the right at 300 ms and one on the left at 1200 ms. On the FM-1, LENGTH
     says SET IN THE EDITOR and TIME stops at the length. The editor's budget shows one effect memory line with LONG its
-    largest share and a line for SHORT, and a click on a line selects its card. Dragging SHORT's length to its top stops
-    past 1900 ms, at what the memory leaves, with
-    the note that says why. The patch then goes to the FM-1 again and both echoes still play.
+    largest share and a line for SHORT, and a click on a line selects its card. A press reaches the slider anywhere on
+    each of SHORT's slider rows and on the sidebar's Cable slack and Zoom: at its name (drawn over the thumb), its centre
+    and its thumb. Dragging SHORT's length to its top stops past 1900 ms, at what the memory leaves, with the note that
+    says why. The patch then goes to the FM-1 again and both echoes still play.
   - The editor's ARM dot of an engine no keys reach ([D-905](ledger/device-ui.md#D-905)) is checked in the `arming`
     scenario ([D-1159](ledger/releases.md#D-1159)).
   - `checkStore` (steps 6.1 to 6.4, [D-959](ledger/editor.md#D-959), [D-297](ledger/patch-format.md#D-297)):
