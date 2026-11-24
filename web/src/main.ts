@@ -20,7 +20,7 @@ import { cardCosts, cardCostTitle, CPU, CPU_WARN } from './cpu';
 import { closeFloat, openFloat, setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
-import { chipState, DeviceLink, deviceIndex, deviceLayoutKey, IGNORED_NOW, liveSync, sandboxChip, storeFullText, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
+import { chipState, DeviceLink, deviceIndex, deviceLayoutKey, IGNORED_NOW, liveSync, PRESET_NEEDS_UPDATE, sandboxChip, storeFullText, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
 import { fm1Label } from './fm1-choice';
 import { chooseFm1 } from './fm1-pick';
 import { SITE_URL } from './site';
@@ -43,6 +43,8 @@ import { LimiterMeters } from './limit-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankCandidates, bankPatches, buildPatchesSection, deviceName, type LibrarySection as LibraryPane } from './bank';
 import { Palette } from './palette';
+import { fm1Presets } from './preset-fit';
+import { saveCandidate } from './candidate-save';
 import { PaletteView, renderPaletteRail, type PaletteActions, type PaletteMode } from './palette-view';
 import { patchDragSource } from './patch-drag';
 import { buildPresetsSection } from './library-presets';
@@ -1877,7 +1879,7 @@ const sideActions: SideActions = {
   revert: (letter) => revertCandidate(letter),
   savePreset: (anchor) => savePreset(anchor),
   addToPalette: addCurrentToPalette,
-  more: (s, anchor) => popMenu(snapshotMenu(s), anchor),
+  more: (s, anchor) => popMenu(snapshotMenu(s, anchor), anchor),
   drag: dragSnapshot,
   step: (dir) => cycleSnapshots(dir),
   generate: () => makeCandidates(),
@@ -1910,9 +1912,11 @@ const sideMenu = (anchor: HTMLElement): MenuItem[] => [
   { text: 'Duplicate', key: 'Shift+Alt+B', rule: true, run: () => duplicate() },
   { text: `Save ${editor.snaps.current} as a patch…`, run: () => saveSnapshotPatch(editor.snaps.shown) },
 ];
-/** a candidate's menu (right-click, double-click, ⋯ on the row heard) */
-const snapshotMenu = (s: Snapshot): MenuItem[] => {
+/** a candidate's menu (right-click, double-click, ⋯ on the row heard), under `anchor` */
+const snapshotMenu = (s: Snapshot, anchor: HTMLElement): MenuItem[] => {
   const heard = s.letter === editor.snaps.current;
+  /** `run` on candidate `s` heard (one not heard is heard first, as Generate from it does) */
+  const onHeard = (run: () => void) => (): void => { showStop(s.letter); run(); };
   return [
     { text: heard ? 'Generate from it' : 'Hear it, then Generate from it', key: heard ? 'Alt+N' : undefined, run: () => { picks = []; showStop(s.letter); makeCandidates(); } },
     { text: picks.includes(s.letter) ? 'Unpick as a parent' : 'Pick as a parent', key: '⌘/Shift-click', run: () => sideActions.pick(s.letter) },
@@ -1922,15 +1926,53 @@ const snapshotMenu = (s: Snapshot): MenuItem[] => {
     } },
     ...(editor.tweaked(s) ? [{ text: 'Revert to how it was made', run: () => revertCandidate(s.letter) }] : []),
     ...(heard ? [{ text: 'Duplicate', key: 'Shift+Alt+B', run: () => duplicate() }] : []),
-    { text: 'Save as a patch…', run: () => saveSnapshotPatch(s) },
+    { text: heard ? 'Add to palette' : 'Hear it, then Add to palette', run: onHeard(() => addCurrentToPalette()) },
+    ...(presetEngines(editor.patch).length ? [{ text: heard ? 'Save preset…' : 'Hear it, then Save preset…', run: onHeard(() => savePreset(anchor)) }] : []),
+    { text: 'Save…', run: () => void saveSnapshot(s) },
     { text: 'Delete', key: heard ? 'Alt+X' : undefined, danger: true, run: () => removeCandidate(s.letter) },
   ];
 };
-/** save candidate `s` to Your patches, under a name the user gives */
-const saveSnapshotPatch = (s: Snapshot): void => {
+/** save candidate `s` to Your patches, under a name the user gives; `why`: the reason a device preset could not hold it
+ *  (Save…) */
+const saveSnapshotPatch = (s: Snapshot, why = ''): void => {
   const p = editor.snapshotVersion(s);
-  const name = window.prompt(`Save candidate ${s.letter} to Your patches as`, paletteName(p.name, s, Math.max(2, editor.snaps.list.length)))?.trim();
-  if (name) status.textContent = keepPatch({ ...p, name }).msg;
+  const name = window.prompt(`${why ? `A preset can't hold candidate ${s.letter}: ${why}.\n\n` : ''}Save candidate ${s.letter} to Your patches as`, paletteName(p.name, s, Math.max(2, editor.snaps.list.length)))?.trim();
+  if (name) status.textContent = `${keepPatch({ ...p, name }).msg}${why ? ` (a new patch, as ${why})` : ''}`;
+};
+/** the patch the open set's candidates are versions of: the first one opened, as it opened */
+const setPatch = (): Patch => {
+  const list = editor.snaps.list;
+  return JSON.parse((list.find((x) => x.from === 'opened') ?? list[0]).original) as Patch;
+};
+/**
+ * Save… (owner 2026-11-24, D-1426): candidate `s` as Add to palette decides (candidate-save.ts). Values device presets
+ * carry: saved as presets, an existing one reused, a new one sent to a linked FM-1 too. The same as its patch: nothing.
+ * Anything else: a new patch in Your patches, saying why.
+ */
+const saveSnapshot = async (s: Snapshot): Promise<void> => {
+  const sound = editor.snapshotVersion(s);
+  const name = paletteName(sound.name, s, Math.max(2, editor.snaps.list.length));
+  const linked = device.connected && device.hasPresets;
+  const onFm1 = linked ? await fm1Presets(sound, device).catch(() => []) : [];
+  const r = saveCandidate(sound, setPatch(), name, (p) => encodePatch(p, true), onFm1);
+  if (r.kind === 'patch') return saveSnapshotPatch(s, r.why);
+  let line = r.line;
+  if (r.kind === 'presets' && linked && r.made.length) {
+    const sent: string[] = [], lost: string[] = [];
+    for (const p of r.made) {
+      try {
+        if (!device.presetFits(p.values.length, p)) throw new Error(PRESET_NEEDS_UPDATE);
+        await device.putPreset(p.structure, p.name, p.values);
+        sent.push(p.name);
+      } catch (e) {
+        lost.push(`${p.name} (${(e as Error).message})`);
+      }
+    }
+    if (sent.length) line += `. Sent to the FM-1: ${sent.join(', ')}`;
+    if (lost.length) line += `. Not sent to the FM-1: ${lost.join(', ')}`;
+  }
+  status.textContent = line;
+  showToast(line);
 };
 /** delete candidate `letter` (✕, its menu, Alt+X on the one heard): into Recently deleted, with Undo in a toast. The one
  *  heard hands over to the next */

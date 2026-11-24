@@ -12,45 +12,17 @@
 // FM-1 the chips show the last palette read, read-only (kept in this browser).
 import { assemblyById } from './assembly';
 import { binLength, deviceName, knownCopy, type Candidate, type KnownCopy } from './bank';
-import { applyPreset, capturePreset, deletePreset as dropUserPreset, presetsOf, rememberedPreset, replaceUserPresets, sameName, userPresets, type Preset } from './device-presets';
-import { drawerScope } from './fx-preset';
-import { DEFS } from './modules';
+import { deletePreset as dropUserPreset, rememberedPreset, replaceUserPresets, sameName, userPresets, type Preset } from './device-presets';
 import type { Patch } from './patch';
 import { layout } from './patchbin';
-import { devicePresetName, NAME_BYTES, PAL_EMPTY, PAL_GO_CANCELLED, PAL_GO_WAITING, PAL_MISSING, PAL_REFUSED, PALETTE_DEVS, PALETTE_SIZE, paletteHash, PRESET_NAME_BYTES, PRESET_VALUES_MAX, STATUS_PRESETS_FULL, type Ack, type DevicePresetEntry, type PaletteDevice, type PaletteEntry, type PaletteNow, type PalettePos, type SlotInfo } from './protocol';
-import { structureAndRows, structureOf } from './structure';
-import { fixSeq } from './track';
+import { devicePresetName, NAME_BYTES, PAL_EMPTY, PAL_GO_CANCELLED, PAL_GO_WAITING, PAL_MISSING, PAL_REFUSED, PALETTE_SIZE, paletteHash, STATUS_PRESETS_FULL, type Ack, type DevicePresetEntry, type PaletteEntry, type PaletteNow, type PalettePos, type SlotInfo } from './protocol';
+import { applyEntry, entryOf, fm1Presets, NO_SAME_STRUCTURE, paletteDevices, presetFit, q16, sameBytes, samePatch, slotPlays, takeTempoAndPatterns, type PresetFit } from './preset-fit';
 
 /** where this browser keeps the last palette read (the chips show it, greyed, with no FM-1) */
 export const PALETTE_STORE = 'matryoshka.palette';
 /** where it keeps its copies of the sounds it put into the palette (PaletteCopy), apart: a patch is tens of kB, and a
  *  store too full for them still keeps the palette */
 export const PALETTE_COPIES = 'matryoshka.palette-copies';
-/** the characters of a preset name the patch binary keeps (the FM-1 compares this many) */
-const BIN_PRESET_CHARS = 12;
-
-/** a preset name as an entry's: the same, case aside, over the characters the FM-1 compares when one side is longer */
-const samePreset = (a: string | undefined, b: string): boolean =>
-  !!a && (sameName(a, b) || ((a.length > BIN_PRESET_CHARS || b.length > BIN_PRESET_CHARS) && sameName(a.slice(0, BIN_PRESET_CHARS), b.slice(0, BIN_PRESET_CHARS))));
-
-/** the devices of `patch` that hold a preset, as an entry keeps them: the device's index in the binary's device extras,
- *  its structure, the preset's namespace (the structure the preset belongs to: the device's own, or that of its instrument
- *  with its FX drawer, FXD1; 0 when not known, and the FM-1 looks the name up), the preset's name. A device with no preset
- *  name plays the slot's own values and is left out; the first PALETTE_DEVS are kept */
-export function paletteDevices(patch: Patch): PaletteDevice[] {
-  const out: PaletteDevice[] = [];
-  layout(patch).devs.forEach((d, dev) => {
-    const a = d.asm === undefined ? undefined : assemblyById(patch, d.asm);
-    const name = devicePresetName(a?.preset ?? '');
-    if (!a || !name) return;
-    const structure = parseInt(structureAndRows(patch, a).structure, 16) >>> 0;
-    if (!structure) return;
-    const known = rememberedPreset(patch, a);
-    out.push({ dev, structure, pstructure: known ? parseInt(known.structure, 16) >>> 0 : 0, name });
-  });
-  return out.slice(0, PALETTE_DEVS);
-}
-
 /** the user presets the entry of `patch` names, as this browser keeps them, each under the name the entry gives it: the
  *  ones the FM-1 needs to be sent (a factory preset is on it already; a name this browser has no preset of has nothing
  *  to send, and the device plays the slot's own values on the FM-1) */
@@ -83,203 +55,6 @@ function isNumbered(name: string, label: string): boolean {
 
 /** "preset A" or "presets A, B" */
 const presetWord = (names: string[]): string => `preset${names.length > 1 ? 's' : ''} ${names.join(', ')}`;
-
-/** two binaries are the same, byte for byte */
-const sameBytes = (a: ArrayLike<number>, b: ArrayLike<number>): boolean => a.length === b.length && Array.prototype.every.call(a, (x: number, i: number) => x === b[i]);
-
-/** the selected pattern of `patch` (0-based) */
-export const patchPattern = (patch: Patch): number => patch.modules.find((m) => m.type === 'fm1')?.seq?.pattern ?? 0;
-
-/** the entry of `patch` in slot `slot` under `name`, the slot's own name (default: the patch's, as the editor names the
- *  slots it stores) */
-export const entryOf = (patch: Patch, slot: number, name = deviceName(patch.name.trim() || 'PATCH')): PaletteEntry =>
-  ({ slot, pattern: patchPattern(patch), name, devices: paletteDevices(patch) });
-
-/**
- * The entry applied to `patch` (a copy of its slot's patch) as the FM-1 applies it before its load: each device whose
- * preset name differs from the entry's takes the entry's preset (factory first, then the user's, by name), values only,
- * as the FM-1 brings no preset pattern; an FX drawer preset only where the drawer holds its effects already (the FM-1
- * never rebuilds a drawer). Then the entry's pattern is selected and no song plays. Returns the preset names this
- * browser has not got (those devices keep the slot's values, as on an FM-1 without them). `extra`: presets looked up
- * first, not stored yet (Add to palette trying the presets it would make, presetFit)
- */
-export function applyEntry(patch: Patch, entry: PaletteEntry, extra: readonly Preset[] = []): string[] {
-  const gone: string[] = [];
-  const devs = layout(patch).devs;
-  const structureOf = (asm: number | undefined): number => {
-    const a = asm === undefined ? undefined : assemblyById(patch, asm);
-    return a ? parseInt(structureAndRows(patch, a).structure, 16) >>> 0 : 0;
-  };
-  for (const e of entry.devices) {
-    const d = structureOf(devs[e.dev]?.asm) === e.structure ? devs[e.dev] : devs.find((x) => structureOf(x.asm) === e.structure);
-    const a = d?.asm === undefined ? undefined : assemblyById(patch, d.asm);
-    if (!a) { gone.push(e.name); continue; }
-    if (samePreset(a.preset, e.name)) continue;
-    const mine = [structureAndRows(patch, a).structure, drawerScope(patch, a)?.structure];
-    const list = [...extra.filter((p) => mine.includes(p.structure)), ...presetsOf(patch, a)];
-    const preset = list.find((p) => samePreset(p.name, e.name) && (!e.pstructure || parseInt(p.structure, 16) >>> 0 === e.pstructure)) ?? list.find((p) => samePreset(p.name, e.name));
-    if (!preset || !applyPreset(patch, a, { ...preset, factory: undefined })) gone.push(e.name);
-  }
-  const main = patch.modules.find((m) => m.type === 'fm1');
-  if (main) {
-    const seq = fixSeq({ ...main.seq, pattern: entry.pattern, song: 0 });
-    if (seq) main.seq = seq;
-    else delete main.seq;
-  }
-  return gone;
-}
-
-/** a patch's structure as device presets see it (the identity Add to palette needs to reach a sound with presets alone,
- *  owner 2026-11-24): its modules (id and type), its cables, and each assembly's structure, its FX drawers' chains
- *  with them; values, names, tempo and patterns aside */
-export function patchStructure(p: Patch): string {
-  return JSON.stringify([
-    p.modules.map((m) => [m.id, m.type]),
-    p.cables.map((c) => `${c.from.module}.${c.from.port}>${c.to.module}.${c.to.port}`).sort(),
-    (p.assemblies ?? []).map((a) => [a.id, structureOf(p, a), !!a.chain, !!a.drawer]),
-  ]);
-}
-
-/** what a palette entry plays from its slot whatever the sound added (owner 2026-11-24: "tempo and pattern difference
- *  should not send a new patch"): the Main module's tempo, its pattern and songs, and each Steps module's notes, patterns,
- *  P-locks and pattern origins with pattern 1's length and rate */
-const TRACK_FIELDS = ['notes', 'patterns', 'locks', 'factoryPatterns'] as const;
-const TRACK_PARAMS = ['len', 'rate'] as const;
-
-/** `to` takes `from`'s tempo and patterns (TRACK_FIELDS; the same structure) */
-function takeTempoAndPatterns(to: Patch, from: Patch): void {
-  for (const m of to.modules) {
-    const o = from.modules.find((x) => x.id === m.id);
-    if (!o) continue;
-    const keys: string[] = m.type === 'fm1' ? ['tempo'] : m.type === 'steps' ? [...TRACK_PARAMS] : [];
-    for (const k of keys) {
-      if (o.params[k] === undefined) delete m.params[k];
-      else m.params[k] = o.params[k];
-    }
-    const fields: (keyof typeof m)[] = m.type === 'fm1' ? ['seq'] : m.type === 'steps' ? [...TRACK_FIELDS] : [];
-    for (const k of fields) {
-      if (o[k] === undefined) delete m[k];
-      else (m as unknown as Record<string, unknown>)[k] = structuredClone(o[k]);
-    }
-  }
-}
-
-/** the notes of `p` as a palette entry would change them: its tracks' patterns and the song it plays and keeps (the
- *  selected pattern aside: the entry selects the sound's; pattern origins and store links aside: bookkeeping) */
-const patternsOf = (p: Patch): string => JSON.stringify(p.modules.map((m) =>
-  m.type === 'fm1' ? [m.seq?.song ?? 0, m.seq?.songs ?? []]
-    : m.type === 'steps' ? [m.notes ?? [], m.patterns ?? [], m.locks ?? [], TRACK_PARAMS.map((k) => m.params[k])] : 0));
-
-/** what a palette entry plays from its slot `slot` instead of `sound`'s own: "tempo", "patterns", "tempo and patterns",
- *  or '' (the same) */
-function slotPlays(sound: Patch, slot: Patch): string {
-  const [tempo, was] = [sound, slot].map((p) => p.modules.find((m) => m.type === 'fm1')?.params.tempo ?? 120);
-  const t = tempo !== was, n = patternsOf(sound) !== patternsOf(slot);
-  return t && n ? 'tempo and patterns' : t ? 'tempo' : n ? 'patterns' : '';
-}
-
-/** a device preset Add to palette names: one this browser has (`browser`, a user preset; `factory`), one only the FM-1
- *  has (`fm1`), or one it makes (`new`) */
-export interface PresetPick { preset: Preset; from: 'browser' | 'factory' | 'fm1' | 'new' }
-
-/** a sound reached from a slot's patch with device presets: the sound as the FM-1 plays it then (each device under the
- *  preset name the entry gives it), the presets named, and what the entry plays from the slot instead (slotPlays) */
-export interface PresetFit { named: Patch; picks: PresetPick[]; plays: string }
-
-/** why Add to palette stores a patch: no slot's patch has the sound's name (the patch's own, as the FM-1 keeps names),
- *  modules, cables and drawers */
-export const NO_SAME_STRUCTURE = 'no patch of its name with its modules and cables is on the FM-1';
-
-/** `sound` and `held` are one patch as device presets see it: its name, as the FM-1 keeps names, and its structure */
-const samePatch = (sound: Patch, held: Patch): boolean =>
-  deviceName(sound.name.trim()) === deviceName(held.name.trim()) && patchStructure(sound) === patchStructure(held);
-
-/** values agree as the editor keeps them */
-const sameValues = (a: readonly number[], b: readonly number[]): boolean => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
-/** a value as the FM-1 keeps it (Q16) */
-const q16 = (v: number): number => Math.round(v * 65536);
-
-/** the module whose settings differ between two patches of one structure, as the user knows it: its assembly's label, or
- *  its own name */
-function differing(a: Patch, b: Patch): string | null {
-  const body = (m: Patch['modules'][number]): string => JSON.stringify({ ...m, x: 0, y: 0 });
-  for (const m of a.modules) {
-    const o = b.modules.find((x) => x.id === m.id);
-    if (!o || body(m) === body(o)) continue;
-    const asm = (a.assemblies ?? []).find((x) => x.modules.includes(m.id));
-    return asm ? asm.label || asm.name : m.name || DEFS[m.type]?.label || m.type;
-  }
-  return null;
-}
-
-/**
- * The sound `sound` reached from `held` (a slot's patch) with device presets (owner 2026-11-24: "it should first
- * determine if it's a preset of the instrument the fm1 has already"), or why not. Both need one name and structure
- * (samePatch: a patch saved under another name is another patch, its slot named after it). Each device (a top-level
- * assembly; an instrument with an FX drawer with its drawer, FXD1) whose card
- * values differ from the slot's takes a preset of exactly those values: one this browser has (factory or the user's, the
- * one the device remembers first), else one of `onFm1` (the FM-1's own user presets), else a new one named `name` (the
- * candidate's name, numbered when taken). A device whose values agree keeps the slot's preset name, which the FM-1 leaves
- * as it is. Then the entry applied to `held` (applyEntry) must give the sound byte for byte as `encode` writes it,
- * tempo and patterns aside (the entry plays the slot's, with the sound's selected pattern): anything else (a module's
- * setting outside its card, a device past PRESET_VALUES_MAX values, the panel, names) is a reason to store the patch.
- */
-export function presetFit(sound: Patch, held: Patch, name: string, encode: (p: Patch) => Uint8Array, onFm1: readonly Preset[] = []): PresetFit | { why: string } {
-  if (!samePatch(sound, held)) return { why: NO_SAME_STRUCTURE };
-  const named = structuredClone(sound);
-  const picks: PresetPick[] = [];
-  const base = devicePresetName(name) || 'Preset';
-  for (const d of layout(named).devs) {
-    const a = d.asm === undefined ? undefined : assemblyById(named, d.asm);
-    const h = a && assemblyById(held, a.id);
-    if (!a || !h || a.chain || a.drawer) continue;
-    const want = capturePreset(named, a, base), was = capturePreset(held, h, '');
-    // (a drawer's effects go with their instrument's preset: their own preset names stay the slot's)
-    for (const e of drawerScope(named, a)?.effects ?? []) {
-      const he = assemblyById(held, e.id)?.preset;
-      if (he) e.preset = he;
-      else delete e.preset;
-    }
-    const keep = (n: string | undefined): void => { if (n) a.preset = n; else delete a.preset; };
-    if (want.structure === was.structure && sameValues(want.values, was.values)) { keep(h.preset); continue; }
-    const label = a.label || a.name;
-    if (want.values.length > PRESET_VALUES_MAX) return { why: `${label} needs ${want.values.length} preset values, ${PRESET_VALUES_MAX} at most` };
-    // (a preset of the slot's device's name is never applied by the FM-1: the name is all it compares)
-    const usable = (p: Preset): boolean => p.structure === want.structure && !samePreset(h.preset, p.name);
-    const mine = presetsOf(named, a), theirs = onFm1.filter((p) => usable(p) && !mine.some((x) => x.structure === p.structure && sameName(x.name, p.name)));
-    const found = mine.filter((p) => usable(p) && sameValues(p.values, want.values));
-    const own = found.find((p) => sameName(p.name, a.preset)) ?? found[0];
-    const there = own ? undefined : theirs.find((p) => p.values.length === want.values.length && p.values.every((v, i) => q16(v) === q16(want.values[i])));
-    let pick: PresetPick;
-    if (own) pick = { preset: own, from: own.factory ? 'factory' : 'browser' };
-    else if (there) pick = { preset: { ...want, name: devicePresetName(there.name) }, from: 'fm1' };
-    else {
-      const taken = (n: string): boolean => samePreset(h.preset, n) || [...mine, ...onFm1.filter((p) => p.structure === want.structure)].some((p) => sameName(p.name, n));
-      let n = base;
-      const room = samePreset(h.preset, base) ? BIN_PRESET_CHARS : PRESET_NAME_BYTES;
-      for (let k = 2; taken(n) && k < 1000; k++) n = `${base.slice(0, room - 1 - String(k).length).trim()} ${k}`;
-      pick = { preset: { ...want, name: n }, from: 'new' };
-    }
-    keep(pick.preset.name);
-    picks.push(pick);
-  }
-  const played = structuredClone(held);
-  const gone = applyEntry(played, entryOf(named, 0), picks.map((p) => p.preset));
-  const norm = structuredClone(named);
-  norm.name = played.name;
-  takeTempoAndPatterns(norm, played);
-  let same: boolean;
-  try {
-    same = !gone.length && sameBytes(encode(norm), encode(played));
-  } catch (e) {
-    return { why: (e as Error).message };
-  }
-  if (!same) {
-    const who = differing(norm, played);
-    return { why: who ? `it changes ${who} settings no device preset holds` : 'it changes settings no device preset holds' };
-  }
-  return { named, picks, plays: slotPlays(sound, held) };
-}
 
 /** this browser's copy of a position's patch by the slot's name and binary length now: the copy it kept of the sound it
  *  put there (`kept`), else a saved patch (D-605), or null */
@@ -671,30 +446,12 @@ export class Palette {
       if (!bins.has(s.slot)) bins.set(s.slot, await d.readSlotBin(s.slot).catch(() => null));
       const there = bins.get(s.slot);
       if (!there || !sameBytes(there, bin)) continue;
-      onFm1 ??= await this.fm1Presets(sound);
+      onFm1 ??= await fm1Presets(sound, d);
       const fit = presetFit(sound, held, name, (p) => d.encodeFor(p), onFm1);
       if (!('why' in fit)) return { ...fit, slot: s.slot, label: s.name, held };
       why ||= fit.why;
     }
     return { why: why || NO_SAME_STRUCTURE };
-  }
-
-  /** the FM-1's own user presets of the structures `sound`'s devices' presets would have, with their values (none
-   *  without the preset store) */
-  private async fm1Presets(sound: Patch): Promise<Preset[]> {
-    const d = this.ports.device;
-    if (!d.hasPresets) return [];
-    const structures = new Set(layout(sound).devs.flatMap((x) => {
-      const a = x.asm === undefined ? undefined : assemblyById(sound, x.asm);
-      return a && !a.chain && !a.drawer ? [capturePreset(sound, a, '').structure] : [];
-    }));
-    const out: Preset[] = [];
-    for (const e of await d.listPresets()) {
-      if (!structures.has(e.structure)) continue;
-      const values = await d.getPreset(e.structure, e.name);
-      if (values) out.push({ structure: e.structure, name: e.name, values });
-    }
-    return out;
   }
 
   /** point position `pos` at the slot `fit` found, with the presets it names: the ones the FM-1 lacks are sent first, a
