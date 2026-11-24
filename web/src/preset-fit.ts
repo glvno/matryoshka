@@ -138,8 +138,9 @@ export function slotPlays(sound: Patch, slot: Patch): string {
 }
 
 /** a device preset a sound reached with presets names, for the device of assembly `asm`: one this browser has (`browser`,
- *  a user preset; `factory`), one only the FM-1 has (`fm1`), or one it makes (`new`) */
-export interface PresetPick { preset: Preset; from: 'browser' | 'factory' | 'fm1' | 'new'; asm: number }
+ *  a user preset; `factory`), one only the FM-1 has (`fm1`), one only a saved sound brought (`sound`: sent, and it joins
+ *  this browser's presets as a made one does), or one it makes (`new`) */
+export interface PresetPick { preset: Preset; from: 'browser' | 'factory' | 'fm1' | 'sound' | 'new'; asm: number }
 
 /** a sound reached from a slot's patch with device presets: the sound as the FM-1 plays it then (each device under the
  *  preset name the entry gives it), the presets named, and what the entry plays from the slot instead (slotPlays) */
@@ -177,13 +178,14 @@ function differing(a: Patch, b: Patch): string | null {
  * (samePatch: a patch saved under another name is another patch, its slot named after it). Each device (a top-level
  * assembly; an instrument with an FX drawer with its drawer, FXD1) whose card
  * values differ from the slot's takes a preset of exactly those values: one this browser has (factory or the user's, the
- * one the device remembers first), else one of `onFm1` (the FM-1's own user presets), else a new one named `name` (the
- * candidate's name, numbered when taken). A device whose values agree keeps the slot's preset name, which the FM-1 leaves
+ * one the device remembers first), else one of `extra` (a saved sound's own presets), else one of `onFm1` (the FM-1's
+ * own user presets), else a new one named `name` (the name the sound is added under, numbered when taken). A device
+ * whose values agree keeps the slot's preset name, which the FM-1 leaves
  * as it is. Then the entry applied to `held` (applyEntry) must give the sound byte for byte as `encode` writes it,
  * tempo and patterns aside (the entry plays the slot's, with the sound's selected pattern): anything else (a module's
  * setting outside its card, a device past PRESET_VALUES_MAX values, the panel, names) is a reason to store the patch.
  */
-export function presetFit(sound: Patch, held: Patch, name: string, encode: (p: Patch) => Uint8Array, onFm1: readonly Preset[] = []): PresetFit | { why: string } {
+export function presetFit(sound: Patch, held: Patch, name: string, encode: (p: Patch) => Uint8Array, onFm1: readonly Preset[] = [], extra: readonly Preset[] = []): PresetFit | { why: string } {
   if (!samePatch(sound, held)) return { why: NO_SAME_STRUCTURE };
   const named = structuredClone(sound);
   const picks: PresetPick[] = [];
@@ -205,12 +207,14 @@ export function presetFit(sound: Patch, held: Patch, name: string, encode: (p: P
     if (want.values.length > PRESET_VALUES_MAX) return { why: `${label} needs ${want.values.length} preset values, ${PRESET_VALUES_MAX} at most` };
     // (a preset of the slot's device's name is never applied by the FM-1: the name is all it compares)
     const usable = (p: Preset): boolean => p.structure === want.structure && !samePreset(h.preset, p.name);
-    const mine = presetsOf(named, a), theirs = onFm1.filter((p) => usable(p) && !mine.some((x) => x.structure === p.structure && sameName(x.name, p.name)));
+    const known = presetsOf(named, a);
+    const mine = [...known, ...extra.filter((p) => p.structure === want.structure && !known.some((x) => x.structure === p.structure && sameName(x.name, p.name)))];
+    const theirs = onFm1.filter((p) => usable(p) && !mine.some((x) => x.structure === p.structure && sameName(x.name, p.name)));
     const found = mine.filter((p) => usable(p) && sameValues(p.values, want.values));
     const own = found.find((p) => sameName(p.name, a.preset)) ?? found[0];
     const there = own ? undefined : theirs.find((p) => p.values.length === want.values.length && p.values.every((v, i) => q16(v) === q16(want.values[i])));
     let pick: PresetPick;
-    if (own) pick = { preset: own, from: own.factory ? 'factory' : 'browser', asm: a.id };
+    if (own) pick = { preset: own, from: own.factory ? 'factory' : known.includes(own) ? 'browser' : 'sound', asm: a.id };
     else if (there) pick = { preset: { ...want, name: devicePresetName(there.name) }, from: 'fm1', asm: a.id };
     else {
       const taken = (n: string): boolean => samePreset(h.preset, n) || [...mine, ...onFm1.filter((p) => p.structure === want.structure)].some((p) => sameName(p.name, n));

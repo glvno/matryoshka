@@ -45,8 +45,11 @@ import { addToBank, bankCandidates, bankPatches, buildPatchesSection, deviceName
 import { Palette } from './palette';
 import { fm1Presets } from './preset-fit';
 import { saveCandidate } from './candidate-save';
-import { PaletteView, renderPaletteRail, type PaletteActions, type PaletteMode } from './palette-view';
-import { patchDragSource } from './patch-drag';
+import { ON_THE_FM1, PaletteView, renderPaletteRail, type PaletteActions, type PaletteMode } from './palette-view';
+import { patchDragSource, type PatchDragItem } from './patch-drag';
+import { idbBackend as paletteBackend, isPaletteFile, memoryBackend as paletteMemory, paletteFile, paletteFileName, readPaletteFile, SavedPaletteStore, soundChip, soundOf, type SavedPalette } from './saved-palettes';
+import { buildPalettesSection, type PalettesSection } from './library-palettes';
+import { askName } from './name-prompt';
 import { buildPresetsSection } from './library-presets';
 import { buildPatternsSection } from './pattern-library';
 import { legacyFactoryStore, payloadHash, portablePatch } from './pattern-store';
@@ -391,6 +394,8 @@ let focusNow: { device: number; page: number; at: number } | null = null;
 let deviceSlot: { slot: number; name: string } | null = null;
 /** the palette (#1196): made with the Sound design sidebar; null until then */
 let palette: Palette | null = null;
+/** Library › Palettes (#1236): made with the Library's sections; null until then */
+let palettesPane: PalettesSection | null = null;
 /** the FM-1's panel state as it last reported it (GUIDE_NOW, #549; the controls strip follows it, #554), null: not reported */
 let fm1Panel: PanelState | null = null;
 /** the reports are ignored, as from older firmware (the emulator scenarios' check of the old path) */
@@ -1268,6 +1273,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     queueSave(editor.patch);   // (the candidates are kept with the patch, D-972)
     palette?.findCopies();   // (a chip added from a candidate has its copy there)
     renderPalette();
+    palettesPane?.refresh();   // (Library › Palettes lists the candidates to drag in)
   },
   onPutAway: (set) => keepSet(set),
   onSilence(p) {
@@ -1470,7 +1476,8 @@ const patchMenu = (): MenuItem[] => {
     { text: 'Save as .json', run: () => savePatch() },
     { text: 'Load .json\u2026', run: () => $('load-file').click() },
     { text: 'Store to an FM-1 slot\u2026', run: toastResult(() => storeToSlot()) },
-    { text: 'Add to palette', run: addCurrentToPalette },
+    { text: 'Add to palette', run: () => addCurrentToPalette($('patch-menu-btn')) },
+    { text: 'Add to palette ▸', run: () => popMenu(paletteChoiceItems($('patch-menu-btn')), $('patch-menu-btn')) },
     { text: 'FM-1 & MIDI settings\u2026', run: () => $<HTMLDialogElement>('device-bar').showModal(), rule: true },
   ];
   if (capabilityExperiment) items.push({ text: 'Inspect assembly capabilities…', run: () => void openCapabilityInspector(), rule: true });
@@ -1692,17 +1699,62 @@ const snapSide = new SnapSidebar(snapColumn, (b) => popMenu(sideMenu(b), b));
 // the sidebar runs the window's whole height at its right edge; the workspace (the canvas, the deck, Connect FM-1, ?) gives
 // up its width (style.css .snap-column)
 new ResizeObserver(() => document.documentElement.style.setProperty('--snap-col-w', `${snapColumn.offsetWidth}px`)).observe(snapColumn);
-// ---- the palette (#1196, palette.ts): 8 chips at the bottom of the Sound design sidebar, a copy in the Library (its rows
-// are dragged onto it), a dot per position on the folded rail
+// ---- the palette (#1196, palette.ts): 8 chips at the bottom of the Sound design sidebar, headed ON THE FM-1, a copy in the
+// Library (its rows are dragged onto it), a dot per position on the folded rail. Saved palettes (#1236, saved-palettes.ts,
+// library-palettes.ts): kept in this browser, edited in Library › Palettes, sent to the FM-1 and saved from it
+const paletteStore = new SavedPaletteStore(paletteBackend() ?? paletteMemory(), (p) => validatePatch(p, DEFS));
+/** the Library's dock square now: hidden (a palette open in Library › Palettes shows its own chips), or the saved palette
+ *  open there, which it shows in the other sections so their rows can be dropped into it (null: the FM-1's); set once the
+ *  Library's sections are made */
+let dockState = (): { hidden: boolean; saved: SavedPalette | null } | null => null;
+/** the name a sound goes into a palette under (owner 2026-11-24: "saving to palette from the web editor, either by
+ *  dragging chip or selecting a menu item, should prompt you to give it a name"): `initial` the automatic name */
+const askPaletteName = (initial: string, anchor?: HTMLElement | null): Promise<string | null> =>
+  askName({ title: 'Name it in the palette', initial, anchor });
+/** chip `pos` of the square on screen (where a name prompt for it opens) */
+const chipAt = (pos: number): HTMLElement | null => paletteShown()?.querySelector<HTMLElement>(`.pal-chip[data-pos="${pos}"]`) ?? null;
+/** a patch dropped on a chip of the FM-1's palette: named first (a slot from the FM-1 column is pointed at as it is, under
+ *  its own name: no prompt) */
+const dropOnFm1 = async (pos: number, item: PatchDragItem): Promise<void> => {
+  if (!palette) return;
+  if (item.slot) return void palette.add(item.name, item.patch(), { pos, slot: item.slot });
+  const patch = item.patch();
+  if (!patch) return;
+  const name = palette.linked ? await askPaletteName(item.name, chipAt(pos)) : item.name;
+  if (name) await palette.add(name, patch, { pos });
+};
+/** a patch dropped on a chip of saved palette `id`, named first */
+const dropOnSaved = async (id: string, pos: number, item: PatchDragItem, anchor: HTMLElement | null): Promise<void> => {
+  const patch = item.patch();
+  if (!patch) return void (status.textContent = `No copy of "${item.name}" in this browser: it cannot go into a saved palette`);
+  const name = await askPaletteName(item.name, anchor);
+  if (name) paletteStore.setSound(id, pos, soundOf(name, patch));
+};
+/** a saved palette's chip clicked: the sound opens in the editor by the candidates' open rules (it becomes the current
+ *  patch, the candidates kept), with or without an FM-1; the FM-1's palette is not touched */
+const hearSaved = (p: SavedPalette, pos: number): void => {
+  const s = p.sounds[pos];
+  if (!s) return void (status.textContent = `${pos + 1} of ${p.name} is empty: drag a patch or a candidate onto it`);
+  loadNamed(structuredClone(s.patch), { from: '' });
+};
 const paletteActs: PaletteActions = {
   click: (pos) => void palette?.click(pos),
   remove: (pos) => void palette?.remove(pos),
   move: (from, to) => void palette?.move(from, to),
-  drop: (pos, item) => void palette?.add(item.name, item.patch(), { pos, slot: item.slot }),
+  drop: (pos, item) => void dropOnFm1(pos, item),
+  save: () => void saveFm1Palette(),
+};
+/** the Library's dock: the FM-1's palette, or the saved palette open in Library › Palettes */
+const dockActs: PaletteActions = {
+  click: (pos) => { const p = dockState()?.saved; if (p) hearSaved(p, pos); else paletteActs.click(pos); },
+  remove: (pos) => { const p = dockState()?.saved; if (p) paletteStore.setSound(p.id, pos, null); else paletteActs.remove(pos); },
+  move: (from, to) => { const p = dockState()?.saved; if (p) paletteStore.move(p.id, from, to); else paletteActs.move(from, to); },
+  drop: (pos, item) => { const p = dockState()?.saved; if (p) void dropOnSaved(p.id, pos, item, chipAt(pos)); else paletteActs.drop(pos, item); },
+  save: paletteActs.save,
 };
 const paletteSide = new PaletteView(paletteActs);
 snapColumn.querySelector('.snap-foot')!.after(paletteSide.el);
-const paletteLib = new PaletteView(paletteActs, 'lib-dock');
+const paletteLib = new PaletteView(dockActs, 'lib-dock');
 paletteLib.el.hidden = true;
 $('tab-library').append(paletteLib.el);
 const paletteRail = document.createElement('div');
@@ -1717,8 +1769,24 @@ const paletteMode = (): PaletteMode => (palette?.linked ? 'live' : device.connec
 function renderPalette(): void {
   if (!palette) return;
   const chips = palette.chips(), mode = paletteMode();
+  // ON THE FM-1, and after Send to FM-1 the saved palette it came from (its name now, when it is still kept)
+  const from = palette.from;
+  const sub = from ? `from ${paletteStore.get(from.id)?.name ?? from.name}` : '';
+  const save = mode === 'old' || !palette.now ? null
+    : palette.linked ? 'Save the FM-1’s palette as a new palette in Library › Palettes, each sound read back from the FM-1'
+      : 'Save the palette as last read as a new palette in Library › Palettes, from the sounds this browser has copies of';
+  for (const v of [paletteSide, paletteLib]) {
+    v.setHead(ON_THE_FM1, sub);
+    v.setSave(save);
+  }
   paletteSide.render(chips, mode);
-  paletteLib.render(chips, mode);
+  const dock = dockState();
+  if (dock) paletteLib.el.hidden = dock.hidden;
+  if (dock?.saved) {
+    paletteLib.setHead(dock.saved.name);
+    paletteLib.setSave(null);
+    paletteLib.render(dock.saved.sounds.map(soundChip), 'saved');
+  } else paletteLib.render(chips, mode);
   renderPaletteRail(paletteRail, chips, mode, paletteActs.click);
   // (the FM-1 tab's HOME-held overview shows the same palette, as the FM-1 has it or as last read)
   emu.ui?.palette(palette.now?.positions ?? [], palette.now?.cur ?? null, palette.now?.next ?? null);
@@ -1768,9 +1836,118 @@ palette = new Palette({
 renderPalette();
 /** the name the candidate heard goes into the palette under (D-1319): the patch's, with the candidate's name or letter */
 const heardName = (): string => paletteName(editor.patch.name, editor.snaps.shown, editor.snaps.list.length);
-/** Add to palette (the row heard, the rail, the patch menu, Commands): the candidate heard into the first empty position */
-const addCurrentToPalette = (): void => {
-  void palette?.add(heardName(), structuredClone(editor.patch));
+/** the candidate heard into the FM-1's palette's first empty position, under the name given (no prompt when the palette
+ *  cannot take it now: it says why) */
+const addHeardToFm1 = async (anchor?: HTMLElement | null): Promise<void> => {
+  if (!palette) return;
+  const patch = structuredClone(editor.patch);   // (the candidate heard as the add began)
+  if (!palette.linked) return void palette.add(heardName(), patch);
+  const name = await askPaletteName(heardName(), anchor);
+  if (name) await palette.add(name, patch);
+};
+/** the candidate heard into saved palette `id`'s first empty position (null: a new palette), under the name given */
+const addHeardToSaved = async (id: string | null, anchor?: HTMLElement | null): Promise<void> => {
+  const patch = structuredClone(editor.patch);
+  const name = await askPaletteName(heardName(), anchor);
+  if (!name) return;
+  const sound = soundOf(name, patch);
+  const p = id === null ? paletteStore.create(undefined, [sound]) : paletteStore.get(id);
+  if (!p) return;
+  const pos = id === null ? 0 : paletteStore.addSound(p.id, sound);
+  if (pos === null) {
+    status.textContent = `${p.name} is full: open it and drag onto a chip to replace`;
+    return void showAction(status.textContent, 'Open', () => openSavedPalette(p.id));
+  }
+  status.textContent = `"${name}" is ${pos + 1} in ${p.name}`;
+  showAction(status.textContent, 'Open', () => openSavedPalette(p.id));
+};
+/** Add to palette's choice (the ▾ beside the row's button, the patch menu's Add to palette ▸): the FM-1's palette, each
+ *  saved palette, a new one */
+const paletteChoiceItems = (anchor?: HTMLElement | null): MenuItem[] => {
+  const saved = paletteStore.all();
+  return [
+    { text: palette?.linked ? 'The FM-1’s palette' : 'The FM-1’s palette (no FM-1 linked)', run: () => void addHeardToFm1(anchor) },
+    ...saved.map((p, i) => ({ text: `${p.name} · ${p.sounds.filter(Boolean).length}/8`, run: () => void addHeardToSaved(p.id, anchor), rule: i === 0 })),
+    { text: 'New palette', run: () => void addHeardToSaved(null, anchor), rule: !saved.length },
+  ];
+};
+/** Add to palette (the row heard, the rail, the patch menu, Commands): the default, the FM-1's palette when one that keeps
+ *  a palette is linked; without one, the choice */
+const addCurrentToPalette = (anchor?: HTMLElement | null): void => {
+  if (palette?.linked) return void addHeardToFm1(anchor);
+  popMenu(paletteChoiceItems(anchor), anchor ?? status);
+};
+/** Library › Palettes with saved palette `id` open */
+function openSavedPalette(id: string): void {
+  setLibrarySection('palettes');
+  palettesPane?.open(id);
+}
+/**
+ * Save from FM-1 (a linked FM-1: every sound read back) or the offline save (the greyed copy of the last palette read,
+ * from the sounds this browser has copies of): a new saved palette, and which positions it could not include. False when
+ * nothing was saved.
+ */
+async function saveFm1Palette(): Promise<boolean> {
+  if (!palette) return false;
+  const linked = palette.linked;
+  const got = await palette.capture().catch((e: Error) => {
+    status.textContent = `Reading the FM-1’s palette failed: ${e.message}`;
+    showToast(status.textContent);
+    return null;
+  });
+  if (!got) return false;
+  const what = linked ? 'the FM-1’s palette' : 'the palette as last read';
+  if (!got.sounds.some(Boolean)) {
+    status.textContent = got.missed.length ? `Nothing saved: no sound of ${what} could be included (${got.missed.join(', ')})` : `Nothing saved: ${what} is empty`;
+    showToast(status.textContent);
+    return false;
+  }
+  const p = paletteStore.create(undefined, got.sounds);
+  status.textContent = `Saved ${what} as ${p.name}${got.missed.length ? `. Not included: ${got.missed.join(', ')}` : ''}`;
+  showAction(status.textContent, 'Open', () => openSavedPalette(p.id), got.missed.length ? 12000 : undefined);
+  return true;
+}
+/** Send to FM-1: saved palette `p` replaces the FM-1's whole palette, after a confirm that offers to save the FM-1's
+ *  palette first (shown and ticked when it holds a sound) */
+async function sendSavedPalette(p: SavedPalette): Promise<void> {
+  if (!palette?.linked) {
+    status.textContent = device.connected ? 'Sending a palette needs FM-1 firmware 1.26: update the FM-1' : 'Connect the FM-1 to send a palette to it';
+    return void showToast(status.textContent);
+  }
+  const dlg = $<HTMLDialogElement>('palette-send'), first = $<HTMLInputElement>('palette-send-first');
+  const holds = palette.chips().some((c) => c.state !== 'empty');
+  $('palette-send-title').textContent = `Send ${p.name} to the FM-1?`;
+  $('palette-send-keep').hidden = !holds;
+  first.checked = holds;
+  dlg.returnValue = '';
+  const closed = new Promise((resolve) => dlg.addEventListener('close', resolve, { once: true }));
+  dlg.showModal();
+  await closed;
+  if (dlg.returnValue !== 'send') return;
+  if (holds && first.checked && !(await saveFm1Palette())) {
+    status.textContent = `${status.textContent}. ${p.name} was not sent`;
+    return void showToast(status.textContent);
+  }
+  const now = paletteStore.get(p.id) ?? p;
+  if (await palette.send(now.sounds, { id: now.id, name: now.name })) showToast(status.textContent.split(' · ')[0]);
+  renderPalette();
+}
+/** a saved palette as a file (.palette.json) */
+const exportPalette = (p: SavedPalette): void => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([paletteFile(p)], { type: 'application/json' }));
+  a.download = paletteFileName(p.name);
+  a.click();
+  URL.revokeObjectURL(a.href);
+  status.textContent = `${p.name} saved as ${a.download}`;
+};
+/** a palette file read: a new saved palette with its name, opened */
+const importPalette = (raw: unknown): void => {
+  const got = readPaletteFile(raw, (x) => validatePatch(x, DEFS));
+  const p = paletteStore.create(got.name || undefined, got.sounds);
+  openSavedPalette(p.id);
+  status.textContent = `Imported ${p.name}${got.dropped ? `: ${got.dropped} sound${got.dropped > 1 ? 's' : ''} could not be read and ${got.dropped > 1 ? 'are' : 'is'} left empty` : ''}`;
+  showToast(status.textContent);
 };
 // the grip beside the patch name: the canvas's patch dragged onto a chip
 const patchGrip = document.createElement('button');
@@ -1878,7 +2055,8 @@ const sideActions: SideActions = {
   putBack: (i) => putBack(i),
   revert: (letter) => revertCandidate(letter),
   savePreset: (anchor) => savePreset(anchor),
-  addToPalette: addCurrentToPalette,
+  addToPalette: (anchor) => addCurrentToPalette(anchor),
+  paletteChoice: (anchor) => popMenu(paletteChoiceItems(anchor), anchor),
   more: (s, anchor) => popMenu(snapshotMenu(s, anchor), anchor),
   drag: dragSnapshot,
   step: (dir) => cycleSnapshots(dir),
@@ -2299,7 +2477,12 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Zoom out', detail: 'Ctrl/Cmd+−', keywords: 'zoom smaller', run: inPatch(() => editor.zoomStep(-1)) },
     ...WHEEL_SETTINGS.filter((m) => m !== editor.wheelMode).map((m) => ({ kind: 'command' as const, label: `Scroll wheel: ${m}`, keywords: 'mouse trackpad wheel zoom pan scroll setting', run: () => setWheelMode(m) })),
     { kind: 'command', label: 'Store to an FM-1 slot\u2026', keywords: 'bank flash save device', run: () => void storeToSlot() },
-    { kind: 'command', label: 'Add to palette', detail: 'the FM-1’s palette: the first empty position', keywords: 'palette collect project black key home switch fm-1 chip', run: addCurrentToPalette },
+    { kind: 'command', label: 'Add to palette', detail: 'the FM-1’s palette: the first empty position', keywords: 'palette collect project black key home switch fm-1 chip', run: () => addCurrentToPalette() },
+    ...paletteStore.all().map((p) => ({ kind: 'command' as const, label: `Add to palette: ${p.name}`, detail: 'a saved palette: the first empty position', keywords: 'palette collect saved library', run: () => void addHeardToSaved(p.id) })),
+    { kind: 'command', label: 'Add to palette: new palette', detail: 'a new saved palette in Library › Palettes', keywords: 'palette collect saved library create', run: () => void addHeardToSaved(null) },
+    ...paletteStore.all().map((p) => ({ kind: 'command' as const, label: `Send ${p.name} to the FM-1`, detail: 'replaces the FM-1’s whole palette', keywords: 'palette saved upload device', run: () => void sendSavedPalette(p) })),
+    { kind: 'command', label: 'Save the FM-1’s palette as a palette', detail: 'a new saved palette in Library › Palettes', keywords: 'palette saved capture keep device', run: () => void saveFm1Palette() },
+    { kind: 'command', label: 'Import a palette from .json', keywords: 'palette saved load file', run: () => $('load-file').click() },
     { kind: 'command', label: 'Reset canvas scale', detail: 'Ctrl/Cmd+0', keywords: 'zoom 100%', run: inPatch(() => editor.zoomAround(1)) },
     // the patch's modules with their own names (#518): picking one selects it
     ...editor.patch.modules.filter((m) => m.name && m.type !== 'steps' && DEFS[m.type]).map((m) => ({ kind: 'module in patch', tags: ['module'], label: m.name!, detail: moduleName(m.type, DEFS[m.type].label), keywords: 'select find named', run: inPatch(() => editor.reveal(m.id)) })),
@@ -3106,9 +3289,9 @@ function setView(v: View): void {
   showAddress();
 }
 /** the address follows the view (#218), replaced, not pushed: PATCH has no fragment, EMU #emu, LIBRARY #library (Patches),
- *  #assemblies, #presets, #patterns or #community. A replaceState fires no hashchange, so openFromAddress does not run again. A fragment that is
+ *  #palettes, #assemblies, #presets, #patterns or #community. A replaceState fires no hashchange, so openFromAddress does not run again. A fragment that is
  *  not a view's (a share link's #p= being opened) is left alone */
-const VIEW_HASHES = ['', '#patch', '#emu', '#fm1', '#library', '#presets', '#patterns', '#assemblies', '#community', '#flash', '#about'];
+const VIEW_HASHES = ['', '#patch', '#emu', '#fm1', '#library', '#palettes', '#presets', '#patterns', '#assemblies', '#community', '#flash', '#about'];
 function showAddress(): void {
   if (!VIEW_HASHES.includes(location.hash)) return;
   const want = currentView === 'emu' ? '#emu' : currentView === 'library' ? (librarySection === 'patches' ? '#library' : `#${librarySection}`) : '';
@@ -3135,9 +3318,9 @@ function toPatch(): void {
 // LIBRARY's sections (#218): Patches, Assemblies, Presets, Effects, Patterns, Community as tabs under the switch, the last one remembered per browser; one shows
 // at a time (bank.ts, assemblies.ts, library-presets.ts, library-effects.ts build them below). Entering one rereads it, and reads the FM-1
 // when one is connected
-type LibrarySection = 'patches' | 'assemblies' | 'presets' | 'effects' | 'patterns' | 'community';
+type LibrarySection = 'patches' | 'palettes' | 'assemblies' | 'presets' | 'effects' | 'patterns' | 'community';
 const LIBRARY_SECTION = 'matryoshka.library-section';
-const isSection = (v: unknown): v is LibrarySection => v === 'patches' || v === 'assemblies' || v === 'presets' || v === 'effects' || v === 'patterns' || v === 'community';
+const isSection = (v: unknown): v is LibrarySection => v === 'patches' || v === 'palettes' || v === 'assemblies' || v === 'presets' || v === 'effects' || v === 'patterns' || v === 'community';
 let librarySection: LibrarySection = (() => {
   try {
     const v = localStorage.getItem(LIBRARY_SECTION);
@@ -3147,7 +3330,7 @@ let librarySection: LibrarySection = (() => {
   }
 })();
 const sectionBtns = [...document.querySelectorAll<HTMLButtonElement>('#library-tabs [data-section]')];
-const sectionEls: Record<LibrarySection, HTMLElement> = { patches: $('lib-patches'), assemblies: $('lib-assemblies'), presets: $('lib-presets'), effects: $('lib-effects'), patterns: $('lib-patterns'), community: $('lib-community') };
+const sectionEls: Record<LibrarySection, HTMLElement> = { patches: $('lib-patches'), palettes: $('lib-palettes'), assemblies: $('lib-assemblies'), presets: $('lib-presets'), effects: $('lib-effects'), patterns: $('lib-patterns'), community: $('lib-community') };
 /** the sections' panes with an FM-1 column (set when they are built, below) */
 const libraryPanes: Partial<Record<LibrarySection, LibraryPane>> = {};
 function showLibrarySection(): void {
@@ -3157,6 +3340,7 @@ function showLibrarySection(): void {
   if (librarySection === 'assemblies') refreshAssemblies();
   if (librarySection === 'effects') refreshEffects();
   libraryPanes[librarySection]?.enter();
+  renderPalette();   // (the dock square follows: a saved palette open in Library › Palettes)
 }
 /** an FM-1 connected or went away: the Library's FM-1 columns follow (the one on screen reads the FM-1 now) */
 function libraryDeviceChanged(): void {
@@ -3524,6 +3708,7 @@ $<HTMLInputElement>('load-file').onchange = async (e) => {
     const backup = backupKeys(raw);
     const presets = backup ? null : importPresets(raw); // a preset library (#192)
     if (backup) importBrowserData(backup, 'the backup');
+    else if (isPaletteFile(raw)) importPalette(raw);   // (a saved palette's file, #1236)
     else if (presets !== null) {
       editor.rebuild();
       status.textContent = `${presets} preset${presets === 1 ? '' : 's'} imported`;
@@ -4054,6 +4239,44 @@ libraryPanes.patches = buildPatchesSection($('lib-patches'), device, { remove: d
 if (addedTitles().length) void loadCommunity().then(() => { fillPicker(); libraryPanes.patches?.refresh(); });
 libraryPanes.community = buildCommunitySection($('lib-community'), { status: (msg) => { status.textContent = msg; } }, () => device.bufferAllocation, () => device.budgetStore);
 libraryPanes.presets = buildPresetsSection($('lib-presets'), device, { changed: () => editor.rebuild() });
+// Library › Palettes (#1236): the saved palettes, one open at a time to edit; the dock square shows the open one in the
+// other sections, so their rows drop into it
+palettesPane = libraryPanes.palettes = buildPalettesSection($('lib-palettes'), {
+  store: paletteStore,
+  linked: () => !!palette?.linked,
+  hear: (_s, p, pos) => hearSaved(p, pos),
+  send: (p) => void sendSavedPalette(p),
+  saveFromFm1: () => void saveFm1Palette(),
+  exportFile: exportPalette,
+  importFile: () => $('load-file').click(),
+  deleted(p) {
+    status.textContent = `Deleted ${p.name}`;
+    showUndo(status.textContent, () => {
+      paletteStore.putBack(p.id);
+      status.textContent = `${p.name} is back`;
+    });
+  },
+  candidates: () => ({
+    patchName: editor.patch.name,
+    rows: editor.snaps.list.map((s) => {
+      const v = editor.snapshotVersion(s);
+      return { letter: s.letter, name: s.name, item: { name: paletteName(v.name, s, editor.snaps.list.length), patch: () => structuredClone(v) } };
+    }),
+  }),
+  askName: (initial, anchor) => askPaletteName(initial, anchor),
+  opened: () => renderPalette(),
+  say: (text) => { status.textContent = text; },
+});
+dockState = () => {
+  const id = palettesPane?.openId() ?? null;
+  const inPalettes = librarySection === 'palettes';
+  return { hidden: currentView !== 'library' || (inPalettes && !!id), saved: !inPalettes && id ? paletteStore.get(id) ?? null : null };
+};
+paletteStore.onChange = () => {
+  palettesPane?.refresh();
+  renderPalette();
+};
+void paletteStore.ready.then(renderPalette);
 // Library › Effects is built when it first shows (each effect's CPU share is estimated then), Add effect when it opens
 let effectsSection: { refresh(): void } | null = null;
 refreshEffects = () => {
@@ -4087,7 +4310,7 @@ $('about-btn').onclick = (e) => {
 const openFromAddress = (): void => {
   const h = location.hash.slice(1);
   if (h === 'patch') setView('patch');
-  if (h === 'library' || h === 'presets' || h === 'patterns' || h === 'assemblies' || h === 'community') setLibrarySection(h === 'library' ? 'patches' : h);
+  if (h === 'library' || h === 'palettes' || h === 'presets' || h === 'patterns' || h === 'assemblies' || h === 'community') setLibrarySection(h === 'library' ? 'patches' : h);
   if (h === 'emu' || h === 'fm1') setView('emu');
   if (h === 'flash') openInstall();
   if (h === 'about') void about.open();
@@ -4220,7 +4443,9 @@ if (import.meta.env.DEV) {
       loads: loadsSeen, uploadedLoad, selected: [...editor.selected], slot: deviceSlot?.slot ?? -1,
       uploadPending: linkBusy(),
       // the palette's chips as drawn and whether they are live (#1196, the scenario paletteEditor)
-      palette: palette ? { linked: palette.linked, chips: palette.chips(), cur: palette.now?.cur ?? null, next: palette.now?.next ?? null } : null,
+      palette: palette ? { linked: palette.linked, chips: palette.chips(), cur: palette.now?.cur ?? null, next: palette.now?.next ?? null, from: palette.from } : null,
+      // the saved palettes (#1236, the scenario paletteEditor): each one's name and its sounds' names
+      palettes: paletteStore.all().map((p) => ({ id: p.id, name: p.name, sounds: p.sounds.map((s) => s?.name ?? null) })),
     }),
     patchJson: (): string => JSON.stringify(editor.patch),
     /** the editor's armed set, as its ARM buttons set it (device keys, editor.armedSet) (#191) */

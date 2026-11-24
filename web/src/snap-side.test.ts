@@ -33,7 +33,7 @@ function actions(): SideActions & { calls: string[] } {
   const log = (name: string) => (...args: unknown[]) => void calls.push(`${name} ${args.filter((a) => typeof a !== 'object').join(' ')}`.trim());
   return {
     calls, hear: log('hear'), pick: log('pick'), remove: log('remove'), putBack: log('putBack'), revert: log('revert'), savePreset: log('savePreset'),
-    addToPalette: log('addToPalette'), more: log('more'), drag: log('drag'), step: log('step'), generate: log('generate'), play: log('play'),
+    addToPalette: log('addToPalette'), paletteChoice: log('paletteChoice'), more: log('more'), drag: log('drag'), step: log('step'), generate: log('generate'), play: log('play'),
   };
 }
 const strip = (): HTMLElement => {
@@ -107,29 +107,30 @@ describe('Sound design sidebar (#1040, #1048)', () => {
     expect(rows.map((r) => r.classList.contains('shown'))).toEqual([false, false, true, false]);
     expect(s.querySelector('.current')).toBeNull();   // (no special row)
     expect(rows.filter((r) => r.querySelector('.snap-acts')).map((r) => r.dataset.letter)).toEqual(['C']);
-    expect(acts(rows[2])).toEqual(['Save preset ▾', 'Add to palette', '⋯', '✕']);
+    expect(acts(rows[2])).toEqual(['Save preset ▾', 'Add to palette', '▾', '⋯', '✕']);
     expect(rows.map((r) => r.querySelector('.snap-ch')?.textContent ?? null)).toEqual(['3', '3', null, '=']);
     expect(rows.map((r) => !!r.querySelector('.snap-x'))).toEqual([true, true, false, true]);
     for (const r of rows) expect(r.title).not.toMatch(/Keep|Use|Nominate|changed since|A, the current patch/);
     // the buttons: none of them switches or drags
     rows[2].querySelector<HTMLButtonElement>('.snap-preset')!.click();
     rows[2].querySelector<HTMLButtonElement>('.snap-palette')!.click();
+    rows[2].querySelector<HTMLButtonElement>('.snap-palette-choice')!.click();
     rows[2].querySelector<HTMLButtonElement>('.snap-more')!.click();
     rows[2].querySelector<HTMLButtonElement>('.snap-remove')!.click();
     rows[3].querySelector<HTMLButtonElement>('.snap-x')!.click();
     rows[0].click();
     rows[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
     rows[3].dispatchEvent(new MouseEvent('contextmenu', { cancelable: true }));
-    expect(act.calls).toEqual(['savePreset', 'addToPalette', 'more', 'remove C', 'remove D', 'hear A', 'hear B', 'more']);
+    expect(act.calls).toEqual(['savePreset', 'addToPalette', 'paletteChoice', 'more', 'remove C', 'remove D', 'hear A', 'hear B', 'more']);
   });
 
   it('Save preset: with one engine it opens the Store dialog (no ▾); with none it is not there', () => {
     const s = strip();
     const list = [cand('A'), cand('B')];
     renderList(s, view(list, 'B', { engines: 1 }), actions());
-    expect(acts(s.querySelector('.snap.shown')!)).toEqual(['Save preset', 'Add to palette', '⋯', '✕']);
+    expect(acts(s.querySelector('.snap.shown')!)).toEqual(['Save preset', 'Add to palette', '▾', '⋯', '✕']);
     renderList(s, view(list, 'B', { engines: 0 }), actions());
-    expect(acts(s.querySelector('.snap.shown')!)).toEqual(['Add to palette', '⋯', '✕']);
+    expect(acts(s.querySelector('.snap.shown')!)).toEqual(['Add to palette', '▾', '⋯', '✕']);
   });
 
   it('a lone candidate cannot be deleted: one is always the current patch', () => {

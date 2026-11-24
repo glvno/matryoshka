@@ -412,7 +412,7 @@ Four rows of a device's card that K1..K4 turn at once on the FM-1.
 
 ### Palette
 
-Up to 8 sounds collected for a project, in order, to switch among them. Each entry is a bank slot, checked by its patch's name, with every device's preset and the selected pattern. The FM-1 keeps one palette; HOME held with a black key switches to an entry or saves to it. It is unrelated to the colour palettes of the screen and the editor.
+Up to 8 sounds collected for a project, in order, to switch among them. Each entry is a bank slot, checked by its patch's name, with every device's preset and the selected pattern. The FM-1 keeps one palette, the FM-1's palette, labelled ON THE FM-1 in the editor; HOME held with a black key switches to an entry or saves to it. The browser keeps any number of [saved palettes](#saved-palette) besides. It is unrelated to the colour palettes of the screen and the editor.
 
 ### Panel core
 
@@ -551,6 +551,10 @@ The state the editor and a connected FM-1 are in when Live is on and the editor'
 ### Sandbox patch
 
 A patch over the FM-1 budget: too big for the FM-1, or using a browser-only ability. It plays in the browser with no limits and is never sent to the FM-1. It is a normal patch, not an error; the editor marks it SANDBOX in gold.
+
+### Saved palette
+
+A palette the browser keeps, with a name ("Palette 1") and 8 positions, each empty or holding a whole sound: the patch as heard, the user presets it names and the name its chip shows. It never points at a Library patch or an FM-1 slot. It is edited in Library › Palettes, sent to the FM-1 in place of the FM-1's palette, and exported as a file.
 
 ### Second core
 
