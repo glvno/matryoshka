@@ -2729,6 +2729,31 @@ async function main() {
       await check('palette editor: under Live the editor follows to its copy, Pal Test', !!(await until(async () => (await T()).patch === 'Pal Test', 4000)), (await T()).patch);
       await check('palette editor: following sent the patch nowhere (no COMMIT)', !(await sentSince(t2)).some((s) => s[0] === 0x11));
       await emu.tap(B.play);
+      // candidates and the palette (#1262): Generate, hear C, Add to palette → a chip named after the patch and C; hear B,
+      // a click on that chip: the editor hears C again, its candidates kept, Live still on
+      const rows = () => page.evaluate(() => [...document.querySelectorAll('#snapshot-strip .snap')].map((r) => [r.dataset.letter, r.getAttribute('aria-current') === 'true']));
+      const hearing = async () => (await rows()).find((r) => r[1])?.[0] ?? null;
+      const base = (await T()).patch.toUpperCase();
+      await page.click('#snap-generate');
+      await check('palette editor: Generate makes candidates B to E', !!(await until(async () => (await rows()).length >= 5, 15000)), JSON.stringify(await rows()));
+      await page.click('#snapshot-strip .snap[data-letter="C"]');
+      await check('palette editor: a click on C: the editor hears C', !!(await until(async () => (await hearing()) === 'C', 3000)), String(await hearing()));
+      const setSize = (await rows()).length;
+      await page.keyboard.down('Control'); await page.keyboard.press('k'); await page.keyboard.up('Control');
+      await page.waitForSelector('#commands[open]', { timeout: 3000 }).catch(() => {});
+      await page.fill('#commands-input', 'add to palette');
+      await page.keyboard.press('Enter');
+      const cName = `${base} C`;
+      const cPos = await until(async () => { const i = (await pal()).chips.findIndex((c) => c.name === cName); return i >= 0 ? i + 1 : null; }, 8000);
+      await check(`palette editor: Commands > Add to palette from C: a chip named ${cName}`, !!cPos, JSON.stringify((await pal()).chips.map((c) => c.name)));
+      await shot('candidates-add-to-palette');
+      await page.click('#snapshot-strip .snap[data-letter="B"]');
+      await check('palette editor: a click on B: the editor hears B', !!(await until(async () => (await hearing()) === 'B', 3000)));
+      if (cPos) await page.click(`#snap-column .pal-chip[data-pos="${cPos - 1}"]`);
+      await check('palette editor: a click on the C chip: the FM-1 plays it', !!cPos && !!(await until(async () => (await pal()).cur === cPos - 1, 6000)));
+      await check('palette editor: and the editor hears C again', !!(await until(async () => (await hearing()) === 'C', 4000)), String(await hearing()));
+      await check('palette editor: its candidates kept', (await rows()).length === setSize, JSON.stringify(await rows()));
+      await check('palette editor: Live still on', (await T()).live === true);
       // a full palette (#1258): Add to palette fills the empty positions, then says so beside the chips (a toast there, and
       // the status line) and offers a position to replace (the 1.26.3 editor said it only in the status line: unseen)
       const addInCommands = async () => {
@@ -2766,7 +2791,7 @@ async function main() {
       await page.locator('.toast button', { hasText: 'Replace…' }).click({ timeout: 3000 }).catch(() => {});
       await shot('palette-full-replace');
       await page.locator('.ctx-fixed [role="menuitem"]', { hasText: '6 · SILVER BOX' }).click({ timeout: 3000 }).catch(() => {});
-      await check('palette editor: Replace… > 6 · SILVER BOX puts the patch there', !!(await until(async () => (await chip(5))?.name === 'PAL TEST', 8000)), JSON.stringify(await chip(5)));
+      await check('palette editor: Replace… > 6 · SILVER BOX puts the patch there (candidate C, heard since the chip click)', !!(await until(async () => (await chip(5))?.name === cName, 8000)), JSON.stringify(await chip(5)));
       await page.screenshot({ path: join(OUT, 'palette-editor-page.png') }).catch(() => {});
     },
     async editorIgnore() {   // #702: GLO > SYSTEM > EDITOR at IGNORE: the editor lets go, Connect skips the FM-1 and says why
