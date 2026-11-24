@@ -22,6 +22,7 @@
 // step's locks: each locked row with its value to edit or delete, and a row of the track's device to lock (at its normal
 // value, to edit from there).
 import { NOTE_NAMES, STEPS_MAX, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef } from './patch';
+import { closeButton, closeFloat, openFloat } from './popover';
 import { chordFits, COND_ORDER, condName, isDrone, locksAt, MICRO_MAX, MICRO_STEPS, microName, RATCHET_MAX, setChord, setCond, setLock, setStep, setStepValue, setTiming, STEP_NOTE, STEP_VEL, stepView, type StepLock, type StepNote, type StepView } from './track';
 
 /** a row of the track's device a step can lock (#524): its module's parameter, its label ("filter cutoff"), its definition
@@ -318,18 +319,11 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
     const r = c.getBoundingClientRect();
     return Math.max(1, Math.min(127, Math.round(((r.bottom - 2 - y) / Math.max(1, r.height - 4)) * 127)));
   };
-  /** the open locks list (#524): its step, or -1 */
+  /** the open locks list (#524): its step, or -1; a popover under the rule of every menu (popover.ts) */
   let pop: HTMLElement | null = null;
   let popK = -1;
   const closeLocks = (): void => {
-    if (pop) lockOpen = null;
-    pop?.remove();
-    pop = null;
-    popK = -1;
-    document.removeEventListener('pointerdown', outside, true);
-  };
-  const outside = (e: Event): void => {
-    if (pop && !pop.contains(e.target as Node)) closeLocks();
+    if (pop) closeFloat(false, pop);
   };
   /** the value control of a row: a choice list, else a number within its range */
   const valueInput = (r: LockRow, v: number, set: (v: number) => void): HTMLElement => {
@@ -355,18 +349,12 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
     const lrows = ops.lockRows();
     const box = document.createElement('div');
     box.className = 'lock-pop';
-    box.onpointerdown = (e) => e.stopPropagation(); // (not a card drag)
     const draw = (): void => {
       box.replaceChildren();
       const h = document.createElement('div');
       h.className = 'lock-head';
       h.textContent = `step ${k + 1}: condition, timing, P-locks`;
-      const x = document.createElement('button');
-      x.type = 'button';
-      x.textContent = '×';
-      x.title = 'close';
-      x.onclick = closeLocks;
-      h.append(x);
+      h.append(closeButton(`step ${k + 1}’s locks`));
       box.append(h);
       if (view(m, k).on) {                       // the step's trig condition (#674): when its notes play
         const line = document.createElement('div');
@@ -434,13 +422,18 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
     };
     draw();
     const c = cells[k];
-    box.style.left = `${c.offsetLeft}px`;
-    box.style.top = `${c.offsetTop + c.offsetHeight + 4}px`;
-    rows.parentElement?.append(box);
+    openFloat(box, { owner: box, anchor: c, onClose: () => {
+      if (pop !== box) return;
+      pop = null;
+      popK = -1;
+      lockOpen = null;
+    } });
+    const r = c.getBoundingClientRect();
+    box.style.left = `${Math.max(8, Math.min(r.left, innerWidth - box.offsetWidth - 8))}px`;
+    box.style.top = `${r.bottom + 4}px`;
     pop = box;
     popK = k;
     lockOpen = { id: m.id, k };
-    document.addEventListener('pointerdown', outside, true);
   };
   const cellInput = (c: HTMLElement, k: number): void => {
     c.oncontextmenu = (e) => {

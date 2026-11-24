@@ -16,7 +16,8 @@ import { litWhileEnabled, buttonLight, kindOf, pageList, setPages, switches, tog
 import { buttonEditor } from './button-editor';
 import { arpChoices, arpFree, arpJackless, type ArpChoice } from './arp-button';
 import { showToast, showUndo } from './toast';
-import { positionPopover } from './popover';
+import { closeFloat, closeOrphanFloat, floatOpen, openFloat, positionPopover } from './popover';
+import { popMenu, type MenuItem } from './menu';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
 import { parameterMenu } from './parameter-menu';
 import { sliderJack } from './slider-jack';
@@ -291,6 +292,11 @@ const TYPE_GAP_MS = 400;
 /** a gesture made without a pointer (arrow keys, the wheel) ends this long after its last change */
 const GESTURE_IDLE_MS = 600;
 type Pt = { x: number; y: number };
+/** where a card's menu opens: a canvas point (a right-click's), or under the button that opened it (`from`: its next press
+ *  closes it; `end`: the menu's right edge on the button's) */
+type MenuAt = Pt & { from?: HTMLElement; end?: boolean };
+/** the ARP menu's name for popover.ts (its button's next press closes it) */
+const ARP_MENU = 'arp-menu';
 /** the footprint of a new card for the free-spot search: a grid cell less its gutters */
 const CARD_W = 300;
 const CARD_H = 540;
@@ -314,8 +320,6 @@ type ArrSpot = { x1: number; x2: number; y: number; act: () => void };
 type Box = { left: number; top: number; right: number; bottom: number };
 /** the width of a page outline's handle strip, left of its rows (px) */
 const ARR_HANDLE = 14;
-/** an entry of a card's menu: `key` is the shortcut shown at the right, `rule` a line above it */
-type MenuItem = { text: string; run: () => void; key?: string; danger?: boolean; rule?: boolean };
 /** a drop is judged by the card's header (where it is held), this far below its top */
 const HEAD_Y = 15;
 /** a touch held this long without moving is a long press */
@@ -1045,6 +1049,7 @@ export class Editor {
     if (this.armedSet.size) this.showArmed();   // (the rebuilt cards: armed, and armed with an armed device, #418)
     this.applyStack();
     if (this.buttonPop) this.fillButtonEditor();
+    closeOrphanFloat();                     // (a menu whose card was redrawn or deleted)
     this.flawPanel?.sync();
     this.ev.onScreens?.(this.screens, this.envScreens);
     this.sizeCanvas();
@@ -1377,7 +1382,7 @@ export class Editor {
     if (open) tools.append(this.outButton(open, () => this.takeOutModule(open, m)));
     if (!open && def.type !== 'steps' && armable(this.patch, `m${m.id}`)) tools.append(this.armButton(`m${m.id}`, this.nameOf(m)));
     if (def.type !== 'fm1' && def.type !== 'output' && !EDITOR_ONLY.has(def.type)) tools.append(this.bypassButton(m, def));
-    const menu = (at: Pt): void => this.contextMenu(m, def, at);
+    const menu = (at: MenuAt): void => this.contextMenu(m, def, at);
     tools.append(this.moreButton(menu));
     tools.prepend(this.costSlot(this.costs?.modules.get(m.id)));
     head.append(title, tools);
@@ -3440,7 +3445,7 @@ export class Editor {
   }
 
   /** a long press on a card header (touch): the context actions */
-  private contextMenu(m: ModuleInst, def: ModuleDef, at: Pt): void {
+  private contextMenu(m: ModuleInst, def: ModuleDef, at: MenuAt): void {
     const items: MenuItem[] = [];
     if (def.type !== 'fm1' && def.type !== 'output') items.push({ text: m.bypass ? 'Turn on' : 'Bypass', key: 'B', run: () => {
       this.selected.clear();
@@ -3468,7 +3473,7 @@ export class Editor {
   }
 
   /** an assembly's menu (its header's ⋯, a right-click on its header) */
-  private assemblyMenu(a: AssemblyInst, at: Pt): void {
+  private assemblyMenu(a: AssemblyInst, at: MenuAt): void {
     this.popMenu([
       { text: a.open ? 'Collapse' : 'Expand', key: a.open ? '▾' : '▸', run: () => this.toggleOpen(a) },
       { text: 'Choose what the card shows', run: () => {
@@ -3576,18 +3581,14 @@ export class Editor {
   }
 
 
-  /** a header's ⋯: opens the card's menu under it */
-  private moreButton(open: (at: Pt) => void): HTMLButtonElement {
-    const b = this.button('⋯', 'Menu (also right-click the header)', () => {
-      const r = b.getBoundingClientRect();
-      const w = this.world.getBoundingClientRect();
-      open({ x: (r.right - w.left) / this.zoom - 190, y: (r.bottom - w.top) / this.zoom + 4 });
-    }, 'more');
+  /** a header's ⋯: opens the card's menu under it (again: closes it) */
+  private moreButton(open: (at: MenuAt) => void): HTMLButtonElement {
+    const b = this.button('⋯', 'Menu (also right-click the header)', () => open({ x: 0, y: 0, from: b, end: true }), 'more');
     return b;
   }
 
   /** right-click on a header opens its menu at the pointer */
-  private headMenu(head: HTMLElement, open: (at: Pt) => void): void {
+  private headMenu(head: HTMLElement, open: (at: MenuAt) => void): void {
     head.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const w = this.world.getBoundingClientRect();
@@ -3595,40 +3596,14 @@ export class Editor {
     });
   }
 
-  /** a small menu at a canvas point; a press anywhere else closes it */
-  private popMenu(items: MenuItem[], at: Pt): void {
-    document.querySelector('.ctx')?.remove();
-    const menu = document.createElement('div');
-    menu.className = 'ctx';
-    menu.setAttribute('role', 'menu');
-    for (const it of items) {
-      const b = document.createElement('button');
-      b.setAttribute('role', 'menuitem');
-      b.className = (it.danger ? 'danger' : '') + (it.rule ? ' rule' : '');
-      const label = document.createElement('span');
-      label.textContent = it.text;
-      b.append(label);
-      if (it.key) {
-        const k = document.createElement('kbd');
-        k.textContent = it.key;
-        b.append(k);
-      }
-      b.onclick = (e) => {
-        e.stopPropagation();
-        menu.remove();
-        it.run();
-      };
-      menu.append(b);
+  /** a card's menu (menu.ts, the rule of every menu: popover.ts): under the button that opened it, else at a canvas point */
+  private popMenu(items: MenuItem[], at: MenuAt): void {
+    if (at.from) {
+      const r = at.from.getBoundingClientRect();
+      return popMenu(items, at.from, at.end ? { x: r.right, y: r.bottom + 4, end: true } : undefined);
     }
-    Object.assign(menu.style, { left: `${at.x}px`, top: `${at.y}px` });
-    this.modulesEl.append(menu);
-    const away = (e: Event): void => {
-      if (!menu.contains(e.target as Node)) {
-        menu.remove();
-        window.removeEventListener('pointerdown', away, true);
-      }
-    };
-    setTimeout(() => window.addEventListener('pointerdown', away, true));
+    const w = this.world.getBoundingClientRect();
+    popMenu(items, null, { x: w.left + at.x * this.zoom, y: w.top + at.y * this.zoom });
   }
 
   // ---- keyboard actions (main.ts shortcuts): the selection
@@ -3852,7 +3827,7 @@ export class Editor {
   }
 
   /** a comment's menu (right-click on it) */
-  private commentMenu(c: CommentBox, at: Pt): void {
+  private commentMenu(c: CommentBox, at: MenuAt): void {
     this.popMenu([
       { text: 'Edit text', run: () => this.editComment(c.id) },
       { text: 'Duplicate', key: '⌘D', run: () => {
@@ -4582,7 +4557,7 @@ export class Editor {
     const open = choices.filter((c) => !c.disabled);
     btn.title = open.length === 1 ? `ARP: nothing on it. Click: ${open[0].label} (${open[0].sub})`
       : `ARP: nothing on it. Click to add an arpeggiator: ${open.length} ways, a menu asks which`;
-    btn.addEventListener('click', () => open.length === 1 ? this.takeArp(open[0]) : this.openArpMenu(btn, choices));
+    btn.addEventListener('click', () => open.length === 1 ? this.takeArp(open[0]) : floatOpen(ARP_MENU) ? closeFloat() : this.openArpMenu(btn, choices));
     btn.addEventListener('contextmenu', (e) => { e.preventDefault(); this.openButtonEditor('arp'); });
     const more = document.createElement('span');
     more.className = 'pb-more';
@@ -4596,10 +4571,8 @@ export class Editor {
 
   /** the ARP menu: one row per choice; hovering a row glows the keys cables it takes over */
   private openArpMenu(btn: HTMLElement, choices: ArpChoice[]): void {
-    document.querySelector('.arp-menu')?.remove();
     const menu = document.createElement('div');
     menu.className = 'arp-menu';
-    menu.popover = 'auto';
     menu.setAttribute('role', 'menu');
     menu.setAttribute('aria-label', 'Put an arpeggiator on ARP');
     const head = document.createElement('div');
@@ -4619,12 +4592,10 @@ export class Editor {
       row.addEventListener('pointerenter', () => this.glowCables(c.cables));
       row.addEventListener('focus', () => this.glowCables(c.cables));
       row.addEventListener('pointerleave', () => this.glowCables([]));
-      row.addEventListener('click', () => { menu.hidePopover(); this.takeArp(c); });
+      row.addEventListener('click', () => { closeFloat(); this.takeArp(c); });
       menu.append(row);
     }
-    menu.addEventListener('toggle', () => { if (!menu.matches(':popover-open')) { this.glowCables([]); menu.remove(); } });
-    document.body.append(menu);
-    menu.showPopover();
+    openFloat(menu, { owner: ARP_MENU, anchor: () => this.dock?.querySelector('.panel-btn.arp-free'), back: btn, onClose: () => this.glowCables([]) });
     const r = btn.getBoundingClientRect();
     menu.style.left = `${Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, r.left + r.width / 2 - menu.offsetWidth / 2))}px`;
     menu.style.top = `${Math.max(8, r.top - menu.offsetHeight - 8)}px`;
@@ -4639,21 +4610,23 @@ export class Editor {
     showUndo(c.done, () => this.undo());
   }
 
-  /** the button editor's popover (button-editor.ts): kept across redraws, anchored on its dock button */
+  /** the button editor open (button-editor.ts): kept across redraws, anchored on its dock button */
   private buttonPop: { el: HTMLElement; b: string } | null = null;
 
-  /** open (or move to) the editor of patch button b */
+  /** open the editor of patch button b (whatever else was open closes); open on b already: close it */
   openButtonEditor(b: string): void {
-    if (!this.buttonPop) {
-      const el = document.createElement('div');
-      el.className = 'routing-controls button-editor';
-      el.popover = 'auto';
-      el.addEventListener('toggle', () => { if (!el.matches(':popover-open')) this.buttonPop = null; });
-      el.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
-      document.body.append(el);
-      this.buttonPop = { el, b };
-    }
-    this.buttonPop.b = b;
+    if (this.buttonPop?.b === b) return closeFloat(true);
+    const el = document.createElement('div');
+    el.className = 'routing-controls button-editor';
+    el.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
+    const pop = { el, b };
+    openFloat(el, {
+      owner: pop,
+      anchor: () => this.dock?.querySelector(`.panel-btn[data-button="${b}"]`),
+      onClose: () => { if (this.buttonPop === pop) this.buttonPop = null; },
+      keepOn: (e) => e.altKey,             // (Alt-click a card row: its page joins a Page button's list)
+    });
+    this.buttonPop = pop;
     this.fillButtonEditor();
   }
 
@@ -4663,14 +4636,13 @@ export class Editor {
     const m = this.docked() ?? this.patch.modules.find((x) => x.type === 'fm1');
     if (!pop) return;
     const anchor = this.dock?.querySelector<HTMLElement>(`.panel-btn[data-button="${pop.b}"]`);
-    if (!m || !anchor) { if (pop.el.matches(':popover-open')) pop.el.hidePopover(); pop.el.remove(); this.buttonPop = null; return; }
+    if (!m || !anchor) return closeFloat(false, pop);
     pop.el.replaceChildren(...buttonEditor(pop.b, {
       patch: () => this.patch,
       change: (fn) => { this.change(fn); },
       label: (text) => this.setPanelLabel(m, pop.b, text),
       devices: () => this.devices,
     }, FIXED_BUTTONS.has(pop.b)));
-    if (!pop.el.matches(':popover-open')) pop.el.showPopover();
     positionPopover(pop.el, anchor);
   }
 
@@ -4886,15 +4858,6 @@ export class Editor {
       else delete panel.labels;
       if (!Object.keys(panel).length) delete m.panel;
     });
-  }
-
-  /** a small menu at a screen point (the dock is not in the canvas); a press anywhere else closes it */
-  private dockMenu(items: MenuItem[], x: number, y: number): void {
-    this.popMenu(items, { x, y });
-    const menu = document.querySelector<HTMLElement>('.ctx');
-    if (!menu) return;
-    document.body.append(menu);
-    Object.assign(menu.style, { position: 'fixed', left: `${x}px`, top: `${y - 8}px`, zIndex: '40', transform: 'translateY(-100%)' });
   }
 
   /**
@@ -5213,11 +5176,7 @@ export class Editor {
       const pr = stepPreset(this.patch, a, dir);
       if (pr) this.loadPreset(a, pr);
     };
-    const name = this.button('', '', () => {
-        const r = name.getBoundingClientRect();
-        const w = this.world.getBoundingClientRect();
-        this.popMenu(this.presetItems(a), { x: (r.left - w.left) / this.zoom, y: (r.bottom - w.top) / this.zoom + 4 });
-      }, 'sm preset-name');
+    const name = this.button('', '', () => this.popMenu(this.presetItems(a), { x: 0, y: 0, from: name }), 'sm preset-name');
     const show = (): void => {
       const edited = !!a.preset && !matchesPreset(this.patch, a);
       // (the preset's own spelling: the FM-1 names it in capitals)
@@ -5449,7 +5408,7 @@ export class Editor {
     const chip = parent ? null : this.presetChip(a);
     tools.prepend(this.costSlot(this.costs?.assemblies.get(a.id)));
     if (embed) {
-      const menu = (at: Pt): void => (inDrawer ? this.effectMenu(inDrawer, a, at) : this.embedMenu(embedIn!, a, at));
+      const menu = (at: MenuAt): void => (inDrawer ? this.effectMenu(inDrawer, a, at) : this.embedMenu(embedIn!, a, at));
       const pw = this.button('⏻', `${a.label} on / off (bypass)`, () => this.switchAssembly(a), 'pw');
       pw.classList.toggle('on', !this.asmOffShown(a));
       pw.setAttribute('aria-pressed', String(!this.asmOffShown(a)));
@@ -5579,7 +5538,7 @@ export class Editor {
   }
 
   /** the ⋯ of a child shown whole on its parent's card */
-  private embedMenu(parent: AssemblyInst, a: AssemblyInst, at: Pt): void {
+  private embedMenu(parent: AssemblyInst, a: AssemblyInst, at: MenuAt): void {
     this.popMenu([
       { text: a.bypass ? 'Turn on' : 'Bypass', run: () => this.switchAssembly(a) },
       { text: 'Rename', run: () => this.rename(a) },
@@ -6175,7 +6134,7 @@ export class Editor {
   }
 
   /** an effect card's ⋯ in a drawer */
-  private effectMenu(d: AssemblyInst, a: AssemblyInst, at: Pt): void {
+  private effectMenu(d: AssemblyInst, a: AssemblyInst, at: MenuAt): void {
     this.popMenu([
       { text: a.bypass ? 'Turn on' : 'Bypass', run: () => this.switchAssembly(a) },
       { text: 'Rename', key: 'dbl-click', run: () => this.rename(a) },

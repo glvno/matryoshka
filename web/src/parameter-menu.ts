@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { positionPopover } from './popover';
+import { closeFloat, openFloat, positionPopover } from './popover';
 import { canSeparate, isPin, parameterInputs, pinRoutes, removeRoute, separateDepth, setInputRoute } from './parameter-routing';
 import { DEPTH_MAX, isBipolar, paramValue, rangeOf, type Cable, type ModuleDef, type ModuleInst, type ParamDef, type Patch, type Range } from './patch';
 import { DEFS } from './modules';
@@ -47,7 +47,6 @@ export function parameterMenu(m: ModuleInst, def: ModuleDef, pd: ParamDef, ev: E
   menu.className = 'parameter-routing';
   menu.addEventListener('keydown', (e) => {
     if (!menu.open && ![' ', 'Enter', 'Tab'].includes(e.key)) return;
-    if (e.key === 'Escape') { menu.open = false; summary.focus(); }
     if (!e.ctrlKey && !e.metaKey) e.stopPropagation();
   });
   menu.open = open;
@@ -56,9 +55,10 @@ export function parameterMenu(m: ModuleInst, def: ModuleDef, pd: ParamDef, ev: E
     if (!menu.isConnected) return;
     if (menu.open) {
       for (const refresh of refreshers) refresh();
-      content.showPopover();
+      // (the rule of every menu, popover.ts: Escape, a press outside or ⋮ again closes it)
+      openFloat(content, { owner: menu, anchor: summary, keep: true, onClose: () => { if (menu.isConnected) menu.open = false; } });
       positionPopover(content, summary);
-    } else if (content.matches(':popover-open')) content.hidePopover();
+    } else closeFloat(false, menu);
     onToggle(menu.open);
   };
   const label = longName(def.type, pd.name);
@@ -68,10 +68,6 @@ export function parameterMenu(m: ModuleInst, def: ModuleDef, pd: ParamDef, ev: E
   summary.setAttribute('aria-label', summary.title);
   const content = document.createElement('div');
   content.className = 'routing-controls';
-  content.popover = 'auto';
-  content.addEventListener('toggle', () => {
-    if (!content.matches(':popover-open') && menu.isConnected) menu.open = false;
-  });
   const hint = (text: string): void => {
     const p = document.createElement('p');
     p.textContent = text;
