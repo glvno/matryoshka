@@ -440,7 +440,7 @@ describe('adding to the palette saves what the FM-1 needs to play the sound (own
   it('never takes a different patch in a numbered slot for the copy: only the content the editor stored there', async () => {
     const { p, a } = padPatch();
     let mine = structuredClone(p);
-    const { fm1, palette, opened, said } = await linked({ candidates: [{ name: 'My Pad', patch: () => structuredClone(mine) }] });
+    const { fm1, link, palette, opened, said } = await linked({ candidates: [{ name: 'My Pad', patch: () => structuredClone(mine) }] });
     fm1.slots[0] = { slot: 0, used: true, length: binLength(p), name: 'MY PAD' };
     fm1.slots[5] = { slot: 5, used: true, length: binLength(p), name: 'MY PAD 2' };   // (not the editor's: stored elsewhere)
     fm1.entries[1] = { slot: 5, pattern: 0, name: 'MY PAD 2', devices: [] };
@@ -458,7 +458,11 @@ describe('adding to the palette saves what the FM-1 needs to play the sound (own
     mine = structuredClone(p);
     applyPreset(mine, mine.assemblies!.find((x) => x.id === a.id)!, presetsOf(p, a).find((x) => x.name === 'Bright')!);
     palette.findCopies();
-    expect(palette.chips()[0].copy).toBe(false);   // (My Pad changed since: no longer what slot 2 holds)
+    // (My Pad changed since: no longer what slot 2 holds; the copy this browser kept of what it stored there opens)
+    expect(palette.chips()[0].copy).toBe(true);
+    await palette.click(0);
+    await fm1.quiet();
+    expect(opened.map((x) => [x.from, link.encodeFor(x.patch)])).toEqual([['', fm1.bins[1]]]);
   });
   it('with firmware that cannot read a slot back, stores the patch rather than trust a name and length', async () => {
     const { fm1, palette } = await linked({ features25: 0 });
@@ -495,5 +499,74 @@ describe('adding to the palette saves what the FM-1 needs to play the sound (own
     expect(fm1.presets).toEqual([]);
     expect(fm1.slots.every((s) => !s.used)).toBe(true);
     expect(said.at(-1)).toBe('Adding "My Pad" to the palette failed: FM-1: that slot no longer holds the patch. Nothing was added: what it stored on the FM-1 for it is taken back');
+  });
+});
+
+describe('this browser\'s copy of each sound it put into the palette (owner 2026-11-24: "the fm1 switches to that instrument but the editor does not switch with it")', () => {
+  /** the same FM-1 as a link finds it after the page loaded again: its bank and its palette */
+  async function reloaded(from: PaletteFm1) {
+    const next = await linked();
+    next.fm1.slots = from.slots.map((s) => ({ ...s }));
+    next.fm1.bins = [...from.bins];
+    next.fm1.entries = [...from.entries];
+    next.fm1.report();
+    await next.fm1.quiet();
+    return next;
+  }
+  it('a sound added with no saved patch and no version of it in the editor opens from the copy kept: an FM-1 switch under Live, a chip click after a reload', async () => {
+    const { p } = padPatch();
+    const { fm1, link, palette, opened, off } = await linked({ live: true });
+    await palette.add('My Pad', p);
+    await fm1.quiet();
+    expect(palette.chips()[0].copy).toBe(true);
+    fm1.tap(0);
+    await fm1.quiet();
+    expect([off, opened.map((x) => [x.adopt, x.from, link.encodeFor(x.patch)])]).toEqual([[], [[true, '', fm1.bins[0]]]]);
+    const again = await reloaded(fm1);
+    expect(again.palette.chips()[0].copy).toBe(true);
+    await again.palette.click(0);
+    await again.fm1.quiet();
+    expect(again.opened.map((x) => again.link.encodeFor(x.patch))).toEqual([fm1.bins[0]]);
+  });
+  it('a hold-save on the FM-1 keeps the patch it stored: a switch back to it, the editor on another patch since, opens it', async () => {
+    const { p } = padPatch();
+    const other = padPatch('Other').p;
+    other.modules.find((m) => m.type === 'output')!.params.level = 0.5;
+    let current = p;
+    const { fm1, link, opened, off, kept } = await linked({ live: true, current: () => current });
+    fm1.holdSave(0, link.encodeFor(p), 'MY PAD', entryOf(p, 0));
+    await fm1.quiet();
+    current = other;   // (another patch opened and sent under Live, then saved on the FM-1 too)
+    fm1.holdSave(1, link.encodeFor(other), 'OTHER', entryOf(other, 0));
+    await fm1.quiet();
+    expect(kept()).toBe(2);
+    fm1.tap(0);
+    await fm1.quiet();
+    expect([off, opened.map((x) => [x.adopt, link.encodeFor(x.patch)])]).toEqual([[], [[true, fm1.bins[0]]]]);
+  });
+  it('with firmware that cannot read a slot back, the copy kept opens by its slot, name and length', async () => {
+    const { p } = padPatch();
+    const { fm1, link, palette, opened } = await linked({ features25: 0 });
+    await palette.add('My Pad', p);
+    await fm1.quiet();
+    await palette.click(0);
+    await fm1.quiet();
+    expect(opened.map((x) => link.encodeFor(x.patch))).toEqual([fm1.bins[0]]);
+  });
+  it('the copies follow Send bank to their patches\' new slots', async () => {
+    const { p } = padPatch();
+    const { fm1, link, palette, opened } = await linked();
+    await palette.add('My Pad', p);
+    await fm1.quiet();
+    fm1.slots[3] = { ...fm1.slots[0], slot: 3 };
+    fm1.bins[3] = fm1.bins[0];
+    fm1.slots[0] = { slot: 0, used: false, length: 0, name: '' };
+    fm1.bins[0] = null;
+    await palette.repoint(new Map([[0, 3]]));
+    await fm1.quiet();
+    expect(fm1.entries[0]).toMatchObject({ slot: 3, name: 'MY PAD' });
+    await palette.click(0);
+    await fm1.quiet();
+    expect(opened.map((x) => link.encodeFor(x.patch))).toEqual([fm1.bins[3]]);
   });
 });
