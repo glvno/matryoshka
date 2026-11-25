@@ -284,4 +284,17 @@ describe('the FM-1\'s module limit (#721: 128, D-256; #1286: 254)', () => {
     expect(bin[1]).toBe(FORMAT_1_27);
     expect(bin[2]).toBe(b.lines.nodes);
   });
+
+  it('a device of 128 members (128 modules, no Main, no Output) is format 67: its member count takes MEMBER_WIDE', async () => {
+    const { FORMAT_1_27, MEMBER_WIDE } = await import('./patchbin');
+    const { makeAssembly } = await import('./assembly');
+    const p = emptyPatch('wide');   // (Steps tracks: kept with no cable, device-compile.ts KEPT; Main and Output join no assembly)
+    const tracks = Array.from({ length: 128 }, (_, k) => addModule(p, DEFS.steps, 800, 40 * k).id);
+    makeAssembly(p, tracks, 'all').params.push({ module: tracks[0], param: 'len', label: 'length' });
+    expect(deviceBudget(p).lines.nodes).toBe(128);
+    expect(formatOf(p)).toBe(FORMAT_1_27);
+    const bin = encodePatch(p, true);
+    expect(bin[1]).toBe(FORMAT_1_27);
+    expect(bin.some((x, i) => x === MEMBER_WIDE && bin[i + 1] === 128)).toBe(true);
+  });
 });

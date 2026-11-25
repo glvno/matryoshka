@@ -363,10 +363,17 @@ export const FORMAT_RACK = 66;
  * firmware without feature bit 36 (protocol.ts FEATURE5_FORMAT_67) is told to update. It has SLIM's layout.
  */
 export const FORMAT_1_27 = 67;
-/** what a patch uses of FORMAT_1_27 (`dev`: its device form): more than 128 modules. The stereo slice adds its own tests
- * here (keep this the one predicate) */
-export function uses127(dev: Patch): boolean {
-  return dev.modules.length > MODULES_1_26;
+/** what a patch uses of FORMAT_1_27 (`dev`: its device form): more than 128 modules, or a device of more than 127 members
+ * (MEMBER_WIDE: a plain count of 128 reads as a run before 1.27; only 128 modules without Main can make one). The stereo
+ * slice adds its own tests here (keep this the one predicate) */
+export function uses127(source: Patch, dev: Patch): boolean {
+  if (dev.modules.length > MODULES_1_26) return true;
+  if (dev.modules.length <= 0x7f) return false;
+  const ids = new Set(dev.modules.map((m) => m.id));
+  return deviceSection(source, dev).some((d) => {
+    const a = d.asm === undefined ? undefined : assemblyById(source, d.asm);
+    return !!a && deviceModules(source, a).filter((id) => ids.has(id)).length > 0x7f;
+  });
 }
 /**
  * The first format that writes the panel labels by their length (panelBytes), the cables grouped by the module they go
@@ -449,7 +456,7 @@ export const formatOf = (source: Patch, view: ReturnType<typeof deviceView> = de
 /** the lowest format that holds what this patch uses: VERSION, or WRITE_FLOOR when it uses nothing appended since (`dev`: its device form) */
 export function baseFormat(source: Patch, dev: Patch = deviceView(source, true).patch): number {
   const late = (type: string): ParamDef[] => DEFS[type].params.filter((q) => (q.since ?? 0) > WRITE_FLOOR || (q.grew?.since ?? 0) > WRITE_FLOOR);
-  const floor = uses127(dev) ? FORMAT_1_27 : rackPlan(source, { patch: dev, groups: [] }) ? FORMAT_RACK : source.midiLearn?.length ? FORMAT_1_23 : uses122(dev) ? FORMAT_1_22 : uses120(dev) ? FORMAT_1_20 : uses119(dev) ? FORMAT_1_19 : usesPriorityCable(dev) ? FORMAT_PRIORITY_CABLE : usesConds(dev) ? FORMAT_CONDS : harmonyLfo(source, dev) ? 55 : originRecord(dev).length ? 54 : chainedHarmonizer(source) ? 53 : uses112(dev) ? FORMAT_1_12 : uses111(source, dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
+  const floor = uses127(source, dev) ? FORMAT_1_27 : rackPlan(source, { patch: dev, groups: [] }) ? FORMAT_RACK : source.midiLearn?.length ? FORMAT_1_23 : uses122(dev) ? FORMAT_1_22 : uses120(dev) ? FORMAT_1_20 : uses119(dev) ? FORMAT_1_19 : usesPriorityCable(dev) ? FORMAT_PRIORITY_CABLE : usesConds(dev) ? FORMAT_CONDS : harmonyLfo(source, dev) ? 55 : originRecord(dev).length ? 54 : chainedHarmonizer(source) ? 53 : uses112(dev) ? FORMAT_1_12 : uses111(source, dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
   if (!dev.modules.some((m) => late(m.type).length)) return floor;
   let v = floor;
   const rows = new Set<string>();
