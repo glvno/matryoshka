@@ -202,12 +202,12 @@ export function exportSelectedFactoryAudition(options: AuditionExportOptions) {
     const sourceName = SOURCE[index].name;
     const audit = factoryFxAudit.find(entry => entry.name === sourceName);
     const selected = selectedFactoryProfile[sourceName];
-    // (a drum kit with a pattern set is its source plus those patterns, links and songs: D-829; a kit with a drum rack
-    // keeps every module of that as it was, Main's panel aside, D-1053; a patch of UNSHIPPED_PATTERNS ships without its
-    // patterns and songs)
+    // (a drum kit with a pattern set is its source plus those patterns, links and songs: D-829; a kit with a drum rack or
+    // an FX drawer keeps every module of that as it was, Main's panel aside, D-1053, D-1055; a patch of UNSHIPPED_PATTERNS
+    // ships without its patterns and songs)
     const source = withKitPatterns(structuredClone(SOURCE[index].patch) as unknown as Patch);
     if (UNSHIPPED_PATTERNS.includes(sourceName)) clearAllPatterns(source);
-    const kept = selected?.drumRack
+    const kept = selected?.drumRack || selected?.drawer
       ? source.modules.every(m => JSON.stringify({ ...patch.modules.find(x => x.id === m.id), panel: undefined }) === JSON.stringify({ ...m, panel: undefined }))
       : JSON.stringify(patch) === JSON.stringify(source);
     if (!audit && (name !== sourceName || !kept))

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type ModuleInst, type Patch } from './patch';
-import { DEVICE, deviceBudget, encodedSize, encodePatch, FLAG_NOTES, FLAG_PATTERNS, formatOf, FORMAT_PRIORITY_CABLE, FORMAT_RACK, harmonyLfo, layout, patternRecord, VERSION } from './patchbin';
+import { DEVICE, deviceBudget, encodedSize, encodePatch, FLAG_NOTES, FLAG_PATTERNS, formatOf, FORMAT_1_27, FORMAT_PRIORITY_CABLE, FORMAT_RACK, harmonyLfo, layout, patternRecord, VERSION } from './patchbin';
 import { rackPlan } from './rack-plan';
 import { deviceView, VOICING_CABLE_INPUTS } from './poly';
 import { factoryWithPatterns, PRESETS } from './presets';
@@ -105,10 +105,10 @@ describe('patterns and songs: the binary (format 48)', () => {
       const many = dev.modules.length > 64;   // (more than 64 modules: 51, #721; 8 Lire's Lyra-8 controls, #658)
       // a cable into a Part's priority input needs format 61 (#976, D-1021: Shush 101's ENV TRIGGER)
       const priority = dev.cables.some((c) => c.to.port === 'priority' && dev.modules.find((m) => m.id === c.to.module)?.type === 'part');
-      // an FX rack needs format 66 (#1214: its rack section); a Harmony on LFO needs format 55 (D-1010: the Harmony light)
-      // when its old format fits
+      // an FX rack needs format 66 (#1214: its rack section), 67 with a stereo module or a Reverb's r (the 909 Kit's drawer,
+      // D-1055); a Harmony on LFO needs format 55 (D-1010: the Harmony light) when its old format fits
       const fits = layout(p).base.bytes <= DEVICE.bytes;
-      if (rackPlan(p, { patch: dev, groups: [] })) expect(b[1], name).toBe(FORMAT_RACK);
+      if (rackPlan(p, { patch: dev, groups: [] })) expect(b[1], name).toBe(name === '909 Kit' ? FORMAT_1_27 : FORMAT_RACK);
       else if (priority) expect(b[1], name).toBe(FORMAT_PRIORITY_CABLE);
       else if (harmonyLfo(p, dev)) { if (fits) expect(b[1], name).toBe(appended || 55); }
       else if (fits && !cabled && !top && !appended && !many) expect(b[1], name).toBeLessThan(VERSION);

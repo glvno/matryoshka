@@ -31,9 +31,9 @@ describe('share links', () => {
         expect(h.layout, p.name).toBe(true);
         expect(await decodeShare(s.full, DEFS)).toEqual(p);
       } else {
-        // a working link: with its layout, or (the 909 Kit, the whole TR-909 with its patterns and song) without it
+        // a working link: with its layout, or (the 909 Kit, the whole TR-909 with its FX drawer, D-1055: about 7,980) without it
         expect(s, p.name).toMatchObject({ fits: true, tooLong: false });
-        expect(s.length).toBeLessThan(LINK_MAX * 0.995);
+        expect(s.length).toBeLessThan(LINK_MAX * 0.998);
         if (!s.layout) expect((await decodeShare(s.code, DEFS)).modules.map((m) => m.type)).toEqual(p.modules.map((m) => m.type));
       }
       if (s.layout) expect(await decodeShare(s.code, DEFS)).toEqual(p);
