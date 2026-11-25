@@ -35,6 +35,7 @@ import {
   validateAssemblyDef,
   type AssemblyDef,
   type AssemblyInst,
+  type ChainMode,
   type ParamRef,
   type PortRef,
   type Target,
@@ -47,11 +48,9 @@ import { PAIR_LEFT, stereoModule } from './stereo';
 // (the drawers' read side lives in assembly.ts, so the engine and the binary read it without the catalog)
 export {
   chainHelpers, deviceModules, drawerOf, drawerOfEffect, drawers, effectsOf, outputDrawer, ownerOf, rackOf,
-  type Rack, type RackDrawer, type RackEffect,
+  type ChainMode, type Rack, type RackDrawer, type RackEffect,
 } from './assembly';
 
-/** how an effect sits in the stereo chain: true stereo, an L/R pair of a mono effect, or a mono effect's wet added to both sides */
-export type ChainMode = 'stereo' | 'pair' | 'wet';
 /** a chain channel: 0 = left, 1 = right */
 export type Channel = 0 | 1;
 /** the Library's headings for the modes */
@@ -145,8 +144,8 @@ export function effectKind(typeOrDefName: string): ChainMode | null {
     ?? ASSEMBLY_EFFECTS[typeOrDefName]?.mode ?? null;
 }
 
-const catalogDefs = new Map<EffectEntry, AssemblyDef>();
-const legacyDefs = new Map<EffectEntry, AssemblyDef>();
+const catalogDefs = new WeakMap<EffectEntry, AssemblyDef>();
+const legacyDefs = new WeakMap<EffectEntry, AssemblyDef>();
 /** a catalog entry as the effect a drawer holds (its stereo wrapper), as a saved assembly, in `form` (wrapEffect); in the
  *  legacy form Drive, Chorus, Delay and Reverb are exactly the stages of the D-1010 bus, so presets of converted patches
  *  load onto one */
@@ -444,7 +443,7 @@ function place(d: AssemblyInst, id: number, at?: number): void {
  * a saved assembly or a catalog module type (made new). Plain modules and assemblies without `chain` are wrapped first
  * (wrapEffect). Returns the effect.
  */
-export function insertEffect(p: Patch, drawer: AssemblyInst, effect: EffectSource, at?: number): AssemblyInst {
+export function insertEffect(p: Patch, drawer: AssemblyInst, effect: EffectSource, at?: number, mode?: ChainMode): AssemblyInst {
   if (!drawer.drawer) throw new Error(`"${drawer.label}" is no FX drawer.`);
   const owner = ownerOf(p, drawer);
   const where = owner === 'output' ? drawer : owner;
@@ -452,7 +451,7 @@ export function insertEffect(p: Patch, drawer: AssemblyInst, effect: EffectSourc
   let extra: Ends = { sources: [[], []], dests: [[], []] };
   if ('def' in effect) {
     const made = insertAssembly(p, DEFS, structuredClone(effect.def), where.x, where.y);
-    e = made.chain ? made : wrapEffect(p, { assembly: made.id });
+    e = made.chain ? made : wrapEffect(p, { assembly: made.id }, mode);
   } else if ('type' in effect) {
     const entry = EFFECT_CATALOG.find((x) => 'type' in x.source && x.source.type === effect.type);
     if (!entry) throw new Error(`A ${DEFS[effect.type]?.label ?? effect.type} is no audio effect: it cannot go in an FX drawer.`);
@@ -479,7 +478,7 @@ export function insertEffect(p: Patch, drawer: AssemblyInst, effect: EffectSourc
     if (a.chain) {
       unplug(p, a);
       e = a;
-    } else e = wrapEffect(p, { assembly: a.id });
+    } else e = wrapEffect(p, { assembly: a.id }, mode);
   }
   const ends = endsOf(p, drawer);
   for (const ch of [0, 1] as const) {
@@ -633,15 +632,47 @@ function audioPorts(p: Patch, src: { module: ModuleInst } | { assembly: Assembly
   return { input: targetsOf(input), outputs: outputs.map(targetsOf) };
 }
 
+/** a jack read as a right side by its label ("in R", "R", "Right out") */
+const rightSide = (r: PortRef): boolean => /(^|[^a-z])(r|right)([^a-z]|$)/i.test(r.label);
+
+/** an assembly's audio inputs and outputs (an output of control kind counts when it has no audio one: a Math sums bands),
+ *  a pair labelled right then left put in L / R order */
+function audioJacks(p: Patch, a: AssemblyInst): { ins: PortRef[]; outs: PortRef[] } {
+  const kind = (dir: 'in' | 'out', want: string) => (r: PortRef): boolean => kindOf(moduleById(p, r.module), dir, r.port) === want;
+  const lr = (list: PortRef[]): PortRef[] => (list.length > 1 && rightSide(list[0]) && !rightSide(list[1]) ? [list[1], list[0], ...list.slice(2)] : list);
+  const outs = a.outputs.filter(kind('out', 'audio'));
+  return { ins: lr(a.inputs.filter(kind('in', 'audio'))), outs: lr(outs.length ? outs : a.outputs.filter(kind('out', 'control'))) };
+}
+
 /**
- * Make a top-level module or assembly a stereo effect (an assembly with `chain`) in `mode` (default: its catalog mode;
- * an unknown assembly with two audio outputs is stereo, else a pair), in `form` (WrapForm). A pair: one stereo module
- * (#1141: its two copies are the sides; an assembly's members all stereo when every one has a stereo mode); in the legacy
- * form, or for an assembly with a member that has none, a copy beside it (an assembly's copy made with toDef /
- * insertAssembly), every row of the card tied to the copy's, modulation cables into the original copied onto the copy;
- * stereo: a pair with the correction Math; wet: the mix around it (a module's own mix moves to a Mix row), or for a Reverb
- * in the stereo-dry form the Reverb alone, the right side into its `r`. Its former audio cables go. Returns the wrapper
- * (named `name`, else the catalog name).
+ * How a top-level assembly can sit in an FX drawer, the first mode the one it takes unless told; a string says why it
+ * cannot. A factory effect: its catalog mode. The user's own, from its audio jacks: two inputs and two outputs: stereo as
+ * it is (its first two of each are L / R); one input: an L/R pair (two copies, one set of controls) or wet (a mono mix in,
+ * its sound added to both sides), stereo first when it has two outputs (a pair with the correction, as the factory's
+ * stereo effects). Already an effect (`chain`): stereo.
+ */
+export function effectModes(p: Patch, a: AssemblyInst): ChainMode[] | string {
+  if (a.chain) return ['stereo'];
+  const known = a.fxMode ? null : effectKind(a.name);
+  if (known) return [known];
+  const { ins, outs } = audioJacks(p, a);
+  const name = a.label || a.name;
+  if (!ins.length) return `"${name}" has no audio input, so it cannot go into an FX drawer.`;
+  if (!outs.length) return `"${name}" has no audio output, so it cannot go into an FX drawer.`;
+  if (ins.length > 1 && outs.length > 1) return ['stereo'];
+  return outs.length > 1 ? ['stereo', 'wet'] : ['pair', 'wet'];
+}
+
+/**
+ * Make a top-level module or assembly a stereo effect (an assembly with `chain`) in `mode` (default: the assembly's own
+ * `fxMode`, else its catalog mode, else the first of effectModes), in `form` (WrapForm). The user's stereo assembly (two
+ * audio inputs and outputs) becomes one as it is: its jacks are the chain's. A pair: one stereo module (#1141: its two
+ * copies are the sides; an assembly's members all stereo when every one has a stereo mode); in the legacy form, or for an
+ * assembly with a member that has none, a copy beside it (an assembly's copy made with toDef / insertAssembly), every row
+ * of the card tied to the copy's, modulation cables into the original copied onto the copy; stereo with one input: a pair
+ * with the correction Math; wet: the mix around it (a module's own mix moves to a Mix row), or for a Reverb in the
+ * stereo-dry form the Reverb alone, the right side into its `r`. Its former audio cables go. Returns the effect (a wrapper
+ * named `name`, else the catalog name).
  */
 export function wrapEffect(p: Patch, target: { module: number } | { assembly: number }, mode?: ChainMode, name?: string, form: WrapForm = {}): AssemblyInst {
   if ('module' in target) {
@@ -655,10 +686,26 @@ export function wrapEffect(p: Patch, target: { module: number } | { assembly: nu
   const a = assemblyById(p, target.assembly);
   if (!a) throw new Error(`No assembly ${target.assembly}.`);
   if (a.chain) return a;
+  const modes = effectModes(p, a);
+  if (typeof modes === 'string') throw new Error(modes);
+  const known = a.fxMode ? undefined : EFFECT_CATALOG.find((e) => 'def' in e.source && e.source.def.name === a.name);
+  const chosen = mode ?? a.fxMode ?? modes[0];
+  if (!known && chosen === 'stereo') {
+    const jacks = audioJacks(p, a);
+    if (jacks.ins.length > 1 && jacks.outs.length > 1) return chainAsIs(p, a, jacks);
+  }
   const ports = audioPorts(p, { assembly: a });
   if (!ports) throw new Error(`"${a.label}" has no audio input and output: it cannot go in an FX drawer.`);
-  const known = EFFECT_CATALOG.find((e) => 'def' in e.source && e.source.def.name === a.name);
-  return wrapAssembly(p, a, mode ?? known?.mode ?? (ports.outputs.length > 1 ? 'stereo' : 'pair'), name ?? known?.name ?? a.label, ports, form);
+  return wrapAssembly(p, a, chosen, name ?? known?.name ?? a.label, ports, form);
+}
+
+/** the user's stereo assembly as an effect as it is: its first two audio inputs and outputs become the chain's L / R
+ *  (nothing copied, nothing added: what the firmware already plays); its former audio cables on them go */
+function chainAsIs(p: Patch, a: AssemblyInst, jacks: { ins: PortRef[]; outs: PortRef[] }): AssemblyInst {
+  const [inL, inR] = jacks.ins, [outL, outR] = jacks.outs;
+  cutAudio(p, new Set(allModules(p, a)), [...targetsOf(inL), ...targetsOf(inR)], [...targetsOf(outL), ...targetsOf(outR)]);
+  a.chain = { ins: [a.inputs.indexOf(inL), a.inputs.indexOf(inR)], outs: [a.outputs.indexOf(outL), a.outputs.indexOf(outR)] };
+  return a;
 }
 
 /** cut every cable into `input` and out of `outputs` from or to modules outside `inside` */
