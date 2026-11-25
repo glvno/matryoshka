@@ -309,7 +309,7 @@ function endsOf(p: Patch, d: AssemblyInst): Ends {
     if (!l && !r) continue;
     addOnce(dests[l && r ? sideOf(c) ?? (c.to.port === 'r' ? 1 : 0) : l ? 0 : 1], c.to);
   }
-  // a mono instrument cabled only into the Output's l: its R side goes to the Output's r (which plays l while it is free)
+  // a mono instrument cabled only into the Output's l: its R side is the Output's r (applyChain leaves it free: r plays l)
   const out = outputModule(p);
   const taps = d.drawer!.taps!;
   if (out && !dests[1].length && sameEnd(taps[0], taps[1]) && has(dests[0], { module: out.id, port: 'l' }) &&
@@ -323,11 +323,10 @@ const sideOf = (c: Cable): Channel | undefined => (c.side ? (c.side === 'r' ? 1 
 /** two lists of endpoints are the same jacks (both channels of a one-module stereo effect's jack) */
 const sameEnds = (a: readonly Endpoint[], b: readonly Endpoint[]): boolean => a.length === b.length && a.every((x) => has(b, x));
 
-/** `t` is the right jack (`r`) of an effect's input pair whose left jack is in `left` (the Output's l / r keep both cables:
- *  its r is no jack-pair right in a 1.26 drawer) */
+/** `t` is the right jack (`r`) of an input pair (the Output's l / r, an effect's in / r) whose left jack is in `left` */
 function pairRight(p: Patch, t: Endpoint, left: readonly Endpoint[]): boolean {
   const type = moduleById(p, t.module)?.type ?? '';
-  return t.port === 'r' && type !== 'output' && !!PAIR_LEFT[type] && has(left, { module: t.module, port: PAIR_LEFT[type] });
+  return t.port === 'r' && !!PAIR_LEFT[type] && has(left, { module: t.module, port: PAIR_LEFT[type] });
 }
 
 /**
@@ -336,8 +335,9 @@ function pairRight(p: Patch, t: Endpoint, left: readonly Endpoint[]): boolean {
  * to mono: into its jack (both channels one jack) two different sides join (L 'l', R 'r'); out of it into two jacks it
  * splits (L 'l', R 'r'). A source on both sides (a stereo pair's correction, a wet return), or one source for both (mono
  * into both copies, stereo into stereo), is a whole cable, as is a jack that takes both sides. One source set for both
- * sides into an effect's jack pair (`in`, `r`) feeds the left jack only: with `r` free the effect plays its mono path and
- * its `r` out is its `out` (the jack-pair rule), with half the cables (a 909's eleven voices would otherwise go in twice).
+ * sides into a jack pair (an effect's `in` / `r`, the Output's `l` / `r`) feeds the left jack only: with `r` free the
+ * effect plays its mono path and its `r` out is its `out`, the Output plays `l` on both sides (the jack-pair rule), with
+ * half the cables (a 909's eleven voices would otherwise go in twice). Saved cables stay until an edit rewires the drawer.
  * A stereo effect whose ST was switched off hears both sides summed, as any jack fed twice.
  */
 function applyChain(p: Patch, d: AssemblyInst, ends: Ends): void {
