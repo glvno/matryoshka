@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
-import { cablesGrouped, COUNTED, DEVICE, drumNamed, encodePatch, FLAG_CABLES3, FLAG_NAMES, GROUP_REC, layout, panelBytes, PANEL_BYTES, SLIM, VERSION } from './patchbin';
+import { cablesGrouped, COUNTED, DEVICE, drumNamed, encodePatch, FLAG_CABLES3, FLAG_NAMES, FORMAT_RACK, GROUP_REC, layout, panelBytes, PANEL_BYTES, SLIM } from './patchbin';
 import { rackOf } from './assembly';
 import { deviceView } from './poly';
 import { FM1_PRESETS } from './presets';
@@ -74,7 +74,7 @@ describe("format 64's shorter layout (D-1025)", () => {
       // no older form holds the rack (FX drawer contracts §4: "a patch is written at 66 only when it has a rack")
       const rack = rackOf(p);
       if (rack.effects.length || rack.drawers.length) {
-        expect(l.v, name).toBe(VERSION);
+        expect(l.v, name).toBe(FORMAT_RACK);   // (not 67: no factory patch uses a 1.27 thing)
         expect(l.need, name).toBe(l.base.bytes);
         continue;
       }
