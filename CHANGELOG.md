@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **P-lock paging on the FM-1 shows the device's real pages until you let go.** With a step held on a drum grid, ALGO still starts on the step's note (K2 velocity, SELECT chance). Each click on from there now shows the device's own page, exactly as its device page looks, with every bar at the held step's value, and K1..K4 lock its rows on that step. Before, the grid stayed on screen with the page's rows listed in a gold line under it. Letting the step go returns to the grid exactly where you were, and the next held step starts on the note again. SELECT, PRESET (ratchet) and OCT- / OCT+ (micro timing) do what they did on every stop ([D-815](docs/ledger/steps.md#D-815), [#1213](https://github.com/glvno/matryoshka/issues/1213)).
+
 ## 1.26.6 — 2026-11-24
 
 - **A candidate's Save… saves a preset when a preset can hold it, and a patch only when it must.** The candidate menu (⋯, a right-click or a double-click on its row) now has **Save…** in place of "Save as a patch…", as has the Sound design header's ⋯ menu, and it decides as Add to palette does. A candidate that differs from the patch it is a version of only in its engines' card values (an instrument with its FX drawer as one preset) is saved as presets: an existing preset with the same values is reused, otherwise a new one is named after the candidate, and the line says what it saved ("Saved preset Monolith D C on Monolith D"). With an FM-1 linked, new presets go to it too. A candidate the same as its patch saves nothing and says so. A changed tempo, pattern, song or selected pattern, a changed cable or module, or a setting no preset holds saves a new patch in Your patches, with the reason, so nothing you changed is dropped. The menu also has **Add to palette** and **Save preset…** ([D-1426](docs/ledger/editor.md#D-1426)).

@@ -498,6 +498,7 @@ static uint32_t panel_buttons_at(void)
     return at;
 }
 #include "controls_test.h"                          /* #553: every row of the controls table driven, its effect checked */
+#include "plock_test.h"                             /* #1213: P-lock paging shows the device's real pages until release */
 #include "report_test.h"                            /* #549: KEYS_NOW, GUIDE_NOW, panel_align */
 #include "pal_panel_test.h"                         /* #1196: the palette's keys, its overview, the bar's NEXT: */
 
@@ -6011,6 +6012,7 @@ int main(void)
     steprec_suite();
     host_pt_init();                                     /* (the pattern store on: the SEQ page's pattern rows show, #901) */
     controls_suite();
+    plock_suite();
     pt_on = 0;
     fx_suite();
     fx_preset_suite();

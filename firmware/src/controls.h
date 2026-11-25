@@ -176,7 +176,6 @@ static const uint8_t CTL_SHEET[2][9][28] = {
 #define HINT_STEP_RECORD "KEYS note  LFO rest  KEY+LFO tie  REC done"   /* 206 of 228 px */
 #define HINT_STEP_SILENT "SILENT  LFO rest  KEY+LFO tie  REC done"   /* 190 of 228 px */
 #define HINT_LIVE "KEYS record  SELECT view  OCT octave  FX acc"   /* 219 of 228 px */
-#define HINT_HELD_LOCK "HELD: K1-K4 lock  back to value: off  ALGO"   /* 198 of 228 px */
 #define HINT_HELD_DRUM "HELD: K2 vel  SELECT chance  ALGO lock"   /* 188 of 228 px */
 #define HINT_DRUM_REC_LONG "BLACK rec  SELECT row  WHITE step  OCT 17+"   /* 211 of 228 px */
 #define HINT_DRUM_REC "BLACK rec  SELECT row  WHITE step  FX acc"   /* 205 of 228 px */
