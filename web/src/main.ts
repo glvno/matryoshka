@@ -62,7 +62,7 @@ import { showAction, showToast, showUndo } from './toast';
 import { popMenu, type MenuItem } from './menu';
 import type { CapabilityInspector } from './capability-inspector';
 import { initStatusline, pinStatus } from './statusline';
-import { buildAssembliesSection, storeAssembly, storeTutorialAssembly } from './assemblies';
+import { buildAssembliesSection, setLibraryEffectMode, storeAssembly, storeTutorialAssembly } from './assemblies';
 import { AssemblyBrowser } from './browser';
 import { keyOf, runFor, searchCommands, type Command } from './commands';
 import { loadBlueprints, type Catalog } from './quick-patch';
@@ -87,9 +87,9 @@ import { DEFS, METERS } from './modules';
 import { addModule, newPatch, NOTE_NAMES, trackLabel, validatePatch, type Patch, type SideKey } from './patch';
 import { diffCount, diffLines, diffPatches } from './diff';
 import { loadLibrary, summary } from './assemblies';
-import { assembliesOf, type AssemblyDef, type AssemblyInst } from './assembly';
-import { addToDrawer, buildEffectsDialog, buildEffectsSection, currentInstrument, drawerName, entryOf, modeOf, ownerTarget, type EffectActions, type EffectSource } from './library-effects';
-import { EFFECT_CATALOG } from './fx-drawer';
+import { assembliesOf, drawerOf, parentOf, type AssemblyDef, type AssemblyInst } from './assembly';
+import { addToDrawer, buildEffectsDialog, buildEffectsSection, currentInstrument, drawerName, effectCatalog, entryOf, modeOf, ownerTarget, type EffectActions, type EffectSource } from './library-effects';
+import { CHAIN_MODE_LABELS, effectModes } from './fx-drawer';
 import { defIsEngine, feedsOutput } from './engines';
 import { EngineStart } from './engine-start';
 import { encodeShare, handOut, isShareLink, openShareLink, shareCodeOf } from './share';
@@ -1251,6 +1251,13 @@ const editor = new Editor($('canvas'), firstPatch, {
     tutorial.saved(def);
     tutorial.refresh();
   },
+  onEffectMode(name, mode) {
+    // the library's copy of that name is marked too: Library › Effects and Add effect list the user's marked ones
+    const saved = setLibraryEffectMode(name, mode);
+    status.textContent = !mode ? `"${name}" is no longer an effect`
+      : `"${name}" goes into FX drawers: ${CHAIN_MODE_LABELS[mode]}${saved ? '. Library › Effects lists it' : '. Save it to the library to find it in Library › Effects'}`;
+    if (saved) refreshAssemblies();
+  },
   onLoad(p) {
     quick.close();   // (its cards and chain belong to the patch it was opened on)
     editor.learn.cancel();   // (a row of the patch left waits no more)
@@ -2346,23 +2353,36 @@ const instrumentNow = () => currentInstrument(editor.patch, { assemblies: editor
 const effectsDialog = buildEffectsDialog($<HTMLDialogElement>('effects-dialog'), { ...effectActions, current: instrumentNow });
 /** the + list opened by a drawer's + slot: effects only, ⏎ puts one into that drawer at that place (null: the whole list) */
 let cmdScope: { drawer: number; at: number } | null = null;
-/** the effect rows of the + list scoped to a drawer */
+/** the effect rows of the + list scoped to a drawer: the Library's effects (the user's own marked Use as an effect among
+ *  them), then the canvas's top-level assemblies that can be one (put in as a drag puts them, editor.ts fxOffer) */
 const drawerCommands = (scope: { drawer: number; at: number }): Command[] => {
-  const drawer = assembliesOf(editor.patch).find((a) => a.id === scope.drawer);
+  const p = editor.patch;
+  const drawer = assembliesOf(p).find((a) => a.id === scope.drawer);
   if (!drawer) return [];
-  const to = ownerTarget(editor.patch, drawer), into = drawerName(editor.patch, to);
-  return EFFECT_CATALOG.map((e) => ({
+  const to = ownerTarget(p, drawer), into = drawerName(p, to);
+  const canvas = assembliesOf(p).flatMap((a): Command[] => {
+    if (a.drawer || to === a.id || parentOf(p, a.id) || drawerOf(p, a.id)) return [];
+    const modes = effectModes(p, a);
+    if (typeof modes === 'string') return [];
+    const how = a.fxMode ?? (modes.length === 1 ? modes[0] : null);
+    return [{
+      kind: 'effect', tags: ['effect', 'canvas'], label: a.label || a.name, detail: `on the canvas · ${how ? modeOf(how).tag : modes.map((m) => modeOf(m).tag).join(' or ')} · ⏎ into ${into}`,
+      keywords: a.name, run: () => { toCanvas(); editor.addToDrawerFromCanvas(a.id, scope.drawer, scope.at); },
+    }];
+  });
+  return [...effectCatalog().map((e): Command => ({
     kind: 'effect', tags: ['effect'], label: e.name, detail: `${modeOf(e.mode).tag} · ⏎ into ${into}`, keywords: e.blurb,
     run: () => addEffectToDrawer(e.source, to, e.name, scope.at),
-  }));
+  })), ...canvas];
 };
 const commands = (): Command[] => {
   if (cmdScope) return drawerCommands(cmdScope);
   // an effect goes on the canvas with ⏎ (as any card), into the current instrument's FX drawer with ⇧⏎, into the Output FX with ⌥⏎
   const current = instrumentNow();
   const output = editor.patch.modules.some((m) => m.type === 'output');
+  const catalog = effectCatalog();
   const effect = (s: EffectSource, c: Command): Command => {
-    const e = entryOf(s);
+    const e = entryOf(s, catalog);
     if (!e) return c;
     return {
       ...c, tags: [...(c.tags ?? []), 'effect'], detail: `${modeOf(e.mode).tag} effect · ⏎ on the canvas${c.detail ? ` · ${c.detail}` : ''}`,
