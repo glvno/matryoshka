@@ -517,8 +517,9 @@ static void m1_track_pattern_now(uint32_t mod, uint32_t pattern)
         return;
     do {
         m = (uint32_t)n - from;
-        if (m > M1_TRACK_WORDS)
-            for (m = M1_TRACK_WORDS; m && !NW_VEL(w[from + m]); m--)
+        if (m > M1_TRACK_WORDS)                  /* (a frame never starts on a velocity-0 word: a note's condition or timing
+                                                  * word stays with its note; engine.c NW_VEL) */
+            for (m = M1_TRACK_WORDS; m && !(w[from + m] >> 19 & 127u); m--)
                 ;
         m1_track_frame(mod, w + from, m, pattern | (from ? 0x80u : 0u));
         from += m;
