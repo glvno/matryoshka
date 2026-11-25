@@ -56,7 +56,7 @@ int main(int argc, char **argv)
     static const uint32_t lengths[] = {128, 1, 2, 7, 31, 63, 127};
     static const int32_t edges[] = {0, 1, 32767, 32768, ENG_ONE};
     struct { int16_t before[8], data[RV_MEM], after[8]; } __attribute__((aligned(4))) memory;
-    esig_t input[ENG_BLOCK], output[ENG_BLOCK];
+    esig_t input[ENG_BLOCK], output[ENG_BLOCK], output_r[ENG_BLOCK];
     uint32_t trial, b, i, k, seed = 0x12345678u;
     for (trial = 0; trial < 3; trial++) {
         int32_t params[REVERB_NPAR] = {0};
@@ -64,6 +64,11 @@ int main(int argc, char **argv)
         inst_t it = {0};
         it.in[REVERB_I_IN] = input;
         it.out[0] = output;
+#ifdef REVERB_O_R
+        it.out[REVERB_O_R] = output_r;            /* (#1141: `r` is `out` without a right signal; an engine before it has none) */
+#else
+        (void)output_r;
+#endif
         it.eff = params;
         it.s.rev.buf = memory.data;
         for (i = 0; i < 8; i++)

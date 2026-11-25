@@ -49,7 +49,13 @@ static void sequencer(uint32_t trial)
     E.node = &node; E.nmod = 1; E.ntrk = 1; E.kev = events;
     E.blk_thru = E.blk_legacy; E.rin = E.rin_legacy; E.tick_len = 8 + (int32_t)trial * 3;
     E.trk_q[0] = 0xFFu; E.pat_has[0] = 1;
+#ifdef PAT_N                                  /* (#1292: pattern 1's count is where pattern 2's slice starts) */
+    for (j = 1; j < ENG_PATTERNS; j++)
+        E.pat_first[0][j] = trial & 1u ? 4 : 0;
+    E.nnotes = trial & 1u ? 4 : 0;
+#else
     E.pat_n[0][0] = trial & 1u ? 4 : 0;
+#endif
     E.trk_note[0] = NW(0, 1, 60, 100, 0);
     E.trk_note[1] = NW(1, 2, 64, 110, 0);
     E.trk_note[2] = NW(4, 1, 67, 80, 0);
