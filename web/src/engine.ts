@@ -18,8 +18,9 @@ import { fixNotes, PATTERNS_MAX, SONGS_MAX, type SongEntry, type StepNote } from
 import { lockPlan, lockValue } from './locks';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
 import { harmButton, harmButtonOf, harmChord, harmSnapshot, harmClear, harmInit, harmKey, type HarmParams, type HarmState } from './harmonizer';
-import { DEFS, DELAY_SWELL_DEN, DELAY_SWELL_NUM } from './modules';
+import { DEFS, DELAY_SWELL_DEN, DELAY_SWELL_NUM, RIGHT_IN } from './modules';
 import { rackPlan } from './rack-plan';
+import { cableFeeds, feedModel } from './feeds';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 export const BLOCK = 128;
@@ -51,6 +52,14 @@ function paraMix(nodes: Node[]): void {
     }
 }
 
+/** a module in stereo mode (#1141): two copies outside the poly groups, copy 0 L, copy 1 R */
+const isStereo = (n: Node): boolean => n.group < 0 && n.inst.length === 2;
+/** a block past IDLE somewhere (partQuiet) */
+function loud(o: Float32Array): boolean {
+  for (let i = 0; i < BLOCK; i++) if (o[i] > IDLE || o[i] < -IDLE) return true;
+  return false;
+}
+
 /** A display snapshot, detached from the patch and the audio thread's mutable state. */
 export type ParameterValues = { id: number; params: Record<string, number> }[];
 
@@ -71,6 +80,8 @@ interface Inst {
   /** Native DSP inputs: aliases of the raw buffers (kept apart from `inp` for the per-block parameter routes). */
   dspInp: Record<string, Float32Array>;
   out: Record<string, Float32Array>;
+  /** what gather adds into each input, resolved at load (Engine.wire): a source buffer and its weight (1: as it is) */
+  feeds: { port: string; src: Float32Array; w: number }[];
 }
 
 interface Node {
@@ -84,9 +95,10 @@ interface Node {
   /** its outputs something reads: a cable from it, or a probe / watch (probe marks it, so it is written from the next block) */
   used: Record<string, boolean>;
   inputRoutes: { port: string; params: string[]; mean: number }[];
-  /** w: the weight a summed source adds with (paraMix), else 1 */
-  sources: { port: string; from: Node; fromPort: string; w: number }[];
-  /** the poly group it runs in (index in Engine.groups), -1: runs once */
+  /** w: the weight a summed source adds with (paraMix), else 1; side: a side cable's (patch.ts Cable.side, #1141); rport:
+   *  the pair's right output a stereo reader takes through it too (wire; partQuiet checks it) */
+  sources: { port: string; from: Node; fromPort: string; w: number; side?: 'l' | 'r'; rport?: string }[];
+  /** the poly group it runs in (index in Engine.groups), -1: runs once (one copy, or two in stereo mode: copy 0 L, copy 1 R) */
   group: number;
   /** bypassed: run() copies `thru` (or silence) to the outputs instead of processing */
   bypass: boolean;
@@ -304,6 +316,7 @@ export class Engine {
       dspInp: {},
       inp: Object.fromEntries(impl.def.inputs.map((p) => [p.name, new Float32Array(BLOCK)])),
       out: Object.fromEntries(impl.def.outputs.map((p) => [p.name, new Float32Array(BLOCK)])),
+      feeds: [],
     };
   }
 
@@ -357,7 +370,8 @@ export class Engine {
       const impl = IMPLS[m.type];
       if (!impl) throw new Error(`unknown module type "${m.type}"`);
       const group = groupOf.get(m.id) ?? -1;
-      const ninst = group >= 0 ? this.groups[group].parts.length : 1;
+      // stereo mode (#1141): an eligible type outside the poly groups runs two copies, L and R (engine.c eng_load)
+      const ninst = group >= 0 ? this.groups[group].parts.length : m.stereo && impl.def.stereo ? 2 : 1;
       const old = this.nodes.get(m.id);
       const keep = old && old.type === m.type && old.inst.length === ninst;
       const node: Node = keep
@@ -413,13 +427,15 @@ export class Engine {
       node.used = {};
       next.set(m.id, node);
     }
-    for (const c of patch.cables) {
+    const entry = patch.cables.map((c) => {
       const to = next.get(c.to.module)!;
       const from = next.get(c.from.module)!;
-      to.sources.push({ port: c.to.port, from, fromPort: c.from.port, w: 1 });
+      const s: Node['sources'][number] = { port: c.to.port, from, fromPort: c.from.port, w: 1, ...(c.side ? { side: c.side } : {}) };
+      to.sources.push(s);
       to.connected[c.to.port] = true;
       from.used[c.from.port] = true;
-    }
+      return s;
+    });
     this.nodes = next;
     const previousFx = new Map([...next.values()].map((node) => [node.id, node.fx]));
     for (const node of next.values()) node.fx = null;
@@ -431,7 +447,7 @@ export class Engine {
     this.fxEffects = (rack?.effects ?? []).map((e) => {
       const targets = e.targets.map((id) => {
         const node = next.get(id);
-        if (!node || node.inst.length !== 1 || node.group >= 0) throw new Error('An FX rack target was dropped or made polyphonic');
+        if (!node || node.inst.length > 2 || node.group >= 0) throw new Error('An FX rack target was dropped or made polyphonic');
         return node;
       });
       const effect: FxEffect = { asm: e.asm, targets, on: targets.some((node) => !node.bypass) };
@@ -448,6 +464,20 @@ export class Engine {
       return effect;
     });
     paraMix([...next.values()]);
+    // every copy's feeds (feeds.ts, engine.c cab_feed): stereo sides, jack pairs, side cables, poly sums (paraMix's weight)
+    const fm = feedModel(patch, pg);
+    for (const node of next.values()) for (const inst of node.inst) inst.feeds = [];
+    patch.cables.forEach((c, ci) => {
+      const to = next.get(c.to.module)!, s = entry[ci], rin = RIGHT_IN[to.type];
+      to.inst.forEach((inst, v) => {
+        for (const j of rin && rin !== c.to.port ? [c.to.port, rin] : [c.to.port])
+          for (const f of cableFeeds(fm, ci, j, v)) {
+            inst.feeds.push({ port: j, src: s.from.inst[f.copy].out[f.port], w: f.w === 'para' ? s.w : f.w });
+            if (j !== c.to.port) to.connected[j] = true;   // (the right jack of a split pair)
+            if (f.port !== c.from.port) s.from.used[s.rport = f.port] = true;   // (a pair's right output)
+          }
+      });
+    });
     const { order } = processingOrder(patch);
     this.order = order.map((id) => next.get(id)!);
     this.outputs = this.order.filter((n) => n.type === 'output');
@@ -725,31 +755,34 @@ export class Engine {
   /**
    * The buffer an output wrote in the last block, for a scope probe (and a sidebar watch). A module that runs once per
    * part: an audio output is the sum over the parts (what a cable from it carries, what is heard), a control / gate
-   * output the newest held part's (the part the parameter displays follow; a sum of pitches or gates means nothing).
+   * output the newest held part's (the part the parameter displays follow; a sum of pitches or gates means nothing). A
+   * stereo module (#1141): (L + R) / 2, what a mono jack hears (probeVoices has L and R).
    */
   probe(id: number, port: string): Float32Array | null {
     const node = this.nodes.get(id);
     if (!node) return null;
     node.used[port] = true;
-    if (node.group < 0 || node.inst.length < 2) return node.inst[0]?.out[port] ?? null;
-    if (node.impl.def.outputs.find((o) => o.name === port)?.kind !== 'audio')
+    if (node.inst.length < 2) return node.inst[0]?.out[port] ?? null;
+    const stereo = isStereo(node);
+    if (!stereo && node.impl.def.outputs.find((o) => o.name === port)?.kind !== 'audio')
       return node.inst[this.shownPart(this.groups[node.group])]?.out[port] ?? null;
     const sum = (this.probeSums[`${id}:${port}`] ??= new Float32Array(BLOCK));
     sum.fill(0);
-    for (const b of this.probeVoices(id, port) ?? []) for (let i = 0; i < BLOCK; i++) sum[i] += b[i];
+    for (const b of this.probeVoices(id, port) ?? []) for (let i = 0; i < BLOCK; i++) sum[i] += stereo ? b[i] / 2 : b[i];
     return sum;
   }
 
   /**
    * The scope's per-voice view (#54): what each copy of a module that runs once per voice wrote in the last block, voice
-   * by voice (V1 first); null for a module that runs once. An audio output of a voice skipped this block (idle,
-   * partQuiet) reads silence, so the copies always sum to `probe`'s trace; a control output keeps its last block.
-   * The buffers are the engine's own: copy them before the next render.
+   * by voice (V1 first); a stereo module's L and R (#1141); null for a module that runs once. An audio output of a voice
+   * skipped this block (idle, partQuiet) reads silence, so the copies always sum to `probe`'s trace; a control output
+   * keeps its last block. The buffers are the engine's own: copy them before the next render.
    */
   probeVoices(id: number, port: string): Float32Array[] | null {
     const node = this.nodes.get(id);
     if (node) node.used[port] = true;
-    if (!node || node.group < 0 || node.inst.length < 2) return null;
+    if (!node || node.inst.length < 2) return null;
+    if (isStereo(node)) return node.inst.map((inst) => inst.out[port] ?? this.silent);
     const audio = node.impl.def.outputs.find((o) => o.name === port)?.kind === 'audio';
     const parts = this.groups[node.group].parts;
     return node.inst.map((inst, v) => (audio && parts[v]?.skip) || !inst.out[port] ? this.silent : inst.out[port]);
@@ -1460,7 +1493,8 @@ export class Engine {
       const cv: [number, number, number] = [0, 0, 0];
       for (const s of node.sources) {
         const k = VOICING_CABLE_INPUTS.indexOf(s.port);
-        if (k < 0) continue;
+        // (a stereo source gives its L, a side cable from one nothing: engine.c group_cables reads cables, not feeds)
+        if (k < 0 || (s.side && isStereo(s.from))) continue;
         const fg = s.from.group;
         if (fg >= 0 && fg !== node.group) for (const inst of s.from.inst) cv[k] += s.w === 1 ? inst.out[s.fromPort][0] : inst.out[s.fromPort][0] * s.w;
         else cv[k] += s.from.inst[0].out[s.fromPort][0];
@@ -1550,23 +1584,14 @@ export class Engine {
     }
   }
 
-  /** the inputs of one instance: zero, then every cable added (another group's per-part output adds all its parts) */
-  private gather(node: Node, inst: Inst, v: number, n: number): void {
+  /** the inputs of one instance: zero, then every feed added (wire: another group's per-part output adds all its parts,
+   *  a stereo source its side or both halves) */
+  private gather(inst: Inst, n: number): void {
     for (const name in inst.inp) inst.inp[name].fill(0, 0, n);
-    for (const s of node.sources) {
-      const dst = inst.inp[s.port];
-      const g = s.from.group;
-      if (g >= 0 && g !== node.group) {
-        const w = s.w;
-        for (const k of s.from.inst) {
-          const src = k.out[s.fromPort];
-          if (w === 1) for (let i = 0; i < n; i++) dst[i] += src[i];
-          else for (let i = 0; i < n; i++) dst[i] += src[i] * w;
-        }
-      } else {
-        const src = s.from.inst[g >= 0 ? v : 0].out[s.fromPort];
-        for (let i = 0; i < n; i++) dst[i] += src[i];
-      }
+    for (const { port, src, w } of inst.feeds) {
+      const dst = inst.inp[port];
+      if (w === 1) for (let i = 0; i < n; i++) dst[i] += src[i];
+      else for (let i = 0; i < n; i++) dst[i] += src[i] * w;
     }
   }
 
@@ -1598,12 +1623,20 @@ export class Engine {
     const wetOnly = node.type === 'reverb' && st.targets.length === 1;
     const dry = inst.inp[thru];
     const input = ctx.inp[thru];
+    // a right signal (#1141): the `r` output's dry is the `r` input (engine.c m_fx)
+    const rin = RIGHT_IN[node.type], fedR = !!rin && !!node.connected[rin];
+    const dryR = fedR ? inst.inp[rin] : dry, inputR = fedR ? ctx.inp[rin] : dry;
     const mix = inst.eff.mix ?? 0;
     let { gain, fade } = run;
+    // a stereo target (two copies, never a tail type): copy 1 ramps from where copy 0 started, kept in `quiet` (engine.c)
+    if (node.inst.length === 2) {
+      if (inst === node.inst[1]) gain = run.quiet;
+      else run.quiet = gain;
+    }
     if (!st.on && (tail ? !run.tail : !gain)) {
       for (const name in ctx.out) {
         if (wetOnly) ctx.out[name].fill(0, 0, ctx.n);
-        else ctx.out[name].set(dry.subarray(0, ctx.n));
+        else ctx.out[name].set((name === 'r' ? dryR : dry).subarray(0, ctx.n));
       }
       return;
     }
@@ -1616,9 +1649,11 @@ export class Engine {
         (inst.eff.swell ?? 0) >= 0.5 && Math.round((inst.eff.fb ?? 0) * 65536) * DELAY_SWELL_NUM >= 65536 * DELAY_SWELL_DEN)) run.tail = 2;
       if (dly) ({ cur: cur0, rate: rate0, hold: hold0, rk: rk0, tp: tp0 } = dly);
       ctx.inp[thru] = this.fxZero;
+      if (fedR) ctx.inp[rin] = this.fxZero;
     }
     node.impl.process(ctx, inst.state);
     ctx.inp[thru] = input;
+    if (fedR) ctx.inp[rin] = inputR;
     if (st.on && gain === FX_RAMP && (!tail || fade === FX_FULL)) return;
     // An OFF natural tail at rest: gain and fade stay put, so the loop below reduces exactly to these forms. Its tail ends
     // once every sample it added stayed within IDLE for a whole line (the Delay's length times its rate step, the
@@ -1626,7 +1661,7 @@ export class Engine {
     if (!st.on && tail && run.tail === 1 && (wetOnly || !gain)) {
       let loud = false;
       for (const name in ctx.out) {
-        const out = ctx.out[name];
+        const out = ctx.out[name], dr = name === 'r' ? dryR : dry;
         if (wetOnly) {
           if (fade !== FX_FULL || gain !== FX_RAMP) for (let i = 0; i < ctx.n; i++) out[i] *= fade / FX_FULL * gain / FX_RAMP;
           for (let i = 0; i < ctx.n; i++) if (out[i] > IDLE || out[i] < -IDLE) loud = true;
@@ -1634,7 +1669,7 @@ export class Engine {
           for (let i = 0; i < ctx.n; i++) {
             const t = fade === FX_FULL ? out[i] : out[i] * fade / FX_FULL;
             if (t > IDLE || t < -IDLE) loud = true;
-            out[i] = dry[i] + t;
+            out[i] = dr[i] + t;
           }
         }
       }
@@ -1665,12 +1700,12 @@ export class Engine {
         if (run.tail === 2) fade = Math.max(0, fade - fadeStep);
       }
       for (const name in ctx.out) {
-        const out = ctx.out[name];
-        if (!tail) out[i] = dry[i] + (out[i] - dry[i]) * gain / FX_RAMP;
+        const out = ctx.out[name], dr = name === 'r' ? dryR : dry;
+        if (!tail) out[i] = dr[i] + (out[i] - dr[i]) * gain / FX_RAMP;
         else if (wetOnly) out[i] *= fade / FX_FULL * gain / FX_RAMP;
         else {
-          const direct = st.on ? dry[i] * (1 - mix) : 0;
-          out[i] = dry[i] * (1 - mix * gain / FX_RAMP) + (out[i] - direct) * fade / FX_FULL;
+          const direct = st.on ? dr[i] * (1 - mix) : 0;
+          out[i] = dr[i] * (1 - mix * gain / FX_RAMP) + (out[i] - direct) * fade / FX_FULL;
         }
       }
     }
@@ -1689,9 +1724,13 @@ export class Engine {
       return;
     }
     if (node.bypass) {
-      const src = node.thru ? inst.inp[node.thru] : undefined;
-      for (const name in out) if (src) out[name].set(src.subarray(0, n));
-      else out[name].fill(0, 0, n);
+      const rin = RIGHT_IN[node.type], src = node.thru ? inst.inp[node.thru] : undefined;
+      for (const name in out) {
+        // a right signal (#1141): the `r` output carries the `r` input (engine.c m_bypass)
+        const s = name === 'r' && rin && node.connected[rin] ? inst.inp[rin] : src;
+        if (s) out[name].set(s.subarray(0, n));
+        else out[name].fill(0, 0, n);
+      }
       return;
     }
     const ctx: Ctx = { sr: this.sampleRate, n, inp: inst.dspInp, out, connected: node.connected, used: node.used, p: inst.eff, voice, display: inst.display };
@@ -1716,8 +1755,8 @@ export class Engine {
       if (node.group === g) continue;
       for (const s of node.sources) {
         if (s.from.group !== g) continue;
-        const o = s.from.inst[v].out[s.fromPort];
-        for (let i = 0; i < BLOCK; i++) if (o[i] > IDLE || o[i] < -IDLE) return false;
+        const out = s.from.inst[v].out;
+        if (loud(out[s.fromPort]) || (s.rport && loud(out[s.rport]))) return false;
       }
     }
     return true;
@@ -1726,7 +1765,11 @@ export class Engine {
   private partSilence(g: number, v: number): void {
     for (const node of this.order) {
       if (node.group === g) continue;
-      for (const s of node.sources) if (s.from.group === g) s.from.inst[v].out[s.fromPort].fill(0);
+      for (const s of node.sources)
+        if (s.from.group === g) {
+          s.from.inst[v].out[s.fromPort].fill(0);
+          if (s.rport) s.from.inst[v].out[s.rport].fill(0);
+        }
     }
   }
 
@@ -1907,7 +1950,7 @@ export class Engine {
         for (let v = 0; v < node.inst.length; v++) {
           if (parts?.[v].skip) continue;
           const inst = node.inst[v];
-          this.gather(node, inst, v, n);
+          this.gather(inst, n);
           this.applyCv(node, inst, n);
           if (parts && node.flawParams.length) this.applyFlaws(node, inst, flawOf(this.groups[node.group].cfg, v));
           this.run(node, inst, parts ? parts[v] : kb, inst.out, n);

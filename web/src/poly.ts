@@ -95,11 +95,15 @@ export function groupIndex(groups: PolyGroup[]): Map<number, number> {
   return g;
 }
 
-/** how many times each module runs (its poly assembly's voice count, else 1); an allocator counts its voices (its outputs) */
+/** how many times each module runs (its poly assembly's voice count, else 1; a stereo module outside them 2, #1141:
+ * validatePatch keeps ModuleInst.stereo only on an eligible type); an allocator counts its voices (its outputs) */
 export function copiesOf(p: Patch): Map<number, number> {
   const out = new Map<number, number>();
   polyGroups(p).forEach((x) => x.modules.forEach((id) => out.set(id, x.cfg.parts)));
-  for (const m of p.modules) if (m.type === ALLOC) out.set(m.id, polyCfg(m).parts);
+  for (const m of p.modules) {
+    if (m.type === ALLOC) out.set(m.id, polyCfg(m).parts);
+    else if (m.stereo && !out.has(m.id)) out.set(m.id, 2);
+  }
   return out;
 }
 
@@ -262,7 +266,7 @@ export function deviceView(source: Patch, compile = false): { patch: Patch; grou
     cables = cables.map((c) => {
       if (c.from.module !== alloc.id) return c;
       const g = mine.find((i) => out[i].modules.has(c.to.module));
-      return { from: { module: g === undefined ? spare : parts.get(g)!, port: c.from.port }, to: c.to };
+      return { ...c, from: { module: g === undefined ? spare : parts.get(g)!, port: c.from.port } };
     });
   }
   const view = { patch: { ...p, modules, cables, assemblies: undefined }, groups: out };

@@ -357,6 +357,44 @@ export const FORMAT_1_23 = 65;
  */
 export const FORMAT_RACK = 66;
 /**
+ * Release 1.27's format (D-1022 style: its one format change): more than 128 modules (#1286), stereo mode and the effects'
+ * `r` jacks (#1141). A patch is written in it only when it uses one of those (D-281); every other patch keeps its lower
+ * format. Every binary of it has the side section right after the cables (sideRecord).
+ */
+export const FORMAT_1_27 = 67;
+/** bit 6 of a record's count byte (format 67, #1141; engine.h ENG_REC_STEREO): the module runs in stereo mode */
+export const REC_STEREO = 0x40;
+/** module m of a device form runs in stereo mode (#1141): ModuleInst.stereo on an eligible type outside every poly group
+ *  (engine.ts and feeds.ts count its two copies alike) */
+export const stereoIn = (m: ModuleInst, groups: readonly DeviceGroup[]): boolean => !!m.stereo && !!DEFS[m.type].stereo && !groups.some((g) => g.modules.has(m.id));
+/** what a patch uses of FORMAT_1_27's stereo (#1141; `dev`: its device form, `groups` its poly groups): a module in stereo
+ *  mode, a cable into an appended `r` input (the Delay's, the Reverb's, the Chorus's: modules.ts RIGHT_IN but the
+ *  Output's), or out of the Reverb's `r` output */
+export function usesStereo127(dev: Patch, groups: readonly DeviceGroup[]): boolean {
+  const typeOf = new Map(dev.modules.map((m) => [m.id, m.type]));
+  return dev.modules.some((m) => stereoIn(m, groups)) || dev.cables.some((c) => {
+    const to = typeOf.get(c.to.module)!;
+    return (c.to.port === RIGHT_IN[to] && to !== 'output') || (c.from.port === 'r' && typeOf.get(c.from.module) === 'reverb');
+  });
+}
+/** the cables in the binary's order (`p`: the device form): grouped by the module they go into (cablesGrouped), else the
+ *  patch's order */
+const cableOrder = (p: Patch, v: number): Patch['cables'] =>
+  cablesGrouped(p, v) ? p.modules.flatMap((m) => p.cables.filter((c) => c.to.module === m.id)) : p.cables;
+/** format 67's side section (#1141), right after the cables, in every binary of the format: u8 n, then per side cable in
+ *  the binary's cable order u8 its place there, u8 its side (1 L, 2 R); a side between two mono modules is left out (it
+ *  means nothing there). [] before format 67 (`p`: the device form) */
+export function sideRecord(p: Patch, groups: readonly DeviceGroup[], v: number): number[] {
+  if (v < FORMAT_1_27) return [];
+  const st = new Set(p.modules.filter((m) => stereoIn(m, groups)).map((m) => m.id));
+  const out = [0];
+  cableOrder(p, v).forEach((c, i) => {
+    if (c.side && (st.has(c.from.module) || st.has(c.to.module))) out.push(i, c.side === 'l' ? 1 : 2);
+  });
+  out[0] = (out.length - 1) / 2;
+  return out;
+}
+/**
  * The first format that writes the panel labels by their length (panelBytes), the cables grouped by the module they go
  * into (cablesGrouped) and only the Drum map row names off their default (drumNamed): the same values in fewer bytes
  * (D-1025, engine.h ENG_SLIM). Every binary of this format has that layout.
