@@ -37,12 +37,23 @@ describe('the Library’s effects', () => {
     expect(EFFECT_CATALOG.some((e) => e.name.toLowerCase() === 'master fx')).toBe(false);
   });
 
-  it('counts an L/R pair’s two copies in its CPU share', () => {
+  it('measures an in-line effect in its drawer form: one stereo module (two copies, cpu.ts), the legacy form an L/R pair', () => {
     const pair = EFFECT_CATALOG.find((e) => e.mode === 'pair' && 'type' in e.source)!;
     const p = newPatch(DEFS);
     const one = insertAssembly(p, DEFS, catalogEffectDef(pair), 0, 0);
-    expect(one.modules.length).toBeGreaterThanOrEqual(2);
+    expect(one.modules.map((id) => p.modules.find((m) => m.id === id)!.stereo)).toEqual([true]);
+    expect(insertAssembly(p, DEFS, catalogEffectDef(pair, { legacy: true }), 0, 600).modules).toHaveLength(2);
     expect(effectCpu(pair)).toBeGreaterThan(0);
+  });
+
+  it('lists a preset of an effect’s 1.26 drawer form under it and loads it onto that form', () => {
+    const drive = EFFECT_CATALOG.find((e) => 'type' in e.source && e.source.type === 'shape')!;
+    const p = newPatch(DEFS);
+    const old = insertAssembly(p, DEFS, catalogEffectDef(drive, { legacy: true }), 0, 0);
+    const preset = capturePreset(p, old, 'old drive');
+    const [listed] = effectPresets([preset]);
+    expect(listed).toMatchObject({ entry: drive, wrapped: true, legacy: true });
+    expect(presetSource(listed).def.modules.map((m) => m.type)).toEqual(['shape', 'shape']);
   });
 });
 
