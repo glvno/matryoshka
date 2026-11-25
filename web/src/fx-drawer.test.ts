@@ -5,6 +5,7 @@ import {
   allModules, assembliesOf, assemblyById, childrenOf, findRef, fixAssemblies, insertAssembly, makeAssembly, parentOf, reconcileAll, targetsOf,
   toDef, validateAssemblyDef, bypassAssembly, hiddenAssemblies, hiddenModules, type AssemblyInst,
 } from './assembly';
+import { buildFactoryBank } from './factory-bank';
 import {
   addDrawer, catalogEffectDef, chainCableProblem, chainHelpers, chainIns, chainJackProblem, chainOuts, classicMix, deviceModules, drawerOf, drawerOutput,
   drawers, EFFECT_CATALOG, effectKind, effectsOf, insertEffect, legacyEffectDef, moveEffect, outputDrawer, ownerOf, rackOf, removeEffect, rewire,
@@ -17,7 +18,7 @@ import { addModule, connect, newPatch, sameEnd, validatePatch, type Endpoint, ty
 import { encodePatch, FLAG_CABLES3 } from './patchbin';
 import { clearAllPatterns } from './pattern-ops';
 import { copiesOf, setPoly } from './poly';
-import { factoryWithPatterns, PRESETS } from './presets';
+import { PRESETS } from './presets';
 import { drawerPresetStructure, fnv, structureOf } from './structure';
 
 const survey = JSON.parse(readFileSync(new URL('./cpu-survey-factory-1.14.json', import.meta.url), 'utf8')) as { patches: Record<string, Patch> };
@@ -660,8 +661,9 @@ describe('stereo effects in drawers (#1141, release 1.27)', () => {
 });
 
 describe('the 909 Kit\'s drawer (#1141)', () => {
+  // (on the kit without the drawer it ships with, D-1055: the drawer forms one by one)
   const kit = (types: string[]): { p: Patch; rv?: AssemblyInst; bin: Uint8Array; plain: number } => {
-    const p = factoryWithPatterns('909 Kit');
+    const p = structuredClone(buildFactoryBank().find((c) => c.name === '909 Kit')!.patch);
     clearAllPatterns(p);
     const plain = encodePatch(p, true).length;
     const d = addDrawer(p, assembliesOf(p).find((a) => a.name === '909 kit')!.id);

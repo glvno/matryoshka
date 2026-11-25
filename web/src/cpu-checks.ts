@@ -29,10 +29,11 @@ export function cpuChecks(note: number): { name: string; patch: Patch; notes: nu
   };
   // Candidate banks may contain patches that cannot be loaded. As for assemblies below, keep CPU-over-budget checks
   // but omit structural or memory failures that the counter cannot execute. A factory patch counts with the patterns it
-  // shipped with up to 1.24.1 (factory-bank.ts UNSHIPPED_PATTERNS): its pattern 1 playing
+  // shipped with up to 1.24.1 (factory-bank.ts UNSHIPPED_PATTERNS): its pattern 1 playing. Past the FM-1's 3,840 bytes
+  // the counter still loads it (tools/cpu/prof.c takes 4,096): the 909 Kit with its FX drawer and those patterns
   const out = Object.keys(FM1_PRESETS).flatMap((name) => {
     const patch = factoryWithPatterns(name);
-    return deviceBudget(patch).over.every((i) => i.key === 'cpu') ? [{ name, patch, notes: voices(patch) }] : [];
+    return deviceBudget(patch).over.every((i) => i.key === 'cpu' || i.key === 'bytes') ? [{ name, patch, notes: voices(patch) }] : [];
   });
   out.push({ name: 'Acid, 4 parts', patch: withParts(acid(), 4), notes: chord });
   const morph = acid();
