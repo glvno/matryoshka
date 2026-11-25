@@ -89,7 +89,7 @@ import { engineOf } from './library-presets';
 import { drawerScope } from './fx-preset';
 import { effectAmount, planTab, TAB_FOOT, TAB_HEAD, TAB_W } from './fx-tab';
 import type { FxMeterSpec } from './fx-meter';
-import { chainCableProblem, chainJackProblem, drawerOutput, drawers, effectKind, effectsOf, insertEffect, moveEffect, outputDrawer, ownerOf, removeEffect, rewire, takeOut } from './fx-drawer';
+import { CHAIN_MODE_LABELS, chainCableProblem, chainJackProblem, drawerOutput, drawers, effectKind, effectModes, effectsOf, insertEffect, moveEffect, outputDrawer, ownerOf, removeEffect, rewire, takeOut, type ChainMode } from './fx-drawer';
 import { PRESET_VALUES_MAX } from './protocol';
 import { armable, armDrawing, armedWith, deviceOfModule, keepArmed, keysTargets, noKeysReach, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
@@ -264,6 +264,8 @@ export interface EditorEvents {
   onError(msg: string): void;
   /** "save" on an assembly: put this definition into the library */
   onSaveAssembly(def: AssemblyDef): void;
+  /** an assembly's Use as an effect… set `mode` (null: no longer an effect); the library's copy of that name follows (main.ts) */
+  onEffectMode?(name: string, mode: ChainMode | null): void;
   /** undo or redo happened (the tutorial counts them) */
   onHistory?(kind: 'undo' | 'redo'): void;
   /** the candidates or the one heard changed (made, switched, renamed, deleted, put back, moved) */
@@ -353,6 +355,12 @@ type DrawerView = {
 type FxMarks = { mode: 'preview' | 'loaded'; fx: EffectChange[] };
 /** where a dragged effect would go: a drawer, at a gap of its chain, or at its end (`at` null: over the closed plug) */
 type FxSpot = { id: number; at: number | null };
+/** how the user's own assembly can sit in an FX drawer, as a menu's choice (fx-drawer.ts effectModes) */
+const MODE_CHOICES: Record<ChainMode, { text: string; key: string }> = {
+  stereo: { text: 'Stereo', key: 'its own L and R' },
+  pair: { text: 'As an L/R pair', key: 'two copies, 2× CPU' },
+  wet: { text: 'Wet, added to both sides', key: 'reverbs, echoes' },
+};
 /** FX drawer geometry, px (designs fxdrawer3 and fxdrawer4): the plug and the drawer start this far under the card's edge */
 const FX_TUCK = 18;
 /** the closed plug past the card's edge; an empty drawer's plug is thinner */
@@ -3513,9 +3521,27 @@ export class Editor {
       { text: 'Rename', key: 'dbl-click', run: () => this.rename(a) },
       ...this.mutateItems({ modules: [], assemblies: [a.id] }, a),
       { text: 'Save to library', rule: true, run: () => this.saveAssembly(a) },
+      ...(parentOf(this.patch, a.id) || a.chain || effectKind(a.name) || childrenOf(this.patch, a).some((c) => c.drawer) ? []
+        : [{ text: a.fxMode ? `Use as an effect: ${CHAIN_MODE_LABELS[a.fxMode]}…` : 'Use as an effect…', run: () => this.effectModeMenu(a, at) }]),
       ...(parentOf(this.patch, a.id) ? [] : this.presetItems(a)),
       { text: 'Ungroup', run: () => this.change(() => ungroup(this.patch, a.id)) },
       { text: 'Delete with its modules', danger: true, rule: true, run: () => this.change(() => deleteAssembly(this.patch, a.id)) },
+    ], at);
+  }
+
+  /** an assembly's Use as an effect…: the ways its jacks let it sit in an FX drawer, chosen once and saved with it (its
+   *  status line says why when it cannot be one) */
+  private effectModeMenu(a: AssemblyInst, at: MenuAt): void {
+    const modes = effectModes(this.patch, a);
+    if (typeof modes === 'string') return this.ev.onError(modes);
+    const set = (mode: ChainMode | null): void => {
+      const now = assemblyById(this.patch, a.id);
+      if (!now || !this.change(() => (mode ? (now.fxMode = mode) : delete now.fxMode))) return;
+      this.ev.onEffectMode?.(now.name, mode);
+    };
+    this.popMenu([
+      ...modes.map((m) => ({ ...MODE_CHOICES[m], text: `${a.fxMode === m ? '✓ ' : ''}${MODE_CHOICES[m].text}`, run: () => set(m) })),
+      ...(a.fxMode ? [{ text: 'Not an effect', rule: true, run: () => set(null) }] : []),
     ], at);
   }
 
@@ -6316,14 +6342,43 @@ export class Editor {
     }, FX_SLIDE_MS + 40);
   }
 
-  /** what a card drag can put into a drawer: one audio effect on its own (a module, or an assembly at the top level) */
+  /** what a card drag can put into a drawer: one audio effect module on its own, or one top-level assembly (any: one that
+   *  cannot be an effect is refused on the drop, its reason in the status line) */
   private fxCandidate(set: { mods: ModuleInst[]; asms: AssemblyInst[] }): { module: number } | { assembly: number } | null {
     if (set.mods.length + set.asms.length !== 1) return null;
     const m = set.mods[0];
     if (m) return !assemblyOf(this.patch, m.id) && effectKind(m.type) ? { module: m.id } : null;
     const a = set.asms[0];
     if (parentOf(this.patch, a.id) || a.drawer || childrenOf(this.patch, a).some((c) => c.drawer)) return null;
-    return a.chain || effectKind(a.name) ? { assembly: a.id } : null;
+    return { assembly: a.id };
+  }
+
+  /**
+   * A card into a drawer at a spot: the user's own assembly not set by Use as an effect… that can sit more than one way
+   * (one audio input: an L/R pair or wet) asks how first, in a small menu at `at` (client px, or under `from`). False only
+   * when it cannot be an effect at all: nothing changed, the status line says why (an insert that fails reports itself
+   * and leaves the patch as it was, change()).
+   */
+  private fxOffer(spot: FxSpot, what: { module: number } | { assembly: number }, at: { x: number; y: number; from?: HTMLElement }): boolean {
+    const a = 'assembly' in what ? assemblyById(this.patch, what.assembly) : undefined;
+    const modes = a && !a.fxMode ? effectModes(this.patch, a) : [];
+    if (typeof modes === 'string') {
+      this.ev.onError(modes);
+      return false;
+    }
+    if (modes.length > 1) {
+      const items = modes.map((m): MenuItem => ({ ...MODE_CHOICES[m], run: () => this.fxInsert(spot, what, m) }));
+      popMenu(items, at.from ?? null, at.from ? undefined : { x: at.x, y: at.y });
+    } else this.fxInsert(spot, what, modes[0]);
+    return true;
+  }
+
+  /** a top-level assembly of the canvas into a drawer at `at` from its + list (main.ts): as a drag puts it in (fxOffer),
+   *  a menu under the drawer's + when it asks how */
+  addToDrawerFromCanvas(assemblyId: number, drawerId: number, at: number): boolean {
+    const slot = this.drawerViews.get(drawerId)?.drawer?.querySelector<HTMLElement>('.fx-slot') ?? undefined;
+    const r = this.canvas.getBoundingClientRect();
+    return this.fxOffer({ id: drawerId, at }, { assembly: assemblyId }, { x: r.left + r.width / 2, y: r.top + r.height / 2, from: slot?.isConnected ? slot : undefined });
   }
 
   /** the drawer spot at a point (client px): a gap in an open drawer's chain, or a closed plug (a margin round it); `skip`:
@@ -6417,9 +6472,9 @@ export class Editor {
 
   /** an effect into a drawer at a spot (its end, over the closed plug): one undo step; fx-drawer.ts wraps a module or a
    *  mono assembly for the stereo chain and rewires it */
-  private fxInsert(spot: FxSpot, what: { module: number } | { assembly: number } | { type: string } | { def: AssemblyDef }): boolean {
+  private fxInsert(spot: FxSpot, what: { module: number } | { assembly: number } | { type: string } | { def: AssemblyDef }, mode?: ChainMode): boolean {
     const d = assemblyById(this.patch, spot.id);
-    return !!d && this.change(() => insertEffect(this.patch, d, what, spot.at ?? undefined));
+    return !!d && this.change(() => insertEffect(this.patch, d, what, spot.at ?? undefined, mode));
   }
 
   /** a drag from the Library's effects moved over the canvas (client px; null: it was cancelled or left): plugs light up,
@@ -7382,8 +7437,10 @@ export class Editor {
   /** a press on a card's or frame's handle: shift toggles the item in the selection, else the drag takes the selection with it */
   private groupDrag(handle: HTMLElement, item: { module?: ModuleInst; asm?: AssemblyInst }, drop: (set: { mods: ModuleInst[]; asms: AssemblyInst[] }) => void): void {
     let set: { mods: ModuleInst[]; asms: AssemblyInst[] } = { mods: [], asms: [] };
-    // one audio effect dragged alone can go into an FX drawer: dropped on a plug or into an open drawer
+    // one audio effect dragged alone can go into an FX drawer: dropped on a plug or into an open drawer; one refused there
+    // goes back to where it was (`from`)
     let fx: { module: number } | { assembly: number } | null = null;
+    let from: Pt = { x: 0, y: 0 };
     this.dragOn(
       handle,
       (e) => {
@@ -7396,6 +7453,8 @@ export class Editor {
         if (!on) this.select(item.module ? [item.module.id] : [], item.asm ? [item.asm.id] : []);
         set = this.dragSet();
         fx = this.fxCandidate(set);
+        const at = item.asm ?? item.module!;
+        from = { x: at.x, y: at.y };
         this.dragPointer = null;
         this.touch();
         return true;
@@ -7408,8 +7467,14 @@ export class Editor {
         this.sizeCanvas();
         this.ev.onLayout(this.patch);
         const spot = fx ? this.fxDragEnd(this.dragPointer) : null;
-        if (fx && spot) this.fxInsert(spot, fx);
-        else drop(set);
+        const pt = this.dragPointer ?? { x: 0, y: 0 };
+        if (fx && spot && this.fxOffer(spot, fx, pt)) return;
+        if (fx && spot) {
+          const at = item.asm ?? item.module!;
+          this.moveSet(set, from.x - at.x, from.y - at.y);
+          this.ev.onLayout(this.patch);
+        }
+        drop(set);
       },
     );
   }
