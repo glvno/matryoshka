@@ -949,6 +949,99 @@ static void store(void)
     printf("patlink: a full patch refuses pattern 1's edit and stores the others (#1199)\n");
 }
 
+/* the 909 Kit as the factory set has it (presets.h), loaded: 0 */
+static int kit_909(void)
+{
+    static uint8_t b[M1_PATCH_MAX];
+    uint32_t i;
+    int32_t n = -1;
+    for (i = 0; i < N_PRESETS && strcmp(PRESET_LIST[i].name, "909 KIT"); i++)
+        ;
+    if (i < N_PRESETS)
+        n = lz_unpack(PRESET_LIST[i].lz, PRESET_LIST[i].lz_len, b, sizeof b);
+    return n > 0 ? load_patch(b, (uint32_t)n) : -1;
+}
+/* pattern p of the first track: n notes on 16 steps, then c P-locks over 10 rows (another module's parameter 1 each, a
+ * step's rows first), each into the binary as the SEQ page puts it */
+static void kit_pattern(uint32_t p, uint32_t n, uint32_t c)
+{
+    static const uint32_t note[] = { 36u, 42u, 38u, 42u };
+    uint32_t w[16], row[10], rows = 0, j, mod, m = (uint32_t)eng_steps_module(0);
+    for (mod = 0; mod < (uint32_t)eng_nmodules() && rows < 10u; mod++)
+        if (mod != m && eng_type(mod) != T_PART && eng_type(mod) != T_STEPS && DEFS[eng_type(mod)].npar > 1)
+            row[rows++] = mod;
+    for (j = 0; j < n; j++)
+        w[j] = NW(j * 16u / n, 1u, note[j % 4u], STEP_VEL, 0u);
+    OK(rows == 10u && eng_pattern_set_notes(m, p, w, n));
+    if (p)
+        m1_patch_patterns();
+    else
+        m1_patch_track(m);
+    for (j = 0; rows && j < c; j++) {
+        OK(!eng_lock_set(m, p, j / rows, row[j % rows], 1u, 0, 1000 * (int32_t)j, 1));
+        OK(m1_patch_locks());
+    }
+}
+/* the PAT_LINK_NOW replies since nreplies was reset */
+static uint32_t links_told(void)
+{
+    uint8_t b[8];
+    uint32_t k, n = 0;
+    for (k = 0; k < nreplies; k++)
+        n += reply(k, R_PAT_LINK_NOW, b, sizeof b) != 0u;
+    return n;
+}
+/* a double the binary refuses after the patterns 2..64 it holds went to the store to make room (#1199, D-838): the binary
+ * byte for byte, the engine, the links and m1_edited as they were, and the editor told nothing. The store on (the spill
+ * links P02, the double of pattern 1 still does not fit: the double's undo kept apart from the payloads the spill writes,
+ * the spill's links undone), full (the spill takes nothing) and off; a double the store makes room for done, its link
+ * told */
+static void double_spill(void)
+{
+    static uint8_t junk[PT_MAX];
+    uint64_t clean;
+    uint32_t most, n, id, sz, k = 0;
+    memset(nor, 0xFF, sizeof nor);
+    boot();
+    OK(!kit_909());
+    kit_pattern(0, 8, 20);
+    kit_pattern(1, 5, 0);
+    OK(inline_has(1) == 1 && !pl_link(1));
+    n = pt_count();
+    m1_edited = 0;
+    nreplies = 0;
+    OK(refused(pl_double, 0, -4));
+    OK(pt_count() == n + 1u && !pl_link(1) && !pl_priv && !m1_edited && !links_told());   /* (its entry stays until pl_gc) */
+    OK(!kit_909());
+    kit_pattern(1, 8, 20);
+    nreplies = 0;
+    OK(pl_double(1, &most) == 0 && most == 32u && (id = pl_link(1)) != 0u && link_told(1, id) && (pl_priv >> 1 & 1u));
+    OK(links_ok(&clean) == 1u && clean == 2u);      /* (the stored entry is the doubled P02) */
+    memset(junk, 0x11, sizeof junk);
+    for (sz = PT_MAX; sz >= 8u; sz /= 2u)
+        for (id = 0, k++; !pt_put(&id, "JUNK", junk, sz, 0); id = 0, k++)
+            junk[0] = (uint8_t)k;
+    OK(!kit_909());
+    kit_pattern(1, 8, 20);
+    m1_edited = 0;
+    nreplies = 0;
+    OK(refused(pl_double, 1, -4));
+    OK(!pl_link(1) && !m1_edited && !links_told());
+    pt_on = 0;
+    OK(!kit_909());
+    kit_pattern(0, 8, 20);
+    kit_pattern(1, 5, 0);
+    m1_edited = 0;
+    nreplies = 0;
+    OK(refused(pl_double, 0, -4));
+    OK(!m1_edited && !links_told());
+    OK(!kit_909());
+    kit_pattern(1, 8, 20);
+    OK(refused(pl_double, 1, -4));
+    pt_on = 1;
+    printf("patlink: a double refused after the store made room leaves the binary, the links and the editor as they were (D-838)\n");
+}
+
 /* boot's migration (main.c bank_patterns): each slot pl_slot_due names loaded, its patterns stored (pl_commit) and the
  * slot written again when that changed it; then pl_gc. The slots written */
 static uint32_t migrate(void)
@@ -1264,6 +1357,7 @@ int main(void)
     slot_get();
     cuts();
     store();
+    double_spill();
     if (fails) {
         fprintf(stderr, "patlink: %d checks failed\n", fails);
         return 1;
