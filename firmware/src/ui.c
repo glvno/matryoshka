@@ -314,9 +314,11 @@ static void ui_battery(int32_t sample, int host)
     }
 }
 
-/* the device page, the menu's settings tabs and the sandbox page (page 0 in sandbox mode): a header and a footer of their
- * own (pages_ui.c); the other pages have the 20 px top bar */
-static int dev_like(void) { return page == 0u || menu_page(); }
+/* the device page, the menu's settings tabs, the sandbox page (page 0 in sandbox mode) and the SEQ page's lock view (a
+ * step held on a device page, seq_ui.c seq_lock_follow, #1213): a header and a footer of their own (pages_ui.c); the
+ * other pages have the 20 px top bar */
+static uint8_t seq_lv;                          /* seq_ui.c: the SEQ page shows a device's real page for its held step's locks */
+static int dev_like(void) { return page == 0u || menu_page() || (page == 8u && seq_lv); }
 static uint32_t page_bar_h(void);               /* pages_ui.c: the header's height (LK_HH) */
 static uint32_t bar_h(void) { return dev_like() ? page_bar_h() : BAR_H; }
 
@@ -384,7 +386,7 @@ static void header_draw_now(void)
         msg_until = 0;
         return;
     }
-    if (page == 8u && !eng_overload && !load_err) {     /* the SEQ page: the track's name (seq_ui.c PAGE_SEQ) */
+    if (page == 8u && !seq_lv && !eng_overload && !load_err) {   /* the SEQ page: the track's name (seq_ui.c PAGE_SEQ) */
         seq_bar();
         msg_until = 0;
         return;
@@ -524,8 +526,8 @@ static void view_draw(int full)                 /* whichever page is showing */
         pg_plain = 0;
     if (page == PAGE_MENU && !menu_page())
         menu_draw(full);                        /* (INFO, MANUAL; a settings tab is drawn as a device page) */
-    else if (page == 8u)
-        seq_draw(full);
+    else if (page == 8u && !seq_lv)
+        seq_draw(full);                         /* (its lock view: the device page, below) */
     else if (page == 11u)
         song_draw(full);
     else if (page == PAGE_ENV)

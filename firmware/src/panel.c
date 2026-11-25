@@ -1578,6 +1578,7 @@ static void panel_draw(void)
 static void panel_draw_now(void)
 {
     pal_follow();                                   /* the palette's overview (pal_ui.c) and its NEXT: bar, as the card */
+    seq_lock_follow();                              /* the SEQ page's lock view: on or off as the held step asks (#1213) */
     help_follow();                                  /* a card first (help_ui.c), then the page: under it, a dim frame */
     if (help_due)
         help_draw();
