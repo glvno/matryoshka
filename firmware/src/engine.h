@@ -38,16 +38,17 @@ void eng_fpu_probe(uint32_t lane, uint32_t *h);
 #define ENG_SLIM 64                   /* the first format with the panel labels by their length (eng_panel_bytes), the cables
                                        * grouped by the module they go into (eng_cables_grouped) and only the Drum map row
                                        * names off their default (eng_names_end): patchbin.ts SLIM, D-1025 */
-#define ENG_SIDES 67                  /* the first format with the side section right after the cables (eng_cables_to, #1141,
-                                       * patchbin.ts sideRecord): in every binary of it, u8 n (0: no side cable) */
+#define ENG_SIDES 67                  /* the first format with stereo modules (ENG_REC_STEREO) and the side section right after
+                                       * the cables (eng_cables_to, #1141, patchbin.ts sideRecord): in every binary of it, u8 n
+                                       * (0: no side cable) */
 /* Format 51's record (patchbin.ts, D-1000): u8 type, u8 count (bits 0..5: the parameters it holds; bit 7, ENG_REC_TEMPLATE,
  * on a type with parameter inputs: its attenuverters and p1 / p2 masks are at their template, eng_mask_template, and left
  * out), the values, then on such a type without bit 7 a presence byte (ENG_PRES_*) and only the items it marks, in the
  * order att1, att2 (i32), p1, p2 (eng_mask_bytes each); then the type's data */
 #define ENG_REC_COUNT 0x3Fu
 #define ENG_REC_TEMPLATE 0x80u
-#define ENG_REC_STEREO 0x40u           /* bit 6 (format 67, #1141, patchbin.ts REC_STEREO): the module runs in stereo mode;
-                                       * not yet read here: eng_rec_ok refuses it until eng_load runs stereo copies */
+#define ENG_REC_STEREO 0x40u           /* bit 6 (format 67, #1141, patchbin.ts REC_STEREO): the module runs in stereo mode, two
+                                       * copies (eng_rec_ok: only on a DEF_STEREO type; eng_load: only outside the poly groups) */
 #define ENG_PRES_ATT1 1u
 #define ENG_PRES_ATT2 2u
 #define ENG_PRES_P1 4u

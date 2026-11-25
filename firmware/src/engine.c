@@ -1029,7 +1029,7 @@ static volatile uint16_t panel_buttons; /* the patch buttons held / switched on 
  * runs once) and the part it plays: from the instance itself, so two cores can render two parts at once (#271) */
 #define IT_V(nd, it) ((uint32_t)((it) - &inst_pool[(nd)->inst0]))
 #define IT_G(nd) (&E.grp[(nd)->grp])
-#define IT_PV(nd, it) (&E.pv[E.grp[(nd)->grp].pv0 + IT_V(nd, it)])
+#define IT_PV(nd, it) (&E.pv[E.grp[(nd)->grp].pv0 + ((nd)->grp ? IT_V(nd, it) : 0u)])   /* (a stereo copy: group 0's one part) */
 /* the lane a copy renders in (#271, #802): lane 1 runs on the second core while lane 0 runs on core 0. Each lane has its
  * own scratch (lock_buf, ramp_buf), its own dummy output and its own buffers (buf_take), so the two cores never share
  * them. Set when a patch loads (sched_build): the lanes of its two-core schedule, else the odd parts of a poly group. One
@@ -1271,34 +1271,113 @@ static int buf_split(const node_t *nd) { return nd->grp && nd->ninst >= 2u && nd
 /* inputs read outside the module's turn: the Output's after the render, Main's morph and an Arpeggiator's before it, the
  * Part's assign, unison and priority after it (group_cables) */
 static int buf_late(const node_t *nd) { return nd->type == T_OUTPUT || nd->type == T_FM1 || nd->type == T_ARP || nd->type == T_PART; }
-/* the sources summed into input j of module m (as eng_load wires them: every part of another group's output) */
+/* Stereo mode and the jack pairs (#1141; feeds.ts, the same rules): a stereo module runs two copies in group 0, copy 0 L
+ * and copy 1 R. A cable's side (patch.ts Cable.side: 1 L, 2 R, 0 none) is in bits 6..7 of E.to_p (eng_load, from the side
+ * section), its input in bits 0..5 */
+#define ST_NODE(nd) (!(nd)->grp && (nd)->ninst == 2u)
+#define CAB_TP(c) (E.to_p[c] & 0x3Fu)
+#define CAB_SIDE(c) ((uint32_t)E.to_p[c] >> 6)
+#define FEED_ANY 0xFFu
+static uint16_t para_w(uint32_t m, uint32_t p);
+/* cable c is a stereo cable into the left jack of an input pair whose right jack has no cable: L into the left jack, R into
+ * the right one (feeds.ts pairSplit) */
+static int cab_split(uint32_t c)
+{
+    uint32_t t = E.to_m[c], d;
+    int32_t r = DEF_RIN(E.node[t].type);
+    if (r < 0 || E.to_p[c] || !ST_NODE(&E.node[E.from_m[c]]))   /* (to_p 0: input 0, no side) */
+        return 0;
+    for (d = 0; d < E.ncab; d++)
+        if (E.to_m[d] == t && CAB_TP(d) == (uint32_t)r)
+            return 0;
+    return 1;
+}
+/* what cable c adds into input j of copy v of its module (feeds.ts cableFeeds): bits 0..7 the source's copies, 8..12 their
+ * output, 16..31 their Q16 weight (0: as they are: para_w, or 32768 for a stereo source into a mono jack, (L + R) / 2) */
+static uint32_t cab_feed(uint32_t c, uint32_t j, uint32_t v)
+{
+    const node_t *f = &E.node[E.from_m[c]], *t = &E.node[E.to_m[c]];
+    uint32_t side = CAB_SIDE(c), fp = E.from_p[c], st = ST_NODE(t), port = fp;
+    int32_t ro = DEF_ROUT(f->type);
+    if (CAB_TP(c) != j)
+        return (int32_t)j == DEF_RIN(t->type) && cab_split(c) ? 2u | fp << 8 : 0u;
+    if (side && st && (side == 2u) != v)
+        return 0;
+    if (st && ro >= 0 && !fp && (side ? side == 2u : v == 1u))   /* a pair's left output into a stereo module: the pair */
+        port = (uint32_t)ro;
+    if (f->grp && f->grp != t->grp)
+        return ((1u << f->ninst) - 1u) | port << 8 | (uint32_t)para_w(E.from_m[c], fp) << 16;
+    if (!ST_NODE(f))
+        return 1u << (f->grp ? v : 0u) | port << 8;
+    if (side)
+        return 1u << (side == 2u) | port << 8;
+    if (st || cab_split(c))
+        return 1u << (st ? v : 0u) | port << 8;
+    return 3u | port << 8 | 32768u << 16;
+}
+/* the copies of cable c's reader that read copy s of output p of its source through it (FEED_ANY: any output), a mask
+ * (feeds.ts cableReaders) */
+static uint32_t cab_reads(uint32_t c, uint32_t p, uint32_t s)
+{
+    const node_t *t = &E.node[E.to_m[c]];
+    int32_t rin = DEF_RIN(t->type);
+    uint32_t w, k, x, r = 0;
+    for (w = 0; w < t->ninst; w++)
+        for (k = 0; k < 2u; k++) {
+            if (k && (rin < 0 || (uint32_t)rin == CAB_TP(c)))
+                break;
+            x = cab_feed(c, k ? (uint32_t)rin : CAB_TP(c), w);
+            if ((x >> s & 1u) && (p == FEED_ANY || (x >> 8 & 31u) == p))
+                r |= 1u << w;
+        }
+    return r;
+}
+/* output p of module m is read: a cable from it, or it is a pair's right output whose left one feeds a stereo module
+ * (feeds.ts outputRead) */
+static int out_read(uint32_t m, uint32_t p)
+{
+    uint32_t c;
+    for (c = 0; c < E.ncab; c++)
+        if (E.from_m[c] == m && (E.from_p[c] == p ||
+            ((int32_t)p == DEF_ROUT(E.node[m].type) && !E.from_p[c] && ST_NODE(&E.node[E.to_m[c]]))))
+            return 1;
+    return 0;
+}
+/* the pair's right output a stereo reader takes through cable c too (cab_feed; part_quiet checks it), -1 none */
+static int32_t cab_rport(uint32_t c)
+{
+    return ST_NODE(&E.node[E.to_m[c]]) && !E.from_p[c] && CAB_SIDE(c) != 1u ? DEF_ROUT(E.node[E.from_m[c]].type) : -1;
+}
+/* the most sources one copy of module m sums into input j (as eng_load wires them: cab_feed; feeds.ts sourcesInto) */
 static uint32_t buf_nsrc(uint32_t m, uint32_t j)
 {
     const node_t *nd = &E.node[m];
-    uint32_t c, n = 0;
+    uint32_t c, v, q, n[2] = {0, 0};
     if ((nd->disabled_inputs & (1u << j)) && !nd->input_map[j])
         return 0;
     for (c = 0; c < E.ncab; c++)
-        if (E.to_m[c] == m && E.to_p[c] == j)
-            n += E.node[E.from_m[c]].grp && E.node[E.from_m[c]].grp != nd->grp ? E.node[E.from_m[c]].ninst : 1u;
-    return n;
+        if (E.to_m[c] == m)
+            for (v = 0; v < (ST_NODE(nd) ? 2u : 1u); v++)
+                for (q = cab_feed(c, j, v) & 0xFFu; q; q &= q - 1u)
+                    n[v]++;
+    return n[0] > n[1] ? n[0] : n[1];
 }
 /* the last place output p of copy s of module m (written at place d, by lane `lane`) is read at; BUF_FOREVER (above) */
 static int32_t buf_end(uint32_t m, uint32_t p, uint32_t s, int32_t d, uint32_t lane, const uint8_t *pos, const uint8_t *seg_end)
 {
     const node_t *f = &E.node[m];
     int32_t end = d;
-    uint32_t c, w;
+    uint32_t c, w, rd;
     for (c = 0; c < E.ncab; c++) {
-        uint32_t t = E.to_m[c];
+        uint32_t t = E.to_m[c], tp = CAB_TP(c);
         const node_t *r = &E.node[t];
-        if (E.from_m[c] != m || E.from_p[c] != p || ((r->disabled_inputs & (1u << E.to_p[c])) && !r->input_map[E.to_p[c]]))
+        if (E.from_m[c] != m || ((r->disabled_inputs & (1u << tp)) && !r->input_map[tp]) || !(rd = cab_reads(c, p, s)))
             continue;                                /* (a disabled input reads zeros) */
         if ((int32_t)pos[t] <= d || (f->grp && r->grp != f->grp) || buf_late(r))
             return BUF_FOREVER;
-        for (w = 0; w < r->ninst; w++) {             /* the copies of the reader that read copy s (buf_of) */
+        for (w = 0; w < r->ninst; w++) {             /* the copies of the reader that read copy s (cab_reads) */
             int32_t at = pos[t];
-            if ((f->ninst > 1u ? w : 0u) != s)
+            if (!(rd >> w & 1u))
                 continue;
             if (LANE_OF(r->inst0 + w) != lane) {     /* read by the other lane */
                 if (sch.on)
@@ -1511,7 +1590,8 @@ static inline int eng_rec_ok(const uint8_t *p, uint32_t len, uint32_t at)
     if (at + 1u >= len)
         return 0;
     c = p[at + 1u];
-    if ((c & ENG_REC_COUNT) > eng_npar(d, p[1]) || (c & ENG_REC_STEREO) || ((c & ENG_REC_TEMPLATE) && d->cvbase < 0))
+    if ((c & ENG_REC_COUNT) > eng_npar(d, p[1]) || ((c & ENG_REC_STEREO) && (p[1] < ENG_SIDES || !DEF_STEREO(p[at] & 0x7Fu))) ||
+        ((c & ENG_REC_TEMPLATE) && d->cvbase < 0))
         return 0;
     if (d->cvbase < 0 || (c & ENG_REC_TEMPLATE))
         return 1;
@@ -2234,13 +2314,13 @@ static int fx_page_valid(const uint8_t *p, uint32_t len, uint32_t at, const uint
 
 /* effect e (fx.count of them so far) on device `device` with the n targets at q, from run `r`: they share one on/off,
  * on when any of them was saved playing; 0 when a target cannot run as an effect's (a poly copy, no through input) or,
- * in a bus (`type`), is not its stage's type */
+ * in a bus (`type`), is not its stage's type. A stereo target's two copies share its run (m_fx) */
 static int fx_effect(uint32_t e, uint32_t device, uint32_t n, const uint8_t *q, uint32_t r, uint32_t type)
 {
     uint32_t k, on = 0;
     for (k = 0; k < n; k++) {
         uint32_t m = q[k];
-        if (m >= E.nmod || (type && E.node[m].type != type) || E.node[m].grp || E.node[m].ninst != 1u
+        if (m >= E.nmod || (type && E.node[m].type != type) || E.node[m].grp || E.node[m].ninst > 2u
             || DEFS[E.node[m].type].thru < 0) return 0;
         on |= !E.node[m].bypass;
     }
@@ -2309,7 +2389,7 @@ static int fx_load(const uint8_t *p, uint32_t len, uint32_t at, uint32_t devices
  * in its lane (inst_lane). pos and seg_end: scratch of ENG_MAX_MODULES. 0, or -6: they do not fit */
 static int bufs_place(const uint8_t *p, uint32_t len, uint8_t *pos, uint8_t *seg_end)
 {
-    uint32_t i, j, k, v, c;
+    uint32_t i, j, k, v;
     bufs_t bs;
     for (i = 0; i < E.nmod; i++)
         for (k = 0; k < E.node[i].ninst; k++)
@@ -2337,13 +2417,10 @@ static int bufs_place(const uint8_t *p, uint32_t len, uint8_t *pos, uint8_t *seg
                 if (!(inst_pool[nd->inst0 + v].in[j] = sum ? buf_take(&bs, (int32_t)k, buf_late(nd) ? BUF_FOREVER : (int32_t)k, LANE_OF(nd->inst0 + v)) : zero_buf))
                     return -6;
         }
-        for (j = 0; j < DEFS[nd->type].nout; j++) {  /* its connected outputs */
-            for (c = 0; c < E.ncab && !(E.from_m[c] == m && E.from_p[c] == j); c++)
-                ;
-            for (v = 0; c < E.ncab && v < nd->ninst; v++)
+        for (j = 0; j < DEFS[nd->type].nout; j++)    /* its outputs something reads (out_read) */
+            for (v = 0; out_read(m, j) && v < nd->ninst; v++)
                 if (!(inst_pool[nd->inst0 + v].out[j] = buf_take(&bs, (int32_t)k, buf_end(m, j, v, (int32_t)k, LANE_OF(nd->inst0 + v), pos, seg_end), LANE_OF(nd->inst0 + v))))
                     return -6;
-        }
     }
     if (!ENG_BUFFER_ALLOCATION && bs.values > bs.n && !arena_lo((bs.values - bs.n) * ENG_BUF_BYTES))   /* conservative allocation rule */
         return -6;
@@ -2566,16 +2643,20 @@ int eng_load(const uint8_t *p, uint32_t len)
         at += d->ndata;
         /* the memories of delay, reverb, chorus, granular and the output exist once (patch.ts SHARED_TYPES) */
         nd->grp = nd->type == T_DELAY || nd->type == T_REVERB || nd->type == T_CHORUS || nd->type == T_GRAIN || nd->type == T_OUTPUT || nd->type == T_ARP || nd->type == T_STEPS || nd->type == T_DRUMMAP || nd->type == T_HARM ? 0u : member[i];
-        {                                        /* its copies, from the arena's bottom (the spare until then) */
-            int i0 = arena_inst(E.grp[nd->grp].parts);
+        if ((cnt & ENG_REC_STEREO) && member[i])  /* (stereo mode only outside the poly groups, #1141; eng_rec_ok checked the rest) */
+            return -3;
+        {                                        /* its copies, from the arena's bottom (the spare until then): stereo mode's
+                                                  * two (L, R), a poly group's parts, else one */
+            uint32_t nc = (cnt & ENG_REC_STEREO) ? 2u : E.grp[nd->grp].parts;
+            int i0 = arena_inst(nc);
             if (i0 < 0) {
                 nd->ninst = 1;
                 return -7;
             }
-            for (k = 0; k < E.grp[nd->grp].parts; k++)
+            for (k = 0; k < nc; k++)
                 inst_pool[i0 + (int)k].eff = par_spare;
             nd->inst0 = (uint8_t)i0;
-            nd->ninst = E.grp[nd->grp].parts;
+            nd->ninst = (uint8_t)nc;
             E.ninst = (uint8_t)(E.ninst + nd->ninst);
         }
         if (nd->type == T_FM1 && E.main == NO_MAIN)
@@ -2672,9 +2753,10 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.grp[E.node[tm].grp].mode = tm;
         }
     }
-    if (p[1] >= ENG_SIDES)                       /* the side section (#1141; eng_cables_to checked it): no stereo module plays
-                                                  * here yet (eng_rec_ok), so no side cable means anything */
-        at += 1u + 2u * p[at];
+    if (p[1] >= ENG_SIDES)                       /* the side section (#1141; eng_cables_to checked it): each cable's side in
+                                                  * bits 6..7 of its input (CAB_SIDE) */
+        for (i = 0, n0 = p[at++]; i < n0; i++, at += 2u)
+            E.to_p[p[at]] = (uint8_t)(E.to_p[p[at]] | p[at + 1u] << 6);
     if (chained_keys && E.ntrk) {
         uint32_t bytes = (sizeof(key_memory_t) + 3u) & ~3u;
         if (bytes > arena_free()) return -8;
@@ -3073,9 +3155,9 @@ int eng_load(const uint8_t *p, uint32_t len)
             sched_off();
         }
     }
-    /* inputs of every instance: none -> zeros, one source -> that buffer itself, several -> a summing buffer. An instance
-     * reads its own part of an output of its group, the one buffer of a module that runs once, and every part (summed)
-     * of another group's output (engine.ts gather) */
+    /* inputs of every instance: none -> zeros, one source -> that buffer itself, several -> a summing buffer. What each
+     * copy reads: cab_feed (feeds.ts; engine.ts wire): its own part of an output of its group, the one buffer of a module
+     * that runs once, every part (summed) of another group's output, a stereo source's side or both halves (#1141) */
     E.nsum = 0;
     E.nsrc = 0;
     for (i = 0; i < E.nmod; i++) {
@@ -3091,22 +3173,17 @@ int eng_load(const uint8_t *p, uint32_t len)
                     continue;
                 }
                 for (c = 0; c < ncab; c++) {
-                    if (E.to_m[c] != i || E.to_p[c] != j)
-                        continue;
-                    if (E.node[E.from_m[c]].grp && E.node[E.from_m[c]].grp != nd->grp) {
-                        for (v = 0; v < E.node[E.from_m[c]].ninst; v++, n++) {
+                    uint32_t x = E.to_m[c] == i ? cab_feed(c, j, k) : 0u, q;
+                    if ((x & 0xFFu) && j != CAB_TP(c))
+                        nd->conn |= (uint16_t)(1u << j);    /* (the right jack of a split pair) */
+                    for (q = 0; q < 8u; q++)
+                        if (x >> q & 1u) {
                             if (E.nsrc >= MAX_SRC)
                                 return -6;
-                            E.sum_w[E.nsrc] = para_w(E.from_m[c], E.from_p[c]);
-                            one = E.sum_src[E.nsrc++] = buf_of(E.from_m[c], E.from_p[c], v);
+                            E.sum_w[E.nsrc] = (uint16_t)(x >> 16);
+                            one = E.sum_src[E.nsrc++] = inst_pool[E.node[E.from_m[c]].inst0 + q].out[x >> 8 & 31u];
+                            n++;
                         }
-                    } else {
-                        if (E.nsrc >= MAX_SRC)
-                            return -6;
-                        E.sum_w[E.nsrc] = 0;
-                        one = E.sum_src[E.nsrc++] = buf_of(E.from_m[c], E.from_p[c], k);
-                        n++;
-                    }
                 }
                 if (n == 0) {
                     it->in[j] = zero_buf;
@@ -3352,7 +3429,7 @@ void eng_cable(uint32_t i, uint32_t *from, uint32_t *from_port, uint32_t *to, ui
     *from = E.from_m[i];
     *from_port = E.from_p[i];
     *to = E.to_m[i];
-    *to_port = E.to_p[i];
+    *to_port = CAB_TP(i);
 }
 
 int eng_nmodules(void) { return E.loaded ? E.nmod : 0; }
@@ -3536,7 +3613,7 @@ int eng_set_by(uint32_t module, uint32_t param)
     for (s = 0; s < 2u; s++)
         if ((nd->cvp >> s & 1u) && (nd->map[s] >> param & 1u) && (nd->ranged[s] >> param & 1u) && range_find(module, s, param))
             for (c = 0; c < E.ncab; c++)
-                if (E.to_m[c] == module && E.to_p[c] == (uint32_t)DEFS[nd->type].cvbase + s)
+                if (E.to_m[c] == module && CAB_TP(c) == (uint32_t)DEFS[nd->type].cvbase + s)
                     return E.from_m[c];
     return -1;
 }
@@ -9152,7 +9229,7 @@ static void __attribute__((noinline)) dly_change(inst_t *it, uint32_t sh, int ta
 /* free or synced time (see modules.ts); ping-pong splits the buffer in two halves, A (input, left) and B (right), see
  * modules.ts. note: a synced length of its own (DELAY_NOTE_NUM / DEN) in place of the time knob's; swell: the feedback
  * x 198 / 95 and the loop through dly_soft (the loops below, apart, so the plain one stays as it was) */
-static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
+static void dly_run(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *in = it->in[DELAY_I_IN];
     esig_t *out = it->out[DELAY_O_OUT], *outr = it->out[DELAY_O_R];
@@ -9274,6 +9351,34 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
 held:
     if (hold)
         it->s.dly.rate = hold > n ? DLY_HOLD + (int32_t)(hold - n) : 0;
+}
+/* A right signal (#1141, a cable into `r` or a stereo cable into `in`) into a Delay or a Chorus (run: its kernel, `mix`
+ * its mix): the line hears m = (in + r) / 2, put in the lane's dummy output as its input 0 (every path reads in[i]
+ * before it writes an output's sample i), and each side's dry replaces m's in outputs 0 and 1 (the kernel's dry is
+ * mul16(input, 1 - mix) everywhere) */
+static void fx_lr(const node_t *nd, inst_t *it, uint32_t n, void (*run)(const node_t *, inst_t *, uint32_t), int32_t mix)
+{
+    const esig_t *l = it->in[0], *r = it->in[DEF_RIN(nd->type)];
+    esig_t *m = IT_LANE(nd, it) ? dummy_out1 : dummy_out, *o0 = it->out[0], *o1 = it->out[1];
+    int32_t dry = ENG_ONE - mix;
+    uint32_t i;
+    for (i = 0; i < n; i++)
+        m[i] = (l[i] + r[i]) >> 1;
+    it->in[0] = m;
+    run(nd, it, n);
+    it->in[0] = l;
+    for (i = 0; i < n; i++) {
+        int32_t dm = mul16((l[i] + r[i]) >> 1, dry);
+        o0[i] += mul16(l[i], dry) - dm;
+        o1[i] += mul16(r[i], dry) - dm;
+    }
+}
+static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
+{
+    if (nd->conn >> DELAY_I_R & 1u)
+        fx_lr(nd, it, n, dly_run, EF(it, DELAY_P_MIX));
+    else
+        dly_run(nd, it, n);
 }
 
 /* ---- reverb: the same Freeverb-style network as modules.ts, int16 (Q13) delay memory, float inside (D-1112) */
@@ -9501,22 +9606,36 @@ static __attribute__((noinline)) void reverb_kernel(inst_t *it, uint32_t n)   /*
         }
     }
 }
+/* a right signal (#1141: a cable into `r`, or a stereo cable into `in`): the lines hear (in + r) / 2, `out` and `r` each
+ * their own dry and the same (mono) wet; without one `r` is `out` */
 static void m_reverb(const node_t *nd, inst_t *it, uint32_t n)
 {
-    const esig_t *in = it->in[REVERB_I_IN];
-    esig_t *out = it->out[0];
+    const esig_t *in = it->in[REVERB_I_IN], *inr = it->in[REVERB_I_R];
+    esig_t *out = it->out[0], *outr = it->out[REVERB_O_R];
     int32_t mix = EF(it, REVERB_P_MIX), dry = ENG_ONE - mix, *ring = RV_RING(it);
     uint32_t i, k, hw;
-    (void)nd;
     if (!it->s.rev.kdone)
         reverb_kernel(it, n);
     it->s.rev.kdone = 0;
     hw = it->s.rev.hw;
-    for (i = 0; i < n; i++) {
-        int32_t w = ring[hw];
-        ring[hw] = in[i];
-        out[i] = mulr(in[i], dry, 16) + mulr(w, mix, 16);
-        hw = hw + 1u == ENG_BLOCK ? 0u : hw + 1u;
+    if (nd->conn >> REVERB_I_R & 1u)
+        for (i = 0; i < n; i++) {
+            int32_t w = mulr(ring[hw], mix, 16);
+            ring[hw] = (in[i] + inr[i]) >> 1;
+            out[i] = mulr(in[i], dry, 16) + w;
+            outr[i] = mulr(inr[i], dry, 16) + w;
+            hw = hw + 1u == ENG_BLOCK ? 0u : hw + 1u;
+        }
+    else {
+        for (i = 0; i < n; i++) {
+            int32_t w = ring[hw];
+            ring[hw] = in[i];
+            out[i] = mulr(in[i], dry, 16) + mulr(w, mix, 16);
+            hw = hw + 1u == ENG_BLOCK ? 0u : hw + 1u;
+        }
+        if (!IS_DUMMY(outr))
+            for (i = 0; i < n; i++)
+                outr[i] = out[i];
     }
     it->s.rev.hw = (uint8_t)hw;
     for (k = 0; k < 6u; k++)
@@ -10320,8 +10439,9 @@ static void m_pd(const node_t *nd, inst_t *it, uint32_t n)
 #define CH_BASE_Q16 34695807u       /* 0.012 * ENG_SR samples, Q16 */
 #define CH_SWING_Q16 23130538u      /* 0.008 * ENG_SR samples, Q16 */
 
-/* The stereo chorus (modules.ts chorus): a Q13 line, two taps swept in quadrature by a sine around 12 ms by up to 8 ms. */
-static void m_chorus(const node_t *nd, inst_t *it, uint32_t n)
+/* The stereo chorus (modules.ts chorus): a Q13 line, two taps swept in quadrature by a sine around 12 ms by up to 8 ms. A
+ * right signal (#1141): fx_lr */
+static void ch_run(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *in = it->in[CHORUS_I_IN];
     esig_t *l = it->out[CHORUS_O_L], *r = it->out[CHORUS_O_R];
@@ -10357,6 +10477,13 @@ static void m_chorus(const node_t *nd, inst_t *it, uint32_t n)
     }
     it->s.ch.w = w;
     it->s.ch.phase = phase;
+}
+static void m_chorus(const node_t *nd, inst_t *it, uint32_t n)
+{
+    if (nd->conn >> CHORUS_I_R & 1u)
+        fx_lr(nd, it, n, ch_run, EF(it, CHORUS_P_MIX));
+    else
+        ch_run(nd, it, n);
 }
 
 /* does note j of step k (in stored order, chance code `code`, not 0) play on time `loop` round the pattern (modules.ts
@@ -12181,12 +12308,14 @@ HOT void apply_flaws(const node_t *nd, inst_t *it, uint32_t v)   /* (v: the part
 }
 
 /* a bypassed module: every output carries the through input (the definition's `thru`, e.g. the filter's `in`), or silence
- * for a module without one (an oscillator or envelope is muted). Its state is untouched, so it resumes where it stopped. */
+ * for a module without one (an oscillator or envelope is muted); with a right signal (#1141) output 1 carries the `r`
+ * input. Its state is untouched, so it resumes where it stopped. */
 static void m_bypass(const node_t *nd, inst_t *it, uint32_t n)
 {
     const def_t *d = &DEFS[nd->type];
     const esig_t *src = d->thru >= 0 ? it->in[d->thru] : zero_buf;
     uint32_t j, i;
+    int32_t rin;
     for (j = 0; j < d->nout; j++) {
         esig_t *o = it->out[j];
         if (IS_DUMMY(o))
@@ -12194,6 +12323,9 @@ static void m_bypass(const node_t *nd, inst_t *it, uint32_t n)
         for (i = 0; i < n; i++)      /* (not UNROLL4, as signal_mean) */
             o[i] = src[i];
     }
+    if (d->nout > 1u && (rin = DEF_RIN(nd->type)) >= 0 && (nd->conn >> rin & 1u) && !IS_DUMMY(it->out[1]))
+        for (i = 0; i < n; i++)      /* (a pair's right output is output 1) */
+            it->out[1][i] = it->in[rin][i];
 }
 
 static void process(const node_t *nd, inst_t *it, uint32_t n)
@@ -12466,15 +12598,24 @@ static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
     const int on = (int)(fx.on >> e & 1u);
     fx_run_t *run = &fx.run[target - 1u];
     const def_t *d = &DEFS[nd->type];
-    const esig_t *dry = it->in[d->thru];
+    const int32_t rin = DEF_RIN(nd->type);
+    const int fed_r = rin >= 0 && (nd->conn >> rin & 1u);
+    const esig_t *dry = it->in[d->thru], *dry_r = fed_r ? it->in[rin] : dry;   /* (a right signal, #1141: output 1's dry) */
     uint32_t i, j, gain = run->gain, fade = run->fade;
     int tail = nd->type == T_DELAY || nd->type == T_REVERB;
-    /* An effect's only Reverb is an ordinary parallel wet branch: stereo dry is outside
-     * this kernel. Never inject its collapsed input, including OFF and ramps. */
-    int wet_only = nd->type == T_REVERB && fx.n[e] == 1u;
+    /* An effect's only Reverb without a right signal is an ordinary parallel wet branch: stereo dry is outside this
+     * kernel. Never inject its collapsed input, including OFF and ramps. With one (C7b's stereo-dry drawer Reverb) it
+     * carries each side's dry itself */
+    int wet_only = nd->type == T_REVERB && fx.n[e] == 1u && !fed_r;
     int32_t mix = tail ? EF(it, nd->type == T_DELAY ? DELAY_P_MIX : REVERB_P_MIX) : 0, rate0 = 0;
     int64_t cur0 = 0;
     uint32_t mark0 = 0, loud = 0, span;
+    if (nd->ninst == 2u) {               /* a stereo target (never a tail type): copy 1 ramps from where copy 0 started */
+        if (IT_V(nd, it))
+            gain = run->quiet;
+        else
+            run->quiet = gain;
+    }
     if (run->clr && (on || run->tail))   /* the kernel runs again: finish a pending clear first */
         fx_clear(nd, it, run, 1);
     if (!on && (tail ? !run->tail : !gain)) {
@@ -12497,9 +12638,13 @@ static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
             mark0 = it->s.dly.rk | (uint32_t)it->s.dly.tp << 8;
         }
         it->in[d->thru] = zero_buf;   /* OFF never admits another input sample to a delay/reverb line */
+        if (fed_r)
+            it->in[rin] = zero_buf;
     }
     process(nd, it, n);
     it->in[d->thru] = dry;
+    if (fed_r)
+        it->in[rin] = dry_r;
     if (on && gain == FX_RAMP && (!tail || fade == FX_FULL)) return;
     /* An OFF natural tail at rest (tail 1, wet gain held, a stereo pair's dry ramp done): gain and fade stay put, so the
      * loop below reduces exactly to these forms (mulq(x, FX_FULL, 30) == x; the direct dry is dry). Its tail ends once
@@ -12511,6 +12656,7 @@ static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
     if (!on && tail && run->tail == 1u && (wet_only || !gain)) {
         for (j = 0; j < d->nout; j++) {
             esig_t *o = it->out[j];
+            const esig_t *dr = j ? dry_r : dry;
             if (IS_DUMMY(o)) continue;
             if (wet_only) {
                 if (fade != FX_FULL || gain != FX_RAMP)
@@ -12519,13 +12665,13 @@ static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
             } else if (fade == FX_FULL) {
                 for (i = 0; i < n; i++) {
                     loud |= (uint32_t)o[i] + IDLE_Q16 > 2u * IDLE_Q16;
-                    o[i] += dry[i];
+                    o[i] += dr[i];
                 }
             } else {
                 for (i = 0; i < n; i++) {
                     int32_t t = mulq(o[i], (int32_t)fade, 30);
                     loud |= (uint32_t)t + IDLE_Q16 > 2u * IDLE_Q16;
-                    o[i] = dry[i] + t;
+                    o[i] = dr[i] + t;
                 }
             }
         }
@@ -12552,16 +12698,17 @@ static void m_fx(const node_t *nd, inst_t *it, uint32_t n, uint32_t target)
         }
         for (j = 0; j < d->nout; j++) {
             esig_t *o = it->out[j];
+            const esig_t *dr = j ? dry_r : dry;
             if (IS_DUMMY(o)) continue;
             if (!tail) {
-                o[i] = dry[i] + mulq(o[i] - dry[i], (int32_t)gain, 10);
+                o[i] = dr[i] + mulq(o[i] - dr[i], (int32_t)gain, 10);
             } else if (wet_only) {
                 o[i] = mulq(o[i], (int32_t)fade, 30);
                 o[i] = mulq(o[i], (int32_t)gain, 10);
             } else {
-                int32_t kernel_dry = on ? (nd->type == T_REVERB ? mulr(dry[i], ENG_ONE - mix, 16) : mul16(dry[i], ENG_ONE - mix)) : 0;
+                int32_t kernel_dry = on ? (nd->type == T_REVERB ? mulr(dr[i], ENG_ONE - mix, 16) : mul16(dr[i], ENG_ONE - mix)) : 0;
                 int32_t dry_gain = ENG_ONE - mulq(mix, (int32_t)gain, 10);
-                int32_t direct = nd->type == T_REVERB ? mulr(dry[i], dry_gain, 16) : mul16(dry[i], dry_gain);
+                int32_t direct = nd->type == T_REVERB ? mulr(dr[i], dry_gain, 16) : mul16(dr[i], dry_gain);
                 o[i] = direct + mulq(o[i] - kernel_dry, (int32_t)fade, 30);
             }
         }
@@ -12616,13 +12763,17 @@ static int part_quiet(uint32_t k, uint32_t v)
         return 0;
     for (c = 0; c < E.ncab; c++) {
         const node_t *f = &E.node[E.from_m[c]];
-        const esig_t *o;
+        int32_t p = E.from_p[c], r = cab_rport(c);
         if (f->grp != k || E.node[E.to_m[c]].grp == k)
             continue;
-        o = inst_pool[f->inst0 + v].out[E.from_p[c]];
-        for (i = 0; i < ENG_BLOCK; i++)
-            if (o[i] > IDLE_Q16 || o[i] < -IDLE_Q16)
-                return 0;
+        for (;; p = r, r = -1) {
+            const esig_t *o = inst_pool[f->inst0 + v].out[p];
+            for (i = 0; i < ENG_BLOCK; i++)
+                if (o[i] > IDLE_Q16 || o[i] < -IDLE_Q16)
+                    return 0;
+            if (r < 0)
+                break;
+        }
     }
     return 1;
 }
@@ -12631,12 +12782,16 @@ static void part_silence(uint32_t k, uint32_t v)
     uint32_t c, i;
     for (c = 0; c < E.ncab; c++) {
         const node_t *f = &E.node[E.from_m[c]];
-        esig_t *o;
+        int32_t p = E.from_p[c], r = cab_rport(c);
         if (f->grp != k || E.node[E.to_m[c]].grp == k)
             continue;
-        o = inst_pool[f->inst0 + v].out[E.from_p[c]];
-        for (i = 0; i < ENG_BLOCK; i++)
-            o[i] = 0;
+        for (;; p = r, r = -1) {
+            esig_t *o = inst_pool[f->inst0 + v].out[p];
+            for (i = 0; i < ENG_BLOCK; i++)
+                o[i] = 0;
+            if (r < 0)
+                break;
+        }
     }
 }
 
@@ -12845,30 +13000,30 @@ static void sch_dep(sch_acc_t *a, uint32_t d)          /* the item waits for cop
     if (t > a->t)
         a->t = t;
 }
-/* the copies of module f that copy v of a module of group g reads (buf_of): every part of another group's, else its own
- * part or the one copy */
-static void sch_copies(sch_acc_t *a, uint32_t f, uint32_t g, uint32_t v)
+/* the copies of cable c's source that copy v of its reader reads (cab_feed: every part of another group's, else its own
+ * part or the one copy, a stereo source's sides; both jacks of a split pair) */
+static void sch_copies(sch_acc_t *a, uint32_t c, uint32_t v)
 {
-    const node_t *s = &E.node[f];
-    uint32_t w;
-    if (s->grp && s->grp != g)
-        for (w = 0; w < s->ninst; w++)
+    const node_t *s = &E.node[E.from_m[c]];
+    int32_t rin = DEF_RIN(E.node[E.to_m[c]].type);
+    uint32_t x = cab_feed(c, CAB_TP(c), v) | (rin >= 0 && (uint32_t)rin != CAB_TP(c) ? cab_feed(c, (uint32_t)rin, v) : 0u), w;
+    for (w = 0; w < 8u; w++)
+        if (x >> w & 1u)
             sch_dep(a, s->inst0 + w);
-    else
-        sch_dep(a, s->inst0 + (s->ninst > 1u ? v : 0u));
 }
-/* the copies of module t that read copy v of module m (buf_end's readers) */
-static void sch_readers(sch_acc_t *a, uint32_t m, uint32_t v, uint32_t t)
+/* the copies of cable c's reader that read copy v of its source (buf_end's readers: cab_reads) */
+static void sch_readers(sch_acc_t *a, uint32_t c, uint32_t v)
 {
-    const node_t *f = &E.node[m], *r = &E.node[t];
-    uint32_t w;
+    const node_t *r = &E.node[E.to_m[c]];
+    uint32_t w, rd = cab_reads(c, FEED_ANY, v);
     for (w = 0; w < r->ninst; w++)
-        if ((f->grp && f->grp != r->grp) || (f->ninst > 1u ? w : 0u) == v)
+        if (rd >> w & 1u)
             sch_dep(a, r->inst0 + w);
 }
 /* what copy v of module m waits for, all before it in E.order: the copies it reads; the readers of a feedback cable out of
  * it (they read its block before, which it may not overwrite before they have run); every Steps module before it, and
- * when it is one, every module before it (see above) */
+ * when it is one, every module before it (see above); copy 1 of a stereo FX rack target, copy 0 (m_fx: it ramps from
+ * where copy 0 started) */
 static void sch_deps(sch_acc_t *a, uint32_t m, uint32_t v)
 {
     const node_t *nd = &E.node[m];
@@ -12879,10 +13034,12 @@ static void sch_deps(sch_acc_t *a, uint32_t m, uint32_t v)
         if (f == t)
             continue;
         if (t == m && pos[f] < pos[m])
-            sch_copies(a, f, nd->grp, v);
+            sch_copies(a, c, v);
         else if (f == m && pos[t] < pos[m])
-            sch_readers(a, m, v, t);
+            sch_readers(a, c, v);
     }
+    if (v && nd->fxrun)
+        sch_dep(a, nd->inst0);
     for (o = 0; o < E.nmod; o++)
         if (pos[o] < pos[m] && (nd->type == T_STEPS || E.node[o].type == T_STEPS))
             for (w = 0; w < E.node[o].ninst; w++)

@@ -3,7 +3,7 @@
 // reference output of web/src/engine.ts (.f32, float32 stereo interleaved) at the FM-1's rate (DEVICE_SR, 44118 Hz), written to build/golden/.
 // GOLDEN_ONLY=NAME renders one named vector for targeted development checks.
 // Run from web/:  npx vite-node scripts/golden.ts   (tools/golden.sh does this and runs the C comparison)
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { Engine } from '../src/engine';
 import { COUNTED, deviceBudget, encodePatch, FLAG_INPUTS, FLAG_LINKS, FORMAT_1_27, FORMAT_LINKS, MEMBER_WIDE, PANEL_BYTES, recordSize, SLIM, toQ16 } from '../src/patchbin';
 import { cpuEstimate } from '../src/cpu';
@@ -25,7 +25,7 @@ import { withParts } from '../src/test-poly';
 import { acid, cardRows } from '../src/test-patches';
 import { withFxBus } from '../src/factory-bank';
 import { fxBusOf } from '../src/fx-legacy';
-import { addDrawer, convertLegacyBus, insertEffect } from '../src/fx-drawer';
+import { addDrawer, catalogEffectDef, convertLegacyBus, EFFECT_CATALOG, insertEffect, type EffectSource } from '../src/fx-drawer';
 import { setKind, setSwitches, setTarget } from '../src/buttons';
 import PANEL_BANK from '../factory/bank.json';
 import PANEL_EXAMPLES from '../factory/examples.json';
@@ -4537,9 +4537,13 @@ for (const name of ['envelope filter', 'ducking delay', 'gated reverb', 'overdri
 
 // FX drawers (#1214): an instrument's drawer of an in-line pair (Phaser), a stereo effect (Chorus) and a wet one (Reverb),
 // and the Output drawer's Delay. EDIT switches the Chorus, LFO the Output drawer's Delay: off while a note sounds (the
-// Chorus ramps to dry, the Delay's echoes spill), on again, and off for good to let the echoes end (D-1100).
-{
-  const key = 'fx-drawers';
+// Chorus ramps to dry, the Delay's echoes spill), on again, and off for good to let the echoes end (D-1100). In the 1.26
+// forms (fx-drawer.ts WrapForm legacy: the Phaser an L/R pair, the Reverb with its helpers), format 66; fx-drawers-stereo
+// has the 1.27 ones (#1141): a stereo Drive first, which EDIT switches (a stereo rack target's two copies ramp together),
+// the stereo Phaser and the true-stereo Chorus meeting through side cables, and the stereo-dry Reverb (C7b), which LFO
+// switches (off: each side's dry passes)
+const legacyFx = (type: string): EffectSource => ({ def: catalogEffectDef(EFFECT_CATALOG.find((e) => 'type' in e.source && e.source.type === type)!, { legacy: true }) });
+for (const [key, fx] of [['fx-drawers', legacyFx], ['fx-drawers-stereo', (type: string): EffectSource => ({ type })]] as const) {
   const p = make(key, (add, wire) => {
     const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.7 });
     const left = add('osc', 0, 0, { wave: 1, level: 0.5 });
@@ -4556,19 +4560,26 @@ for (const name of ['envelope filter', 'ducking delay', 'gated reverb', 'overdri
   const synth = makeAssembly(p, voice.map((m) => m.id), 'Synth');
   for (const m of voice.filter((m) => m.type === 'vca')) exposePort(synth, 'out', m.id, 'out');
   const drawer = addDrawer(p, synth.id);
-  insertEffect(p, drawer, { type: 'phaser' });
-  const chorus = insertEffect(p, drawer, { type: 'chorus' });
-  insertEffect(p, drawer, { type: 'reverb' });
-  const delay = insertEffect(p, addDrawer(p, 'output'), { type: 'delay' });
+  const stereo = key === 'fx-drawers-stereo';
+  const drive = stereo ? insertEffect(p, drawer, fx('shape')) : undefined;
+  insertEffect(p, drawer, fx('phaser'));
+  const chorus = insertEffect(p, drawer, fx('chorus'));
+  const reverb = insertEffect(p, drawer, fx('reverb'));
+  const delay = insertEffect(p, addDrawer(p, 'output'), fx('delay'));
   for (const id of allModules(p, delay)) {
     const m = p.modules.find((x) => x.id === id)!;
     if (m.type === 'delay') Object.assign(m.params, { time: 90, fb: 0.45, mix: 0.4 });
   }
-  for (const [button, effect] of [['edit', chorus], ['lfo', delay]] as const) {
+  for (const [button, effect] of [['edit', drive ?? chorus], ['lfo', stereo ? reverb : delay]] as const) {
     setKind(p, button, 'bypass');
     setTarget(p, button, { asm: effect.id });
     setSwitches(p, button, true);
   }
+  if (stereo) {
+    const ms = allModules(p, drive!).map((id) => p.modules.find((m) => m.id === id)!);
+    if (!ms.some((m) => m.type === 'shape' && m.stereo) || !p.cables.some((c) => c.side)) throw new Error(`${key}: no stereo Drive or no side cable`);
+    if (encodePatch(p, true)[1] !== FORMAT_1_27) throw new Error(`${key}: not format 67`);
+  } else if (encodePatch(p, true)[1] === FORMAT_1_27) throw new Error(`${key}: format 67, not the 1.26 forms`);
   tests[key] = p;
   events[key] = [
     [0, 'on', 48],
@@ -4580,6 +4591,109 @@ for (const name of ['envelope filter', 'ducking delay', 'gated reverb', 'overdri
   ];
   ends[key] = 128 * 1200;
 }
+
+// Stereo mode, jack pairs and side cables (#1141, design 127-phase2 §2, §2a), format 67 each. `build` gets `side` (a side
+// cable) and `st` (a module in stereo mode) beside make's add and wire; `S` makes the stereo source most kits play: two
+// oscillators joined by side cables into a stereo Mixer (L the saw, R a fifth up, square), through a stereo VCA on an ADSR
+type StereoBuild = (add: Parameters<Build>[0], wire: Parameters<Build>[1], side: (a: number, ap: string, b: number, bp: string, s: 'l' | 'r') => void, st: (id: number) => void) => void;
+function stereoKit(key: string, build: StereoBuild, mono = false): void {
+  const sides: [number, string, number, string, 'l' | 'r'][] = [], sts: number[] = [];
+  const p = make(key, (add, wire) => build(add, wire, (a, ap, b, bp, s) => sides.push([a, ap, b, bp, s]), (id) => sts.push(id)));
+  for (const id of sts) p.modules.find((m) => m.id === id)!.stereo = true;
+  for (const [a, ap, b, bp, s] of sides) if (!connect(p, DEFS, { module: a, port: ap }, { module: b, port: bp }, s)) throw new Error(`${key}: bad side cable`);
+  if ((encodePatch(p, true)[1] === FORMAT_1_27) === mono) throw new Error(`${key}: ${mono ? '' : 'not '}format 67`);
+  tests[key] = p;
+}
+const S = (add: Parameters<Build>[0], wire: Parameters<Build>[1], side: Parameters<StereoBuild>[2], st: (id: number) => void): { kb: number; env: number; s: number } => {
+  const kb = add('fm1', 0, 0), env = add('adsr', 0, 0, { a: 0.005, d: 0.08, s: 0.6, r: 0.05 });
+  const a = add('osc', 0, 0, { wave: 1, level: 0.5 }), b = add('osc', 0, 0, { wave: 2, coarse: 7, level: 0.4 });
+  const mx = add('mixer', 0, 0), s = add('vca', 0, 0);
+  wire(kb, 'pitch', a, 'pitch'); wire(kb, 'pitch', b, 'pitch'); wire(kb, 'gate', env, 'gate');
+  side(a, 'out', mx, 'in1', 'l'); side(b, 'out', mx, 'in1', 'r');
+  wire(mx, 'out', s, 'in'); wire(env, 'env', s, 'cv');
+  st(mx); st(s);
+  return { kb, env, s };
+};
+// a stereo Filter (key tracking: group 0's voice for both copies), Waveshaper and VCA chain into the Output's l alone (the
+// jack pair: L left, R right), and the same chain as L / R pairs of mono modules: the two render sample for sample alike in
+// both engines (checked below and by tools/golden.sh)
+for (const pair of [false, true]) stereoKit(pair ? 'stereo-chain-pair' : 'stereo-chain', (add, wire, side, st) => {
+  const kb = add('fm1', 0, 0), env = add('adsr', 0, 0, { a: 0.005, d: 0.08, s: 0.6, r: 0.05 }), out = add('output', 0, 0, { level: 0.8 });
+  const a = add('osc', 0, 0, { wave: 1, level: 0.5 }), b = add('osc', 0, 0, { wave: 2, coarse: 7, level: 0.4 });
+  wire(kb, 'pitch', a, 'pitch'); wire(kb, 'pitch', b, 'pitch'); wire(kb, 'gate', env, 'gate');
+  const chain = (): number[] => {
+    const mx = add('mixer', 0, 0), f = add('filter', 0, 0, { cutoff: 600, res: 0.4, cvamt: 0.5, track: 1 });
+    const sh = add('shape', 0, 0, { drive: 2, sym: 0.1 }), v = add('vca', 0, 0);
+    wire(mx, 'out', f, 'in'); wire(env, 'env', f, 'cv'); wire(f, 'lp24', sh, 'in'); wire(sh, 'out', v, 'in'); wire(env, 'env', v, 'cv');
+    return [mx, f, sh, v];
+  };
+  if (pair) {
+    const [ml, , , vl] = chain(), [mr, , , vr] = chain();
+    wire(a, 'out', ml, 'in1'); wire(b, 'out', mr, 'in1');
+    wire(vl, 'out', out, 'l'); wire(vr, 'out', out, 'r');
+  } else {
+    const c = chain();
+    for (const id of c) st(id);
+    side(a, 'out', c[0], 'in1', 'l'); side(b, 'out', c[0], 'in1', 'r');
+    wire(c[3], 'out', out, 'l');
+  }
+}, pair);
+// a stereo cable into mono jacks: (L + R) / 2 into a mono Filter, and into the Output's r (no jack pair there)
+stereoKit('stereo-mono-jack', (add, wire, side, st) => {
+  const { s } = S(add, wire, side, st), out = add('output', 0, 0, { level: 0.8 }), f = add('filter', 0, 0, { cutoff: 900 });
+  wire(s, 'out', f, 'in'); wire(f, 'lp12', out, 'l'); wire(s, 'out', out, 'r');
+});
+// side cables: the stereo source split into two mono Filters (L into one, R into the other), each to one Output jack
+stereoKit('stereo-split', (add, wire, side, st) => {
+  const { s } = S(add, wire, side, st), out = add('output', 0, 0, { level: 0.8 });
+  const fl = add('filter', 0, 0, { cutoff: 500 }), fr = add('filter', 0, 0, { cutoff: 2500 });
+  side(s, 'out', fl, 'in', 'l'); side(s, 'out', fr, 'in', 'r');
+  wire(fl, 'lp24', out, 'l'); wire(fr, 'lp24', out, 'r');
+});
+// a pair's left output (Pan l) into a stereo Filter carries the pair (Pan l, Pan r); into a mono VCA only its l
+stereoKit('stereo-pair-left', (add, wire, side, st) => {
+  const kb = add('fm1', 0, 0), env = add('adsr', 0, 0, { a: 0.005, d: 0.1, s: 0.7, r: 0.05 }), out = add('output', 0, 0, { level: 0.8 });
+  const o = add('osc', 0, 0, { wave: 1, level: 0.6 }), lfo = add('lfo', 0, 0, { rate: 3 }), pan = add('pan', 0, 0);
+  const f = add('filter', 0, 0, { cutoff: 1200, cvamt: 0.4 }), v = add('vca', 0, 0), x = add('xfade', 0, 0);
+  wire(kb, 'pitch', o, 'pitch'); wire(kb, 'gate', env, 'gate'); wire(o, 'out', pan, 'in'); wire(lfo, 'out', pan, 'pos');
+  wire(pan, 'l', f, 'in'); wire(env, 'env', f, 'cv'); st(f);
+  wire(pan, 'l', v, 'in'); wire(env, 'env', v, 'cv');
+  wire(f, 'lp12', x, 'a'); wire(v, 'out', x, 'b'); st(x);
+  wire(x, 'out', out, 'l');
+});
+// each effect's `r` (Delay in 4, Reverb in 3 / out 1, Chorus in 3): a right signal by the jack pair (the stereo source into
+// `in`, `r` empty), by a cable into `r`, and none (the right output as without the `r` jack)
+for (const [type, params] of [['delay', { time: 80, fb: 0.45, mix: 0.5, pingpong: 1 }], ['delay', { time: 60, fb: 0.4, mix: 0.4, pingpong: 0 }],
+  ['reverb', { size: 0.5, mix: 0.4, pre: 5 }], ['chorus', { rate: 0.8, depth: 0.6, mix: 0.5 }]] as const)
+  for (const how of ['pair', 'cable', 'none'] as const) {
+    const key = `stereo-${type}${type === 'delay' && !params.pingpong ? '-mono' : ''}-r-${how}`;
+    stereoKit(key, (add, wire, side, st) => {
+      const out = add('output', 0, 0, { level: 0.8 }), fx = add(type, 0, 0, params), [lo, ro] = DEFS[type].outputs.map((o) => o.name);
+      if (how === 'pair') {
+        const { s } = S(add, wire, side, st);
+        wire(s, 'out', fx, 'in');
+      } else {
+        const kb = add('fm1', 0, 0), env = add('adsr', 0, 0, { a: 0.005, d: 0.08, s: 0.6, r: 0.05 });
+        const a = add('osc', 0, 0, { wave: 1, level: 0.5 }), b = add('osc', 0, 0, { wave: 2, coarse: 7, level: 0.4 });
+        const va = add('vca', 0, 0), vb = add('vca', 0, 0);
+        wire(kb, 'pitch', a, 'pitch'); wire(kb, 'pitch', b, 'pitch'); wire(kb, 'gate', env, 'gate');
+        wire(a, 'out', va, 'in'); wire(b, 'out', vb, 'in'); wire(env, 'env', va, 'cv'); wire(env, 'env', vb, 'cv');
+        wire(va, 'out', fx, 'in');
+        if (how === 'cable') wire(vb, 'out', fx, 'r');
+      }
+      wire(fx, lo, out, 'l'); wire(fx, ro, out, 'r');
+    }, how === 'none' && type !== 'reverb');
+  }
+// stereo modules into the Output's l / r through side cables joined back (a stereo Phaser's L to l, R to r) beside a
+// stereo Comb whose copies differ only by their side cables in: one input copy 0 hears, the other copy 1 (join)
+stereoKit('stereo-join', (add, wire, side, st) => {
+  const { kb, s } = S(add, wire, side, st), out = add('output', 0, 0, { level: 0.6 });
+  const ph = add('phaser', 0, 0), cb = add('comb', 0, 0, { fb: 0.6, mix: 0.5 }), n = add('noise', 0, 0), mx = add('mixer', 0, 0);
+  wire(s, 'out', ph, 'in'); st(ph);
+  wire(kb, 'pitch', cb, 'pitch'); side(n, 'out', cb, 'in', 'l'); side(s, 'out', cb, 'in', 'r'); st(cb);
+  wire(ph, 'out', mx, 'in1'); wire(cb, 'out', mx, 'in2'); st(mx);
+  side(mx, 'out', out, 'l', 'l'); side(mx, 'out', out, 'r', 'r');
+});
 
 // Format 54 metadata cannot change the notes or audio. Unknown identities remain readable.
 tests['factory-origin'] = structuredClone(tests['steps-kit']);
@@ -4679,6 +4793,9 @@ for (const [name, patch] of Object.entries(tests)) {
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
   writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'von' ? `${fr} on ${n} ${ch ?? 127} 1` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'kon' ? `${fr} kon ${n} 127` : k === 'bon' || k === 'boff' || k === 'koff' || k === 'cbon' || k === 'cboff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' || k === 'cin' || k === 'fill' || k === 'meter' || k === 'at' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' || k === 'thon' || k === 'thoff' || k === 'armx' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
+// (#1141) a stereo chain renders as its pair of mono chains, sample for sample (tools/golden.sh checks the C engine)
+if (!process.env.GOLDEN_ONLY && !readFileSync(new URL('stereo-chain.f32', OUT)).equals(readFileSync(new URL('stereo-chain-pair.f32', OUT))))
+  throw new Error('stereo-chain renders differently from stereo-chain-pair');
 // protocol test input: upload of the acid kit, then a cutoff change on its filter
 {
   const p = acid();

@@ -574,7 +574,7 @@ static int aot_fits(const aot_tpl_t *t, const uint8_t *mem, uint8_t *loc, uint8_
         for (q = 0; q < MAX_IN; q++)
             if (nd->input_map[q])
                 return AOT_WHY(3);
-        if (!t->grp[i] != !nd->grp)                          /* runs once / per part as the template's */
+        if (!t->grp[i] != !nd->grp || ST_NODE(nd))          /* runs once / per part as the template's (never stereo mode) */
             return AOT_WHY(4);
         if (t->grp[i]) {                                     /* one poly group per template group, none shared */
             if (!g[t->grp[i]])
@@ -594,6 +594,8 @@ static int aot_fits(const aot_tpl_t *t, const uint8_t *mem, uint8_t *loc, uint8_
         uint32_t f = loc[E.from_m[c]], to = loc[E.to_m[c]], k;
         if (f == 0xFFu && to == 0xFFu)
             continue;
+        if ((f == 0xFFu && ST_NODE(&E.node[E.from_m[c]])) || (to == 0xFFu && ST_NODE(&E.node[E.to_m[c]])))
+            return AOT_WHY(12);                              /* (a stereo module outside: its sides, #1141) */
         if (f != 0xFFu && to != 0xFFu) {                     /* one of the template's, in the template's direction */
             for (k = 0; k < t->ncab; k++)
                 if (t->cab[k].from == f && t->cab[k].fp == E.from_p[c] && t->cab[k].to == to && t->cab[k].tp == E.to_p[c] && !(seen[k >> 3] >> (k & 7u) & 1u))

@@ -1619,12 +1619,13 @@ export class Engine {
     const { effect: st, run } = node.fx!;
     const thru = node.thru!;   // (rack-plan.ts: every target has a through input)
     const tail = node.type === 'delay' || node.type === 'reverb';
-    // An effect's only Reverb: its stereo dry paths live outside it; this branch returns wet or zero only.
-    const wetOnly = node.type === 'reverb' && st.targets.length === 1;
-    const dry = inst.inp[thru];
-    const input = ctx.inp[thru];
     // a right signal (#1141): the `r` output's dry is the `r` input (engine.c m_fx)
     const rin = RIGHT_IN[node.type], fedR = !!rin && !!node.connected[rin];
+    // An effect's only Reverb without a right signal: its stereo dry paths live outside it; this branch returns wet or
+    // zero only. With one (C7b's stereo-dry drawer Reverb) it carries each side's dry itself
+    const wetOnly = node.type === 'reverb' && st.targets.length === 1 && !fedR;
+    const dry = inst.inp[thru];
+    const input = ctx.inp[thru];
     const dryR = fedR ? inst.inp[rin] : dry, inputR = fedR ? ctx.inp[rin] : dry;
     const mix = inst.eff.mix ?? 0;
     let { gain, fade } = run;

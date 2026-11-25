@@ -32,6 +32,18 @@ for s in build/golden/*-slim.m1p; do
 done
 # shellcheck disable=SC2086
 build/proto_test --same $pairs || fail=1
+# (#1141) the stereo chain renders as its pair of mono chains, sample for sample; every stereo kit renders on two lanes as
+# on one (HOST_CORES)
+dump() { HOST_CORES="$4" HOST_TEST_DUMP="$1" build/host_test "$2" "${3%.m1p}.ev" "${3%.m1p}.f32" > /dev/null 2>&1 || true; }
+dump build/golden-st.a build/golden/stereo-chain.m1p build/golden/stereo-chain.m1p 1
+dump build/golden-st.b build/golden/stereo-chain-pair.m1p build/golden/stereo-chain.m1p 1
+if [ ! -s build/golden-st.a ] || ! cmp -s build/golden-st.a build/golden-st.b; then echo "FAIL stereo-chain: renders differently from stereo-chain-pair"; fail=1; fi
+for p in build/golden/stereo-*.m1p build/golden/fx-drawers-stereo.m1p; do
+  dump build/golden-st.a "$p" "$p" 1
+  dump build/golden-st.b "$p" "$p" 2
+  if [ ! -s build/golden-st.a ] || ! cmp -s build/golden-st.a build/golden-st.b; then echo "FAIL $(basename "$p"): two lanes render differently from one"; fail=1; fi
+done
+rm -f build/golden-st.a build/golden-st.b
 for p in build/golden/*.m1p; do
   n="${p%.m1p}"
   par=""; [ -f "$n.par" ] && par="$n.par"
