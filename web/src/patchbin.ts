@@ -105,7 +105,8 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //                row's): its card rows in canonical order (structure.ts rowOrder: the order of a preset's values; 0xFF 0xFF a
 //                row the FM-1 has not got); n is 0 for a plain module; u8 m and m u8 module indices: the modules it is made
 //                of (a plain module: itself; arming it on the FM-1 lets these hear Main's keys, #191); format 51 (D-1003): three
-//                or more in one unbroken run are u8 MEMBER_RUN | m and u8 the first
+//                or more in one unbroken run are u8 MEMBER_RUN | m and u8 the first; format 67 (#1286): 128 members or more
+//                are u8 MEMBER_WIDE, u8 m, u8 form (0: the m indices follow, 1: one run, u8 the first follows)
 //   with flag bit 6: the button kinds (buttons.ts): PANEL_BUTTONS.length u8 kinds (0 Gate, 1 Nothing, 2 Toggle, 3 Page),
 //                then in button order per Toggle button u8 n (0..), n u8 module indices: the modules it bypasses (buttons.ts
 //                toggleTargets); per Page button u8 n, n (u8 device, u8 page): its list, in the device pages section's
@@ -130,7 +131,7 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 
 import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DRUM_MAP_DEFAULT, DRUM_ROWS, drumRowName, LIMIT_AHEAD, PANEL_BUTTONS } from './modules';
 import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } from './buttons';
-import { defaultMap, EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, MODULES_1_10, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef, type Patch } from './patch';
+import { defaultMap, EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, MODULES_1_10, MODULES_1_26, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef, type Patch } from './patch';
 import { hasTiming, noteWords, patternWords, wordCount } from './track';
 import { payloadHash } from './pattern-store';
 import { lockPlan, PATCH_LOCKS_MAX } from './locks';
@@ -153,7 +154,7 @@ export const GROUP_REC = 4 + 5 * MAX_PARTS + 4;
 /** bytes of the panel section before format 64 (engine.h ENG_PANEL_BYTES): two masks and the labels (since: panelBytes) */
 export const PANEL_BYTES = 4 + PANEL_LABEL_KEYS.length * PANEL_LABEL_MAX;
 export const MAX_CABLES = 255;
-export const VERSION = 66; // 66 (1.26.3, FORMAT_RACK): flag bit 14 is the FX rack, the patch's effects and FX drawers (rackRecord, #1214), written only by a patch with one; 65 (the release after 1.22, FORMAT_1_23): the MIDI learn mappings, the binary's last section (mapRecord, #1067), written only by a patch with MIDI learn; 64 (the release after 1.21, FORMAT_1_22): the EQ module (eq, #1107) appended after the Euclid, written only by patches that use it (ModuleDef.since); and the panel labels by length, the cables grouped by the module they go into, only the Drum map row names off their default (SLIM, D-1025), for a patch that fits no older format; 63 (release 1.20, FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid module (euclid, #1018) appended after the Limiter, Steps notes' timing words, ratchets and micro timing (#675, #677); 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14 (no longer written: the editor turns a master FX bus into FX drawers, fx-legacy.ts); ordinary patches retain their lowest format
+export const VERSION = 67; // 67 (1.27, FORMAT_1_27): more than 128 modules (MAX_MODULES 254, #1286; a device's member count past 127, MEMBER_WIDE), written only by a patch that uses it (uses127); 66 (1.26.3, FORMAT_RACK): flag bit 14 is the FX rack, the patch's effects and FX drawers (rackRecord, #1214), written only by a patch with one; 65 (the release after 1.22, FORMAT_1_23): the MIDI learn mappings, the binary's last section (mapRecord, #1067), written only by a patch with MIDI learn; 64 (the release after 1.21, FORMAT_1_22): the EQ module (eq, #1107) appended after the Euclid, written only by patches that use it (ModuleDef.since); and the panel labels by length, the cables grouped by the module they go into, only the Drum map row names off their default (SLIM, D-1025), for a patch that fits no older format; 63 (release 1.20, FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid module (euclid, #1018) appended after the Limiter, Steps notes' timing words, ratchets and micro timing (#675, #677); 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14 (no longer written: the editor turns a master FX bus into FX drawers, fx-legacy.ts); ordinary patches retain their lowest format
 /**
  * The lowest format the encoder writes: a patch that uses no parameter appended after it (ParamDef.since past it: a value
  * off its default on either morph side, a pin, macro range, input route or card row on it) is written in this format, its
@@ -167,9 +168,9 @@ export const WRITE_FLOOR = 46;
  * fit otherwise, COUNTED; format 59: stored pattern links, flag bit 15; format 60: trig conditions, FORMAT_CONDS; format
  * 61: a cable into a Part's priority input, FORMAT_PRIORITY_CABLE; format 62: the 1.19 module types, FORMAT_1_19; format
  * 63: the 1.20 module types, FORMAT_1_20; format 64: the EQ module, and the shorter panel labels, cables and Drum map row
- * names when the patch would not fit otherwise, FORMAT_1_22, SLIM; format 66: the FX rack, FORMAT_RACK); every other
- * format past WRITE_FLOOR appends parameters (ParamDef.since) */
-export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase', 59: 'stored pattern links', 60: 'trig conditions', 61: 'note priority on a cable', 62: 'the 1.19 modules', 63: 'the 1.20 features', 64: 'the EQ module and the shorter panel labels, cables and row names', 65: 'MIDI learn mappings', 66: 'FX drawers' };
+ * names when the patch would not fit otherwise, FORMAT_1_22, SLIM; format 66: the FX rack, FORMAT_RACK; format 67: the
+ * 1.27 things, FORMAT_1_27, uses127); every other format past WRITE_FLOOR appends parameters (ParamDef.since) */
+export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase', 59: 'stored pattern links', 60: 'trig conditions', 61: 'note priority on a cable', 62: 'the 1.19 modules', 63: 'the 1.20 features', 64: 'the EQ module and the shorter panel labels, cables and row names', 65: 'MIDI learn mappings', 66: 'FX drawers', 67: 'more than 128 modules' };
 /** the flag (u16 at offset 6) of the P-locks section (format 49, #524) */
 export const FLAG_LOCKS = 2048;
 
@@ -357,6 +358,17 @@ export const FORMAT_1_23 = 65;
  */
 export const FORMAT_RACK = 66;
 /**
+ * The format of 1.27 (D-281, as D-1022): more than MODULES_1_26 modules (#1286; a device of 128 members or more takes
+ * MEMBER_WIDE). A patch that uses a 1.27 thing (uses127) is written in it; every other patch keeps its lower format, and
+ * firmware without feature bit 36 (protocol.ts FEATURE5_FORMAT_67) is told to update. It has SLIM's layout.
+ */
+export const FORMAT_1_27 = 67;
+/** what a patch uses of FORMAT_1_27 (`dev`: its device form): more than 128 modules. The stereo slice adds its own tests
+ * here (keep this the one predicate) */
+export function uses127(dev: Patch): boolean {
+  return dev.modules.length > MODULES_1_26;
+}
+/**
  * The first format that writes the panel labels by their length (panelBytes), the cables grouped by the module they go
  * into (cablesGrouped) and only the Drum map row names off their default (drumNamed): the same values in fewer bytes
  * (D-1025, engine.h ENG_SLIM). Every binary of this format has that layout.
@@ -437,7 +449,7 @@ export const formatOf = (source: Patch, view: ReturnType<typeof deviceView> = de
 /** the lowest format that holds what this patch uses: VERSION, or WRITE_FLOOR when it uses nothing appended since (`dev`: its device form) */
 export function baseFormat(source: Patch, dev: Patch = deviceView(source, true).patch): number {
   const late = (type: string): ParamDef[] => DEFS[type].params.filter((q) => (q.since ?? 0) > WRITE_FLOOR || (q.grew?.since ?? 0) > WRITE_FLOOR);
-  const floor = rackPlan(source, { patch: dev, groups: [] }) ? FORMAT_RACK : source.midiLearn?.length ? FORMAT_1_23 : uses122(dev) ? FORMAT_1_22 : uses120(dev) ? FORMAT_1_20 : uses119(dev) ? FORMAT_1_19 : usesPriorityCable(dev) ? FORMAT_PRIORITY_CABLE : usesConds(dev) ? FORMAT_CONDS : harmonyLfo(source, dev) ? 55 : originRecord(dev).length ? 54 : chainedHarmonizer(source) ? 53 : uses112(dev) ? FORMAT_1_12 : uses111(source, dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
+  const floor = uses127(dev) ? FORMAT_1_27 : rackPlan(source, { patch: dev, groups: [] }) ? FORMAT_RACK : source.midiLearn?.length ? FORMAT_1_23 : uses122(dev) ? FORMAT_1_22 : uses120(dev) ? FORMAT_1_20 : uses119(dev) ? FORMAT_1_19 : usesPriorityCable(dev) ? FORMAT_PRIORITY_CABLE : usesConds(dev) ? FORMAT_CONDS : harmonyLfo(source, dev) ? 55 : originRecord(dev).length ? 54 : chainedHarmonizer(source) ? 53 : uses112(dev) ? FORMAT_1_12 : uses111(source, dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
   if (!dev.modules.some((m) => late(m.type).length)) return floor;
   let v = floor;
   const rows = new Set<string>();
@@ -697,8 +709,11 @@ export function cablesGrouped(p: Patch, v: number): boolean {
 export const cableBytes = (p: Patch, v: number): number =>
   cablesGrouped(p, v) ? Math.ceil(p.modules.length / 2) + 2 * p.cables.length : (cables3(p, v) ? 3 : 4) * p.cables.length;
 /** bit 7 of the device extras' member count (format 51, D-1003): the members are one unbroken run, u8 first follows and
- * the count is the low 7 bits (a device has at most 127 members: a patch has at most 128 modules, #721, and Main is never one) */
+ * the count is the low 7 bits (127 at most; Main is never a member) */
 export const MEMBER_RUN = 0x80;
+/** a member count byte of 0x80 (a run of none, never written before; engine.h ENG_MEMBER_WIDE, keep in step): format 67's
+ * 128..254 members, u8 n and u8 form (0 the n indices follow, 1 one run from u8 first) follow (#1286) */
+export const MEMBER_WIDE = 0x80;
 export const FLAG_BUTTONS = 64;
 export const FLAG_NAMES = 128;
 /** the most Toggle targets a patch can list, all buttons together (engine.h ENG_BTN_TARGETS) */
@@ -1000,7 +1015,9 @@ export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceV
       out.push(par < 0 ? 0xff : i!, par < 0 ? 0xff : par);
     }
     const members = (a ? deviceModules(source, a) : [d.module!]).map((id) => index.get(id)).filter((i): i is number => i !== undefined);
-    if (v >= COUNTED && members.length > 2 && members.every((x, i) => x === members[0] + i)) out.push(MEMBER_RUN | members.length, members[0]);
+    const run = v >= COUNTED && members.length > 2 && members.every((x, i) => x === members[0] + i);
+    if (members.length > 0x7f) out.push(MEMBER_WIDE, members.length, run ? 1 : 0, ...(run ? [members[0]] : members));   // (only past 128 modules: FORMAT_1_27)
+    else if (run) out.push(MEMBER_RUN | members.length, members[0]);
     else out.push(members.length, ...members);
   });
   return out;

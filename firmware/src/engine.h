@@ -33,7 +33,7 @@ void eng_fpu_probe(uint32_t lane, uint32_t *h);
 
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 66   /* 66 (1.26.3, patchbin.ts FORMAT_RACK): flag bit 14 is the FX rack instead of the master FX bus: the patch's effects and FX drawers (eng_rack_end, ENG_FX_EFFECTS, #1214); 65 (the release after 1.22, patchbin.ts FORMAT_1_23): the MIDI learn mappings as the binary's last section (eng_maps, ENG_MAPS, #1067); 64 (the release after 1.21, patchbin.ts FORMAT_1_22): the EQ type (T_EQ, #1107) appended after the Euclid, and the shorter panel labels, cables and Drum map row names (ENG_SLIM, D-1025); 63 (release 1.20, patchbin.ts FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid type (T_EUCLID, #1018) appended after the Limiter, and Steps notes' timing words, ratchets and micro timing (ENG_TIME_BIT, #675, #677); 62 (release 1.19, patchbin.ts FORMAT_1_19): the Low pass gate (T_LPG, #1018) and the Limiter (T_LIMIT, #1019) types appended after the Harmonizer; 61: a cable into a Part's priority input (PART_I_PRIORITY, #976); 60: trig conditions, a note's condition word after it (ENG_NOTE_COND, #674); 59: the stored pattern links (ENG_FLAG_LINKS, #901) after the P-locks; 58: the Oscillator's `phase` (where sync restarts the cycle, #691) appended; 57: the ADSR's `ads` (release at the decay's time, D-745) appended; 56: Env L/R's `curve` (a linear fall, #689) appended; 55: optional validated master FX bus after format54 origins and before macro ranges */
+#define ENG_PATCH_VERSION 67   /* 67 (1.27, patchbin.ts FORMAT_1_27): more than 128 modules (ENG_MAX_MODULES 254, #1286) and a device's member count past 127 (ENG_MEMBER_WIDE); 66 (1.26.3, patchbin.ts FORMAT_RACK): flag bit 14 is the FX rack instead of the master FX bus: the patch's effects and FX drawers (eng_rack_end, ENG_FX_EFFECTS, #1214); 65 (the release after 1.22, patchbin.ts FORMAT_1_23): the MIDI learn mappings as the binary's last section (eng_maps, ENG_MAPS, #1067); 64 (the release after 1.21, patchbin.ts FORMAT_1_22): the EQ type (T_EQ, #1107) appended after the Euclid, and the shorter panel labels, cables and Drum map row names (ENG_SLIM, D-1025); 63 (release 1.20, patchbin.ts FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid type (T_EUCLID, #1018) appended after the Limiter, and Steps notes' timing words, ratchets and micro timing (ENG_TIME_BIT, #675, #677); 62 (release 1.19, patchbin.ts FORMAT_1_19): the Low pass gate (T_LPG, #1018) and the Limiter (T_LIMIT, #1019) types appended after the Harmonizer; 61: a cable into a Part's priority input (PART_I_PRIORITY, #976); 60: trig conditions, a note's condition word after it (ENG_NOTE_COND, #674); 59: the stored pattern links (ENG_FLAG_LINKS, #901) after the P-locks; 58: the Oscillator's `phase` (where sync restarts the cycle, #691) appended; 57: the ADSR's `ads` (release at the decay's time, D-745) appended; 56: Env L/R's `curve` (a linear fall, #689) appended; 55: optional validated master FX bus after format54 origins and before macro ranges */
 #define ENG_COUNTED 51                /* the first format whose module records carry their parameter count (patchbin.ts COUNTED, #667) */
 #define ENG_SLIM 64                   /* the first format with the panel labels by their length (eng_panel_bytes), the cables
                                        * grouped by the module they go into (eng_cables_grouped) and only the Drum map row
@@ -54,15 +54,18 @@ void eng_fpu_probe(uint32_t lane, uint32_t *h);
                                        * by the module they go into instead (eng_cables_grouped), without it 4 bytes each */
 #define ENG_MEMBER_RUN 0x80u          /* bit 7 of a device's member count in the device extras (format 51, D-1003): the members
                                        * are one run, u8 first follows, the count is the low 7 bits */
+#define ENG_MEMBER_WIDE 0x80u         /* a count byte of 0x80 (a run of none, never written before format 67, #1286): u8 n
+                                       * (128..254), u8 form (0: the n module indices follow, 1: one run, u8 first follows) */
 #define ENG_PATCH_COMPAT_VERSION 31   /* (a format 31 patch reads the same; 31..34 with the parameter counts of their format) */
 #define ENG_MAX_PARTS 8               /* parts of a poly group (notes it plays at once) */
-/* the modules of a patch (#721, D-256): the binary's count is a byte; 128 keeps a device's member count under 0x80
- * (ENG_MEMBER_RUN). A node takes ENG_NODE_BYTES of the arena (#649), and the order and Output tables a byte per module
- * there too, so a patch pays for its own modules */
-#define ENG_MAX_MODULES 128u
+/* the modules of a patch (#721, D-256; 254 since 1.27, #1286): the binary's count is a byte, and index 253 is the last
+ * the Drum map's keys source (2 + index) and key_src's 0xFF sentinel leave room for; past 128 a patch is format 67 (a
+ * device's member count then takes ENG_MEMBER_WIDE). A node takes ENG_NODE_BYTES of the arena (#649), and the order and
+ * Output tables a byte per module there too, so a patch pays for its own modules */
+#define ENG_MAX_MODULES 254u
 /* a set of modules (the armed ones, #191; what arming a device arms): bit m & 31 of w[m >> 5] = module m. The link carries
- * it as ENG_MSET_WORDS u32 LE (ARMS / ARMS_NOW, feature bit 21; older firmware and editors: the first two). Keep in step
- * with patch.ts ARM_WORDS */
+ * it as ENG_MSET_WORDS u32 LE (ARMS / ARMS_NOW: feature bit 36 all of them, bit 21 the first four, older firmware and
+ * editors the first two). Keep in step with patch.ts ARM_WORDS */
 #define ENG_MSET_WORDS ((ENG_MAX_MODULES + 31u) / 32u)
 typedef struct { uint32_t w[ENG_MSET_WORDS]; } eng_mset_t;
 static inline eng_mset_t mset_none(void) { eng_mset_t s = {{0}}; return s; }
@@ -419,7 +422,7 @@ static inline uint32_t eng_devices_end(const uint8_t *p, uint32_t len, uint32_t 
  * cable reaches, #633), u32 LE structure (an assembly's fingerprint, structure.ts; 0 a plain module), a text: the name of the preset it was set to (u8 length + that many bytes, 0 none),
  * u8 n and n (u8 module, u8 parameter byte as a page row's): its card rows in the canonical order of a preset's values
  * (0xFF 0xFF: a row the FM-1 has not got), u8 m and m module indices: the modules it is made of (#191; format 51: with
- * ENG_MEMBER_RUN in m, u8 first: the m & 0x7F modules from it on) */
+ * ENG_MEMBER_RUN in m, u8 first: the m & 0x7F modules from it on; format 67: ENG_MEMBER_WIDE, eng_members) */
 #define ENG_FLAG_EXTRAS 1u                      /* in p[7] */
 #define ENG_FLAG_MORPH_MODULES 2u /* header byte 7 bit 1 (flag bit 9), after the B set */
 #define ENG_NO_TRACK 0xFFu
@@ -428,6 +431,26 @@ static inline uint32_t eng_devices_end(const uint8_t *p, uint32_t len, uint32_t 
 #define ENG_KEYS_UNREACHED_TRACK 0x80u          /* the track byte's bit: | the device index of the Steps track that drives
                                                  * it through pitch / gate, and an engine no keys cable reaches (#633, D-295;
                                                  * firmware before 1.10 finds no such device: no track) */
+/* a device's members at p[at] in its device extras: *n modules, one run from p[*from] (*run 1) or the indices p[*from..];
+ * the bytes they take */
+static inline uint32_t eng_members(const uint8_t *p, uint32_t at, uint32_t *n, uint32_t *run, uint32_t *from)
+{
+    if (p[at] == ENG_MEMBER_WIDE) {
+        *n = p[at + 1u];
+        *run = p[at + 2u] != 0u;
+        *from = at + 3u;
+    } else {
+        *n = p[at] & ~ENG_MEMBER_RUN & 0xFFu;
+        *run = (p[at] & ENG_MEMBER_RUN) != 0u;
+        *from = at + 1u;
+    }
+    return *from - at + (*run ? 1u : *n);
+}
+static inline uint32_t eng_members_size(const uint8_t *p, uint32_t at)
+{
+    uint32_t n, run, from;
+    return eng_members(p, at, &n, &run, &from);
+}
 static inline uint32_t eng_extras_end(const uint8_t *p, uint32_t len, uint32_t at)
 {
     uint32_t n, d;
@@ -442,9 +465,9 @@ static inline uint32_t eng_extras_end(const uint8_t *p, uint32_t len, uint32_t a
         if (at >= len)
             return 0;
         at += 1u + 2u * p[at];
-        if (at >= len)
+        if (at >= len || (p[at] == ENG_MEMBER_WIDE && at + 2u >= len))
             return 0;
-        at += 1u + ((p[at] & ENG_MEMBER_RUN) ? 1u : p[at]);
+        at += eng_members_size(p, at);
     }
     return at <= len ? at : 0;
 }

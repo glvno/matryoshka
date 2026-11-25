@@ -495,11 +495,13 @@ export function morphValue(pd: ParamDef, a: number, b: number, t: number): numbe
 }
 
 /** the FM-1's module limit per patch (engine.h ENG_MAX_MODULES): the budget meter counts against it, the editor does not
- * stop at it. 128 since 1.11 (#721, D-256); firmware before it takes 64 (MODULES_1_10) */
-export const MAX_MODULES = 128;
+ * stop at it. 254 since 1.27 (#1286), 128 since 1.11 (#721, D-256); firmware before it takes 64 (MODULES_1_10) */
+export const MAX_MODULES = 254;
 /** the module limit of firmware before 1.11: a patch with more is written in FORMAT_1_11 (patchbin.ts formatOf), so an FM-1
  * with older firmware is told to update */
 export const MODULES_1_10 = 64;
+/** the module limit of firmware before 1.27: a patch with more is written in FORMAT_1_27 (patchbin.ts uses127) */
+export const MODULES_1_26 = 128;
 /** the words of an armed set (arm.ts armMask; engine.h ENG_MSET_WORDS, keep in step): 32 modules each, the last one partly */
 export const ARM_WORDS = Math.ceil(MAX_MODULES / 32);
 

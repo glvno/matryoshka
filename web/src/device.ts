@@ -5,7 +5,7 @@ import { FEATURE_PATTERN_ORIGINS, PatternOrigins, type OriginUpdate } from './pa
 import { DEFS } from './modules';
 import type { Patch, Range } from './patch';
 import { patternName, READ_ONLY_ID, type SongEntry, type StepNote } from './track';
-import { DEVICE, deviceSection, encodePatch, FLAG_LINKS, FLAG_PATTERN_ORIGINS, FLAG_RACK, FORMAT_RACK, layout, mapRecord, toQ16, VERSION, type LinkStore } from './patchbin';
+import { DEVICE, deviceSection, encodePatch, FLAG_LINKS, FLAG_PATTERN_ORIGINS, FLAG_RACK, FORMAT_1_27, FORMAT_RACK, layout, mapRecord, toQ16, VERSION, type LinkStore } from './patchbin';
 import { FNV0, fnv, PAYLOAD_MAX, storePlan, withLinks } from './pattern-store';
 import { deviceView } from './poly';
 import type { HostMsg } from './worklet';
@@ -22,7 +22,7 @@ import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type
 import { FEATURE_PATTERN_STORE, FEATURE25_PATTERNS_STORED, FEATURE25_TRACK_CARD, parseLinkNow, parsePatEntry, parsePatStored, PAT_FULL, PAT_MISSING, PAT_OK, PAT_RANGE, PAT_STATUS, PAT_USED, patDelFrame, patPutFrames, patsFrame, readStoredPattern, type PatListItem, type StoredPatternEntry } from './protocol';
 import { holdsTrackCard } from './pages';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
-import { FEATURE5_FX_DRAWERS, FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo, type MapEntry } from './protocol';
+import { FEATURE5_FORMAT_67, FEATURE5_FX_DRAWERS, FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo, type MapEntry } from './protocol';
 import { FEATURE_PADS, PADS_CMD, padsClearAllFrame, padsOnFrame, padsReadFrame, padsSetFrame, parsePadsNow, parsePatternOp, PATTERN_OP, type PadMap } from './protocol';
 import { hasPaletteFeature, PAL_STATUS, PALETTE, paletteEntryGetFrame, paletteGetFrame, paletteGoFrame, paletteNameFrame, paletteOrderFrame, palettePutFrame, parsePaletteEntry, parsePaletteNow, type PaletteEntry, type PaletteNow } from './protocol';
 import { FEATURE25_SLOT_GET, readSlotBinary, SLOT_STORED } from './protocol';
@@ -631,9 +631,12 @@ export class DeviceLink {
   }
 
   /** the editor's armed set (arm.ts armMask), to firmware that takes it: the FM-1 arms the same devices. Firmware before
-   *  feature bit 21 takes the first two words (modules 0..63: all a patch it plays has, #721) */
+   *  feature bit 21 takes the first two words (modules 0..63: all a patch it plays has, #721), before FEATURE5_FORMAT_67
+   *  the first four (modules 0..127, #1286) */
   arms(words: readonly number[]): void {
-    if (this.connected && this.takesArms) this.out!.send(armsFrame(this.info!.features & FEATURE_WIDE_ARMS ? words : words.slice(0, 2)));
+    if (!this.connected || !this.takesArms) return;
+    const n = (this.info!.features25 ?? 0) & FEATURE5_FORMAT_67 ? words.length : this.info!.features & FEATURE_WIDE_ARMS ? 4 : 2;
+    this.out!.send(armsFrame(words.slice(0, n)));
   }
 
   /** GLO > PANEL > TEMPO, the global tempo (bpm 0: leave it) and the time signature (#1011; older firmware ignores it), to
@@ -653,6 +656,8 @@ export class DeviceLink {
     const flags = bin[6] | bin[7] << 8;
     if ((flags & FLAG_RACK) && bin[1] >= FORMAT_RACK && (!this.info?.patchFormats || this.info.patchFormats.max < FORMAT_RACK))
       throw new Error('This patch has FX drawers or effects. Update the FM-1 firmware before sending it.');
+    if (bin[1] >= FORMAT_1_27 && !((this.info?.features25 ?? 0) & FEATURE5_FORMAT_67))
+      throw new Error('This patch uses release 1.27 (more than 128 modules). Update the FM-1 firmware before sending it.');
     if ((flags & FLAG_PATTERN_ORIGINS) && (!this.info?.patchFormats || bin[1] > this.info.patchFormats.max || !(this.info.features & FEATURE_PATTERN_ORIGINS)))
       throw new Error('This patch carries factory pattern origins. Update the FM-1 firmware before sending it; its origins cannot be removed automatically.');
     if ((flags & FLAG_LINKS) && !this.hasPatternStore) throw new Error('This patch links stored patterns, and this FM-1 has no pattern store.');

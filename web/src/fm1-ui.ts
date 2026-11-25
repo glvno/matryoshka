@@ -81,7 +81,7 @@ interface Exports {
   fm1w_transport(run: number): void;
   fm1w_play_turned(): void;
   fm1w_mute(module: number, on: number): void;
-  fm1w_arm_mask(w0: number, w1: number, w2: number, w3: number): void;
+  fm1w_arm_mask(...w: number[]): void;   // 8 words (ENG_MSET_WORDS, patch.ts ARM_WORDS)
   /** (absent from a wasm built before D-907) */
   fm1w_tempo?(patch: number, bpm: number, meter: number): void;
   fm1w_focus_dev(): number; fm1w_focus_page(): number; fm1w_octave(): number;
@@ -122,7 +122,7 @@ export class Fm1Ui {
       }) : []),
       mute: (m: number, on: number) => ev.mute?.(m, on !== 0),
       pattern_op: (op: number, from: number, to: number, hash: number) => ev.patternOp?.(op, from, to, hash >>> 0),
-      arms: (w0: number, w1: number, w2: number, w3: number) => ev.arms?.([w0 >>> 0, w1 >>> 0, w2 >>> 0, w3 >>> 0]),
+      arms: (...w: number[]) => ev.arms?.(w.map((x) => x >>> 0)),
       tempo: (patch: number, bpm: number, meter: number) => ev.tempo?.(patch === 0, bpm, meter),
       pal_go: (pos: number) => ev.paletteGo?.(pos),
       pal_save: (pos: number) => ev.paletteSave?.(pos),
@@ -169,8 +169,8 @@ export class Fm1Ui {
   mute(module: number, on: boolean): void { this.x.fm1w_mute(module, on ? 1 : 0); }
   /** the page's TEMPO setting, global tempo and time signature (D-907, #1011): the emulated FM-1 plays and shows them */
   tempo(global: boolean, bpm: number, meter: number): void { this.x.fm1w_tempo?.(global ? 0 : 1, Math.round(bpm), meter); }
-  /** the editor's armed devices (#191): their modules as a mask (arm.ts armMask, ARM_WORDS words, #721) */
-  armMask(words: readonly number[]): void { this.x.fm1w_arm_mask(words[0] >>> 0, (words[1] ?? 0) >>> 0, (words[2] ?? 0) >>> 0, (words[3] ?? 0) >>> 0); }
+  /** the editor's armed devices (#191): their modules as a mask (arm.ts armMask, ARM_WORDS words, #721, #1286) */
+  armMask(words: readonly number[]): void { this.x.fm1w_arm_mask(...Array.from({ length: 8 }, (_, i) => (words[i] ?? 0) >>> 0)); }
 
   /** the buttons held (bit: matrix id), as the panel logic took them; null from a wasm built before #549 */
   get held(): number | null { return this.x.fm1w_held ? this.x.fm1w_held() : null; }

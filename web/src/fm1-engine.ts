@@ -41,7 +41,7 @@ interface Exports {
   fm1e_mute(mod: number, on: number): void;
   fm1e_track(mod: number, pat: number, n: number): number;
   fm1e_thru(mod: number, note: number, vel: number): void;
-  fm1e_arm(w0: number, w1: number, w2: number, w3: number): void;
+  fm1e_arm(...w: number[]): void;   // 8 words (ENG_MSET_WORDS, patch.ts ARM_WORDS)
 }
 
 /** what the page sends the FM-1 engine by module index in the binary, as the device link does (fm1-engine-host.ts) */
@@ -116,7 +116,7 @@ export class Fm1Engine {
         break;
       }
       case 'thru': x.fm1e_thru(o.mod, o.note, o.vel); break;
-      case 'arm': x.fm1e_arm(o.words[0] ?? 0, o.words[1] ?? 0, o.words[2] ?? 0, o.words[3] ?? 0); break;
+      case 'arm': x.fm1e_arm(...Array.from({ length: 8 }, (_, i) => (o.words[i] ?? 0) >>> 0)); break;
     }
     return 0;
   }
