@@ -13,7 +13,7 @@ import { drawerScope } from './fx-preset';
 import { effectGroups, entryOf, userEffects } from './library-effects';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, sameEnd, validatePatch, type Patch } from './patch';
-import { baseFormat, encodePatch, FORMAT_RACK } from './patchbin';
+import { baseFormat, encodePatch, FORMAT_1_27, FORMAT_RACK } from './patchbin';
 
 vi.hoisted(() => {
   const g = globalThis as unknown as Record<string, unknown>;
@@ -121,17 +121,19 @@ describe('the user’s own assembly in an FX drawer', () => {
     expect(e.inputs[e.chain!.ins[1]].label).toBe('in R');
   });
 
-  it('one in and one out: an L/R pair (two copies, one set of controls), or wet when asked', () => {
+  it('one in and one out: in line in stereo (its members stereo, one set of controls; 1.26: an L/R pair), or wet when asked', () => {
     const { p, drawer } = rig();
     expect(effectModes(p, mono(p))).toEqual(['pair', 'wet']);
     const pair = insertEffect(p, drawer, { assembly: mono(p).id });
-    expect(childrenOf(p, pair)).toHaveLength(2);
-    expect(pair.params[0].also).toHaveLength(1);
+    const members = allModules(p, pair).map((id) => p.modules.find((m) => m.id === id)!);
+    expect(members.map((m) => m.type)).toEqual(['filter']);
+    expect(members[0].stereo).toBe(true);
+    expect(pair.params[0].also ?? []).toHaveLength(0);
     const wet = insertEffect(p, drawer, { assembly: mono(p).id }, undefined, 'wet');
     expect(childrenOf(p, wet)).toHaveLength(1);
     expect(wet.chain!.helpers!.length).toBeGreaterThan(0);
     expect(effectsOf(p, drawer).map((x) => x.id)).toEqual([pair.id, wet.id]);
-    expect(baseFormat(p)).toBeLessThanOrEqual(FORMAT_RACK);
+    expect(baseFormat(p)).toBe(FORMAT_1_27);
   });
 
   it('no audio input: refused with the reason, nothing changed', () => {
