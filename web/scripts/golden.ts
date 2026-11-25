@@ -5,7 +5,7 @@
 // Run from web/:  npx vite-node scripts/golden.ts   (tools/golden.sh does this and runs the C comparison)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { Engine } from '../src/engine';
-import { COUNTED, deviceBudget, encodePatch, FLAG_INPUTS, FLAG_LINKS, FORMAT_LINKS, PANEL_BYTES, recordSize, SLIM, toQ16 } from '../src/patchbin';
+import { COUNTED, deviceBudget, encodePatch, FLAG_INPUTS, FLAG_LINKS, FORMAT_1_27, FORMAT_LINKS, MEMBER_WIDE, PANEL_BYTES, recordSize, SLIM, toQ16 } from '../src/patchbin';
 import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
@@ -4147,6 +4147,44 @@ tests['arm-many'] = make('arm-many', (add, wire) => {
   ends['arm-many'] = 128 * 200;
 }
 
+// more than 128 modules (#1286, the FM-1's cap 254, format 67): arm-many with a chain of 230 mixers, one assembly (a
+// device of 230 members: the member count's escape, MEMBER_WIDE), so the Voicings sit past index 223 (the eighth word of
+// the module set); arm-wide-list has the assembly's members in reverse (the escape's list form), arm-wide one run
+for (const [name, reverse] of [['arm-wide', false], ['arm-wide-list', true]] as const) {
+  tests[name] = make(name, (add, wire) => {
+    const main = add('fm1', 0, 0);
+    const dm = add('drummap', 200, 600);
+    const chain: number[] = [];
+    for (let k = 0; k < 230; k++) chain.push(add('mixer', 800 + 40 * (k % 16), 40 * Math.floor(k / 16), { l1: 1 }));
+    for (let k = 1; k < 230; k++) wire(chain[k - 1], 'out', chain[k], 'in1');
+    const a = add('alloc', 200, 0, { voices: 2 });
+    const b = add('alloc', 200, 300, { voices: 2 });
+    const mr = add('mixer', 400, 300, { l1: 0.5, l2: 0.5 });
+    const out = add('output', 600, 0, { level: 0.6 });
+    wire(main, 'keys', a, 'keys');
+    wire(main, 'keys', b, 'keys');
+    wire(main, 'keys', dm, 'keys');
+    wire(a, 'gate', out, 'l');
+    wire(b, 'gate', mr, 'in1');
+    wire(dm, 'g1', chain[0], 'in1');
+    wire(chain[229], 'out', mr, 'in2');
+    wire(mr, 'out', out, 'r');
+  });
+  const p = tests[name];
+  const ids = p.modules.filter((m) => m.type === 'mixer' && m.x >= 800).map((m) => m.id);
+  makeAssembly(p, reverse ? [...ids].reverse() : ids, 'chain').params.push({ module: ids[0], param: 'l1', label: 'level' });   // (a row: a device on the FM-1)
+  const idx = (t: string, k = 0): number => p.modules.map((m, i) => (m.type === t ? i : -1)).filter((i) => i >= 0)[k];
+  const [a, b, dm] = [idx('alloc', 0), idx('alloc', 1), idx('drummap')];
+  if (a < 224 || b < 224 || dm >= 32) throw new Error(`${name}: the Voicings past 223, the Drum map in the first word`);
+  const bin = encodePatch(p, true);
+  const wide = bin.findIndex((x, i) => x === MEMBER_WIDE && bin[i + 1] === 230 && bin[i + 2] === (reverse ? 0 : 1));
+  if (bin[1] !== FORMAT_1_27 || bin[2] !== p.modules.length || wide < 0) throw new Error(`${name}: not format 67 with a wide member count`);
+  events[name] = [[128 * 4, 'on', 60], [128 * 20, 'off', 60], [128 * 30, 'armx', b, -1], [128 * 40, 'on', 62], [128 * 60, 'off', 62],
+    [128 * 70, 'armx', a, dm], [128 * 80, 'on', 36], [128 * 100, 'off', 36], [128 * 110, 'armx', a, b],
+    [128 * 120, 'on', 64], [128 * 140, 'armx', -1, -1], [128 * 150, 'off', 64], [128 * 160, 'on', 36], [128 * 180, 'off', 36]];
+  ends[name] = 128 * 200;
+}
+
 // disabled fixed links (format 17's flag bit 2, never written since the links became permanent; the firmware still reads
 // it): the binary carries the LFO -> filter cv cable with the filter's cv input masked off (the VCA's mask 0 keeps its cv),
 // so the firmware must play the reference, which is the same patch without that cable
@@ -4597,7 +4635,7 @@ for (const [name, patch] of Object.entries(tests)) {
     seg(fr);
     if (kind === 'arm') e.arm(note < 0 ? null : patch.modules[note].id);
     else if (kind === 'arms') e.arm(patch.modules.flatMap((m, i) => (Math.floor(note / 2 ** i) % 2 ? [`m${m.id}`] : [])));   // (#191: a mask of module indices)
-    else if (kind === 'armx') e.arm(patch.modules.flatMap((m, i) => (i === note || i === ch ? [`m${m.id}`] : [])));   // (#721: two indices, any of 0..127)
+    else if (kind === 'armx') e.arm(patch.modules.flatMap((m, i) => (i === note || i === ch ? [`m${m.id}`] : [])));   // (#721, #1286: two indices, any of 0..253)
     else if (kind === 'rec') e.setRec(patch.modules[note].id, !!ch);
     else if (kind === 'thon' || kind === 'thoff') e.thru(patch.modules[note].id, ch ?? 60, kind === 'thon' ? 100 : 0);
     else if (kind === 'take')

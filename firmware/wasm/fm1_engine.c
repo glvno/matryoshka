@@ -149,12 +149,9 @@ WASM_EXPORT("fm1e_thru") void fm1e_thru(uint32_t mod, uint32_t note, uint32_t ve
     if (loaded && mod < (uint32_t)eng_nmodules())
         eng_steps_thru(mod, note & 127u, vel & 127u);
 }
-WASM_EXPORT("fm1e_arm") void fm1e_arm(uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3)
+WASM_EXPORT("fm1e_arm") void fm1e_arm(uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3, uint32_t w4, uint32_t w5, uint32_t w6, uint32_t w7)
 {
-    eng_mset_t s = mset_none();
-    uint32_t w[4] = {w0, w1, w2, w3}, i;
-    for (i = 0; i < ENG_MSET_WORDS && i < 4u; i++)
-        s.w[i] = w[i];
+    eng_mset_t s = {{w0, w1, w2, w3, w4, w5, w6, w7}};
     if (loaded)
         eng_arm_mask(s);
 }

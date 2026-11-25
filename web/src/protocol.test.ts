@@ -164,8 +164,8 @@ describe('sandbox mode on the wire', () => {
     expect(editorSkips(null, false)).toBe(false);
   });
 
-  it('ARMS (#191): the editor\'s armed set as proto.c reads it (u32 LE words), feature bit 20; four words with bit 21 (#721)', async () => {
-    const { armsFrame, FEATURE_ARMS, FEATURE_WIDE_ARMS, parseArmsNow } = await import('./protocol');
+  it('ARMS (#191): the editor\'s armed set as proto.c reads it (u32 LE words), feature bit 20; four words with bit 21 (#721), eight with INFO byte 25 bit 4 (#1286)', async () => {
+    const { armsFrame, FEATURE_ARMS, FEATURE_WIDE_ARMS, FEATURE5_FORMAT_67, parseArmsNow } = await import('./protocol');
     const p = parse(armsFrame([0x80000005, 0x00000101]))!;
     expect(p.cmd).toBe(0x39);
     expect(p.payload).toEqual([5, 0, 0, 0x80, 1, 1, 0, 0]);
@@ -177,9 +177,14 @@ describe('sandbox mode on the wire', () => {
     const wide = parseInfo(parse(frame(CMD.info, [1, 128, 255, 1, 8, 246, 255, 31, 51, 0, 0, 0, 63]))!)!;
     expect(wide.features & FEATURE_WIDE_ARMS).toBeTruthy();
     expect(wide.maxModules).toBe(128);
-    // ARMS_NOW: two words from older firmware (the rest 0), four since #721, too short: nothing
-    expect(parseArmsNow([5, 0, 0, 0x80, 1, 1, 0, 0])).toEqual([0x80000005, 0x101, 0, 0]);
-    expect(parseArmsNow([5, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0x80])).toEqual([5, 0, 1, 0x80000000]);
+    const f67 = parseInfo(parse(frame(CMD.info, [1, 254, 255, 1, 8, 246, 255, 31, 67, 0, 0, 0, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16]))!)!;
+    expect(f67.features25 & FEATURE5_FORMAT_67).toBeTruthy();
+    expect(f67.maxModules).toBe(254);
+    expect(f67.patchFormats).toEqual({ min: 31, max: 67 });
+    // ARMS_NOW: two words from older firmware (the rest 0), four since #721, eight since #1286, too short: nothing
+    expect(parseArmsNow([5, 0, 0, 0x80, 1, 1, 0, 0])).toEqual([0x80000005, 0x101, 0, 0, 0, 0, 0, 0]);
+    expect(parseArmsNow([5, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0x80])).toEqual([5, 0, 1, 0x80000000, 0, 0, 0, 0]);
+    expect(parseArmsNow([...new Array(28).fill(0), 0, 0, 0, 0x80])).toEqual([0, 0, 0, 0, 0, 0, 0, 0x80000000]);
     expect(parseArmsNow([5, 0, 0, 0, 0, 0, 0])).toBeNull();
   });
 

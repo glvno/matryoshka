@@ -545,7 +545,7 @@ static int aot_buffer_guard(const uint8_t *p, uint32_t len)
                 return 1;
         at += 6u + p[at + 5u];
         at += 1u + 2u * p[at];
-        at += 1u + ((p[at] & ENG_MEMBER_RUN) ? 1u : p[at]);
+        at += eng_members_size(p, at);
     }
     return 0;
 }
@@ -645,19 +645,17 @@ static void aot_bind(const uint8_t *p, uint32_t len, uint32_t lines)
         pos[E.order[i]] = (uint8_t)i;
     cnt = p[at++];
     for (d = 0; d < cnt && aot_nx < AOT_MAXX; d++) {
-        uint32_t st = (uint32_t)p[at + 1u] | (uint32_t)p[at + 2u] << 8 | (uint32_t)p[at + 3u] << 16 | (uint32_t)p[at + 4u] << 24, nm, run;
+        uint32_t st = (uint32_t)p[at + 1u] | (uint32_t)p[at + 2u] << 8 | (uint32_t)p[at + 3u] << 16 | (uint32_t)p[at + 4u] << 24, nm, run, from;
         const aot_tpl_t *t = 0;
         at += 6u + p[at + 5u];
         at += 1u + 2u * p[at];
-        nm = p[at] & (uint8_t)~ENG_MEMBER_RUN;
-        run = (p[at] & ENG_MEMBER_RUN) != 0u;
+        at += eng_members(p, at, &nm, &run, &from);
         for (k = 0; st && k < AOT_NTPL; k++)
             if (AOT_TPL[k]->structure == st && AOT_TPL[k]->n == nm)
                 t = AOT_TPL[k];
         if (t)
             for (i = 0; i < nm; i++)
-                mem[i] = run ? (uint8_t)(p[at + 1u] + i) : p[at + 1u + i];
-        at += 1u + (run ? 1u : nm);
+                mem[i] = run ? (uint8_t)(p[from] + i) : p[from + i];
         if (t && aot_fits(t, mem, loc, pos)) {
             aot_x_t *x = &aot_x[aot_nx];
             uint32_t lo = 255u;

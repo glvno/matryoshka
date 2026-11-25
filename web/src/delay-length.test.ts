@@ -238,20 +238,21 @@ describe('the FM-1\'s memory (the lines: D-375; one arena, #649)', () => {
   });
 });
 
-describe('the FM-1\'s module limit (#721: 128, D-256)', () => {
+describe('the FM-1\'s module limit (#721: 128, D-256; #1286: 254)', () => {
   it('a patch of more than 64 modules fits the module count, its modules take the memory, and it is written in format 51', async () => {
     const { DEVICE, FORMAT_1_11 } = await import('./patchbin');
-    const { MAX_MODULES, MODULES_1_10 } = await import('./patch');
-    expect(DEVICE.modules).toBe(128);
-    expect(MAX_MODULES).toBe(128);
+    const { MAX_MODULES, MODULES_1_10, MODULES_1_26 } = await import('./patch');
+    expect(DEVICE.modules).toBe(254);
+    expect(MAX_MODULES).toBe(254);
     expect(MODULES_1_10).toBe(64);
+    expect(MODULES_1_26).toBe(128);
     expect(cNum('engine.h', 'ENG_MAX_MODULES')).toBe(MAX_MODULES);
     const p = linesPatch([]);
     const out = p.modules.find((m) => m.type === 'output')!;
     const chain = Array.from({ length: 70 }, (_, k) => addModule(p, DEFS.mixer, 800, 40 * k).id);
     chain.forEach((id, k) => p.cables.push({ from: { module: id, port: 'out' }, to: k + 1 < chain.length ? { module: chain[k + 1], port: 'in1' } : { module: out.id, port: 'l' } }));
     const b = deviceBudget(p);
-    expect(b.items.find((i) => i.key === 'modules')).toMatchObject({ max: 128 });
+    expect(b.items.find((i) => i.key === 'modules')).toMatchObject({ max: 254 });
     expect(b.over.map((i) => i.key)).not.toContain('modules');
     expect(b.lines.nodes).toBeGreaterThan(64);
     expect(b.lines.nodesBytes).toBe(b.lines.nodes * NODE_BYTES);
@@ -259,5 +260,41 @@ describe('the FM-1\'s module limit (#721: 128, D-256)', () => {
     expect(b.lines.tablesBytes).toBeLessThanOrEqual(TABLE_BYTES_128);   // (what the fixed tables held: no less room than before)
     expect(formatOf(p)).toBe(FORMAT_1_11);
     expect(encodePatch(p)[2]).toBe(b.lines.nodes);
+  });
+
+  it('more than 128 modules is format 67 (FORMAT_1_27); 128 keeps the older format', async () => {
+    const { FORMAT_1_27, VERSION } = await import('./patchbin');
+    expect(VERSION).toBe(FORMAT_1_27);
+    expect(cNum('engine.h', 'ENG_PATCH_VERSION')).toBe(FORMAT_1_27);
+    const chained = (n: number) => {
+      const p = linesPatch([]);
+      const out = p.modules.find((m) => m.type === 'output')!;
+      const chain = Array.from({ length: n }, (_, k) => addModule(p, DEFS.mixer, 800, 40 * k).id);
+      chain.forEach((id, k) => p.cables.push({ from: { module: id, port: 'out' }, to: k + 1 < chain.length ? { module: chain[k + 1], port: 'in1' } : { module: out.id, port: 'l' } }));
+      return p;
+    };
+    const base = deviceBudget(chained(1)).lines.nodes - 1;   // (the device form's modules besides the chain)
+    const at128 = chained(128 - base), past = chained(200);
+    expect(deviceBudget(at128).lines.nodes).toBe(128);
+    expect(formatOf(at128)).toBeLessThan(FORMAT_1_27);
+    const b = deviceBudget(past);
+    expect(b.over.map((i) => i.key)).not.toContain('modules');
+    expect(b.lines.tablesBytes).toBe((b.lines.nodes + 1 + 3) & ~3);
+    const bin = encodePatch(past, true);
+    expect(bin[1]).toBe(FORMAT_1_27);
+    expect(bin[2]).toBe(b.lines.nodes);
+  });
+
+  it('a device of 128 members (128 modules, no Main, no Output) is format 67: its member count takes MEMBER_WIDE', async () => {
+    const { FORMAT_1_27, MEMBER_WIDE } = await import('./patchbin');
+    const { makeAssembly } = await import('./assembly');
+    const p = emptyPatch('wide');   // (Steps tracks: kept with no cable, device-compile.ts KEPT; Main and Output join no assembly)
+    const tracks = Array.from({ length: 128 }, (_, k) => addModule(p, DEFS.steps, 800, 40 * k).id);
+    makeAssembly(p, tracks, 'all').params.push({ module: tracks[0], param: 'len', label: 'length' });
+    expect(deviceBudget(p).lines.nodes).toBe(128);
+    expect(formatOf(p)).toBe(FORMAT_1_27);
+    const bin = encodePatch(p, true);
+    expect(bin[1]).toBe(FORMAT_1_27);
+    expect(bin.some((x, i) => x === MEMBER_WIDE && bin[i + 1] === 128)).toBe(true);
   });
 });
