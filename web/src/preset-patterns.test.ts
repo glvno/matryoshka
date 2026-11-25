@@ -82,9 +82,11 @@ it('does not attach defaults to user sounds', () => {
   expect(t).toEqual(before);
 });
 // (<7PH's lean 909 card ships no presets since the 909 Kit is the whole TR-909, D-1055; Scrounge's sounds carry no
-// pattern since each of its rows has its own track, D-1056)
+// pattern since each of its rows has its own track, D-1056; the 909 Kit without its FX drawer, as it was while its
+// pattern 1 had a demonstration origin: beside the drawer the byte guard would refuse Init's and Dry Jack's patterns for
+// that reason alone, D-1055)
 it.each(['Meridian 8', 'Perun 4', 'Spokes 6', 'Verona Drum 1', '808 Kit', '909 Kit'])('%s defaults are distinct and all select', (name) => {
-  const { p, a, t, presets } = fixture(name);
+  const { p, a, t, presets } = fixture(name, name === '909 Kit' ? buildFactoryBank().find((e) => e.name === name)!.patch : undefined);
   const seen = new Set<string>();
   for (const preset of presets) {
     applyPreset(p, a, preset);

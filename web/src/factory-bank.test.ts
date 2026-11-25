@@ -37,6 +37,9 @@ describe('hardware candidate measurement profiles', () => {
     expect(() => buildFactoryBank({ '808 Kit': { drumRack: true, voices: 3 } })).toThrow(/protected/);
     expect(() => buildFactoryBank({ '8 Lire': { omit: ['reverb'] } })).toThrow(/protected/);
     expect(() => buildFactoryBank({ '8 Lire': { drumRack: true } })).toThrow(/drum kit/);
+    expect(() => buildFactoryBank({ '909 Kit': { drawer: ['shape'], drumRack: true } })).toThrow(/protected/);
+    expect(() => buildFactoryBank({ '909 Kit': { drawer: ['shape'], voices: 3 } })).toThrow(/protected/);
+    expect(() => buildFactoryBank({ '8 Lire': { drawer: ['shape'] } })).toThrow(/drum kit/);
     expect(() => buildFactoryBank({ 'Hera 4': { drumRack: true } })).toThrow(/drum kit/);
     expect(() => buildFactoryBank({ Init: { voices: 3 } })).toThrow(/Unknown factory candidate/);
     expect(() => buildFactoryBank({ 'Hera 4': { harmonizer: 'removed' } })).toThrow(/monophonic/);
@@ -100,8 +103,8 @@ describe('owner-selected factory defaults', () => {
       }
       // (a drum kit with the factory FX: every module and cable of the kit as it was, but the Output's, which the chain now
       // feeds; the kit's assemblies as they were but for its FX drawer; every effect bypassed; FX finds the drawer, the
-      // other buttons as they were; owner 2026-11-19, D-1200; #1214)
-      expect(selectedFactoryProfile[source.name].drumRack).toBe(true);
+      // other buttons as they were; owner 2026-11-19, D-1200; #1214; the 909 Kit's drawer of the 1.27 forms, D-1055)
+      expect(selectedFactoryProfile[source.name].drumRack ?? !!selectedFactoryProfile[source.name].drawer).toBe(true);
       const p = patchOf(source.name, full);
       const output = original.modules.find(m => m.type === 'output')!.id;
       for (const m of original.modules) expect(p.modules.find(x => x.id === m.id), `${source.name} ${m.id}`).toEqual(m);
