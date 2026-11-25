@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The effects to add (FX drawer, #1214): Library › Effects, the sidebar's Add effect dialog and the + list's effect rows
-// all read fx-drawer.ts EFFECT_CATALOG, grouped by how each effect sits in a drawer's stereo chain. Every add path puts the
-// effect on the canvas first, an ordinary card cabled by hand as + Module and + Assembly make it; an FX drawer is the
-// second choice. Dragging a row (pointer events, as patch-drag.ts) drops it on the canvas as a new card, or on an FX plug
-// or open drawer to put it there (editor.ts dropEffect).
+// all read effectCatalog: fx-drawer.ts EFFECT_CATALOG and the user's library assemblies marked Use as an effect, grouped by
+// how each effect sits in a drawer's stereo chain. Every add path puts the effect on the canvas first, an ordinary card
+// cabled by hand as + Module and + Assembly make it; an FX drawer is the second choice. Dragging a row (pointer events, as
+// patch-drag.ts) drops it on the canvas as a new card, or on an FX plug or open drawer to put it there (editor.ts dropEffect).
 import { insertAssembly, parentOf, toDef, assembliesOf, type AssemblyDef, type AssemblyInst } from './assembly';
+import { loadLibrary } from './assemblies';
 import { applyPreset, presetsFor, userPresets, type Preset } from './device-presets';
 import { cardCosts, cpuEstimate } from './cpu';
 import { keyOf, type CommandKey } from './commands';
@@ -27,16 +28,23 @@ export const MODES: readonly { mode: ChainMode; title: string; tag: string; tip:
 ];
 export const modeOf = (mode: ChainMode): (typeof MODES)[number] => MODES.find((m) => m.mode === mode)!;
 
+/** the user's library assemblies marked Use as an effect (AssemblyDef.fxMode), as entries beside the factory's */
+export const userEffects = (library: readonly AssemblyDef[] = loadLibrary()): EffectEntry[] =>
+  library.flatMap((d) => (d.fxMode ? [{ name: d.name, mode: d.fxMode, blurb: d.blurb ?? 'Your own assembly.', source: { def: d } }] : []));
+
+/** every effect the Library offers: the factory's, then the user's own */
+export const effectCatalog = (): EffectEntry[] => [...EFFECT_CATALOG, ...userEffects()];
+
 /** the catalog's effects by group, each group in catalog order; empty groups left out */
-export const effectGroups = (catalog: readonly EffectEntry[] = EFFECT_CATALOG): { mode: ChainMode; title: string; entries: EffectEntry[] }[] =>
+export const effectGroups = (catalog: readonly EffectEntry[] = effectCatalog()): { mode: ChainMode; title: string; entries: EffectEntry[] }[] =>
   MODES.map((m) => ({ mode: m.mode, title: m.title, entries: catalog.filter((e) => e.mode === m.mode) })).filter((g) => g.entries.length);
 
-/** the catalog entry a module type or a factory assembly is, if it is an effect */
-export function entryOf(source: EffectSource, catalog: readonly EffectEntry[] = EFFECT_CATALOG): EffectEntry | undefined {
+/** the catalog entry a module type or an assembly is, if it is an effect */
+export function entryOf(source: EffectSource, catalog: readonly EffectEntry[] = effectCatalog()): EffectEntry | undefined {
   return catalog.find((e) => ('type' in source ? 'type' in e.source && e.source.type === source.type : 'def' in e.source && e.source.def.name === source.def.name));
 }
 
-const structures = new Map<EffectEntry, { drawer: string; legacy: string; all: string[] }>();
+const structures = new WeakMap<EffectEntry, { drawer: string; legacy: string; all: string[] }>();
 /** the structures an entry's presets belong to: its drawer form's (the wrapper), its 1.26 drawer form's (an L/R pair, a
  *  Reverb with helpers: fx-drawer.ts WrapForm) and its canvas card's when that is an assembly of its own */
 function formsOf(entry: EffectEntry): { drawer: string; legacy: string; all: string[] } {
@@ -53,7 +61,7 @@ export const entryStructures = (entry: EffectEntry): string[] => formsOf(entry).
 /** how many presets an entry has (the factory's and the user's, for either form) */
 export const presetCount = (entry: EffectEntry): number => entryStructures(entry).reduce((n, s) => n + presetsFor(s).length, 0);
 
-const cpus = new Map<EffectEntry, number>();
+const cpus = new WeakMap<EffectEntry, number>();
 /** an entry's share of the FM-1's audio time in a drawer (a stereo module or an L/R pair counts both copies, D-1413), from cpu.ts */
 export function effectCpu(entry: EffectEntry): number {
   let c = cpus.get(entry);
@@ -73,7 +81,7 @@ export const cpuText = (share: number): string => `${(100 * share).toFixed(1)} %
 export interface EffectPreset { preset: Preset; entry: EffectEntry; wrapped: boolean; legacy?: true }
 
 /** the user's presets that belong to an effect of the catalog, by effect then name */
-export function effectPresets(list: Preset[] = userPresets(), catalog: readonly EffectEntry[] = EFFECT_CATALOG): EffectPreset[] {
+export function effectPresets(list: Preset[] = userPresets(), catalog: readonly EffectEntry[] = effectCatalog()): EffectPreset[] {
   const out: EffectPreset[] = [];
   for (const preset of list) {
     for (const entry of catalog) {
@@ -104,7 +112,7 @@ const audioOut = (p: Patch, a: AssemblyInst): boolean => a.outputs.some((r) => {
 /** the instruments an FX drawer can belong to: top-level assemblies with an audio output that are neither a drawer nor an
  *  effect, plus any that has a drawer already */
 export const instrumentsOf = (p: Patch): AssemblyInst[] =>
-  assembliesOf(p).filter((a) => !parentOf(p, a.id) && !a.drawer && (!!drawerOf(p, a.id) || (!a.chain && effectKind(a.name) === null && audioOut(p, a))));
+  assembliesOf(p).filter((a) => !parentOf(p, a.id) && !a.drawer && (!!drawerOf(p, a.id) || (!a.chain && !a.fxMode && effectKind(a.name) === null && audioOut(p, a))));
 
 /** where "Add to an FX drawer" can put an effect: each instrument's drawer (made when it has none), then the Output's */
 export interface DrawerTarget { to: number | 'output'; label: string; detail: string }

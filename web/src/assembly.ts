@@ -388,6 +388,9 @@ export interface AssemblyInst extends AssemblyLayout {
   drawer?: DrawerInfo;
   /** this assembly is a stereo audio effect: it fits an FX drawer (fx-drawer.ts) and may sit on the canvas too */
   chain?: ChainPorts;
+  /** the user's own assembly goes into an FX drawer in this mode (its ⋯ Use as an effect…); saved with it, so Library ›
+   *  Effects lists it once it is in the library */
+  fxMode?: ChainMode;
   /** children shown whole as embedded cards on the collapsed card (ids in `children`) */
   cards?: number[];
 }
@@ -398,6 +401,13 @@ export interface DrawerInfo {
    *  instrument). Absent: the Output drawer, anchored at the patch's single Output module's l / r inputs */
   taps?: [Target, Target];
 }
+
+/** how an effect sits in a drawer's stereo chain: true stereo, an L/R pair of a mono effect, or a mono effect's wet added
+ *  to both sides (fx-drawer.ts) */
+export type ChainMode = 'stereo' | 'pair' | 'wet';
+const CHAIN_MODES: readonly ChainMode[] = ['stereo', 'pair', 'wet'];
+/** a chain mode from a file; undefined when it is none */
+export const fixChainMode = (raw: unknown): ChainMode | undefined => (CHAIN_MODES as readonly unknown[]).includes(raw) ? raw as ChainMode : undefined;
 
 /** the stereo ports of an effect (fx-drawer.ts) */
 export interface ChainPorts {
@@ -457,6 +467,8 @@ export interface AssemblyDef extends AssemblyLayout {
   poly?: PolyCards;
   /** the top level is a stereo audio effect (fx-drawer.ts); helpers in local module ids */
   chain?: ChainPorts;
+  /** the top level goes into an FX drawer in this mode (AssemblyInst.fxMode) */
+  fxMode?: ChainMode;
   /** the top level's embedded cards (local assembly ids among `children`) */
   cards?: number[];
 }
@@ -1537,6 +1549,7 @@ export function toDef(p: Patch, a: AssemblyInst, base = false): AssemblyDef {
   if (a.poly) def.poly = { ...a.poly };
   const cards = (list: number[]): number[] => list.filter((id) => localAsm.has(id)).map((id) => localAsm.get(id)!);
   if (a.chain) def.chain = mapChain(a.chain, local);
+  if (a.fxMode) def.fxMode = a.fxMode;
   if (nested.length) {
     def.children = (a.children ?? []).filter((id) => localAsm.has(id)).map((id) => localAsm.get(id)!);
     if (a.cards && cards(a.cards).length) def.cards = cards(a.cards);
@@ -1661,6 +1674,7 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
   if (def.children?.length) a.children = def.children.map((id) => freshAsm.get(id)!);
   if (def.poly) a.poly = fixCards(def.poly);
   if (def.chain) a.chain = mapChain(def.chain, fresh);
+  if (def.fxMode) a.fxMode = def.fxMode;
   if (def.cards?.length) a.cards = def.cards.map((id) => freshAsm.get(id)!);
   p.assemblies = [...assembliesOf(p), ...made, a];
   for (const n of [...made].reverse()) reconcile(p, n, defs);
@@ -1894,6 +1908,9 @@ export function validateAssemblyDef(raw: unknown, defs: Record<string, ModuleDef
   const chain = fixChain(d.chain, d.inputs.length, d.outputs.length, (id) => seen.has(id));
   if (chain) d.chain = chain;
   else delete d.chain;
+  const fxMode = fixChainMode(d.fxMode);
+  if (fxMode) d.fxMode = fxMode;
+  else delete d.fxMode;
   d.version = 1;
   d.name = String(d.name ?? 'assembly').trim() || 'assembly';
   return d;
@@ -1959,6 +1976,8 @@ export function fixAssemblies(p: Patch, defs: Record<string, ModuleDef>): string
     }
     const chain = fixChain(e.chain, a.inputs.length, a.outputs.length, (m) => Number.isInteger(m));
     if (chain) a.chain = chain;
+    const fxMode = fixChainMode(e.fxMode);
+    if (fxMode) a.fxMode = fxMode;
     if (Array.isArray(e.cards)) {
       const cards = e.cards.filter((k): k is number => kids.includes(k as number));
       if (cards.length) a.cards = cards;
