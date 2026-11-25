@@ -75,9 +75,9 @@ describe('the double (D-838)', () => {
     expect(p).toEqual(was);
   });
 
-  it('refuses, changing nothing, past 128 note words in a pattern, 1536 in the patch, 64 P-locks in a pattern, 256 in the patch', () => {
+  it('refuses, changing nothing, past 256 note words in a pattern, 1536 in the patch, 64 P-locks in a pattern, 256 in the patch', () => {
     const cases: [string, (r: Rig) => void, string][] = [
-      ['pattern notes', ({ a }) => { a.notes = Array.from({ length: 70 }, (_, i) => n(i % 16, 1, 30 + Math.floor(i / 16))); }, 'notes'],
+      ['pattern notes', ({ a }) => { a.notes = Array.from({ length: 130 }, (_, i) => n(i % 16, 1, 30 + Math.floor(i / 16))); }, 'notes'],
       ['patch notes', ({ a, b }) => {
         a.notes = Array.from({ length: 60 }, (_, i) => n(i % 16, 1, 30 + Math.floor(i / 16)));
         b.patterns = Array.from({ length: 12 }, () => ({ notes: Array.from({ length: 128 }, (_, i) => n(i % 16, 1, 30 + Math.floor(i / 16))) }));

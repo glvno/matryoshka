@@ -82,10 +82,10 @@ describe('trig conditions: the byte (#674)', () => {
   });
 
   it('a conditioned note takes two words, and a track holds TRACK_NOTES_MAX words', () => {
-    const many = Array.from({ length: 64 }, (_, k) => note(k, 60, { cond: COND_FIRST }));
+    const many = Array.from({ length: 128 }, (_, k) => note(k >> 1, 60 + 2 * (k & 1), { cond: COND_FIRST }));
     const kept = fixNotes([...many, ...Array.from({ length: 10 }, (_, k) => note(k, 70))])!;
     expect(wordCount(kept)).toBe(TRACK_NOTES_MAX);
-    expect(kept.filter((n) => n.cond).length).toBe(59);
+    expect(kept.filter((n) => n.cond).length).toBe(123);   // (steps 0..9: two of them and a plain note, 5 words each; then 4)
   });
 });
 

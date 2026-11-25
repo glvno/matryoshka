@@ -10,7 +10,7 @@ describe('a Steps track\'s notes (#133)', () => {
   it('fixNotes: valid, sorted by step then note, one per step and key, capped', () => {
     expect(fixNotes([n(3, 1, 64), n(0, 99, 60, 0), { at: 70, len: 1, note: 1, vel: 1 }, n(3, 2, 64), n(3, 1, 50, 200, 33), 'x'])).toEqual([n(0, 64, 60, 1), n(3, 1, 50, 127, 35), n(3, 1, 64)]);
     expect(fixNotes([])).toBeUndefined();
-    expect(fixNotes(Array.from({ length: 300 }, (_, k) => n(k % 64, 1, k)))).toHaveLength(TRACK_NOTES_MAX);
+    expect(fixNotes(Array.from({ length: 300 }, (_, k) => n(k % 64, 1, 20 + (k % 100))))).toHaveLength(TRACK_NOTES_MAX);
   });
 
   it('migrates step bytes: an on step a note, ties make it longer, an accent full velocity, the chance kept', () => {

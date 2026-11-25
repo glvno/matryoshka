@@ -53,10 +53,10 @@ describe('ratchets and micro timing: the timing word (#675, #677, format 63)', (
     expect(wordsNotes(w)).toEqual(ns);
   });
 
-  it('fixNotes keeps a ratchet 2..5 and micro timing within ±23, drops x1 and 0, counts timing words against the 128', () => {
+  it('fixNotes keeps a ratchet 2..5 and micro timing within ±23, drops x1 and 0, counts timing words against the 256', () => {
     expect(fixNotes([note(0, 60, { ratchet: 9, micro: -40 })])).toEqual([note(0, 60, { ratchet: RATCHET_MAX, micro: -MICRO_MAX })]);
     expect(fixNotes([note(0, 60, { ratchet: 1, micro: 0 })])).toEqual([note(0)]);
-    const many = Array.from({ length: 70 }, (_, k) => note(k % 64, 40 + Math.floor(k / 64), { ratchet: 2 }));
+    const many = Array.from({ length: 140 }, (_, k) => note(k % 64, 40 + Math.floor(k / 64), { ratchet: 2 }));
     expect(wordCount(fixNotes(many))).toBeLessThanOrEqual(TRACK_NOTES_MAX);
     expect(fixNotes(many)).toHaveLength(TRACK_NOTES_MAX / 2);
     expect(isShortNote(note(0, 60, { micro: 1 }))).toBe(false);

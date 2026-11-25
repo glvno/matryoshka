@@ -23,7 +23,7 @@
 // value, to edit from there).
 import { NOTE_NAMES, STEPS_MAX, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef } from './patch';
 import { closeButton, closeFloat, openFloat } from './popover';
-import { chordFits, COND_ORDER, condName, isDrone, locksAt, MICRO_MAX, MICRO_STEPS, microName, RATCHET_MAX, setChord, setCond, setLock, setStep, setStepValue, setTiming, STEP_NOTE, STEP_VEL, stepView, type StepLock, type StepNote, type StepView } from './track';
+import { chordFits, COND_ORDER, condName, isDrone, locksAt, MICRO_MAX, MICRO_STEPS, microName, RATCHET_MAX, setChord, setCond, setLock, setStep, setStepValue, setTiming, STEP_NOTE, STEP_VEL, stepView, TRACK_NOTES_MAX, type StepLock, type StepNote, type StepView } from './track';
 
 /** a row of the track's device a step can lock (#524): its module's parameter, its label ("filter cutoff"), its definition
  * and its normal value now */
@@ -572,7 +572,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
         if (!down.delete(note) || !chord.size) return;
         const at = entry!.k;
         if (!chordFits(m.notes, at, [...chord.keys()].map(note => ({ note })), lenOf(m))) {
-          chord.clear(); readout.textContent = 'Track full: 128 notes'; return;
+          chord.clear(); readout.textContent = `Track full: ${TRACK_NOTES_MAX} notes`; return;
         }
         ops.notes(setChord(m.notes, at, [...chord].map(([n, v]) => ({ note: n, vel: v })), lenOf(m)));
         chord = new Map(); // (the keys still down were in it; a key played now starts the next chord)

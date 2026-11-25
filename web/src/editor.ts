@@ -1738,7 +1738,7 @@ export class Editor {
       locks = applyPayload(this.patch, p, payload);
       this.putSeq((s) => {
         const links = { ...(s.links ?? {}) };
-        if (link && p > 0) links[p] = link;
+        if (link) links[p] = link;
         else delete links[p];
         s.links = links;
       });

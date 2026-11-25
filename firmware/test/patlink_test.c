@@ -355,9 +355,9 @@ static void doubles(void)
     OK(refused(pl_double, 0, -1));
     OK(!load_patch(PATTERN_CASES[all].patch, PATTERN_CASES[all].patch_len));
     m = (uint32_t)eng_steps_module(0);
-    for (j = 0; j < 70u; j++)                    /* (70 notes on 12 steps: 140 doubled) */
+    for (j = 0; j < 130u; j++)                   /* (130 notes on 12 steps: 260 doubled) */
         w[j] = NW(j % 12u, 1u, 40u + j / 12u, STEP_VEL, 0u);
-    OK(eng_pattern_set_notes(m, 1, w, 70));
+    OK(eng_pattern_set_notes(m, 1, w, 130));
     OK(refused(pl_double, 1, -2));
     OK(!load_patch(PATTERN_CASES[one].patch, PATTERN_CASES[one].patch_len));
     m = (uint32_t)eng_steps_module(1);           /* (33 locks on 32 steps, two rows: 66 doubled) */
@@ -851,6 +851,26 @@ static void notes_at(uint32_t p, uint32_t n, uint32_t note)
     OK(eng_pattern_set_notes((uint32_t)eng_steps_module(0), p, w, n));
     m1_patch_track((uint32_t)eng_steps_module(0));
 }
+/* pattern 1 of track module m one note longer at a time, each into the binary as the SEQ page puts it, until the bar says
+ * PATCH FULL (1) or it holds TRACK_NOTES_MAX notes (0); *cnt: the notes before the last edit */
+static int grow_one(uint32_t m, uint32_t *cnt)
+{
+    static uint32_t nw[TRACK_NOTES_MAX + 1u];
+    const uint32_t *w;
+    uint32_t k, j, full = (uint32_t)patch_full_calls;
+    for (k = 0; (uint32_t)patch_full_calls == full; k++) {
+        *cnt = (uint32_t)eng_pattern_notes(m, 0, &w);
+        if (*cnt >= TRACK_NOTES_MAX)
+            return 0;
+        for (j = 0; j < *cnt; j++)
+            nw[j] = w[j];
+        nw[*cnt] = NW(k % 16u, 1u, 20u + k % 100u, STEP_VEL, 0u);
+        OK(eng_pattern_set_notes(m, 0, nw, *cnt + 1u));
+        nreplies = 0;
+        m1_patch_track(m);
+    }
+    return (uint32_t)patch_full_calls == full + 1u;
+}
 /* #1202: every pattern 2..64 goes to the store at SAVE and the slot keeps pattern 1, the songs and the links; a pattern
  * shared by two patches (or two patterns of one) until one is edited, which then gets its own entry; an entry no slot
  * and not the running patch links goes; the inline patterns of 1.25 move to the store, those alike shared; the binary's
@@ -923,38 +943,42 @@ static void store(void)
     OK(!load_slot(3) && pl_commit("OLD TOO", 3) == 0 && pl_link(p) == id3 && !sl_write(3, "OLD TOO", m1_cur, m1_cur_len));
     printf("patlink: 1.25's inline patterns move to the store, two alike share one entry\n");
 
-    /* #1199: pattern 1 past the binary's room is refused (the engine keeps what the binary has, the bar says so) */
+    /* #1199, #1292: pattern 1 past the binary's room goes to the store as 2..64 do; with the store off it is refused (the
+     * engine keeps what the binary has, the bar says so) */
     OK((len = patterned_bin("808 Kit", bin)) != 0 && !load_patch(bin, len));
     m = (uint32_t)eng_steps_module(0);
-    full = (uint32_t)patch_full_calls;
-    for (k = 0; k < TRACK_NOTES_MAX && (uint32_t)patch_full_calls == full; k++) {
-        static uint32_t nw[TRACK_NOTES_MAX + 1u];
-        uint32_t j;
-        cnt = (uint32_t)eng_pattern_notes(m, 0, &w);
-        if (cnt >= TRACK_NOTES_MAX)
-            break;
-        for (j = 0; j < cnt; j++)
-            nw[j] = w[j];
-        nw[cnt] = NW(k % 16u, 1u, 20u + k, STEP_VEL, 0u);
-        OK(eng_pattern_set_notes(m, 0, nw, cnt + 1u));
-        m1_patch_track(m);
-    }
-    OK((uint32_t)patch_full_calls == full + 1u && eng_pattern_notes(m, 0, &w) == (int)cnt && m1_valid(m1_cur, m1_cur_len));
+    OK(!grow_one(m, &cnt) && cnt == TRACK_NOTES_MAX && pl_link(0) && m1_valid(m1_cur, m1_cur_len));
+    pt_on = 0;
+    OK(!load_patch(bin, len));
+    OK(grow_one(m, &cnt) && eng_pattern_notes(m, 0, &w) == (int)cnt && !pl_link(0) && m1_valid(m1_cur, m1_cur_len));
+    pt_on = 1;
     /* a pattern 2..64 past it (P04, as in kits) goes to the store (an entry only this patch links), and SAVE keeps that
      * entry */
     OK(!load_patch(bin, len) && pl_copy(3, 24) == 0 && (idc = pl_link(24)) && (pl_priv >> 24 & 1u));
     OK(pl_commit("808 Kit", 0) == 0 && pl_link(24) == idc && !pl_priv);
     pl_name(name, "a very long patch name", 63);
     OK(!strcmp(name, "A VERY LONG P64"));
-    printf("patlink: a full patch refuses pattern 1's edit and stores the others (#1199)\n");
+    printf("patlink: a full patch stores pattern 1 as the others, refuses its edit with the store off (#1199, #1292)\n");
 }
 
-/* the 909 Kit as the factory set has it (presets.h), loaded: 0 */
-static int kit_909(void)
+/* the 909 Kit loaded: 0. shipped: as the factory set has it (presets.h: its FX drawer, format 67, D-1055), else as 1.25
+ * saved it (pattern_cases.h PATTERNED_CASES: no drawer, format 64) with pattern 1 alone, its links to the legacy factory
+ * patterns dropped */
+static int kit_909(int shipped)
 {
     static uint8_t b[M1_PATCH_MAX];
-    uint32_t i;
+    uint32_t i, p;
     int32_t n = -1;
+    if (!shipped) {
+        if (!(n = (int32_t)patterned_bin("909 Kit", b)) || load_patch(b, (uint32_t)n))
+            return -1;
+        for (p = 1; p < ENG_PATTERNS; p++) {
+            clear(p);
+            (void)pl_set_link(p, 0);
+        }
+        m1_patch_patterns();
+        return m1_patch_locks() ? 0 : -1;
+    }
     for (i = 0; i < N_PRESETS && strcmp(PRESET_LIST[i].name, "909 KIT"); i++)
         ;
     if (i < N_PRESETS)
@@ -991,55 +1015,154 @@ static uint32_t links_told(void)
         n += reply(k, R_PAT_LINK_NOW, b, sizeof b) != 0u;
     return n;
 }
-/* a double the binary refuses after the patterns 2..64 it holds went to the store to make room (#1199, D-838): the binary
- * byte for byte, the engine, the links and m1_edited as they were, and the editor told nothing. The store on (the spill
- * links P02, the double of pattern 1 still does not fit: the double's undo kept apart from the payloads the spill writes,
- * the spill's links undone), full (the spill takes nothing) and off; a double the store makes room for done, its link
- * told */
+/* the store filled with junk entries (each its own bytes); lo: then junk freed until it takes an entry of lo bytes, but
+ * not that one and another of hi bytes too. store_unfill: the junk gone */
+static uint8_t junk[PT_MAX];
+static uint32_t junk_id[PT_TAB], junks, junk_k;
+static int store_takes(uint32_t n)
+{
+    uint32_t id = 0;
+    junk_k++;
+    junk[0] = (uint8_t)junk_k;
+    junk[1] = (uint8_t)(junk_k >> 8);
+    if (pt_put(&id, "PROBE", junk, n, 0))
+        return 0;
+    (void)pt_del(id);
+    return 1;
+}
+static void store_fill(uint32_t lo, uint32_t hi)
+{
+    uint32_t sz, id;
+    memset(junk, 0x11, sizeof junk);
+    for (sz = PT_MAX; sz >= 8u; sz /= 2u)
+        for (;;) {
+            id = 0;
+            junk_k++;
+            junk[0] = (uint8_t)junk_k;
+            junk[1] = (uint8_t)(junk_k >> 8);
+            if (junks == PT_TAB || pt_put(&id, "JUNK", junk, sz, 0))
+                break;
+            junk_id[junks++] = id;
+        }
+    while (lo && junks && !store_takes(lo))
+        (void)pt_del(junk_id[--junks]);
+    OK(!lo || (store_takes(lo) && !store_takes(lo + PT_HDR + hi)));
+}
+static void store_unfill(void)
+{
+    while (junks)
+        (void)pt_del(junk_id[--junks]);
+}
+/* a double the binary refuses after the patterns it holds went to the store to make room (#1199, #1292, D-838): the
+ * binary byte for byte, the engine, the links and m1_edited as they were, and the editor told nothing. The store on but
+ * with room for P02's entry only (the spill links P02, pattern 1's spill finds no room: the double's undo kept apart
+ * from the payloads the spill writes, the spill's links undone), full (the spill takes nothing) and off; a double the
+ * store makes room for done, its link told. On the 909 Kit as 1.25 saved it (116 bytes free): 8 notes and 8 P-locks fit,
+ * doubled they do not */
 static void double_spill(void)
 {
-    static uint8_t junk[PT_MAX];
     uint64_t clean;
-    uint32_t most, n, id, sz, k = 0;
+    uint32_t most, n, id, lo, hi;
     memset(nor, 0xFF, sizeof nor);
     boot();
-    OK(!kit_909());
-    kit_pattern(0, 8, 20);
+    OK(!kit_909(0));
+    kit_pattern(0, 8, 8);
     kit_pattern(1, 5, 0);
     OK(inline_has(1) == 1 && !pl_link(1));
+    lo = encode(1, pay);
+    hi = encode(0, pay);
+    store_fill(lo, hi);
     n = pt_count();
     m1_edited = 0;
     nreplies = 0;
     OK(refused(pl_double, 0, -4));
-    OK(pt_count() == n + 1u && !pl_link(1) && !pl_priv && !m1_edited && !links_told());   /* (its entry stays until pl_gc) */
-    OK(!kit_909());
-    kit_pattern(1, 8, 20);
+    OK(pt_count() == n + 1u && !pl_link(0) && !pl_link(1) && !pl_priv && !m1_edited && !links_told());   /* (its entry stays until pl_gc) */
+    store_unfill();
+    OK(!kit_909(0));
+    kit_pattern(1, 8, 8);
     nreplies = 0;
     OK(pl_double(1, &most) == 0 && most == 32u && (id = pl_link(1)) != 0u && link_told(1, id) && (pl_priv >> 1 & 1u));
     OK(links_ok(&clean) == 1u && clean == 2u);      /* (the stored entry is the doubled P02) */
-    memset(junk, 0x11, sizeof junk);
-    for (sz = PT_MAX; sz >= 8u; sz /= 2u)
-        for (id = 0, k++; !pt_put(&id, "JUNK", junk, sz, 0); id = 0, k++)
-            junk[0] = (uint8_t)k;
-    OK(!kit_909());
-    kit_pattern(1, 8, 20);
+    store_fill(0, 0);
+    OK(!kit_909(0));
+    kit_pattern(1, 8, 8);
     m1_edited = 0;
     nreplies = 0;
     OK(refused(pl_double, 1, -4));
     OK(!pl_link(1) && !m1_edited && !links_told());
+    store_unfill();
     pt_on = 0;
-    OK(!kit_909());
-    kit_pattern(0, 8, 20);
+    OK(!kit_909(0));
+    kit_pattern(0, 8, 8);
     kit_pattern(1, 5, 0);
     m1_edited = 0;
     nreplies = 0;
     OK(refused(pl_double, 0, -4));
     OK(!m1_edited && !links_told());
-    OK(!kit_909());
-    kit_pattern(1, 8, 20);
+    OK(!kit_909(0));
+    kit_pattern(1, 8, 8);
     OK(refused(pl_double, 1, -4));
     pt_on = 1;
     printf("patlink: a double refused after the store made room leaves the binary, the links and the editor as they were (D-838)\n");
+}
+
+static uint32_t slot_all(uint32_t s, uint32_t mode, uint8_t *out, uint32_t *total);
+/* binary b loaded as the FM-1 loads it (its links resolved) and played from the start: a hash of 0.7 s of its output */
+static uint32_t render_of(const uint8_t *b, uint32_t len)
+{
+    static int32_t l[64], r[64];
+    uint32_t h = PT_FNV0, k;
+    eng_transport(0);
+    if (load_patch(b, len))
+        return 0;
+    eng_transport(1);
+    for (k = 0; k < 500u; k++) {
+        eng_render(l, r, 64);
+        h = pt_fnv(h, l, sizeof l);
+        h = pt_fnv(h, r, sizeof r);
+    }
+    eng_transport(0);
+    return h;
+}
+/* #1292, the owner's case: the shipped 909 Kit (its FX drawer leaves pattern 1 about 51 bytes) with pattern 1 of 8 notes
+ * and 32 P-locks (already in the store: the patch cannot hold the locks) doubled, pattern 1 in the store, linked (format
+ * 67); SAVE keeps the link, the slot loaded again and SLOT_GET mode 0 give the same patterns and the same output, mode 1
+ * (every pattern inside) is too big; once pattern 1 fits again (one note, no locks) SAVE puts it back inline */
+static void pattern1_spill(void)
+{
+    static uint8_t a[24576], b[24576], st[M1_PATCH_MAX], got[M1_PATCH_MAX], was[ENG_PATTERNS * 400u], now[ENG_PATTERNS * 400u];
+    uint32_t most = 0, id, na, nb, nw, len, total, r1;
+    memset(nor, 0xFF, sizeof nor);
+    boot();
+    OK(!kit_909(1));
+    kit_pattern(0, 8, 32);
+    nreplies = 0;
+    OK(pl_double(0, &most) == 0 && most == 32u && (id = pl_link(0)) != 0u && link_told(0, id) && m1_valid(m1_cur, m1_cur_len));
+    na = state(a);
+    nw = all_payloads(was, sizeof was);
+    OK(pl_commit("909 KIT", 7) == 0 && (id = pl_link(0)) != 0u && !sl_write(7, "909 KIT", m1_cur, m1_cur_len));
+    OK(!load_slot(7) && pl_link(0) == id);
+    nb = state(b);
+    OK(na == nb && !memcmp(a, b, na));
+    OK(all_payloads(now, sizeof now) == nw && !memcmp(now, was, nw));
+    OK(sl_read(7, st, &len, 0) == 0 && (r1 = render_of(st, len)) != 0u);
+    OK(slot_all(7, 0, got, &total) == len && !memcmp(got, st, len));
+    OK(render_of(got, len) == r1 && all_payloads(now, sizeof now) == nw && !memcmp(now, was, nw));
+    m1_edited = 0;
+    OK(slot_all(7, 1, got, &total) == 0 && total == 0xFFFEu);
+    /* pattern 1 down to one note without locks: it fits, SAVE writes it inline and drops the link */
+    OK(!load_slot(7));
+    clear(0);
+    OK(eng_pattern_set_notes((uint32_t)eng_steps_module(0), 0, notes_one(), 1u));
+    m1_patch_track((uint32_t)eng_steps_module(0));
+    OK(m1_patch_locks());
+    OK(pl_commit("909 KIT", 7) == 0 && !pl_link(0) && !sl_write(7, "909 KIT", m1_cur, m1_cur_len));
+    na = state(a);
+    OK(content(m1_cur, m1_cur_len, b) != 0u && !memcmp(a, b, na));
+    OK(!load_slot(7) && !pl_link(0));
+    nb = state(b);
+    OK(na == nb && !memcmp(a, b, na));
+    printf("patlink: the 909 Kit's pattern 1 (8 notes, 32 locks) doubled into the store, saved, loaded, SLOT_GET, inline again once it fits (#1292)\n");
 }
 
 /* boot's migration (main.c bank_patterns): each slot pl_slot_due names loaded, its patterns stored (pl_commit) and the
@@ -1358,6 +1481,7 @@ int main(void)
     cuts();
     store();
     double_spill();
+    pattern1_spill();
     if (fails) {
         fprintf(stderr, "patlink: %d checks failed\n", fails);
         return 1;

@@ -507,7 +507,7 @@ device.onEvent = (e) => {
   if (e.kind === 'paletteEntry') return;
   if (e.kind === 'link') {   // the FM-1's SEQ page loaded, saved or linked a stored pattern, or its SAVE wrote one (#901)
     patternsPane?.deviceChanged(currentView === 'library' && librarySection === 'patterns');
-    if (live() && !linkBusy() && e.pattern > 0 && e.pattern < PATTERNS_MAX) void linkFromDevice(e.pattern, e.id ? { id: e.id, hash: e.hash } : null);
+    if (live() && !linkBusy() && e.pattern >= 0 && e.pattern < PATTERNS_MAX) void linkFromDevice(e.pattern, e.id ? { id: e.id, hash: e.hash } : null);
     return;
   }
   if (!live()) return;
@@ -1630,7 +1630,7 @@ function showBudget(): void {
     // (#1199: an edit that fills the patch is never lost without a word: it plays here, and the FM-1 does not get it)
     const bytes = b.over.find((i) => i.key === 'bytes');
     const msg = !bytes ? 'over the FM-1 budget: Live paused until the patch fits'
-      : `PATCH FULL: the patch takes ${bytes.used} of the FM-1's ${bytes.max} bytes, so the last change plays here and does not go to the FM-1. Live is paused until the patch fits.${device.patternsStored ? '' : ' Firmware 1.26 keeps patterns 2–64 in the pattern store, outside the patch.'}`;
+      : `PATCH FULL: the patch takes ${bytes.used} of the FM-1's ${bytes.max} bytes, so the last change plays here and does not go to the FM-1. Live is paused until the patch fits.${device.spillsPatternOne ? '' : device.patternsStored ? ' Firmware 1.27 keeps pattern 1 in the pattern store too when the patch runs out of room.' : ' Firmware 1.27 keeps patterns 1–64 in the pattern store when the patch runs out of room.'}`;
     devStatus(msg);
     if (bytes) showToast(msg, 8000);
   }

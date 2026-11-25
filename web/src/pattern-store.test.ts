@@ -5,7 +5,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type ModuleInst, type Patch } from './patch';
-import { deviceBudget, encodePatch, FLAG_LINKS, FLAG_PATTERNS, FORMAT_LINKS, layout, linkPlan, linkRecord, lockRecord, patternRecord, SECTION_FORMATS, VERSION, type LinkStore } from './patchbin';
+import { DEVICE, deviceBudget, encodePatch, FLAG_LINKS, FLAG_PATTERNS, FORMAT_1_27, FORMAT_LINKS, layout, linkPlan, linkRecord, lockRecord, patternOneSpills, patternRecord, SECTION_FORMATS, VERSION, type LinkStore } from './patchbin';
+import { buildFactoryBank } from './factory-bank';
 import { applyPayload, autoName, decodePayload, encodePayload, entryName, fnv, FNV0, fromHex, layoutOf, legacyFactoryStore, patternFile, payloadHash, portablePatch, readPatternFile, storedName, storePlan, withLinks } from './pattern-store';
 import LEGACY_FACTORY_PATTERNS from './factory-store.json';
 import { deviceView } from './poly';
@@ -109,7 +110,7 @@ describe('the stored pattern payload', () => {
 
   it('refuses what is not a payload', () => {
     expect(() => decodePayload([])).toThrow();
-    expect(() => decodePayload([2, 0, 0, 0, 0, 1, 0xff, 0])).toThrow();
+    expect(() => decodePayload([3, 0, 0, 0, 0, 1, 0xff, 0])).toThrow();
     expect(() => decodePayload([1, 0, 0, 0, 0, 1, 0xff, 0, 9])).toThrow();   // trailing bytes
     expect(() => decodePayload([1, 5, 0, 0, 0, 1, 0xff, 0])).toThrow();      // a layout without locks
   });
@@ -165,9 +166,9 @@ describe('format 59: stored pattern links', () => {
     for (const store of ['assume', 'unknown', 'none', new Map([[5, 1]])] as LinkStore[]) expect(Array.from(encodePatch(p, false, 0, 0, store))).toEqual(Array.from(plain));
   });
 
-  it('validates links: index 1..63, id 1..0xEFFF, a u32 hash', () => {
+  it('validates links: index 0..63 (0, pattern 1: #1292), id 1..0xEFFF, a u32 hash', () => {
     expect(fixSeq({ links: { 1: { id: 3, hash: 5 }, 0: { id: 1, hash: 1 }, 64: { id: 1, hash: 1 }, 2: { id: 0xf000, hash: 1 }, 3: { id: 2, hash: -1 }, 4: { id: 2, hash: 2 ** 32 }, x: { id: 1, hash: 1 } } }))
-      .toEqual({ links: { 1: { id: 3, hash: 5 } } });
+      .toEqual({ links: { 0: { id: 1, hash: 1 }, 1: { id: 3, hash: 5 } } });
     expect(fixSeq({ links: {} })).toBeUndefined();
     const { p } = rig();
     link(p, 1, 9);
@@ -271,6 +272,38 @@ describe('format 59: stored pattern links', () => {
     expect(flags(bin) & FLAG_LINKS).toBe(FLAG_LINKS);
     // (the stand-in ids are as long as real ones: the binary a send makes has the same length)
     expect(encodePatch(withLinks(p, { 1: { id: 300, hash: payloadHash(p, 1) }, 3: { id: 301, hash: payloadHash(p, 3) } })).length).toBe(bin.length);
+  });
+
+  it('an FM-1 that spills pattern 1 (#1292): a patch that fits is sent as to one that stores every pattern, byte for byte', () => {
+    const { p } = rig();
+    expect(patternOneSpills(p)).toBe(false);
+    expect(Array.from(encodePatch(p, false, 0, 0, 'spill'))).toEqual(Array.from(encodePatch(p, false, 0, 0, 'every')));
+    expect(storePlan(p, [], p.name, false)).toEqual(storePlan(p, [], p.name, patternOneSpills(p)));
+    for (const c of buildFactoryBank()) {
+      expect(patternOneSpills(c.patch), c.name).toBe(false);
+      expect(Array.from(encodePatch(c.patch, true, 0, 0, 'spill')), c.name).toEqual(Array.from(encodePatch(c.patch, true, 0, 0, 'every')));
+    }
+  });
+
+  it('an FM-1 that spills pattern 1 (#1292): a pattern 1 the patch cannot hold is a link too, in format 67, and the patch fits', () => {
+    const { p, a, b } = rig();
+    const out = p.modules.find((m) => m.type === 'output')!;
+    const more = [0, 1].map(() => {
+      const m = addModule(p, DEFS.steps, 0, 0);
+      connect(p, DEFS, { module: m.id, port: 'pitch' }, { module: out.id, port: 'l' });
+      return m;
+    });
+    [a, b, ...more].forEach((m, i) => { m.notes = Array.from({ length: 256 }, (_, j) => n(j >> 4, 1, 20 + 16 * i + (j & 15))); });   // (4 x 256 words)
+    const bytes = (store: 'every' | 'spill'): number => deviceBudget(p, 0, store).items.find((i) => i.key === 'bytes')!.used;
+    expect(bytes('every')).toBeGreaterThan(DEVICE.bytes);
+    expect(bytes('spill')).toBeLessThanOrEqual(DEVICE.bytes);
+    expect(patternOneSpills(p)).toBe(true);
+    expect(storePlan(p, [], p.name, false).put.flatMap((e) => e.ps)).not.toContain(0);
+    expect(storePlan(p, [], p.name, true).put.flatMap((e) => e.ps)).toContain(0);
+    const bin = encodePatch(p, false, 0, 0, 'spill');
+    expect(bin[1]).toBe(FORMAT_1_27);
+    expect(flags(bin) & FLAG_LINKS).toBe(FLAG_LINKS);
+    expect(bin.length).toBeLessThanOrEqual(DEVICE.bytes);
   });
 
   it('a send reuses an entry of the same payload (hash and length), else makes one named after the patch', () => {

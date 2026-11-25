@@ -115,6 +115,18 @@ export function patternCases(): PatternCase[] {
     st[2].patterns = [{ notes: [n(0, 1, 60), n(8, 1, 62)] }];
     out.push({ name: 'HALVE ODD', patch: p, pattern: 1 });
   }
+  {   // (#1292: past 128 words, format 67 and payload version 2: 200 words on pattern 2 (a one-byte count), 256 on pattern 1
+      // (the 0xFE escape))
+    const many = (k: number, base: number): StepNote[] => Array.from({ length: k }, (_, j) => n(j >> 4, 1, base + (j & 15)));
+    const { p, st } = rig('WIDE 200', 2);
+    st[0].notes = [n(0, 1, 36)];
+    st[0].patterns = [{ notes: many(200, 30) }];
+    out.push({ name: 'WIDE 200', patch: p, pattern: 1 });
+    const w = rig('WIDE 256', 2);
+    w.st[0].notes = many(256, 20);
+    w.st[1].notes = many(130, 40);
+    out.push({ name: 'WIDE 256', patch: w.p, pattern: 0 });
+  }
   return out;
 }
 
