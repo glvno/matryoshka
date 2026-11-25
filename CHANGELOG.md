@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.26.7 — 2026-11-25
 
 - **Your own effect assemblies go into FX drawers.** Drag any top-level assembly with an audio input and output onto an instrument's FX tab or into an open drawer, or pick it in the drawer's + list. One with two audio inputs and two outputs (an OTT clone, say) goes in as a stereo effect exactly as it is. One with one input and one output asks how: as an L/R pair (two copies under one set of knobs, twice the CPU) or wet, added to both sides, for reverbs and echoes. One without an audio input or output stays out, and the status line says why. **Use as an effect…** in the assembly's ⋯ menu sets the way once and saves it with the assembly; save it to the library and it is listed in Library › Effects and Add effect beside the factory effects. An instrument preset with one in its drawer keeps it like any other effect. It works on FM-1 firmware 1.26.3 ([D-1436](docs/ledger/editor.md#D-1436), [#1293](https://github.com/glvno/matryoshka/issues/1293)).
 
