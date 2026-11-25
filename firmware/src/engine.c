@@ -1511,7 +1511,7 @@ static inline int eng_rec_ok(const uint8_t *p, uint32_t len, uint32_t at)
     if (at + 1u >= len)
         return 0;
     c = p[at + 1u];
-    if ((c & ENG_REC_COUNT) > eng_npar(d, p[1]) || (c & 0x40u) || ((c & ENG_REC_TEMPLATE) && d->cvbase < 0))
+    if ((c & ENG_REC_COUNT) > eng_npar(d, p[1]) || (c & ENG_REC_STEREO) || ((c & ENG_REC_TEMPLATE) && d->cvbase < 0))
         return 0;
     if (d->cvbase < 0 || (c & ENG_REC_TEMPLATE))
         return 1;
@@ -1535,18 +1535,31 @@ static inline uint32_t eng_rec_size(const uint8_t *p, uint32_t at)
 static inline int eng_cables_grouped(const uint8_t *p) { return p[1] >= ENG_SLIM && (p[7] & ENG_FLAG_CABLES3); }
 /* bytes of a cable that is not grouped: 3 with ENG_FLAG_CABLES3 before ENG_SLIM, else 4 */
 static inline uint32_t eng_cable_bytes(const uint8_t *p) { return (p[7] & ENG_FLAG_CABLES3) && p[1] < ENG_SLIM ? 3u : 4u; }
-/* the end of the cables that start at `at` (header bytes 4 and 5: their count), 0 if they are malformed or run past len */
+/* the end of the cables that start at `at` (header bytes 4 and 5: their count), format 67's side section included
+ * (#1141, patchbin.ts sideRecord: u8 n, n (u8 a cable's place, ascending and under the count, u8 its side 1 L / 2 R)), 0
+ * if they are malformed or run past len */
 static uint32_t eng_cables_to(const uint8_t *p, uint32_t len, uint32_t at)
 {
     uint32_t ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8, nb = (p[2] + 1u) / 2u, i, n = 0;
     if (!eng_cables_grouped(p))
-        return at + eng_cable_bytes(p) * ncab <= len ? at + eng_cable_bytes(p) * ncab : 0;
-    if (at + nb > len || ((p[2] & 1u) && p[at + nb - 1u] >> 4))
-        return 0;
-    for (i = 0; i < p[2]; i++)
-        n += p[at + (i >> 1)] >> (4u * (i & 1u)) & 15u;
-    at += nb + 2u * ncab;
-    return n == ncab && at <= len ? at : 0;
+        at += eng_cable_bytes(p) * ncab;
+    else {
+        if (at + nb > len || ((p[2] & 1u) && p[at + nb - 1u] >> 4))
+            return 0;
+        for (i = 0; i < p[2]; i++)
+            n += p[at + (i >> 1)] >> (4u * (i & 1u)) & 15u;
+        if (n != ncab)
+            return 0;
+        at += nb + 2u * ncab;
+    }
+    if (p[1] >= ENG_SIDES) {
+        if (at >= len || at + 1u + 2u * p[at] > len)
+            return 0;
+        for (i = 0, n = p[at++]; i < n; i++, at += 2u)
+            if (p[at] >= ncab || (i && p[at] <= p[at - 2u]) || p[at + 1u] < 1u || p[at + 1u] > 2u)
+                return 0;
+    }
+    return at <= len ? at : 0;
 }
 /* the set bits among the first n bits at b (a format 51 B bitmap: how many B values follow it, or come before the n-th) */
 static uint32_t eng_bits(const uint8_t *b, uint32_t n)
@@ -2659,6 +2672,9 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.grp[E.node[tm].grp].mode = tm;
         }
     }
+    if (p[1] >= ENG_SIDES)                       /* the side section (#1141; eng_cables_to checked it): no stereo module plays
+                                                  * here yet (eng_rec_ok), so no side cable means anything */
+        at += 1u + 2u * p[at];
     if (chained_keys && E.ntrk) {
         uint32_t bytes = (sizeof(key_memory_t) + 3u) & ~3u;
         if (bytes > arena_free()) return -8;
