@@ -9,14 +9,27 @@
 #      today's format that renders bit-identically to the older one, and counts how many come out byte for byte as
 #      today's encoder writes the same kit (build/golden, from tools/golden.sh).
 #   tools/old_format.sh [BASE]
-# BASE defaults to the newest release tag in HEAD's history (git describe), so a run reports only what changed since the
-# last release. At a patch format change, also run tools/old_format.sh v1.4.1, the last release with patch format 34
-# (D-250 in docs/ledger/patch-format.md).
+# BASE defaults to the last firmware release, so a run reports only what changed since then: the newest release tag not
+# newer than this tree's version (web/package.json), or, for a web-only release, the release whose firmware package it
+# bundles (firmware_product, FM-1_7MMmmpp, in its qualification record), because a web-only tag's firmware source is not
+# what it ships (D-1160). Release tags sit on release branches, outside main's history, so git describe does not find
+# them (from main it found v1.20.2). At a patch format change, also run tools/old_format.sh v1.4.1, the last release with
+# patch format 34 (D-250 in docs/ledger/patch-format.md).
 # A kit that tools/old_format_known.txt lists for BASE renders differently on purpose: it reads "DIFFERS (known)" and does
 # not fail the check. Any other difference fails it.
 set -e
 cd "$(dirname "$0")/.."
-BASE="${1:-$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD)}"
+last_firmware_release() {
+  v=$(sed -n 's/^ *"version": *"\([0-9.]*\)".*/\1/p' web/package.json)
+  tag=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | awk -F. -v v="$v" '
+    BEGIN { split(v, w, "."); lim = (w[1] * 1000 + w[2]) * 1000 + w[3] }
+    { n = (substr($1, 2) * 1000 + $2) * 1000 + $3; if (n <= lim && n > best) { best = n; t = $0 } }
+    END { print t }')
+  fw=$(sed -n 's/^ *"firmware_product": *"FM-1_7\([0-9][0-9]\)\([0-9][0-9]\)\([0-9][0-9]\)".*/\1 \2 \3/p' \
+    "release/qualification/$tag.json" 2>/dev/null | awk '{ printf "v%d.%d.%d\n", $1, $2, $3 }')
+  echo "${fw:-$tag}"
+}
+BASE="${1:-$(last_firmware_release)}"
 echo "BASE $BASE"
 T=build/oldfmt
 rm -rf "$T" && mkdir -p "$T/base" "$T/out"
