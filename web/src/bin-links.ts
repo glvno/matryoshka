@@ -8,6 +8,7 @@
 import { DEFS } from './modules';
 import { PANEL_LABEL_KEYS, PANEL_LABEL_MAX } from './patch';
 import { COUNTED, FLAG_LINKS, FORMAT_1_27, GROUP_REC, PANEL_BYTES, paramsAt, PRES_ATT1, PRES_ATT2, PRES_P1, PRES_P2, REC_STEREO, REC_TEMPLATE, SLIM, TYPE_ORDER } from './patchbin';
+import { COUNT_ESC } from './track';
 
 const REC_COUNT = 0x3f, PRES_ALL = 15;
 /** header byte 6's bits and byte 7's (engine.h): morph B set, fixed links, routes, notes; cables 3, morph modules,
@@ -120,12 +121,15 @@ const routesEnd = (recs: number[]): End => (p, at) => {
   }
   return at <= p.length ? at : 0;
 };
+/** a word count at `at` (track.ts COUNT_ESC, format 67): its value and bytes */
+const countAt = (p: Uint8Array, at: number): [number, number] => (p[at] === COUNT_ESC ? [COUNT_ESC + p[at + 1], 2] : [p[at], 1]);
 const notesEnd: End = (p, at) => {
   if (at >= p.length) return 0;
   const n = p[at++];
   for (let i = 0; i < n; i++) {
-    if (at + 2 > p.length) return 0;
-    at += 2 + 4 * p[at + 1];
+    if (at + 3 > p.length) return 0;
+    const [c, b] = countAt(p, at + 1);
+    at += 1 + b + 4 * c;
   }
   return at <= p.length ? at : 0;
 };
@@ -138,9 +142,13 @@ const patternsEnd: End = (p, at) => {
     const np = p[at + 1];
     at += 2;
     for (let k = 0; k < np; k++) {
-      if (at >= p.length) return 0;
-      const n = p[at++];
-      if (n === 0xff) continue;
+      if (at + 1 >= p.length) return 0;
+      if (p[at] === 0xff) {
+        at++;
+        continue;
+      }
+      const [n, b] = countAt(p, at);
+      at += b;
       if (at + 2 > p.length) return 0;
       at += 2 + n * (p[at] & 0x80 ? 2 : 4);
     }

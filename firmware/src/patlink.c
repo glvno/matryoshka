@@ -5,22 +5,25 @@
  *
  * A stored pattern's payload is one pattern number across the patch's Steps tracks (track k = the k-th Steps module in
  * module order), all LE, byte for byte what web/src/pattern-store.ts writes:
- *   u8 1 (version), u32 layout (0 without P-locks, else pl_layout), u8 T (1 + the last track that has the pattern, at
- *   least 1), per track k < T: u8 n (0xFF: the track has not got the pattern), with n != 0xFF u8 len (bits 0..6: 0 the
- *   track's, else 1..64; bit 7: short words), u8 rate (0xFF the track's, else a STEPS_RATES index) and n u16 short words
- *   (format 48's rule and layout, engine.c eng_notes_short) or u32 note words; then u8 L, per locked track (ascending k)
- *   u8 k, u8 c (1..64) and c locks of 7 bytes as eng_locks_list writes them.
+ *   u8 version (1; 2 when a track's n passes ENG_NOTES_1_26: firmware before 1.27 refuses it, pl_check), u32 layout (0
+ *   without P-locks, else pl_layout), u8 T (1 + the last track that has the pattern, at least 1), per track k < T: n
+ *   (0xFF: the track has not got the pattern; else ENG_COUNT_ESC's count, version 2 only past 128), with n != 0xFF u8 len
+ *   (bits 0..6: 0 the track's, else 1..64; bit 7: short words), u8 rate (0xFF the track's, else a STEPS_RATES index) and n
+ *   u16 short words (format 48's rule and layout, engine.c eng_notes_short) or u32 note words; then u8 L, per locked track
+ *   (ascending k) u8 k, u8 c (1..64) and c locks of 7 bytes as eng_locks_list writes them.
  * Pattern index 0 (pattern 1) has no own length / rate: written as len 0 and rate 0xFF, ignored when loaded.
  *
- * The running patch links pattern indices 1..63 to stored ids in format 59's section after the P-locks: m1_cur holds the
- * only copy (pl_link reads it, pl_set_link rewrites it). pl_hash keeps each link's payload hash as the store gave it to
- * this patch. A linked pattern whose payload still hashes to that is
- * clean: proto.c leaves it out of the patterns and locks sections (m1_pat_clean), so the binary carries only the link and
- * the next load copies it from the store again. An edited one stays inline until SAVE (pl_commit, #1202), which puts
- * every pattern 2..64 into the store: a saved slot holds pattern 1, its songs and its links. An edited pattern that
- * another slot or another pattern of the patch links gets an entry of its own then (shared until edited); an entry no
- * slot and not the running patch links goes (pl_gc). When the binary cannot hold the inline ones, they go to entries
- * only the running patch links (m1_pat_spill, #1199). The store holds user entries only (ids 1..PT_ID_MAX, kept copies
+ * The running patch links pattern indices 1..63 to stored ids in format 59's section after the P-locks, and since format
+ * 67 (ENG_WIDE, #1292) pattern index 0 too: m1_cur holds the only copy (pl_link reads it, pl_set_link rewrites it).
+ * pl_hash keeps each link's payload hash as the store gave it to this patch. A linked pattern whose payload still hashes
+ * to that is clean: proto.c leaves it out of the patterns and locks sections (pattern 1: of the notes section and the
+ * locks; m1_pat_clean), so the binary carries only the link and the next load copies it from the store again. An edited
+ * one stays inline until SAVE (pl_commit, #1202), which puts every pattern 2..64 into the store: a saved slot holds
+ * pattern 1, its songs and its links. An edited pattern that another slot or another pattern of the patch links gets an
+ * entry of its own then (shared until edited); an entry no slot and not the running patch links goes (pl_gc). When the
+ * binary cannot hold the inline ones, they go to entries only the running patch links (m1_pat_spill, #1199), and when it
+ * cannot hold pattern 1 either, pattern 1 too (#1292); SAVE brings pattern 1 back inline when the binary can hold it. The
+ * store holds user entries only (ids 1..PT_ID_MAX, kept copies
  * among them). The legacy factory patterns (the 808 Kit's and 909 Kit's patterns that were read-only store entries up to
  * 1.25: factory_tier.h KIT_GROUPS from PL_KIT, a kit's block in one or more groups of consecutive ids packed by
  * lz_unpack.h, each unpacking into m1_up) stay compiled in only so a patch that still links one plays it (pl_read): SAVE
@@ -70,7 +73,7 @@ static uint32_t pl_link(uint32_t p)
 /* pattern p linked to id (0: its link goes) in the binary (proto.c m1_patch_links): 1 done, 0 the binary cannot hold it */
 static int pl_set_link(uint32_t p, uint32_t id)
 {
-    uint8_t s[1u + 3u * (ENG_PATTERNS - 1u)];
+    uint8_t s[1u + 3u * ENG_PATTERNS];
     uint32_t n, k, o = 0;
     const uint8_t *e = pl_links(&n);
     for (k = 0; k <= n; k++, e += 3) {
@@ -118,11 +121,13 @@ static uint32_t pl_layout(void)
     return s.h ? s.h : 1u;
 }
 
-/* a track's entry: n, len (with the short words bit), rate, the words */
+/* a track's entry: n (ENG_COUNT_ESC), len (with the short words bit), rate, the words */
 static void pl_words(pl_out_t *s, const uint32_t *w, uint32_t n, uint32_t len, uint32_t rate)
 {
     uint32_t j, sh = (uint32_t)eng_notes_short(w, n);
-    pl_b(s, n);
+    if (n >= ENG_COUNT_ESC)
+        pl_b(s, ENG_COUNT_ESC);
+    pl_b(s, n >= ENG_COUNT_ESC ? n - ENG_COUNT_ESC : n);
     pl_b(s, len | (sh ? 0x80u : 0u));
     pl_b(s, rate);
     for (j = 0; j < n; j++)
@@ -135,17 +140,19 @@ static void pl_words(pl_out_t *s, const uint32_t *w, uint32_t n, uint32_t len, u
 /* pattern p of the running patch as a payload */
 static void pl_encode(uint32_t p, pl_out_t *s)
 {
-    uint32_t nt = (uint32_t)eng_steps_count(), t, k, T = 1, L = 0, m;
+    uint32_t nt = (uint32_t)eng_steps_count(), t, k, T = 1, L = 0, m, v = 1;
     int c, r;
     const uint32_t *w;
     uint8_t lk[7u * ENG_PAT_LOCKS];
     for (t = 0; t < nt; t++) {
         m = (uint32_t)eng_steps_module(t);
-        if (eng_pattern_has(m, p))
+        if (eng_pattern_has(m, p)) {
             T = t + 1u;
+            v = eng_pattern_notes(m, p, &w) > (int)ENG_NOTES_1_26 ? 2u : v;   /* (version 2 only for a wide one, #1292) */
+        }
         L += eng_locks_list(m, p, 0, 0) > 0;
     }
-    pl_b(s, 1);
+    pl_b(s, v);
     pl_w(s, L ? pl_layout() : 0u, 4);
     pl_b(s, T);
     for (t = 0; t < T; t++) {
@@ -231,18 +238,25 @@ static int pl_read(uint32_t id, uint8_t *buf, uint32_t cap, pt_info_t *in)
     return s.n <= cap ? 0 : -1;
 }
 
-/* a payload's framing: its tracks' entries and locks in range, its bytes used exactly: 0 ok */
+/* a payload's framing: its tracks' entries and locks in range, its bytes used exactly: 0 ok. Version 1 holds at most
+ * ENG_NOTES_1_26 words a track, version 2 (#1292) TRACK_NOTES_MAX, its counts ENG_COUNT_ESC */
 static int pl_check(const uint8_t *b, uint32_t len)
 {
-    uint32_t at = 6, T, k, n, c, last = 0;
-    if (len < 7u || b[0] != 1u || !(T = b[5]))
+    uint32_t at = 6, T, k, n, c, last = 0, w;
+    if (len < 7u || (b[0] != 1u && b[0] != 2u) || !(T = b[5]))
         return -1;
     for (k = 0; k < T; k++) {
         if (at >= len)
             return -1;
-        if ((n = b[at++]) == 0xFFu)
+        if (b[at] == 0xFFu) {
+            at++;
             continue;
-        if (n > TRACK_NOTES_MAX || at + 2u > len || (b[at] & 0x7Fu) > TRACK_STEPS || (b[at + 1u] != 0xFFu && b[at + 1u] > 8u))
+        }
+        if (at + 1u >= len)
+            return -1;
+        n = eng_count_at(b, at, &w);
+        at += w;
+        if (n > (b[0] == 2u ? TRACK_NOTES_MAX : ENG_NOTES_1_26) || at + 2u > len || (b[at] & 0x7Fu) > TRACK_STEPS || (b[at + 1u] != 0xFFu && b[at + 1u] > 8u))
             return -1;
         at += 2u + n * ((b[at] & 0x80u) ? 2u : 4u);
     }
@@ -302,12 +316,13 @@ static const uint8_t *pl_row_more(uint32_t m, uint32_t j)
 static int pl_apply_notes(uint32_t p, const uint8_t *b, uint32_t *at, uint32_t *got)
 {
     uint32_t w[TRACK_NOTES_MAX];
-    uint32_t nt = (uint32_t)eng_steps_count(), T = b[5], t, n, j, sh, m;
+    uint32_t nt = (uint32_t)eng_steps_count(), T = b[5], t, n, j, sh, m, c;
     int rc = 0;
     *got = 0;
     for (t = 0; t < T || t < nt; t++) {
         m = (uint32_t)eng_steps_module(t);
-        n = t < T ? b[(*at)++] : 0xFFu;
+        n = t < T && b[*at] != 0xFFu ? eng_count_at(b, *at, &c) : 0xFFu;
+        *at += t < T ? (n == 0xFFu ? 1u : c) : 0u;
         if (n == 0xFFu) {
             if (t < nt && p)
                 eng_pattern_drop(m, p);
@@ -360,21 +375,26 @@ static int pl_apply(uint32_t p, const uint8_t *b, uint32_t len)
 
 /* ---- the running patch's links */
 
-/* the patterns and locks into the binary after a link changed (the clean ones out, the others in) */
+/* the notes, patterns and locks into the binary after a link changed (the clean ones out, the others in) */
 static void pl_rewrite(void)
 {
     (void)m1_patch_locks();
     m1_patch_patterns();
+    (void)m1_steps_sec(ENG_SEC_NOTES);
     m1_edited = 1;
 }
 
-/* pattern p of the running patch has notes or a length of its own on some track (pattern 1: always) */
+/* pattern p of the running patch has notes or a length of its own on some track; pattern 1 (#1292): notes or P-locks
+ * on some track (an empty pattern 1 needs no stored entry) */
 static int pl_has(uint32_t p)
 {
-    uint32_t t;
-    for (t = 0; t < (uint32_t)eng_steps_count(); t++)
-        if (eng_pattern_has((uint32_t)eng_steps_module(t), p))
+    uint32_t t, m;
+    const uint32_t *w;
+    for (t = 0; t < (uint32_t)eng_steps_count(); t++) {
+        m = (uint32_t)eng_steps_module(t);
+        if (p ? eng_pattern_has(m, p) : eng_pattern_notes(m, 0, &w) > 0 || eng_locks_list(m, 0, 0, 0) > 0)
             return 1;
+    }
     return 0;
 }
 
@@ -423,6 +443,19 @@ static uint64_t m1_pat_clean(void)
             c |= (uint64_t)1u << e[0];
     return c;
 }
+/* proto.c m1_track_back (#1292): an edit the binary had no room for while pattern 1 is a clean link (the binary leaves it
+ * out): pattern 1 back from its stored entry (read into m1_up after a marked edit's bytes, pl_mark), which held every
+ * track's pattern 1 as it was. 1 done, 0 pattern 1 is not linked or its entry cannot be read */
+static int m1_pat_back(uint32_t mod)
+{
+    uint32_t id = pl_link(0), at = pl_marked ? pl_marked->held : 0u;
+    pt_info_t in;
+    (void)mod;
+    if (!id || pl_read(id, m1_up + at, sizeof m1_up - at, &in) || pl_apply(0, m1_up + at, in.len) < 0)
+        return 0;
+    pl_hash[0] = pl_hash_of(0);
+    return 1;
+}
 
 /* ---- every pattern 2..64 in the store (#1202): SAVE, the binary's room (#1199), the entries no patch links */
 
@@ -443,18 +476,23 @@ static void pl_name(char *out, const char *patch, uint32_t p)
     out[n] = 0;
 }
 
-/* the running patch's links become ids (ids[p], pattern p 1..63; 0 none): the patterns and locks sections without the
- * clean ones first (a pattern whose bytes hash to pl_hash[p]), then the links section, only when the binary holds all
- * three. 1 done; 0 not (nothing changed) */
+/* the running patch's links become ids (ids[p], pattern p 0..63; 0 none; a link of pattern 1 makes the binary ENG_WIDE,
+ * #1292): the notes, patterns and locks sections without the clean ones first (a pattern whose bytes hash to
+ * pl_hash[p]), then the links section, only when the binary holds all four (the ones that shrink written first). 1 done;
+ * 0 not (nothing changed) */
 static int pl_relink(const uint16_t *ids)
 {
-    uint8_t s[1u + 3u * (ENG_PATTERNS - 1u)];
-    uint32_t p, o = 0, at = eng_links_at(m1_cur, m1_cur_len), old;
+    uint8_t s[1u + 3u * ENG_PATTERNS];
+    uint32_t p, o = 0, at, old, fmt = m1_cur[1], k, pass;
     uint64_t omit = 0;
-    int32_t d;
-    if (!at)
+    int32_t d = 0, c[4];
+    if (ids[0] && eng_widen(m1_cur, &m1_cur_len, M1_PATCH_MAX))
         return 0;
-    for (p = 1; p < ENG_PATTERNS; p++) {
+    if (!(at = eng_links_at(m1_cur, m1_cur_len))) {
+        eng_narrow(m1_cur, &m1_cur_len, fmt);
+        return 0;
+    }
+    for (p = 0; p < ENG_PATTERNS; p++) {
         if (!ids[p])
             continue;
         s[1u + 3u * o] = (uint8_t)p;
@@ -465,13 +503,25 @@ static int pl_relink(const uint16_t *ids)
     }
     s[0] = (uint8_t)o;
     old = (m1_cur[7] & ENG_FLAG_LINKS) ? eng_links_end(m1_cur, m1_cur_len, at) - at : 0u;
-    d = m1_steps_cost(ENG_SEC_PATTERNS, omit) + m1_steps_cost(ENG_SEC_LOCKS, omit) + (int32_t)(o ? 1u + 3u * o : 0u)
-        - (int32_t)old;
-    if ((o && m1_cur[1] < ENG_COUNTED) || (int32_t)m1_cur_len + d > (int32_t)M1_PATCH_MAX)
+    c[0] = m1_steps_cost(ENG_SEC_NOTES, omit);
+    c[1] = m1_steps_cost(ENG_SEC_PATTERNS, omit);
+    c[2] = m1_steps_cost(ENG_SEC_LOCKS, omit);
+    c[3] = (int32_t)(o ? 1u + 3u * o : 0u) - (int32_t)old;
+    for (k = 0; k < 4u; k++)
+        d += c[k];
+    if ((o && m1_cur[1] < ENG_COUNTED) || (int32_t)m1_cur_len + d > (int32_t)M1_PATCH_MAX) {
+        eng_narrow(m1_cur, &m1_cur_len, fmt);
         return 0;
-    (void)m1_steps_write(ENG_SEC_PATTERNS, omit);
-    (void)m1_steps_write(ENG_SEC_LOCKS, omit);
-    return m1_patch_links(s, o ? 1u + 3u * o : 0u);
+    }
+    for (pass = 0; pass < 2u; pass++)
+        for (k = 0; k < 4u; k++)
+            if ((c[k] > 0) == (pass == 1u)) {
+                if (k < 3u)
+                    (void)m1_steps_write(k == 0u ? ENG_SEC_NOTES : k == 1u ? ENG_SEC_PATTERNS : ENG_SEC_LOCKS, omit);
+                else
+                    (void)m1_patch_links(s, o ? 1u + 3u * o : 0u);
+            }
+    return 1;
 }
 
 /* the running patch's links by pattern into ids (0 none) */
@@ -482,7 +532,7 @@ static void pl_ids(uint16_t *ids)
     for (k = 0; k < ENG_PATTERNS; k++)
         ids[k] = 0;
     for (k = 0; k < n; k++, e += 3)
-        if (e[0] && e[0] < ENG_PATTERNS)
+        if (e[0] < ENG_PATTERNS)
             ids[e[0]] = (uint16_t)((uint32_t)e[1] | (uint32_t)e[2] << 8);
 }
 
@@ -493,8 +543,8 @@ static uint64_t pl_shared(const uint16_t *ids, uint32_t self)
     sl_hdr_t h;
     uint64_t m = 0;
     uint32_t s, k, p, q, at, id;
-    for (p = 1; p < ENG_PATTERNS; p++)
-        for (q = 1; ids[p] && q < ENG_PATTERNS; q++)
+    for (p = 0; p < ENG_PATTERNS; p++)
+        for (q = 0; ids[p] && q < ENG_PATTERNS; q++)
             if (q != p && ids[q] == ids[p])
                 m |= (uint64_t)1u << p;
     for (s = 0; s < bank_slots; s++) {
@@ -502,7 +552,7 @@ static uint64_t pl_shared(const uint16_t *ids, uint32_t self)
             continue;
         for (k = 0; k < sl_buf[at]; k++) {
             id = (uint32_t)sl_buf[at + 2u + 3u * k] | (uint32_t)sl_buf[at + 3u + 3u * k] << 8;
-            for (p = 1; p < ENG_PATTERNS; p++)
+            for (p = 0; p < ENG_PATTERNS; p++)
                 if (ids[p] == id)
                     m |= (uint64_t)1u << p;
         }
@@ -510,6 +560,25 @@ static uint64_t pl_shared(const uint16_t *ids, uint32_t self)
     return m;
 }
 
+/* pattern p into the store for SAVE: over user entry *id (0 none; one that is gone or a kept copy: a new one instead),
+ * else into a new entry named after the patch (`patch`, pl_name); its payload hash in *h. 0 done (*id the entry), else
+ * pt_put's error */
+static int pl_put(uint32_t p, uint32_t *id, const char *patch, uint32_t *h)
+{
+    char name[PT_NAME + 1u];
+    pl_out_t s = { m1_up, sizeof m1_up, 0, PT_FNV0 };
+    pt_info_t in;
+    int rc;
+    pl_encode(p, &s);
+    rc = *id && !pt_stat(*id, &in) ? pt_put(id, in.name, m1_up, s.n, 0) : -4;   /* (-4 too over a kept copy) */
+    if (rc == -4) {
+        *id = 0;
+        pl_name(name, patch, p);
+        rc = pt_put(id, name, m1_up, s.n, 0);
+    }
+    *h = s.h;
+    return rc;
+}
 /* SAVE (main.c m1_store, before the running patch goes into slot self; main.c's boot for each slot that holds patterns
  * 2..64 in its binary or links a legacy factory pattern, #1202): every pattern 2..64 the running patch has goes to the
  * store and the patch links it, so the slot keeps pattern 1, the songs and the links. A pattern whose link to a user
@@ -517,18 +586,19 @@ static uint64_t pl_shared(const uint16_t *ids, uint32_t self)
  * and length: shared), else is written over the user entry it links when no other slot and no other pattern of this
  * patch links that one, else into a new entry named after the patch (`patch`, pl_name): an edited shared pattern splits
  * off its own copy. A link to a pattern no track has goes (one this FM-1 cannot resolve stays). The store full (or a
- * pattern larger than an entry, or the ids used up): that pattern stays in the binary. 0 done, -2 some pattern stayed in
- * the binary, -3 the binary could not take the links (it is as it was) */
+ * pattern larger than an entry, or the ids used up): that pattern stays in the binary. Pattern 1 linked (#1292, the
+ * binary had no room for it) comes back inline when the binary can hold it now (an empty one always); else it keeps a
+ * clean link, or goes to the store as a pattern 2..64 does. 0 done, -2 some pattern stayed in the binary, -3 the binary
+ * could not take the links (it is as it was) */
 static int pl_commit(const char *patch, uint32_t self)
 {
     uint16_t ids[ENG_PATTERNS], uids[ENG_PATTERNS];
     int32_t at[ENG_PATTERNS];
-    uint32_t hash[ENG_PATTERNS], want[ENG_PATTERNS], len[ENG_PATTERNS], keep[ENG_PATTERNS], p, loc, id, full = 0;
+    uint32_t hash[ENG_PATTERNS], want[ENG_PATTERNS], len[ENG_PATTERNS], keep[ENG_PATTERNS], p, loc, id, full = 0, h;
     uint64_t need = 0, shared = 0, done = 0, known = 0;
-    char name[PT_NAME + 1u];
     pt_hdr_t r;
     pl_out_t s;
-    int rc;
+    int ok;
     if (!pt_on)
         return 0;
     pl_ids(ids);
@@ -584,47 +654,58 @@ static int pl_commit(const char *patch, uint32_t self)
         }
         if (id && (shared >> p & 1u))
             id = 0;
-        s = (pl_out_t){ m1_up, sizeof m1_up, 0, PT_FNV0 };
-        pl_encode(p, &s);
-        if (id) {
-            pt_info_t in;
-            rc = pt_stat(id, &in) ? -4 : pt_put(&id, in.name, m1_up, s.n, 0);   /* (-4 too over a kept copy) */
-        } else {
-            rc = -4;
-        }
-        if (rc == -4) {
-            id = 0;
-            pl_name(name, patch, p);
-            rc = pt_put(&id, name, m1_up, s.n, 0);
-        }
-        if (rc) {
+        if (pl_put(p, &id, patch, &h)) {
             full = 1;                                 /* (it stays in the binary, as an edited copy of its link if any) */
             continue;
         }
         ids[p] = (uint16_t)id;
-        pl_hash[p] = s.h;
+        pl_hash[p] = h;
         done |= (uint64_t)1u << p;
     }
-    if (!pl_relink(ids)) {                            /* (the entries it wrote go at the next tidy-up, pl_gc) */
-        for (p = 1; p < ENG_PATTERNS; p++)
+    ok = 0;
+    if ((id = ids[0]) != 0) {                         /* pattern 1 (#1292): inline again when the binary holds it */
+        ids[0] = 0;
+        if (!(ok = pl_relink(ids)) && pl_has(0)) {
+            ids[0] = (uint16_t)id;
+            s = (pl_out_t){ 0, 0, 0, PT_FNV0 };
+            pl_encode(0, &s);
+            if (id <= PT_ID_MAX && at[0] >= 0 && (s.h == pl_hash[0] || s.h == hash[0])) {
+                pl_hash[0] = s.h;                     /* (clean: the link stays) */
+            } else {
+                id = id <= PT_ID_MAX && at[0] >= 0 && !((known ? shared : pl_shared(ids, self)) & 1u) ? id : 0u;
+                if (s.n > PT_MAX || pl_put(0, &id, patch, &h)) {
+                    full = 1;                         /* (inline, as an edited copy of its link) */
+                } else {
+                    ids[0] = (uint16_t)id;
+                    pl_hash[0] = h;
+                    done |= 1u;
+                }
+            }
+        } else if (ok) {
+            done |= 1u;                               /* (the editor hears that it is inline: no link) */
+        }
+    }
+    if (!ok && !pl_relink(ids)) {                     /* (the entries it wrote go at the next tidy-up, pl_gc) */
+        for (p = 0; p < ENG_PATTERNS; p++)
             pl_hash[p] = keep[p];
         return -3;
     }
-    for (p = 1; p < ENG_PATTERNS; p++)
+    for (p = 0; p < ENG_PATTERNS; p++)
         if (done >> p & 1u)
-            m1_pat_link_now(p, ids[p], pl_hash[p]);
+            m1_pat_link_now(p, ids[p], ids[p] ? pl_hash[p] : 0u);
     pl_priv = 0;
     return full ? -2 : 0;
 }
 
-/* proto.c m1_steps_sec (#1199): the binary cannot hold its patterns and P-locks. Each pattern 2..64 it holds goes to the
- * store, in an entry of its own that only the running patch links (pl_priv: written over at the next spill), named after
- * the patch, so the slot's links and the other patches' patterns stay as they are until SAVE (pl_commit takes these
- * entries as they are). Then the sections without them and the links (pl_relink). Each payload is made in m1_up after the
- * bytes a marked edit keeps there (pl_mark; one that does not fit after them stays, as one past PT_MAX does), and the
- * editor hears the new links at once, or a marked edit's at its end (pl_unmark). 1 some went, 0 none (no store, the store
- * full, or the binary still cannot hold the links) */
-static int m1_pat_spill(void)
+/* proto.c m1_steps_sec (#1199): the binary cannot hold its patterns and P-locks. Each pattern from..64 it holds (from 1:
+ * 2..64; 0: pattern 1 too, which the binary must be able to be ENG_WIDE for, #1292) goes to the store, in an entry of its
+ * own that only the running patch links (pl_priv: written over at the next spill), named after the patch, so the slot's
+ * links and the other patches' patterns stay as they are until SAVE (pl_commit takes these entries as they are). Then the
+ * sections without them and the links (pl_relink). Each payload is made in m1_up after the bytes a marked edit keeps
+ * there (pl_mark; one that does not fit after them stays, as one past PT_MAX does), and the editor hears the new links at
+ * once, or a marked edit's at its end (pl_unmark). 1 some went, 0 none (no store, the store full, or the binary still
+ * cannot hold the links) */
+static int m1_pat_spill(uint32_t from)
 {
     uint16_t ids[ENG_PATTERNS];
     uint32_t keep[ENG_PATTERNS], p, id, at = pl_marked ? pl_marked->held : 0u;
@@ -635,9 +716,9 @@ static int m1_pat_spill(void)
     if (!pt_on)
         return 0;
     pl_ids(ids);
-    for (p = 1; p < ENG_PATTERNS; p++) {
+    for (p = from; p < ENG_PATTERNS; p++) {
         keep[p] = pl_hash[p];
-        if (!pl_has(p))
+        if (!pl_has(p) || (!p && !m1_can_wide()))
             continue;
         s = (pl_out_t){ m1_up + at, sizeof m1_up - at, 0, PT_FNV0 };
         pl_encode(p, &s);
@@ -659,7 +740,7 @@ static int m1_pat_spill(void)
     if (!moved)
         return 0;
     if (!pl_relink(ids)) {                            /* (the entries it wrote go at the next tidy-up, pl_gc) */
-        for (p = 1; p < ENG_PATTERNS; p++)
+        for (p = from; p < ENG_PATTERNS; p++)
             pl_hash[p] = keep[p];
         return 0;
     }
@@ -668,7 +749,7 @@ static int m1_pat_spill(void)
     if (pl_marked)
         pl_marked->moved |= moved;
     else
-        for (p = 1; p < ENG_PATTERNS; p++)
+        for (p = from; p < ENG_PATTERNS; p++)
             if (moved >> p & 1u)
                 m1_pat_link_now(p, ids[p], pl_hash[p]);
     return 1;
@@ -707,6 +788,8 @@ static void pl_unmark(pl_mark_t *k, int done)
         }
         if (pl_relink(k->ids)) {
             pl_priv = k->priv;
+            if (m1_cur[1] >= ENG_WIDE && k->fmt < ENG_WIDE)   /* (made ENG_WIDE for the spill's links, #1292) */
+                eng_narrow(m1_cur, &m1_cur_len, k->fmt);
             m1_cur[1] = k->fmt;                       /* (m1_patch_links may have raised it for the spill's links) */
             k->moved = 0;
         } else {
@@ -714,8 +797,11 @@ static void pl_unmark(pl_mark_t *k, int done)
                 pl_hash[p] = k->hash[p];
         }
     }
-    if (!done && !k->moved)
+    if (!done && !k->moved) {
         m1_edited = k->edited;
+        if (m1_cur[1] >= ENG_WIDE && k->fmt < ENG_WIDE)   /* (a wide pattern the edit made widened it, #1292) */
+            eng_narrow(m1_cur, &m1_cur_len, k->fmt);
+    }
     for (p = 0; p < ENG_PATTERNS; p++)
         if (k->moved >> p & 1u)
             m1_pat_link_now(p, pl_link(p), pl_hash[p]);
@@ -802,6 +888,9 @@ static int pl_load_entry(uint32_t p, uint32_t id, char *got)
     if (p) {
         pl_hash[p] = pl_hash_of(p);
         (void)pl_set_link(p, id);
+    } else if (pl_link(0)) {                          /* (a copy: pattern 1's own link goes, #1292) */
+        pl_hash[0] = 0;
+        (void)pl_set_link(0, 0);
     }
     pl_rewrite();
     for (t = 0; t < (uint32_t)eng_steps_count(); t++)   /* (the editor follows the tracks that have it) */

@@ -41,6 +41,17 @@ void eng_fpu_probe(uint32_t lane, uint32_t *h);
 #define ENG_SIDES 67                  /* the first format with stereo modules (ENG_REC_STEREO) and the side section right after
                                        * the cables (eng_cables_to, #1141, patchbin.ts sideRecord): in every binary of it, u8 n
                                        * (0: no side cable) */
+#define ENG_WIDE 67                   /* the first format with patterns of more than ENG_NOTES_1_26 words (ENG_COUNT_ESC) and a
+                                       * link of pattern 1 (index 0) to the pattern store (#1292, patchbin.ts FORMAT_1_27) */
+#define ENG_NOTES_1_26 128u           /* the most words a pattern had before ENG_WIDE (TRACK_NOTES_MAX is 256 since) */
+#define ENG_COUNT_ESC 0xFEu           /* a word count of 254 or more (ENG_WIDE; a store payload of version 2) is this byte,
+                                       * then u8 count - 254; any other count one byte (track.ts COUNT_ESC) */
+/* a word count at p[at] (ENG_COUNT_ESC; at + 1 must be in the binary when p[at] is the escape): its value, its bytes in *b */
+static inline uint32_t eng_count_at(const uint8_t *p, uint32_t at, uint32_t *b)
+{
+    *b = p[at] == ENG_COUNT_ESC ? 2u : 1u;
+    return *b == 2u ? ENG_COUNT_ESC + p[at + 1u] : p[at];
+}
 /* Format 51's record (patchbin.ts, D-1000): u8 type, u8 count (bits 0..5: the parameters it holds; bit 7, ENG_REC_TEMPLATE,
  * on a type with parameter inputs: its attenuverters and p1 / p2 masks are at their template, eng_mask_template, and left
  * out), the values, then on such a type without bit 7 a presence byte (ENG_PRES_*) and only the items it marks, in the
@@ -219,28 +230,29 @@ static inline uint32_t eng_buttons_end(const uint8_t *p, uint32_t len, uint32_t 
 }
 
 /* the end of the tracks' notes section (flag bit 4, patchbin.ts) that starts at `at`: u8 count, then per track u8 module,
- * u8 n, n u32 notes; 0 if it runs past `len` */
+ * n (ENG_COUNT_ESC), n u32 notes; 0 if it runs past `len` */
 static inline uint32_t eng_notes_end(const uint8_t *p, uint32_t len, uint32_t at)
 {
-    uint32_t n, i;
+    uint32_t n, i, b, c;
     if (at >= len)
         return 0;
     n = p[at++];
     for (i = 0; i < n; i++) {
-        if (at + 2u > len)
+        if (at + 3u > len)
             return 0;
-        at += 2u + 4u * p[at + 1u];
+        c = eng_count_at(p, at + 1u, &b);
+        at += 1u + b + 4u * c;
     }
     return at <= len ? at : 0;
 }
 /* the end of the patterns and songs section (patchbin.ts patternRecord, flag bit 10 = p[7] bit 2, format 48) that starts
- * at `at`: u8 selected pattern, u8 song playing, u8 tracks, per track u8 module, u8 P, per pattern u8 n (0xFF: none), with
- * n != 0xFF u8 len (bit 7: short words), u8 rate and n u16 / u32 words; u8 songs, per song u8 entries, 2 bytes each. 0 if it
- * runs past `len` */
+ * at `at`: u8 selected pattern, u8 song playing, u8 tracks, per track u8 module, u8 P, per pattern n (0xFF: none; else
+ * ENG_COUNT_ESC), with n != 0xFF u8 len (bit 7: short words), u8 rate and n u16 / u32 words; u8 songs, per song u8
+ * entries, 2 bytes each. 0 if it runs past `len` */
 #define ENG_FLAG_PATTERNS 4u                    /* in p[7] */
 static inline uint32_t eng_patterns_end(const uint8_t *p, uint32_t len, uint32_t at)
 {
-    uint32_t nt, t, np, k, n, ns;
+    uint32_t nt, t, np, k, n, ns, b;
     if (at + 3u > len)
         return 0;
     nt = p[at + 2u];
@@ -251,11 +263,14 @@ static inline uint32_t eng_patterns_end(const uint8_t *p, uint32_t len, uint32_t
         np = p[at + 1u];
         at += 2u;
         for (k = 0; k < np; k++) {
-            if (at >= len)
+            if (at + 1u >= len)
                 return 0;
-            n = p[at++];
-            if (n == 0xFFu)
+            if (p[at] == 0xFFu) {
+                at++;
                 continue;
+            }
+            n = eng_count_at(p, at, &b);
+            at += b;
             if (at + 2u > len)
                 return 0;
             at += 2u + n * ((p[at] & 0x80u) ? 2u : 4u);
@@ -303,7 +318,8 @@ static inline uint32_t eng_locks_end(const uint8_t *p, uint32_t len, uint32_t at
     return at <= len ? at : 0;
 }
 /* the end of the stored pattern links section (format 59, flag bit 15 = p[7] bit 7, #901; patchbin.ts) that
- * starts at `at`: u8 count (1..63), count x (u8 pattern index 1..63, u16 LE store id 1..ENG_LINK_ID_MAX), ascending. 0 if
+ * starts at `at`: u8 count (1..63; 64 since ENG_WIDE), count x (u8 pattern index 1..63, since ENG_WIDE 0..63: pattern 1
+ * too, #1292; u16 LE store id 1..ENG_LINK_ID_MAX), ascending. 0 if
  * it runs past `len`. The engine checks the links and plays nothing from them: the FM-1 copies a linked pattern's content
  * from its pattern store into the engine after the load (patlink.c) */
 #define ENG_FLAG_LINKS 128u                     /* in p[7] */
@@ -644,6 +660,13 @@ int eng_load(const uint8_t *p, uint32_t len);
  * changes; 0 = done or already counted, -1 malformed or too big for cap (left as it was). */
 #define ENG_UPGRADED (ENG_SLIM - 1)
 int eng_upgrade(uint8_t *p, uint32_t *len, uint32_t cap);
+/* Rewrite a binary of a format from ENG_SLIM (without a master FX bus before format 66: its flag bit 14 is the FX rack
+ * since) in place as format ENG_WIDE, the empty side section after the cables (the editor writes the same patch so):
+ * what an FM-1 edit needs for a pattern past ENG_NOTES_1_26 words or a link of pattern 1 (#1292). *len grows by 1, up to
+ * cap; 0 = done or already ENG_WIDE, -1 older, with an FX bus, malformed or too big (left as it was). eng_narrow: the
+ * other way, back to format v (ENG_SLIM..ENG_WIDE - 1), when the side section is empty (else left as it is) */
+int eng_widen(uint8_t *p, uint32_t *len, uint32_t cap);
+void eng_narrow(uint8_t *p, uint32_t *len, uint32_t v);
 /* A counted binary's (ENG_COUNTED) record of module `mod` holds at least `npar` parameters (at most its type's): the
  * missing ones go in at their defaults (and its morph B bitmap grows: their B is their A), so an edit of one can be
  * written in place. *len grows, up to cap; 0 = done (or it held them), -1 malformed, not counted or too big for cap (left
@@ -848,9 +871,14 @@ int eng_song_insert(uint32_t s, uint32_t k);         /* a copy of entry k before
 int eng_song_delete(uint32_t s, uint32_t k);
 /* the patterns and songs section as the engine has it now (patchbin.ts patternRecord), into out (cap bytes): its length,
  * 0 when there is nothing to write (pattern 1, no song, no patterns, no entries), -1 when it does not fit. The patterns
- * eng_patterns_omit names (bit p, pattern 0 never) are left out of it and of eng_locks_record, as if no track had them: the
- * clean linked ones, whose content is the pattern store's (#901, proto.c m1_patch_patterns). A load clears the mask */
+ * eng_patterns_omit names (bit p) are left out of it, of eng_notes_record (bit 0: pattern 1) and of eng_locks_record, as
+ * if no track had them: the clean linked ones, whose content is the pattern store's (#901, #1292, proto.c
+ * m1_patch_patterns). A load clears the mask. eng_notes_record: the notes section likewise (pattern 1 of each track
+ * with notes, patchbin.ts). eng_notes_wide: a pattern written in either has more than ENG_NOTES_1_26 words (the binary
+ * must be ENG_WIDE) */
 int eng_patterns_record(uint8_t *out, uint32_t cap);
+int eng_notes_record(uint8_t *out, uint32_t cap);
+int eng_notes_wide(void);
 void eng_patterns_omit(uint64_t mask);
 /* P-locks (#524, format 49; track.ts StepLock, engine.ts locksStep): a lock on a step of a pattern sets a row of the
  * device its track plays (the parameters of its locked row, ENG_LOCK_PAIRS at most) in place of their normal values

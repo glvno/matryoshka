@@ -6,7 +6,7 @@ import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type Patch } from './patch';
 import { encodePatch, FORMAT_1_20, SECTION_FORMATS, VERSION } from './patchbin';
-import { parse, parseTrack, trackFrame } from './protocol';
+import { parse, parseTrack, trackFrames } from './protocol';
 import { decodePayload, encodePayload } from './pattern-store';
 import {
   COND_FILL, fixNotes, hasTiming, isShortNote, MICRO_MAX, microName, noteWords, overdub, RATCHET_MAX, setChord, setTiming,
@@ -75,8 +75,8 @@ describe('ratchets and micro timing: the timing word (#675, #677, format 63)', (
 
   it('the editor link and the pattern store carry the words as they are', () => {
     const ns = [note(0, 60, { micro: 7 }), note(0, 64, { ratchet: 4 })];
-    const f = parse(trackFrame(3, ns, 2));
-    expect(parseTrack(f!.payload)).toEqual({ module: 3, notes: ns, pat: 2 });
+    const f = parse(trackFrames(3, ns, 2)[0]);
+    expect(parseTrack(f!.payload)).toEqual({ module: 3, notes: ns, pat: 2, more: false });
     const p = rig(ns, 4);
     expect(decodePayload(encodePayload(p, 0)).tracks[0]?.notes).toEqual(ns);
   });

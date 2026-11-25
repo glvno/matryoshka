@@ -222,13 +222,20 @@ describe('the device test mode on the wire (#291)', () => {
 
 describe('patterns and songs on the wire (#375, format 48)', () => {
   it('TRACK names its pattern; TRACK_NOW without one is pattern 1', async () => {
-    const { trackFrame, parseTrack } = await import('./protocol');
+    const { trackFrames, parseTrack } = await import('./protocol');
     const notes = [{ at: 0, len: 2, note: 60, vel: 127 }, { at: 4, len: 1, note: 67, vel: 100 }];
-    const p = parse(trackFrame(3, notes, 5))!;
+    const p = parse(trackFrames(3, notes, 5)[0])!;
     expect(p.cmd).toBe(CMD.track);
     expect(p.payload.length).toBe(2 + 8 + 1);
-    expect(parseTrack(p.payload)).toEqual({ module: 3, notes, pat: 5 });
-    expect(parseTrack(parse(trackFrame(3, notes))!.payload)).toEqual({ module: 3, notes, pat: 0 });
+    expect(parseTrack(p.payload)).toEqual({ module: 3, notes, pat: 5, more: false });
+    expect(parseTrack(parse(trackFrames(3, notes)[0])!.payload)).toEqual({ module: 3, notes, pat: 0, more: false });
+  });
+  it('a pattern past 128 words goes in frames, each after the first marked (#1292)', async () => {
+    const { trackFrames, parseTrack, TRACK_FRAME_WORDS } = await import('./protocol');
+    const notes = Array.from({ length: 200 }, (_, k) => ({ at: k % 64, len: 1, note: 30 + Math.floor(k / 64), vel: 100 }));
+    const fs = trackFrames(3, notes, 2).map((f) => parseTrack(parse(f)!.payload)!);
+    expect(fs.map((f) => [f.notes.length, f.more, f.pat])).toEqual([[TRACK_FRAME_WORDS, false, 2], [200 - TRACK_FRAME_WORDS, true, 2]]);
+    expect(fs.flatMap((f) => f.notes)).toEqual(notes);
   });
   it('LOCKS_NOW (#524): a track\'s locks of a pattern, 7 bytes each', async () => {
     const { parseLocksNow } = await import('./protocol');

@@ -61,15 +61,17 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //   with flag bit 3: u8 count, then u8 module index, u8 input index, the parameter mask per routed input (u16 LE, or u32 LE
 //                when the module's type has more than 16 parameters: maskBytes)
 //   with flag bit 4: the tracks' notes (#133): u8 count, then per Steps module with notes, in module order: u8 module index,
-//                u8 n (1..TRACK_NOTES_MAX), n u32 LE words (track.ts noteWords), sorted by start, then note; bit 31 of a
+//                n (1..TRACK_NOTES_1_26; up to TRACK_NOTES_MAX in format 67, written as track.ts countBytes: COUNT_ESC
+//                escapes 254..256, #1292), n u32 LE words (track.ts noteWords), sorted by start, then note; bit 31 of a
 //                word (format 50, NOTE_WRAP): tied across the loop point; format 60 (#674, FORMAT_CONDS): a note with a trig
 //                condition (chance code NOTE_COND) is followed by its condition word (velocity 0), which n counts; format 63
 //                (#675, #677, FORMAT_1_20): a note with a ratchet or micro timing is followed by its timing word (velocity 0,
 //                bit 31), after its condition word, which n counts too
 //   with flag bit 10 (format 48, written only when used: patternRecord): the patterns and songs (track.ts Pattern, SeqState):
 //                u8 the selected pattern (0-based), u8 the song playing (0 none, 1..SONGS_MAX); u8 track count, per Steps module
-//                with patterns past its first, in module order: u8 module index, u8 P, then patterns 2..P+1, each u8 n: 0xFF the
-//                track has no such pattern (it plays its pattern 1), else n words (0..TRACK_NOTES_MAX), u8 len (bits 0..6: 0 the
+//                with patterns past its first, in module order: u8 module index, u8 P, then patterns 2..P+1, each n: 0xFF the
+//                track has no such pattern (it plays its pattern 1), else n words (0..TRACK_NOTES_1_26, format 67 up to
+//                TRACK_NOTES_MAX, countBytes), u8 len (bits 0..6: 0 the
 //                track's, else 1..STEPS_MAX; bit 7: short words), u8 rate (0xFF the track's, else a STEPS_RATES index), n
 //                words: u16 LE short ones (track.ts shortWord, when every note of the pattern fits one: isShortNote) or u32 LE
 //                (noteWords, as the notes section's); then u8 song count, per song u8 entry count, per entry u8 pattern, i8 shift. Pattern 1 of every
@@ -81,11 +83,13 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //                pattern u8 its number (0-based), u8 L (1..LOCKS_MAX), L locks: u8 step, u8 row (0..T-1), i32 LE value
 //                (Q16.16, the parameter's own units)
 //   with flag bit 15 (format 59, #901, written only when a pattern is linked to the FM-1's pattern store: linkPlan): the
-//                stored pattern links, right after the P-locks: u8 count (1..63), then per link, ascending and unique: u8
-//                pattern index (1..63; pattern 1 is never linked), u16 LE store id (1..LINK_ID_MAX). A linked pattern whose
+//                stored pattern links, right after the P-locks: u8 count (1..63; 64 in format 67), then per link, ascending and
+//                unique: u8 pattern index (1..63; format 67 (#1292) 0..63: pattern 1 too, linked only when the patch cannot
+//                hold it, LinkStore 'spill'), u16 LE store id (1..LINK_ID_MAX). A linked pattern whose
 //                payload (pattern-store.ts) is the one the FM-1's store holds is left out of the patterns and P-locks
-//                sections: the FM-1 copies it from the store as it loads the patch. An edited one stays in them (its
-//                content plays), and the FM-1's SAVE writes it over the stored one
+//                sections (pattern 1: of the notes section and the P-locks): the FM-1 copies it from the store as it loads
+//                the patch. An edited one stays in them (its content plays), and the FM-1's SAVE writes it over the stored
+//                one
 //   with flag bit 5: the device pages (pages.ts): u8 device count, then per device u8 kind: 0 a plain module, then u8 its
 //                module index (the FM-1 makes its pages itself: its parameters in order, four to a page, named as in
 //                defs.h); 2 (format 49, #518) a plain module with its own name (ModuleInst.name; not a Steps module, whose
@@ -137,7 +141,7 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DRUM_MAP_DEFAULT, DRUM_ROWS, drumRowName, LIMIT_AHEAD, PANEL_BUTTONS, RIGHT_IN } from './modules';
 import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } from './buttons';
 import { defaultMap, EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, MODULES_1_10, MODULES_1_26, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef, type Patch } from './patch';
-import { hasTiming, noteWords, patternWords, wordCount } from './track';
+import { countBytes, hasTiming, noteWords, patternWords, TRACK_NOTES_1_26, wordCount } from './track';
 import { payloadHash } from './pattern-store';
 import { lockPlan, PATCH_LOCKS_MAX } from './locks';
 import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS } from './poly';
@@ -207,23 +211,29 @@ export const FLAG_LINKS = 1 << 15;
  * read) holds every linked id, contents unknown; `none` (an FM-1 without a store) holds nothing and takes no links section;
  * `every` (an FM-1 that stores every pattern 2..64, protocol.ts FEATURE25_PATTERNS_STORED, #1202) holds every pattern of the
  * patch that has content, each a clean link (to a stand-in id where the patch links none: for the budget and a binary's
- * length only, never sent; device.ts sends the real ids); else what the FM-1 holds: each stored id's payload hash.
+ * length only, never sent; device.ts sends the real ids); `spill` (such an FM-1 that reads format 67, FEATURE5_FORMAT_67,
+ * #1292) the same, and pattern 1 too when the patch cannot hold it (layout); else what the FM-1 holds: each stored id's
+ * payload hash.
  */
-export type LinkStore = 'assume' | 'unknown' | 'none' | 'every' | ReadonlyMap<number, number>;
+export type LinkStore = 'assume' | 'unknown' | 'none' | 'every' | 'spill' | ReadonlyMap<number, number>;
 /** the patterns (1..63, 0-based) some Steps track of `dev` (a device form) has: the ones a FEATURE25_PATTERNS_STORED FM-1
  *  stores and links */
 export const patternsWithContent = (dev: Patch): number[] =>
   [...new Set(dev.modules.flatMap((m) => (m.type === 'steps' ? (m.patterns ?? []).flatMap((x, i) => (x ? [i + 1] : [])) : [])))].sort((a, b) => a - b);
+/** pattern 1 of some Steps track of `dev` (a device form) has notes or P-locks: what an FM-1 that spills pattern 1 stores
+ *  when the patch cannot hold it (#1292) */
+export const patternOneHasContent = (dev: Patch): boolean => dev.modules.some((m) => m.type === 'steps' && (!!m.notes?.length || !!m.locks?.length));
 /**
  * The links a binary for `store` carries (`dev`: the device form): every link to an id the store holds, ascending; and the
  * linked patterns it leaves out (`refs`): those whose payload the store holds as it is (its hash is the link's and the
- * store's). A link to an id the store has not got is left out, its pattern written as any other. With `every` each
- * pattern with content is a link and a reference, and no other pattern is linked.
+ * store's). A link to an id the store has not got is left out, its pattern written as any other. With `every` and `spill`
+ * each pattern 2..64 with content is a link and a reference, and pattern 1 too with `one` (a `spill` patch that cannot hold
+ * it, layout), and no other pattern is linked.
  */
-export function linkPlan(source: Patch, dev: Patch, store: LinkStore): { entries: [number, number][]; refs: number[] } {
+export function linkPlan(source: Patch, dev: Patch, store: LinkStore, one = false): { entries: [number, number][]; refs: number[] } {
   const links = source.modules.find((m) => m.type === 'fm1')?.seq?.links;
-  if (store === 'every') {
-    const refs = patternsWithContent(dev);
+  if (store === 'every' || store === 'spill') {
+    const refs = [...(one && patternOneHasContent(dev) ? [0] : []), ...patternsWithContent(dev)];
     return { entries: refs.map((p) => [p, links?.[p]?.id ?? 1]), refs };
   }
   const plan: { entries: [number, number][]; refs: number[] } = { entries: [], refs: [] };
@@ -235,18 +245,26 @@ export function linkPlan(source: Patch, dev: Patch, store: LinkStore): { entries
     const stored = store === 'assume' ? l.hash : store === 'unknown' ? undefined : store.get(l.id);
     if (stored === l.hash && payloadHash(source, p, dev) === l.hash) plan.refs.push(p);
   }
+  plan.entries.sort((a, b) => a[0] - b[0]);
   return plan;
 }
 /** the stored pattern links section's bytes (see the top of this file), [] without links */
 export const linkRecord = (entries: [number, number][]): number[] =>
   entries.length ? [entries.length, ...entries.flatMap(([p, id]) => [p, id & 0xff, id >> 8])] : [];
-/** a device form without patterns `refs` (0-based) on any track: what the binary leaves to the store */
+/** a device form without patterns `refs` (0-based; 0: pattern 1's notes and P-locks) on any track: what the binary leaves
+ *  to the store */
 function withoutPatterns(dev: Patch, refs: number[]): Patch {
   return { ...dev, modules: dev.modules.map((m) => {
-    if (m.type !== 'steps' || !m.patterns?.some((_, i) => refs.includes(i + 1))) return m;
-    const pats = m.patterns.map((x, i) => (refs.includes(i + 1) ? null : x));
+    if (m.type !== 'steps') return m;
+    let out = m;
+    if (refs.includes(0) && (m.notes || m.locks)) {
+      const { notes: _n, locks: _l, ...rest } = out;
+      out = rest;
+    }
+    if (!out.patterns?.some((_, i) => refs.includes(i + 1))) return out;
+    const pats = out.patterns.map((x, i) => (refs.includes(i + 1) ? null : x));
     while (pats.length && pats[pats.length - 1] === null) pats.pop();
-    const { patterns: _p, ...rest } = m;
+    const { patterns: _p, ...rest } = out;
     return pats.length ? { ...rest, patterns: pats } : rest;
   }) };
 }
@@ -364,7 +382,8 @@ export const FORMAT_1_23 = 65;
 export const FORMAT_RACK = 66;
 /**
  * The format of 1.27 (D-281, as D-1022): more than MODULES_1_26 modules (#1286; a device of 128 members or more takes
- * MEMBER_WIDE), stereo mode and the effects' `r` jacks (#1141). A patch that uses a 1.27 thing (uses127) is written in it;
+ * MEMBER_WIDE), stereo mode and the effects' `r` jacks (#1141), patterns of more than TRACK_NOTES_1_26 words (countBytes)
+ * and a link of pattern 1 (#1292). A patch that uses a 1.27 thing (uses127; a link of pattern 1: layout) is written in it;
  * every other patch keeps its lower format, and firmware without feature bit 36 (protocol.ts FEATURE5_FORMAT_67) is told to
  * update. It has SLIM's layout, and the side section right after the cables (sideRecord).
  */
@@ -377,9 +396,11 @@ export const stereoIn = (m: ModuleInst, groups: readonly DeviceGroup[]): boolean
 /** what a patch uses of FORMAT_1_27 (`dev`: its device form, `groups` its poly groups): more than 128 modules, or a device
  * of more than 127 members (MEMBER_WIDE: a plain count of 128 reads as a run before 1.27; only 128 modules without Main
  * can make one); a module in stereo mode, a cable into an appended `r` input (the Delay's, the Reverb's, the Chorus's:
- * modules.ts RIGHT_IN but the Output's) or out of the Reverb's `r` output (#1141) */
+ * modules.ts RIGHT_IN but the Output's) or out of the Reverb's `r` output (#1141); a pattern of more than TRACK_NOTES_1_26
+ * words the binary holds (#1292) */
 export function uses127(source: Patch, dev: Patch, groups: readonly DeviceGroup[] = deviceView(source, true).groups): boolean {
   if (dev.modules.length > MODULES_1_26) return true;
+  if (dev.modules.some((m) => m.type === 'steps' && [m.notes, ...(m.patterns ?? []).map((x) => x?.notes)].some((ns) => wordCount(ns) > TRACK_NOTES_1_26))) return true;
   const typeOf = new Map(dev.modules.map((m) => [m.id, m.type]));
   if (dev.modules.some((m) => stereoIn(m, groups)) || dev.cables.some((c) => {
     const to = typeOf.get(c.to.module)!;
@@ -787,8 +808,8 @@ export function buttonRecord(source: Patch, p: Patch): number[] {
 export const MAX_DEVICES = 32, MAX_PAGES = 32;
 /** the Steps modules of a (device form) patch that hold notes, by module index */
 const noteTracks = (p: Patch): number[] => p.modules.flatMap((m, i) => (m.type === 'steps' && m.notes?.length ? [i] : []));
-/** bytes of a track's entry in the notes section: module index, count, the notes */
-export const trackRecSize = (n: number): number => 2 + 4 * n;
+/** bytes of a track's entry in the notes section: module index, count (countBytes), the notes */
+export const trackRecSize = (n: number): number => 1 + countBytes(n).length + 4 * n;
 /** the flag (u16 at offset 6) of the patterns and songs section, format 48 */
 export const FLAG_PATTERNS = 1024;
 
@@ -810,7 +831,7 @@ export function patternRecord(source: Patch, dev: Patch): number[] {
         continue;
       }
       const { short, words } = patternWords(x.notes);
-      out.push(words.length, (x.len ?? 0) | (short ? 0x80 : 0), x.rate ?? 0xff);
+      out.push(...countBytes(words.length), (x.len ?? 0) | (short ? 0x80 : 0), x.rate ?? 0xff);
       for (const w of words) {
         out.push(w & 0xff, (w >>> 8) & 0xff);
         if (!short) out.push((w >>> 16) & 0xff, w >>> 24);
@@ -1076,7 +1097,8 @@ export const encodedSize = (source: Patch): number => layout(source).size;
  * the room the newer forms free shows in every patch while a patch that fits an older format is still written in it.
  * `force`: the layout of this format whatever the size (COUNTED or SLIM: tests and golden kits; 0 none). `store`: the
  * pattern store it is written for (linkPlan): `p` leaves out the linked patterns the store holds as they are, and
- * `links` is the links section.
+ * `links` is the links section; with `spill` pattern 1 goes to the store too (`one`) when the patch cannot hold it (#1292),
+ * and a link of pattern 1 makes the binary format 67.
  */
 export function layout(source: Patch, view: ReturnType<typeof deviceView> = deviceView(source, true), force = 0, store: LinkStore = 'assume') {
   if (rowsMemo) return layoutOf(source, view, force, store);
@@ -1089,7 +1111,11 @@ export function layout(source: Patch, view: ReturnType<typeof deviceView> = devi
   }
 }
 function layoutOf(source: Patch, view: ReturnType<typeof deviceView>, force: number, store: LinkStore) {
-  const plan = linkPlan(source, view.patch, store);
+  const w = layoutWith(source, view, force, store, false);
+  return store === 'spill' && w.need > DEVICE.bytes && patternOneHasContent(view.patch) ? layoutWith(source, view, force, store, true) : w;
+}
+function layoutWith(source: Patch, view: ReturnType<typeof deviceView>, force: number, store: LinkStore, one: boolean) {
+  const plan = linkPlan(source, view.patch, store, one);
   const links = linkRecord(plan.entries);
   const { groups } = view, p = plan.refs.length ? withoutPatterns(view.patch, plan.refs) : view.patch;
   const devs = deviceSection(source, p);
@@ -1102,14 +1128,17 @@ function layoutOf(source: Patch, view: ReturnType<typeof deviceView>, force: num
     const size = sizeOf(p, groups, devs, v, keep, source, named.names) + kinds.length + links.length;
     return { v, names: named.names, reserve: named.reserve + room, size, bytes: size + named.reserve + room };
   };
-  const base = at(Math.max(links.length ? FORMAT_LINKS : 0, baseFormat(source, p, groups)));
+  const base = at(Math.max(links.length ? FORMAT_LINKS : 0, plan.entries.some(([q]) => q === 0) ? FORMAT_1_27 : 0, baseFormat(source, p, groups)));
   const counted = base.v < COUNTED ? at(COUNTED) : base;
   const slim = base.v < SLIM ? at(SLIM) : base;
   const need = Math.min(base.bytes, counted.bytes, slim.bytes);
   const w = force >= SLIM ? slim : force ? counted
     : [base, counted, slim].find((f) => f.bytes <= DEVICE.bytes) ?? [base, counted, slim].find((f) => f.bytes === need)!;
-  return { p, groups, devs, kinds, keep, links, ...w, need, base: { v: base.v, bytes: base.bytes }, counted: counted.bytes, slim: slim.bytes };
+  return { p, groups, devs, kinds, keep, links, ...w, need, base: { v: base.v, bytes: base.bytes }, counted: counted.bytes, slim: slim.bytes, one: plan.refs.includes(0) };
 }
+/** a patch sent to an FM-1 that spills pattern 1 (LinkStore 'spill', #1292) puts its pattern 1 into the store: the patch
+ *  cannot hold it */
+export const patternOneSpills = (source: Patch): boolean => layout(source, undefined, 0, 'spill').one;
 
 function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], v: number, keep: Map<number, number>, source?: Patch, names?: string[]): number {
   const groups = dg.length;
@@ -1139,11 +1168,11 @@ export const drumMaps = (p: Patch): number[] => p.modules.flatMap((m, i) => (m.t
  * estimate has not seen yet: scripts/cpu-costs.ts). `force`: in the layout of this format whatever its size (COUNTED or
  * SLIM: tests, golden kits; layout). `store`: the pattern store of the FM-1 it goes to (LinkStore; the budget assumes it
  * holds every link's pattern, so a store that does not can make the binary bigger than the budget said: refused too;
- * `every` counts as it writes, with stand-in ids: a binary's length, never one to send) */
+ * `every` and `spill` count as they write, with stand-in ids: a binary's length, never one to send) */
 export function encodePatch(source: Patch, anyway = false, force = 0, allocation: BufferAllocation = 0, store: LinkStore = 'assume'): Uint8Array {
   const routingError = keyRouteError(source);
   if (routingError) throw new Error(routingError);
-  const budget = deviceBudget(source, allocation, store === 'every' ? store : 'assume');
+  const budget = deviceBudget(source, allocation, store === 'every' || store === 'spill' ? store : 'assume');
   if (!budget.fits && !anyway) throw new Error(`over the FM-1 budget: ${budget.over.map((i) => (i.key === 'browser' ? i.label : `${i.label} ${i.used} of ${i.max}`)).join(', ')}`);
   const { p, groups, devs, kinds, keep, names, size, need, links, v: ver } = layout(source, undefined, force, store);
   if (!anyway && need > DEVICE.bytes) throw new Error(`over the FM-1 budget: ${LABELS.bytes} ${need} of ${DEVICE.bytes} (its linked patterns go whole: the FM-1's pattern store has not got them)`);
@@ -1295,10 +1324,10 @@ export function encodePatch(source: Patch, anyway = false, force = 0, allocation
   if (valued.length) {
     out[at++] = valued.length;
     for (const i of valued) {
-      const words = noteWords(p.modules[i].notes);
+      const words = noteWords(p.modules[i].notes), count = countBytes(words.length);
       out[at] = i;
-      out[at + 1] = words.length;
-      words.forEach((w, j) => dv.setUint32(at + 2 + 4 * j, w, true));
+      out.set(count, at + 1);
+      words.forEach((w, j) => dv.setUint32(at + 1 + count.length + 4 * j, w, true));
       at += trackRecSize(words.length);
     }
   }
@@ -1621,9 +1650,10 @@ export interface Budget {
 const bytesOf = (source: Patch, view: ReturnType<typeof deviceView>, store: LinkStore): number => layout(source, view, 0, store).need;
 
 /** the pattern store the budget counts with: `every` for an FM-1 that stores every pattern 2..64 (#1202, #1199: only
- *  pattern 1, the songs and the links count against its bytes), else `assume` (each linked pattern counts as the reference
- *  its link makes, every other one inside the patch) */
-export type BudgetStore = 'assume' | 'every';
+ *  pattern 1, the songs and the links count against its bytes), `spill` for one of those that reads format 67 (#1292:
+ *  pattern 1 too goes to the store when the patch cannot hold it, so only the songs and the links must fit), else
+ *  `assume` (each linked pattern counts as the reference its link makes, every other one inside the patch) */
+export type BudgetStore = 'assume' | 'every' | 'spill';
 
 /** what the patch takes of the FM-1's limits, counted with `store` (BudgetStore) */
 export function deviceBudget(source: Patch, allocation: BufferAllocation = 0, store: BudgetStore = 'assume'): Budget {

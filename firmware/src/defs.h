@@ -1274,7 +1274,7 @@ static const uint8_t EUCLID_RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};   /* its r
 #define TRACK_STEPS 64        /* a Steps track's most steps (track.ts); its name follows its pins in the record */
 #define TRACK_NAME_MAX 8
 static const char *const DRUM_ROW_NAME[8] = {"KICK", "SNARE", "CLAP", "CL HAT", "OP HAT", "LOW TOM", "RIM", "COWBELL"};   /* a Drum map row's default name (modules.ts DRUM_MAP_DEFAULT): format 64 leaves it out of the binary */
-#define TRACK_NOTES_MAX 128   /* notes per track (the notes section, flag bit 4; track.ts noteWord) */
+#define TRACK_NOTES_MAX 256   /* notes per track (the notes section, flag bit 4; track.ts noteWord) */
 #define TRACK_POLY 8          /* notes a track sounds at once (modules.ts) */
 #define METER_N 8u           /* the global time signature (#1011, modules.ts METERS): its meters, as listed */
 #define METER_DEFAULT 2u      /* ... 4/4: what plays when none was set */

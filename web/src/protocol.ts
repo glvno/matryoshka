@@ -58,7 +58,10 @@
 //   27 MUTE     module u8, on u8                     mute / unmute a Steps module (not saved); no reply. Feature bit 2.
 //   2A TRACK    module u8, n u8, n u32 LE words, [pattern u8]   a Steps module's notes, all of them (track.ts noteWords,
 //                                                    sorted, at most TRACK_NOTES_MAX), of that pattern (0-based; format 48,
-//                                                    without it: the one the track plays); no reply. Feature bit 5.
+//                                                    without it: the one the track plays); no reply. Feature bit 5. A
+//                                                    frame carries TRACK_FRAME_WORDS at most: more (feature bit 36,
+//                                                    #1292) go in further frames ending before a note, with bit 7 of the
+//                                                    pattern byte (they follow the frame before's); TRACK_NOW the same
 //   36 PATTERN  pattern u8, song u8                  the patch's pattern (0-based) and the song playing (0 none): each track
 //                                                    takes them at the end of its pass (stopped: at once), into the running
 //                                                    patch; no reply. Format 48 (INFO's highest readable format)
@@ -381,18 +384,32 @@ export const attFrame = (module: number, input: number, q16: number): Uint8Array
 };
 
 export const bypassFrame = (module: number, on: boolean): Uint8Array => frame(CMD.bypass, [module, on ? 1 : 0]);
-/** a Steps module's notes (all of them, as words: noteWords), of pattern `pat` (0-based; format 48: absent, the one the
- * track plays) */
-export function trackFrame(module: number, notes: readonly StepNote[] | undefined, pat?: number): Uint8Array {
-  const w = noteWords(notes).slice(0, TRACK_NOTES_MAX);
-  return frame(CMD.track, [module, w.length, ...w.flatMap((x) => [x & 0xff, (x >>> 8) & 0xff, (x >>> 16) & 0xff, x >>> 24]), ...(pat === undefined ? [] : [pat & 0xff])]);
+/** the most words a TRACK / TRACK_NOW frame carries (proto.c M1_TRACK_WORDS, #1292): a longer pattern comes in frames */
+export const TRACK_FRAME_WORDS = 128;
+/** bit 7 of TRACK / TRACK_NOW's pattern byte: the frame's words follow the frame before's (#1292) */
+export const TRACK_MORE = 0x80;
+/** a Steps module's notes (all of them, as words: noteWords, TRACK_NOTES_MAX at most), of pattern `pat` (0-based; format
+ * 48: absent, the one the track plays), in frames of TRACK_FRAME_WORDS words at most, each but the last ending before a
+ * note */
+export function trackFrames(module: number, notes: readonly StepNote[] | undefined, pat?: number): Uint8Array[] {
+  const w = noteWords(notes).slice(0, TRACK_NOTES_MAX), out: Uint8Array[] = [];
+  let from = 0;
+  do {
+    let n = Math.min(TRACK_FRAME_WORDS, w.length - from);
+    if (from + n < w.length) while (n && !((w[from + n] >>> 19) & 0x7f)) n--;   // (the next frame starts on a note: velocity > 0)
+    const part = w.slice(from, from + n), b = pat === undefined ? [] : [(pat & 0x7f) | (from ? TRACK_MORE : 0)];
+    out.push(frame(CMD.track, [module, n, ...part.flatMap((x) => [x & 0xff, (x >>> 8) & 0xff, (x >>> 16) & 0xff, x >>> 24]), ...b]));
+    from += n;
+  } while (from < w.length && pat !== undefined);
+  return out;
 }
-/** a TRACK / TRACK_NOW payload's notes and pattern (absent: an older firmware's, the track's only one: 0) */
-export function parseTrack(payload: number[]): { module: number; notes: StepNote[]; pat: number } | null {
+/** a TRACK / TRACK_NOW payload's notes and pattern (absent: an older firmware's, the track's only one: 0); `more`: they
+ * follow the frame before's (TRACK_MORE) */
+export function parseTrack(payload: number[]): { module: number; notes: StepNote[]; pat: number; more: boolean } | null {
   if (payload.length < 2 || payload.length < 2 + 4 * payload[1]) return null;
   const notes = wordsNotes(Array.from({ length: payload[1] }, (_, j) => (payload[2 + 4 * j] | (payload[3 + 4 * j] << 8) | (payload[4 + 4 * j] << 16) | (payload[5 + 4 * j] << 24)) >>> 0));
-  const pat = payload.length > 2 + 4 * payload[1] ? Math.min(PATTERNS_MAX - 1, payload[2 + 4 * payload[1]]) : 0;
-  return { module: payload[0], notes, pat };
+  const b = payload.length > 2 + 4 * payload[1] ? payload[2 + 4 * payload[1]] : 0;
+  return { module: payload[0], notes, pat: Math.min(PATTERNS_MAX - 1, b & 0x7f), more: !!(b & TRACK_MORE) };
 }
 /** a device-form lock as the FM-1 reports it (LOCKS_NOW, #524): step, module index, parameter index, value */
 export interface RawLock { at: number; module: number; param: number; value: number }

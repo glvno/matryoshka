@@ -9,8 +9,18 @@ import { ARP_RATE_TICKS, ARP_RATES } from './arpeggiator';
 
 /** a pattern is at most STEPS_MAX steps (the `len` parameter plays the first ones) */
 export const STEPS_MAX = 64;
-/** a Steps track holds at most this many notes, a patch at most DEVICE.notes (patchbin.ts) on the FM-1 */
-export const TRACK_NOTES_MAX = 128;
+/** a Steps track holds at most this many notes (words: wordCount) a pattern, a patch at most DEVICE.notes (patchbin.ts) on the
+ * FM-1. 256 since 1.27 (#1292): a pattern of more than TRACK_NOTES_1_26 makes the patch format 67 (patchbin.ts uses127) and
+ * its stored entry a version 2 payload (pattern-store.ts), which older firmware refuses */
+export const TRACK_NOTES_MAX = 256;
+/** the most words a pattern had up to 1.26 (format 66): all an older FM-1 reads */
+export const TRACK_NOTES_1_26 = 128;
+/** a count of COUNT_ESC words or more (format 67, payload version 2: only past TRACK_NOTES_1_26) is written as the byte
+ * COUNT_ESC, then u8 count − COUNT_ESC; every other count (and 0xFF: no such pattern) as one byte. The notes section's,
+ * the patterns section's and a payload's (engine.h ENG_COUNT_ESC) */
+export const COUNT_ESC = 0xfe;
+/** a word count as the binary and a payload carry it (COUNT_ESC) */
+export const countBytes = (n: number): number[] => (n >= COUNT_ESC ? [COUNT_ESC, n - COUNT_ESC] : [n]);
 /** a note's values when nothing gives them: C4 and the velocity the FM-1's keys send; an accent is full velocity */
 export const STEP_NOTE = 60;
 export const STEP_VEL = 100;
@@ -462,7 +472,8 @@ export interface SeqState {
   /** the editor names the patterns as the TB-303 does (I-A1 .. IV-B8: patternName), not P01 .. P64; editor only, never in
    * the binary (the FM-1 shows P01 ..) */
   names?: '303';
-  /** patterns 2..64 linked to the FM-1's pattern store (#901, format 59), by pattern index (1..63): the stored pattern's id
+  /** patterns linked to the FM-1's pattern store (#901, format 59), by pattern index (1..63; 0, pattern 1, format 67 only:
+   * an FM-1 that spills pattern 1 when the patch cannot hold it, #1292): the stored pattern's id
    * and its payload hash as the store holds it (pattern-store.ts). The pattern's notes stay in the patch too; while its
    * payload hash equals `hash` the binary carries only the reference (patchbin.ts linkPlan). A link belongs to one FM-1's
    * store, so what leaves the editor (share links, files, Community) carries every pattern inside and no link
@@ -531,13 +542,13 @@ export function fixSeq(raw: unknown): SeqState | undefined {
   return Object.keys(out).length ? out : undefined;
 }
 
-/** a patch's pattern links from anything: index 1..63, id 1..LINK_ID_MAX, hash u32; undefined when none is left */
+/** a patch's pattern links from anything: index 0..63, id 1..LINK_ID_MAX, hash u32; undefined when none is left */
 export function fixLinks(raw: unknown): Record<number, PatternLink> | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
   const out: Record<number, PatternLink> = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     const p = Number(k);
-    if (!Number.isInteger(p) || p < 1 || p >= PATTERNS_MAX || !v || typeof v !== 'object') continue;
+    if (!Number.isInteger(p) || p < 0 || p >= PATTERNS_MAX || !v || typeof v !== 'object') continue;
     const { id, hash } = v as Record<string, unknown>;
     if (!Number.isInteger(id) || (id as number) < 1 || (id as number) > LINK_ID_MAX) continue;
     if (!Number.isInteger(hash) || (hash as number) < 0 || (hash as number) > 0xffffffff) continue;

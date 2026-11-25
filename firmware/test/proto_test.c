@@ -240,7 +240,8 @@ static void m1_arms(eng_mset_t mask) { arms_calls++; arms_last = mask; eng_arm_m
                                                               * glue (patlink.c) and a store in RAM itself */
 static void m1_pat_load(void) {}
 static uint64_t m1_pat_clean(void) { return 0; }
-static int m1_pat_spill(void) { return 0; }
+static int m1_pat_spill(uint32_t from) { (void)from; return 0; }
+static int m1_pat_back(uint32_t mod) { (void)mod; return 0; }
 static void m1_pat_info(uint8_t *p) { p[1] = 64; p[2] = p[3] = p[4] = p[5] = 0; }
 static uint32_t m1_pat_list(uint32_t after, uint8_t *e) { (void)after; (void)e; return 0; }
 static const uint8_t *m1_pat_get(uint32_t id, uint32_t *len) { (void)id; (void)len; return 0; }
@@ -249,7 +250,8 @@ static uint32_t m1_pat_del(uint32_t id, uint32_t force, uint32_t *count) { (void
 #else
 static void m1_pat_load(void);
 static uint64_t m1_pat_clean(void);
-static int m1_pat_spill(void);
+static int m1_pat_spill(uint32_t from);
+static int m1_pat_back(uint32_t mod);
 static void m1_pat_info(uint8_t *p);
 static uint32_t m1_pat_list(uint32_t after, uint8_t *e);
 static const uint8_t *m1_pat_get(uint32_t id, uint32_t *len);

@@ -3,11 +3,13 @@
 // they fit. One stored pattern is one pattern number across a patch's Steps tracks, written as a payload that the firmware
 // (patlink.c) writes byte for byte the same (firmware/test/pattern_cases.h, scripts/pattern-vectors.ts, checks it):
 //
-//   u8  PAYLOAD_VERSION
+//   u8  version       PAYLOAD_VERSION; PAYLOAD_WIDE when a track's n passes TRACK_NOTES_1_26 (#1292: firmware before 1.27
+//                     refuses it, which is all it can do with one)
 //   u32 LE layout     0 when the pattern has no P-locks, else the patch's layout fingerprint (layoutOf)
 //   u8  T             tracks written: 1 + the last track that has this pattern (at least 1)
 //   per track k < T (track k: the k-th Steps module of the binary's module order):
-//       u8 n          0xFF: the track has no such pattern (it plays its pattern 1); else n words 0..128
+//       n             0xFF: the track has no such pattern (it plays its pattern 1); else n words 0..128 (version 2:
+//                     0..TRACK_NOTES_MAX, track.ts countBytes)
 //       if n != 0xFF: u8 len (bits 0..6: 0 the track's length, else 1..64; bit 7: short words), u8 rate (0xFF the
 //                     track's, else a STEPS_RATES index), n words: u16 LE short ones when every note is short
 //                     (track.ts isShortNote, shortWord), else u32 LE (noteWords: a note with a trig condition, #674, and
@@ -23,12 +25,14 @@ import { DEFS } from './modules';
 import type { Patch } from './patch';
 import { deviceView } from './poly';
 import { lockPlan } from './locks';
-import { patternsWithContent, TYPE_ORDER, toQ16 } from './patchbin';
+import { patternOneHasContent, patternsWithContent, TYPE_ORDER, toQ16 } from './patchbin';
 import type { StoredPatternEntry } from './protocol';
-import { fixLocks, fixNotes, fixPatterns, LINK_ID_MAX, patternWords, withoutLinks, wordShort, wordsNotes, type Pattern, type PatternLink, type StepLock, type StepNote } from './track';
+import { COUNT_ESC, countBytes, fixLocks, fixNotes, fixPatterns, LINK_ID_MAX, patternWords, TRACK_NOTES_1_26, TRACK_NOTES_MAX, withoutLinks, wordShort, wordsNotes, type Pattern, type PatternLink, type StepLock, type StepNote } from './track';
 import LEGACY_FACTORY_PATTERNS from './factory-store.json';
 
 export const PAYLOAD_VERSION = 1;
+/** the version of a payload with a track of more than TRACK_NOTES_1_26 words (#1292), written only then */
+export const PAYLOAD_WIDE = 2;
 /** the most payload bytes a stored pattern takes (patstore.c PT_MAX) */
 export const PAYLOAD_MAX = 2048;
 /** a stored pattern's name: printable ASCII, 16 bytes (patstore.c PT_NAME) */
@@ -69,7 +73,8 @@ export function encodePayload(source: Patch, p: number, dev: Patch = deviceView(
   }
   locks.sort((a, b) => a[0] - b[0]);
   const layout = locks.length ? layoutOf(dev) : 0;
-  const out = [PAYLOAD_VERSION, layout & 0xff, (layout >>> 8) & 0xff, (layout >>> 16) & 0xff, layout >>> 24, t];
+  const wide = tracks.some((_, k) => patternWords(pattern(k)?.notes).words.length > TRACK_NOTES_1_26);
+  const out = [wide ? PAYLOAD_WIDE : PAYLOAD_VERSION, layout & 0xff, (layout >>> 8) & 0xff, (layout >>> 16) & 0xff, layout >>> 24, t];
   for (let k = 0; k < t; k++) {
     const x = k < tracks.length ? pattern(k) : null;
     if (!x) {
@@ -77,7 +82,7 @@ export function encodePayload(source: Patch, p: number, dev: Patch = deviceView(
       continue;
     }
     const { short, words } = patternWords(x.notes);
-    out.push(words.length, (p ? x.len ?? 0 : 0) | (short ? 0x80 : 0), p ? x.rate ?? 0xff : 0xff);
+    out.push(...countBytes(words.length), (p ? x.len ?? 0 : 0) | (short ? 0x80 : 0), p ? x.rate ?? 0xff : 0xff);
     for (const w of words) {
       out.push(w & 0xff, (w >>> 8) & 0xff);
       if (!short) out.push((w >>> 16) & 0xff, w >>> 24);
@@ -107,18 +112,20 @@ export function decodePayload(bytes: ArrayLike<number>): Payload {
   const u8 = (): number => (at < bytes.length ? bytes[at++] : bad());
   const u16 = (): number => u8() | (u8() << 8);
   const u32 = (): number => (u16() | (u16() << 16)) >>> 0;
-  if (bytes.length > PAYLOAD_MAX || u8() !== PAYLOAD_VERSION) bad();
+  const version = bytes.length <= PAYLOAD_MAX ? u8() : bad();
+  if (version !== PAYLOAD_VERSION && version !== PAYLOAD_WIDE) bad();
   const layout = u32();
   const t = u8();
   if (!t) bad();
   const tracks: Payload['tracks'] = [];
   for (let k = 0; k < t; k++) {
-    const n = u8();
+    let n = u8();
     if (n === 0xff) {
       tracks.push(null);
       continue;
     }
-    if (n > 128) bad();
+    if (n === COUNT_ESC && version === PAYLOAD_WIDE) n += u8();
+    if (n > (version === PAYLOAD_WIDE ? TRACK_NOTES_MAX : TRACK_NOTES_1_26)) bad();
     const len = u8(), rate = u8(), short = !!(len & 0x80);
     const notes = short ? Array.from({ length: n }, () => wordShort(u16())) : wordsNotes(Array.from({ length: n }, u32));
     tracks.push({ notes, len: len & 0x7f, rate });
@@ -233,14 +240,15 @@ export interface EntryToPut { ps: number[]; name: string; payload: Uint8Array; h
  * What sending `patch` to an FM-1 that stores every pattern 2..64 takes (#1202): each pattern with content links an entry
  * of `entries` (the FM-1's list) whose payload has the same hash and length (the one the patch links already first, then
  * the lowest id; never an id above LINK_ID_MAX), else a new entry named after `name` (entryName), one for patterns with
- * the same payload. `links`: the patterns already stored, by pattern
+ * the same payload. With `one` (an FM-1 that reads format 67, and a patch that cannot hold its pattern 1: patchbin.ts
+ * patternOneSpills, #1292) pattern 1 too, when it has notes or P-locks. `links`: the patterns already stored, by pattern
  */
-export function storePlan(patch: Patch, entries: readonly StoredPatternEntry[], name = patch.name): { links: Record<number, PatternLink>; put: EntryToPut[] } {
+export function storePlan(patch: Patch, entries: readonly StoredPatternEntry[], name = patch.name, one = false): { links: Record<number, PatternLink>; put: EntryToPut[] } {
   const dev = deviceView(patch, true).patch;
   const had = patch.modules.find((m) => m.type === 'fm1')?.seq?.links ?? {};
   const links: Record<number, PatternLink> = {};
   const put: EntryToPut[] = [];
-  for (const p of patternsWithContent(dev)) {
+  for (const p of [...(one && patternOneHasContent(dev) ? [0] : []), ...patternsWithContent(dev)]) {
     const payload = encodePayload(patch, p, dev), hash = fnv(FNV0, payload);
     const same = (e: StoredPatternEntry): boolean => e.hash === hash && e.len === payload.length && e.id <= LINK_ID_MAX;
     const e = entries.find((x) => x.id === had[p]?.id && same(x)) ?? entries.filter(same).sort((a, b) => a.id - b.id)[0];
@@ -253,7 +261,8 @@ export function storePlan(patch: Patch, entries: readonly StoredPatternEntry[], 
   }
   return { links, put };
 }
-/** the patch with exactly these links (patterns 1..63): what a send to an FM-1 that stores every pattern encodes */
+/** the patch with exactly these links (patterns 1..63, and 0: pattern 1, #1292): what a send to an FM-1 that stores every
+ *  pattern encodes */
 export function withLinks(patch: Patch, links: Record<number, PatternLink>): Patch {
   const out = withoutLinks(patch);
   if (!Object.keys(links).length) return out;

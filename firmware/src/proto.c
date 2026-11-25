@@ -46,11 +46,14 @@
  *   static void m1_pat_load(void);                              the pattern store (#901, patlink.c): the running patch (m1_cur,
  *                                                               just loaded) gets its links' stored patterns into the engine
  *   static uint64_t m1_pat_clean(void);                         the pattern store (#901, patlink.c): the linked patterns whose
- *                                                               content is the store's (bit p), left out of the patterns and
- *                                                               locks sections
- *   static int m1_pat_spill(void);                              the pattern store (#1199, patlink.c): the binary could not hold
- *                                                               the patterns 2..64 it holds; they go into the store, linked
- *                                                               (1: some went, the sections rewritten without them)
+ *                                                               content is the store's (bit p; bit 0 pattern 1, #1292), left out
+ *                                                               of the notes, patterns and locks sections
+ *   static int m1_pat_spill(uint32_t from);                     the pattern store (#1199, patlink.c): the binary could not hold
+ *                                                               the patterns from..64 it holds (from 1: 2..64; 0: pattern 1
+ *                                                               too, #1292); they go into the store, linked (1: some went, the
+ *                                                               sections rewritten without them)
+ *   static int m1_pat_back(uint32_t mod);                       the pattern store (#1292, patlink.c): track mod's pattern 1
+ *                                                               back from the entry pattern 1 links cleanly (1 done, 0 none)
  *   static void m1_patch_full(void);                            main.c: an edit the patch had no room for was refused (#1199)
  *   static void m1_pat_info(uint8_t *p);                        INFO bytes 14..19 and 25: bit 1 of byte 14 (the store is on),
  *                                                               byte 15 the bank's slots, 16..19 the store's bytes free and total
@@ -134,7 +137,7 @@ enum { C_FONT = 0x1F, R_FONT_SUM = 0x68 };                  /* the font area (#6
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
 #define M1_FEATURES3 255u                                      /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549), bit 19 = INFO's flags bit 3 says GLO > SYSTEM > EDITOR (#702), bit 20 = ARMS, the editor's armed set (#191), bit 21 = ARMS and ARMS_NOW carry four words at least, modules 0..127 (#721; all ENG_MSET_WORDS with feature bit 36, #1286), bit 22 = device settings, bit 23 = explicit factory pattern origins / snapshots */
 #define M1_FEATURES4 253u                                     /* INFO byte 14, feature bits 24..31: bit 24 = complete FX-scoped preset recall; bit 25 = the pattern store is on (#901: PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW, format 59's links; m1_pat_info sets it); bit 26 = the factory region (#915, D-490: FACT_INFO, FACT_BEGIN, FACT_WRITE, FACT_SUM, FACT_READ, FACT_COMMIT); bit 27 = MASTER_EQ (#1107); bit 28 = MIDI learn (#1067: MAP, MAP_NOW, the mapping section after the macro ranges); bit 29 = the global pad map (#1067: PADS, PADS_NOW); bit 30 = PATTERN_OP (#1177, #1178: the SEQ page's copy and clear all); bit 31 = the palette (#1196: PALETTE, PALETTE_NOW, PALETTE_ENTRY; the last free bit: later features go in M1_FEATURES5) */
-#define M1_FEATURES5 29u                                      /* INFO byte 25, the feature bits from 1.26 on (bytes 20..24 are the font area's, #1203): bit 0 = a top-level card with a Steps track inside is that track's device (the device extras name the card itself: SEQ, the environment, P-locks and SEL treat it as the track, pages_ui.c pg_track_mod; #1202 K2, D-1062); bit 1 = every saved patch keeps its patterns 2..64 in the store (m1_pat_info sets it, #1202); bit 2 = SLOT_GET and PAT's kept flag (flags bit 1; #1202 P2); bit 3 = format 66's FX rack and the FX drawer presets (FXD1, #1214); bit 4 (feature bit 36) = format 67 (up to ENG_MAX_MODULES 254 modules, #1286) and ARMS / ARMS_NOW carry all ENG_MSET_WORDS (8) words */
+#define M1_FEATURES5 29u                                      /* INFO byte 25, the feature bits from 1.26 on (bytes 20..24 are the font area's, #1203): bit 0 = a top-level card with a Steps track inside is that track's device (the device extras name the card itself: SEQ, the environment, P-locks and SEL treat it as the track, pages_ui.c pg_track_mod; #1202 K2, D-1062); bit 1 = every saved patch keeps its patterns 2..64 in the store (m1_pat_info sets it, #1202); bit 2 = SLOT_GET and PAT's kept flag (flags bit 1; #1202 P2); bit 3 = format 66's FX rack and the FX drawer presets (FXD1, #1214); bit 4 (feature bit 36) = format 67 (up to ENG_MAX_MODULES 254 modules, #1286; patterns of up to TRACK_NOTES_MAX 256 words, ENG_COUNT_ESC, and a store payload of version 2; pattern 1 linked to the store when the patch cannot hold it, #1292), TRACK / TRACK_NOW in frames of M1_TRACK_WORDS, and ARMS / ARMS_NOW carry all ENG_MSET_WORDS (8) words */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_INFO_EDITOR_IGNORE 8u                             /* INFO byte 3 (flags) bit 3: GLO > SYSTEM > EDITOR is at IGNORE, the
                                                               * editor leaves this FM-1 alone (with feature bit 19, #702) */
@@ -467,32 +470,30 @@ static void m1_arms_now(eng_mset_t mask)
 /* the long frames to the host, one at a time: m1_send queues a whole frame before it returns (usb.c ota_wire_send), so
  * every frame longer than m1_reply's 48 bytes is built in m1_tx, and the payloads the unasked LOCKS_NOW and SONG_NOW
  * gather go in m1_txp (both in the pool, not the RAM region) */
-#define M1_TX_TRACK (8u + (8u * (3u + 4u * TRACK_NOTES_MAX) + 6u) / 7u)   /* TRACK: module, n, n u32, the pattern */
+#define M1_TRACK_WORDS ENG_NOTES_1_26    /* the most words a TRACK / TRACK_NOW frame carries (#1292): a pattern of more comes in
+                                          * frames of at most this many, each but the last ending before a note, the ones
+                                          * after the first with bit 7 of the pattern byte (these words go after the
+                                          * frame before's) */
+#define M1_TX_TRACK (8u + (8u * (3u + 4u * M1_TRACK_WORDS) + 6u) / 7u)   /* TRACK: module, n, n u32, the pattern */
 #define M1_TX_LONG (8u + (8u * (21u + 4u * M1_PVALS) + 6u) / 7u)          /* PRESET_DATA, the longest payload */
 static uint8_t m1_tx[M1_TX_LONG > M1_TX_TRACK ? M1_TX_LONG : M1_TX_TRACK] ENG_POOL;
 #define M1_TXP_LOCKS (3u + 7u * ENG_PAT_LOCKS)
 #define M1_TXP_SONG (2u + 2u * ENG_SONG_LEN)
 static uint8_t m1_txp[M1_TXP_LOCKS > M1_TXP_SONG ? M1_TXP_LOCKS : M1_TXP_SONG] ENG_POOL;
 
-/* unasked: a track's notes after an edit on the panel (the editor follows): module, n, n u32 LE */
-static void m1_track_pattern_now(uint32_t mod, uint32_t pattern)
+/* one TRACK_NOW frame: module, n, the n words w, the pattern byte b */
+static void m1_track_frame(uint32_t mod, const uint32_t *w, uint32_t n, uint32_t b)
 {
     uint8_t *f = m1_tx;
-    const uint32_t *w;
-    int n = eng_pattern_notes(mod, pattern, &w);
-    uint32_t o = 0, k, len, acc = 0, nb = 0;
-    if (n < 0)
-        return;
+    uint32_t o = 0, k, len = 3u + 4u * n, acc = 0, nb = 0;
     f[o++] = 0xF0;
     f[o++] = 0x7D;
     f[o++] = 0x4D;
     f[o++] = 0x31;
     f[o++] = R_TRACK;
-    len = 3u + 4u * (uint32_t)n;
-    for (k = 0; k < len; k++) {   /* m1_pack7 of the payload, a byte at a time from the engine's words (no 514 B copy); last
-                                   * the pattern they are (format 48: the one the track plays) */
-        uint32_t b = k == 0u ? mod & 255u : k == 1u ? (uint32_t)n & 255u : k == len - 1u ? pattern & 255u : (w[(k - 2u) >> 2] >> (8u * ((k - 2u) & 3u))) & 255u;
-        acc |= b << nb;
+    for (k = 0; k < len; k++) {   /* m1_pack7 of the payload, a byte at a time from the engine's words (no 514 B copy) */
+        uint32_t x = k == 0u ? mod & 255u : k == 1u ? n : k == len - 1u ? b & 255u : (w[(k - 2u) >> 2] >> (8u * ((k - 2u) & 3u))) & 255u;
+        acc |= x << nb;
         nb += 8u;
         while (nb >= 7u) {
             f[o++] = (uint8_t)(acc & 0x7Fu);
@@ -504,6 +505,24 @@ static void m1_track_pattern_now(uint32_t mod, uint32_t pattern)
         f[o++] = (uint8_t)(acc & 0x7Fu);
     f[o++] = 0xF7;
     m1_send(f, o);
+}
+/* unasked: a track's notes after an edit on the panel (the editor follows): module, n, n u32 LE, last the pattern they
+ * are (format 48: the one the track plays), in frames of M1_TRACK_WORDS words at most */
+static void m1_track_pattern_now(uint32_t mod, uint32_t pattern)
+{
+    const uint32_t *w;
+    int n = eng_pattern_notes(mod, pattern, &w);
+    uint32_t from = 0, m;
+    if (n < 0)
+        return;
+    do {
+        m = (uint32_t)n - from;
+        if (m > M1_TRACK_WORDS)
+            for (m = M1_TRACK_WORDS; m && !NW_VEL(w[from + m]); m--)
+                ;
+        m1_track_frame(mod, w + from, m, pattern | (from ? 0x80u : 0u));
+        from += m;
+    } while (from < (uint32_t)n);
 }
 static void m1_track_now(uint32_t mod) { m1_track_pattern_now(mod, (uint32_t)eng_pattern_playing(mod)); }
 
@@ -681,118 +700,122 @@ static int m1_preset_name(uint32_t dev, const char *name)
     return 0;
 }
 
-/* a track's notes as the engine has them into the binary (SAVE keeps them): its entry in the notes section replaced,
- * added in module order or removed; the section created or dropped; what follows (device pages, button kinds, macro
- * ranges) moves. A patch that would outgrow M1_PATCH_MAX keeps its old entry, and the engine the track's notes the binary
- * still has: the edit is refused and the bar says so (#1199). */
+/* track mod's pattern 1 back to what the running binary holds (an edit it had no room for): the notes section's entry,
+ * or the stored entry's when pattern 1 is a clean link the binary leaves out (#1292, patlink.c m1_pat_back) */
+static void m1_track_back(uint32_t mod)
+{
+    uint32_t keep[TRACK_NOTES_MAX], k = 0, c = 0, b = 1, at = (m1_cur[6] & 16u) ? m1_notes_at() : 0u, cnt = at ? m1_cur[at++] : 0u;
+    if (!at && m1_pat_back(mod))
+        return;
+    for (; cnt; cnt--, at += 1u + b + 4u * c)
+        if ((c = eng_count_at(m1_cur, at + 1u, &b)) && m1_cur[at] == mod)
+            break;
+    for (; cnt && k < c && k < TRACK_NOTES_MAX; k++)
+        keep[k] = (uint32_t)m1_cur[at + 1u + b + 4u * k] | (uint32_t)m1_cur[at + 2u + b + 4u * k] << 8
+                  | (uint32_t)m1_cur[at + 3u + b + 4u * k] << 16 | (uint32_t)m1_cur[at + 4u + b + 4u * k] << 24;
+    (void)eng_pattern_set_notes(mod, 0, keep, k);
+}
+/* a track's notes as the engine has them into the binary (SAVE keeps them): the notes section written again from the
+ * engine (m1_steps_sec: pattern 1 left out while it is a clean link, #1292); what follows (device pages, button kinds,
+ * macro ranges) moves. A patch that cannot hold it, even with its patterns in the store, keeps its old section, and the
+ * engine the track's notes the binary still has: the edit is refused and the bar says so (#1199). */
 static void m1_patch_patterns(void);
+static int m1_steps_sec(uint32_t s);
 static void m1_patch_track(uint32_t mod)
 {
     const uint32_t *w;
-    int n = eng_pattern_notes(mod, 0, &w), i;
-    uint32_t sec, at, cnt, old = 0, len, has = m1_cur[6] & 16u;
-    if (n < 0 || !m1_track_at(mod) || !(sec = m1_notes_at()) || (has && !m1_sec_at(ENG_SEC_PATTERNS)))
+    if (eng_pattern_notes(mod, 0, &w) < 0 || !m1_track_at(mod) || !m1_notes_at() || ((m1_cur[6] & 16u) && !m1_sec_at(ENG_SEC_PATTERNS)))
         return;
-    m1_patch_patterns();                             /* (the pattern edited may be any: both sections follow the engine) */
-    cnt = has ? m1_cur[sec] : 0u;
-    at = has ? sec + 1u : sec;
-    for (i = 0; i < (int)cnt; i++) {                 /* the entry, or where it goes */
-        if (m1_cur[at] >= mod) {
-            if (m1_cur[at] == mod)
-                old = 2u + 4u * m1_cur[at + 1u];
-            break;
-        }
-        at += 2u + 4u * m1_cur[at + 1u];
-    }
-    len = n ? 2u + 4u * (uint32_t)n : 0u;
-    if (!has && !n)
+    m1_patch_patterns();                             /* (the pattern edited may be any: every section follows the engine) */
+    if (m1_steps_sec(ENG_SEC_NOTES))
         return;
-    if (m1_cur_len + (has ? 0u : 1u) + len - old > M1_PATCH_MAX) {
-        uint32_t keep[TRACK_NOTES_MAX], k, c = old ? m1_cur[at + 1u] : 0u;
-        for (k = 0; k < c && k < TRACK_NOTES_MAX; k++)
-            keep[k] = (uint32_t)m1_cur[at + 2u + 4u * k] | (uint32_t)m1_cur[at + 3u + 4u * k] << 8
-                      | (uint32_t)m1_cur[at + 4u + 4u * k] << 16 | (uint32_t)m1_cur[at + 5u + 4u * k] << 24;
-        (void)eng_pattern_set_notes(mod, 0, keep, k);
-        m1_track_pattern_now(mod, 0);
-        m1_patch_full();
-        return;
-    }
-    if (!has) {
-        m1_splice(sec, 0, 1u);
-        m1_cur[sec] = 0;
-        m1_cur[6] |= 16u;
-        at = sec + 1u;
-    }
-    m1_splice(at, old, len);
-    if (n) {
-        m1_cur[at] = (uint8_t)mod;
-        m1_cur[at + 1u] = (uint8_t)n;
-        for (i = 0; i < n; i++)
-            m1_put32(at + 2u + 4u * (uint32_t)i, (int32_t)w[i]);
-    }
-    cnt = cnt - (old ? 1u : 0u) + (n ? 1u : 0u);
-    m1_cur[sec] = (uint8_t)cnt;
-    if (!cnt) {                                      /* the section is empty: it goes */
-        m1_splice(sec, 1u, 0);
-        m1_cur[6] &= (uint8_t)~16u;
-    }
-    m1_edited = 1;
+    m1_track_back(mod);
+    m1_track_pattern_now(mod, 0);
+    m1_patch_full();
 }
 
 /* section s with omit: where it is (*sec), its bytes now (*old) and as the engine has it (*n, negative: too big for a
  * record); 0, or -1 when the binary is older than the section's format (or malformed) */
 static int m1_steps_size(uint32_t s, uint64_t omit, uint32_t *sec, uint32_t *old, int *n)
 {
-    uint32_t pat = s == ENG_SEC_PATTERNS, flag = pat ? ENG_FLAG_PATTERNS : ENG_FLAG_LOCKS;
+    uint32_t has = s == ENG_SEC_NOTES ? m1_cur[6] & 16u : m1_cur[7] & (s == ENG_SEC_PATTERNS ? ENG_FLAG_PATTERNS : ENG_FLAG_LOCKS);
     *sec = m1_sec_at(s);
     *old = 0;
-    if (!*sec || m1_cur[1] < (pat ? 48u : 49u))
+    if (!*sec || m1_cur[1] < (s == ENG_SEC_NOTES ? 0u : s == ENG_SEC_PATTERNS ? 48u : 49u))
         return -1;
-    if ((m1_cur[7] & flag) && !(*old = m1_sec_at(s + 1u)))
+    if (has && !(*old = m1_sec_at(s + 1u)))
         return -1;
     *old = *old ? *old - *sec : 0u;
     eng_patterns_omit(omit);
-    *n = pat ? eng_patterns_record(0, 0) : eng_locks_record(0, 0);
+    *n = s == ENG_SEC_NOTES ? eng_notes_record(0, 0) : s == ENG_SEC_PATTERNS ? eng_patterns_record(0, 0) : eng_locks_record(0, 0);
     return 0;
 }
-/* a Steps section as the engine has it into the binary (SAVE keeps it): s ENG_SEC_PATTERNS the patterns and songs (format
- * 48), ENG_SEC_LOCKS the P-locks (format 49, #524), the patterns of bit mask omit left out of both (the clean linked ones,
- * m1_pat_clean: their content is the store's, #901). The section replaced, made or dropped, what follows moves. 1 done;
- * 0 when the binary is older than the section's format (one too big to upgrade); -1 when it would outgrow M1_PATCH_MAX:
- * it keeps its old section */
+/* the running binary is ENG_WIDE or eng_widen can make it so (from ENG_SLIM, without a master FX bus before format 66) */
+static int m1_can_wide(void)
+{
+    return m1_cur[1] >= ENG_WIDE || (m1_cur[1] >= ENG_SLIM && (m1_cur[1] >= 66u || !(m1_cur[7] & (ENG_FLAG_FX_BUS >> 8))));
+}
+/* the binary must become ENG_WIDE before a Steps section with the omit m1_steps_size set goes in (a pattern of more than
+ * ENG_NOTES_1_26 words, #1292): 1 (one byte more: eng_widen), 0 not, -1 its format cannot (m1_can_wide) */
+static int m1_wide_due(uint32_t s)
+{
+    if (s == ENG_SEC_LOCKS || m1_cur[1] >= ENG_WIDE || !eng_notes_wide())
+        return 0;
+    return m1_can_wide() ? 1 : -1;
+}
+/* a Steps section as the engine has it into the binary (SAVE keeps it): s ENG_SEC_NOTES the notes (pattern 1 of each
+ * track), ENG_SEC_PATTERNS the patterns and songs (format 48), ENG_SEC_LOCKS the P-locks (format 49, #524), the patterns
+ * of bit mask omit left out (the clean linked ones, m1_pat_clean: their content is the store's, #901; bit 0, pattern 1,
+ * #1292). The section replaced, made or dropped, what follows moves; a pattern past ENG_NOTES_1_26 words makes the binary
+ * ENG_WIDE first (eng_widen). 1 done; 0 when the binary is older than the section's format (one too big to upgrade); -1
+ * when it would outgrow M1_PATCH_MAX or cannot be ENG_WIDE: it keeps its old section */
 static int m1_steps_write(uint32_t s, uint64_t omit)
 {
-    uint32_t pat = s == ENG_SEC_PATTERNS, flag = pat ? ENG_FLAG_PATTERNS : ENG_FLAG_LOCKS, sec, old;
-    int n;
+    uint32_t sec, old;
+    int n, up;
     if (m1_steps_size(s, omit, &sec, &old, &n))
         return 0;
-    if (n < 0 || m1_cur_len - old + (uint32_t)n > M1_PATCH_MAX)
+    up = n > 0 ? m1_wide_due(s) : 0;
+    if (n < 0 || up < 0 || m1_cur_len - old + (uint32_t)n + (uint32_t)up > M1_PATCH_MAX)
         return -1;
     if (!n && !old)
         return 1;
+    if (up && !eng_widen(m1_cur, &m1_cur_len, M1_PATCH_MAX))
+        sec++;                                       /* (the side section went in before it, after the cables) */
     m1_splice(sec, old, (uint32_t)n);
-    (void)(pat ? eng_patterns_record(m1_cur + sec, (uint32_t)n) : eng_locks_record(m1_cur + sec, (uint32_t)n));
-    m1_cur[7] = (uint8_t)(n ? m1_cur[7] | flag : m1_cur[7] & ~flag);
+    if (s == ENG_SEC_NOTES) {
+        (void)eng_notes_record(m1_cur + sec, (uint32_t)n);
+        m1_cur[6] = (uint8_t)(n ? m1_cur[6] | 16u : m1_cur[6] & ~16u);
+    } else {
+        uint32_t flag = s == ENG_SEC_PATTERNS ? ENG_FLAG_PATTERNS : ENG_FLAG_LOCKS;
+        (void)(s == ENG_SEC_PATTERNS ? eng_patterns_record(m1_cur + sec, (uint32_t)n) : eng_locks_record(m1_cur + sec, (uint32_t)n));
+        m1_cur[7] = (uint8_t)(n ? m1_cur[7] | flag : m1_cur[7] & ~flag);
+    }
     m1_edited = 1;
     return 1;
 }
-/* what section s (m1_steps_write) with omit adds to the binary, in bytes (negative: it shrinks); 0 for a section the
- * binary's format has not got, M1_PATCH_MAX for one too big for a record */
+/* what section s (m1_steps_write) with omit adds to the binary, in bytes (negative: it shrinks; eng_widen's byte
+ * counted); 0 for a section the binary's format has not got, M1_PATCH_MAX for one too big for a record or one the
+ * binary's format cannot take */
 static int32_t m1_steps_cost(uint32_t s, uint64_t omit)
 {
     uint32_t sec, old;
-    int n;
+    int n, up;
     if (m1_steps_size(s, omit, &sec, &old, &n))
         return 0;
-    return n < 0 ? (int32_t)M1_PATCH_MAX : n - (int32_t)old;
+    up = n > 0 ? m1_wide_due(s) : 0;
+    return n < 0 || up < 0 ? (int32_t)M1_PATCH_MAX : n + up - (int32_t)old;
 }
 /* the section s (m1_steps_write) without the clean linked patterns. One the binary cannot hold sends the patterns 2..64
- * it holds to the store first, linked (#1199, m1_pat_spill): they do not count against the patch. 1 done; 0 not (the
- * binary keeps its old section; a caller of the locks undoes the engine's edit: the two never differ) */
+ * it holds to the store first, linked (#1199, m1_pat_spill): they do not count against the patch; one it still cannot
+ * hold sends pattern 1 too (#1292). 1 done; 0 not (the binary keeps its old section; a caller of the locks undoes the
+ * engine's edit: the two never differ) */
 static int m1_steps_sec(uint32_t s)
 {
     int rc = m1_steps_write(s, m1_pat_clean());
-    if (rc < 0 && m1_pat_spill())
+    if (rc < 0 && m1_pat_spill(1u))
+        rc = m1_steps_write(s, m1_pat_clean());
+    if (rc < 0 && m1_pat_spill(0))
         rc = m1_steps_write(s, m1_pat_clean());
     return rc > 0;
 }
@@ -825,10 +848,10 @@ static uint32_t m1_track_npar(uint32_t mod)
  * ones after them at their defaults again; -1 none */
 static int m1_track_fit(uint32_t mod, int npar)
 {
-    const uint32_t *w;
+    const uint32_t *w, *now;
     int32_t v = eng_get_param(mod, STEPS_P_LEN);
     int n = eng_pattern_notes(mod, 0, &w), i;
-    uint32_t at, sec, cnt, k;
+    uint32_t at, sec, cnt, k, b = 1, c = 0;
     m1_patch_track(mod);
     m1_patch_param(mod, STEPS_P_LEN, v);
     at = m1_record(mod);
@@ -842,14 +865,18 @@ static int m1_track_fit(uint32_t mod, int npar)
     at += eng_rec_head(m1_cur[1]) + 4u * STEPS_P_LEN;
     if (((uint32_t)m1_cur[at] | (uint32_t)m1_cur[at + 1u] << 8 | (uint32_t)m1_cur[at + 2u] << 16 | (uint32_t)m1_cur[at + 3u] << 24) != (uint32_t)v)
         return 0;
+    if (!(m1_cur[6] & 16u) && (m1_pat_clean() & 1u))  /* (pattern 1 a clean link, #1292: the store holds the engine's words,
+                                                      * unless the edit went back) */
+        return eng_pattern_notes(mod, 0, &now) == n;
     sec = (m1_cur[6] & 16u) ? m1_notes_at() : 0u;    /* (the notes section's entry for it holds the engine's words) */
     cnt = sec ? m1_cur[sec++] : 0u;
-    for (; cnt && m1_cur[sec] != mod; cnt--)
-        sec += 2u + 4u * m1_cur[sec + 1u];
+    for (; cnt && ((c = eng_count_at(m1_cur, sec + 1u, &b)), m1_cur[sec] != mod); cnt--)
+        sec += 1u + b + 4u * c;
     if (!cnt)
         return !n;
-    if (m1_cur[sec + 1u] != (uint32_t)n)
+    if (c != (uint32_t)n)
         return 0;
+    sec += b - 1u;                                   /* (an escaped count's second byte) */
     for (i = 0; i < n; i++)
         if (((uint32_t)m1_cur[sec + 2u + 4u * (uint32_t)i] | (uint32_t)m1_cur[sec + 3u + 4u * (uint32_t)i] << 8
              | (uint32_t)m1_cur[sec + 4u + 4u * (uint32_t)i] << 16 | (uint32_t)m1_cur[sec + 5u + 4u * (uint32_t)i] << 24) != w[i])
@@ -1124,7 +1151,7 @@ static void m1_pads(const uint8_t *d, uint32_t len)
 }
 
 /* f: the bytes between F0 and F7. Returns 1 if the frame was ours (and is consumed). */
-#define M1_RX_A (2u + 4u * TRACK_NOTES_MAX + 8u)                /* TRACK */
+#define M1_RX_A (2u + 4u * M1_TRACK_WORDS + 8u)                 /* TRACK */
 #define M1_RX_B (5u + M1_PNAME + 4u * M1_PVALS)                 /* PRESET_PUT (PRESET_GET builds its reply, as long, in d) */
 #define M1_RX_MAX (M1_RX_A > M1_RX_B ? M1_RX_A : M1_RX_B)
 static int m1_handle(const uint8_t *f, uint32_t n)
@@ -1359,13 +1386,19 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         m1_pads(d, len);
         break;
     case C_TRACK:                                            /* module u8, n u8, n u32 LE notes (track.ts noteWord), [pattern u8
-                                                              * (format 48; without it: the one the track plays)] */
+                                                              * (format 48; without it: the one the track plays); bit 7 (#1292):
+                                                              * the words go after the pattern's, M1_TRACK_WORDS] */
         if (len >= 2u && len >= 2u + 4u * d[1]) {
-            uint32_t w[TRACK_NOTES_MAX], i, n = d[1] < TRACK_NOTES_MAX ? d[1] : TRACK_NOTES_MAX;
-            int pat = len >= 3u + 4u * d[1] ? d[2u + 4u * d[1]] : eng_pattern_playing(d[0]);
-            for (i = 0; i < n; i++)
-                w[i] = (uint32_t)d[2 + 4 * i] | (uint32_t)d[3 + 4 * i] << 8 | (uint32_t)d[4 + 4 * i] << 16 | (uint32_t)d[5 + 4 * i] << 24;
-            if (pat >= 0 && eng_pattern_set_notes(d[0], (uint32_t)pat, w, n))
+            uint32_t w[TRACK_NOTES_MAX], i, k = 0, n = d[1] < M1_TRACK_WORDS ? d[1] : M1_TRACK_WORDS;
+            uint32_t b = len >= 3u + 4u * d[1] ? d[2u + 4u * d[1]] : 0u;
+            int pat = len >= 3u + 4u * d[1] ? (int)(b & 0x7Fu) : eng_pattern_playing(d[0]), c;
+            const uint32_t *o;
+            if ((b & 0x80u) && pat >= 0 && (c = eng_pattern_notes(d[0], (uint32_t)pat, &o)) > 0)
+                for (; k < (uint32_t)c && k < TRACK_NOTES_MAX; k++)
+                    w[k] = o[k];
+            for (i = 0; i < n && k < TRACK_NOTES_MAX; i++)
+                w[k++] = (uint32_t)d[2 + 4 * i] | (uint32_t)d[3 + 4 * i] << 8 | (uint32_t)d[4 + 4 * i] << 16 | (uint32_t)d[5 + 4 * i] << 24;
+            if (pat >= 0 && eng_pattern_set_notes(d[0], (uint32_t)pat, w, k))
                 m1_patch_track(d[0]);
             m1_ui_changed();
         }
