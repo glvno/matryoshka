@@ -368,7 +368,8 @@ describe('drawers', () => {
     const e = insertEffect(p, d, { type: 'crush' });
     const copies = copiesOf(p);
     expect(copies.get(inst.modules[0])).toBeGreaterThan(1);
-    for (const id of allModules(p, e)) expect(copies.get(id) ?? 1).toBe(1);
+    // (once: one copy, or a stereo module's two, #1141; never one per voice)
+    for (const id of allModules(p, e)) expect(copies.get(id) ?? 1).toBe(p.modules.find((m) => m.id === id)!.stereo ? 2 : 1);
   });
 });
 
