@@ -55,7 +55,7 @@ export type ChainMode = 'stereo' | 'pair' | 'wet';
 /** a chain channel: 0 = left, 1 = right */
 export type Channel = 0 | 1;
 /** the Library's headings for the modes */
-export const CHAIN_MODE_LABELS: Record<ChainMode, string> = { stereo: 'Stereo', pair: 'In line, as an L/R pair', wet: 'Wet, added to both sides' };
+export const CHAIN_MODE_LABELS: Record<ChainMode, string> = { stereo: 'Stereo', pair: 'In line, in stereo', wet: 'Wet, added to both sides' };
 /**
  * How a new drawer Reverb is made (C7b, owner 2026-11-25): 'stereo-dry' is one Reverb, the chain's L into its `in` and R
  * into its `r`, its own mix crossfading as on the canvas (dry·(1−mix) + wet·mix); 'helpers' is the 1.26 form, six modules,

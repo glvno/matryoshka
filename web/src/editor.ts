@@ -89,7 +89,7 @@ import { engineOf } from './library-presets';
 import { drawerScope } from './fx-preset';
 import { effectAmount, planTab, TAB_FOOT, TAB_HEAD, TAB_W } from './fx-tab';
 import type { FxMeterSpec } from './fx-meter';
-import { chainCableProblem, chainJackProblem, drawerOutput, drawers, effectKind, effectsOf, insertEffect, moveEffect, outputDrawer, ownerOf, removeEffect, rewire, takeOut } from './fx-drawer';
+import { chainCableProblem, chainJackProblem, classicMix, drawerOutput, drawers, effectKind, effectsOf, insertEffect, moveEffect, outputDrawer, ownerOf, removeEffect, rewire, takeOut } from './fx-drawer';
 import { PRESET_VALUES_MAX } from './protocol';
 import { armable, armDrawing, armedWith, deviceOfModule, keepArmed, keysTargets, noKeysReach, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
@@ -106,6 +106,7 @@ import { flipPlan } from './ab';
 import { CANDIDATE_LIMIT, sameVersion, Snapshots, tweakBody, type CandidateSet, type Deleted, type Snapshot } from './snapshots';
 import { isGlobalTempo, patchTempo, tempo } from './tempo';
 import { rowOrder } from './structure';
+import { PAIR_LEFT, runsStereo, setStereo, stereoModule, stereoProblem } from './stereo';
 import type { Card } from './quick-patch';
 import { EXCLUDED_TYPES,
   addChild,
@@ -1398,6 +1399,7 @@ export class Editor {
     tools.className = 'tools';
     if (open) tools.append(this.outButton(open, () => this.takeOutModule(open, m)));
     if (!open && def.type !== 'steps' && armable(this.patch, `m${m.id}`)) tools.append(this.armButton(`m${m.id}`, this.nameOf(m)));
+    if (def.stereo) tools.append(this.stereoButton(m, def));
     if (def.type !== 'fm1' && def.type !== 'output' && !EDITOR_ONLY.has(def.type)) tools.append(this.bypassButton(m, def));
     const menu = (at: MenuAt): void => this.contextMenu(m, def, at);
     tools.append(this.moreButton(menu));
@@ -2246,10 +2248,13 @@ export class Editor {
         return kind ? [{ id: c.from.module, port: c.from.port, kind, label: `${this.nameOf(from)} ${longName(from.type, c.from.port)}`, range: () => outputRange(from.type, c.from.port, from.params) }] : [];
       }));
     this.screens.push({ m, el: screen, chans });
-    // per voice (#54): the Voices button only where something cabled in runs once per voice
+    // per voice (#54): the Voices button only where something cabled in runs once per voice; a stereo module's two copies
+    // (#1141) are its L and R: the button shows them when every such source is stereo
     const copies = copiesOf(this.patch);
-    const fed = this.patch.cables.filter((c) => c.to.module === m.id).some((c) => (copies.get(c.from.module) ?? 1) > 1);
-    row.append(scopeTools(m, (name, v) => this.setParam(m.id, name, v), fed));
+    const srcs = this.patch.cables.filter((c) => c.to.module === m.id).map((c) => c.from.module);
+    const stereo = srcs.filter((id) => stereoModule(this.patch, id));
+    const poly = srcs.filter((id) => (copies.get(id) ?? 1) > 1 && !stereo.includes(id));
+    row.append(scopeTools(m, (name, v) => this.setParam(m.id, name, v), poly.length ? true : stereo.length ? 'sides' : false));
     return row;
   }
 
@@ -2410,6 +2415,21 @@ export class Editor {
     const off = this.offShown(m);
     b.classList.toggle('on', !off);
     b.setAttribute('aria-pressed', String(!off));
+    return b;
+  }
+
+  /** a card's ST switch (#1141, C3): stereo mode on / off, a structural edit (one undo step; the patch is sent again, as a
+   *  Delay's length). Inside a poly assembly it is greyed and a press says why (C5) */
+  private stereoButton(m: ModuleInst, def: ModuleDef): HTMLButtonElement {
+    const why = stereoProblem(this.patch, m);
+    const on = runsStereo(this.patch, m);
+    const b = this.button('ST', why ?? `${def.label} in stereo: two copies, left and right, with one set of knobs (twice the CPU)`,
+      () => this.change(() => setStereo(this.patch, m, !on)), 'st');
+    b.setAttribute('aria-pressed', String(on));
+    if (why) {
+      b.classList.add('refused');
+      b.setAttribute('aria-disabled', 'true');
+    }
     return b;
   }
 
@@ -4490,6 +4510,8 @@ export class Editor {
     dot.dataset.mod = String(m.id);
     dot.dataset.port = p.name;
     dot.dataset.dir = dir;
+    // a stereo module's jacks carry both sides (#1141): drawn as double rings
+    if (runsStereo(this.patch, m)) dot.classList.add('stereo');
     dot.title = `${longName(m.type, p.name)} (${p.kind})`;
     dot.addEventListener('pointerdown', (e) => this.beginDrag(e, dot));
     this.ports.set(this.key(m.id, p.name, dir), dot);
@@ -5558,6 +5580,14 @@ export class Editor {
       pw.setAttribute('aria-pressed', String(!this.asmOffShown(a)));
       tools.append(pw, this.moreButton(menu));
       title.prepend(inDrawer ? this.fxTag() : this.tag(null, a));
+      // a 1.26 drawer Reverb keeps its own law (C7b): said on its card, beside a new one that crossfades
+      if (inDrawer && classicMix(this.patch, a)) {
+        const tag = document.createElement('span');
+        tag.className = 'fx-classic';
+        tag.textContent = 'classic mix';
+        tag.title = 'A drawer Reverb from before 1.27: the dry stays at full level and Mix adds the wet. A new drawer Reverb crossfades dry and wet, as on the canvas.';
+        title.append(tag);
+      }
       const lead: HTMLElement[] = [];
       if (inDrawer) {
         const grip = document.createElement('span');
@@ -8363,11 +8393,27 @@ export class Editor {
       this.patch.cables.some((c) => c.from.module === Number(dot.dataset.mod) && c.from.port === dot.dataset.port && sameEnd(c.to, to)));
   }
 
+  /** the cables' L / R / L+R marks (#1141), made again with the cables */
+  private cableMarks: SVGTextElement[] = [];
+
+  /** what a cable's mark says (#1141): its side on a side cable; L+R on a stereo cable into a mono jack, which averages the
+   *  two (C2), except the left jack of an input pair whose right jack is free (the sides go to the two jacks) */
+  private cableMark(c: Cable): string | null {
+    if (c.side) return c.side.toUpperCase();
+    if (!stereoModule(this.patch, c.from.module) || stereoModule(this.patch, c.to.module)) return null;
+    const type = this.patch.modules.find((m) => m.id === c.to.module)?.type ?? '';
+    const paired = PAIR_LEFT[type] === c.to.port && DEFS[type].inputs.some((q) => q.name === 'r') &&
+      !this.patch.cables.some((x) => x.to.module === c.to.module && x.to.port === 'r');
+    return paired ? null : 'L+R';
+  }
+
   /** Outside cables end at side jacks; internal branches are editable input-to-parameter routes. */
   drawCables(): void {
     this.positionSideCables();
     for (const { path } of this.cablePaths) path.remove();
     this.cablePaths = [];
+    for (const t of this.cableMarks) t.remove();
+    this.cableMarks = [];
     this.dockCables?.replaceChildren();
     this.overPaths.clear();
     // a removed path gets no pointerleave: the hovered cable's glow would stay behind (#150)
@@ -8395,7 +8441,9 @@ export class Editor {
       // Alt-click on a cable: listen to its source (#939) instead of disconnecting it
       const listen = (e: MouseEvent): boolean => !!cable && e.altKey && (this.toggleListen(cable.from), true);
       const path = document.createElementNS(SVGNS, 'path');
-      path.setAttribute('class', `cable ${kind}${internal ? ' alias' : ''}${remove ? '' : ' fixed'}`);
+      // (#1141) a cable from a stereo module carries both sides: a double line
+      const stereo = !!cable && !cable.side && stereoModule(this.patch, cable.from.module);
+      path.setAttribute('class', `cable ${kind}${internal ? ' alias' : ''}${remove ? '' : ' fixed'}${stereo ? ' stereo' : ''}`);
       path.setAttribute('aria-label', title);
       if (remove) {
         path.setAttribute('role', 'button');
@@ -8426,10 +8474,25 @@ export class Editor {
       }
       layer.prepend(path);
       this.cablePaths.push({ path, from, to, origin, cable });
-      // a gate's rail and a keys ribbon (#156): their inner lines are extra paths over the cable, in the same place
-      // (positionCables sets them like the cable; they take no pointer, carry no `cable`, so the ribbon routing and the
-      // glow see only the cable). `inner` makes them for one copy of the cable, after it.
-      const role = ['role-gate', 'role-keys'].find((r) => path.classList.contains(r));
+      // its mark along the line (#1141): L / R on a side cable, L+R by the jack where a mono input averages the sides
+      const mark = cable && this.cableMark(cable);
+      if (mark) {
+        path.id = `cable-path-${this.cablePaths.length}`;
+        const text = document.createElementNS(SVGNS, 'text');
+        text.setAttribute('class', 'cable-mark');
+        const along = document.createElementNS(SVGNS, 'textPath');
+        along.setAttribute('href', `#${path.id}`);
+        along.setAttribute('startOffset', mark === 'L+R' ? '85%' : '50%');
+        along.setAttribute('text-anchor', 'middle');
+        along.textContent = mark;
+        text.append(along);
+        layer.append(text);
+        this.cableMarks.push(text);
+      }
+      // a gate's rail, a keys ribbon (#156) and a stereo cable's two lines: their inner lines are extra paths over the
+      // cable, in the same place (positionCables sets them like the cable; they take no pointer, carry no `cable`, so the
+      // ribbon routing and the glow see only the cable). `inner` makes them for one copy of the cable, after it.
+      const role = ['role-gate', 'role-keys', 'stereo'].find((r) => path.classList.contains(r));
       const inner = (after: SVGPathElement, at: HTMLElement): SVGPathElement[] => {
         if (!role) return [];
         const out = (role === 'role-keys' ? ['cable-core', 'cable-wire'] : ['cable-core']).map((cls) => {

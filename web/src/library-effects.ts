@@ -22,8 +22,8 @@ export type EffectSource = EffectEntry['source'];
 /** the Library's groups, in display order: how an effect sits in a drawer's stereo chain (fx-drawer.ts ChainMode) */
 export const MODES: readonly { mode: ChainMode; title: string; tag: string; tip: string }[] = [
   { mode: 'stereo', title: CHAIN_MODE_LABELS.stereo, tag: 'stereo', tip: 'Makes a left and a right side of its own.' },
-  { mode: 'pair', title: CHAIN_MODE_LABELS.pair, tag: 'L/R pair', tip: 'In a drawer it runs twice, once for each side, with one set of knobs: twice the CPU of one.' },
-  { mode: 'wet', title: CHAIN_MODE_LABELS.wet, tag: 'wet', tip: 'In a drawer it hears a mix of both sides and adds its sound to each; the dry sound stays stereo.' },
+  { mode: 'pair', title: CHAIN_MODE_LABELS.pair, tag: 'in stereo', tip: 'In a drawer it runs in stereo: a copy for each side with one set of knobs, twice the CPU of one.' },
+  { mode: 'wet', title: CHAIN_MODE_LABELS.wet, tag: 'wet', tip: 'In a drawer it hears a mix of both sides and adds its sound to each; the dry sound stays stereo. A Reverb crossfades dry and wet, as on the canvas.' },
 ];
 export const modeOf = (mode: ChainMode): (typeof MODES)[number] => MODES.find((m) => m.mode === mode)!;
 

@@ -6,6 +6,10 @@ import { DEFS } from './modules';
 import type { ModuleInst, Patch } from './patch';
 import { polyOfModule } from './poly';
 
+/** the left jack of a type's input pair (the right one is `r`): a stereo cable into it while `r` is free gives L to it and
+ *  R to `r`; into any other mono jack it averages the sides (C2) */
+export const PAIR_LEFT: Record<string, string> = { output: 'l', delay: 'in', reverb: 'in', chorus: 'in' };
+
 /** why `m` cannot run in stereo, or null; undefined when its type has no stereo mode at all (no ST button) */
 export function stereoProblem(p: Patch, m: ModuleInst): string | null | undefined {
   if (!DEFS[m.type]?.stereo) return undefined;

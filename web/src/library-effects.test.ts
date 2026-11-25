@@ -26,7 +26,7 @@ describe('the Library’s effects', () => {
     expect(groups.map((g) => g.mode)).toEqual(MODES.map((m) => m.mode).filter((m) => EFFECT_CATALOG.some((e) => e.mode === m)));
     expect(groups.flatMap((g) => g.entries)).toHaveLength(EFFECT_CATALOG.length);
     for (const g of groups) expect(g.entries.every((e) => e.mode === g.mode)).toBe(true);
-    expect(groups.find((g) => g.mode === 'pair')!.title).toBe('In line, as an L/R pair');
+    expect(groups.find((g) => g.mode === 'pair')!.title).toBe('In line, in stereo');
   });
 
   it('finds the effect a module type or a factory assembly is, and none for a modulator or an instrument', () => {
