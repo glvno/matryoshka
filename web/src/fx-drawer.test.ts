@@ -46,7 +46,7 @@ function synth(stereo = false): { p: Patch; inst: AssemblyInst; out: number } {
 const cable = (p: Patch, from: Endpoint, to: Endpoint): boolean => p.cables.some((c) => sameEnd(c.from, from) && sameEnd(c.to, to));
 
 /** the rewire invariant of contracts §2 for an instrument drawer whose sound went to the Output, or the Output drawer; one
- *  source set for both sides leaves an effect's `r` input free (the left jack plays both, the jack-pair rule) */
+ *  mono source set for both sides leaves the `r` of a jack pair free (an effect's, the Output's: the left jack plays both) */
 function expectChain(p: Patch, d: AssemblyInst, out: number): void {
   const owner = ownerOf(p, d);
   const fx = effectsOf(p, d);
@@ -60,11 +60,11 @@ function expectChain(p: Patch, d: AssemblyInst, out: number): void {
   if (!prevs[1].length) prevs[1] = prevs[0];
   const same = (a: Endpoint[], b: Endpoint[]): boolean => a.length === b.length && a.every((x) => b.some((y) => sameEnd(x, y)));
   const rightJack = (t: Endpoint): boolean => t.port === 'r' && ['reverb', 'delay', 'chorus'].includes(p.modules.find((m) => m.id === t.module)!.type);
+  // (a stereo source splits into a pair instead: side cables, L into the left jack, R into `r`)
+  const mono = (): boolean => same(prevs[0], prevs[1]) && !prevs[0].every((s) => !!p.modules.find((m) => m.id === s.module)!.stereo);
   expect(prevs[0].length).toBeGreaterThan(0);
   for (const e of fx) {
-    // (a stereo source splits into the pair instead: side cables, L into `in`, R into `r`)
-    const stereoSrc = prevs[0].every((s) => !!p.modules.find((m) => m.id === s.module)!.stereo);
-    const free = same(prevs[0], prevs[1]) && !stereoSrc && chainIns(e, 1).every(rightJack) && !same(chainIns(e, 0), chainIns(e, 1));
+    const free = mono() && chainIns(e, 1).every(rightJack) && !same(chainIns(e, 0), chainIns(e, 1));
     const inside = new Set(allModules(p, e));
     for (const ch of [0, 1] as Channel[]) {
       const into = p.cables.filter((c) => chainIns(e, ch).some((t) => sameEnd(t, c.to)) && !inside.has(c.from.module) && (!c.side || c.side === (ch ? 'r' : 'l')));
@@ -78,7 +78,8 @@ function expectChain(p: Patch, d: AssemblyInst, out: number): void {
     }
     for (const ch of [0, 1] as Channel[]) prevs[ch] = chainOuts(e, ch);
   }
-  for (const ch of [0, 1] as Channel[]) for (const s of prevs[ch]) expect(cable(p, s, { module: out, port: ch ? 'r' : 'l' })).toBe(true);
+  const freeR = mono();
+  for (const ch of [0, 1] as Channel[]) for (const s of prevs[ch]) expect(cable(p, s, { module: out, port: ch ? 'r' : 'l' })).toBe(!(ch && freeR));
 }
 
 /** the modules whose sound reaches the Output's input `port` through cables */
@@ -188,14 +189,15 @@ describe('effect catalog', () => {
 });
 
 describe('drawers', () => {
-  it('an instrument drawer taps the outputs cabled to the Output; an empty one changes nothing and survives every repair', () => {
+  it('an instrument drawer taps the outputs cabled to the Output; an empty one keeps the sound (a mono one frees the Output\'s r) and survives every repair', () => {
     const { p, inst, out } = synth();
-    const before = JSON.stringify(p.cables);
+    const before = p.cables.filter((c) => !(c.to.module === out && c.to.port === 'r'));
     const d = addDrawer(p, inst.id);
     expect(drawerOf(p, inst.id)).toBe(d);
     expect(ownerOf(p, d)).toBe(inst);
     expect(d.drawer!.taps![0]).toEqual(d.drawer!.taps![1]);
-    expect(JSON.stringify(p.cables)).toBe(before);
+    // (the mono instrument's cable into the Output's r went: r plays l, the same sound with one cable fewer)
+    expect(JSON.stringify(p.cables)).toBe(JSON.stringify(before));
     expect(reconcileAll(p, DEFS)).toEqual([]);
     const q = roundTrip(p);
     expect(drawerOf(q, inst.id)?.drawer).toEqual(d.drawer);
@@ -667,6 +669,16 @@ describe('the 909 Kit\'s drawer (#1141)', () => {
     return { p, rv: made[types.indexOf('reverb')], bin: encodePatch(p, true), plain };
   };
   const grouped = (bin: Uint8Array): boolean => ((bin[6] | bin[7] << 8) & FLAG_CABLES3) !== 0;
+
+  it('an empty drawer leaves the Output\'s r free (it plays l): the cables stay grouped, the patch under the 3,840 B cap', () => {
+    const { p, bin, plain } = kit([]);
+    const out = p.modules.find((m) => m.type === 'output')!.id;
+    expect(p.cables.filter((c) => c.to.module === out && c.to.port === 'r')).toEqual([]);
+    expect(grouped(bin)).toBe(true);
+    expect(bin.length).toBeLessThan(3840);
+    expect(bin.length - plain).toBeLessThan(10);   // (5 B: the rack with its one empty drawer)
+    expectChain(p, drawers(p)[0], out);
+  });
 
   it('a Reverb alone hears the mono kit once, in its `in`: its `r` stays free, the cables stay grouped', () => {
     const { p, rv, bin, plain } = kit(['reverb']);
