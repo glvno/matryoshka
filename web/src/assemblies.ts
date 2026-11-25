@@ -2,7 +2,7 @@
 // The assembly library: the factory set shipped with the editor (src/assemblies/*.json) and the user's own, kept in
 // localStorage, each one in the file format of assembly.ts. Library > Assemblies lists the user's own: rename, export,
 // import, delete (at once, with Undo); the factory set is in the assembly browser and Commands (#218).
-import { validateAssemblyDef, type AssemblyDef } from './assembly';
+import { validateAssemblyDef, type AssemblyDef, type ChainMode } from './assembly';
 import { renamedKey } from './storage-key';
 import { DEFS } from './modules';
 import { defIsEngine } from './engines';
@@ -108,6 +108,18 @@ export function renameAssembly(from: string, to: string): boolean {
   const d = list.find((x) => x.name === from);
   if (!d || !name || list.some((x) => x.name === name)) return false;
   d.name = name;
+  saveLibrary(list);
+  return true;
+}
+
+/** mark a definition in the user library as an effect in `mode` (Library › Effects lists it), or no longer (null); false
+ *  when the library has none of that name */
+export function setLibraryEffectMode(name: string, mode: ChainMode | null): boolean {
+  const list = loadLibrary();
+  const d = list.find((x) => x.name === name);
+  if (!d) return false;
+  if (mode) d.fxMode = mode;
+  else delete d.fxMode;
   saveLibrary(list);
   return true;
 }

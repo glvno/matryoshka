@@ -102,8 +102,10 @@ export function addToDrawer(p: Patch, owner: DrawerOwner, what: { type: string }
   return { kind: 'assembly', id: insertEffect(p, d, what, index).id };
 }
 
-/** whether a module or catalog assembly is an audio effect, one that fits a drawer */
-export const isEffect = (what: { type: string } | { def: AssemblyDef }): boolean => effectKind('type' in what ? what.type : what.def.name) !== null;
+/** whether a module or an assembly (the catalog's, or one of the user's marked Use as an effect) is an audio effect, one
+ *  that fits a drawer */
+export const isEffect = (what: { type: string } | { def: AssemblyDef }): boolean =>
+  ('def' in what && !!what.def.fxMode) || effectKind('type' in what ? what.type : what.def.name) !== null;
 
 /** the card a module shows on: itself, the effect in an FX drawer it belongs to, or the outermost collapsed assembly that
  *  hides it */
