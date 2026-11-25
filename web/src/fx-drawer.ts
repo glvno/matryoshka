@@ -42,7 +42,7 @@ import {
 import { convertLegacyBus as convertBus, LEGACY_STAGE_ROWS, type FxStageKind } from './fx-legacy';
 import { DEFS } from './modules';
 import { addModule, connect, disconnect, sameEnd, type Cable, type Endpoint, type ModuleInst, type Patch } from './patch';
-import { stereoModule } from './stereo';
+import { PAIR_LEFT, stereoModule } from './stereo';
 
 // (the drawers' read side lives in assembly.ts, so the engine and the binary read it without the catalog)
 export {
@@ -323,13 +323,22 @@ const sideOf = (c: Cable): Channel | undefined => (c.side ? (c.side === 'r' ? 1 
 /** two lists of endpoints are the same jacks (both channels of a one-module stereo effect's jack) */
 const sameEnds = (a: readonly Endpoint[], b: readonly Endpoint[]): boolean => a.length === b.length && a.every((x) => has(b, x));
 
+/** `t` is the right jack (`r`) of an effect's input pair whose left jack is in `left` (the Output's l / r keep both cables:
+ *  its r is no jack-pair right in a 1.26 drawer) */
+function pairRight(p: Patch, t: Endpoint, left: readonly Endpoint[]): boolean {
+  const type = moduleById(p, t.module)?.type ?? '';
+  return t.port === 'r' && type !== 'output' && !!PAIR_LEFT[type] && has(left, { module: t.module, port: PAIR_LEFT[type] });
+}
+
 /**
  * Make a drawer's chain cables what the invariant wants from `ends`, touching no cable that already is right. Where a
  * one-module stereo effect meets its neighbours (#1141) the cables are side cables (Cable.side), so stereo never collapses
  * to mono: into its jack (both channels one jack) two different sides join (L 'l', R 'r'); out of it into two jacks it
  * splits (L 'l', R 'r'). A source on both sides (a stereo pair's correction, a wet return), or one source for both (mono
- * into both copies, stereo into stereo), is a whole cable, as is a jack that takes both sides. A stereo effect whose ST
- * was switched off hears both sides summed, as any jack fed twice.
+ * into both copies, stereo into stereo), is a whole cable, as is a jack that takes both sides. One source set for both
+ * sides into an effect's jack pair (`in`, `r`) feeds the left jack only: with `r` free the effect plays its mono path and
+ * its `r` out is its `out` (the jack-pair rule), with half the cables (a 909's eleven voices would otherwise go in twice).
+ * A stereo effect whose ST was switched off hears both sides summed, as any jack fed twice.
  */
 function applyChain(p: Patch, d: AssemblyInst, ends: Ends): void {
   const want: Cable[] = [];
@@ -344,7 +353,10 @@ function applyChain(p: Patch, d: AssemblyInst, ends: Ends): void {
     } else if (sameEnds(from[0], from[1]) && stereo(from[0]) && !sameEnds(to[0], to[1])) {
       for (const t of to[0]) link(from[0], [t], has(to[1], t) ? undefined : 'l');
       link(from[1], to[1].filter((t) => !has(to[0], t)), 'r');
-    } else for (const ch of [0, 1] as const) link(from[ch], to[ch]);
+    } else {
+      link(from[0], to[0]);
+      link(from[1], sameEnds(from[0], from[1]) ? to[1].filter((t) => !pairRight(p, t, to[0])) : to[1]);
+    }
   };
   let prev = ends.sources;
   for (const e of effectsOf(p, d)) {
