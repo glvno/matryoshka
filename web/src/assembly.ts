@@ -1528,7 +1528,7 @@ export function toDef(p: Patch, a: AssemblyInst, base = false): AssemblyDef {
     name: a.name,
     ...assemblyLayout(a),
     modules: ms,
-    cables: p.cables.filter((c) => local.has(c.from.module) && local.has(c.to.module)).map((c) => ({ from: remap(c.from), to: remap(c.to) })),
+    cables: p.cables.filter((c) => local.has(c.from.module) && local.has(c.to.module)).map((c) => ({ from: remap(c.from), to: remap(c.to), ...(c.side ? { side: c.side } : {}) })),
     inputs: a.inputs.map(port),
     outputs: a.outputs.map(port),
     params: a.params.map(row),
@@ -1581,6 +1581,7 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
     if (src.range) m.range = clone(src.range);
     if (src.inputMap) m.inputMap = structuredClone(src.inputMap);
     if (src.bypass) m.bypass = true; // toDef writes the members' own switches
+    if (src.stereo && defs[src.type]?.stereo) m.stereo = true; // (#1141: copies, pastes and saved assemblies keep stereo mode)
     if (src.type === 'steps') {   // a track's name and notes (a definition from before #133: its pattern and step values, migrated)
       const old = src as typeof src & { steps?: unknown; vels?: unknown };
       Object.assign(m, clone({ name: src.name, steps: old.steps, notes: src.notes, vels: old.vels, patterns: src.patterns }));
@@ -1608,7 +1609,7 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
     if (r.copies) n.copies = { ...r.copies };
     return n;
   };
-  for (const c of def.cables) p.cables.push({ from: remap(c.from), to: remap(c.to) });
+  for (const c of def.cables) p.cables.push({ from: remap(c.from), to: remap(c.to), ...(c.side ? { side: c.side } : {}) });
   const nested = def.assemblies ?? [];
   let nextId = nextAssemblyId(p);
   const freshAsm = new Map(nested.map((d) => [d.id, nextId++]));

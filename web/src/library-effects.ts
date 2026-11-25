@@ -22,8 +22,8 @@ export type EffectSource = EffectEntry['source'];
 /** the Library's groups, in display order: how an effect sits in a drawer's stereo chain (fx-drawer.ts ChainMode) */
 export const MODES: readonly { mode: ChainMode; title: string; tag: string; tip: string }[] = [
   { mode: 'stereo', title: CHAIN_MODE_LABELS.stereo, tag: 'stereo', tip: 'Makes a left and a right side of its own.' },
-  { mode: 'pair', title: CHAIN_MODE_LABELS.pair, tag: 'L/R pair', tip: 'In a drawer it runs twice, once for each side, with one set of knobs: twice the CPU of one.' },
-  { mode: 'wet', title: CHAIN_MODE_LABELS.wet, tag: 'wet', tip: 'In a drawer it hears a mix of both sides and adds its sound to each; the dry sound stays stereo.' },
+  { mode: 'pair', title: CHAIN_MODE_LABELS.pair, tag: 'in stereo', tip: 'In a drawer it runs in stereo: a copy for each side with one set of knobs, twice the CPU of one.' },
+  { mode: 'wet', title: CHAIN_MODE_LABELS.wet, tag: 'wet', tip: 'In a drawer it hears a mix of both sides and adds its sound to each; the dry sound stays stereo. A Reverb crossfades dry and wet, as on the canvas.' },
 ];
 export const modeOf = (mode: ChainMode): (typeof MODES)[number] => MODES.find((m) => m.mode === mode)!;
 
@@ -36,24 +36,25 @@ export function entryOf(source: EffectSource, catalog: readonly EffectEntry[] = 
   return catalog.find((e) => ('type' in source ? 'type' in e.source && e.source.type === source.type : 'def' in e.source && e.source.def.name === source.def.name));
 }
 
-const structures = new Map<EffectEntry, string[]>();
-/** the structures an entry's presets belong to: its drawer form's (the wrapper), and its canvas card's when that is an
- *  assembly of its own */
-export function entryStructures(entry: EffectEntry): string[] {
+const structures = new Map<EffectEntry, { drawer: string; legacy: string; all: string[] }>();
+/** the structures an entry's presets belong to: its drawer form's (the wrapper), its 1.26 drawer form's (an L/R pair, a
+ *  Reverb with helpers: fx-drawer.ts WrapForm) and its canvas card's when that is an assembly of its own */
+function formsOf(entry: EffectEntry): { drawer: string; legacy: string; all: string[] } {
   let s = structures.get(entry);
   if (!s) {
-    s = [defStructure(catalogEffectDef(entry))];
-    if ('def' in entry.source) s.push(defStructure(entry.source.def));
-    structures.set(entry, (s = [...new Set(s)]));
+    const drawer = defStructure(catalogEffectDef(entry)), legacy = defStructure(catalogEffectDef(entry, { legacy: true }));
+    const all = [drawer, legacy, ...('def' in entry.source ? [defStructure(entry.source.def)] : [])];
+    structures.set(entry, (s = { drawer, legacy, all: [...new Set(all)] }));
   }
   return s;
 }
+export const entryStructures = (entry: EffectEntry): string[] => formsOf(entry).all;
 
 /** how many presets an entry has (the factory's and the user's, for either form) */
 export const presetCount = (entry: EffectEntry): number => entryStructures(entry).reduce((n, s) => n + presetsFor(s).length, 0);
 
 const cpus = new Map<EffectEntry, number>();
-/** an entry's share of the FM-1's audio time in a drawer (an L/R pair counts both copies), from cpu.ts */
+/** an entry's share of the FM-1's audio time in a drawer (a stereo module or an L/R pair counts both copies, D-1413), from cpu.ts */
 export function effectCpu(entry: EffectEntry): number {
   let c = cpus.get(entry);
   if (c === undefined) {
@@ -67,18 +68,19 @@ export function effectCpu(entry: EffectEntry): number {
 }
 export const cpuText = (share: number): string => `${(100 * share).toFixed(1)} %`;
 
-/** one of the user's presets for an effect: `wrapped` when it was stored from the effect's drawer form */
-export interface EffectPreset { preset: Preset; entry: EffectEntry; wrapped: boolean }
+/** one of the user's presets for an effect: `wrapped` when it was stored from the effect's drawer form, `legacy` from its
+ *  1.26 drawer form */
+export interface EffectPreset { preset: Preset; entry: EffectEntry; wrapped: boolean; legacy?: true }
 
 /** the user's presets that belong to an effect of the catalog, by effect then name */
 export function effectPresets(list: Preset[] = userPresets(), catalog: readonly EffectEntry[] = EFFECT_CATALOG): EffectPreset[] {
   const out: EffectPreset[] = [];
   for (const preset of list) {
     for (const entry of catalog) {
-      const s = entryStructures(entry);
-      const i = s.indexOf(preset.structure);
-      if (i < 0) continue;
-      out.push({ preset, entry, wrapped: i === 0 });
+      const s = formsOf(entry);
+      if (!s.all.includes(preset.structure)) continue;
+      const legacy = preset.structure === s.legacy && preset.structure !== s.drawer;
+      out.push({ preset, entry, wrapped: preset.structure === s.drawer || legacy, ...(legacy ? { legacy: true as const } : {}) });
       break;
     }
   }
@@ -87,7 +89,7 @@ export function effectPresets(list: Preset[] = userPresets(), catalog: readonly 
 
 /** an effect preset as a definition to add: the form it was stored from, set to its values */
 export function presetSource(ep: EffectPreset): { def: AssemblyDef } {
-  const base = ep.wrapped || !('def' in ep.entry.source) ? catalogEffectDef(ep.entry) : ep.entry.source.def;
+  const base = ep.wrapped || !('def' in ep.entry.source) ? catalogEffectDef(ep.entry, { legacy: ep.legacy }) : ep.entry.source.def;
   const p = newPatch(DEFS);
   const a = insertAssembly(p, DEFS, base, 0, 0);
   if (!applyPreset(p, a, ep.preset)) throw new Error(`The preset "${ep.preset.name}" does not fit this ${ep.entry.name}.`);

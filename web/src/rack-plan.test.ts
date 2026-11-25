@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { allModules, assemblyById, chainHelpers, exposePort, makeAssembly, promote } from './assembly';
 import { Engine } from './engine';
-import { addDrawer, insertEffect, wrapEffect } from './fx-drawer';
+import { addDrawer, catalogEffectDef, EFFECT_CATALOG, insertEffect, wrapEffect, type EffectSource } from './fx-drawer';
 import { DEFS, DEVICE_SR } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
 import { deviceSection, encodePatch, FLAG_RACK, FORMAT_RACK, rackRecord, RACK_OUTPUT } from './patchbin';
@@ -42,14 +42,17 @@ const record = (p: Patch): number[] => {
   return rackRecord(p, view.patch, deviceSection(p, view.patch), view.groups);
 };
 
+/** a catalog effect in its 1.26 drawer form (L/R pairs, the helper Reverb): what format 66 racks hold */
+const legacy = (type: string): EffectSource => ({ def: catalogEffectDef(EFFECT_CATALOG.find((e) => 'type' in e.source && e.source.type === type)!, { legacy: true }) });
+
 describe('the FX rack (format 66)', () => {
   it('lists an instrument drawer and the Output drawer, effects in device order, helpers never targets', () => {
     const { p, inst } = synth();
     const d = addDrawer(p, inst);
-    const phaser = insertEffect(p, d, { type: 'phaser' });
-    const chorus = insertEffect(p, d, { type: 'chorus' });
-    const reverb = insertEffect(p, d, { type: 'reverb' });
-    const delay = insertEffect(p, addDrawer(p, 'output'), { type: 'delay' });
+    const phaser = insertEffect(p, d, legacy('phaser'));
+    const chorus = insertEffect(p, d, legacy('chorus'));
+    const reverb = insertEffect(p, d, legacy('reverb'));
+    const delay = insertEffect(p, addDrawer(p, 'output'), legacy('delay'));
     const plan = rackPlan(p)!;
     expect(plan.effects.map((e) => e.asm)).toEqual([phaser.id, chorus.id, reverb.id, delay.id]);
     const helpers = chainHelpers(p);
@@ -77,7 +80,7 @@ describe('the FX rack (format 66)', () => {
     expect(encodePatch(p)[1]).toBeLessThan(FORMAT_RACK);
     const d = addDrawer(p, inst);
     expect(rackPlan(p)).not.toBeNull();   // (an empty drawer alone is a rack: the FM-1 knows the instrument has one)
-    const reverb = insertEffect(p, d, { type: 'reverb' });
+    const reverb = insertEffect(p, d, legacy('reverb'));
     for (const id of allModules(p, reverb)) p.modules.find((m) => m.id === id)!.bypass = true;
     const bin = encodePatch(p);
     expect(bin[1]).toBe(FORMAT_RACK);
@@ -117,9 +120,9 @@ describe('the FX rack (format 66)', () => {
   it('switches a drawer effect whole in the editor engine: off ramps to exact dry, a helper stays playing', () => {
     const { p, inst } = synth();
     const d = addDrawer(p, inst);
-    insertEffect(p, d, { type: 'phaser' });
-    insertEffect(p, d, { type: 'chorus' });
-    insertEffect(p, d, { type: 'reverb' });
+    insertEffect(p, d, legacy('phaser'));
+    insertEffect(p, d, legacy('chorus'));
+    insertEffect(p, d, legacy('reverb'));
     const e = new Engine(DEVICE_SR);
     e.load(p);
     expect(e.fxCount()).toBe(3);

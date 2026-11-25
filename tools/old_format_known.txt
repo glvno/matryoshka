@@ -2,9 +2,12 @@
 # A kit listed for a BASE renders differently on today's engine on purpose. Its line then reads "DIFFERS (known)" and does
 # not fail the check. Any other DIFFERS still fails it. A listed kit that renders the same again is named as well.
 #
-# v1.4.1, the default BASE: 1.8.2 changed the engine on purpose in two places, and the changes reach these 29 golden kits.
-#   #461: an oscillator works out its increment every 8 samples, with a straight line between (Io 4's vibrato).
-#   #484: a Delay's new time glides instead of jumping, so it does not click (Delay, 8 Lire).
+# v1.4.1: 1.7.0 and 1.8.2 changed the engine on purpose, and the changes reach these 29 golden kits.
+#   1.7.0, #273 (in #304): .lowram and a 700 ms delay line (8-lire, delay-sync-pingpong, morph, perun-4).
+#   1.7.0, #434 (in #436): idle parts' checks staggered so they never all run in one block (io-4, part-flaws,
+#   part-random, poly-pluck, steps-arp).
+#   1.8.2, #461: an oscillator works out its increment every 8 samples, with a straight line between (the other 20).
+#   1.8.2, #484: a Delay's new time glides instead of jumping, so it does not click (Delay, 8 Lire).
 v1.4.1 -7ph
 v1.4.1 8-lire
 v1.4.1 808-kit
@@ -34,6 +37,79 @@ v1.4.1 steps-arp
 v1.4.1 steps-notes
 v1.4.1 steps-tie
 v1.4.1 sync-glide-shape
+
+# v1.4.1: later releases changed the engine on purpose, and the changes reach 63 more golden kits. Each kit is listed under
+# the change that first made it render differently from v1.4.1 (found 2026-11-25 by rendering v1.4.1's binaries with the
+# C engine of each release and of each commit between them).
+#   1.15.0, #889 (#802, D-1103, D-1104): a Reverb's lines hear its input one block late.
+v1.4.1 poly-shared
+v1.4.1 reverb
+#   1.15.0, #893 (#787, D-1105): while a Multimode filter's cutoff moves, its coefficients are worked out every 4th sample.
+v1.4.1 acid
+v1.4.1 canvas
+v1.4.1 filter-notch
+v1.4.1 vernon-100
+#   1.15.0, #895 (#806, D-1106): LFOs, envelope falls and moving glides work out their curve every 16th sample.
+v1.4.1 algo-four
+v1.4.1 alloc-split
+v1.4.1 alloc-unison
+v1.4.1 arp-bypass
+v1.4.1 arp-clk-played
+v1.4.1 arp-random-latch
+v1.4.1 arp-updown-poly
+v1.4.1 cassia-1
+v1.4.1 chorus
+v1.4.1 delay-fb
+v1.4.1 delay-pingpong
+v1.4.1 delay-sync
+v1.4.1 drift
+v1.4.1 dyn
+v1.4.1 elvira-2
+v1.4.1 expander-s
+v1.4.1 feedback-pm
+v1.4.1 filter-morph
+v1.4.1 fm-2op
+v1.4.1 grain
+v1.4.1 hera-6
+v1.4.1 init
+v1.4.1 ladder
+v1.4.1 lfo-bpm
+v1.4.1 lfo-clk
+v1.4.1 lfo-reset
+v1.4.1 lfo-sh
+v1.4.1 macro
+v1.4.1 main-clock-run
+v1.4.1 matrix-att
+v1.4.1 monolith-d
+v1.4.1 moving-rates
+v1.4.1 osc-feedback
+v1.4.1 pan-xfade
+v1.4.1 paraphonic
+v1.4.1 poly-feedback
+v1.4.1 shift
+v1.4.1 simple-fm
+v1.4.1 spread
+v1.4.1 steps-arm
+v1.4.1 steps-clk
+v1.4.1 steps-keys
+v1.4.1 steps-kit
+v1.4.1 steps-legato
+v1.4.1 vowel-phaser
+v1.4.1 wanderer
+v1.4.1 wavefold
+v1.4.1 wavetable
+#   1.18.0, #968 (#840, D-1109): a Resonator's ring with no input falls to exactly zero.
+v1.4.1 modal
+#   1.18.0, #978 (#969): the floor fixes: a ring with no input lets go in fixed point (Comb, String, Plucked string).
+v1.4.1 comb
+v1.4.1 plucked-string
+v1.4.1 string
+#   1.20.0, #1074 in #1081 (#979, D-1112): the Multimode filter, Ladder and Formant filter in single-precision float.
+v1.4.1 bypass
+v1.4.1 disabled-inputs
+v1.4.1 fixed-links
+v1.4.1 noise-svf
+v1.4.1 side-input-fanout
 
 # v1.24.1: 1.25.0 changed the engine on purpose, and the change reaches these 13 golden kits.
 #   #1182 (D-834, D-543 amended): a song entry, or a pattern turned to at a pass's end, starts on its first step. Each kit
