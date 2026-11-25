@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { DEFS, delayLine, delayReach, DELAY_LENGTH_DEFAULT, DELAY_LENGTH_MAX, DELAY_SYNC_TOP, DELAY_TIME_MAX, DEVICE_SR, rowRange } from './modules';
 import { addModule, connect, emptyPatch, modulate, morphValue, topOf, validatePatch, type Patch } from './patch';
-import { ARENA, NODE_BYTES, browserOnly, delayBytes, delayRoom, deviceBudget, encodePatch, formatOf, LINE_LOW, lineBudget, linePlace, LINES, linesAdvice } from './patchbin';
+import { ARENA, NODE_BYTES, TABLE_BYTES_128, browserOnly, delayBytes, delayRoom, deviceBudget, encodePatch, formatOf, LINE_LOW, lineBudget, linePlace, LINES, linesAdvice } from './patchbin';
 /** the line area the FM-1 had in its pool before the arena (#649): a 700 ms delay line, 8 string lines and a granular line */
 const OLD_POOL = 167980;
 import { Engine } from './engine';
@@ -158,8 +158,10 @@ describe('the FM-1\'s memory (the lines: D-375; one arena, #649)', () => {
     expect(LINES.chorus).toBe(lineBytes(2 * cNum('engine.c', 'CH_LEN')));
     expect(delayBytes(700) + 8 * LINES.string + LINES.grain).toBe(OLD_POOL);
     expect(LINE_LOW).toBe(26196);
-    expect(ARENA).toBe(OLD_POOL + 255 * 512 + 129 * 264 + 1536 * 4 + 64 * NODE_BYTES);
+    expect(ARENA).toBe(OLD_POOL + 255 * 512 + 129 * 264 + 1536 * 4 + 64 * NODE_BYTES + TABLE_BYTES_128);
     expect(cNum('engine.c', 'ENG_NODE_BYTES')).toBe(NODE_BYTES);
+    expect(cNum('engine.c', 'ENG_TABLE_BYTES_128')).toBe(TABLE_BYTES_128);
+    expect(TABLE_BYTES_128).toBe(256);
     expect(LINES).toEqual({ string: 2208, grain: 88428, reverb: 16660, chorus: 1856, limit: 256 });
     expect(delayBytes(700)).toBe(61888);
     // the longest length is what one Delay's line can take of the arena beside a Main and an Output (#649): 10 ms more
@@ -168,11 +170,12 @@ describe('the FM-1\'s memory (the lines: D-375; one arena, #649)', () => {
     const one = linesPatch([['delay']]);
     const b = lineBudget(one);
     expect(DELAY_LENGTH_MAX).toBe(3800);
-    expect(delayBytes(DELAY_LENGTH_MAX) + b.copiesBytes + b.buffersBytes + b.paramsBytes + b.nodesBytes).toBeLessThanOrEqual(ARENA);
+    expect(delayBytes(DELAY_LENGTH_MAX) + b.copiesBytes + b.buffersBytes + b.paramsBytes + b.nodesBytes + b.tablesBytes).toBeLessThanOrEqual(ARENA);
     const lengthBytes = (ms: number): number => 2 * (2 * Math.floor((ms * DEVICE_SR + 1999) / 2000) + 60);   // (delayBytes stops at the longest)
     expect(lengthBytes(DELAY_LENGTH_MAX)).toBe(delayBytes(DELAY_LENGTH_MAX));
-    // (measured against the arena without the 64 modules' share it took over in #721: the longest length was set there)
-    expect(lengthBytes(DELAY_LENGTH_MAX + 20) + b.copiesBytes + b.buffersBytes + b.paramsBytes).toBeGreaterThan(ARENA - 64 * NODE_BYTES);
+    // (measured against the arena without the 64 modules' share it took over in #721 and the tables' of 1.27: the longest
+    // length was set there)
+    expect(lengthBytes(DELAY_LENGTH_MAX + 20) + b.copiesBytes + b.buffersBytes + b.paramsBytes).toBeGreaterThan(ARENA - 64 * NODE_BYTES - TABLE_BYTES_128);
   });
 
   it('holds every patch the FM-1 played before (a 700 ms Delay, 8 strings, a Granular, a reverb, a chorus, any subset)', () => {
@@ -197,8 +200,9 @@ describe('the FM-1\'s memory (the lines: D-375; one arena, #649)', () => {
     expect(b.lines.fits).toBe(true);
     expect(b.fits).toBe(true);
     expect(b.lines.lines).toBe(delayBytes(500) + delayBytes(300) + delayBytes(900) + 2 * LINES.reverb + 2 * LINES.chorus);
-    expect(b.lines.used).toBe(b.lines.lines + b.lines.copiesBytes + b.lines.buffersBytes + b.lines.paramsBytes + b.lines.nodesBytes);
+    expect(b.lines.used).toBe(b.lines.lines + b.lines.copiesBytes + b.lines.buffersBytes + b.lines.paramsBytes + b.lines.nodesBytes + b.lines.tablesBytes);
     expect(b.lines.nodesBytes).toBe(three.modules.length * NODE_BYTES);
+    expect(b.lines.tablesBytes).toBe((three.modules.length + 1 + 3) & ~3);   // (a byte per module and per Output module)
     expect(b.items.find((i) => i.key === 'memory')).toMatchObject({ label: 'memory', max: ARENA + LINE_LOW });
     expect(() => encodePatch(three)).not.toThrow();
     const full = linesPatch([['delay', { length: 1900 }], ['delay', { length: 1900 }], ['delay', { length: 1900 }], ['grain']]);
@@ -251,6 +255,8 @@ describe('the FM-1\'s module limit (#721: 128, D-256)', () => {
     expect(b.over.map((i) => i.key)).not.toContain('modules');
     expect(b.lines.nodes).toBeGreaterThan(64);
     expect(b.lines.nodesBytes).toBe(b.lines.nodes * NODE_BYTES);
+    expect(b.lines.tablesBytes).toBe((b.lines.nodes + 1 + 3) & ~3);
+    expect(b.lines.tablesBytes).toBeLessThanOrEqual(TABLE_BYTES_128);   // (what the fixed tables held: no less room than before)
     expect(formatOf(p)).toBe(FORMAT_1_11);
     expect(encodePatch(p)[2]).toBe(b.lines.nodes);
   });

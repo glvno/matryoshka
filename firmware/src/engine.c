@@ -671,6 +671,8 @@ typedef struct {
                                       * Arpeggiator's index); a Steps module: 1 = a cable from Main's keys into its keys in
                                       * (engine.ts fed); an Arpeggiator: 0 Main's keys, 2 + the Steps module cabled into its
                                       * keys in (engine.ts ArpRun.feed: it plays that track's notes) */
+    uint8_t fxrun;                   /* an effect's target (fx_effect): 1 + its run (fx.run), 0 an ordinary module (in what
+                                      * was the node's last padding byte, so a node is no larger) */
 } node_t;
 /* Only the rack's effects (format 66) or a validated master bus (55..65) opt into spillover. No node/instance arena
  * layout change: static, the bus's 4 x 8 runs.
@@ -685,7 +687,6 @@ typedef struct { uint32_t fade, quiet; int32_t qmix; uint16_t gain; uint8_t tail
 static struct {
     uint32_t on;                        /* bit e: effect e is on */
     uint8_t count, nrack, legacy;       /* the effects, the drawers; legacy: they are a format 55..65 bus's stages */
-    uint8_t target[ENG_MAX_MODULES];    /* 1 + the module's run; 0: ordinary module */
     uint8_t run_eff[ENG_FX_RUNS];       /* a run's effect */
     uint8_t run_mod[ENG_FX_RUNS];       /* a run's module: effect e's targets are n[e] from first[e] */
     uint8_t device[ENG_FX_EFFECTS], first[ENG_FX_EFFECTS], n[ENG_FX_EFFECTS];
@@ -866,9 +867,10 @@ typedef struct {
 typedef struct {
     uint8_t loaded, nmod, nsum, norder, nout, ngrp, ninst, format;   /* ngrp: the poly groups, E.grp[1..ngrp] */
     uint16_t nsrc;
-    uint8_t order[ENG_MAX_MODULES], outputs[ENG_MAX_MODULES];
     uint8_t from_m[ENG_MAX_CABLES], from_p[ENG_MAX_CABLES], to_m[ENG_MAX_CABLES], to_p[ENG_MAX_CABLES];
     uint16_t ncab, nbuf, nphys;      /* nbuf: logical values (sanity cap), nphys: allocated buffers (#824) */
+    uint8_t *order, *outputs;        /* the modules in the order they run, the Output modules in that order: norder and nout
+                                      * bytes in the arena's top (eng_load, ENG_TABLE_BYTES_128); par_spare's until a load */
     node_t *node;                    /* the modules, nmod of them in the arena's top (#721, arena_nodes); node_none until a load */
     sum_t sum[MAX_SUM];
     const esig_t *sum_src[MAX_SRC];
@@ -930,7 +932,7 @@ typedef struct {
     uint8_t btn_first[ENG_PANEL_BUTTONS], btn_n[ENG_PANEL_BUTTONS];   /* a Toggle's modules: btn_list[first .. first + n) */
     uint8_t btn_list[ENG_BTN_TARGETS];
     uint16_t btn_sw;                 /* the buttons that switch (the panel's mask) */
-    int8_t main;                     /* the Main module, -1 without one */
+    uint8_t main;                    /* the Main module, NO_MAIN without one */
     int32_t morph;                   /* the morph position of this block, Q16 0..1: the Main's MORPH parameter plus the mean of its morph input */
     uint8_t idle_blk;                /* blocks mod IDLE_CHECK (never reset): which idle parts run their check (part_quiet) */
     uint8_t nlt;                     /* the locked rows (#524, locks.ts lockPlan): each a track's, its parameters, whether a */
@@ -953,6 +955,7 @@ typedef struct {
 /* the engine. The clock ticks (24 ppqn) come from the arpeggiator or MIDI in (eng_clock_tick). */
 static eng_t eng_one ENG_POOL;
 #define E eng_one
+#define NO_MAIN 0xFFu                    /* E.main without a Main module */
 /* the patterns eng_patterns_record and eng_locks_record leave out (bit p; eng_patterns_omit): the clean linked ones, whose
  * content is the pattern store's (#901). A load clears it. Not in E: the pool has no room */
 static uint64_t pat_omit;
@@ -960,7 +963,7 @@ static uint64_t pat_omit;
  * left, the offset still to go, its step. ramp_any: some ramp is pending. The main loop sets it after a ramp's fields
  * (ramp_start); each block's ramp_tick sets it again from every slot's blocks left. The audio interrupt preempts the main
  * loop, never the other way round, so a start is never lost between them */
-typedef struct { int32_t off, step; uint8_t mod, par, left; } ramp_t;   /* (12 bytes: a module below 128, a parameter byte,
+typedef struct { int32_t off, step; uint8_t mod, par, left; } ramp_t;   /* (12 bytes: a module index byte, a parameter byte,
                                                                           * ENG_RAMP_BLOCKS blocks at most) */
 static ramp_t ramp[ENG_RAMPS];
 static volatile uint8_t ramp_any;
@@ -1049,7 +1052,7 @@ typedef struct {
     uint8_t need[ENG_MAX_INST + 1u];    /* before it: how many of the other lane's first items must be done */
 } sched_t;
 #define SCH_PUB 0x8000u
-typedef char sch_part_bits_check[ENG_MAX_PARTS <= 8 && ENG_MAX_MODULES <= 128 ? 1 : -1];   /* (it[]'s fields) */
+typedef char sch_part_bits_check[ENG_MAX_PARTS <= 8 && ENG_MAX_MODULES <= 255u ? 1 : -1];   /* (it[]'s fields) */
 static sched_t sch ENG_NOINIT;
 /* a granular line: the recording (Q13 like the delay) and the grains reading it (start, read phase from it Q16, rate Q16,
  * window phase and increment (u32 turns, half a turn over the grain), samples left) */
@@ -1082,10 +1085,15 @@ typedef char eng_inst_bytes_check[sizeof(inst_t) == ENG_INST_BYTES ? 1 : -1];   
 #if defined(M1_FW_MAJOR) && !defined(__wasm__)
 typedef char eng_node_bytes_check[sizeof(node_t) == ENG_NODE_BYTES ? 1 : -1];   /* (patchbin.ts NODE_BYTES follows it) */
 #endif
+/* the order the modules run in and the Output modules (E.order, E.outputs: a byte per module, ceil4(nmod + nout) in all)
+ * come from the arena's top too: it is bigger by the bytes the two fixed tables of 128 held (2 x 128, as D-390's), so a
+ * patch with nmod + nout <= 256 has at least the room it had (patchbin.ts TABLE_BYTES_128 follows it) */
+#define ENG_TABLE_BYTES_128 256u
 #ifndef ENG_ARENA_EXTRA
 #define ENG_ARENA_EXTRA 0u                      /* (tools/buffer_budget.py's separate-buffer reference: -DENG_ARENA_EXTRA=65536u) */
 #endif
-#define ENG_ARENA (ENG_ARENA_EXTRA + LINE_ARENA + 255u * ENG_BUF_BYTES + 129u * ENG_INST_BYTES + 1536u * 4u + 64u * ENG_NODE_BYTES)   /* 344,628 B */
+#define ENG_ARENA (ENG_ARENA_EXTRA + LINE_ARENA + 255u * ENG_BUF_BYTES + 129u * ENG_INST_BYTES + 1536u * 4u + 64u * ENG_NODE_BYTES \
+                   + ENG_TABLE_BYTES_128)   /* 344,884 B */
 #define ENG_ARENA_HOST (ENG_ARENA + (ENG_MAX_INST + 1u) * (sizeof(inst_t) > ENG_INST_BYTES ? (uint32_t)sizeof(inst_t) - ENG_INST_BYTES : 0u) \
                         + (sizeof(node_t) > ENG_NODE_BYTES ? ENG_MAX_MODULES * ((uint32_t)sizeof(node_t) - ENG_NODE_BYTES) + 8u : 0u))
 static uint32_t eng_arena[ENG_ARENA_HOST / 4u] ENG_POOL __attribute__((aligned(8)));
@@ -2231,7 +2239,7 @@ static int fx_effect(uint32_t e, uint32_t device, uint32_t n, const uint8_t *q, 
         uint32_t m = q[k];
         fx.run_mod[r] = (uint8_t)m;
         fx.run_eff[r] = (uint8_t)e;
-        fx.target[m] = (uint8_t)(1u + r);
+        E.node[m].fxrun = (uint8_t)(1u + r);
         E.node[m].bypass = (uint8_t)!on;
         fx.run[r].gain = on ? FX_RAMP : 0u;
         fx.run[r].fade = FX_FULL;
@@ -2343,7 +2351,6 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.loaded = 0;
     fx.count = fx.nrack = fx.legacy = 0;
     fx.on = 0;
-    for (i = 0; i < ENG_MAX_MODULES; i++) fx.target[i] = 0;
     load_generation++;
     key_memory = 0;
     E.kev = E.kev_legacy; E.blk_thru = E.blk_legacy; E.rin = E.rin_legacy;
@@ -2390,6 +2397,8 @@ int eng_load(const uint8_t *p, uint32_t len)
     node_none.par = par_spare;
     node_none.ninst = 1;
     E.node = &node_none;
+    E.norder = E.nout = 0;                       /* (no order or Output modules until this patch's are taken, below) */
+    E.order = E.outputs = (uint8_t *)par_spare;
     if (len < 8u || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION))
         return -1;
     if (!eng_flags_ok(p))
@@ -2468,7 +2477,7 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.ncab = (uint16_t)ncab;
     E.has_b = 0;
     E.nranges = 0;
-    E.main = -1;
+    E.main = NO_MAIN;
     E.morph = 0;
     E.nbuf = 0;
     E.ninst = 0;
@@ -2556,8 +2565,8 @@ int eng_load(const uint8_t *p, uint32_t len)
             nd->ninst = E.grp[nd->grp].parts;
             E.ninst = (uint8_t)(E.ninst + nd->ninst);
         }
-        if (nd->type == T_FM1 && E.main < 0)
-            E.main = (int8_t)i;
+        if (nd->type == T_FM1 && E.main == NO_MAIN)
+            E.main = (uint8_t)i;
         if (nd->type == T_ARP) {                 /* an arpeggiator: its note logic runs before the modules (arp_block) */
             arp_t *a = &E.arp[E.narp];
             uint8_t *az = (uint8_t *)a;
@@ -3004,6 +3013,16 @@ int eng_load(const uint8_t *p, uint32_t len)
             init_state(nd, it, i, k);
         }
     }
+    {                                             /* the order and the Output modules' bytes, from the arena's top */
+        uint32_t nout = 0, bytes;
+        for (i = 0; i < E.nmod; i++)
+            nout += E.node[i].type == T_OUTPUT;
+        bytes = (E.nmod + nout + 3u) & ~3u;
+        if (bytes > arena_free()) return -8;
+        ar_hi += bytes;
+        E.order = (uint8_t *)eng_arena + ENG_ARENA_HOST - ar_hi;
+        E.outputs = E.order + E.nmod;
+    }
     /* the order the modules run in: each after its sources (a feedback cable reads the block before) */
     for (i = 0; i < E.nmod; i++)
         st[i] = 0;
@@ -3128,7 +3147,7 @@ int eng_load(const uint8_t *p, uint32_t len)
     for (i = 0; i < E.nmod; i++)                 /* a track that plays a Drum map is never shifted by a song (engine.ts) */
         if (E.node[i].type == T_STEPS)
             E.trk_drum[E.node[i].trk] = (uint8_t)(eng_steps_drummap(i) >= 0);
-    tempo_own = E.main >= 0 ? E.node[E.main].par[FM1_P_TEMPO] : (int32_t)(TEMPO_DEFAULT << 16);
+    tempo_own = E.main != NO_MAIN ? E.node[E.main].par[FM1_P_TEMPO] : (int32_t)(TEMPO_DEFAULT << 16);
     if (tempo_glo)                               /* the global tempo (D-907): the patch plays at it, its own value kept */
         tempo_apply();
     for (k = 0, c = 0; k < nl; k++)              /* (#808: the compiled assemblies' state goes after the lines) */
@@ -3145,7 +3164,7 @@ static void tempo_apply(void)
         tempo_glo = (uint16_t)clampi((tempo_own + 32768) >> 16, 20, 300);
         tempo_moved = 1;
     }
-    if (tempo_glo && E.main >= 0)
+    if (tempo_glo && E.main != NO_MAIN)
         E.node[E.main].par[FM1_P_TEMPO] = (int32_t)((uint32_t)tempo_glo << 16);
 }
 
@@ -3155,11 +3174,11 @@ void eng_tempo_global(uint32_t bpm)
     tempo_glo = (uint16_t)(bpm == 0u || bpm == ENG_TEMPO_ADOPT ? bpm : (uint32_t)clampi((int32_t)bpm, 20, 300));
     if (!E.loaded)
         return;
-    if (!was && E.main >= 0)                     /* from each patch its own: Main's tempo as it stands is the patch's */
+    if (!was && E.main != NO_MAIN)               /* from each patch its own: Main's tempo as it stands is the patch's */
         tempo_own = E.node[E.main].par[FM1_P_TEMPO];
     if (tempo_glo)
         tempo_apply();
-    else if (was && E.main >= 0)                 /* back to the patch's own */
+    else if (was && E.main != NO_MAIN)           /* back to the patch's own */
         E.node[E.main].par[FM1_P_TEMPO] = tempo_own;
 }
 uint32_t eng_tempo_global_get(void) { return tempo_glo == ENG_TEMPO_ADOPT ? 0u : tempo_glo; }
@@ -3171,7 +3190,7 @@ int eng_tempo_moved(void)
 }
 int eng_tempo_row(uint32_t module, uint32_t param)
 {
-    return tempo_glo && E.loaded && E.main >= 0 && module == (uint32_t)E.main && param == FM1_P_TEMPO;
+    return tempo_glo && E.loaded && E.main != NO_MAIN && module == E.main && param == FM1_P_TEMPO;
 }
 
 int eng_parts(void) { return !E.loaded ? 0 : E.ngrp ? E.grp[1].parts : 1; }
@@ -3283,8 +3302,8 @@ uint32_t eng_rack_first(uint32_t r) { return r < eng_rack_count() ? fx.rack[r][1
 uint32_t eng_rack_len(uint32_t r) { return r < eng_rack_count() ? fx.rack[r][2] : 0u; }
 void eng_set_bypass(uint32_t module, int on)
 {
-    if (module < E.nmod && fx.target[module]) {
-        eng_fx_set(fx.run_eff[fx.target[module] - 1u], !on);
+    if (module < E.nmod && E.node[module].fxrun) {
+        eng_fx_set(fx.run_eff[E.node[module].fxrun - 1u], !on);
         return;
     }
     if (module < E.nmod && E.node[module].type != T_FM1 && E.node[module].type != T_OUTPUT) {
@@ -3541,7 +3560,7 @@ static int32_t morph_position(uint32_t n)
 {
     const node_t *nd;
     int32_t t;
-    if (E.main < 0)
+    if (E.main == NO_MAIN)
         return 0;
     nd = &E.node[E.main];
     t = nd->par[FM1_P_MORPH];
@@ -5082,7 +5101,7 @@ static int keys_maps(eng_mset_t *maps)
     int map = -1;
     if (!E.loaded)
         return -1;
-    if (!E.armany && E.main >= 0) {
+    if (!E.armany && E.main != NO_MAIN) {
         esig_t *const *o = inst_pool[E.node[E.main].inst0].out;
         if (!IS_DUMMY(o[FM1_O_PITCH]) || !IS_DUMMY(o[FM1_O_GATE]) || !IS_DUMMY(o[FM1_O_VEL]))
             return -1;
@@ -5185,8 +5204,8 @@ void eng_buttons(uint32_t mask)
         if (E.btn_kind[b] == ENG_BTN_TOGGLE && ((was ^ panel_buttons) >> b & 1u))
             for (k = 0; k < E.btn_n[b]; k++) {
                 uint32_t m = E.btn_list[E.btn_first[b] + k];
-                if (fx.target[m]) {
-                    eng_fx_set(fx.run_eff[fx.target[m] - 1u], !(mask >> b & 1u));
+                if (E.node[m].fxrun) {
+                    eng_fx_set(fx.run_eff[E.node[m].fxrun - 1u], !(mask >> b & 1u));
                     continue;
                 }
                 if (E.node[m].type != T_FM1 && E.node[m].type != T_OUTPUT) {
@@ -5216,7 +5235,7 @@ int eng_clock_is_external(void) { return clk_ext; }
 static uint32_t clock_bpm(void)
 {
     return tempo_glo > ENG_TEMPO_ADOPT ? tempo_glo
-         : E.main >= 0 ? (uint32_t)clampi((E.node[E.main].par[FM1_P_TEMPO] + 32768) >> 16, 20, 300) : TEMPO_DEFAULT;
+         : E.main != NO_MAIN ? (uint32_t)clampi((E.node[E.main].par[FM1_P_TEMPO] + 32768) >> 16, 20, 300) : TEMPO_DEFAULT;
 }
 /* the palette's bar line (#1196, pal_fade.h): read between renders. Run tick t falls on the sample the render's clock
  * completes it on: on the internal clock the r-th tick ahead completes on sample ceil((r whole - tick_acc) / inc) - 1
@@ -12695,8 +12714,8 @@ static __attribute__((noinline)) void render_item(uint32_t m, uint32_t v, uint32
     if (nd->grp)
         apply_flaws(nd, it, v);
     ENG_PROF(2, m, v);
-    if (fx.target[m])
-        m_fx(nd, it, n, fx.target[m]);
+    if (nd->fxrun)
+        m_fx(nd, it, n, nd->fxrun);
     else if (nd->bypass)
         m_bypass(nd, it, n);
     else if (nd->disabled_inputs & nd->side) {   /* a disabled input with side routes: its source, but silence for process
@@ -13056,12 +13075,12 @@ static void sched_build(void)
 static struct { volatile uint32_t done; uint32_t pad[15]; } sch_prog[2] ENG_NOINIT __attribute__((aligned(64)));
 static uint8_t sch_gone;                 /* core 0 renders lane 1's items itself: the second core was given up this block */
 typedef struct { const node_t *nd; const inst_t *it; int32_t means[MAX_IN]; } sch_ctx_t;   /* a core's last copy (prev) */
-#define SCH_NODE(x) (&E.node[(x) >> 3 & 0x7Fu])                       /* an item's module (sched_t it[]; its part: x & 7) */
+#define SCH_NODE(x) (&E.node[(x) >> 3 & 0xFFu])                       /* an item's module (sched_t it[]; its part: x & 7) */
 /* D-1103: does m_reverb run this block, with nothing cleared before it? Not when the Reverb is bypassed or an off master
  * FX stage at rest (m_fx); not when a pending clear comes first (m_fx clears, then m_reverb runs the kernel itself) */
 static int reverb_early(uint32_t m)
 {
-    uint32_t t = fx.target[m];
+    uint32_t t = E.node[m].fxrun;
     if (t) {
         const fx_run_t *run = &fx.run[t - 1u];
         return ((fx.on >> fx.run_eff[t - 1u] & 1u) || run->tail) && !run->clr;
@@ -13071,7 +13090,7 @@ static int reverb_early(uint32_t m)
 /* item `slot` (a place in sch.it), unless its part is shed or idle this block; part 1 of a Reverb: its kernel */
 static void sch_item(uint32_t slot, uint32_t n, sch_ctx_t *c)
 {
-    uint32_t x = sch.it[slot], m = x >> 3 & 0x7Fu, v = x & 7u;   /* (SCH_NODE, SCH_INST) */
+    uint32_t x = sch.it[slot], m = x >> 3 & 0xFFu, v = x & 7u;   /* (SCH_NODE, SCH_INST) */
     const node_t *nd = &E.node[m];
     inst_t *it = &inst_pool[nd->inst0 + v];
     if (v && nd->type == T_REVERB) {

@@ -1311,16 +1311,21 @@ export const INST_BYTES = 264, BUF_BYTES = 512, PAR_BYTES = 4;
 /** bytes of one module in the FM-1's memory (engine.c node_t, ENG_NODE_BYTES): its settings and connections, taken from the
  * arena per module since #721 (the fixed table of 64 they had before is part of the arena now) */
 export const NODE_BYTES = 92;
+/** bytes the FM-1's two fixed tables of 128 module indices held (engine.c ENG_TABLE_BYTES_128, keep in step): the order the
+ * modules run in and the Output modules, a byte per module each, taken from the arena per patch since 1.27 (tablesBytes) */
+export const TABLE_BYTES_128 = 2 * 128;
 /**
  * The FM-1's memory a patch takes (#649, engine.c eng_arena, ENG_ARENA): one arena divided when the patch loads, as big
  * as the fixed pools it replaced (128 copies, 255 buffers, 1536 values, and the line area of a 700 ms delay line, 8 string
  * lines and a granular line, D-375, and the spare copy: every patch that fitted before fits), and since #721 the table of
- * 64 modules (NODE_BYTES each) it took over: a patch's modules come from it. Modules, module copies (and the spare copy the
+ * 64 modules (NODE_BYTES each) it took over: a patch's modules come from it, and since 1.27 the order and Output tables
+ * (TABLE_BYTES_128). Modules, their tables, module copies (and the spare copy the
  * FM-1 keeps), signal buffers and parameter values take their bytes first; the lines go into what is left or into `LINE_LOW`, the area in the RAM below the RAM
  * region (.lowram, D-373: what the reverb and chorus lines took there and 8 KiB more). A line goes whole into one area
  * (linePlace).
  */
-export const ARENA = delayBytes(DELAY_LENGTH_DEFAULT) + 8 * LINES.string + LINES.grain + 255 * BUF_BYTES + 129 * INST_BYTES + 1536 * PAR_BYTES + 64 * NODE_BYTES;
+export const ARENA = delayBytes(DELAY_LENGTH_DEFAULT) + 8 * LINES.string + LINES.grain + 255 * BUF_BYTES + 129 * INST_BYTES + 1536 * PAR_BYTES + 64 * NODE_BYTES
+  + TABLE_BYTES_128;
 export const LINE_LOW = lineBytes(2 * 8074) + LINES.chorus + 8192;   /* (engine.c LINE_LOW: the reverb's lines before its ring) */
 /** the FM-1's limits (firmware/src/engine.c: ENG_MAX_MODULES, ENG_MAX_CABLES, POLY_MAX_GROUPS, POLY_MAX_PARTS, ENG_MAX_ARPS, ENG_MAX_HARMS,
  * ENG_MAX_TRACKS, ENG_MAX_NOTES; proto.c M1_PATCH_MAX). `memory`: the arena and the low line area, bytes (memoryBudget):
@@ -1381,7 +1386,10 @@ export interface PoolUse { instances: number; buffers: number; params: number; p
  * what the others leave (`fits`, linePlace) */
 export interface LineBudget { modules: LineUse[]; pool: PoolUse; used: number; max: number; fits: boolean; lines: number; copiesBytes: number; buffersBytes: number; paramsBytes: number;
   /** the modules (#721): how many, their bytes (NODE_BYTES each) */
-  nodes: number; nodesBytes: number; keyBytes: number }
+  nodes: number; nodesBytes: number; keyBytes: number;
+  /** the order and Output tables (engine.c eng_load, E.order and E.outputs): a byte per module and per Output module,
+   * rounded up to a multiple of 4 */
+  tablesBytes: number }
 /** the copies of each module of a device form: the parts of its poly group, else one */
 function copiesOf(groups: DeviceGroup[]): (id: number) => number {
   const copies = new Map<number, number>();
@@ -1449,11 +1457,12 @@ function linesOf(p: Patch, ninst: (id: number) => number, pool: PoolUse): LineBu
   const lines = sizes.reduce((a, b) => a + b, 0);
   const copiesBytes = (pool.instances + 1) * INST_BYTES, buffersBytes = (pool.physicalBuffers ?? pool.buffers) * BUF_BYTES, paramsBytes = pool.params * PAR_BYTES;
   const nodes = p.modules.length, nodesBytes = nodes * NODE_BYTES;
+  const tablesBytes = (nodes + p.modules.filter((m) => m.type === 'output').length + 3) & ~3;
   // engine.c key_memory_t: bounded queues and transient chord/entry state, allocated only by chained routes.
   const keyBytes = chainedHarmonizer(p) && p.modules.some(m => m.type === 'steps') ? KEY_ROUTING_BYTES : 0;
-  const taken = copiesBytes + buffersBytes + paramsBytes + nodesBytes + keyBytes;
+  const taken = copiesBytes + buffersBytes + paramsBytes + nodesBytes + tablesBytes + keyBytes;
   const fits = taken <= ARENA && sizes.length <= MAX_LINES && linePlace(sizes, ARENA - taken) !== null;
-  return { modules, pool, used: taken + lines, max: DEVICE.memory, fits, lines, copiesBytes, buffersBytes, paramsBytes, nodes, nodesBytes, keyBytes };
+  return { modules, pool, used: taken + lines, max: DEVICE.memory, fits, lines, copiesBytes, buffersBytes, paramsBytes, nodes, nodesBytes, keyBytes, tablesBytes };
 }
 /** the most lines a patch can have (engine.c ENG_MAX_LINES) */
 export const MAX_LINES = 128;

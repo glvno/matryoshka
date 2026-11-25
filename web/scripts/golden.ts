@@ -4634,9 +4634,10 @@ for (const [name, patch] of Object.entries(tests)) {
   const cpu = cpuEstimate(patch).use;
   if (cpu > 1) console.log(`${name}: estimated at ${Math.round(cpu * 100)} % of the FM-1's CPU (a correctness kit, not a real-time one)`);
   writeFileSync(new URL(`${f}.m1p`, OUT), bins[name] ?? encodePatch(patch, true, counted.has(name) ? COUNTED : slim.has(name) ? SLIM : 0));
-  // the parameter values, signal buffers and module copies the editor's budget counts (patchbin.ts poolUse), which eng_load
-  // must take exactly (host_test checks): the FM-1's memory is counted from them (#649)
-  if (!bins[name]) { const b = deviceBudget(patch); writeFileSync(new URL(`${f}.par`, OUT), `${b.params} ${b.buffers} ${b.instances} ${b.lines.nodes}\n`); }
+  // the parameter values, signal buffers, module copies, modules and the order and Output tables' bytes the editor's budget
+  // counts (patchbin.ts poolUse, linesOf), which eng_load must take exactly (host_test checks): the FM-1's memory is
+  // counted from them (#649)
+  if (!bins[name]) { const b = deviceBudget(patch); writeFileSync(new URL(`${f}.par`, OUT), `${b.params} ${b.buffers} ${b.instances} ${b.lines.nodes} ${b.lines.tablesBytes}\n`); }
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
   writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'von' ? `${fr} on ${n} ${ch ?? 127} 1` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'kon' ? `${fr} kon ${n} 127` : k === 'bon' || k === 'boff' || k === 'koff' || k === 'cbon' || k === 'cboff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' || k === 'cin' || k === 'fill' || k === 'meter' || k === 'at' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' || k === 'thon' || k === 'thoff' || k === 'armx' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }

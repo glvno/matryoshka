@@ -29,7 +29,7 @@ describe('cable-order harmony', () => {
     for (const chain of [['harm', 'steps'], ['steps', 'harm'], ['steps', 'harm', 'arp']]) {
       const b = lineBudget(fixture(chain).p);
       expect(b.keyBytes).toBe(KEY_ROUTING_BYTES);
-      expect(b.used).toBe(b.copiesBytes + b.buffersBytes + b.paramsBytes + b.nodesBytes + b.keyBytes + b.lines);
+      expect(b.used).toBe(b.copiesBytes + b.buffersBytes + b.paramsBytes + b.nodesBytes + b.tablesBytes + b.keyBytes + b.lines);
     }
   });
   it.each([['harm','arp'], ['harm','steps'], ['steps','harm'], ['harm','steps','arp'], ['steps','harm','arp']])('plays %j in both compiler modes', (...chain) => {
