@@ -2,11 +2,13 @@
  * Copyright (C) 2026 morgulbrut */
 /* Host test of the fixed-point engine against the TypeScript reference.
  *   host_test NAME.m1p NAME.ev NAME.f32 [NAME.par]
- * .par: the parameter values the editor's budget counts for the patch (patchbin.ts DEVICE.params); eng_load must take as many.
+ * .par: what the editor's budget counts for the patch (patchbin.ts deviceBudget): parameter values, signal buffers, module
+ * copies, modules, the order and Output tables' bytes; eng_load must take as many.
  * .ev: lines "frame on NOTE VEL" / "frame off NOTE" (frame a multiple of 128, ascending), last line "end FRAMES"; "frame
  * pat N" / "frame song N" choose the patch's pattern / song (format 48); "frame fill 1|0" holds FILL or lets it go (#674).
  * .f32: float32 stereo interleaved reference output. Prints max and rms error (full scale = 1.0).
- * HOST_CORES=1|2 renders the split segments' lane 1 deferred or on a thread (lanes_host.h, #271). */
+ * HOST_CORES=1|2 renders the split segments' lane 1 deferred or on a thread (lanes_host.h, #271).
+ * HOST_TEST_ARENA=1 prints the arena's bytes left after the load ("arena_free N"). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,11 +60,15 @@ int main(int argc, char **argv)
         fprintf(stderr, "eng_load failed (%d)\n", rc);
         return 1;
     }
+#ifdef ENG_ARENA
+    if (getenv("HOST_TEST_ARENA"))           /* the arena's bytes left after the load, counted as on the FM-1 (1.27: a patch of */
+        printf("arena_free %u\n", (unsigned)arena_free());   /* 128 modules or fewer keeps at least 1.26's) */
+#endif
 #if defined(ENG_PAR_WORDS) || defined(ENG_ARENA)   /* (tools/engine_exact.sh builds this file against an older engine too) */
     if (argc > 4) {
         FILE *pf = fopen(argv[4], "r");
-        unsigned want = 0, bufs = 0, insts = 0, nodes = 0;
-        int n = pf ? fscanf(pf, "%u %u %u %u", &want, &bufs, &insts, &nodes) : 0;
+        unsigned want = 0, bufs = 0, insts = 0, nodes = 0, tables = 0;
+        int n = pf ? fscanf(pf, "%u %u %u %u %u", &want, &bufs, &insts, &nodes, &tables) : 0;
         if (n >= 1 && want != par_used) {
             printf("parameter values: eng_load took %u, the editor's budget counts %u\n", (unsigned)par_used, want);
             return 1;
@@ -72,12 +78,21 @@ int main(int argc, char **argv)
             return 1;
         }
 #ifdef ENG_NODE_BYTES
-        if (n == 4 && (nodes != ar_nnode || nodes != E.nmod)) {   /* (#721: the modules come from the arena too) */
+        if (n >= 4 && (nodes != ar_nnode || nodes != E.nmod)) {   /* (#721: the modules come from the arena too) */
             printf("modules: eng_load took %u from the arena, the editor's budget counts %u\n", (unsigned)ar_nnode, nodes);
             return 1;
         }
 #else
         (void)nodes;
+#endif
+#ifdef ENG_TABLE_BYTES_128
+        if (n >= 5 && tables != ((E.nmod + E.nout + 3u) & ~3u)) {   /* (the order and Output tables come from the arena too) */
+            printf("order and Output tables: eng_load took %u B from the arena, the editor's budget counts %u\n",
+                   (unsigned)((E.nmod + E.nout + 3u) & ~3u), tables);
+            return 1;
+        }
+#else
+        (void)tables;
 #endif
         if (pf)
             fclose(pf);

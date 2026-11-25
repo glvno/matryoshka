@@ -500,8 +500,8 @@ export const MAX_MODULES = 128;
 /** the module limit of firmware before 1.11: a patch with more is written in FORMAT_1_11 (patchbin.ts formatOf), so an FM-1
  * with older firmware is told to update */
 export const MODULES_1_10 = 64;
-/** the words of an armed set (arm.ts armMask; engine.h ENG_MSET_WORDS): 32 modules each */
-export const ARM_WORDS = MAX_MODULES / 32;
+/** the words of an armed set (arm.ts armMask; engine.h ENG_MSET_WORDS, keep in step): 32 modules each, the last one partly */
+export const ARM_WORDS = Math.ceil(MAX_MODULES / 32);
 
 /**
  * How a poly group plays (poly.ts polyGroups / deviceView; the engines' and the binary's form): the settings of the Voice

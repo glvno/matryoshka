@@ -56,13 +56,14 @@ void eng_fpu_probe(uint32_t lane, uint32_t *h);
                                        * are one run, u8 first follows, the count is the low 7 bits */
 #define ENG_PATCH_COMPAT_VERSION 31   /* (a format 31 patch reads the same; 31..34 with the parameter counts of their format) */
 #define ENG_MAX_PARTS 8               /* parts of a poly group (notes it plays at once) */
-/* the modules of a patch (#721, D-256): the binary's count is a byte; 128 keeps every module index under 0x80 (E.main is
- * an int8_t, a Drum map's keys source 2 + an index a byte) and a module set four words. A node takes ENG_NODE_BYTES of
- * the arena (#649), so a patch pays for its own modules */
+/* the modules of a patch (#721, D-256): the binary's count is a byte; 128 keeps a device's member count under 0x80
+ * (ENG_MEMBER_RUN). A node takes ENG_NODE_BYTES of the arena (#649), and the order and Output tables a byte per module
+ * there too, so a patch pays for its own modules */
 #define ENG_MAX_MODULES 128u
 /* a set of modules (the armed ones, #191; what arming a device arms): bit m & 31 of w[m >> 5] = module m. The link carries
- * it as ENG_MSET_WORDS u32 LE (ARMS / ARMS_NOW, feature bit 21; older firmware and editors: the first two) */
-#define ENG_MSET_WORDS (ENG_MAX_MODULES / 32u)
+ * it as ENG_MSET_WORDS u32 LE (ARMS / ARMS_NOW, feature bit 21; older firmware and editors: the first two). Keep in step
+ * with patch.ts ARM_WORDS */
+#define ENG_MSET_WORDS ((ENG_MAX_MODULES + 31u) / 32u)
 typedef struct { uint32_t w[ENG_MSET_WORDS]; } eng_mset_t;
 static inline eng_mset_t mset_none(void) { eng_mset_t s = {{0}}; return s; }
 static inline eng_mset_t mset_one(uint32_t m)   /* {m}, empty past ENG_MAX_MODULES */

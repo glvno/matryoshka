@@ -6,10 +6,11 @@
  * .lowram (#273: SRAM Felucca kept for a RAM-run debug build we do not have, 0x01C06000..0x01C08000, plus what
  * .ram_text leaves of its 24 KiB; as sloop-fm1 did). crt0.S writes the SPL's state at 0x01C07F20: the region stops at
  * 0x01C07F00. main.c proves .lowram word by word and zeroes it at boot (lowram_prove), tools/build.py reports it.
- * RAM  : .data/.bss (24 KiB): what the audio and key-scan interrupts touch, small variables
+ * RAM  : .data/.bss (24 KiB less 128 B): what the audio and key-scan interrupts touch, small variables
  * POOL : big zero-initialised buffers (FX lines, canvases, the parts' engine memory, the main loop's work
  *        buffers), section .pool. The same SRAM: the RAM / POOL boundary only splits the budget (1.5: 96 / 336
- *        KiB -> 24 / 408 KiB: the four voices' state and buffers live in the pool); tools/build.py reads both lengths from here
+ *        KiB -> 24 / 408 KiB: the four voices' state and buffers live in the pool; 1.27: 128 B more to the pool, which
+ *        the effects' module table left .bss for, engine.c node_t fxrun); tools/build.py reads both lengths from here
  * STACKS with 256-byte guard bands; NOINIT survives resets and UBOOT entry. Main stack 20,224 B, supervisor stack 7,936 B;
  *        both painted at boot and their deepest use reported (#273: main.c stack_paint, DIAG page 124). Below the guard band
  *        under the main stack, 4 KiB for the second core (#271, hal/fm1_cpu1.h): its user stack (3,584 B; it guards its
@@ -22,8 +23,8 @@ MEMORY
 {
     XIP    (rx)  : ORIGIN = 0x02000120, LENGTH = 0x8DFBC
     RAMTEXT (rwx): ORIGIN = 0x01C00000, LENGTH = 0x7F00
-    RAM    (rwx) : ORIGIN = 0x01C08000, LENGTH = 24K
-    POOL   (rw)  : ORIGIN = 0x01C0E000, LENGTH = 0x66000
+    RAM    (rwx) : ORIGIN = 0x01C08000, LENGTH = 0x5F80
+    POOL   (rw)  : ORIGIN = 0x01C0DF80, LENGTH = 0x66080
     NOINIT (rwx) : ORIGIN = 0x01C7C000, LENGTH = 0x3D50
 }
 SECTIONS
