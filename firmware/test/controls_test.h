@@ -32,6 +32,7 @@ typedef struct {
 } ct_snap_t;
 static int ct_mod;                                      /* the track shown when the gesture began, -1 none */
 static uint32_t ct_pre_dev, ct_pre_pg;                  /* the device page before the Page button's press (ct_page_button) */
+static uint32_t ct_held_lpg;                            /* ALGO's lock stop (seq_lpg) just before a held step's release */
 
 static uint32_t ct_fnv(uint32_t h, uint32_t v) { return (h ^ v) * 0x01000193u; }
 static uint32_t ct_params(void)
@@ -179,7 +180,7 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_VELOCITY: return same_notes && a->vel_sum != b->vel_sum;
     case CE_CHANCE: return same_notes && a->chance_sum != b->chance_sum;
     case CE_PITCH: return same_notes && a->pitch_sum != b->pitch_sum;
-    case CE_LOCK_PAGE: return a->lpg != b->lpg;
+    case CE_LOCK_PAGE: return ct_held_lpg != b->lpg;   /* (while the step is held: its release goes back to the grid, #1213) */
     case CE_LOCK: return a->locks != b->locks;
     case CE_SONG_PAGE: return a->page == PAGE_SONG && b->page != PAGE_SONG;
     case CE_CLEAR: return a->notes_n == 0 && b->notes_n > 0;
@@ -673,6 +674,7 @@ static void ct_part(const ctl_part_t *p, uint32_t how, int dir, uint32_t hold)
  * page's, which ALGO picks first with the step held (#524); a clear and a delete ask first, REC again does it (#231) */
 static void ct_drive(const ctl_row_t *r, uint32_t alt, int dir)
 {
+    ct_held_lpg = seq_lpg;
     if (r->first != CH_NONE) {                          /* (ENV then SEL: ENV tapped first, on the page it opens) */
         tap(r->first);
         later(500);
@@ -693,6 +695,7 @@ static void ct_drive(const ctl_row_t *r, uint32_t alt, int dir)
         if (r->effect == CE_LOCK)
             enc(1, 1);
         ct_part(&r->alt[alt], r->how, dir, r->hold);
+        ct_held_lpg = seq_lpg;
         ct_key(n, 0);
     } else if (r->hold != CH_NONE) {
         ct_down(r->hold);

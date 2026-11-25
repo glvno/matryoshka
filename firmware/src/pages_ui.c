@@ -105,6 +105,7 @@ static void toast_end(void);
 /* a Page button's list on K1..K4 (#117): its button (-1: none), the step showing, whether a hold peeks at its first page */
 static int8_t pg_list_btn = -1;
 static uint8_t pg_list_step, pg_list_peek;
+static int seq_lock_value(uint32_t m, uint32_t j, int32_t *v);   /* seq_ui.c: the lock view's held step locks the row (*v its value) */
 
 static void m1_track_name(uint32_t mod, char *out);     /* proto.c: a Steps track's name ("" none) */
 static void m1_param_now(uint32_t mod, uint32_t par, int32_t v);   /* proto.c: a row turned here (the editor follows) */
@@ -1010,9 +1011,11 @@ static void row_show(const ppage_t *pg, uint32_t k, char *num, char *unit, uint3
         *base = *live = 0;
         return;
     }
-    {
+    {                                                   /* (the SEQ page's lock view: the held step's lock, if it has one;
+                                                         * the live tick stays the engine's, #1213) */
         const def_t *d = &DEFS[eng_type(m)];
         int32_t v = eng_get_param(m, j), e = eff_now(m, j, d, v), top = row_top(m, j, d);
+        (void)seq_lock_value(m, j, &v);
         if (row_name(pg, k, v, num))                    /* a Selector's position by the name its card row gives it (#358) */
             unit[0] = 0;
         else
