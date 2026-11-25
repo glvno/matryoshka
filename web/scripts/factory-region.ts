@@ -244,6 +244,8 @@ function layout(input: RegionInput, pad: number): Uint8Array {
     const z = lzPack(p.binary);
     if (lzUnpack(z, UNPACK_CAP).length !== p.binary.length) throw new Error(`${p.name}: packing does not round-trip`);
     checkInPlace(z, UNPACK_CAP);
+    // (the region's format is its newest patch's, and firmware older than it refuses the whole region, factory.c FC_NEWER:
+    // each binary keeps its lowest format, D-281, so the set stays at 66 unless a patch uses a 1.27 thing, uses127)
     format = Math.max(format, p.binary[1]);
     const e = patchDir + PATCH_REC * i, at = w.at;
     w.raw(z);

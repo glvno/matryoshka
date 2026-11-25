@@ -38,8 +38,8 @@ WASM_IMPORT("pattern") void js_pattern(uint32_t pat, uint32_t song);
 WASM_IMPORT("song") void js_song(uint32_t s, const uint8_t *at, uint32_t n);
 WASM_IMPORT("mute") void js_mute(uint32_t mod, uint32_t on);
 /* the FM-1 armed or disarmed (#139, #191: REC held + a black key, REC on an environment row): the armed modules as
- * ENG_MSET_WORDS words (w0: modules 0..31, w1 32..63, ..., #721); the page arms the same devices */
-WASM_IMPORT("arms") void js_arms(uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3);
+ * ENG_MSET_WORDS (8) words (w0: modules 0..31, w1 32..63, ..., #721, #1286); the page arms the same devices */
+WASM_IMPORT("arms") void js_arms(uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3, uint32_t w4, uint32_t w5, uint32_t w6, uint32_t w7);
 int eng_steps_notes(uint32_t module, const uint32_t **w);   /* (engine.c, included by host_ui.h) */
 int eng_pattern_playing(uint32_t module);
 int eng_pattern(void);
@@ -77,7 +77,7 @@ static void m1_locks_now(uint32_t mod, uint32_t pat)
     if (n >= 0)
         js_locks(mod, pat, l, (uint32_t)(n > 64 ? 64 : n));
 }
-static void m1_arms_now(eng_mset_t s) { js_arms(s.w[0], s.w[1], s.w[2], s.w[3]); }
+static void m1_arms_now(eng_mset_t s) { js_arms(s.w[0], s.w[1], s.w[2], s.w[3], s.w[4], s.w[5], s.w[6], s.w[7]); }
 /* the SEQ page copied, cleared every pattern and song or doubled a pattern (#1177, #1178, D-838): the page runs the same
  * command on its patch, as the device link's PATTERN_OP (op, from, to, hash 0) */
 WASM_IMPORT("pattern_op") void js_pattern_op(uint32_t op, uint32_t from, uint32_t to, uint32_t hash);
@@ -410,11 +410,11 @@ WASM_EXPORT("fm1w_transport") void fm1w_transport(uint32_t run)
         ui_dirty = 1;
     panel_draw();
 }
-/* the editor's armed devices (#191) as a set of their modules (w0..w3, ENG_MSET_WORDS, #721): only they hear the keys;
- * REC records the armed Steps tracks (seq_rec_sync, #395), the info line names the first */
-WASM_EXPORT("fm1w_arm_mask") void fm1w_arm_mask(uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3)
+/* the editor's armed devices (#191) as a set of their modules (w0..w7, ENG_MSET_WORDS, #721, #1286): only they hear the
+ * keys; REC records the armed Steps tracks (seq_rec_sync, #395), the info line names the first */
+WASM_EXPORT("fm1w_arm_mask") void fm1w_arm_mask(uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3, uint32_t w4, uint32_t w5, uint32_t w6, uint32_t w7)
 {
-    eng_mset_t s = {{w0, w1, w2, w3}};
+    eng_mset_t s = {{w0, w1, w2, w3, w4, w5, w6, w7}};
     eng_arm_mask(s);
     ui_dirty = 2;
     panel_draw();

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { DEFS, STACKS } from './modules';
+import { DEFS, RIGHT_IN, STACKS } from './modules';
 import type { ModuleInst, Patch } from './patch';
 import type { DeviceGroup } from './poly';
+import { cableFeeds, cableReaders, feedModel } from './feeds';
 
 /** engine.c SCH_SYNC and SCH_FORK: a wait across the cores, and handing the job over, in schedule cost units (64 cycles) */
 export const SCH_SYNC = 6;
@@ -58,15 +59,14 @@ export function scheduleWork(s: Schedule, work: (m: number) => number): (m: numb
 
 /** Input must be deviceView(source, true); `rig`: the plan's costs measured on the test rig (engine.c DEF_COST,
  * DEF_COST_BYPASS); `table`: the CPU table's (DEF_TCOST, DEF_TCOST_BYPASS); `helpers`: fx-drawer.ts chainHelpers(source),
- * which play though the patch marks them bypassed. Two plans, each item in E.order where it would end first: one at the table's
+ * which play though the patch marks them bypassed; `fxTargets`: the FX rack's targets (rack-plan.ts), whose stereo copy 1
+ * waits for copy 0 (#1141: it ramps from where copy 0 started, engine.c m_fx). Two plans, each item in E.order where it would end first: one at the table's
  * costs, one at the rig's (an oscillator's cost times its voices, SCH_ITEM more an item). The rig's plan is kept when, at
  * the rig's costs, it ends sooner than the table's by 1 / SCH_GAIN (#1073): where the two are closer, the costs' own error
  * decides which ends first on the FM-1, and the table's plan is the one the FM-1 played before */
-export function schedule(p: Patch, groups: DeviceGroup[], rig: PlanCosts, table: PlanCosts, helpers: Set<number>): Schedule {
-  const index = new Map(p.modules.map((m, i) => [m.id, i]));
-  const group = p.modules.map((m) => groups.findIndex((g) => g.modules.has(m.id)));
-  const copies = group.map((g) => (g < 0 ? 1 : groups[g].cfg.parts));
-  const cables = p.cables.map((c) => ({ from: index.get(c.from.module)!, to: index.get(c.to.module)! }));
+export function schedule(p: Patch, groups: DeviceGroup[], rig: PlanCosts, table: PlanCosts, helpers: Set<number>, fxTargets: ReadonlySet<number> = new Set()): Schedule {
+  const x = feedModel(p, groups);
+  const { group, copies, cables } = x;
   const visited = new Set<number>(), order: number[] = [];
   function visit(m: number): void {
     visited.add(m);
@@ -84,18 +84,19 @@ export function schedule(p: Patch, groups: DeviceGroup[], rig: PlanCosts, table:
   for (const m of order)
     for (let v = 0; v < copies[m]; v++) {
       const d: [number, number][] = [];
-      for (const { from: f, to: t } of cables) {
+      for (const [ci, { from: f, to: t, input }] of cables.entries()) {
         if (f === t) continue;
         if (t === m && pos[f] < pos[m]) {
-          // the copies of f that copy v of m reads: every part of another group's, else its own part or the one copy
-          if (group[f] >= 0 && group[f] !== group[m]) for (let w = 0; w < copies[f]; w++) d.push([f, w]);
-          else d.push([f, copies[f] > 1 ? v : 0]);
+          // the copies of f that copy v of m reads (feeds.ts: every part of another group's, else its own part or the one
+          // copy; a stereo source's sides)
+          const rin = RIGHT_IN[p.modules[m].type];
+          for (const j of rin && rin !== input ? [input, rin] : [input]) for (const fd of cableFeeds(x, ci, j, v)) d.push([f, fd.copy]);
         } else if (f === m && pos[t] < pos[m]) {
           // a feedback cable's readers, which read the block before
-          for (let w = 0; w < copies[t]; w++)
-            if ((group[m] >= 0 && group[m] !== group[t]) || (copies[m] > 1 ? w : 0) === v) d.push([t, w]);
+          for (const w of cableReaders(x, ci, null, v)) d.push([t, w]);
         }
       }
+      if (v === 1 && group[m] < 0 && fxTargets.has(p.modules[m].id)) d.push([m, 0]);
       for (const o of order)
         if (pos[o] < pos[m] && (steps(m) || steps(o))) for (let w = 0; w < copies[o]; w++) d.push([o, w]);
       deps.set(`${m}/${v}`, d);

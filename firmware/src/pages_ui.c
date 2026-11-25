@@ -381,11 +381,13 @@ static void pages_extras(const uint8_t *p, uint32_t len)
         }
         at += 1u + 2u * p[at];
         if (i < pg_ndev) {
-            pg_dev[i].nmem = p[at] & (uint8_t)~ENG_MEMBER_RUN;
-            pg_dev[i].mrun = (p[at] & ENG_MEMBER_RUN) != 0u;
-            pg_dev[i].mem = p + at + 1u;
+            uint32_t nm, run, from;
+            (void)eng_members(p, at, &nm, &run, &from);
+            pg_dev[i].nmem = (uint8_t)nm;
+            pg_dev[i].mrun = (uint8_t)run;
+            pg_dev[i].mem = p + from;
         }
-        at += 1u + ((p[at] & ENG_MEMBER_RUN) ? 1u : p[at]);
+        at += eng_members_size(p, at);
     }
     pg_names_fresh = 0;
 }
@@ -2840,7 +2842,7 @@ static uint32_t pb_extra(const dp_at_t *s, uint32_t k)
     for (at++, i = 0; i < k; i++) {
         at += 6u + p[at + 5u];
         at += 1u + 2u * p[at];
-        at += 1u + ((p[at] & ENG_MEMBER_RUN) ? 1u : p[at]);
+        at += eng_members_size(p, at);
     }
     return at;
 }
@@ -3591,7 +3593,7 @@ static int dp_room(uint32_t d, const char *name, int factory)
         if (i == pg_dev[d].bin) { old_name = n; break; }
         at += 6u + n;
         at += 1u + 2u * bin[at];
-        at += 1u + ((bin[at] & ENG_MEMBER_RUN) ? 1u : bin[at]);
+        at += eng_members_size(bin, at);
     }
     if (i == j) return 0;
     i = str_len(name);
