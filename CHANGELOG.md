@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **P-lock paging on the FM-1 shows the device's real pages until you let go.** With a step held on a drum grid, ALGO still starts on the step's note (K2 velocity, SELECT chance). Each click on from there now shows the device's own page, exactly as its device page looks, with every bar at the held step's value, and K1..K4 lock its rows on that step. Before, the grid stayed on screen with the page's rows listed in a gold line under it. Letting the step go returns to the grid exactly where you were, and the next held step starts on the note again. SELECT, PRESET (ratchet) and OCT- / OCT+ (micro timing) do what they did on every stop ([D-815](docs/ledger/steps.md#D-815), [#1213](https://github.com/glvno/matryoshka/issues/1213)).
+- **A double the patch has no room for no longer changes the pattern.** On the FM-1's SEQ page, SEQ held + OCT+ on a nearly full patch could say `PATCH FULL: NOT DOUBLED` and still change something, without telling the editor. Pattern 1 could come back holding an unsaved pattern 2's notes, or, with the pattern store full, pattern 2 stayed doubled. Now a refused double leaves the patch exactly as it was. A refused halve (OCT-) or copy (SEQ held + SAVE) also leaves the patch's other patterns where they were, instead of moving them into the pattern store ([D-838](docs/ledger/steps.md#D-838)).
 
 ## 1.26.6 — 2026-11-24
 

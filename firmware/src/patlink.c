@@ -28,8 +28,9 @@
  * #1202 G8). They are never listed, browsed or loaded on their own.
  *
  * The payloads go through m1_up (proto.c's upload buffer: the store works in sl_buf, and the editor sends no patch upload
- * while it talks to the store). Needs, after proto.c and patstore.c: m1_cur, m1_cur_len, m1_edited, m1_up,
- * m1_patch_patterns, m1_patch_locks, m1_patch_links, m1_steps_write, m1_steps_cost, m1_pat_link_now,
+ * while it talks to the store); an edit the binary may still refuse after m1_pat_spill ran keeps its undo at m1_up's
+ * start, and the spill's payloads go after it (pl_mark). Needs, after proto.c and patstore.c: m1_cur, m1_cur_len,
+ * m1_edited, m1_up, m1_patch_patterns, m1_patch_locks, m1_patch_links, m1_steps_write, m1_steps_cost, m1_pat_link_now,
  * m1_track_pattern_now, m1_locks_now, m1_patch_name, bank_slots, bank_mask, sl_head / sl_buf (slotstore.c), KIT_GROUPS
  * (factory_tier.h). */
 #define PL_KIT (PT_ID_MAX + 1u)            /* the first legacy factory pattern's id: 0xE000 */
@@ -37,6 +38,17 @@
 static uint32_t pl_hash[ENG_PATTERNS];     /* each link's payload hash as the store gave it to this patch */
 static uint64_t pl_priv;                   /* bit p: pattern p links an entry m1_pat_spill made since the load or SAVE, which
                                            * only the running patch links */
+/* an edit the binary can still refuse after m1_pat_spill sent patterns to the store to make room (pl_double, pl_halve,
+ * pl_copy), from pl_mark to pl_unmark: what the spill changes, kept so that a refusal leaves the binary, the links and the
+ * editor as they were */
+typedef struct {
+    uint16_t ids[ENG_PATTERNS];            /* the links before (pl_ids) */
+    uint32_t hash[ENG_PATTERNS];           /* pl_hash before */
+    uint64_t priv, moved;                  /* pl_priv before; the patterns the spill linked since (the editor not told yet) */
+    uint32_t held;                         /* the bytes at m1_up's start the edit keeps (its undo): the spill works after them */
+    uint8_t edited, fmt;                   /* m1_edited and the binary's format byte before */
+} pl_mark_t;
+static pl_mark_t *pl_marked;               /* the edit under way, 0 none */
 
 /* the running patch's links (m1_cur's format 59 section): its entries (3 bytes each), their count in *n */
 static const uint8_t *pl_links(uint32_t *n)
@@ -608,12 +620,14 @@ static int pl_commit(const char *patch, uint32_t self)
 /* proto.c m1_steps_sec (#1199): the binary cannot hold its patterns and P-locks. Each pattern 2..64 it holds goes to the
  * store, in an entry of its own that only the running patch links (pl_priv: written over at the next spill), named after
  * the patch, so the slot's links and the other patches' patterns stay as they are until SAVE (pl_commit takes these
- * entries as they are). Then the sections without them and the links (pl_relink). 1 some went, 0 none (no store, the store
+ * entries as they are). Then the sections without them and the links (pl_relink). Each payload is made in m1_up after the
+ * bytes a marked edit keeps there (pl_mark; one that does not fit after them stays, as one past PT_MAX does), and the
+ * editor hears the new links at once, or a marked edit's at its end (pl_unmark). 1 some went, 0 none (no store, the store
  * full, or the binary still cannot hold the links) */
 static int m1_pat_spill(void)
 {
     uint16_t ids[ENG_PATTERNS];
-    uint32_t keep[ENG_PATTERNS], p, id;
+    uint32_t keep[ENG_PATTERNS], p, id, at = pl_marked ? pl_marked->held : 0u;
     uint64_t moved = 0;
     char name[PT_NAME + 1u];
     pl_out_t s;
@@ -625,16 +639,16 @@ static int m1_pat_spill(void)
         keep[p] = pl_hash[p];
         if (!pl_has(p))
             continue;
-        s = (pl_out_t){ m1_up, sizeof m1_up, 0, PT_FNV0 };
+        s = (pl_out_t){ m1_up + at, sizeof m1_up - at, 0, PT_FNV0 };
         pl_encode(p, &s);
-        if ((ids[p] && s.h == pl_hash[p]) || s.n > PT_MAX)
+        if ((ids[p] && s.h == pl_hash[p]) || s.n > PT_MAX || s.n > s.cap)
             continue;
         id = (pl_priv >> p & 1u) && ids[p] <= PT_ID_MAX ? ids[p] : 0u;
         pl_name(name, m1_patch_name(), p);
-        rc = pt_put(&id, name, m1_up, s.n, 0);
+        rc = pt_put(&id, name, m1_up + at, s.n, 0);
         if (rc == -4) {
             id = 0;
-            rc = pt_put(&id, name, m1_up, s.n, 0);
+            rc = pt_put(&id, name, m1_up + at, s.n, 0);
         }
         if (rc)
             continue;
@@ -651,10 +665,60 @@ static int m1_pat_spill(void)
     }
     pl_priv |= moved;
     m1_edited = 1;
-    for (p = 1; p < ENG_PATTERNS; p++)
-        if (moved >> p & 1u)
-            m1_pat_link_now(p, ids[p], pl_hash[p]);
+    if (pl_marked)
+        pl_marked->moved |= moved;
+    else
+        for (p = 1; p < ENG_PATTERNS; p++)
+            if (moved >> p & 1u)
+                m1_pat_link_now(p, ids[p], pl_hash[p]);
     return 1;
+}
+
+/* an edit the binary may refuse after m1_pat_spill ran (pl_double, pl_halve, pl_copy) begins: the links, their hashes,
+ * pl_priv, m1_edited and the binary's format byte kept in k; held: the bytes at m1_up's start the edit needs until it ends
+ * (its undo), which the spill leaves alone. Until pl_unmark the spill tells the editor nothing */
+static void pl_mark(pl_mark_t *k, uint32_t held)
+{
+    uint32_t p;
+    pl_ids(k->ids);
+    for (p = 0; p < ENG_PATTERNS; p++)
+        k->hash[p] = pl_hash[p];
+    k->priv = pl_priv;
+    k->moved = 0;
+    k->held = held;
+    k->edited = m1_edited;
+    k->fmt = m1_cur[1];
+    pl_marked = k;
+}
+/* the edit pl_mark began ends, done or refused (refused: once the engine and the binary's other sections are as they
+ * were). Done, the editor hears the links the spill made. Refused, the links go back to what they were, with their hashes,
+ * pl_priv, m1_edited and the format byte: the binary byte for byte as before (the entries the spill wrote stay in the
+ * store until pl_gc), the editor told nothing. Should the binary not take the links back (it held them before), the
+ * spill's stay and the editor hears them */
+static void pl_unmark(pl_mark_t *k, int done)
+{
+    uint32_t p, h;
+    pl_marked = 0;
+    if (!done && k->moved) {
+        for (p = 0; p < ENG_PATTERNS; p++) {        /* (swapped: pl_relink sees the hashes before, k keeps the spill's) */
+            h = pl_hash[p];
+            pl_hash[p] = k->hash[p];
+            k->hash[p] = h;
+        }
+        if (pl_relink(k->ids)) {
+            pl_priv = k->priv;
+            m1_cur[1] = k->fmt;                       /* (m1_patch_links may have raised it for the spill's links) */
+            k->moved = 0;
+        } else {
+            for (p = 0; p < ENG_PATTERNS; p++)
+                pl_hash[p] = k->hash[p];
+        }
+    }
+    if (!done && !k->moved)
+        m1_edited = k->edited;
+    for (p = 0; p < ENG_PATTERNS; p++)
+        if (k->moved >> p & 1u)
+            m1_pat_link_now(p, pl_link(p), pl_hash[p]);
 }
 
 /* a stored pattern is deleted once no patch links it (#1202): after a slot is written or erased, and at boot. Every user
@@ -774,20 +838,26 @@ static int pl_has_notes(uint32_t p)
 }
 /* pattern p of every track copied into pattern q, which is empty (pl_free): notes, P-locks, its own length and rate; a
  * track without p gets no q. A plain pattern, linked to nothing, whatever p links (the payload the store would get, applied
- * as a load applies it). 0 done, -2 no room (the patch's bytes or the engine's notes: q is left empty) */
+ * as a load applies it). 0 done, -2 no room (the patch's bytes or the engine's notes: q is left empty, and the patterns
+ * m1_pat_spill sent to the store meanwhile are linked as before, pl_unmark) */
 static int pl_copy(uint32_t p, uint32_t q)
 {
     pl_out_t s = { m1_up, sizeof m1_up, 0, PT_FNV0 };
+    pl_mark_t mk;
     uint32_t t;
     int rc;
     pl_encode(p, &s);
+    pl_mark(&mk, 0);                             /* (the payload is applied before the spill can run) */
     rc = s.n > s.cap ? -2 : pl_apply(q, m1_up, s.n);
-    if (rc >= 0 && m1_patterns_fit())
+    if (rc >= 0 && m1_patterns_fit()) {
+        pl_unmark(&mk, 1);
         return 0;
+    }
     for (t = 0; t < (uint32_t)eng_steps_count(); t++)
         eng_pattern_drop((uint32_t)eng_steps_module(t), q);
     eng_locks_clear(q);
     (void)m1_patterns_fit();
+    pl_unmark(&mk, 0);
     return -2;
 }
 /* the patch has nothing clear all would clear: no notes in pattern 1, no other pattern, no link, no P-lock, no song */
@@ -920,9 +990,10 @@ static void pl_undouble(uint32_t p, const uint8_t *b, const uint8_t *len, const 
 /* pattern p of every track doubled (pattern-ops.ts doublePattern, D-838) in the engine and the running binary: 0 done
  * (*longest: the longest new length), -1 a track would pass TRACK_STEPS, -2 a pattern TRACK_NOTES_MAX words or the patch
  * ENG_MAX_NOTES, -3 a pattern ENG_PAT_LOCKS locks or the patch ENG_MAX_LOCKS, -4 the binary has no room. Refused,
- * nothing changes. Pattern 1 doubles the track's length, and the track's other patterns on the track's length get it as
- * their own; a track without p gets it first from its pattern 1 (D-542). Links and origins stay: a linked pattern is no
- * longer clean (pl_hash), as after an edit. The playhead goes on where it is */
+ * nothing changes: the undo is p's payload at m1_up's start, where m1_pat_spill leaves it, and the patterns the spill sent
+ * to the store meanwhile are linked as before (pl_mark). Pattern 1 doubles the track's length, and the track's other
+ * patterns on the track's length get it as their own; a track without p gets it first from its pattern 1 (D-542). Links
+ * and origins stay: a linked pattern is no longer clean (pl_hash), as after an edit. The playhead goes on where it is */
 static int pl_double(uint32_t p, uint32_t *longest)
 {
     uint32_t w[TRACK_NOTES_MAX];
@@ -934,6 +1005,7 @@ static int pl_double(uint32_t p, uint32_t *longest)
     uint32_t bad = 0;                            /* (bit 1 notes, bit 2 locks) */
     const uint32_t *src;
     pl_out_t s = { m1_up, sizeof m1_up, 0, PT_FNV0 };
+    pl_mark_t mk;
     int ok = 1, r;
     for (t = 0; t < nt; t++) {
         m = (uint32_t)eng_steps_module(t);
@@ -965,6 +1037,7 @@ static int pl_double(uint32_t p, uint32_t *longest)
     pl_encode(p, &s);                            /* (what undoes it) */
     if (s.n > s.cap)
         return -4;
+    pl_mark(&mk, s.n);
     for (t = 0; t < nt; t++) {
         m = (uint32_t)eng_steps_module(t);
         L = len[t];
@@ -1005,6 +1078,7 @@ static int pl_double(uint32_t p, uint32_t *longest)
         ok = m1_track_fit((uint32_t)eng_steps_module(t), -1);
     if (ok) {
         m1_edited = 1;
+        pl_unmark(&mk, 1);
         *longest = most;
         return 0;
     }
@@ -1012,14 +1086,15 @@ static int pl_double(uint32_t p, uint32_t *longest)
     (void)m1_patterns_fit();
     for (t = 0; !p && t < nt; t++)
         (void)m1_track_fit((uint32_t)eng_steps_module(t), (int)rn[t]);
+    pl_unmark(&mk, 0);
     return -4;
 }
 /* pattern p of every track halved (pattern-ops.ts halvePattern, D-841) in the engine and the running binary: its length
  * halved, rounded down, its notes and P-locks as they were (as LAST STEP shortens it). 0 done (*longest: the longest new
  * length), -1 a track of 1 step, -2 the patch would pass ENG_MAX_NOTES, -3 ENG_MAX_LOCKS (a track without p gets it first
- * from its pattern 1, D-542), -4 the binary has no room. Refused, nothing changes. Which length is pl_double's: pattern 1
- * halves the track's length, and the track's other patterns on the track's length get it as their own. The playhead
- * goes on as after LAST STEP */
+ * from its pattern 1, D-542), -4 the binary has no room. Refused, nothing changes (the patterns m1_pat_spill sent to the
+ * store meanwhile linked as before, pl_unmark). Which length is pl_double's: pattern 1 halves the track's length, and the
+ * track's other patterns on the track's length get it as their own. The playhead goes on as after LAST STEP */
 static int pl_halve(uint32_t p, uint32_t *longest)
 {
     uint32_t w[TRACK_NOTES_MAX];
@@ -1028,6 +1103,7 @@ static int pl_halve(uint32_t p, uint32_t *longest)
     uint64_t pin[ENG_MAX_TRACKS];
     uint32_t nt = (uint32_t)eng_steps_count(), t, m, q, j, n, c, words = 0, locks = (uint32_t)eng_locks_count(), most = 0;
     const uint32_t *src;
+    pl_mark_t mk;
     int ok = 1, r;
     for (t = 0; t < nt; t++) {
         m = (uint32_t)eng_steps_module(t);
@@ -1047,6 +1123,7 @@ static int pl_halve(uint32_t p, uint32_t *longest)
         return -2;
     if (locks > ENG_MAX_LOCKS)
         return -3;
+    pl_mark(&mk, 0);
     for (t = 0; t < nt; t++) {
         m = (uint32_t)eng_steps_module(t);
         pin[t] = 0;
@@ -1081,6 +1158,7 @@ static int pl_halve(uint32_t p, uint32_t *longest)
         ok = m1_track_fit((uint32_t)eng_steps_module(t), -1);
     if (ok) {
         m1_edited = 1;
+        pl_unmark(&mk, 1);
         *longest = most;
         return 0;
     }
@@ -1106,6 +1184,7 @@ static int pl_halve(uint32_t p, uint32_t *longest)
     (void)m1_patterns_fit();
     for (t = 0; !p && t < nt; t++)
         (void)m1_track_fit((uint32_t)eng_steps_module(t), (int)rn[t]);
+    pl_unmark(&mk, 0);
     return -4;
 }
 
