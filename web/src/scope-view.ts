@@ -411,8 +411,9 @@ export function readoutLines(chans: ScreenSpec['chans'], rows: { i: number; lo: 
 }
 
 /** a Scope screen's toolbar (on a card it shows while hovered): its window (− / +, a 1-2-5 series), time / spectrum /
- *  spectrogram and the vertical scale; `set` changes one of the module's parameters; `voices`: a Voices button too (#54) */
-export function scopeTools(m: ModuleInst, set: (name: string, v: number) => void, voices: boolean): HTMLElement {
+ *  spectrogram and the vertical scale; `set` changes one of the module's parameters; `voices`: a Voices button too (#54),
+ *  'sides' an L / R one for a stereo source (#1141: its two copies, as the voices view draws them) */
+export function scopeTools(m: ModuleInst, set: (name: string, v: number) => void, voices: boolean | 'sides'): HTMLElement {
   const def = DEFS[m.type];
   const bar = document.createElement('div');
   bar.className = 'scope-tools';
@@ -472,7 +473,7 @@ export function scopeTools(m: ModuleInst, set: (name: string, v: number) => void
   bar.append(shorter, value, longer, rule(), ...modes, rule(), scaleBtn);
   if (voices) {
     const on = (): boolean => Math.round(m.params.voices ?? 0) === 1;
-    const each = button('Voices', 'Each voice as its own trace', () => {
+    const each = button(voices === 'sides' ? 'L / R' : 'Voices', voices === 'sides' ? 'The left and the right side as their own traces' : 'Each voice as its own trace', () => {
       set('voices', on() ? 0 : 1);
       each.setAttribute('aria-pressed', String(on()));
     });

@@ -40,9 +40,10 @@ export interface KnownEffect { structure: string; rows: number; name: string; de
 const known = (name: string, def: AssemblyDef): KnownEffect => ({ structure: defStructureAndOrder(def).structure, rows: def.params.length, name, def });
 
 let libraryEffects: KnownEffect[] | undefined;
-/** every effect the Library can add (Drive, Chorus, Delay and Reverb are the old bus stages exactly, catalogEffectDef) */
+/** every effect the Library can add, in its 1.27 form and its legacy one (Drive, Chorus, Delay and Reverb there are the old
+ *  bus stages exactly, catalogEffectDef), so a preset of an older drawer still finds its effect */
 function libraryKnown(): KnownEffect[] {
-  libraryEffects ??= EFFECT_CATALOG.map(entry => known(entry.name, catalogEffectDef(entry)));
+  libraryEffects ??= EFFECT_CATALOG.flatMap(entry => [known(entry.name, catalogEffectDef(entry)), known(entry.name, catalogEffectDef(entry, { legacy: true }))]);
   return libraryEffects;
 }
 const legacyName = (kind: FxPresetKind): string => kind[0].toUpperCase() + kind.slice(1);

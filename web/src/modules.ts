@@ -1018,6 +1018,7 @@ const vca: ModuleImpl<null> = {
   def: {
     type: 'vca',
     label: 'VCA',
+    stereo: true,
     inputs: [audio('in'), control('cv')],
     outputs: [audio('out')],
     params: [param('gain', 0, 2, 1, { step: 0.01, input: 'cv', rest: (p, cv) => cv * (p.gain ?? 1) })],
@@ -1059,6 +1060,7 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
   def: {
     type: 'filter',
     label: 'Multimode filter',
+    stereo: true,
     inputs: [audio('in'), control('cv'), control('morph')],
     outputs: [audio('lp24'), audio('lp12'), audio('bp'), audio('hp'), audio('mix'), audio('notch'), audio('peak'), audio('ap')],
     params: [
@@ -1153,6 +1155,7 @@ const ladder: ModuleImpl<{ s: Float64Array }> = {
   def: {
     type: 'ladder',
     label: 'Ladder',
+    stereo: true,
     inputs: [audio('in'), control('cv')],
     outputs: [audio('lp24'), audio('lp12')],
     params: [
@@ -1283,6 +1286,7 @@ const dyn: ModuleImpl<{ env: number }> = {
   def: {
     type: 'dyn',
     label: 'Compressor',
+    stereo: true,
     inputs: [audio('in'), audio('side')],
     outputs: [audio('out'), control('env')],
     params: [
@@ -1335,6 +1339,7 @@ const limit: ModuleImpl<LimitState> = {
   def: {
     type: 'limit',
     label: 'Limiter',
+    stereo: true,
     since: 62,
     inputs: [audio('in')],
     outputs: [audio('out'), control('gr')],
@@ -1574,6 +1579,7 @@ const eq: ModuleImpl<EqState> = {
   def: {
     type: 'eq',
     label: 'EQ',
+    stereo: true,
     since: 64,
     inputs: [audio('in')],
     outputs: [audio('out')],
@@ -1804,6 +1810,7 @@ const comb: ModuleImpl<{ buf: Float32Array; w: number; lp: number }> = {
   def: {
     type: 'comb',
     label: 'Comb filter',
+    stereo: true,
     inputs: [audio('in'), control('pitch')],
     outputs: [audio('out')],
     params: [
@@ -1857,6 +1864,7 @@ const modal: ModuleImpl<{ u: Float64Array; v: Float64Array }> = {
   def: {
     type: 'modal',
     label: 'Resonator',
+    stereo: true,
     inputs: [audio('in'), control('pitch')],
     outputs: [audio('out')],
     params: [
@@ -1930,6 +1938,7 @@ const shift: ModuleImpl<{ a: Float64Array; b: Float64Array; ia: number; phase: n
   def: {
     type: 'shift',
     label: 'Freq shifter',
+    stereo: true,
     inputs: [audio('in'), control('cv')],
     outputs: [audio('up'), audio('down')],
     params: [
@@ -1967,6 +1976,7 @@ const mixer: ModuleImpl<null> = {
   def: {
     type: 'mixer',
     label: 'Mixer 4',
+    stereo: true,
     inputs: [audio('in1'), audio('in2'), audio('in3'), audio('in4')],
     thru: 'in1',
     outputs: [audio('out')],
@@ -2672,6 +2682,7 @@ const shape: ModuleImpl<OsState> = {
   def: {
     type: 'shape',
     label: 'Waveshaper',
+    stereo: true,
     inputs: [audio('in')],
     outputs: [audio('out')],
     params: [
@@ -3245,6 +3256,7 @@ const xfade: ModuleImpl<null> = {
   def: {
     type: 'xfade',
     label: 'Crossfader',
+    stereo: true,
     inputs: [audio('a'), audio('b'), control('pos')],
     thru: 'a',
     outputs: [audio('out')],
@@ -3282,6 +3294,7 @@ const vowel: ModuleImpl<VowelState> = {
   def: {
     type: 'vowel',
     label: 'Formant filter',
+    stereo: true,
     inputs: [audio('in'), control('vowel')],
     outputs: [audio('out')],
     params: [param('vowel', 0, 4, 0, { step: 0.01, input: 'vowel', rest: (p, cv) => (p.vowel ?? 0) + cv }), param('res', 0, 1, 0.5, { step: 0.01 }), param('level', 0, 1, 0.7, { step: 0.01 })],
@@ -3339,6 +3352,7 @@ const phaser: ModuleImpl<PhaserState> = {
   def: {
     type: 'phaser',
     label: 'Phaser',
+    stereo: true,
     inputs: [audio('in')],
     outputs: [audio('out')],
     params: [
@@ -3380,6 +3394,7 @@ const crush: ModuleImpl<{ held: number; cnt: number } & OsState> = {
   def: {
     type: 'crush',
     label: 'Bitcrusher',
+    stereo: true,
     inputs: [audio('in')],
     outputs: [audio('out')],
     params: [param('bits', 1, 16, 8, { step: 1 }), param('rate', 1, 64, 1, { step: 1 }), param('os', 0, 1, 0, { step: 1, choices: OS_CHOICES, toggle: true })],
@@ -5015,6 +5030,7 @@ const lpg: ModuleImpl<LpgState> = {
   def: {
     type: 'lpg',
     label: 'Low pass gate',
+    stereo: true,
     since: 62,
     inputs: [audio('in'), control('cv'), gate('strike')],
     outputs: [audio('out')],
@@ -5085,6 +5101,9 @@ adsr.def.inputs.push(gate('hold'));
 filter.def.outputs.push(audio('hp6'));
 // Granular's pitch input in octaves, as the Comb filter's (the slider in semitones could not track a keyboard)
 grain.def.inputs.push(control('pitch'));
+// the Reverb's right-side jacks (#1141, format 67): its `r` input pairs with `in`, its `r` output with `out`
+reverb.def.inputs.push(audio('r'));
+reverb.def.outputs.push(audio('r'));
 
 export const IMPLS: Record<string, ModuleImpl> = Object.fromEntries(ALL.map((m) => [m.def.type, m as ModuleImpl]));
 

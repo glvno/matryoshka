@@ -92,7 +92,7 @@ export const OUTPUT_RANGES: Record<string, Record<string, Range>> = {
     },
   },
   delay: { out: `${FOLLOWS}; feedback can build above it`, r: `${FOLLOWS}; feedback can build above it` },
-  reverb: { out: FOLLOWS },
+  reverb: { out: FOLLOWS, r: FOLLOWS },
   output: {},
   glide: { out: 'its input, slowed: the same range as what comes in' },
   shape: { out: (p) => `audio, at most about ${sym(get(p, 'level', 0.7))} (±1 × level)` },

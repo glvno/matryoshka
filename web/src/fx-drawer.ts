@@ -4,8 +4,9 @@
 // signal order, each an assembly with `chain` (its stereo in / out jacks). This file is the only place that writes the
 // chain's cables: after every drawer edit `rewire` makes them follow the chain, so taking an effect out never leaves the
 // sound with a gap (#1214). Plain modules and mono assemblies become stereo effects first (`wrapEffect`): an in-line
-// effect runs as an L/R pair, a stereo one (mono in, two outputs) as a pair with a correction, a wet one takes a mono mix
-// and adds its wet to both sides (the D-1010 bus's rules).
+// effect runs as one stereo module (#1141; an L/R pair in 1.26 drawers and where a member has no stereo mode), a stereo
+// one (mono in, two outputs) as a pair with a correction, a wet one takes a mono mix and adds its wet to both sides (the
+// D-1010 bus's rules), except a Reverb: one Reverb hearing both sides (WET_DRAWER_FORM).
 import {
   addChild,
   allModules,
@@ -41,6 +42,7 @@ import {
 import { convertLegacyBus as convertBus, LEGACY_STAGE_ROWS, type FxStageKind } from './fx-legacy';
 import { DEFS } from './modules';
 import { addModule, connect, disconnect, sameEnd, type Cable, type Endpoint, type ModuleInst, type Patch } from './patch';
+import { stereoModule } from './stereo';
 
 // (the drawers' read side lives in assembly.ts, so the engine and the binary read it without the catalog)
 export {
@@ -53,7 +55,18 @@ export type ChainMode = 'stereo' | 'pair' | 'wet';
 /** a chain channel: 0 = left, 1 = right */
 export type Channel = 0 | 1;
 /** the Library's headings for the modes */
-export const CHAIN_MODE_LABELS: Record<ChainMode, string> = { stereo: 'Stereo', pair: 'In line, as an L/R pair', wet: 'Wet, added to both sides' };
+export const CHAIN_MODE_LABELS: Record<ChainMode, string> = { stereo: 'Stereo', pair: 'In line, in stereo', wet: 'Wet, added to both sides' };
+/**
+ * How a new drawer Reverb is made (C7b, owner 2026-11-25): 'stereo-dry' is one Reverb, the chain's L into its `in` and R
+ * into its `r`, its own mix crossfading as on the canvas (dry·(1−mix) + wet·mix); 'helpers' is the 1.26 form, six modules,
+ * the dry at unity and the wet × Mix added. Drawers made before keep the form they have (classicMix).
+ */
+export type WetForm = 'helpers' | 'stereo-dry';
+export const WET_DRAWER_FORM: WetForm = 'stereo-dry';
+/** how wrapEffect makes an effect: `legacy`: the 1.26 forms (an in-line effect as an L/R pair, a Reverb with the helpers:
+ *  what convertLegacyBus made, so presets of converted patches key on it); else the 1.27 ones, a Reverb's by `wet`
+ *  (default WET_DRAWER_FORM) */
+export interface WrapForm { legacy?: boolean; wet?: WetForm }
 
 /** an effect the Library offers: a module type or a factory assembly (the plain card the canvas gets) */
 export interface EffectEntry {
@@ -133,10 +146,13 @@ export function effectKind(typeOrDefName: string): ChainMode | null {
 }
 
 const catalogDefs = new Map<EffectEntry, AssemblyDef>();
-/** a catalog entry as the effect a drawer holds (its stereo wrapper), as a saved assembly; for Drive, Chorus, Delay and
- *  Reverb exactly the stage of the D-1010 bus, so presets of converted patches load onto a new one */
-export function catalogEffectDef(entry: EffectEntry): AssemblyDef {
-  let def = catalogDefs.get(entry);
+const legacyDefs = new Map<EffectEntry, AssemblyDef>();
+/** a catalog entry as the effect a drawer holds (its stereo wrapper), as a saved assembly, in `form` (wrapEffect); in the
+ *  legacy form Drive, Chorus, Delay and Reverb are exactly the stages of the D-1010 bus, so presets of converted patches
+ *  load onto one */
+export function catalogEffectDef(entry: EffectEntry, form: WrapForm = {}): AssemblyDef {
+  const cache = form.legacy ? legacyDefs : (form.wet ?? WET_DRAWER_FORM) === WET_DRAWER_FORM ? catalogDefs : null;
+  let def = cache?.get(entry);
   if (!def) {
     const p: Patch = { version: 2, name: 'scratch', modules: [], cables: [] };
     let e: AssemblyInst;
@@ -145,13 +161,13 @@ export function catalogEffectDef(entry: EffectEntry): AssemblyDef {
       const kind = LEGACY_KIND[m.type];
       if (kind === 'drive') Object.assign(m.params, { drive: 1, level: 1 });
       if (kind === 'delay') Object.assign(m.params, { length: 500, rate: 0 });
-      e = wrapEffect(p, { module: m.id }, entry.mode, entry.name);
+      e = wrapEffect(p, { module: m.id }, entry.mode, entry.name, form);
     } else {
       const a = insertAssembly(p, DEFS, structuredClone(entry.source.def), 0, 0);
-      e = wrapEffect(p, { assembly: a.id }, entry.mode, entry.name);
+      e = wrapEffect(p, { assembly: a.id }, entry.mode, entry.name, form);
     }
     def = toDef(p, e);
-    catalogDefs.set(entry, def);
+    cache?.set(entry, def);
   }
   return structuredClone(def);
 }
@@ -159,7 +175,14 @@ export function catalogEffectDef(entry: EffectEntry): AssemblyDef {
 /** what convertLegacyBus makes of a D-1010 stage of this kind, as a saved assembly (presets of converted patches key on it) */
 export function legacyEffectDef(kind: FxStageKind): AssemblyDef {
   const type = kind === 'drive' ? 'shape' : kind;
-  return catalogEffectDef(EFFECT_CATALOG.find((e) => 'type' in e.source && e.source.type === type)!);
+  return catalogEffectDef(EFFECT_CATALOG.find((e) => 'type' in e.source && e.source.type === type)!, { legacy: true });
+}
+
+/** a 1.26 drawer Reverb (the helper form: dry at unity, the wet × Mix added), unlike a new one that crossfades: its card
+ *  says "classic mix" */
+export function classicMix(p: Patch, e: AssemblyInst): boolean {
+  const type = (id: number): string | undefined => moduleById(p, id)?.type;
+  return !!e.chain?.helpers?.some((id) => type(id) === 'scale') && e.modules.some((id) => type(id) === 'reverb');
 }
 
 /** the endpoints of an effect's chain input / output on a channel (a jack's `also` included) */
@@ -271,8 +294,8 @@ function endsOf(p: Patch, d: AssemblyInst): Ends {
     const sources: Endpoint[][] = [[], []];
     for (const c of cables) {
       if (region.has(c.from.module)) continue;
-      if (c.to.module === out.id) addOnce(sources[c.to.port === 'r' ? 1 : 0], c.from);
-      else for (const ch of [0, 1] as const) if (fx.some((e) => has(chainIns(e, ch), c.to))) addOnce(sources[ch], c.from);
+      if (c.to.module === out.id) addOnce(sources[sideOf(c) ?? (c.to.port === 'r' ? 1 : 0)], c.from);
+      else for (const ch of [0, 1] as const) if ((sideOf(c) ?? ch) === ch && fx.some((e) => has(chainIns(e, ch), c.to))) addOnce(sources[ch], c.from);
     }
     if (!sources[1].length) sources[1] = [...sources[0]];
     return { sources, dests: [[{ module: out.id, port: 'l' }], [{ module: out.id, port: 'r' }]] };
@@ -284,7 +307,7 @@ function endsOf(p: Patch, d: AssemblyInst): Ends {
     if (region.has(c.to.module)) continue;
     const l = has(fromCh[0], c.from), r = has(fromCh[1], c.from);
     if (!l && !r) continue;
-    addOnce(dests[l && r ? (c.to.port === 'r' ? 1 : 0) : l ? 0 : 1], c.to);
+    addOnce(dests[l && r ? sideOf(c) ?? (c.to.port === 'r' ? 1 : 0) : l ? 0 : 1], c.to);
   }
   // a mono instrument cabled only into the Output's l: its R side goes to the Output's r (which plays l while it is free)
   const out = outputModule(p);
@@ -295,21 +318,44 @@ function endsOf(p: Patch, d: AssemblyInst): Ends {
   return { sources: [tapEnds(p, d, 0), tapEnds(p, d, 1)], dests };
 }
 
-/** make a drawer's chain cables what the invariant wants from `ends`, touching no cable that already is right */
+/** the channel a side cable carries (Cable.side), undefined for a whole one */
+const sideOf = (c: Cable): Channel | undefined => (c.side ? (c.side === 'r' ? 1 : 0) : undefined);
+/** two lists of endpoints are the same jacks (both channels of a one-module stereo effect's jack) */
+const sameEnds = (a: readonly Endpoint[], b: readonly Endpoint[]): boolean => a.length === b.length && a.every((x) => has(b, x));
+
+/**
+ * Make a drawer's chain cables what the invariant wants from `ends`, touching no cable that already is right. Where a
+ * one-module stereo effect meets its neighbours (#1141) the cables are side cables (Cable.side), so stereo never collapses
+ * to mono: into its jack (both channels one jack) two different sides join (L 'l', R 'r'); out of it into two jacks it
+ * splits (L 'l', R 'r'). A source on both sides (a stereo pair's correction, a wet return), or one source for both (mono
+ * into both copies, stereo into stereo), is a whole cable, as is a jack that takes both sides. A stereo effect whose ST
+ * was switched off hears both sides summed, as any jack fed twice.
+ */
 function applyChain(p: Patch, d: AssemblyInst, ends: Ends): void {
   const want: Cable[] = [];
-  const link = (from: Endpoint[], to: Endpoint[]): void => {
-    for (const f of from) for (const t of to) if (!want.some((c) => sameEnd(c.from, f) && sameEnd(c.to, t))) want.push({ from: { ...f }, to: { ...t } });
+  const link = (from: Endpoint[], to: Endpoint[], side?: Cable['side']): void => {
+    for (const f of from) for (const t of to) if (!want.some((c) => sameEnd(c.from, f) && sameEnd(c.to, t))) want.push({ from: { ...f }, to: { ...t }, ...(side ? { side } : {}) });
+  };
+  const stereo = (list: Endpoint[]): boolean => list.length > 0 && list.every((e) => stereoModule(p, e.module));
+  const step = (from: Endpoint[][], to: Endpoint[][]): void => {
+    if (sameEnds(to[0], to[1]) && stereo(to[0]) && !sameEnds(from[0], from[1])) {
+      for (const f of from[0]) link([f], to[0], has(from[1], f) ? undefined : 'l');
+      link(from[1].filter((f) => !has(from[0], f)), to[0], 'r');
+    } else if (sameEnds(from[0], from[1]) && stereo(from[0]) && !sameEnds(to[0], to[1])) {
+      for (const t of to[0]) link(from[0], [t], has(to[1], t) ? undefined : 'l');
+      link(from[1], to[1].filter((t) => !has(to[0], t)), 'r');
+    } else for (const ch of [0, 1] as const) link(from[ch], to[ch]);
   };
   let prev = ends.sources;
   for (const e of effectsOf(p, d)) {
-    for (const ch of [0, 1] as const) link(prev[ch], chainIns(e, ch));
+    step(prev, [chainIns(e, 0), chainIns(e, 1)]);
     prev = [chainOuts(e, 0), chainOuts(e, 1)];
   }
-  for (const ch of [0, 1] as const) link(prev[ch], ends.dests[ch]);
-  const wanted = new Set(want.map((c) => `${key(c.from)}>${key(c.to)}`));
-  for (const c of chainCables(p, d)) if (!wanted.has(`${key(c.from)}>${key(c.to)}`)) disconnect(p, c);
-  for (const c of want) connect(p, DEFS, c.from, c.to);
+  step(prev, ends.dests);
+  const id = (c: Cable): string => `${key(c.from)}>${key(c.to)}${c.side ?? ''}`;
+  const wanted = new Set(want.map(id));
+  for (const c of chainCables(p, d)) if (!wanted.has(id(c))) disconnect(p, c);
+  for (const c of want) connect(p, DEFS, c.from, c.to, c.side);
 }
 
 /**
@@ -577,19 +623,22 @@ function audioPorts(p: Patch, src: { module: ModuleInst } | { assembly: Assembly
 
 /**
  * Make a top-level module or assembly a stereo effect (an assembly with `chain`) in `mode` (default: its catalog mode;
- * an unknown assembly with two audio outputs is stereo, else a pair). A pair: a copy beside it (an assembly's copy made
- * with toDef / insertAssembly), every row of the card tied to the copy's, modulation cables into the original copied onto
- * the copy; stereo: a pair with the correction Math; wet: the mix around it (a module's own mix moves to a Mix row). Its
- * former audio cables go. Returns the wrapper (named `name`, else the catalog name).
+ * an unknown assembly with two audio outputs is stereo, else a pair), in `form` (WrapForm). A pair: one stereo module
+ * (#1141: its two copies are the sides; an assembly's members all stereo when every one has a stereo mode); in the legacy
+ * form, or for an assembly with a member that has none, a copy beside it (an assembly's copy made with toDef /
+ * insertAssembly), every row of the card tied to the copy's, modulation cables into the original copied onto the copy;
+ * stereo: a pair with the correction Math; wet: the mix around it (a module's own mix moves to a Mix row), or for a Reverb
+ * in the stereo-dry form the Reverb alone, the right side into its `r`. Its former audio cables go. Returns the wrapper
+ * (named `name`, else the catalog name).
  */
-export function wrapEffect(p: Patch, target: { module: number } | { assembly: number }, mode?: ChainMode, name?: string): AssemblyInst {
+export function wrapEffect(p: Patch, target: { module: number } | { assembly: number }, mode?: ChainMode, name?: string, form: WrapForm = {}): AssemblyInst {
   if ('module' in target) {
     const m = moduleById(p, target.module);
     if (!m) throw new Error(`No module ${target.module}.`);
     const info = MODULE_EFFECTS[m.type];
     const ports = audioPorts(p, { module: m });
     if (!info || !ports) throw new Error(`A ${DEFS[m.type]?.label ?? m.type} is no audio effect: it cannot go in an FX drawer.`);
-    return wrapModule(p, m, mode ?? info.mode, name ?? info.name ?? DEFS[m.type].label, ports);
+    return wrapModule(p, m, mode ?? info.mode, name ?? info.name ?? DEFS[m.type].label, ports, form);
   }
   const a = assemblyById(p, target.assembly);
   if (!a) throw new Error(`No assembly ${target.assembly}.`);
@@ -597,7 +646,7 @@ export function wrapEffect(p: Patch, target: { module: number } | { assembly: nu
   const ports = audioPorts(p, { assembly: a });
   if (!ports) throw new Error(`"${a.label}" has no audio input and output: it cannot go in an FX drawer.`);
   const known = EFFECT_CATALOG.find((e) => 'def' in e.source && e.source.def.name === a.name);
-  return wrapAssembly(p, a, mode ?? known?.mode ?? (ports.outputs.length > 1 ? 'stereo' : 'pair'), name ?? known?.name ?? a.label, ports);
+  return wrapAssembly(p, a, mode ?? known?.mode ?? (ports.outputs.length > 1 ? 'stereo' : 'pair'), name ?? known?.name ?? a.label, ports, form);
 }
 
 /** cut every cable into `input` and out of `outputs` from or to modules outside `inside` */
@@ -605,9 +654,20 @@ function cutAudio(p: Patch, inside: Set<number>, input: Endpoint[], outputs: End
   p.cables = p.cables.filter((c) => !(has(input, c.to) && !inside.has(c.from.module)) && !(has(outputs, c.from) && !inside.has(c.to.module)));
 }
 
-function wrapModule(p: Patch, m: ModuleInst, mode: ChainMode, name: string, ports: { input: Endpoint[]; outputs: Endpoint[][] }): AssemblyInst {
+function wrapModule(p: Patch, m: ModuleInst, mode: ChainMode, name: string, ports: { input: Endpoint[]; outputs: Endpoint[][] }, form: WrapForm): AssemblyInst {
   cutAudio(p, new Set([m.id]), ports.input, ports.outputs.flat());
   const rows = moduleRowNames(m.type);
+  const alone = (ins: Endpoint[][], outs: Endpoint[][]): AssemblyInst => {
+    const a = makeAssembly(p, [m.id], name);
+    a.params = rows.map((param) => ({ module: m.id, param, label: param }));
+    return finish(p, a, ins, outs, [], !!m.bypass, new Map());
+  };
+  if (!form.legacy && mode === 'wet' && m.type === 'reverb' && (form.wet ?? WET_DRAWER_FORM) === 'stereo-dry')
+    return alone([[{ module: m.id, port: 'in' }], [{ module: m.id, port: 'r' }]], [[{ module: m.id, port: 'out' }], [{ module: m.id, port: 'r' }]]);
+  if (!form.legacy && mode === 'pair' && DEFS[m.type].stereo) {
+    m.stereo = true;
+    return alone([ports.input, ports.input], [ports.outputs[0], ports.outputs[0]]);
+  }
   if (mode === 'wet') {
     const oldMix = m.params.mix;
     if (oldMix !== undefined) m.params.mix = 1;
@@ -640,7 +700,7 @@ function wrapModule(p: Patch, m: ModuleInst, mode: ChainMode, name: string, port
   return finish(p, a, [ports.input, bEnds(ports.input)], outs, helpers, !!m.bypass, new Map([[m.id, b.id]]));
 }
 
-function wrapAssembly(p: Patch, src: AssemblyInst, mode: ChainMode, name: string, ports: { input: Endpoint[]; outputs: Endpoint[][] }): AssemblyInst {
+function wrapAssembly(p: Patch, src: AssemblyInst, mode: ChainMode, name: string, ports: { input: Endpoint[]; outputs: Endpoint[][] }, form: WrapForm): AssemblyInst {
   const inside = new Set(allModules(p, src));
   cutAudio(p, inside, ports.input, ports.outputs.flat());
   const x = src.x, y = src.y;
@@ -648,6 +708,13 @@ function wrapAssembly(p: Patch, src: AssemblyInst, mode: ChainMode, name: string
     const { module: _m, param: _p, label: _l, also: _a, ...rest } = r;
     return rest;
   };
+  const shown = (): ParamRef[] => src.params.map((r) => ({ ...layout(r), module: r.module, param: r.param, label: r.label, ...(r.also ? { also: r.also.map((t) => ({ ...t })) } : {}) }));
+  if (!form.legacy && mode === 'pair' && [...inside].every((id) => DEFS[moduleById(p, id)!.type].stereo)) {
+    for (const id of inside) moduleById(p, id)!.stereo = true;
+    const a = makeAssembly(p, [], name, [src.id]);
+    a.params = shown();
+    return finish(p, a, [ports.input, ports.input], [ports.outputs[0], ports.outputs[0]], [], false, new Map());
+  }
   if (mode === 'wet') {
     const w = wetMix(p, ports.input, x, y + 300, (send) => {
       const ret = math(p, x, y + 1400, 1, 1);
@@ -657,7 +724,7 @@ function wrapAssembly(p: Patch, src: AssemblyInst, mode: ChainMode, name: string
     });
     const helpers = [...w.dry, w.send, ...w.ret].map((m) => m.id);
     const a = makeAssembly(p, helpers, name, [src.id]);
-    a.params = src.params.map((r) => ({ ...layout(r), module: r.module, param: r.param, label: r.label, ...(r.also ? { also: r.also.map((t) => ({ ...t })) } : {}) }));
+    a.params = shown();
     return finish(p, a, w.dry.map((d) => [{ module: d.id, port: 'in' }]), w.outs, helpers, false, new Map());
   }
   const order = [...src.modules, ...descendants(p, src).flatMap((d) => d.modules)];
@@ -682,11 +749,13 @@ function wrapAssembly(p: Patch, src: AssemblyInst, mode: ChainMode, name: string
   return finish(p, a, [ports.input, tw(ports.input)], outs, helpers, false, twin);
 }
 
-/** a wrapper's chain jacks, helpers and switch set, the overlay reconciled */
+/** a wrapper's chain jacks, helpers and switch set, the overlay reconciled; both channels on the same jacks (a one-module
+ *  stereo effect) make one jack for both */
 function finish(p: Patch, a: AssemblyInst, ins: Endpoint[][], outs: Endpoint[][], helpers: number[], off: boolean, twin: Map<number, number>): AssemblyInst {
-  a.inputs = [ref(ins[0], 'in L'), ref(ins[1], 'in R')];
-  a.outputs = [ref(outs[0], 'out L'), ref(outs[1], 'out R')];
-  a.chain = { ins: [0, 1], outs: [0, 1], ...(helpers.length ? { helpers } : {}) };
+  const oneIn = sameEnds(ins[0], ins[1]), oneOut = sameEnds(outs[0], outs[1]);
+  a.inputs = oneIn ? [ref(ins[0], 'in')] : [ref(ins[0], 'in L'), ref(ins[1], 'in R')];
+  a.outputs = oneOut ? [ref(outs[0], 'out')] : [ref(outs[0], 'out L'), ref(outs[1], 'out R')];
+  a.chain = { ins: oneIn ? [0, 0] : [0, 1], outs: oneOut ? [0, 0] : [0, 1], ...(helpers.length ? { helpers } : {}) };
   if (off) {
     a.bypass = true;
     a.kept = [];

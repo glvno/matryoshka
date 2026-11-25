@@ -147,6 +147,11 @@ main { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 .cable-core, .cable-wire { fill: none; pointer-events: none; stroke-linecap: butt; }
 .cable-core { stroke: var(--panel); stroke-width: 2; } .cable-core.role-keys { stroke-width: 4.6; }
 .cable-wire { stroke: var(--ink); stroke-width: 1.2; }
+/* stereo (#1141): a cable from a stereo module is two lines (a wide stroke split by a core in the panel colour); a side
+   cable says L or R along it, a stereo cable a mono jack averages says L+R near that jack */
+.cable.stereo { stroke-width: 5; } .cable-core.stereo { stroke-width: 1.4; }
+.cable-mark { font: 700 9px/1 'Barlow Condensed', system-ui, sans-serif; fill: var(--ink); stroke: var(--panel); stroke-width: 3px; paint-order: stroke;
+  dominant-baseline: central; pointer-events: none; }
 /* The rows Main's knobs turn (the device page in focus, pages.ts): a ring and a numbered badge in the knob's colour. */
 .param.bar.bound { box-shadow: 0 0 0 1.5px var(--knob); border-radius: 5px; }
 .param.bar.bound::after { content: attr(data-kn); position: absolute; left: -9px; top: 1px; z-index: 6; display: grid; place-items: center;
@@ -747,6 +752,9 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .module .slider-port { z-index: 4; }
 .dot.connected { background: currentColor; box-shadow: inset 0 0 0 3px var(--panel); }
 .dot.armed { box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 40%, transparent); }
+/* a stereo module's jacks (#1141): a second ring around the jack */
+.dot.stereo { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px currentColor; }
+.dot.stereo.connected { box-shadow: inset 0 0 0 3px var(--panel), 0 0 0 2px var(--panel), 0 0 0 3.5px currentColor; }
 .ports .dot { position: relative; z-index: 2; }
 .cables { z-index: 1; }
 .patch-preview { z-index: 4; }
@@ -1258,6 +1266,14 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 :is(.mhead, .fhead) button.poly-btn { height: 16px; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--muted);
   font: 600 9px/1 'Barlow Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .08em; }
 :is(.mhead, .fhead) button.poly-btn[aria-pressed="true"] { color: var(--panel); background: var(--secondary); border-color: var(--secondary); }
+/* stereo mode (#1141): ST beside ⏻, the poly button's look, filled in the sound's colour when on; greyed where refused */
+.mhead button.st { height: 16px; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--muted);
+  font: 600 9px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .08em; cursor: pointer; }
+.mhead button.st[aria-pressed="true"] { color: var(--panel); background: var(--audio); border-color: var(--audio); }
+.mhead button.st.refused { opacity: .45; cursor: not-allowed; }
+/* a 1.26 drawer Reverb's card: its law said in small capitals beside the name (C7b) */
+.fhead .fx-classic, .mhead .fx-classic { flex: none; padding: 1px 4px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted);
+  font: 600 9px/1 'Barlow Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
 /* voice control: the cards' flaws as a drop-down, in the same small capitals; warm when any card has flaws, red without an allocator */
 :is(.mhead, .fhead) button.vc-btn { height: 16px; padding: 0 4px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--muted);
   font: 600 9px/1 'Barlow Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; flex: none; }
