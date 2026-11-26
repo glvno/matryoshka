@@ -2614,30 +2614,44 @@ static int fx_focus_effect(void)
 {
     return (page == 0u || page == PAGE_ENV) && pg_cur_dev < pg_ndev && fx_drawer_at(pg_dev[pg_cur_dev].bin) != UINT32_MAX;
 }
-/* the effect SEL switches on the device page in focus (D-947): the effect in an FX drawer whose device this is; on a
- * format 55..65 bus device, the stage whose modules this page shows. UINT32_MAX none: an instrument, a canvas effect
- * (an ordinary device, D-945), a bus page of no stage. The page's own, so it never asks pages_ensure */
+/* fx_sel_effect's canvas effects outside the FX rack: FX_SEL_MODULE | m, the device of the one module m (SEL bypasses it);
+ * FX_SEL_TOGGLE, a device of several modules, all of effect types */
+#define FX_SEL_MODULE 0x100u
+#define FX_SEL_TOGGLE 0x1FFu
+/* the effect SEL switches on the device page in focus (D-947): the FX rack's effect whose device this is, in an FX drawer
+ * or on the canvas (an ordinary device, D-945: one that takes keys arms instead); on a format 55..65 bus device, the stage
+ * whose modules this page shows. A device of no rack effect that takes no keys: FX_SEL_MODULE | m when it is the one
+ * module m of an effect type (DEF_EFFECT: the editor's isEffect, what fits a drawer; no helpers, its ⏻ is its bypass);
+ * FX_SEL_TOGGLE when it is several modules all of effect types: the binary lists no targets for it, so the FM-1 cannot
+ * tell which members its ⏻ switches (a member switched off by hand stays off, an effect's helpers play on). UINT32_MAX
+ * none: an instrument, any other device, a bus page of no stage. The page's own, so it never asks pages_ensure */
 static uint32_t fx_sel_effect(void)
 {
     const ppage_t *pg;
     const uint8_t *t;
-    uint32_t r, e, bin, k, j, n;
-    if (page != 0u || pg_cur_dev >= pg_ndev)
+    uint32_t e, bin, k, j, n, d = pg_cur_dev, rack = 0;
+    if (page != 0u || d >= pg_ndev)
         return UINT32_MAX;
-    bin = pg_dev[pg_cur_dev].bin;
-    for (r = 0; r < eng_rack_count(); r++)
-        for (e = eng_rack_first(r); e < eng_rack_first(r) + eng_rack_len(r); e++) {
-            if (eng_fx_device(e) != bin)
-                continue;
-            if (eng_format() >= 66u)
-                return e;
-            pg = pages_now();
-            for (n = eng_fx_targets(e, &t), k = 0; pg && k < pg->nrows; k++)
-                for (j = 0; j < n; j++)
-                    if (pg->mod[k] == t[j])
-                        return e;
-        }
-    return UINT32_MAX;
+    bin = pg_dev[d].bin;
+    for (e = 0; e < eng_fx_count(); e++) {         /* (formats 55..65: every stage is the Output drawer's) */
+        if (eng_fx_device(e) != bin)
+            continue;
+        if (eng_format() >= 66u)
+            return fx_drawer_at(bin) != UINT32_MAX || !mset_any(env_listeners(d)) ? e : UINT32_MAX;
+        rack = 1;
+        pg = pages_now();
+        for (n = eng_fx_targets(e, &t), k = 0; pg && k < pg->nrows; k++)
+            for (j = 0; j < n; j++)
+                if (pg->mod[k] == t[j])
+                    return e;
+    }
+    if (rack || mset_any(env_listeners(d)))
+        return UINT32_MAX;
+    if (pg_dev[d].module >= 0)
+        return DEF_EFFECT(eng_type((uint32_t)pg_dev[d].module)) ? FX_SEL_MODULE | (uint32_t)pg_dev[d].module : UINT32_MAX;
+    for (k = 0; k < pg_dev[d].nmem && DEF_EFFECT(eng_type(pg_mem(d, k))); k++)
+        ;
+    return pg_dev[d].nmem && k == pg_dev[d].nmem ? FX_SEL_TOGGLE : UINT32_MAX;
 }
 /* the effect FX goes to (pages_ensure first): the first of the drawer of the instrument on show (an effect's page counts
  * as its drawer's instrument's), else of the first armed instrument with one, else of the Output drawer, the first that
@@ -3725,21 +3739,28 @@ static void ds_fx_switch(dp_at_t *s, uint32_t e, int on)
     }
 }
 
-/* SEL on an FX drawer effect's device page (D-947): effect e on or off as the editor's on/off button does it (the
- * targets through eng_fx_set: a Delay or Reverb rings out, D-1100; the running binary's bypass bits, so SAVE keeps it;
- * the editor told, PARAM_NOW 0xFF), the bar saying DRIVE ON / DRIVE OFF (the name as the page's header has it). An
- * effect of no runtime targets switches by its members' bypass, which the FM-1 cannot tell from its helpers
- * (ds_fx_switch): a Toggle on it switches it, SEL says so */
+/* SEL on an effect's device page (D-947): effect e on or off as the editor's on/off button does it (the targets through
+ * eng_fx_set: a Delay or Reverb rings out, D-1100; the running binary's bypass bits, so SAVE keeps it; the editor told,
+ * PARAM_NOW 0xFF), the bar saying DRIVE ON / DRIVE OFF (the name as the page's header has it). A canvas effect of one
+ * module (FX_SEL_MODULE | m) switches by that module's bypass, as its card's ⏻ does. An effect of no runtime targets
+ * switches by its members' bypass, which the FM-1 cannot tell from its helpers (ds_fx_switch), nor those of a canvas
+ * device of several effect modules (FX_SEL_TOGGLE, fx_sel_effect): a Toggle on it switches it, SEL says so */
 static void fx_sel_switch(uint32_t e)
 {
     dp_at_t s;
     char m[32];
-    int on = !eng_fx_on(e);
-    if (!eng_fx_targets(e, 0)) {
+    uint32_t mod = e & 0xFFu;
+    int on = e & FX_SEL_MODULE ? eng_bypass(mod) : !eng_fx_on(e);
+    if (e == FX_SEL_TOGGLE || (!(e & FX_SEL_MODULE) && !eng_fx_targets(e, 0))) {
         ui_msg(MSG_FX_TOGGLE_ONLY, 1200);
         return;
     }
-    ds_fx_switch(dp_eng(&s, pg_cur_dev), e, on);
+    if (e & FX_SEL_MODULE) {
+        eng_set_bypass(mod, !on);
+        m1_patch_bypass(mod, !on);
+        m1_param_now(mod, 0xFFu, on ? 0 : 65536);
+    } else
+        ds_fx_switch(dp_eng(&s, pg_cur_dev), e, on);
     caps(m, pg_dev[pg_cur_dev].name, pg_dev[pg_cur_dev].nlen, 16);
     put(m + str_len(m), on ? MSG_ON : MSG_OFF)[0] = 0;
     ui_msg(m, 1200);

@@ -66,9 +66,10 @@ static uint32_t help_state_sig(void)
 }
 
 /* the rows' conditions (controls.ts CONDITIONS): the device in focus has presets to step / can store one (an assembly) /
- * takes keys (SEL arms it: not on an FX drawer effect's device page, where SEL switches the effect, fx_effect); a Page
- * button's list is on; the SEQ page's track is longer than 16 steps / a melodic track (the roll); the patch has tracks;
- * the menu's tab is GUIDE / a page of settings / SYSTEM; the keys reach a Harmonizer */
+ * takes keys (SEL arms it: not on an effect's device page, where SEL switches the effect, fx_effect: in an FX drawer, or
+ * on the canvas taking no keys); a Page button's list is on; the SEQ page's track is longer than 16 steps / a melodic
+ * track (the roll); the patch has tracks; the menu's tab is GUIDE / a page of settings / SYSTEM; the keys reach a
+ * Harmonizer */
 static int hc_dev_presets(void) { pages_ensure(); return pg_cur_dev < pg_ndev && dp_list(pg_cur_dev) > 0u; }
 static int hc_dev_store(void) { pages_ensure(); return pg_cur_dev < pg_ndev && pg_dev[pg_cur_dev].structure != 0u; }
 static int hc_dev_keys(void) { pages_ensure(); return pg_cur_dev < pg_ndev && mset_any(env_listeners(pg_cur_dev)) && fx_sel_effect() == UINT32_MAX; }

@@ -1186,6 +1186,7 @@ enum {
 #define EQ_NDATA 0
 
 #define DEF_STEREO(t) ((t) == T_VCA || (t) == T_FILTER || (t) == T_MIXER || (t) == T_SHAPE || (t) == T_XFADE || (t) == T_VOWEL || (t) == T_PHASER || (t) == T_CRUSH || (t) == T_LADDER || (t) == T_DYN || (t) == T_COMB || (t) == T_MODAL || (t) == T_SHIFT || (t) == T_LPG || (t) == T_LIMIT || (t) == T_EQ)   /* a type that can run in stereo mode */
+#define DEF_EFFECT(t) ((t) == T_FILTER || (t) == T_DELAY || (t) == T_REVERB || (t) == T_SHAPE || (t) == T_CHORUS || (t) == T_PAN || (t) == T_VOWEL || (t) == T_PHASER || (t) == T_CRUSH || (t) == T_LADDER || (t) == T_DYN || (t) == T_GRAIN || (t) == T_COMB || (t) == T_MODAL || (t) == T_SHIFT || (t) == T_LIMIT || (t) == T_EQ)   /* an audio effect type (fx-drawer.ts effectKind): SEL switches a canvas device of one (pages_ui.c fx_sel_effect, D-947) */
 #define DEF_RIN(t) ((t) == T_OUTPUT ? OUTPUT_I_R : (t) == T_DELAY ? DELAY_I_R : (t) == T_REVERB ? REVERB_I_R : (t) == T_CHORUS ? CHORUS_I_R : -1)   /* the right input of the pair whose left is input 0, -1 none */
 #define DEF_ROUT(t) ((t) == T_PAN ? PAN_O_R : (t) == T_DELAY ? DELAY_O_R : (t) == T_REVERB ? REVERB_O_R : (t) == T_CHORUS ? CHORUS_O_R : -1)   /* the right output of the pair whose left is output 0, -1 none */
 
