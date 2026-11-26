@@ -1018,6 +1018,7 @@ const vca: ModuleImpl<null> = {
   def: {
     type: 'vca',
     label: 'VCA',
+    stereo: true,
     inputs: [audio('in'), control('cv')],
     outputs: [audio('out')],
     params: [param('gain', 0, 2, 1, { step: 0.01, input: 'cv', rest: (p, cv) => cv * (p.gain ?? 1) })],
@@ -1059,6 +1060,7 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
   def: {
     type: 'filter',
     label: 'Multimode filter',
+    stereo: true,
     inputs: [audio('in'), control('cv'), control('morph')],
     outputs: [audio('lp24'), audio('lp12'), audio('bp'), audio('hp'), audio('mix'), audio('notch'), audio('peak'), audio('ap')],
     params: [
@@ -1153,6 +1155,7 @@ const ladder: ModuleImpl<{ s: Float64Array }> = {
   def: {
     type: 'ladder',
     label: 'Ladder',
+    stereo: true,
     inputs: [audio('in'), control('cv')],
     outputs: [audio('lp24'), audio('lp12')],
     params: [
@@ -1283,6 +1286,7 @@ const dyn: ModuleImpl<{ env: number }> = {
   def: {
     type: 'dyn',
     label: 'Compressor',
+    stereo: true,
     inputs: [audio('in'), audio('side')],
     outputs: [audio('out'), control('env')],
     params: [
@@ -1335,6 +1339,7 @@ const limit: ModuleImpl<LimitState> = {
   def: {
     type: 'limit',
     label: 'Limiter',
+    stereo: true,
     since: 62,
     inputs: [audio('in')],
     outputs: [audio('out'), control('gr')],
@@ -1574,6 +1579,7 @@ const eq: ModuleImpl<EqState> = {
   def: {
     type: 'eq',
     label: 'EQ',
+    stereo: true,
     since: 64,
     inputs: [audio('in')],
     outputs: [audio('out')],
@@ -1804,6 +1810,7 @@ const comb: ModuleImpl<{ buf: Float32Array; w: number; lp: number }> = {
   def: {
     type: 'comb',
     label: 'Comb filter',
+    stereo: true,
     inputs: [audio('in'), control('pitch')],
     outputs: [audio('out')],
     params: [
@@ -1857,6 +1864,7 @@ const modal: ModuleImpl<{ u: Float64Array; v: Float64Array }> = {
   def: {
     type: 'modal',
     label: 'Resonator',
+    stereo: true,
     inputs: [audio('in'), control('pitch')],
     outputs: [audio('out')],
     params: [
@@ -1930,6 +1938,7 @@ const shift: ModuleImpl<{ a: Float64Array; b: Float64Array; ia: number; phase: n
   def: {
     type: 'shift',
     label: 'Freq shifter',
+    stereo: true,
     inputs: [audio('in'), control('cv')],
     outputs: [audio('up'), audio('down')],
     params: [
@@ -1967,6 +1976,7 @@ const mixer: ModuleImpl<null> = {
   def: {
     type: 'mixer',
     label: 'Mixer 4',
+    stereo: true,
     inputs: [audio('in1'), audio('in2'), audio('in3'), audio('in4')],
     thru: 'in1',
     outputs: [audio('out')],
@@ -2188,6 +2198,15 @@ function delayTape(c: Ctx, s: DelayState, tq: number, fb: number, mix: number, p
   s.m = m0 + step * c.n;
 }
 
+/** (a + b) / 2 over n samples (#1141: the Delay's line input with a right signal; engine.c m_delay into the lane's dummy
+ * output), in one scratch block the callers share */
+let monoBuf = new Float32Array(128);
+function monoOf(a: Float32Array, b: Float32Array, n: number): Float32Array {
+  if (monoBuf.length < n) monoBuf = new Float32Array(n);
+  for (let i = 0; i < n; i++) monoBuf[i] = (a[i] + b[i]) / 2;
+  return monoBuf;
+}
+
 /** a ring of lo samples at b[base..] (w its next write) as a ring of ln (delayChange): every sample keeps its distance
  * behind the write head; a shorter ring drops its oldest samples, a longer one gets silence older than all of them. The
  * new w (engine.c dly_ring) */
@@ -2274,7 +2293,8 @@ function delayChange(s: DelayState, k: number, tape: boolean, pp: boolean, x0: n
  * A new time (a turned knob, a cable into `time`) is not a jump: the read position glides there (delayGlide, #484).
  * `rate` (#659): 44k keeps every sample; 22k and 11k low-pass the input and keep every 2nd or 4th sample, so the same line
  * holds two or four times its length (delaySlow; the length row shows that time). A new rate keeps the echoes, pitched as
- * a tape changing speed (delayChange).
+ * a tape changing speed (delayChange). A cable into `r` (or a stereo cable into `in`, engine.ts feeds) is a right signal
+ * (#1141): the line hears (in + r) / 2, and out and r each mix their own side's dry with today's law.
  */
 const delay: ModuleImpl<DelayState> = {
   def: {
@@ -2299,6 +2319,16 @@ const delay: ModuleImpl<DelayState> = {
   },
   init: (sr) => ({ buf: new Float32Array(0), w: 0, cur: 0, rate: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2), rk: 0, ph: 0, lp: new Float64Array(8), tp: false, tl: new Float64Array(4), wph: 0, fph: 0, m: 0, hold: 0 }),
   process(c, s) {
+    if (c.connected.r) {   // a right signal (#1141): the line hears (in + r) / 2, each side's dry is its own input
+      const inL = c.inp.in, inR = c.inp.r, m = monoOf(inL, inR, c.n), dry = 1 - (c.p.mix ?? 0);
+      delay.process({ ...c, inp: { ...c.inp, in: m }, connected: { ...c.connected, r: false } }, s);
+      for (let i = 0; i < c.n; i++) {
+        const dm = m[i] * dry;
+        c.out.out[i] += inL[i] * dry - dm;
+        c.out.r[i] += inR[i] * dry - dm;
+      }
+      return;
+    }
     // the line its length holds (at this sample rate); a new length (an edit) starts an empty line, as the FM-1's load does
     const want = Math.round((c.sr * delayLine(c.p.length ?? DELAY_LENGTH_DEFAULT)) / DEVICE_SR);
     if (s.buf.length !== want) {
@@ -2405,7 +2435,9 @@ const delay: ModuleImpl<DelayState> = {
  * RV_MOD_HZ (sine, linear interpolation). Mono, shared per patch like the delay; the firmware keeps the same lines as
  * int16 (Q13) in one 16 KB block per instance. The lines hear the input one block late (D-1103): RV_LATE samples, through
  * a ring, with the settings of the block before; the dry signal and `mix` are on time. The FM-1 then runs the lines on
- * whichever core is free while the patch plays the block (engine.c reverb_kernel).
+ * whichever core is free while the patch plays the block (engine.c reverb_kernel). A right signal (#1141, an `r` cable or
+ * a stereo cable into `in`): the lines hear (in + r) / 2, out = in (1 - mix) + wet, r = r (1 - mix) + wet; without it the
+ * `r` output is `out`.
  */
 export const RV_LINE = [331, 439, 547, 661, 773, 881, 991, 1117];
 export const RV_DIFF = [223, 347];
@@ -2480,8 +2512,10 @@ const reverb: ModuleImpl<ReverbState> = {
     const depth = mod * RV_MOD;
     const inc = RV_MOD_HZ.map((f) => f / c.sr);
     const t = new Array<number>(8);
+    // a right signal (#1141): the lines hear (in + r) / 2, `out` and `r` each their own dry and the same (mono) wet
+    const inR = c.connected.r ? c.inp.r : null;
     for (let i = 0; i < c.n; i++) {
-      const x = c.inp.in[i];
+      const xl = c.inp.in[i], x = inR ? (xl + inR[i]) / 2 : xl;
       // the input one block late into the lines
       const late = s.ring[s.hw];
       s.ring[s.hw] = x;
@@ -2533,7 +2567,9 @@ const reverb: ModuleImpl<ReverbState> = {
         s.ph[k] += inc[k];
         if (s.ph[k] >= 1) s.ph[k] -= 1;
       }
-      c.out.out[i] = x * (1 - mix) + wet * RV_GOUT * mix;
+      const wv = wet * RV_GOUT * mix;
+      c.out.out[i] = xl * (1 - mix) + wv;
+      c.out.r[i] = inR ? inR[i] * (1 - mix) + wv : c.out.out[i];
     }
     const kp = s.kp ?? (s.kp = [0, 0, 0, 0, 0]);
     kp[0] = c.p.size ?? 0.5;
@@ -2672,6 +2708,7 @@ const shape: ModuleImpl<OsState> = {
   def: {
     type: 'shape',
     label: 'Waveshaper',
+    stereo: true,
     inputs: [audio('in')],
     outputs: [audio('out')],
     params: [
@@ -2952,7 +2989,8 @@ const wavetable: ModuleImpl<WtState> = {
 
 /**
  * A stereo chorus: one delay line, two taps swept in quadrature by a sine at `rate` around 12 ms by up to 8 ms (`depth`),
- * read with linear interpolation. Shared like the delay (one per patch on the FM-1); its l / r go to the output.
+ * read with linear interpolation. Shared like the delay (one per patch on the FM-1); its l / r go to the output. A right
+ * signal (#1141) makes the line hear (in + r) / 2, with in's dry into l and r's into r.
  */
 const CH_BASE = 0.012;
 const CH_SWING = 0.008;
@@ -2985,13 +3023,14 @@ const chorus: ModuleImpl<ChorusState> = {
       const b = s.buf[(s.w - di - 1 + len) % len];
       return a + (b - a) * fr;
     };
+    const inR = c.connected.r ? c.inp.r : c.inp.in;   // a right signal (#1141): the line hears (in + r) / 2, r its own dry
     for (let i = 0; i < c.n; i++) {
-      const x = c.inp.in[i];
+      const xl = c.inp.in[i], xr = inR[i], x = c.connected.r ? (xl + xr) / 2 : xl;
       s.buf[s.w] = x;
       const dl = base + swing * Math.sin(2 * Math.PI * s.phase);
       const dr = base + swing * Math.sin(2 * Math.PI * (s.phase + 0.25));
-      c.out.l[i] = x * dry + tap(dl) * mix;
-      c.out.r[i] = x * dry + tap(dr) * mix;
+      c.out.l[i] = xl * dry + tap(dl) * mix;
+      c.out.r[i] = xr * dry + tap(dr) * mix;
       s.w = (s.w + 1) % len;
       s.phase += dphi;
       if (s.phase >= 1) s.phase -= 1;
@@ -3245,6 +3284,7 @@ const xfade: ModuleImpl<null> = {
   def: {
     type: 'xfade',
     label: 'Crossfader',
+    stereo: true,
     inputs: [audio('a'), audio('b'), control('pos')],
     thru: 'a',
     outputs: [audio('out')],
@@ -3282,6 +3322,7 @@ const vowel: ModuleImpl<VowelState> = {
   def: {
     type: 'vowel',
     label: 'Formant filter',
+    stereo: true,
     inputs: [audio('in'), control('vowel')],
     outputs: [audio('out')],
     params: [param('vowel', 0, 4, 0, { step: 0.01, input: 'vowel', rest: (p, cv) => (p.vowel ?? 0) + cv }), param('res', 0, 1, 0.5, { step: 0.01 }), param('level', 0, 1, 0.7, { step: 0.01 })],
@@ -3339,6 +3380,7 @@ const phaser: ModuleImpl<PhaserState> = {
   def: {
     type: 'phaser',
     label: 'Phaser',
+    stereo: true,
     inputs: [audio('in')],
     outputs: [audio('out')],
     params: [
@@ -3380,6 +3422,7 @@ const crush: ModuleImpl<{ held: number; cnt: number } & OsState> = {
   def: {
     type: 'crush',
     label: 'Bitcrusher',
+    stereo: true,
     inputs: [audio('in')],
     outputs: [audio('out')],
     params: [param('bits', 1, 16, 8, { step: 1 }), param('rate', 1, 64, 1, { step: 1 }), param('os', 0, 1, 0, { step: 1, choices: OS_CHOICES, toggle: true })],
@@ -5015,6 +5058,7 @@ const lpg: ModuleImpl<LpgState> = {
   def: {
     type: 'lpg',
     label: 'Low pass gate',
+    stereo: true,
     since: 62,
     inputs: [audio('in'), control('cv'), gate('strike')],
     outputs: [audio('out')],
@@ -5085,6 +5129,21 @@ adsr.def.inputs.push(gate('hold'));
 filter.def.outputs.push(audio('hp6'));
 // Granular's pitch input in octaves, as the Comb filter's (the slider in semitones could not track a keyboard)
 grain.def.inputs.push(control('pitch'));
+// the Reverb's right-side jacks (#1141, format 67): its `r` input pairs with `in`, its `r` output with `out`
+reverb.def.inputs.push(audio('r'));
+reverb.def.outputs.push(audio('r'));
+// the Delay's and the Chorus's right input (#1141, format 67): it pairs with `in`
+delay.def.inputs.push(audio('r'));
+chorus.def.inputs.push(audio('r'));
+
+/**
+ * Jack pairs (#1141): per type, the right jack of the pair whose left jack is the type's first input (RIGHT_IN) or first
+ * output (RIGHT_OUT). A stereo cable into the left input while the right one has no cable feeds L to the left and R to the
+ * right; a cable from the left output into a stereo module carries the pair (engine.ts feeds; engine.c cab_feed, from
+ * defs.h DEF_RIN / DEF_ROUT). Keep in step with export-defs.ts.
+ */
+export const RIGHT_IN: Readonly<Record<string, string>> = { output: 'r', delay: 'r', reverb: 'r', chorus: 'r' };
+export const RIGHT_OUT: Readonly<Record<string, string>> = { pan: 'r', delay: 'r', reverb: 'r', chorus: 'r' };
 
 export const IMPLS: Record<string, ModuleImpl> = Object.fromEntries(ALL.map((m) => [m.def.type, m as ModuleImpl]));
 

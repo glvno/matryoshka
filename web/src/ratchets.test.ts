@@ -6,7 +6,7 @@ import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type Patch } from './patch';
 import { encodePatch, FORMAT_1_20, SECTION_FORMATS, VERSION } from './patchbin';
-import { parse, parseTrack, trackFrame } from './protocol';
+import { parse, parseTrack, trackFrames } from './protocol';
 import { decodePayload, encodePayload } from './pattern-store';
 import {
   COND_FILL, fixNotes, hasTiming, isShortNote, MICRO_MAX, microName, noteWords, overdub, RATCHET_MAX, setChord, setTiming,
@@ -53,10 +53,10 @@ describe('ratchets and micro timing: the timing word (#675, #677, format 63)', (
     expect(wordsNotes(w)).toEqual(ns);
   });
 
-  it('fixNotes keeps a ratchet 2..5 and micro timing within ±23, drops x1 and 0, counts timing words against the 128', () => {
+  it('fixNotes keeps a ratchet 2..5 and micro timing within ±23, drops x1 and 0, counts timing words against the 256', () => {
     expect(fixNotes([note(0, 60, { ratchet: 9, micro: -40 })])).toEqual([note(0, 60, { ratchet: RATCHET_MAX, micro: -MICRO_MAX })]);
     expect(fixNotes([note(0, 60, { ratchet: 1, micro: 0 })])).toEqual([note(0)]);
-    const many = Array.from({ length: 70 }, (_, k) => note(k % 64, 40 + Math.floor(k / 64), { ratchet: 2 }));
+    const many = Array.from({ length: 140 }, (_, k) => note(k % 64, 40 + Math.floor(k / 64), { ratchet: 2 }));
     expect(wordCount(fixNotes(many))).toBeLessThanOrEqual(TRACK_NOTES_MAX);
     expect(fixNotes(many)).toHaveLength(TRACK_NOTES_MAX / 2);
     expect(isShortNote(note(0, 60, { micro: 1 }))).toBe(false);
@@ -75,8 +75,8 @@ describe('ratchets and micro timing: the timing word (#675, #677, format 63)', (
 
   it('the editor link and the pattern store carry the words as they are', () => {
     const ns = [note(0, 60, { micro: 7 }), note(0, 64, { ratchet: 4 })];
-    const f = parse(trackFrame(3, ns, 2));
-    expect(parseTrack(f!.payload)).toEqual({ module: 3, notes: ns, pat: 2 });
+    const f = parse(trackFrames(3, ns, 2)[0]);
+    expect(parseTrack(f!.payload)).toEqual({ module: 3, notes: ns, pat: 2, more: false });
     const p = rig(ns, 4);
     expect(decodePayload(encodePayload(p, 0)).tracks[0]?.notes).toEqual(ns);
   });

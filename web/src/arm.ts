@@ -173,7 +173,7 @@ export function armView(p: Patch, armed: Iterable<DeviceKey>, defs: Record<strin
 }
 
 /** the armed devices as the FM-1 takes them (#191, engine.c eng_arm_mask): a mask of their modules' indices in the device
- * form, as ARM_WORDS 32-bit words (word k: modules 32k..32k+31; the FM-1's 128, #721) */
+ * form, as ARM_WORDS 32-bit words (word k: modules 32k..32k+31; the FM-1's 254, #721, #1286) */
 export function armMask(p: Patch, armed: Iterable<DeviceKey>, defs: Record<string, ModuleDef> = DEFS): number[] {
   const index = new Map(deviceView(p, true).patch.modules.map((m, i) => [m.id, i]));
   const words = new Array<number>(ARM_WORDS).fill(0);

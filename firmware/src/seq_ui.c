@@ -794,7 +794,7 @@ static int sr_put(int mod, uint32_t from, uint32_t to, int chord)
             x = eng_note_cut_before(x, from, len);
         w[m++] = x;
     }
-    if (chord && m + sr_n > TRACK_NOTES_MAX) { ui_msg("TRACK FULL: 128 NOTES", 1500); return 0; }
+    if (chord && m + sr_n > TRACK_NOTES_MAX) { ui_msg("TRACK FULL: 256 NOTES", 1500); return 0; }
     for (i = 0; chord && i < sr_n; i++) {
         uint32_t end = sr_hold[i] ? sr_k : sr_end[i];
         w[m++] = sr_at[i] | (end - sr_at[i]) << 6 | (uint32_t)sr_note[i] << 12 | (uint32_t)sr_vel[i] << 19;
@@ -1169,7 +1169,7 @@ static void seq_cond(int32_t clicks)
         ;
     c = seq_cond_at(clampi((i < SEQ_CONDS ? i : 0) + clicks, 0, SEQ_CONDS - 1));
     if (eng_steps_cond_set((uint32_t)mod, (uint32_t)seq_held, note, c) < 0) {
-        ui_msg("TRACK FULL: 128 NOTES", 1500);
+        ui_msg("TRACK FULL: 256 NOTES", 1500);
         return;
     }
     seq_sync(mod);
@@ -1195,7 +1195,7 @@ static void seq_timing(int32_t ratchet_clicks, int32_t micro_clicks)
     r = (uint32_t)clampi((int32_t)(x ? ENG_TIME_RATCHET(x) : 1u) + ratchet_clicks, 1, (int32_t)RATCHET_MAX);
     m = clampi((x ? ENG_TIME_MICRO(x) : 0) + micro_clicks, -MICRO_MAX, MICRO_MAX);
     if (eng_steps_time_set((uint32_t)mod, (uint32_t)seq_held, note, r, m) < 0) {
-        ui_msg("TRACK FULL: 128 NOTES", 1500);
+        ui_msg("TRACK FULL: 256 NOTES", 1500);
         return;
     }
     seq_sync(mod);

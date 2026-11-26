@@ -5,15 +5,18 @@ import {
   allModules, assembliesOf, assemblyById, childrenOf, findRef, fixAssemblies, insertAssembly, makeAssembly, parentOf, reconcileAll, targetsOf,
   toDef, validateAssemblyDef, bypassAssembly, hiddenAssemblies, hiddenModules, type AssemblyInst,
 } from './assembly';
+import { buildFactoryBank } from './factory-bank';
 import {
-  addDrawer, catalogEffectDef, chainCableProblem, chainHelpers, chainIns, chainJackProblem, chainOuts, deviceModules, drawerOf, drawerOutput,
+  addDrawer, catalogEffectDef, chainCableProblem, chainHelpers, chainIns, chainJackProblem, chainOuts, classicMix, deviceModules, drawerOf, drawerOutput,
   drawers, EFFECT_CATALOG, effectKind, effectsOf, insertEffect, legacyEffectDef, moveEffect, outputDrawer, ownerOf, rackOf, removeEffect, rewire,
-  takeOut, wrapEffect, type Channel,
+  takeOut, WET_DRAWER_FORM, wrapEffect, type Channel,
 } from './fx-drawer';
 import { convertLegacyBus, fxBusOf } from './fx-legacy';
 import { DEFS } from './modules';
 import { devicesOf } from './pages';
 import { addModule, connect, newPatch, sameEnd, validatePatch, type Endpoint, type Patch } from './patch';
+import { encodePatch, FLAG_CABLES3 } from './patchbin';
+import { clearAllPatterns } from './pattern-ops';
 import { copiesOf, setPoly } from './poly';
 import { PRESETS } from './presets';
 import { drawerPresetStructure, fnv, structureOf } from './structure';
@@ -43,27 +46,41 @@ function synth(stereo = false): { p: Patch; inst: AssemblyInst; out: number } {
 
 const cable = (p: Patch, from: Endpoint, to: Endpoint): boolean => p.cables.some((c) => sameEnd(c.from, from) && sameEnd(c.to, to));
 
-/** the rewire invariant of contracts §2 for an instrument drawer whose sound went to the Output, or the Output drawer */
+/** the rewire invariant of contracts §2 for an instrument drawer whose sound went to the Output, or the Output drawer; one
+ *  mono source set for both sides leaves the `r` of a jack pair free (an effect's, the Output's: the left jack plays both) */
 function expectChain(p: Patch, d: AssemblyInst, out: number): void {
   const owner = ownerOf(p, d);
   const fx = effectsOf(p, d);
-  for (const ch of [0, 1] as Channel[]) {
-    let prev: Endpoint[];
-    if (owner === 'output') prev = p.cables.filter((c) => fx.length ? chainIns(fx[0], ch).some((t) => sameEnd(t, c.to)) : c.to.module === out && c.to.port === (ch ? 'r' : 'l')).map((c) => c.from);
-    else {
+  const prevs = ([0, 1] as Channel[]).map((ch): Endpoint[] => {
+    if (owner !== 'output') {
       const t = d.drawer!.taps![ch];
-      prev = targetsOf(findRef(owner, 'out', t.module, t.port)!);
+      return targetsOf(findRef(owner, 'out', t.module, t.port)!);
     }
-    expect(prev.length).toBeGreaterThan(0);
-    for (const e of fx) {
-      for (const s of prev) for (const t of chainIns(e, ch)) expect(cable(p, s, t)).toBe(true);
-      // nothing else feeds the effect's chain input from outside it
-      const inside = new Set(allModules(p, e));
-      expect(p.cables.filter((c) => chainIns(e, ch).some((t) => sameEnd(t, c.to)) && !inside.has(c.from.module)).length).toBe(prev.length * chainIns(e, ch).length);
-      prev = chainOuts(e, ch);
+    return p.cables.filter((c) => fx.length ? chainIns(fx[0], ch).some((t) => sameEnd(t, c.to)) : c.to.module === out && c.to.port === (ch ? 'r' : 'l')).map((c) => c.from);
+  });
+  if (!prevs[1].length) prevs[1] = prevs[0];
+  const same = (a: Endpoint[], b: Endpoint[]): boolean => a.length === b.length && a.every((x) => b.some((y) => sameEnd(x, y)));
+  const rightJack = (t: Endpoint): boolean => t.port === 'r' && ['reverb', 'delay', 'chorus'].includes(p.modules.find((m) => m.id === t.module)!.type);
+  // (a stereo source splits into a pair instead: side cables, L into the left jack, R into `r`)
+  const mono = (): boolean => same(prevs[0], prevs[1]) && !prevs[0].every((s) => !!p.modules.find((m) => m.id === s.module)!.stereo);
+  expect(prevs[0].length).toBeGreaterThan(0);
+  for (const e of fx) {
+    const free = mono() && chainIns(e, 1).every(rightJack) && !same(chainIns(e, 0), chainIns(e, 1));
+    const inside = new Set(allModules(p, e));
+    for (const ch of [0, 1] as Channel[]) {
+      const into = p.cables.filter((c) => chainIns(e, ch).some((t) => sameEnd(t, c.to)) && !inside.has(c.from.module) && (!c.side || c.side === (ch ? 'r' : 'l')));
+      if (ch && free) {
+        expect(into).toEqual([]);
+        continue;
+      }
+      for (const s of prevs[ch]) for (const t of chainIns(e, ch)) expect(cable(p, s, t)).toBe(true);
+      // nothing else feeds the effect's chain input from outside it (a side cable counts on its own side only, #1141)
+      expect(into.length).toBe(prevs[ch].length * chainIns(e, ch).length);
     }
-    for (const s of prev) expect(cable(p, s, { module: out, port: ch ? 'r' : 'l' })).toBe(true);
+    for (const ch of [0, 1] as Channel[]) prevs[ch] = chainOuts(e, ch);
   }
+  const freeR = mono();
+  for (const ch of [0, 1] as Channel[]) for (const s of prevs[ch]) expect(cable(p, s, { module: out, port: ch ? 'r' : 'l' })).toBe(!(ch && freeR));
 }
 
 /** the modules whose sound reaches the Output's input `port` through cables */
@@ -95,7 +112,8 @@ describe('effect catalog', () => {
       const helpers = def.chain!.helpers?.length ?? 0;
       if (e.mode === 'pair') expect(helpers).toBe(0);
       if (e.mode === 'stereo') expect(helpers).toBe(1);
-      if (e.mode === 'wet') expect(helpers).toBe('type' in e.source ? 5 : 4);
+      // (a Reverb: one stereo-dry Reverb, C7b; Granular and the wet assemblies keep the helpers)
+      if (e.mode === 'wet') expect(helpers).toBe('type' in e.source ? (e.source.type === 'reverb' ? 0 : 5) : 4);
       expect(validateAssemblyDef(structuredClone(def), DEFS).chain).toEqual(def.chain);
     }
     expect(effectKind('shape')).toBe('pair');
@@ -105,12 +123,12 @@ describe('effect catalog', () => {
     expect(effectKind('vca')).toBeNull();
   });
 
-  it('wraps a module as a pair with every row tied to its twin, modulation copied onto the twin', () => {
+  it('wraps a module in the legacy form as a pair with every row tied to its twin, modulation copied onto the twin', () => {
     const p = newPatch(DEFS);
     const crush = addModule(p, DEFS.crush, 0, 0);
     const lfo = addModule(p, DEFS.lfo, 0, 300);
     connect(p, DEFS, { module: lfo.id, port: 'out' }, { module: crush.id, port: 'p1' });
-    const e = wrapEffect(p, { module: crush.id });
+    const e = wrapEffect(p, { module: crush.id }, undefined, undefined, { legacy: true });
     const twin = e.modules.find((id) => id !== crush.id)!;
     expect(e.chain).toEqual({ ins: [0, 1], outs: [0, 1] });
     expect(chainIns(e, 0)).toEqual([{ module: crush.id, port: 'in' }]);
@@ -120,7 +138,7 @@ describe('effect catalog', () => {
     expect(e.label).toBe('Bitcrusher');
   });
 
-  it('wraps a stereo module with the correction Math as its helper, and a wet module with the D-1010 reverb mix', () => {
+  it('wraps a stereo module with the correction Math as its helper, and a legacy wet module with the D-1010 reverb mix', () => {
     const p = newPatch(DEFS);
     const ch = addModule(p, DEFS.chorus, 0, 0);
     const e = wrapEffect(p, { module: ch.id });
@@ -129,7 +147,7 @@ describe('effect catalog', () => {
     expect(chainOuts(e, 0)).toEqual([{ module: ch.id, port: 'l' }, { module: helper, port: 'sub' }]);
     const rv = addModule(p, DEFS.reverb, 0, 600);
     rv.params.mix = 0.3;
-    const w = wrapEffect(p, { module: rv.id });
+    const w = wrapEffect(p, { module: rv.id }, undefined, undefined, { legacy: true });
     expect(rv.params.mix).toBe(1);
     const mix = w.params.find((r) => r.label === 'mix')!;
     expect(p.modules.find((m) => m.id === mix.module)!).toMatchObject({ type: 'macro', params: { value: 0.3 } });
@@ -137,11 +155,11 @@ describe('effect catalog', () => {
     expect(w.chain!.helpers).not.toContain(rv.id);
   });
 
-  it('wraps a mono assembly as two copies (toDef / insertAssembly) with every row tied, and a wet assembly around one copy', () => {
+  it('wraps a mono assembly in the legacy form as two copies (toDef / insertAssembly) with every row tied, and a wet assembly around one copy', () => {
     const p = newPatch(DEFS);
     const od = insertAssembly(p, DEFS, structuredClone((catalog('Overdrive').source as { def: never }).def), 0, 0);
     const n = allModules(p, od).length;
-    const e = wrapEffect(p, { assembly: od.id });
+    const e = wrapEffect(p, { assembly: od.id }, undefined, undefined, { legacy: true });
     expect(childrenOf(p, e)).toHaveLength(2);
     expect(allModules(p, e)).toHaveLength(2 * n);
     const [a, b] = childrenOf(p, e);
@@ -172,14 +190,15 @@ describe('effect catalog', () => {
 });
 
 describe('drawers', () => {
-  it('an instrument drawer taps the outputs cabled to the Output; an empty one changes nothing and survives every repair', () => {
+  it('an instrument drawer taps the outputs cabled to the Output; an empty one keeps the sound (a mono one frees the Output\'s r) and survives every repair', () => {
     const { p, inst, out } = synth();
-    const before = JSON.stringify(p.cables);
+    const before = p.cables.filter((c) => !(c.to.module === out && c.to.port === 'r'));
     const d = addDrawer(p, inst.id);
     expect(drawerOf(p, inst.id)).toBe(d);
     expect(ownerOf(p, d)).toBe(inst);
     expect(d.drawer!.taps![0]).toEqual(d.drawer!.taps![1]);
-    expect(JSON.stringify(p.cables)).toBe(before);
+    // (the mono instrument's cable into the Output's r went: r plays l, the same sound with one cable fewer)
+    expect(JSON.stringify(p.cables)).toBe(JSON.stringify(before));
     expect(reconcileAll(p, DEFS)).toEqual([]);
     const q = roundTrip(p);
     expect(drawerOf(q, inst.id)?.drawer).toEqual(d.drawer);
@@ -312,7 +331,7 @@ describe('drawers', () => {
     bypassAssembly(p, dl, true);
     bypassAssembly(p, d, true);
     const helpers = chainHelpers(p);
-    expect(helpers.size).toBe(6);
+    expect(helpers.size).toBe(1);   // (the Delay's correction; a new drawer Reverb has no helpers, C7b)
     for (const id of helpers) expect(p.modules.find((m) => m.id === id)!.bypass).toBeUndefined();
     bypassAssembly(p, d, false);
     expect(p.modules.find((m) => m.id === rv.modules[0])!.bypass).toBeUndefined();
@@ -367,7 +386,8 @@ describe('drawers', () => {
     const e = insertEffect(p, d, { type: 'crush' });
     const copies = copiesOf(p);
     expect(copies.get(inst.modules[0])).toBeGreaterThan(1);
-    for (const id of allModules(p, e)) expect(copies.get(id) ?? 1).toBe(1);
+    // (once: one copy, or a stereo module's two, #1141; never one per voice)
+    for (const id of allModules(p, e)) expect(copies.get(id) ?? 1).toBe(p.modules.find((m) => m.id === id)!.stereo ? 2 : 1);
   });
 });
 
@@ -522,5 +542,163 @@ describe('legacy bus conversion', () => {
     const want = { device: `a${stageOf(3)}`, page: [0, 1, 2].filter((i) => stageOf(i) === stageOf(3)).length };
     expect(panel.pages!.lfo).toEqual([want, { device: 'm1', page: 0 }]);
     expect(panel.targets!.edit).toEqual({ asm: drawers(q)[0].id });
+  });
+});
+
+describe('stereo effects in drawers (#1141, release 1.27)', () => {
+  const sideCables = (p: Patch, to: Endpoint): Patch['cables'] => p.cables.filter((c) => sameEnd(c.to, to));
+  const def = (name: string) => (catalog(name).source as { def: never }).def;
+
+  it('a drawer insert of Drive is one stereo Waveshaper (the legacy form: two), its rows untied; a new Reverb is one Reverb', () => {
+    const { p, inst, out } = synth();
+    const d = addDrawer(p, inst.id);
+    const drive = insertEffect(p, d, { type: 'shape' });
+    const shapes = allModules(p, drive).map((id) => p.modules.find((m) => m.id === id)!);
+    expect(shapes.map((m) => m.type)).toEqual(['shape']);
+    expect(shapes[0].stereo).toBe(true);
+    expect(drive.chain).toEqual({ ins: [0, 0], outs: [0, 0] });
+    expect(drive.params.every((r) => !r.also)).toBe(true);
+    const legacy = legacyEffectDef('drive');
+    expect(legacy.modules.map((m) => m.type)).toEqual(['shape', 'shape']);
+    expect(legacy.modules.some((m) => m.stereo)).toBe(false);
+    expect(WET_DRAWER_FORM).toBe('stereo-dry');
+    const rv = insertEffect(p, d, { type: 'reverb' });
+    expect(allModules(p, rv).map((id) => p.modules.find((m) => m.id === id)!.type)).toEqual(['reverb']);
+    expect([chainIns(rv, 0), chainIns(rv, 1), chainOuts(rv, 0), chainOuts(rv, 1)].map((l) => l.map((t) => t.port))).toEqual([['in'], ['r'], ['out'], ['r']]);
+    expect(rv.params.find((r) => r.label === 'mix')!.module).toBe(rv.modules[0]);
+    expect(classicMix(p, rv)).toBe(false);
+    expectChain(p, d, out);
+  });
+
+  it('both forms of WET_DRAWER_FORM: helpers keeps the six-module Reverb, stereo-dry is the Reverb alone', () => {
+    const p = newPatch(DEFS);
+    const a = wrapEffect(p, { module: addModule(p, DEFS.reverb, 0, 0).id }, undefined, undefined, { wet: 'helpers' });
+    expect(allModules(p, a)).toHaveLength(6);
+    expect(classicMix(p, a)).toBe(true);
+    const b = wrapEffect(p, { module: addModule(p, DEFS.reverb, 0, 900).id }, undefined, undefined, { wet: 'stereo-dry' });
+    expect(allModules(p, b)).toHaveLength(1);
+    expect(b.chain!.helpers).toBeUndefined();
+    expect(classicMix(p, b)).toBe(false);
+  });
+
+  it('side cables join and split where a stereo module meets L/R neighbours, so a mixed chain stays stereo through any reorder', () => {
+    const { p, inst, out } = synth(true);   // (the tap: a Pan's l / r)
+    const d = addDrawer(p, inst.id);
+    const [pl, pr] = d.drawer!.taps!;
+    const drive = insertEffect(p, d, { type: 'shape' });
+    const chorus = insertEffect(p, d, { type: 'chorus' });
+    const rv = insertEffect(p, d, { type: 'reverb' });
+    const sh = { module: drive.modules[0], port: 'in' }, shOut = { module: drive.modules[0], port: 'out' };
+    // the join: the Pan's l feeds the left copy, its r the right one
+    expect(sideCables(p, sh).map((c) => [c.from.port, c.side])).toEqual([['l', 'l'], ['r', 'r']]);
+    // the split: the Drive's left side into the chorus pair's first copy, its right side into the second
+    for (const ch of [0, 1] as Channel[]) for (const t of chainIns(chorus, ch))
+      expect(sideCables(p, t).filter((c) => sameEnd(c.from, shOut)).map((c) => c.side)).toEqual([ch ? 'r' : 'l']);
+    expectChain(p, d, out);
+    // Reverb first: the Pan's sides into its in / r (two mono jacks: whole cables), its out / r join into the Drive
+    moveEffect(p, d, rv.id, 0);
+    expectChain(p, d, out);
+    expect(sideCables(p, sh).map((c) => [c.from.port, c.side])).toEqual([['out', 'l'], ['r', 'r']]);
+    // Drive last: it splits into the Output's l and r
+    moveEffect(p, d, drive.id, 2);
+    expect(sideCables(p, { module: out, port: 'l' }).map((c) => c.side)).toEqual(['l']);
+    expect(sideCables(p, { module: out, port: 'r' }).map((c) => c.side)).toEqual(['r']);
+    expectChain(p, d, out);
+    // a rewire changes nothing; a round trip keeps the sides; a copy of the instrument carries them
+    const before = JSON.stringify(p.cables);
+    rewire(p, d);
+    expect(JSON.stringify(p.cables)).toBe(before);
+    const q = roundTrip(p);
+    expect(q.cables.filter((c) => c.side)).toEqual(p.cables.filter((c) => c.side));
+    const copy = insertAssembly(q, DEFS, toDef(q, assemblyById(q, inst.id)!), 3000, 0);
+    expect(q.cables.filter((c) => c.side && allModules(q, copy).includes(c.to.module)).length).toBe(p.cables.filter((c) => c.side && c.to.module !== out).length);
+    // a mono tap into a stereo module: one whole cable
+    const mono = synth();
+    const md = addDrawer(mono.p, mono.inst.id);
+    const e = insertEffect(mono.p, md, { type: 'filter' });
+    expect(sideCables(mono.p, chainIns(e, 0)[0]).map((c) => c.side)).toEqual([undefined]);
+  });
+
+  it('a pair assembly gets stereo members when every member has a stereo mode, else stays an L/R pair', () => {
+    const p = newPatch(DEFS);
+    const od = insertAssembly(p, DEFS, structuredClone(def('Overdrive')), 0, 0);
+    const n = allModules(p, od).length;
+    const e = wrapEffect(p, { assembly: od.id });
+    expect(childrenOf(p, e).map((c) => c.id)).toEqual([od.id]);
+    expect(allModules(p, e)).toHaveLength(n);
+    expect(allModules(p, e).every((id) => p.modules.find((m) => m.id === id)!.stereo)).toBe(true);
+    expect(e.chain).toEqual({ ins: [0, 0], outs: [0, 0] });
+    const mixed = EFFECT_CATALOG.find((x) => x.mode === 'pair' && 'def' in x.source && x.source.def.modules.some((m) => !DEFS[m.type].stereo))!;
+    expect(mixed, 'a pair assembly with a member that has no stereo mode').toBeDefined();
+    const m = insertAssembly(p, DEFS, structuredClone((mixed.source as { def: never }).def), 0, 900);
+    const w = wrapEffect(p, { assembly: m.id });
+    expect(childrenOf(p, w)).toHaveLength(2);
+    expect(allModules(p, w).some((id) => p.modules.find((x) => x.id === id)!.stereo)).toBe(false);
+  });
+
+  it('an existing (1.26) drawer opens unchanged: its pairs and helper Reverb stay, rewire leaves every cable, the Reverb says classic mix', () => {
+    const raw = Object.values(survey.patches).find((x) => { const q = structuredClone(x); fixAssemblies(q, DEFS); return fxBusOf(q, DEFS)?.stages.length === 4; })!;
+    const p = roundTrip(raw);
+    const before = JSON.stringify(p);
+    const d = drawers(p)[0];
+    rewire(p, d);
+    expect(JSON.stringify(p)).toBe(before);
+    expect(p.modules.some((m) => m.stereo) || p.cables.some((c) => c.side)).toBe(false);
+    const byName = new Map(effectsOf(p, d).map((e) => [e.name, e]));
+    expect(allModules(p, byName.get('Drive')!).length).toBe(2);
+    expect(classicMix(p, byName.get('Reverb')!)).toBe(true);
+    expect(['Drive', 'Chorus', 'Delay'].some((n) => classicMix(p, byName.get(n)!))).toBe(false);
+    // a new stereo effect joins the end of the old chain (side cables from the old Reverb's dry stages, its wet return on
+    // both sides a whole cable); the old effects' cables among themselves stay as they were
+    const old = new Set(effectsOf(p, d).flatMap((e) => allModules(p, e)));
+    const inner = (q: Patch): string[] => q.cables.filter((c) => old.has(c.from.module) && old.has(c.to.module)).map((c) => `${c.from.module}.${c.from.port}>${c.to.module}.${c.to.port}${c.side ?? ''}`).sort();
+    const kept = inner(p);
+    const crush = insertEffect(p, d, { type: 'crush' });
+    expect(inner(p)).toEqual(kept);
+    expect(p.cables.filter((c) => c.to.module === crush.modules[0] && c.to.port === 'in').map((c) => c.side).sort()).toEqual(['l', 'r', undefined]);
+    expectChain(p, d, p.modules.find((m) => m.type === 'output')!.id);
+  });
+});
+
+describe('the 909 Kit\'s drawer (#1141)', () => {
+  // (on the kit without the drawer it ships with, D-1055: the drawer forms one by one)
+  const kit = (types: string[]): { p: Patch; rv?: AssemblyInst; bin: Uint8Array; plain: number } => {
+    const p = structuredClone(buildFactoryBank().find((c) => c.name === '909 Kit')!.patch);
+    clearAllPatterns(p);
+    const plain = encodePatch(p, true).length;
+    const d = addDrawer(p, assembliesOf(p).find((a) => a.name === '909 kit')!.id);
+    const made = types.map((type) => insertEffect(p, d, { type }));
+    return { p, rv: made[types.indexOf('reverb')], bin: encodePatch(p, true), plain };
+  };
+  const grouped = (bin: Uint8Array): boolean => ((bin[6] | bin[7] << 8) & FLAG_CABLES3) !== 0;
+
+  it('an empty drawer leaves the Output\'s r free (it plays l): the cables stay grouped, the patch under the 3,840 B cap', () => {
+    const { p, bin, plain } = kit([]);
+    const out = p.modules.find((m) => m.type === 'output')!.id;
+    expect(p.cables.filter((c) => c.to.module === out && c.to.port === 'r')).toEqual([]);
+    expect(grouped(bin)).toBe(true);
+    expect(bin.length).toBeLessThan(3840);
+    expect(bin.length - plain).toBeLessThan(10);   // (5 B: the rack with its one empty drawer)
+    expectChain(p, drawers(p)[0], out);
+  });
+
+  it('a Reverb alone hears the mono kit once, in its `in`: its `r` stays free, the cables stay grouped', () => {
+    const { p, rv, bin, plain } = kit(['reverb']);
+    const m = rv!.modules[0];
+    expect(p.cables.filter((c) => c.to.module === m && c.to.port === 'r')).toEqual([]);
+    expect(p.cables.filter((c) => c.to.module === m)).toHaveLength(11);   // (the kit's eleven voices, once)
+    expect(grouped(bin)).toBe(true);
+    expect(bin.length - plain).toBeLessThan(100);   // (98 B: the rack, the effect's device and the Reverb's record)
+    expectChain(p, drawers(p)[0], p.modules.find((x) => x.type === 'output')!.id);
+  });
+
+  it('Drive then Reverb: the Drive splits into the Reverb\'s in / r; either order stays grouped', () => {
+    const a = kit(['shape', 'reverb']);
+    expect(a.p.cables.filter((c) => c.to.module === a.rv!.modules[0]).map((c) => `${c.to.port}/${c.side}`).sort()).toEqual(['in/l', 'r/r']);
+    expect(grouped(a.bin)).toBe(true);
+    expect(a.bin.length).toBeLessThanOrEqual(3781);
+    const b = kit(['reverb', 'shape']);
+    expect(b.p.cables.filter((c) => c.to.module === b.rv!.modules[0] && c.to.port === 'r')).toEqual([]);
+    expect(grouped(b.bin)).toBe(true);
   });
 });

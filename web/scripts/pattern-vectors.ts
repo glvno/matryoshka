@@ -8,7 +8,7 @@ import { addModule, connect, emptyPatch, type ModuleInst, type Patch } from '../
 import { encodePatch } from '../src/patchbin';
 import { encodePayload, layoutOf } from '../src/pattern-store';
 import { clearAllPatterns, copyPattern, doublePattern, halvePattern, nextEmptyPattern, type ResizeRefusal } from '../src/pattern-ops';
-import { UNSHIPPED_PATTERNS } from '../src/factory-bank';
+import { buildFactoryBank, selectedFactoryProfile, UNSHIPPED_PATTERNS } from '../src/factory-bank';
 import { factoryWithPatterns } from '../src/presets';
 import { deviceView } from '../src/poly';
 import { condAB, type StepNote } from '../src/track';
@@ -115,6 +115,18 @@ export function patternCases(): PatternCase[] {
     st[2].patterns = [{ notes: [n(0, 1, 60), n(8, 1, 62)] }];
     out.push({ name: 'HALVE ODD', patch: p, pattern: 1 });
   }
+  {   // (#1292: past 128 words, format 67 and payload version 2: 200 words on pattern 2 (a one-byte count), 256 on pattern 1
+      // (the 0xFE escape))
+    const many = (k: number, base: number): StepNote[] => Array.from({ length: k }, (_, j) => n(j >> 4, 1, base + (j & 15)));
+    const { p, st } = rig('WIDE 200', 2);
+    st[0].notes = [n(0, 1, 36)];
+    st[0].patterns = [{ notes: many(200, 30) }];
+    out.push({ name: 'WIDE 200', patch: p, pattern: 1 });
+    const w = rig('WIDE 256', 2);
+    w.st[0].notes = many(256, 20);
+    w.st[1].notes = many(130, 40);
+    out.push({ name: 'WIDE 256', patch: w.p, pattern: 0 });
+  }
   return out;
 }
 
@@ -161,9 +173,12 @@ export function patternCasesHeader(cases: PatternCase[] = patternCases()): strin
   L.push('static const struct { uint32_t from, to; const uint8_t *copied; uint32_t copied_len; const uint8_t *cleared; uint32_t cleared_len; const uint8_t *doubled; uint32_t doubled_len; int doubled_rc; const uint8_t *halved; uint32_t halved_len; int halved_rc; } PATTERN_OPS[N_PATTERN_CASES] = {');
   L.push(...ops, '};', '');
   // the factory patches of UNSHIPPED_PATTERNS with the patterns and songs they shipped with up to 1.24.1, as the FM-1 gets
-  // them from the editor (test material: firmware tests that play their patterns)
+  // them from the editor (test material: firmware tests that play their patterns); a kit given an FX drawer since (the 909
+  // Kit, D-1055) as 1.25 saved it, without the drawer: with it and the patterns it is past the FM-1's 3,840 bytes
+  const plain = buildFactoryBank();
   const patterned = UNSHIPPED_PATTERNS.map((name, i) => {
-    const bin = encodePatch(factoryWithPatterns(name), true, 0, 1);
+    const p = selectedFactoryProfile[name]?.drawer ? plain.find((c) => c.name === name)!.patch : factoryWithPatterns(name);
+    const bin = encodePatch(p, true, 0, 1);
     L.push(`static const uint8_t PTC_PATTERNED_${i}[${bin.length}] = {${bin.join(',')}};`);
     return `    {"${name}", PTC_PATTERNED_${i}, ${bin.length}},`;
   });

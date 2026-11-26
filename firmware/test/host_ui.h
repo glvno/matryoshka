@@ -396,6 +396,8 @@ static void m1_origins_drop(void)                    /* (clear all, #1178: every
 static int m1_patch_locks(void) { return 1; }      /* (the preview keeps no patch: the engine has the locks) */
 /* the pattern store's glue (patlink.c, #901) on the previewed binary: what proto.c sends stood in (its status codes above) */
 static int m1_steps_write(uint32_t s, uint64_t omit) { (void)s; (void)omit; return 1; }   /* (the preview keeps no patch) */
+static int m1_steps_sec(uint32_t s) { (void)s; return 1; }
+static int m1_can_wide(void) { return 0; }                /* (pattern 1 never goes to the store in the preview, #1292) */
 static int32_t m1_steps_cost(uint32_t s, uint64_t omit) { (void)s; (void)omit; return 0; }
 static const char *m1_patch_name(void) { return "PREVIEW"; }
 static int m1_patch_links(const uint8_t *s, uint32_t n) { (void)s; (void)n; return 1; }   /* (no links in the preview) */

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { signalBuffers, type BufferAllocation } from './signal-buffers';
+import { feedModel, outputRead, sourcesInto } from './feeds';
 import { chainedHarmonizer, keyRouteError } from './key-routing';
 // Compact binary patch format, read by firmware/src/engine.c (eng_load).
 //
@@ -36,7 +37,8 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //                format 51 (D-1000, D-1001): bit 7 of the count byte (REC_TEMPLATE) on such a module says att1 = att2 = 1 and the
 //                p1 / p2 masks are its type's defaultMap (matrixTemplate), and nothing follows the parameters; without it a
 //                presence byte follows them (PRES_ATT1, PRES_ATT2, PRES_P1, PRES_P2) and then only the items it marks, in that
-//                order; there are no knob masks;
+//                order; there are no knob masks; format 67 (#1141): bit 6 of the count byte (REC_STEREO) says the module
+//                runs in stereo mode (an eligible type outside every poly group: two copies, L and R);
 //                then the module's data (ModuleDef.data bytes): a Steps module's name (TRACK_NAME_MAX bytes, ASCII, zero
 //                padded); a Drum map's u8 keys source (0 none, 1 Main's keys, 2 + the module index of a Steps module)
 //   per cable:   u8 from module index, u8 from output index, u8 to module index, u8 to input index; with flag bit 12 (format 51,
@@ -46,6 +48,9 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //                of counts, module i's cables in the low nibble of byte i >> 1 when i is even, else the high one, then per
 //                module in module order the cables into it, in the patch's order: u8 from module index, u8 from output index
 //                << 4 | to input index; format 64 without flag bit 12: 4 bytes a cable, as before format 51
+//   format 67 (#1141), in every binary of it: the side section (sideRecord): u8 n, then n (u8 a cable's place in the binary's
+//                cable order, ascending, u8 its side: 1 L, 2 R); a side cable carries only that side of a stereo source, and
+//                into a stereo module feeds only that copy
 //   with flag bit 0, per module: one i32 LE per parameter its record holds (Q16.16), the B side of the morph (the Main module's morph
 //                parameter and input fade every parameter from the record's value to this one)
 //   with flag bit 9, after the B values: ceil(module count / 8) bytes, bit i marks module i as having a B side.
@@ -56,15 +61,17 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //   with flag bit 3: u8 count, then u8 module index, u8 input index, the parameter mask per routed input (u16 LE, or u32 LE
 //                when the module's type has more than 16 parameters: maskBytes)
 //   with flag bit 4: the tracks' notes (#133): u8 count, then per Steps module with notes, in module order: u8 module index,
-//                u8 n (1..TRACK_NOTES_MAX), n u32 LE words (track.ts noteWords), sorted by start, then note; bit 31 of a
+//                n (1..TRACK_NOTES_1_26; up to TRACK_NOTES_MAX in format 67, written as track.ts countBytes: COUNT_ESC
+//                escapes 254..256, #1292), n u32 LE words (track.ts noteWords), sorted by start, then note; bit 31 of a
 //                word (format 50, NOTE_WRAP): tied across the loop point; format 60 (#674, FORMAT_CONDS): a note with a trig
 //                condition (chance code NOTE_COND) is followed by its condition word (velocity 0), which n counts; format 63
 //                (#675, #677, FORMAT_1_20): a note with a ratchet or micro timing is followed by its timing word (velocity 0,
 //                bit 31), after its condition word, which n counts too
 //   with flag bit 10 (format 48, written only when used: patternRecord): the patterns and songs (track.ts Pattern, SeqState):
 //                u8 the selected pattern (0-based), u8 the song playing (0 none, 1..SONGS_MAX); u8 track count, per Steps module
-//                with patterns past its first, in module order: u8 module index, u8 P, then patterns 2..P+1, each u8 n: 0xFF the
-//                track has no such pattern (it plays its pattern 1), else n words (0..TRACK_NOTES_MAX), u8 len (bits 0..6: 0 the
+//                with patterns past its first, in module order: u8 module index, u8 P, then patterns 2..P+1, each n: 0xFF the
+//                track has no such pattern (it plays its pattern 1), else n words (0..TRACK_NOTES_1_26, format 67 up to
+//                TRACK_NOTES_MAX, countBytes), u8 len (bits 0..6: 0 the
 //                track's, else 1..STEPS_MAX; bit 7: short words), u8 rate (0xFF the track's, else a STEPS_RATES index), n
 //                words: u16 LE short ones (track.ts shortWord, when every note of the pattern fits one: isShortNote) or u32 LE
 //                (noteWords, as the notes section's); then u8 song count, per song u8 entry count, per entry u8 pattern, i8 shift. Pattern 1 of every
@@ -76,11 +83,13 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //                pattern u8 its number (0-based), u8 L (1..LOCKS_MAX), L locks: u8 step, u8 row (0..T-1), i32 LE value
 //                (Q16.16, the parameter's own units)
 //   with flag bit 15 (format 59, #901, written only when a pattern is linked to the FM-1's pattern store: linkPlan): the
-//                stored pattern links, right after the P-locks: u8 count (1..63), then per link, ascending and unique: u8
-//                pattern index (1..63; pattern 1 is never linked), u16 LE store id (1..LINK_ID_MAX). A linked pattern whose
+//                stored pattern links, right after the P-locks: u8 count (1..63; 64 in format 67), then per link, ascending and
+//                unique: u8 pattern index (1..63; format 67 (#1292) 0..63: pattern 1 too, linked only when the patch cannot
+//                hold it, LinkStore 'spill'), u16 LE store id (1..LINK_ID_MAX). A linked pattern whose
 //                payload (pattern-store.ts) is the one the FM-1's store holds is left out of the patterns and P-locks
-//                sections: the FM-1 copies it from the store as it loads the patch. An edited one stays in them (its
-//                content plays), and the FM-1's SAVE writes it over the stored one
+//                sections (pattern 1: of the notes section and the P-locks): the FM-1 copies it from the store as it loads
+//                the patch. An edited one stays in them (its content plays), and the FM-1's SAVE writes it over the stored
+//                one
 //   with flag bit 5: the device pages (pages.ts): u8 device count, then per device u8 kind: 0 a plain module, then u8 its
 //                module index (the FM-1 makes its pages itself: its parameters in order, four to a page, named as in
 //                defs.h); 2 (format 49, #518) a plain module with its own name (ModuleInst.name; not a Steps module, whose
@@ -105,7 +114,8 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 //                row's): its card rows in canonical order (structure.ts rowOrder: the order of a preset's values; 0xFF 0xFF a
 //                row the FM-1 has not got); n is 0 for a plain module; u8 m and m u8 module indices: the modules it is made
 //                of (a plain module: itself; arming it on the FM-1 lets these hear Main's keys, #191); format 51 (D-1003): three
-//                or more in one unbroken run are u8 MEMBER_RUN | m and u8 the first
+//                or more in one unbroken run are u8 MEMBER_RUN | m and u8 the first; format 67 (#1286): 128 members or more
+//                are u8 MEMBER_WIDE, u8 m, u8 form (0: the m indices follow, 1: one run, u8 the first follows)
 //   with flag bit 6: the button kinds (buttons.ts): PANEL_BUTTONS.length u8 kinds (0 Gate, 1 Nothing, 2 Toggle, 3 Page),
 //                then in button order per Toggle button u8 n (0..), n u8 module indices: the modules it bypasses (buttons.ts
 //                toggleTargets); per Page button u8 n, n (u8 device, u8 page): its list, in the device pages section's
@@ -128,10 +138,10 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 // Type indices are the position in TYPE_ORDER (append only: the firmware has the same list in defs.h).
 // Port indices are positions in ModuleDef.outputs / inputs (explicit ports first, then the `<param>_cv` inputs).
 
-import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DRUM_MAP_DEFAULT, DRUM_ROWS, drumRowName, LIMIT_AHEAD, PANEL_BUTTONS } from './modules';
+import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DRUM_MAP_DEFAULT, DRUM_ROWS, drumRowName, LIMIT_AHEAD, PANEL_BUTTONS, RIGHT_IN } from './modules';
 import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } from './buttons';
-import { defaultMap, EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, MODULES_1_10, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef, type Patch } from './patch';
-import { hasTiming, noteWords, patternWords, wordCount } from './track';
+import { defaultMap, EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, MODULES_1_10, MODULES_1_26, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef, type Patch } from './patch';
+import { countBytes, hasTiming, noteWords, patternWords, TRACK_NOTES_1_26, wordCount } from './track';
 import { payloadHash } from './pattern-store';
 import { lockPlan, PATCH_LOCKS_MAX } from './locks';
 import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS } from './poly';
@@ -142,7 +152,7 @@ import { CPU, cpuEstimate, planCosts, type CpuEstimate } from './cpu';
 import { schedule, type Schedule } from './schedule';
 import { instIsEngine } from './engines';
 import { engineUnreached } from './arm';
-import { rackPlan } from './rack-plan';
+import { rackPlan, rackTargets } from './rack-plan';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 import { noteSource, sourceNote, type LearnSource } from './midi-learn';
 
@@ -153,7 +163,7 @@ export const GROUP_REC = 4 + 5 * MAX_PARTS + 4;
 /** bytes of the panel section before format 64 (engine.h ENG_PANEL_BYTES): two masks and the labels (since: panelBytes) */
 export const PANEL_BYTES = 4 + PANEL_LABEL_KEYS.length * PANEL_LABEL_MAX;
 export const MAX_CABLES = 255;
-export const VERSION = 66; // 66 (1.26.3, FORMAT_RACK): flag bit 14 is the FX rack, the patch's effects and FX drawers (rackRecord, #1214), written only by a patch with one; 65 (the release after 1.22, FORMAT_1_23): the MIDI learn mappings, the binary's last section (mapRecord, #1067), written only by a patch with MIDI learn; 64 (the release after 1.21, FORMAT_1_22): the EQ module (eq, #1107) appended after the Euclid, written only by patches that use it (ModuleDef.since); and the panel labels by length, the cables grouped by the module they go into, only the Drum map row names off their default (SLIM, D-1025), for a patch that fits no older format; 63 (release 1.20, FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid module (euclid, #1018) appended after the Limiter, Steps notes' timing words, ratchets and micro timing (#675, #677); 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14 (no longer written: the editor turns a master FX bus into FX drawers, fx-legacy.ts); ordinary patches retain their lowest format
+export const VERSION = 67; // 67 (1.27, FORMAT_1_27): more than 128 modules (MAX_MODULES 254, #1286; a device's member count past 127, MEMBER_WIDE), written only by a patch that uses it (uses127); 66 (1.26.3, FORMAT_RACK): flag bit 14 is the FX rack, the patch's effects and FX drawers (rackRecord, #1214), written only by a patch with one; 65 (the release after 1.22, FORMAT_1_23): the MIDI learn mappings, the binary's last section (mapRecord, #1067), written only by a patch with MIDI learn; 64 (the release after 1.21, FORMAT_1_22): the EQ module (eq, #1107) appended after the Euclid, written only by patches that use it (ModuleDef.since); and the panel labels by length, the cables grouped by the module they go into, only the Drum map row names off their default (SLIM, D-1025), for a patch that fits no older format; 63 (release 1.20, FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid module (euclid, #1018) appended after the Limiter, Steps notes' timing words, ratchets and micro timing (#675, #677); 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14 (no longer written: the editor turns a master FX bus into FX drawers, fx-legacy.ts); ordinary patches retain their lowest format
 /**
  * The lowest format the encoder writes: a patch that uses no parameter appended after it (ParamDef.since past it: a value
  * off its default on either morph side, a pin, macro range, input route or card row on it) is written in this format, its
@@ -167,9 +177,9 @@ export const WRITE_FLOOR = 46;
  * fit otherwise, COUNTED; format 59: stored pattern links, flag bit 15; format 60: trig conditions, FORMAT_CONDS; format
  * 61: a cable into a Part's priority input, FORMAT_PRIORITY_CABLE; format 62: the 1.19 module types, FORMAT_1_19; format
  * 63: the 1.20 module types, FORMAT_1_20; format 64: the EQ module, and the shorter panel labels, cables and Drum map row
- * names when the patch would not fit otherwise, FORMAT_1_22, SLIM; format 66: the FX rack, FORMAT_RACK); every other
- * format past WRITE_FLOOR appends parameters (ParamDef.since) */
-export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase', 59: 'stored pattern links', 60: 'trig conditions', 61: 'note priority on a cable', 62: 'the 1.19 modules', 63: 'the 1.20 features', 64: 'the EQ module and the shorter panel labels, cables and row names', 65: 'MIDI learn mappings', 66: 'FX drawers' };
+ * names when the patch would not fit otherwise, FORMAT_1_22, SLIM; format 66: the FX rack, FORMAT_RACK; format 67: the
+ * 1.27 things, FORMAT_1_27, uses127); every other format past WRITE_FLOOR appends parameters (ParamDef.since) */
+export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase', 59: 'stored pattern links', 60: 'trig conditions', 61: 'note priority on a cable', 62: 'the 1.19 modules', 63: 'the 1.20 features', 64: 'the EQ module and the shorter panel labels, cables and row names', 65: 'MIDI learn mappings', 66: 'FX drawers', 67: 'more than 128 modules' };
 /** the flag (u16 at offset 6) of the P-locks section (format 49, #524) */
 export const FLAG_LOCKS = 2048;
 
@@ -201,23 +211,29 @@ export const FLAG_LINKS = 1 << 15;
  * read) holds every linked id, contents unknown; `none` (an FM-1 without a store) holds nothing and takes no links section;
  * `every` (an FM-1 that stores every pattern 2..64, protocol.ts FEATURE25_PATTERNS_STORED, #1202) holds every pattern of the
  * patch that has content, each a clean link (to a stand-in id where the patch links none: for the budget and a binary's
- * length only, never sent; device.ts sends the real ids); else what the FM-1 holds: each stored id's payload hash.
+ * length only, never sent; device.ts sends the real ids); `spill` (such an FM-1 that reads format 67, FEATURE5_FORMAT_67,
+ * #1292) the same, and pattern 1 too when the patch cannot hold it (layout); else what the FM-1 holds: each stored id's
+ * payload hash.
  */
-export type LinkStore = 'assume' | 'unknown' | 'none' | 'every' | ReadonlyMap<number, number>;
+export type LinkStore = 'assume' | 'unknown' | 'none' | 'every' | 'spill' | ReadonlyMap<number, number>;
 /** the patterns (1..63, 0-based) some Steps track of `dev` (a device form) has: the ones a FEATURE25_PATTERNS_STORED FM-1
  *  stores and links */
 export const patternsWithContent = (dev: Patch): number[] =>
   [...new Set(dev.modules.flatMap((m) => (m.type === 'steps' ? (m.patterns ?? []).flatMap((x, i) => (x ? [i + 1] : [])) : [])))].sort((a, b) => a - b);
+/** pattern 1 of some Steps track of `dev` (a device form) has notes or P-locks: what an FM-1 that spills pattern 1 stores
+ *  when the patch cannot hold it (#1292) */
+export const patternOneHasContent = (dev: Patch): boolean => dev.modules.some((m) => m.type === 'steps' && (!!m.notes?.length || !!m.locks?.length));
 /**
  * The links a binary for `store` carries (`dev`: the device form): every link to an id the store holds, ascending; and the
  * linked patterns it leaves out (`refs`): those whose payload the store holds as it is (its hash is the link's and the
- * store's). A link to an id the store has not got is left out, its pattern written as any other. With `every` each
- * pattern with content is a link and a reference, and no other pattern is linked.
+ * store's). A link to an id the store has not got is left out, its pattern written as any other. With `every` and `spill`
+ * each pattern 2..64 with content is a link and a reference, and pattern 1 too with `one` (a `spill` patch that cannot hold
+ * it, layout), and no other pattern is linked.
  */
-export function linkPlan(source: Patch, dev: Patch, store: LinkStore): { entries: [number, number][]; refs: number[] } {
+export function linkPlan(source: Patch, dev: Patch, store: LinkStore, one = false): { entries: [number, number][]; refs: number[] } {
   const links = source.modules.find((m) => m.type === 'fm1')?.seq?.links;
-  if (store === 'every') {
-    const refs = patternsWithContent(dev);
+  if (store === 'every' || store === 'spill') {
+    const refs = [...(one && patternOneHasContent(dev) ? [0] : []), ...patternsWithContent(dev)];
     return { entries: refs.map((p) => [p, links?.[p]?.id ?? 1]), refs };
   }
   const plan: { entries: [number, number][]; refs: number[] } = { entries: [], refs: [] };
@@ -229,18 +245,26 @@ export function linkPlan(source: Patch, dev: Patch, store: LinkStore): { entries
     const stored = store === 'assume' ? l.hash : store === 'unknown' ? undefined : store.get(l.id);
     if (stored === l.hash && payloadHash(source, p, dev) === l.hash) plan.refs.push(p);
   }
+  plan.entries.sort((a, b) => a[0] - b[0]);
   return plan;
 }
 /** the stored pattern links section's bytes (see the top of this file), [] without links */
 export const linkRecord = (entries: [number, number][]): number[] =>
   entries.length ? [entries.length, ...entries.flatMap(([p, id]) => [p, id & 0xff, id >> 8])] : [];
-/** a device form without patterns `refs` (0-based) on any track: what the binary leaves to the store */
+/** a device form without patterns `refs` (0-based; 0: pattern 1's notes and P-locks) on any track: what the binary leaves
+ *  to the store */
 function withoutPatterns(dev: Patch, refs: number[]): Patch {
   return { ...dev, modules: dev.modules.map((m) => {
-    if (m.type !== 'steps' || !m.patterns?.some((_, i) => refs.includes(i + 1))) return m;
-    const pats = m.patterns.map((x, i) => (refs.includes(i + 1) ? null : x));
+    if (m.type !== 'steps') return m;
+    let out = m;
+    if (refs.includes(0) && (m.notes || m.locks)) {
+      const { notes: _n, locks: _l, ...rest } = out;
+      out = rest;
+    }
+    if (!out.patterns?.some((_, i) => refs.includes(i + 1))) return out;
+    const pats = out.patterns.map((x, i) => (refs.includes(i + 1) ? null : x));
     while (pats.length && pats[pats.length - 1] === null) pats.pop();
-    const { patterns: _p, ...rest } = m;
+    const { patterns: _p, ...rest } = out;
     return pats.length ? { ...rest, patterns: pats } : rest;
   }) };
 }
@@ -357,6 +381,56 @@ export const FORMAT_1_23 = 65;
  */
 export const FORMAT_RACK = 66;
 /**
+ * The format of 1.27 (D-281, as D-1022): more than MODULES_1_26 modules (#1286; a device of 128 members or more takes
+ * MEMBER_WIDE), stereo mode and the effects' `r` jacks (#1141), patterns of more than TRACK_NOTES_1_26 words (countBytes)
+ * and a link of pattern 1 (#1292). A patch that uses a 1.27 thing (uses127; a link of pattern 1: layout) is written in it;
+ * every other patch keeps its lower format, and firmware without feature bit 36 (protocol.ts FEATURE5_FORMAT_67) is told to
+ * update. It has SLIM's layout, and the side section right after the cables (sideRecord).
+ */
+export const FORMAT_1_27 = 67;
+/** bit 6 of a record's count byte (format 67, #1141; engine.h ENG_REC_STEREO): the module runs in stereo mode */
+export const REC_STEREO = 0x40;
+/** module m of a device form runs in stereo mode (#1141): ModuleInst.stereo on an eligible type outside every poly group
+ *  (engine.ts and feeds.ts count its two copies alike) */
+export const stereoIn = (m: ModuleInst, groups: readonly DeviceGroup[]): boolean => !!m.stereo && !!DEFS[m.type].stereo && !groups.some((g) => g.modules.has(m.id));
+/** what a patch uses of FORMAT_1_27 (`dev`: its device form, `groups` its poly groups): more than 128 modules, or a device
+ * of more than 127 members (MEMBER_WIDE: a plain count of 128 reads as a run before 1.27; only 128 modules without Main
+ * can make one); a module in stereo mode, a cable into an appended `r` input (the Delay's, the Reverb's, the Chorus's:
+ * modules.ts RIGHT_IN but the Output's) or out of the Reverb's `r` output (#1141); a pattern of more than TRACK_NOTES_1_26
+ * words the binary holds (#1292) */
+export function uses127(source: Patch, dev: Patch, groups: readonly DeviceGroup[] = deviceView(source, true).groups): boolean {
+  if (dev.modules.length > MODULES_1_26) return true;
+  if (dev.modules.some((m) => m.type === 'steps' && [m.notes, ...(m.patterns ?? []).map((x) => x?.notes)].some((ns) => wordCount(ns) > TRACK_NOTES_1_26))) return true;
+  const typeOf = new Map(dev.modules.map((m) => [m.id, m.type]));
+  if (dev.modules.some((m) => stereoIn(m, groups)) || dev.cables.some((c) => {
+    const to = typeOf.get(c.to.module)!;
+    return (c.to.port === RIGHT_IN[to] && to !== 'output') || (c.from.port === 'r' && typeOf.get(c.from.module) === 'reverb');
+  })) return true;
+  if (dev.modules.length <= 0x7f) return false;
+  const ids = new Set(dev.modules.map((m) => m.id));
+  return deviceSection(source, dev).some((d) => {
+    const a = d.asm === undefined ? undefined : assemblyById(source, d.asm);
+    return !!a && deviceModules(source, a).filter((id) => ids.has(id)).length > 0x7f;
+  });
+}
+/** the cables in the binary's order (`p`: the device form): grouped by the module they go into (cablesGrouped), else the
+ *  patch's order */
+const cableOrder = (p: Patch, v: number): Patch['cables'] =>
+  cablesGrouped(p, v) ? p.modules.flatMap((m) => p.cables.filter((c) => c.to.module === m.id)) : p.cables;
+/** format 67's side section (#1141), right after the cables, in every binary of the format: u8 n, then per side cable in
+ *  the binary's cable order u8 its place there, u8 its side (1 L, 2 R); a side between two mono modules is left out (it
+ *  means nothing there). [] before format 67 (`p`: the device form) */
+export function sideRecord(p: Patch, groups: readonly DeviceGroup[], v: number): number[] {
+  if (v < FORMAT_1_27) return [];
+  const st = new Set(p.modules.filter((m) => stereoIn(m, groups)).map((m) => m.id));
+  const out = [0];
+  cableOrder(p, v).forEach((c, i) => {
+    if (c.side && (st.has(c.from.module) || st.has(c.to.module))) out.push(i, c.side === 'l' ? 1 : 2);
+  });
+  out[0] = (out.length - 1) / 2;
+  return out;
+}
+/**
  * The first format that writes the panel labels by their length (panelBytes), the cables grouped by the module they go
  * into (cablesGrouped) and only the Drum map row names off their default (drumNamed): the same values in fewer bytes
  * (D-1025, engine.h ENG_SLIM). Every binary of this format has that layout.
@@ -435,9 +509,9 @@ export function harmonyLfo(source: Patch, dev: Patch): boolean {
  * not fit the FM-1's bytes and the counted records are smaller (`view`: its device form) */
 export const formatOf = (source: Patch, view: ReturnType<typeof deviceView> = deviceView(source, true)): number => layout(source, view).v;
 /** the lowest format that holds what this patch uses: VERSION, or WRITE_FLOOR when it uses nothing appended since (`dev`: its device form) */
-export function baseFormat(source: Patch, dev: Patch = deviceView(source, true).patch): number {
+export function baseFormat(source: Patch, dev: Patch = deviceView(source, true).patch, groups: readonly DeviceGroup[] = deviceView(source, true).groups): number {
   const late = (type: string): ParamDef[] => DEFS[type].params.filter((q) => (q.since ?? 0) > WRITE_FLOOR || (q.grew?.since ?? 0) > WRITE_FLOOR);
-  const floor = rackPlan(source, { patch: dev, groups: [] }) ? FORMAT_RACK : source.midiLearn?.length ? FORMAT_1_23 : uses122(dev) ? FORMAT_1_22 : uses120(dev) ? FORMAT_1_20 : uses119(dev) ? FORMAT_1_19 : usesPriorityCable(dev) ? FORMAT_PRIORITY_CABLE : usesConds(dev) ? FORMAT_CONDS : harmonyLfo(source, dev) ? 55 : originRecord(dev).length ? 54 : chainedHarmonizer(source) ? 53 : uses112(dev) ? FORMAT_1_12 : uses111(source, dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
+  const floor = uses127(source, dev, groups) ? FORMAT_1_27 : rackPlan(source, { patch: dev, groups: [] }) ? FORMAT_RACK : source.midiLearn?.length ? FORMAT_1_23 : uses122(dev) ? FORMAT_1_22 : uses120(dev) ? FORMAT_1_20 : uses119(dev) ? FORMAT_1_19 : usesPriorityCable(dev) ? FORMAT_PRIORITY_CABLE : usesConds(dev) ? FORMAT_CONDS : harmonyLfo(source, dev) ? 55 : originRecord(dev).length ? 54 : chainedHarmonizer(source) ? 53 : uses112(dev) ? FORMAT_1_12 : uses111(source, dev) ? FORMAT_1_11 : uses110(dev) ? FORMAT_1_10 : uses19(source, dev) ? FORMAT_1_9 : patternRecord(source, dev).length ? 48 : WRITE_FLOOR;
   if (!dev.modules.some((m) => late(m.type).length)) return floor;
   let v = floor;
   const rows = new Set<string>();
@@ -697,8 +771,11 @@ export function cablesGrouped(p: Patch, v: number): boolean {
 export const cableBytes = (p: Patch, v: number): number =>
   cablesGrouped(p, v) ? Math.ceil(p.modules.length / 2) + 2 * p.cables.length : (cables3(p, v) ? 3 : 4) * p.cables.length;
 /** bit 7 of the device extras' member count (format 51, D-1003): the members are one unbroken run, u8 first follows and
- * the count is the low 7 bits (a device has at most 127 members: a patch has at most 128 modules, #721, and Main is never one) */
+ * the count is the low 7 bits (127 at most; Main is never a member) */
 export const MEMBER_RUN = 0x80;
+/** a member count byte of 0x80 (a run of none, never written before; engine.h ENG_MEMBER_WIDE, keep in step): format 67's
+ * 128..254 members, u8 n and u8 form (0 the n indices follow, 1 one run from u8 first) follow (#1286) */
+export const MEMBER_WIDE = 0x80;
 export const FLAG_BUTTONS = 64;
 export const FLAG_NAMES = 128;
 /** the most Toggle targets a patch can list, all buttons together (engine.h ENG_BTN_TARGETS) */
@@ -731,8 +808,8 @@ export function buttonRecord(source: Patch, p: Patch): number[] {
 export const MAX_DEVICES = 32, MAX_PAGES = 32;
 /** the Steps modules of a (device form) patch that hold notes, by module index */
 const noteTracks = (p: Patch): number[] => p.modules.flatMap((m, i) => (m.type === 'steps' && m.notes?.length ? [i] : []));
-/** bytes of a track's entry in the notes section: module index, count, the notes */
-export const trackRecSize = (n: number): number => 2 + 4 * n;
+/** bytes of a track's entry in the notes section: module index, count (countBytes), the notes */
+export const trackRecSize = (n: number): number => 1 + countBytes(n).length + 4 * n;
 /** the flag (u16 at offset 6) of the patterns and songs section, format 48 */
 export const FLAG_PATTERNS = 1024;
 
@@ -754,7 +831,7 @@ export function patternRecord(source: Patch, dev: Patch): number[] {
         continue;
       }
       const { short, words } = patternWords(x.notes);
-      out.push(words.length, (x.len ?? 0) | (short ? 0x80 : 0), x.rate ?? 0xff);
+      out.push(...countBytes(words.length), (x.len ?? 0) | (short ? 0x80 : 0), x.rate ?? 0xff);
       for (const w of words) {
         out.push(w & 0xff, (w >>> 8) & 0xff);
         if (!short) out.push((w >>> 16) & 0xff, w >>> 24);
@@ -1000,7 +1077,9 @@ export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceV
       out.push(par < 0 ? 0xff : i!, par < 0 ? 0xff : par);
     }
     const members = (a ? deviceModules(source, a) : [d.module!]).map((id) => index.get(id)).filter((i): i is number => i !== undefined);
-    if (v >= COUNTED && members.length > 2 && members.every((x, i) => x === members[0] + i)) out.push(MEMBER_RUN | members.length, members[0]);
+    const run = v >= COUNTED && members.length > 2 && members.every((x, i) => x === members[0] + i);
+    if (members.length > 0x7f) out.push(MEMBER_WIDE, members.length, run ? 1 : 0, ...(run ? [members[0]] : members));   // (only past 128 modules: FORMAT_1_27)
+    else if (run) out.push(MEMBER_RUN | members.length, members[0]);
     else out.push(members.length, ...members);
   });
   return out;
@@ -1018,7 +1097,8 @@ export const encodedSize = (source: Patch): number => layout(source).size;
  * the room the newer forms free shows in every patch while a patch that fits an older format is still written in it.
  * `force`: the layout of this format whatever the size (COUNTED or SLIM: tests and golden kits; 0 none). `store`: the
  * pattern store it is written for (linkPlan): `p` leaves out the linked patterns the store holds as they are, and
- * `links` is the links section.
+ * `links` is the links section; with `spill` pattern 1 goes to the store too (`one`) when the patch cannot hold it (#1292),
+ * and a link of pattern 1 makes the binary format 67.
  */
 export function layout(source: Patch, view: ReturnType<typeof deviceView> = deviceView(source, true), force = 0, store: LinkStore = 'assume') {
   if (rowsMemo) return layoutOf(source, view, force, store);
@@ -1031,7 +1111,11 @@ export function layout(source: Patch, view: ReturnType<typeof deviceView> = devi
   }
 }
 function layoutOf(source: Patch, view: ReturnType<typeof deviceView>, force: number, store: LinkStore) {
-  const plan = linkPlan(source, view.patch, store);
+  const w = layoutWith(source, view, force, store, false);
+  return store === 'spill' && w.need > DEVICE.bytes && patternOneHasContent(view.patch) ? layoutWith(source, view, force, store, true) : w;
+}
+function layoutWith(source: Patch, view: ReturnType<typeof deviceView>, force: number, store: LinkStore, one: boolean) {
+  const plan = linkPlan(source, view.patch, store, one);
   const links = linkRecord(plan.entries);
   const { groups } = view, p = plan.refs.length ? withoutPatterns(view.patch, plan.refs) : view.patch;
   const devs = deviceSection(source, p);
@@ -1044,14 +1128,17 @@ function layoutOf(source: Patch, view: ReturnType<typeof deviceView>, force: num
     const size = sizeOf(p, groups, devs, v, keep, source, named.names) + kinds.length + links.length;
     return { v, names: named.names, reserve: named.reserve + room, size, bytes: size + named.reserve + room };
   };
-  const base = at(Math.max(links.length ? FORMAT_LINKS : 0, baseFormat(source, p)));
+  const base = at(Math.max(links.length ? FORMAT_LINKS : 0, plan.entries.some(([q]) => q === 0) ? FORMAT_1_27 : 0, baseFormat(source, p, groups)));
   const counted = base.v < COUNTED ? at(COUNTED) : base;
   const slim = base.v < SLIM ? at(SLIM) : base;
   const need = Math.min(base.bytes, counted.bytes, slim.bytes);
   const w = force >= SLIM ? slim : force ? counted
     : [base, counted, slim].find((f) => f.bytes <= DEVICE.bytes) ?? [base, counted, slim].find((f) => f.bytes === need)!;
-  return { p, groups, devs, kinds, keep, links, ...w, need, base: { v: base.v, bytes: base.bytes }, counted: counted.bytes, slim: slim.bytes };
+  return { p, groups, devs, kinds, keep, links, ...w, need, base: { v: base.v, bytes: base.bytes }, counted: counted.bytes, slim: slim.bytes, one: plan.refs.includes(0) };
 }
+/** a patch sent to an FM-1 that spills pattern 1 (LinkStore 'spill', #1292) puts its pattern 1 into the store: the patch
+ *  cannot hold it */
+export const patternOneSpills = (source: Patch): boolean => layout(source, undefined, 0, 'spill').one;
 
 function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], v: number, keep: Map<number, number>, source?: Patch, names?: string[]): number {
   const groups = dg.length;
@@ -1060,7 +1147,7 @@ function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], v: number, keep: Ma
   const morph = hasMorph(p);
   let size = 8 + GROUP_REC * groups + (groups ? p.modules.length : 0) + panelBytes(p, v);
   for (const m of p.modules) size += moduleRecordSize(m, v, morph, keep.get(m.id));
-  size += cableBytes(p, v);
+  size += cableBytes(p, v) + sideRecord(p, dg, v).length;
   if (morph) size += morphBytes(p, v, keep);
   if (routes.length) size += 1 + routes.reduce((n, r) => n + 2 + r.bytes, 0);
   const tracks = noteTracks(p);
@@ -1081,11 +1168,11 @@ export const drumMaps = (p: Patch): number[] => p.modules.flatMap((m, i) => (m.t
  * estimate has not seen yet: scripts/cpu-costs.ts). `force`: in the layout of this format whatever its size (COUNTED or
  * SLIM: tests, golden kits; layout). `store`: the pattern store of the FM-1 it goes to (LinkStore; the budget assumes it
  * holds every link's pattern, so a store that does not can make the binary bigger than the budget said: refused too;
- * `every` counts as it writes, with stand-in ids: a binary's length, never one to send) */
+ * `every` and `spill` count as they write, with stand-in ids: a binary's length, never one to send) */
 export function encodePatch(source: Patch, anyway = false, force = 0, allocation: BufferAllocation = 0, store: LinkStore = 'assume'): Uint8Array {
   const routingError = keyRouteError(source);
   if (routingError) throw new Error(routingError);
-  const budget = deviceBudget(source, allocation, store === 'every' ? store : 'assume');
+  const budget = deviceBudget(source, allocation, store === 'every' || store === 'spill' ? store : 'assume');
   if (!budget.fits && !anyway) throw new Error(`over the FM-1 budget: ${budget.over.map((i) => (i.key === 'browser' ? i.label : `${i.label} ${i.used} of ${i.max}`)).join(', ')}`);
   const { p, groups, devs, kinds, keep, names, size, need, links, v: ver } = layout(source, undefined, force, store);
   if (!anyway && need > DEVICE.bytes) throw new Error(`over the FM-1 budget: ${LABELS.bytes} ${need} of ${DEVICE.bytes} (its linked patterns go whole: the FM-1's pattern store has not got them)`);
@@ -1144,7 +1231,7 @@ export function encodePatch(source: Patch, anyway = false, force = 0, allocation
     out[at++] = TYPE_ORDER.indexOf(m.type) | (m.bypass && !helpers.has(m.id) ? BYPASS_BIT : 0);
     const ps = storedParams(m, ver, morph, keep.get(m.id));
     const pres = def.paramInputs && ver >= COUNTED ? presenceOf(m) : 0;
-    if (ver >= COUNTED) out[at++] = ps.length | (def.paramInputs && !pres ? REC_TEMPLATE : 0);
+    if (ver >= COUNTED) out[at++] = ps.length | (def.paramInputs && !pres ? REC_TEMPLATE : 0) | (stereoIn(m, groups) ? REC_STEREO : 0);
     for (const pd of ps) {
       dv.setInt32(at, toQ16(m.params[pd.name] ?? pd.default), true);
       at += 4;
@@ -1198,6 +1285,11 @@ export function encodePatch(source: Patch, anyway = false, force = 0, allocation
     if (short) out.set([index.get(c.from.module)!, index.get(c.to.module)!, fp << 4 | tp], (at += 3) - 3);
     else out.set([index.get(c.from.module)!, fp, index.get(c.to.module)!, tp], (at += 4) - 4);
   }
+  {   // format 67's side section (#1141)
+    const sides = sideRecord(p, groups, ver);
+    out.set(sides, at);
+    at += sides.length;
+  }
   const bValue = (m: ModuleInst, pd: ParamDef): void => {
     dv.setInt32(at, toQ16(m.paramsB?.[pd.name] ?? m.params[pd.name] ?? pd.default), true);
     at += 4;
@@ -1232,10 +1324,10 @@ export function encodePatch(source: Patch, anyway = false, force = 0, allocation
   if (valued.length) {
     out[at++] = valued.length;
     for (const i of valued) {
-      const words = noteWords(p.modules[i].notes);
+      const words = noteWords(p.modules[i].notes), count = countBytes(words.length);
       out[at] = i;
-      out[at + 1] = words.length;
-      words.forEach((w, j) => dv.setUint32(at + 2 + 4 * j, w, true));
+      out.set(count, at + 1);
+      words.forEach((w, j) => dv.setUint32(at + 1 + count.length + 4 * j, w, true));
       at += trackRecSize(words.length);
     }
   }
@@ -1390,57 +1482,44 @@ export interface LineBudget { modules: LineUse[]; pool: PoolUse; used: number; m
   /** the order and Output tables (engine.c eng_load, E.order and E.outputs): a byte per module and per Output module,
    * rounded up to a multiple of 4 */
   tablesBytes: number }
-/** the copies of each module of a device form: the parts of its poly group, else one */
-function copiesOf(groups: DeviceGroup[]): (id: number) => number {
+/** the copies of each module of a device form: the parts of its poly group, two in stereo mode (#1141), else one */
+function copiesOf(p: Patch, groups: DeviceGroup[]): (id: number) => number {
   const copies = new Map<number, number>();
   groups.forEach((g) => g.modules.forEach((id) => copies.set(id, g.cfg.parts)));
+  for (const m of p.modules) if (stereoIn(m, groups)) copies.set(m.id, 2);
   return (id) => copies.get(id) ?? 1;
 }
-/** PoolUse of a device form (`groups`: its poly groups), counted as eng_load takes them */
+/** PoolUse of a device form (`groups`: its poly groups), counted as eng_load takes them: a buffer per copy of each output
+ *  something reads (feeds.ts outputRead), and per copy of each input a copy sums two or more sources into */
 export function poolUse(p: Patch, groups: DeviceGroup[], allocation: BufferAllocation = 0): PoolUse {
-  const ninst = copiesOf(groups);
-  const groupOf = new Map<number, number>();
-  groups.forEach((g, i) => g.modules.forEach((id) => groupOf.set(id, i)));
-  let instances = 0;
-  for (const m of p.modules) instances += ninst(m.id);
-  let buffers = 0;
-  const seen = new Set<string>();
-  for (const c of p.cables) {
-    const key = `${c.from.module}:${c.from.port}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    buffers += ninst(c.from.module);
-  }
-  for (const m of p.modules) {
-    const n = ninst(m.id);
-    for (const port of DEFS[m.type].inputs) {
-      let sources = 0;
-      for (const c of p.cables)
-        if (c.to.module === m.id && c.to.port === port.name) sources += groupOf.get(c.from.module) !== groupOf.get(m.id) ? ninst(c.from.module) : 1;
-      if (sources >= 2) buffers += n;
-    }
-  }
+  const x = feedModel(p, groups);
+  let instances = 0, buffers = 0;
+  p.modules.forEach((m, i) => {
+    instances += x.copies[i];
+    for (const port of DEFS[m.type].outputs) if (outputRead(x, i, port.name)) buffers += x.copies[i];
+    for (const port of DEFS[m.type].inputs) if (sourcesInto(x, i, port.name) >= 2) buffers += x.copies[i];
+  });
   let params = 0; // engine.c par_take: a node's values (and morph B side), each instance's effective values
   const morph = hasMorph(p);
-  for (const m of p.modules) params += DEFS[m.type].params.length * ((morph ? 2 : 1) + ninst(m.id));
+  p.modules.forEach((m, i) => { params += DEFS[m.type].params.length * ((morph ? 2 : 1) + x.copies[i]); });
   return { instances, buffers, params, ...(allocation === 1 ? { physicalBuffers: signalBuffers(p, groups).physical } : {}) };
 }
 /** the memory of a patch's device form (what eng_load takes, a copy per part as it counts them) */
 export function lineBudget(source: Patch, allocation: BufferAllocation = 0): LineBudget {
   const { patch: p, groups } = deviceView(source, true);
-  return linesOf(p, copiesOf(groups), poolUse(p, groups, allocation));
+  return linesOf(p, copiesOf(p, groups), poolUse(p, groups, allocation));
 }
 /** does a two-core schedule's allocation fit (#802, engine.c eng_load): its buffers (the lanes' own) and the lines, beside
  * the copies and values of allocation rule 1. Input: deviceView(source, true) */
 export function scheduleFits(p: Patch, groups: DeviceGroup[], s: Schedule): boolean {
-  return linesOf(p, copiesOf(groups), { ...poolUse(p, groups, 1), physicalBuffers: signalBuffers(p, groups, false, s).physical }).fits;
+  return linesOf(p, copiesOf(p, groups), { ...poolUse(p, groups, 1), physicalBuffers: signalBuffers(p, groups, false, s).physical }).fits;
 }
 /** the physical signal buffers engine.c allocates (rule 1): its two-core schedule's while they fit, else the one-core
  * allocation's */
 export function deviceBuffers(source: Patch): number {
   const { patch: p, groups } = deviceView(source, true);
   const { rig, table } = planCosts(CPU);
-  const s = schedule(p, groups, rig, table, chainHelpers(source));
+  const s = schedule(p, groups, rig, table, chainHelpers(source), rackTargets(source));
   return signalBuffers(p, groups, false, s.on && scheduleFits(p, groups, s) ? s : undefined).physical;
 }
 export const KEY_ROUTING_BYTES = 8040;
@@ -1571,15 +1650,16 @@ export interface Budget {
 const bytesOf = (source: Patch, view: ReturnType<typeof deviceView>, store: LinkStore): number => layout(source, view, 0, store).need;
 
 /** the pattern store the budget counts with: `every` for an FM-1 that stores every pattern 2..64 (#1202, #1199: only
- *  pattern 1, the songs and the links count against its bytes), else `assume` (each linked pattern counts as the reference
- *  its link makes, every other one inside the patch) */
-export type BudgetStore = 'assume' | 'every';
+ *  pattern 1, the songs and the links count against its bytes), `spill` for one of those that reads format 67 (#1292:
+ *  pattern 1 too goes to the store when the patch cannot hold it, so only the songs and the links must fit), else
+ *  `assume` (each linked pattern counts as the reference its link makes, every other one inside the patch) */
+export type BudgetStore = 'assume' | 'every' | 'spill';
 
 /** what the patch takes of the FM-1's limits, counted with `store` (BudgetStore) */
 export function deviceBudget(source: Patch, allocation: BufferAllocation = 0, store: BudgetStore = 'assume'): Budget {
   const view = deviceView(source, true);
   const { patch: p, groups } = view;
-  const ninst = copiesOf(groups);
+  const ninst = copiesOf(p, groups);
   const pool = poolUse(p, groups, allocation);
   const { instances, buffers, params } = pool;
   const count = (...types: string[]): number => p.modules.filter((m) => types.includes(m.type)).reduce((n, m) => n + ninst(m.id), 0);

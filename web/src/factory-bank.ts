@@ -3,9 +3,9 @@
 import SOURCE from '../factory/bank.json';
 import AUDIT from '../factory/fx-audit.json';
 import { setKind, kindOf, setSwitches, setTarget, switches } from './buttons';
-import { convertLegacyBus } from './fx-drawer';
+import { addDrawer, convertLegacyBus, insertEffect } from './fx-drawer';
 import { fxBusOf, LEGACY_STAGE_ROWS, type FxStageKind } from './fx-legacy';
-import { exposePort, makeAssembly, mergeRows, promote, type AssemblyInst, type RowTarget } from './assembly';
+import { assembliesOf, bypassAssembly, exposePort, makeAssembly, mergeRows, parentOf, promote, type AssemblyInst, type RowTarget } from './assembly';
 import { sharedFilterFactory } from './factory-paraphony';
 import { sharedCassiaContours } from './factory-cassia-sharing';
 import { sharedAlgoContours } from './factory-algo-sharing';
@@ -32,6 +32,10 @@ export interface FactoryMeasurementOptions {
   /** A protected drum kit gains the master FX bus, its stages bypassed, with no other change (owner 2026-11-19, D-1200).
    * The only measurement option a protected patch takes, with `omit`. */
   drumRack?: true;
+  /** A protected drum kit gains an FX drawer on its card of these Library effects (module types, in chain order, the
+   * 1.27 forms of fx-drawer.ts insertEffect), each off, with no other change (owner via Main 2026-11-25, D-1055). The
+   * only option a protected patch takes besides drumRack / omit, never with them. */
+  drawer?: readonly string[];
 }
 export type FactoryMeasurementProfile = Readonly<Record<string, FactoryMeasurementOptions>>;
 
@@ -69,6 +73,8 @@ export const selectedFactoryProfile: Readonly<Record<string, SelectedFactoryOpti
   // (a shared rack on the FX page, Drive and Reverb, every stage bypassed: owner 2026-11-19, D-1200. No chorus, and Delay
   // does not fit the FM-1's 3,840 bytes beside them)
   '808 Kit': { drumRack: true, omit: ['chorus', 'delay'], configurationId: '808-kit-drive-reverb' },
+  // (an FX drawer on the kit card, a stereo Drive and a crossfading Reverb, both off: owner via Main 2026-11-25, D-1055)
+  '909 Kit': { drawer: ['shape', 'reverb'], configurationId: '909-kit-drawer-drive-reverb' },
 };
 
 /** Selected names in source order, without building the patch graphs. */
@@ -163,10 +169,11 @@ export function buildFactoryBank(profile: FactoryMeasurementProfile = {}): Facto
     const audit = AUDIT.find(entry => entry.name === name);
     const options = profile[name];
     const keys = Object.keys(options ?? {});
-    if (!audit && keys.length && (!options!.drumRack || keys.some(key => key !== 'drumRack' && key !== 'omit'))) {
+    const allowed = options?.drawer ? ['drawer'] : options?.drumRack ? ['drumRack', 'omit'] : [];
+    if (!audit && keys.some(key => !allowed.includes(key))) {
       throw new Error(`${name}: protected drums/drones cannot use a measurement profile`);
     }
-    if (options?.drumRack && !FACTORY_KITS.some(kit => kit.patch === name)) throw new Error(`${name}: a drum rack needs a factory drum kit`);
+    if ((options?.drumRack || options?.drawer) && !FACTORY_KITS.some(kit => kit.patch === name)) throw new Error(`${name}: a drum rack needs a factory drum kit`);
     if (options?.harmonizer && (!audit || audit.voices.length !== 1 || audit.voices[0].voices !== 1)) {
       throw new Error(`${name}: Harmony removal is limited to originally monophonic instruments`);
     }
@@ -174,7 +181,10 @@ export function buildFactoryBank(profile: FactoryMeasurementProfile = {}): Facto
     if (options?.voices !== undefined) reduceVoices(p, options.voices, name === 'Expander S' ? 1 : 3);
     // Protected drums/drones never pass through validation, FX, player or button rewriting; a drum kit gets its pattern set
     // and, when selected, the factory FX drawer (nothing else of the kit changes).
-    if (!audit) return { name, patch: options?.drumRack ? withFxDrawer(withKitPatterns(p), options.omit ?? []) : withKitPatterns(p) };
+    if (!audit) {
+      const kit = withKitPatterns(p);
+      return { name, patch: options?.drumRack ? withFxDrawer(kit, options.omit ?? []) : options?.drawer ? withKitDrawer(kit, options.drawer) : kit };
+    }
     if (options?.paraphony === 'shared-filter') p = sharedFilterFactory(p);
     else if (options?.paraphony === 'shared-articulation') p = sharedArticulationFactory(p);
     else if (options?.paraphony === 'shared-contours' && name === 'Cassia 1') p = sharedCassiaContours(p);
@@ -243,6 +253,24 @@ function withFxDrawer(source: Patch, omit: readonly FxStageKind[]): Patch {
   const main = source.modules.find(m => m.type === 'fm1')!;
   if (source.cables.some(c => c.from.module === main.id && c.from.port === 'fx')) throw new Error(`${source.name}: FX is cabled`);
   return convertLegacyBus(withFxBus(source, { omit }));
+}
+
+/** A kit's FX drawer of the 1.27 forms on its one card: `types`' Library effects in chain order, each off (its switch's
+ * own form, bypassAssembly: none of its members was off, so all come back with it). Off, the kit plays sample for sample
+ * as without it (kit-drawer.test.ts); the FM-1's FX button opens the rack. */
+function withKitDrawer(p: Patch, types: readonly string[]): Patch {
+  const cards = assembliesOf(p).filter((a) => !parentOf(p, a.id) && !a.drawer && !a.chain);
+  if (cards.length !== 1) throw new Error(`${p.name}: a kit's FX drawer is for its one card`);
+  const drawer = addDrawer(p, cards[0].id);
+  for (const type of types) {
+    const e = insertEffect(p, drawer, { type });
+    bypassAssembly(p, e, true);
+    // (`kept` after `bypass`, as the editor's card check writes them: the factory patch is what the editor opens, #465)
+    const kept = e.kept!;
+    delete e.kept;
+    e.kept = kept;
+  }
+  return p;
 }
 
 const BUS_KINDS: readonly FxStageKind[] = ['drive', 'chorus', 'delay', 'reverb'];

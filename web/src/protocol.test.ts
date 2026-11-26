@@ -164,8 +164,8 @@ describe('sandbox mode on the wire', () => {
     expect(editorSkips(null, false)).toBe(false);
   });
 
-  it('ARMS (#191): the editor\'s armed set as proto.c reads it (u32 LE words), feature bit 20; four words with bit 21 (#721)', async () => {
-    const { armsFrame, FEATURE_ARMS, FEATURE_WIDE_ARMS, parseArmsNow } = await import('./protocol');
+  it('ARMS (#191): the editor\'s armed set as proto.c reads it (u32 LE words), feature bit 20; four words with bit 21 (#721), eight with INFO byte 25 bit 4 (#1286)', async () => {
+    const { armsFrame, FEATURE_ARMS, FEATURE_WIDE_ARMS, FEATURE5_FORMAT_67, parseArmsNow } = await import('./protocol');
     const p = parse(armsFrame([0x80000005, 0x00000101]))!;
     expect(p.cmd).toBe(0x39);
     expect(p.payload).toEqual([5, 0, 0, 0x80, 1, 1, 0, 0]);
@@ -177,9 +177,14 @@ describe('sandbox mode on the wire', () => {
     const wide = parseInfo(parse(frame(CMD.info, [1, 128, 255, 1, 8, 246, 255, 31, 51, 0, 0, 0, 63]))!)!;
     expect(wide.features & FEATURE_WIDE_ARMS).toBeTruthy();
     expect(wide.maxModules).toBe(128);
-    // ARMS_NOW: two words from older firmware (the rest 0), four since #721, too short: nothing
-    expect(parseArmsNow([5, 0, 0, 0x80, 1, 1, 0, 0])).toEqual([0x80000005, 0x101, 0, 0]);
-    expect(parseArmsNow([5, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0x80])).toEqual([5, 0, 1, 0x80000000]);
+    const f67 = parseInfo(parse(frame(CMD.info, [1, 254, 255, 1, 8, 246, 255, 31, 67, 0, 0, 0, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16]))!)!;
+    expect(f67.features25 & FEATURE5_FORMAT_67).toBeTruthy();
+    expect(f67.maxModules).toBe(254);
+    expect(f67.patchFormats).toEqual({ min: 31, max: 67 });
+    // ARMS_NOW: two words from older firmware (the rest 0), four since #721, eight since #1286, too short: nothing
+    expect(parseArmsNow([5, 0, 0, 0x80, 1, 1, 0, 0])).toEqual([0x80000005, 0x101, 0, 0, 0, 0, 0, 0]);
+    expect(parseArmsNow([5, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0x80])).toEqual([5, 0, 1, 0x80000000, 0, 0, 0, 0]);
+    expect(parseArmsNow([...new Array(28).fill(0), 0, 0, 0, 0x80])).toEqual([0, 0, 0, 0, 0, 0, 0, 0x80000000]);
     expect(parseArmsNow([5, 0, 0, 0, 0, 0, 0])).toBeNull();
   });
 
@@ -217,13 +222,20 @@ describe('the device test mode on the wire (#291)', () => {
 
 describe('patterns and songs on the wire (#375, format 48)', () => {
   it('TRACK names its pattern; TRACK_NOW without one is pattern 1', async () => {
-    const { trackFrame, parseTrack } = await import('./protocol');
+    const { trackFrames, parseTrack } = await import('./protocol');
     const notes = [{ at: 0, len: 2, note: 60, vel: 127 }, { at: 4, len: 1, note: 67, vel: 100 }];
-    const p = parse(trackFrame(3, notes, 5))!;
+    const p = parse(trackFrames(3, notes, 5)[0])!;
     expect(p.cmd).toBe(CMD.track);
     expect(p.payload.length).toBe(2 + 8 + 1);
-    expect(parseTrack(p.payload)).toEqual({ module: 3, notes, pat: 5 });
-    expect(parseTrack(parse(trackFrame(3, notes))!.payload)).toEqual({ module: 3, notes, pat: 0 });
+    expect(parseTrack(p.payload)).toEqual({ module: 3, notes, pat: 5, more: false });
+    expect(parseTrack(parse(trackFrames(3, notes)[0])!.payload)).toEqual({ module: 3, notes, pat: 0, more: false });
+  });
+  it('a pattern past 128 words goes in frames, each after the first marked (#1292)', async () => {
+    const { trackFrames, parseTrack, TRACK_FRAME_WORDS } = await import('./protocol');
+    const notes = Array.from({ length: 200 }, (_, k) => ({ at: k % 64, len: 1, note: 30 + Math.floor(k / 64), vel: 100 }));
+    const fs = trackFrames(3, notes, 2).map((f) => parseTrack(parse(f)!.payload)!);
+    expect(fs.map((f) => [f.notes.length, f.more, f.pat])).toEqual([[TRACK_FRAME_WORDS, false, 2], [200 - TRACK_FRAME_WORDS, true, 2]]);
+    expect(fs.flatMap((f) => f.notes)).toEqual(notes);
   });
   it('LOCKS_NOW (#524): a track\'s locks of a pattern, 7 bytes each', async () => {
     const { parseLocksNow } = await import('./protocol');

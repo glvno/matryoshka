@@ -213,7 +213,7 @@ int main(int argc, char **argv)
 #else
             eng_arm_mask((uint64_t)m);
 #endif
-        } else if (!strcmp(kind, "armx")) {     /* (#721) a set of two module indices, any of 0..127 (-1: none) */
+        } else if (!strcmp(kind, "armx")) {     /* (#721, #1286) a set of two module indices, any of 0..253 (-1: none) */
             int a, b;
             fscanf(ev, "%d %d", &a, &b);
 #ifdef ENG_MSET_WORDS

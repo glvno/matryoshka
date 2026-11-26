@@ -7,7 +7,8 @@
 // back with new ids and rewrites its links to them (#1202 G8).
 import { DEFS } from './modules';
 import { PANEL_LABEL_KEYS, PANEL_LABEL_MAX } from './patch';
-import { COUNTED, FLAG_LINKS, GROUP_REC, PANEL_BYTES, paramsAt, PRES_ATT1, PRES_ATT2, PRES_P1, PRES_P2, REC_TEMPLATE, SLIM, TYPE_ORDER } from './patchbin';
+import { COUNTED, FLAG_LINKS, FORMAT_1_27, GROUP_REC, PANEL_BYTES, paramsAt, PRES_ATT1, PRES_ATT2, PRES_P1, PRES_P2, REC_STEREO, REC_TEMPLATE, SLIM, TYPE_ORDER } from './patchbin';
+import { COUNT_ESC } from './track';
 
 const REC_COUNT = 0x3f, PRES_ALL = 15;
 /** header byte 6's bits and byte 7's (engine.h): morph B set, fixed links, routes, notes; cables 3, morph modules,
@@ -41,7 +42,8 @@ function recOk(p: Uint8Array, at: number): boolean {
   const type = typeOf(p, at);
   if (!type || at + 1 >= p.length) return false;
   const c = p[at + 1], inputs = !!DEFS[type].paramInputs;
-  if ((c & REC_COUNT) > npar(type, p[1]) || c & 0x40 || (c & REC_TEMPLATE && !inputs)) return false;
+  // (bit 6, REC_STEREO: format 67 on an eligible type, #1141; engine.c eng_rec_ok)
+  if ((c & REC_COUNT) > npar(type, p[1]) || (c & REC_STEREO && (p[1] < FORMAT_1_27 || !DEFS[type].stereo)) || (c & REC_TEMPLATE && !inputs)) return false;
   if (!inputs || c & REC_TEMPLATE) return true;
   const b = at + 2 + 4 * (c & REC_COUNT);
   return b < p.length && !(p[b] & ~PRES_ALL);
@@ -68,19 +70,27 @@ function records(p: Uint8Array): { at: number[]; end: number } | null {
   }
   return r <= p.length ? { at, end: r } : null;
 }
-/** the end of the cables from `at` (engine.c eng_cables_to), 0 when malformed */
+/** the end of the cables from `at` (engine.c eng_cables_to), format 67's side section included (#1141, patchbin.ts
+ * sideRecord: places ascending and under the cable count, sides 1 or 2), 0 when malformed */
 function cablesTo(p: Uint8Array, at: number): number {
   const ncab = p[4] | p[5] << 8;
-  if (!(p[1] >= SLIM && p[7] & F7_CABLES3)) {
-    const end = at + (p[7] & F7_CABLES3 && p[1] < SLIM ? 3 : 4) * ncab;
-    return end <= p.length ? end : 0;
+  if (!(p[1] >= SLIM && p[7] & F7_CABLES3)) at += (p[7] & F7_CABLES3 && p[1] < SLIM ? 3 : 4) * ncab;
+  else {
+    const nb = (p[2] + 1) >> 1;
+    if (at + nb > p.length || (p[2] & 1 && p[at + nb - 1] >> 4)) return 0;
+    let n = 0;
+    for (let i = 0; i < p[2]; i++) n += p[at + (i >> 1)] >> (4 * (i & 1)) & 15;
+    if (n !== ncab) return 0;
+    at += nb + 2 * ncab;
   }
-  const nb = (p[2] + 1) >> 1;
-  if (at + nb > p.length || (p[2] & 1 && p[at + nb - 1] >> 4)) return 0;
-  let n = 0;
-  for (let i = 0; i < p[2]; i++) n += p[at + (i >> 1)] >> (4 * (i & 1)) & 15;
-  at += nb + 2 * ncab;
-  return n === ncab && at <= p.length ? at : 0;
+  if (p[1] >= FORMAT_1_27) {
+    if (at >= p.length) return 0;
+    const n = p[at++];
+    if (at + 2 * n > p.length) return 0;
+    for (let k = 0; k < n; k++, at += 2)
+      if (p[at] >= ncab || (k && p[at] <= p[at - 2]) || p[at + 1] < 1 || p[at + 1] > 2) return 0;
+  }
+  return at <= p.length ? at : 0;
 }
 const bits = (p: Uint8Array, at: number, n: number): number => {
   let c = 0;
@@ -111,12 +121,15 @@ const routesEnd = (recs: number[]): End => (p, at) => {
   }
   return at <= p.length ? at : 0;
 };
+/** a word count at `at` (track.ts COUNT_ESC, format 67): its value and bytes */
+const countAt = (p: Uint8Array, at: number): [number, number] => (p[at] === COUNT_ESC ? [COUNT_ESC + p[at + 1], 2] : [p[at], 1]);
 const notesEnd: End = (p, at) => {
   if (at >= p.length) return 0;
   const n = p[at++];
   for (let i = 0; i < n; i++) {
-    if (at + 2 > p.length) return 0;
-    at += 2 + 4 * p[at + 1];
+    if (at + 3 > p.length) return 0;
+    const [c, b] = countAt(p, at + 1);
+    at += 1 + b + 4 * c;
   }
   return at <= p.length ? at : 0;
 };
@@ -129,9 +142,13 @@ const patternsEnd: End = (p, at) => {
     const np = p[at + 1];
     at += 2;
     for (let k = 0; k < np; k++) {
-      if (at >= p.length) return 0;
-      const n = p[at++];
-      if (n === 0xff) continue;
+      if (at + 1 >= p.length) return 0;
+      if (p[at] === 0xff) {
+        at++;
+        continue;
+      }
+      const [n, b] = countAt(p, at);
+      at += b;
       if (at + 2 > p.length) return 0;
       at += 2 + n * (p[at] & 0x80 ? 2 : 4);
     }

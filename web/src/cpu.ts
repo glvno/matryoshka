@@ -11,6 +11,8 @@ import { allModules, assembliesOf, chainHelpers, deviceModules, parentOf, rackOf
 import { flawOf, hasMorph, type ModuleInst, type Patch } from './patch';
 import { deviceView } from './poly';
 import { schedule, scheduleTime, scheduleWork, SCH_FORK, SCH_SYNC, type PlanCosts, type Schedule } from './schedule';
+import { feedModel, outputRead, sourcesInto, stereoAt } from './feeds';
+import { rackTargets } from './rack-plan';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 
 /** what changes a module's cost: a choice / switch / small integer (its measured values, the nearest one counts), a number
@@ -148,8 +150,10 @@ export const masterEqUse = (bands: number, table: CpuTable = CPU): number =>
 export interface CpuModule {
   id: number;
   type: string;
-  /** instances: the parts of its poly assembly */
+  /** instances: the parts of its poly assembly, its L and R copies in stereo mode (#1141) */
   copies: number;
+  /** it runs in stereo mode: its two copies are L and R, not voices */
+  stereo?: true;
   /** its cycles, with its factory engine's rig factor (CpuTable.rig) */
   cycles: number;
 }
@@ -302,10 +306,11 @@ export interface PlanTable {
 export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 = 2, scheduleFits?: (s: Schedule) => boolean): CpuEstimate {
   // counted on what the FM-1 runs (poly.ts deviceView): an allocator is a Part in each group it drives
   const { patch: p, groups } = deviceView(source, true);
-  const copies = new Map<number, number>();
   const groupOf = new Map<number, number>();
-  groups.forEach((g, i) => g.modules.forEach((id) => (groupOf.set(id, i), copies.set(id, g.cfg.parts))));
-  const ninst = (id: number): number => copies.get(id) ?? 1;
+  groups.forEach((g, i) => g.modules.forEach((id) => groupOf.set(id, i)));
+  // (copies and summed sources as eng_load takes them, feeds.ts: a stereo module's two, #1141)
+  const fm = feedModel(p, groups), at = new Map(p.modules.map((m, i) => [m.id, i]));
+  const ninst = (id: number): number => fm.copies[at.get(id)!];
   const morph = hasMorph(p);
   // the rig's factor of each module of a factory engine (CpuTable.rig), by its id (deviceView keeps the source's ids); a
   // module inside a poly group takes the engine's voice factor where the rig measured it at several voice counts, and
@@ -334,14 +339,13 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
     if (!def || !t) continue;
     const inputs = new Set<string>(), outputs = new Set<string>();
     const sources = new Map<string, number>();
-    for (const c of p.cables) {
-      if (c.to.module === m.id) {
-        inputs.add(c.to.port);
-        const n = groupOf.get(c.from.module) !== groupOf.get(m.id) ? ninst(c.from.module) : 1;
-        sources.set(c.to.port, (sources.get(c.to.port) ?? 0) + n);
-      }
-      if (c.from.module === m.id) outputs.add(c.from.port);
+    const i = at.get(m.id)!;
+    for (const c of p.cables) if (c.to.module === m.id && !inputs.has(c.to.port)) {
+      inputs.add(c.to.port);
+      sources.set(c.to.port, sourcesInto(fm, i, c.to.port));
     }
+    for (const c of p.cables) if (c.from.module === m.id) outputs.add(c.from.port);
+    for (const port of def.outputs) if (outputRead(fm, i, port.name)) outputs.add(port.name);   // (a pair's right output, #1141)
     let one = table.node + t.cv;
     for (const n of sources.values()) if (n >= 2) one += table.sum.port + n * table.sum.source;
     const moved = new Set<string>();
@@ -408,7 +412,7 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
       split += one * Math.floor(k / 2);
       splitGroups.add(groupOf.get(m.id)!);
     }
-    modules.push({ id: m.id, type: m.type, copies: k, cycles: one * k + cold });
+    modules.push({ id: m.id, type: m.type, copies: k, cycles: one * k + cold, ...(stereoAt(fm, i) ? { stereo: true as const } : {}) });
     work.set(m.id, one);
     total += one * k + cold;
   }
@@ -418,7 +422,7 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
   let parted = splitGroups.size;
   if (cores === 2 && c) {
     const { rig, table: tc } = planCosts(table);
-    const s = schedule(p, groups, rig, tc, chainHelpers(source));
+    const s = schedule(p, groups, rig, tc, chainHelpers(source), rackTargets(source));
     if (s.on && (scheduleFits?.(s) ?? true)) {
       const each = (m: number): number => work.get(p.modules[m].id) ?? 0;
       const items = s.order.reduce((n, m) => n + each(m) * s.copies[m], 0);
@@ -433,11 +437,13 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU, cores: 1 | 2 =
 }
 
 /** what one card costs (#942): its share of the block's time (all its copies), and for a module or assembly inside a poly
- * group what one voice of it costs and how many voices play */
+ * group what one voice of it costs and how many voices play; `stereo`: a module in stereo mode (#1141), both copies in
+ * its share */
 export interface CardCost {
   share: number;
   perVoice?: number;
   voices?: number;
+  stereo?: true;
 }
 
 /** every card's cost: modules and assemblies by id */
@@ -452,7 +458,7 @@ export function cardCosts(source: Patch, est: CpuEstimate, table: CpuTable = CPU
   const block = table.cyclesPerUs * table.blockUs;
   const modules = new Map<number, CardCost>();
   for (const m of est.modules)
-    modules.set(m.id, m.copies > 1 ? { share: m.cycles / block, perVoice: m.cycles / m.copies / block, voices: m.copies } : { share: m.cycles / block });
+    modules.set(m.id, m.stereo ? { share: m.cycles / block, stereo: true } : m.copies > 1 ? { share: m.cycles / block, perVoice: m.cycles / m.copies / block, voices: m.copies } : { share: m.cycles / block });
   const assemblies = new Map<number, CardCost>();
   for (const a of assembliesOf(source)) {
     let share = 0, perVoice = 0, voices = 0;
@@ -467,14 +473,14 @@ export function cardCosts(source: Patch, est: CpuEstimate, table: CpuTable = CPU
   return { modules, assemblies };
 }
 
-/** a card's readout: its share in percent, a poly card's per voice */
+/** a card's readout: its share in percent, a poly card's per voice, a stereo module's marked so */
 export const cardCostText = (c: CardCost): string =>
-  c.voices ? `${(100 * c.perVoice!).toFixed(1)} %/v` : `${(100 * c.share).toFixed(c.share < 0.1 ? 1 : 0)} %`;
+  c.voices ? `${(100 * c.perVoice!).toFixed(1)} %/v` : `${(100 * c.share).toFixed(c.share < 0.1 ? 1 : 0)} %${c.stereo ? ' st' : ''}`;
 
 /** what the readout means, for its tooltip */
 export function cardCostTitle(c: CardCost): string {
   const what = c.voices
     ? `About ${(100 * c.perVoice!).toFixed(1)} % of the FM-1's audio time a voice, ${(100 * c.share).toFixed(1)} % for its ${c.voices} voices`
-    : `About ${(100 * c.share).toFixed(1)} % of the FM-1's audio time`;
+    : `About ${(100 * c.share).toFixed(1)} % of the FM-1's audio time${c.stereo ? ', for its two copies (stereo: L and R)' : ''}`;
   return `${what}. A model estimate calibrated on whole factory patches measured on the test rig, not a measurement of this patch on the device. The FM-1 budget at the bottom right lists every card by cost.`;
 }

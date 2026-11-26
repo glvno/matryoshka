@@ -5,7 +5,7 @@ import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type ModuleInst, type Patch } from './patch';
 import { encodePatch, FORMAT_CONDS, SECTION_FORMATS, VERSION } from './patchbin';
-import { parse, parseTrack, trackFrame } from './protocol';
+import { parse, parseTrack, trackFrames } from './protocol';
 import { decodePayload, encodePayload } from './pattern-store';
 import {
   COND_FILL, COND_FIRST, COND_NEI, COND_NOT, COND_ORDER, COND_PRE, condAB, condName, fixNotes, isCond, noteWords, setCond, setStep,
@@ -82,10 +82,10 @@ describe('trig conditions: the byte (#674)', () => {
   });
 
   it('a conditioned note takes two words, and a track holds TRACK_NOTES_MAX words', () => {
-    const many = Array.from({ length: 64 }, (_, k) => note(k, 60, { cond: COND_FIRST }));
+    const many = Array.from({ length: 128 }, (_, k) => note(k >> 1, 60 + 2 * (k & 1), { cond: COND_FIRST }));
     const kept = fixNotes([...many, ...Array.from({ length: 10 }, (_, k) => note(k, 70))])!;
     expect(wordCount(kept)).toBe(TRACK_NOTES_MAX);
-    expect(kept.filter((n) => n.cond).length).toBe(59);
+    expect(kept.filter((n) => n.cond).length).toBe(123);   // (steps 0..9: two of them and a plain note, 5 words each; then 4)
   });
 });
 
@@ -113,7 +113,7 @@ describe('trig conditions: the words (format 60)', () => {
   });
 
   it('the editor link and the pattern store carry them', () => {
-    expect(parseTrack(parse(trackFrame(4, notes, 2))!.payload)).toEqual({ module: 4, notes, pat: 2 });
+    expect(parseTrack(parse(trackFrames(4, notes, 2)[0])!.payload)).toEqual({ module: 4, notes, pat: 2, more: false });
     const { p } = rig([notes]);
     expect(decodePayload(encodePayload(p, 0)).tracks[0]?.notes).toEqual(notes);
   });

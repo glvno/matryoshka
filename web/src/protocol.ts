@@ -58,7 +58,10 @@
 //   27 MUTE     module u8, on u8                     mute / unmute a Steps module (not saved); no reply. Feature bit 2.
 //   2A TRACK    module u8, n u8, n u32 LE words, [pattern u8]   a Steps module's notes, all of them (track.ts noteWords,
 //                                                    sorted, at most TRACK_NOTES_MAX), of that pattern (0-based; format 48,
-//                                                    without it: the one the track plays); no reply. Feature bit 5.
+//                                                    without it: the one the track plays); no reply. Feature bit 5. A
+//                                                    frame carries TRACK_FRAME_WORDS at most: more (feature bit 36,
+//                                                    #1292) go in further frames ending before a note, with bit 7 of the
+//                                                    pattern byte (they follow the frame before's); TRACK_NOW the same
 //   36 PATTERN  pattern u8, song u8                  the patch's pattern (0-based) and the song playing (0 none): each track
 //                                                    takes them at the end of its pass (stopped: at once), into the running
 //                                                    patch; no reply. Format 48 (INFO's highest readable format)
@@ -68,11 +71,12 @@
 //                                                    tempo (D-907, tempo.ts) and the time signature (#1011, modules.ts METERS
 //                                                    index); no reply. Feature bit 16. Firmware before #1011 takes the first
 //                                                    3 bytes and ignores the 4th, so the editor always sends it
-//   39 ARMS     ARM_WORDS u32 (2 before feature bit 21)   the editor's armed set (#191), a mask over the module indices of
+//   39 ARMS     ARM_WORDS u32 (4 before INFO byte 25 bit 4, 2 before feature bit 21)   the editor's armed set (#191), a mask over the module indices of
 //                                                    the patch it sent (arm.ts armMask; word k: modules 32k..32k+31): the FM-1
 //                                                    arms the same, so its panel's keys and the editor's notes play the same
 //                                                    devices; no reply, no ARMS_NOW back. Feature bit 20; the four words of
-//                                                    modules 0..127: feature bit 21 (#721), older firmware reads the first two
+//                                                    modules 0..127: feature bit 21 (#721), older firmware reads the first two;
+//                                                    all eight (0..253): INFO byte 25 bit 4 (#1286)
 //   29 FOCUS    device u8, page u8                   show this device page (indices into the binary's device pages section,
 //                                                    pages.ts) and put it on K1..K4; no reply. Feature bit 4.
 //   2C LIVE     [paused u8]                          every LIVE_MS while the editor's Live is on: the FM-1 plays the
@@ -129,11 +133,11 @@
 //   52 PATTERN_NOW  pattern u8, song u8               unasked: the patch's pattern / song as the FM-1 chose them (PRESET on
 //                                                    the SEQ page, the SONG page's K4 / ALGO)
 //   53 SONG_NOW  song u8, n u8, n (pattern u8, shift i8)   unasked: a song's entries after an edit on the SONG page
-//   54 ARMS_NOW  ARM_WORDS u32 (2 before feature bit 21)   unasked: the armed set after it changed on the FM-1 (#191: SEL,
+//   54 ARMS_NOW  ARM_WORDS u32 (4 before INFO byte 25 bit 4, 2 before feature bit 21)   unasked: the armed set after it changed on the FM-1 (#191: SEL,
 //                                                    REC held + a black key, the SEQ page; a slot loaded from the panel sends 0,
 //                                                    wired): a mask over the module indices of the patch the FM-1 plays (arm.ts
 //                                                    armedFromMask). The editor follows (an editor before #721 reads the first
-//                                                    two words); older firmware never sends it
+//                                                    two words, one before #1286 four); older firmware never sends it
 //   55 TEMPO_NOW  mode u8 (0 global, 1 patch), bpm u16 (0: not known yet), meter u8   after INFO (the answer to HELLO), and
 //                                                    unasked when the FM-1 changed the setting, the global tempo (its menu, PLAY
 //                                                    held + PRESET, Main's tempo row while global) or TIME SIG. Feature bit 16.
@@ -380,18 +384,32 @@ export const attFrame = (module: number, input: number, q16: number): Uint8Array
 };
 
 export const bypassFrame = (module: number, on: boolean): Uint8Array => frame(CMD.bypass, [module, on ? 1 : 0]);
-/** a Steps module's notes (all of them, as words: noteWords), of pattern `pat` (0-based; format 48: absent, the one the
- * track plays) */
-export function trackFrame(module: number, notes: readonly StepNote[] | undefined, pat?: number): Uint8Array {
-  const w = noteWords(notes).slice(0, TRACK_NOTES_MAX);
-  return frame(CMD.track, [module, w.length, ...w.flatMap((x) => [x & 0xff, (x >>> 8) & 0xff, (x >>> 16) & 0xff, x >>> 24]), ...(pat === undefined ? [] : [pat & 0xff])]);
+/** the most words a TRACK / TRACK_NOW frame carries (proto.c M1_TRACK_WORDS, #1292): a longer pattern comes in frames */
+export const TRACK_FRAME_WORDS = 128;
+/** bit 7 of TRACK / TRACK_NOW's pattern byte: the frame's words follow the frame before's (#1292) */
+export const TRACK_MORE = 0x80;
+/** a Steps module's notes (all of them, as words: noteWords, TRACK_NOTES_MAX at most), of pattern `pat` (0-based; format
+ * 48: absent, the one the track plays), in frames of TRACK_FRAME_WORDS words at most, each but the last ending before a
+ * note */
+export function trackFrames(module: number, notes: readonly StepNote[] | undefined, pat?: number): Uint8Array[] {
+  const w = noteWords(notes).slice(0, TRACK_NOTES_MAX), out: Uint8Array[] = [];
+  let from = 0;
+  do {
+    let n = Math.min(TRACK_FRAME_WORDS, w.length - from);
+    if (from + n < w.length) while (n && !((w[from + n] >>> 19) & 0x7f)) n--;   // (the next frame starts on a note: velocity > 0)
+    const part = w.slice(from, from + n), b = pat === undefined ? [] : [(pat & 0x7f) | (from ? TRACK_MORE : 0)];
+    out.push(frame(CMD.track, [module, n, ...part.flatMap((x) => [x & 0xff, (x >>> 8) & 0xff, (x >>> 16) & 0xff, x >>> 24]), ...b]));
+    from += n;
+  } while (from < w.length && pat !== undefined);
+  return out;
 }
-/** a TRACK / TRACK_NOW payload's notes and pattern (absent: an older firmware's, the track's only one: 0) */
-export function parseTrack(payload: number[]): { module: number; notes: StepNote[]; pat: number } | null {
+/** a TRACK / TRACK_NOW payload's notes and pattern (absent: an older firmware's, the track's only one: 0); `more`: they
+ * follow the frame before's (TRACK_MORE) */
+export function parseTrack(payload: number[]): { module: number; notes: StepNote[]; pat: number; more: boolean } | null {
   if (payload.length < 2 || payload.length < 2 + 4 * payload[1]) return null;
   const notes = wordsNotes(Array.from({ length: payload[1] }, (_, j) => (payload[2 + 4 * j] | (payload[3 + 4 * j] << 8) | (payload[4 + 4 * j] << 16) | (payload[5 + 4 * j] << 24)) >>> 0));
-  const pat = payload.length > 2 + 4 * payload[1] ? Math.min(PATTERNS_MAX - 1, payload[2 + 4 * payload[1]]) : 0;
-  return { module: payload[0], notes, pat };
+  const b = payload.length > 2 + 4 * payload[1] ? payload[2 + 4 * payload[1]] : 0;
+  return { module: payload[0], notes, pat: Math.min(PATTERNS_MAX - 1, b & 0x7f), more: !!(b & TRACK_MORE) };
 }
 /** a device-form lock as the FM-1 reports it (LOCKS_NOW, #524): step, module index, parameter index, value */
 export interface RawLock { at: number; module: number; param: number; value: number }
@@ -431,13 +449,14 @@ export const tempoFrame = (global: boolean, bpm: number, meter: number): Uint8Ar
   return frame(CMD.tempo, [global ? 0 : 1, b & 0xff, b >> 8, meterOf(meter)]);
 };
 /** ARMS (#191): the editor's armed set as a module mask (arm.ts armMask), its words as u32 LE (two for firmware before
- * feature bit 21: modules 0..63; ARM_WORDS since, #721) */
+ * feature bit 21: modules 0..63; four before FEATURE5_FORMAT_67: modules 0..127; ARM_WORDS since, #721, #1286) */
 export const armsFrame = (words: readonly number[]): Uint8Array =>
   frame(CMD.arms, words.flatMap((w) => [w, w >>> 8, w >>> 16, w >>> 24].map((b) => b & 0xff)));
-/** an ARMS_NOW payload: its u32 LE words, ARM_WORDS of them (older firmware sends two: the rest 0); null when too short */
+/** an ARMS_NOW payload: its u32 LE words, ARM_WORDS of them (older firmware sends two or four: the rest 0); null when too
+ * short */
 export const parseArmsNow = (payload: number[]): number[] | null => {
   if (payload.length < 8) return null;
-  const n = payload.length >= 4 * ARM_WORDS ? ARM_WORDS : 2;
+  const n = Math.min(ARM_WORDS, payload.length >> 2);
   return Array.from({ length: ARM_WORDS }, (_, k) => (k < n ? (payload[4 * k] | (payload[4 * k + 1] << 8) | (payload[4 * k + 2] << 16) | (payload[4 * k + 3] << 24)) >>> 0 : 0));
 };
 /** a TEMPO_NOW payload: the FM-1's setting and global tempo (bpm 0: not known yet), and its time signature when the
@@ -511,8 +530,8 @@ export const FEATURE_PANEL_REPORT = 1 << 18;
 export const FEATURE_EDITOR_SETTING = 1 << 19;
 /** INFO feature bit 20 (#191): ARMS, the editor's armed set as the FM-1's; older firmware keeps its own */
 export const FEATURE_ARMS = 1 << 20;
-/** INFO feature bit 21 (#721): ARMS and ARMS_NOW carry ARM_WORDS words, modules 0..127 (INFO's module limit says 128);
- * older firmware takes and sends two, modules 0..63 */
+/** INFO feature bit 21 (#721): ARMS and ARMS_NOW carry four words at least, modules 0..127 (all ARM_WORDS with
+ * FEATURE5_FORMAT_67); older firmware takes and sends two, modules 0..63 */
 export const FEATURE_WIDE_ARMS = 1 << 21;
 /** INFO payload byte 14, bit 24: complete synth + master-FX presets (FXP1). */
 export const FEATURE_FX_PRESETS = 1 << 24;
@@ -529,6 +548,9 @@ export const FEATURE25_SLOT_GET = 4;
 /** INFO byte 25 bit 3 (Info.features25; 1.26.3, #1214): the FM-1 reads format 66's FX rack (effects and FX drawers) and
  *  the FX drawer presets (FXD1); firmware/src/proto.c M1_FEATURES5 */
 export const FEATURE5_FX_DRAWERS = 8;
+/** INFO byte 25 bit 4 (Info.features25; 1.27, #1286): the FM-1 reads format 67 (up to 254 modules) and ARMS / ARMS_NOW
+ *  carry all ARM_WORDS (8) words; firmware/src/proto.c M1_FEATURES5. A format-67 binary goes only to firmware with it */
+export const FEATURE5_FORMAT_67 = 16;
 /** INFO feature bit 26 (byte 14 bit 2, #915, D-490): the factory region's commands (firmware/src/factory.c) */
 export const FEATURE_FACTORY = 1 << 26;
 /** INFO feature bit 27 (byte 14 bit 3, #1107): MASTER_EQ, the FM-1's master EQ (GLO › EQ) over the link */

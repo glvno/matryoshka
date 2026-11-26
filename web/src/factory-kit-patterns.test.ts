@@ -4,7 +4,7 @@
 // name its payloads), the binaries carrying the links instead of the notes, and the songs over them.
 import { describe, expect, it } from 'vitest';
 import STORE from './factory-store.json';
-import { buildSelectedFactoryBank } from './factory-bank';
+import { buildFactoryBank, buildSelectedFactoryBank, selectedFactoryProfile } from './factory-bank';
 import { FACTORY_KITS, KIT_FIRST_ID, KIT_IDS_PER_KIT, gridNotes } from './factory-kit-patterns';
 import { DEVICE, deviceBudget, encodePatch, linkPlan } from './patchbin';
 import { decodePayload, fnv, FNV0, PATTERN_NAME_BYTES, storedName } from './pattern-store';
@@ -66,7 +66,10 @@ describe('the factory kits\' linked patterns', () => {
 
   for (const kit of FACTORY_KITS) {
     it(`${kit.patch}: links its patterns 2.., the binary carries the links, not the notes, and fits`, () => {
-      const p = patchOf(kit.patch), dev = deviceView(p, true).patch;
+      // (a kit given an FX drawer since, the 909 Kit (D-1055), as 1.25 saved it: the links are for slots of then, and the
+      // drawer with the patterns is past the FM-1's 3,840 bytes)
+      const p = selectedFactoryProfile[kit.patch]?.drawer ? buildFactoryBank().find((x) => x.name === kit.patch)!.patch : patchOf(kit.patch);
+      const dev = deviceView(p, true).patch;
       const main = p.modules.find((m) => m.type === 'fm1')!;
       const track = p.modules.find((m) => m.type === 'steps')!;
       expect(track.patterns).toHaveLength(kit.patterns.length);

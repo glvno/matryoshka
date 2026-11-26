@@ -269,6 +269,7 @@ enum {
 #define DELAY_I_CLK 1
 #define DELAY_I_P1 2
 #define DELAY_I_P2 3
+#define DELAY_I_R 4
 #define DELAY_O_OUT 0
 #define DELAY_O_R 1
 #define DELAY_P_TIME 0
@@ -283,7 +284,7 @@ enum {
 #define DELAY_P_TAPE 9
 #define DELAY_P_WOW 10
 #define DELAY_P_HEADS 11
-#define DELAY_NIN 4
+#define DELAY_NIN 5
 #define DELAY_NOUT 2
 #define DELAY_NPAR 12
 #define DELAY_CVBASE 2
@@ -293,15 +294,17 @@ enum {
 #define REVERB_I_IN 0
 #define REVERB_I_P1 1
 #define REVERB_I_P2 2
+#define REVERB_I_R 3
 #define REVERB_O_OUT 0
+#define REVERB_O_R 1
 #define REVERB_P_SIZE 0
 #define REVERB_P_DAMP 1
 #define REVERB_P_MIX 2
 #define REVERB_P_PRE 3
 #define REVERB_P_MOD 4
 #define REVERB_P_FREEZE 5
-#define REVERB_NIN 3
-#define REVERB_NOUT 1
+#define REVERB_NIN 4
+#define REVERB_NOUT 2
 #define REVERB_NPAR 6
 #define REVERB_CVBASE 1
 #define REVERB_NDATA 0
@@ -409,12 +412,13 @@ enum {
 #define CHORUS_I_IN 0
 #define CHORUS_I_P1 1
 #define CHORUS_I_P2 2
+#define CHORUS_I_R 3
 #define CHORUS_O_L 0
 #define CHORUS_O_R 1
 #define CHORUS_P_RATE 0
 #define CHORUS_P_DEPTH 1
 #define CHORUS_P_MIX 2
-#define CHORUS_NIN 3
+#define CHORUS_NIN 4
 #define CHORUS_NOUT 2
 #define CHORUS_NPAR 3
 #define CHORUS_CVBASE 1
@@ -1181,6 +1185,10 @@ enum {
 #define EQ_CVBASE 1
 #define EQ_NDATA 0
 
+#define DEF_STEREO(t) ((t) == T_VCA || (t) == T_FILTER || (t) == T_MIXER || (t) == T_SHAPE || (t) == T_XFADE || (t) == T_VOWEL || (t) == T_PHASER || (t) == T_CRUSH || (t) == T_LADDER || (t) == T_DYN || (t) == T_COMB || (t) == T_MODAL || (t) == T_SHIFT || (t) == T_LPG || (t) == T_LIMIT || (t) == T_EQ)   /* a type that can run in stereo mode */
+#define DEF_RIN(t) ((t) == T_OUTPUT ? OUTPUT_I_R : (t) == T_DELAY ? DELAY_I_R : (t) == T_REVERB ? REVERB_I_R : (t) == T_CHORUS ? CHORUS_I_R : -1)   /* the right input of the pair whose left is input 0, -1 none */
+#define DEF_ROUT(t) ((t) == T_PAN ? PAN_O_R : (t) == T_DELAY ? DELAY_O_R : (t) == T_REVERB ? REVERB_O_R : (t) == T_CHORUS ? CHORUS_O_R : -1)   /* the right output of the pair whose left is output 0, -1 none */
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 #define DELAY_SYNC_TOP 520   /* ms: the synced note lengths spread over 1..this (modules.ts) */
@@ -1266,7 +1274,7 @@ static const uint8_t EUCLID_RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};   /* its r
 #define TRACK_STEPS 64        /* a Steps track's most steps (track.ts); its name follows its pins in the record */
 #define TRACK_NAME_MAX 8
 static const char *const DRUM_ROW_NAME[8] = {"KICK", "SNARE", "CLAP", "CL HAT", "OP HAT", "LOW TOM", "RIM", "COWBELL"};   /* a Drum map row's default name (modules.ts DRUM_MAP_DEFAULT): format 64 leaves it out of the binary */
-#define TRACK_NOTES_MAX 128   /* notes per track (the notes section, flag bit 4; track.ts noteWord) */
+#define TRACK_NOTES_MAX 256   /* notes per track (the notes section, flag bit 4; track.ts noteWord) */
 #define TRACK_POLY 8          /* notes a track sounds at once (modules.ts) */
 #define METER_N 8u           /* the global time signature (#1011, modules.ts METERS): its meters, as listed */
 #define METER_DEFAULT 2u      /* ... 4/4: what plays when none was set */
@@ -1437,7 +1445,7 @@ static const char *const MIXER_PN[] = {"L1", "L2", "L3", "L4"};
 static const uint8_t MIXER_LOG[] = {0, 0, 0, 0};
 static const char *const MIXER_UNIT[] = {"", "", "", ""};
 static const char *const *const MIXER_CH[] = {0, 0, 0, 0};
-static const char *const DELAY_INNAMES[] = {"IN", "CLK", "P1", "P2"};
+static const char *const DELAY_INNAMES[] = {"IN", "CLK", "P1", "P2", "R"};
 static const int32_t DELAY_MIN[] = {65536, 0, 0, 0, 0, 0, 0, 655360, 0, 0, 0, 0};
 static const int32_t DELAY_MAX[] = {45875200, 62259, 65536, 65536, 65536, 327680, 65536, 249036800, 131072, 65536, 65536, 393216};
 static const int32_t DELAY_DEF[] = {16384000, 26214, 19661, 0, 0, 0, 0, 45875200, 0, 0, 19661, 0};
@@ -1452,7 +1460,7 @@ static const char *const DELAY_CH5[] = {"TIME", "1/32", "1/2T", "1/2.", "1/1T", 
 static const char *const DELAY_CH8[] = {"44K", "22K", "11K", 0};
 static const char *const DELAY_CH11[] = {"1", "2", "3", "1+2", "1+3", "2+3", "1+2+3", 0};
 static const char *const *const DELAY_CH[] = {0, 0, 0, DELAY_CH3, ADSR_CH4, DELAY_CH5, ADSR_CH4, 0, DELAY_CH8, ADSR_CH4, 0, DELAY_CH11};
-static const char *const REVERB_INNAMES[] = {"IN", "P1", "P2"};
+static const char *const REVERB_INNAMES[] = {"IN", "P1", "P2", "R"};
 static const int32_t REVERB_MIN[] = {0, 0, 0, 0, 0, 0};
 static const int32_t REVERB_MAX[] = {65536, 65536, 65536, 2621440, 65536, 65536};
 static const int32_t REVERB_DEF[] = {32768, 26214, 19661, 0, 19661, 0};
@@ -1530,7 +1538,7 @@ static const uint8_t WAVETABLE_LOG[] = {0, 0, 0, 0, 0, 0};
 static const char *const WAVETABLE_UNIT[] = {"", "", "ST", "CT", "RAD", ""};
 static const char *const WAVETABLE_CH0[] = {"ANALOG", "ORGAN", "FORMANT", "DIGITAL", "EML COLOR", 0};
 static const char *const *const WAVETABLE_CH[] = {WAVETABLE_CH0, 0, 0, 0, 0, 0};
-static const char *const CHORUS_INNAMES[] = {"IN", "P1", "P2"};
+static const char *const CHORUS_INNAMES[] = {"IN", "P1", "P2", "R"};
 static const int32_t CHORUS_MIN[] = {3277, 0, 0};
 static const int32_t CHORUS_MAX[] = {327680, 65536, 65536};
 static const int32_t CHORUS_DEF[] = {39322, 32768, 32768};
@@ -1980,7 +1988,7 @@ static const def_t DEFS[N_TYPES] = {
     {FILTER_NIN, FILTER_NOUT, FILTER_NPAR, 6, FILTER_CVBASE, 0, FILTER_NDATA, 511, FILTER_MIN, FILTER_MAX, FILTER_DEF, FILTER_INC, "MULTIMODE FILTER", FILTER_PN, FILTER_INNAMES, FILTER_LOG, FILTER_UNIT, FILTER_CH, 0, FILTER_SINCE, FILTER_STEP},   /* filter */
     {MIXER_NIN, MIXER_NOUT, MIXER_NPAR, 0, MIXER_CVBASE, 0, MIXER_NDATA, 1, MIXER_MIN, MIXER_MAX, MIXER_DEF, MIXER_INC, "MIXER 4", MIXER_PN, MIXER_INNAMES, MIXER_LOG, MIXER_UNIT, MIXER_CH, 0, 0, MIXER_STEP},   /* mixer */
     {DELAY_NIN, DELAY_NOUT, DELAY_NPAR, 0, DELAY_CVBASE, 0, DELAY_NDATA, 3, DELAY_MIN, DELAY_MAX, DELAY_DEF, DELAY_INC, "DELAY", DELAY_PN, DELAY_INNAMES, DELAY_LOG, DELAY_UNIT, DELAY_CH, 0, DELAY_SINCE, DELAY_STEP},   /* delay */
-    {REVERB_NIN, REVERB_NOUT, REVERB_NPAR, 0, REVERB_CVBASE, 0, REVERB_NDATA, 1, REVERB_MIN, REVERB_MAX, REVERB_DEF, REVERB_INC, "REVERB", REVERB_PN, REVERB_INNAMES, REVERB_LOG, REVERB_UNIT, REVERB_CH, 0, REVERB_SINCE, REVERB_STEP},   /* reverb */
+    {REVERB_NIN, REVERB_NOUT, REVERB_NPAR, 0, REVERB_CVBASE, 0, REVERB_NDATA, 3, REVERB_MIN, REVERB_MAX, REVERB_DEF, REVERB_INC, "REVERB", REVERB_PN, REVERB_INNAMES, REVERB_LOG, REVERB_UNIT, REVERB_CH, 0, REVERB_SINCE, REVERB_STEP},   /* reverb */
     {OUTPUT_NIN, OUTPUT_NOUT, OUTPUT_NPAR, 0, OUTPUT_CVBASE, -1, OUTPUT_NDATA, 0, OUTPUT_MIN, OUTPUT_MAX, OUTPUT_DEF, OUTPUT_INC, "OUTPUT", OUTPUT_PN, OUTPUT_INNAMES, OUTPUT_LOG, OUTPUT_UNIT, OUTPUT_CH, 0, 0, OUTPUT_STEP},   /* output */
     {GLIDE_NIN, GLIDE_NOUT, GLIDE_NPAR, 0, GLIDE_CVBASE, 0, GLIDE_NDATA, 0, GLIDE_MIN, GLIDE_MAX, GLIDE_DEF, GLIDE_INC, "SLEW LIMITER", GLIDE_PN, GLIDE_INNAMES, GLIDE_LOG, GLIDE_UNIT, GLIDE_CH, 0, GLIDE_SINCE, GLIDE_STEP},   /* glide */
     {SHAPE_NIN, SHAPE_NOUT, SHAPE_NPAR, 0, SHAPE_CVBASE, 0, SHAPE_NDATA, 1, SHAPE_MIN, SHAPE_MAX, SHAPE_DEF, SHAPE_INC, "WAVESHAPER", SHAPE_PN, SHAPE_INNAMES, SHAPE_LOG, SHAPE_UNIT, SHAPE_CH, 0, 0, SHAPE_STEP},   /* shape */

@@ -102,7 +102,7 @@ describe('arming as a set (#190)', () => {
     expect(armedFromMask(p, words)).toEqual([`a${b.id}`]);
     const both = armMask(p, [`a${a.id}`, `a${b.id}`]);
     expect(armedFromMask(p, both).sort()).toEqual([`a${a.id}`, `a${b.id}`].sort());
-    expect(armMask(p, [])).toEqual([0, 0, 0, 0]);
+    expect(armMask(p, [])).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
   });
 });
 
@@ -280,14 +280,14 @@ describe('an engine no keys cable reaches is not armed (D-905, D-818)', () => {
   });
 });
 
-describe('more than 64 modules (#721: the FM-1 takes 128)', () => {
-  // Main's keys into a Drum map placed after 70 mixers in a chain to the Output: its index is past 63
-  const many = (): { p: Patch; dm: number } => {
+describe('more than 64 modules (#721, #1286: the FM-1 takes 254)', () => {
+  // Main's keys into a Drum map placed after n mixers in a chain to the Output: its index is past n - 1
+  const many = (n: number): { p: Patch; dm: number } => {
     const p = newPatch(DEFS);
     const out = p.modules.find((m) => m.type === 'output')!;
     const main = p.modules.find((m) => m.type === 'fm1')!;
     let prev = -1;
-    for (let k = 0; k < 70; k++) {
+    for (let k = 0; k < n; k++) {
       const m = addModule(p, DEFS.mixer, 800, 40 * k);
       if (prev >= 0) connect(p, DEFS, { module: prev, port: 'out' }, { module: m.id, port: 'in1' });
       prev = m.id;
@@ -300,14 +300,24 @@ describe('more than 64 modules (#721: the FM-1 takes 128)', () => {
   };
 
   it('a module past index 63 goes into the mask\'s third word and comes back', () => {
-    const { p, dm } = many();
+    const { p, dm } = many(70);
     const i = deviceView(p, true).patch.modules.findIndex((m) => m.id === dm);
     expect(i).toBeGreaterThan(63);
     const words = armMask(p, [`m${dm}`]);
-    expect(words).toHaveLength(4);
+    expect(words).toHaveLength(8);
     expect(words[i >> 5]).toBe((1 << (i & 31)) >>> 0);
     expect(words.filter((w, k) => k !== i >> 5 && w)).toEqual([]);
     expect(armedFromMask(p, words)).toEqual([`m${dm}`]);
     expect(armedFromMask(p, words.slice(0, 2))).toEqual([]);   // (two words, as older firmware sends: modules 0..63)
+  });
+
+  it('a module past index 223 goes into the mask\'s eighth word and comes back; four words (1.26 firmware) do not reach it', () => {
+    const { p, dm } = many(240);
+    const i = deviceView(p, true).patch.modules.findIndex((m) => m.id === dm);
+    expect(i).toBeGreaterThan(223);
+    const words = armMask(p, [`m${dm}`]);
+    expect(words[7]).toBe((1 << (i & 31)) >>> 0);
+    expect(armedFromMask(p, words)).toEqual([`m${dm}`]);
+    expect(armedFromMask(p, words.slice(0, 4))).toEqual([]);
   });
 });

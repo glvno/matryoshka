@@ -5,7 +5,7 @@ import { FEATURE_PATTERN_ORIGINS, PatternOrigins, type OriginUpdate } from './pa
 import { DEFS } from './modules';
 import type { Patch, Range } from './patch';
 import { patternName, READ_ONLY_ID, type SongEntry, type StepNote } from './track';
-import { DEVICE, deviceSection, encodePatch, FLAG_LINKS, FLAG_PATTERN_ORIGINS, FLAG_RACK, FORMAT_RACK, layout, mapRecord, toQ16, VERSION, type LinkStore } from './patchbin';
+import { DEVICE, deviceSection, encodePatch, FLAG_LINKS, FLAG_PATTERN_ORIGINS, FLAG_RACK, FORMAT_1_27, FORMAT_RACK, layout, mapRecord, patternOneSpills, toQ16, VERSION, type BudgetStore, type LinkStore } from './patchbin';
 import { FNV0, fnv, PAYLOAD_MAX, storePlan, withLinks } from './pattern-store';
 import { deviceView } from './poly';
 import type { HostMsg } from './worklet';
@@ -18,11 +18,11 @@ export function deviceLayoutKey(patch: Patch): string {
   const view = deviceView(patch, true);
   return JSON.stringify([view.patch.modules.map((m) => [m.id, m.type]), view.groups.map((g) => [g.key, [...g.modules], g.src])]);
 }
-import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type DeviceSettings, FEATURE_MASTER_EQ, MASTER_EQ, masterEqFrame, parseMasterEq, type MasterEq, armsFrame, parseArmsNow, FEATURE_WIDE_ARMS, editorSkips, FEATURE_ARMS, FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, slotCount, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { FEATURE_DEVICE_SETTINGS, deviceSettingsFrame, parseDeviceSettings, type DeviceSettings, FEATURE_MASTER_EQ, MASTER_EQ, masterEqFrame, parseMasterEq, type MasterEq, armsFrame, parseArmsNow, FEATURE_WIDE_ARMS, editorSkips, FEATURE_ARMS, FEATURE_LONG_PRESETS, FEATURE_PANEL_REPORT, parseKeysNow, parseGuideNow, type KeysNow, type PanelState, PRESET_VALUES_MAX, PRESET_VALUES_OLD, FEATURE_TEMPO, parseTempoNow, tempoFrame, RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrames, parseTrack, parseLocksNow, type RawLock, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, slotCount, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 import { FEATURE_PATTERN_STORE, FEATURE25_PATTERNS_STORED, FEATURE25_TRACK_CARD, parseLinkNow, parsePatEntry, parsePatStored, PAT_FULL, PAT_MISSING, PAT_OK, PAT_RANGE, PAT_STATUS, PAT_USED, patDelFrame, patPutFrames, patsFrame, readStoredPattern, type PatListItem, type StoredPatternEntry } from './protocol';
 import { holdsTrackCard } from './pages';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
-import { FEATURE5_FX_DRAWERS, FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo, type MapEntry } from './protocol';
+import { FEATURE5_FORMAT_67, FEATURE5_FX_DRAWERS, FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo, type MapEntry } from './protocol';
 import { FEATURE_PADS, PADS_CMD, padsClearAllFrame, padsOnFrame, padsReadFrame, padsSetFrame, parsePadsNow, parsePatternOp, PATTERN_OP, type PadMap } from './protocol';
 import { hasPaletteFeature, PAL_STATUS, PALETTE, paletteEntryGetFrame, paletteGetFrame, paletteGoFrame, paletteNameFrame, paletteOrderFrame, palettePutFrame, parsePaletteEntry, parsePaletteNow, type PaletteEntry, type PaletteNow } from './protocol';
 import { FEATURE25_SLOT_GET, readSlotBinary, SLOT_STORED } from './protocol';
@@ -272,6 +272,8 @@ export class DeviceLink {
   /** what the FM-1's pattern store holds (#901): each user entry's payload hash by id, as listPatterns last read it and the
    *  link's own changes since; null: not read since it connected */
   private stored: Map<number, number> | null = null;
+  /** the last TRACK_NOW: what a frame with TRACK_MORE adds to (#1292) */
+  private trackPart: { module: number; pat: number; notes: StepNote[] } | null = null;
   /** the payload lengths of the entries `stored` holds, where known (a link the FM-1 reports gives none) */
   private storedLen = new Map<number, number>();
   onStatus: (s: string) => void = () => {};
@@ -441,7 +443,11 @@ export class DeviceLink {
         return this.onEvent({ kind: 'slot', slot: p.payload[0], name });
       }
       const t = p?.cmd === CMD.trackNow ? parseTrack(p.payload) : null;
-      if (t) return this.onEvent({ kind: 'track', ...t });
+      if (t) {   // (a pattern past TRACK_FRAME_WORDS comes in frames: each after the first adds to the one before, #1292)
+        const was = this.trackPart, notes = t.more && was?.module === t.module && was.pat === t.pat ? [...was.notes, ...t.notes] : t.notes;
+        this.trackPart = { module: t.module, pat: t.pat, notes };
+        return this.onEvent({ kind: 'track', module: t.module, notes, pat: t.pat });
+      }
       const lk = p?.cmd === CMD.locksNow ? parseLocksNow(p.payload) : null;
       if (lk) return this.onEvent({ kind: 'locks', ...lk });
       const pn = p?.cmd === CMD.patternNow ? parsePatternNow(p.payload) : null;
@@ -580,18 +586,19 @@ export class DeviceLink {
       const len = this.storedLen.get(id);
       return len === undefined ? [] : [{ id, hash, len, layout: 0, tracks: 0, readOnly: false, kept: false, name: '' }];
     });
-    return encodePatch(withLinks(patch, storePlan(patch, known).links), false, 0, this.bufferAllocation, this.linkStore);
+    return encodePatch(withLinks(patch, storePlan(patch, known, patch.name, this.spillsPatternOne && patternOneSpills(patch)).links), false, 0, this.bufferAllocation, this.linkStore);
   }
 
   /**
    * Before a patch goes to an FM-1 that stores every pattern 2..64 (#1202): each of its patterns with content links an entry
    * that holds it (the FM-1's list read again: entries nothing links are freed at each slot write), else goes into the
-   * store as a new one (pattern-store.ts storePlan), and the binary carries pattern 1, the songs and the links. A pattern
+   * store as a new one (pattern-store.ts storePlan), and the binary carries pattern 1 (in the store too when the patch
+   * cannot hold it and the FM-1 reads format 67, #1292), the songs and the links. A pattern
    * the store has no room for stays inside the patch (`inline`); a patch too big then is refused, saying why. The caller
    * sends this binary before it puts the next patch's patterns. Runs inside the serial queue.
    */
   private async storeFirst(patch: Patch, name: string): Promise<Sent> {
-    const plan = storePlan(patch, await this.readPatterns(), name);
+    const plan = storePlan(patch, await this.readPatterns(), name, this.spillsPatternOne && patternOneSpills(patch));
     const links = { ...plan.links };
     const inline: number[] = [];
     for (const e of plan.put) {
@@ -631,9 +638,12 @@ export class DeviceLink {
   }
 
   /** the editor's armed set (arm.ts armMask), to firmware that takes it: the FM-1 arms the same devices. Firmware before
-   *  feature bit 21 takes the first two words (modules 0..63: all a patch it plays has, #721) */
+   *  feature bit 21 takes the first two words (modules 0..63: all a patch it plays has, #721), before FEATURE5_FORMAT_67
+   *  the first four (modules 0..127, #1286) */
   arms(words: readonly number[]): void {
-    if (this.connected && this.takesArms) this.out!.send(armsFrame(this.info!.features & FEATURE_WIDE_ARMS ? words : words.slice(0, 2)));
+    if (!this.connected || !this.takesArms) return;
+    const n = (this.info!.features25 ?? 0) & FEATURE5_FORMAT_67 ? words.length : this.info!.features & FEATURE_WIDE_ARMS ? 4 : 2;
+    this.out!.send(armsFrame(words.slice(0, n)));
   }
 
   /** GLO > PANEL > TEMPO, the global tempo (bpm 0: leave it) and the time signature (#1011; older firmware ignores it), to
@@ -653,6 +663,8 @@ export class DeviceLink {
     const flags = bin[6] | bin[7] << 8;
     if ((flags & FLAG_RACK) && bin[1] >= FORMAT_RACK && (!this.info?.patchFormats || this.info.patchFormats.max < FORMAT_RACK))
       throw new Error('This patch has FX drawers or effects. Update the FM-1 firmware before sending it.');
+    if (bin[1] >= FORMAT_1_27 && !((this.info?.features25 ?? 0) & FEATURE5_FORMAT_67))
+      throw new Error('This patch uses release 1.27 (more than 128 modules, a module in stereo mode, a Delay, Reverb or Chorus r jack, a pattern of more than 128 notes, or pattern 1 in the pattern store). Update the FM-1 firmware before sending it.');
     if ((flags & FLAG_PATTERN_ORIGINS) && (!this.info?.patchFormats || bin[1] > this.info.patchFormats.max || !(this.info.features & FEATURE_PATTERN_ORIGINS)))
       throw new Error('This patch carries factory pattern origins. Update the FM-1 firmware before sending it; its origins cannot be removed automatically.');
     if ((flags & FLAG_LINKS) && !this.hasPatternStore) throw new Error('This patch links stored patterns, and this FM-1 has no pattern store.');
@@ -766,10 +778,17 @@ export class DeviceLink {
     return this.connected && this.hasPatternStore && !!((this.info?.features25 ?? 0) & FEATURE25_PATTERNS_STORED);
   }
 
-  /** the pattern store the budget counts with (patchbin.ts deviceBudget): `every` for an FM-1 that stores every pattern,
-   *  else `assume`, as with no FM-1 */
-  get budgetStore(): 'assume' | 'every' {
-    return this.patternsStored ? 'every' : 'assume';
+  /** this FM-1 also puts pattern 1 into its store when a patch cannot hold it (it stores every pattern and reads format 67,
+   *  #1292) */
+  get spillsPatternOne(): boolean {
+    return this.patternsStored && !!((this.info?.features25 ?? 0) & FEATURE5_FORMAT_67);
+  }
+
+  /** the pattern store the budget counts with (patchbin.ts deviceBudget): `spill` for an FM-1 that stores every pattern and
+   *  pattern 1 when the patch cannot hold it, `every` for one that stores every pattern 2..64, else `assume`, as with no
+   *  FM-1 */
+  get budgetStore(): BudgetStore {
+    return this.spillsPatternOne ? 'spill' : this.patternsStored ? 'every' : 'assume';
   }
 
   /** the entries of the FM-1's pattern store (PATS: the user's; firmware before 1.26 lists its read-only factory ones after
@@ -1019,8 +1038,8 @@ export class DeviceLink {
   track(patch: Patch, moduleId: number, notes: readonly StepNote[] | undefined, pat = 0): void {
     if (!this.connected || !this.hasTracks) return;
     const mi = deviceIndex(patch, moduleId);
-    if (mi >= 0 && this.hasPatterns) this.out!.send(trackFrame(mi, notes, pat));
-    else if (mi >= 0 && !pat) this.out!.send(trackFrame(mi, notes));
+    if (mi >= 0 && this.hasPatterns) for (const f of trackFrames(mi, notes, pat)) this.out!.send(f);
+    else if (mi >= 0 && !pat) this.out!.send(trackFrames(mi, notes)[0]);
   }
 
   /** the patch's pattern and the song playing (format 48) */

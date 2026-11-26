@@ -545,7 +545,7 @@ static int aot_buffer_guard(const uint8_t *p, uint32_t len)
                 return 1;
         at += 6u + p[at + 5u];
         at += 1u + 2u * p[at];
-        at += 1u + ((p[at] & ENG_MEMBER_RUN) ? 1u : p[at]);
+        at += eng_members_size(p, at);
     }
     return 0;
 }
@@ -574,7 +574,7 @@ static int aot_fits(const aot_tpl_t *t, const uint8_t *mem, uint8_t *loc, uint8_
         for (q = 0; q < MAX_IN; q++)
             if (nd->input_map[q])
                 return AOT_WHY(3);
-        if (!t->grp[i] != !nd->grp)                          /* runs once / per part as the template's */
+        if (!t->grp[i] != !nd->grp || ST_NODE(nd))          /* runs once / per part as the template's (never stereo mode) */
             return AOT_WHY(4);
         if (t->grp[i]) {                                     /* one poly group per template group, none shared */
             if (!g[t->grp[i]])
@@ -594,6 +594,8 @@ static int aot_fits(const aot_tpl_t *t, const uint8_t *mem, uint8_t *loc, uint8_
         uint32_t f = loc[E.from_m[c]], to = loc[E.to_m[c]], k;
         if (f == 0xFFu && to == 0xFFu)
             continue;
+        if ((f == 0xFFu && ST_NODE(&E.node[E.from_m[c]])) || (to == 0xFFu && ST_NODE(&E.node[E.to_m[c]])))
+            return AOT_WHY(12);                              /* (a stereo module outside: its sides, #1141) */
         if (f != 0xFFu && to != 0xFFu) {                     /* one of the template's, in the template's direction */
             for (k = 0; k < t->ncab; k++)
                 if (t->cab[k].from == f && t->cab[k].fp == E.from_p[c] && t->cab[k].to == to && t->cab[k].tp == E.to_p[c] && !(seen[k >> 3] >> (k & 7u) & 1u))
@@ -645,19 +647,17 @@ static void aot_bind(const uint8_t *p, uint32_t len, uint32_t lines)
         pos[E.order[i]] = (uint8_t)i;
     cnt = p[at++];
     for (d = 0; d < cnt && aot_nx < AOT_MAXX; d++) {
-        uint32_t st = (uint32_t)p[at + 1u] | (uint32_t)p[at + 2u] << 8 | (uint32_t)p[at + 3u] << 16 | (uint32_t)p[at + 4u] << 24, nm, run;
+        uint32_t st = (uint32_t)p[at + 1u] | (uint32_t)p[at + 2u] << 8 | (uint32_t)p[at + 3u] << 16 | (uint32_t)p[at + 4u] << 24, nm, run, from;
         const aot_tpl_t *t = 0;
         at += 6u + p[at + 5u];
         at += 1u + 2u * p[at];
-        nm = p[at] & (uint8_t)~ENG_MEMBER_RUN;
-        run = (p[at] & ENG_MEMBER_RUN) != 0u;
+        at += eng_members(p, at, &nm, &run, &from);
         for (k = 0; st && k < AOT_NTPL; k++)
             if (AOT_TPL[k]->structure == st && AOT_TPL[k]->n == nm)
                 t = AOT_TPL[k];
         if (t)
             for (i = 0; i < nm; i++)
-                mem[i] = run ? (uint8_t)(p[at + 1u] + i) : p[at + 1u + i];
-        at += 1u + (run ? 1u : nm);
+                mem[i] = run ? (uint8_t)(p[from] + i) : p[from + i];
         if (t && aot_fits(t, mem, loc, pos)) {
             aot_x_t *x = &aot_x[aot_nx];
             uint32_t lo = 255u;

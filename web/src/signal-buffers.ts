@@ -3,6 +3,7 @@ import { DEFS } from './modules';
 import type { Patch } from './patch';
 import type { DeviceGroup } from './poly';
 import type { Schedule } from './schedule';
+import { cableReaders, feedModel, outputRead, sourcesInto } from './feeds';
 
 /** Unknown rules and disconnected devices always use separate charging. */
 export type BufferAllocation = 0 | 1;
@@ -10,12 +11,11 @@ export const bufferAllocation = (rule?: number): BufferAllocation => rule === 1 
 
 /** Accounting of engine.c's lifetime allocator. Input must be deviceView(source, true).
  * `separate` models ENG_BUF_REUSE=0 or a compiled candidate. Current encoders never emit legacy disabled-input masks.
- * `sched`: a two-core schedule's lanes (schedule.ts, #802), where a value read across the lanes keeps its buffer. */
+ * `sched`: a two-core schedule's lanes (schedule.ts, #802), where a value read across the lanes keeps its buffer.
+ * Who reads which copy: feeds.ts (stereo copies, jack pairs and side cables, #1141; engine.c cab_reads). */
 export function signalBuffers(p: Patch, groups: DeviceGroup[], separate = false, sched?: Schedule): { values: number; physical: number } {
-  const index = new Map(p.modules.map((m, i) => [m.id, i]));
-  const group = p.modules.map((m) => groups.findIndex((g) => g.modules.has(m.id)));
-  const copies = group.map((g) => g < 0 ? 1 : groups[g].cfg.parts);
-  const cables = p.cables.map((c) => ({ from: index.get(c.from.module)!, to: index.get(c.to.module)!, output: c.from.port, input: c.to.port }));
+  const x = feedModel(p, groups);
+  const { group, copies, cables } = x;
   const split = (m: number): boolean => group[m] >= 0 && copies[m] >= 2 && p.modules[m].type !== 'steps';
   const scheduled = sched?.on ? sched : undefined;
   const lane = (m: number, v: number): number => scheduled ? scheduled.lane[m][v] : split(m) ? v & 1 : 0;
@@ -45,11 +45,12 @@ export function signalBuffers(p: Patch, groups: DeviceGroup[], separate = false,
   }
   function lastReader(m: number, port: string, v: number, start: number): number {
     let end = start;
-    for (const c of cables) {
-      if (c.from !== m || c.output !== port) continue;
+    for (const [ci, c] of cables.entries()) {
+      if (c.from !== m) continue;
+      const readers = cableReaders(x, ci, port, v);
+      if (!readers.length) continue;
       if (pos[c.to] <= start || (group[m] >= 0 && group[c.to] !== group[m]) || late(c.to)) return Infinity;
-      for (let w = 0; w < copies[c.to]; w++) {
-        if ((copies[m] > 1 ? w : 0) !== v) continue;
+      for (const w of readers) {
         const at = lane(c.to, w) === lane(m, v) ? pos[c.to] : scheduled ? Infinity : split(c.to) ? segmentEnd[pos[c.to]] : pos[c.to];
         end = Math.max(end, at);
       }
@@ -58,13 +59,10 @@ export function signalBuffers(p: Patch, groups: DeviceGroup[], separate = false,
   }
   order.forEach((m, k) => {
     const def = DEFS[p.modules[m].type];
-    for (const port of def.inputs) {
-      const sources = cables.filter((c) => c.to === m && c.input === port.name)
-        .reduce((n, c) => n + (group[c.from] >= 0 && group[c.from] !== group[m] ? copies[c.from] : 1), 0);
-      if (sources >= 2) for (let v = 0; v < copies[m]; v++) take(k, late(m) ? Infinity : k, lane(m, v));
-    }
+    for (const port of def.inputs)
+      if (sourcesInto(x, m, port.name) >= 2) for (let v = 0; v < copies[m]; v++) take(k, late(m) ? Infinity : k, lane(m, v));
     for (const port of def.outputs) {
-      if (!cables.some((c) => c.from === m && c.output === port.name)) continue;
+      if (!outputRead(x, m, port.name)) continue;
       for (let v = 0; v < copies[m]; v++) take(k, lastReader(m, port.name, v, k), lane(m, v));
     }
   });

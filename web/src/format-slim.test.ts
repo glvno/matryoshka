@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
-import { cablesGrouped, COUNTED, DEVICE, drumNamed, encodePatch, FLAG_CABLES3, FLAG_NAMES, GROUP_REC, layout, panelBytes, PANEL_BYTES, SLIM, VERSION } from './patchbin';
+import { cablesGrouped, COUNTED, DEVICE, drumNamed, encodePatch, FLAG_CABLES3, FLAG_NAMES, FORMAT_1_27, FORMAT_RACK, GROUP_REC, layout, panelBytes, PANEL_BYTES, SLIM } from './patchbin';
 import { rackOf } from './assembly';
 import { deviceView } from './poly';
 import { FM1_PRESETS } from './presets';
@@ -74,7 +74,8 @@ describe("format 64's shorter layout (D-1025)", () => {
       // no older form holds the rack (FX drawer contracts §4: "a patch is written at 66 only when it has a rack")
       const rack = rackOf(p);
       if (rack.effects.length || rack.drawers.length) {
-        expect(l.v, name).toBe(VERSION);
+        // (67 for the 909 Kit only: its drawer's stereo Drive and the Reverb's r, D-1055; no other factory patch uses a 1.27 thing)
+        expect(l.v, name).toBe(name === '909 Kit' ? FORMAT_1_27 : FORMAT_RACK);
         expect(l.need, name).toBe(l.base.bytes);
         continue;
       }
@@ -85,9 +86,10 @@ describe("format 64's shorter layout (D-1025)", () => {
       expect(l.need, name).toBe(Math.min(l.base.bytes, l.counted, l.slim));
       expect(l.slim, name).toBeLessThan(l.base.bytes);
     }
-    // (the 909 Kit with its VELOCITY row, D-1055: firmware 1.22 or later. Another one is a choice to make on purpose)
-    expect(slim).toEqual(['909 Kit']);
-    // (the room format 64 gave the 909 Kit holds its VELOCITY row, D-1055)
+    // (the 909 Kit, the one patch that needed it for its VELOCITY row, D-1055, has its FX drawer, so format 67, which has
+    // the shorter layout too. Another one is a choice to make on purpose)
+    expect(slim).toEqual([]);
+    // (the room the shorter layout gives the 909 Kit holds its VELOCITY row and its FX drawer, D-1055)
     expect(DEVICE.bytes - layout(FM1_PRESETS['909 Kit']()).need).toBeGreaterThan(50);
   });
 

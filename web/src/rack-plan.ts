@@ -57,7 +57,7 @@ export function rackPlan(source: Patch, view?: { patch: Patch; groups: readonly 
       const a = assemblyById(source, asm);
       const members = (a ? allModules(source, a) : []).filter((id) => !helpers.has(id)).flatMap((id) => byId.get(id) ?? []);
       const runnable = members.length <= FX_TARGETS_MAX && runs + members.length <= FX_RUNS
-        && members.every((m) => !poly.has(m.id) && thruInput(DEFS[m.type]) !== undefined);
+        && members.every((m) => !poly.has(m.id) && thruInput(DEFS[m.type]) !== undefined);   // (a stereo module is one target, #1141)
       if (!runnable) return { asm, targets: [] };
       runs += members.length;
       return { asm, targets: members.map((m) => m.id) };
@@ -67,3 +67,6 @@ export function rackPlan(source: Patch, view?: { patch: Patch; groups: readonly 
     .map((d): RackPlanDrawer => ({ owner: d.owner, effects: d.effects.filter((id) => inRack.has(id)) }));
   return effects.length || drawers.length ? { effects, drawers, helpers } : null;
 }
+
+/** the modules the FX rack switches as effects (module ids): schedule.ts orders a stereo one's copies (#1141) */
+export const rackTargets = (source: Patch): Set<number> => new Set(rackPlan(source)?.effects.flatMap((e) => e.targets) ?? []);

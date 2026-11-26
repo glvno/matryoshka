@@ -636,6 +636,10 @@ Placing steps with the white keys, one key per step: on the FM-1's drum grid and
 
 A Steps module: a key source that plays an engine through its keys out. It holds up to 64 patterns of notes. Avoid: sequence, and pattern for the track itself (a pattern is one of its note lists).
 
+### Stereo module
+
+A module that runs as two copies, L and R, with one set of parameters, switched on with the "ST" button on its card. A cable from it carries both sides. Avoid: stereo pair (two modules).
+
 ### Stored link
 
 A share link `#s=<id>` whose patch is kept on the site because the inline link would be too long.

@@ -240,7 +240,8 @@ static void m1_arms(eng_mset_t mask) { arms_calls++; arms_last = mask; eng_arm_m
                                                               * glue (patlink.c) and a store in RAM itself */
 static void m1_pat_load(void) {}
 static uint64_t m1_pat_clean(void) { return 0; }
-static int m1_pat_spill(void) { return 0; }
+static int m1_pat_spill(uint32_t from) { (void)from; return 0; }
+static int m1_pat_back(uint32_t mod) { (void)mod; return 0; }
 static void m1_pat_info(uint8_t *p) { p[1] = 64; p[2] = p[3] = p[4] = p[5] = 0; }
 static uint32_t m1_pat_list(uint32_t after, uint8_t *e) { (void)after; (void)e; return 0; }
 static const uint8_t *m1_pat_get(uint32_t id, uint32_t *len) { (void)id; (void)len; return 0; }
@@ -249,7 +250,8 @@ static uint32_t m1_pat_del(uint32_t id, uint32_t force, uint32_t *count) { (void
 #else
 static void m1_pat_load(void);
 static uint64_t m1_pat_clean(void);
-static int m1_pat_spill(void);
+static int m1_pat_spill(uint32_t from);
+static int m1_pat_back(uint32_t mod);
 static void m1_pat_info(uint8_t *p);
 static uint32_t m1_pat_list(uint32_t after, uint8_t *e);
 static const uint8_t *m1_pat_get(uint32_t id, uint32_t *len);
@@ -1681,16 +1683,17 @@ int main(int argc, char **argv)
                   && !memcmp(replies[r0] + 5, replies[63], reply_len[r0] - 6u));
             nreplies = r0;
         }
-        {                                                        /* R_ARMS_NOW (m1_arms_now, #191): the set, ENG_MSET_WORDS u32 LE
-                                                                  * (#721); its first 8 bytes are the old form (modules 0..63) */
+        {                                                        /* R_ARMS_NOW (m1_arms_now, #191): the set, ENG_MSET_WORDS (8) u32 LE
+                                                                  * (#721, #1286); its first 8 bytes are the oldest form (modules
+                                                                  * 0..63), its first 16 1.26's (0..127) */
             uint8_t d[4u * ENG_MSET_WORDS];
-            eng_mset_t s = {{0x00000005u, 0x80000001u, 0x00000001u, 0x80000000u}};
+            eng_mset_t s = {{0x00000005u, 0x80000001u, 0x00000001u, 0x80000000u, 0, 0, 0, 0x20000000u}};
             uint32_t r0 = nreplies;
             m1_arms_now(s);
             CHECK(nreplies == r0 + 1u && replies[r0][4] == R_ARMS_NOW && replies[r0][reply_len[r0] - 1u] == 0xF7);
-            CHECK(m1_unpack7(replies[r0] + 5, reply_len[r0] - 6u, d, sizeof d) == 16u);
+            CHECK(m1_unpack7(replies[r0] + 5, reply_len[r0] - 6u, d, sizeof d) == 32u);
             CHECK(d[0] == 5u && d[1] == 0u && d[2] == 0u && d[3] == 0u && d[4] == 1u && d[5] == 0u && d[6] == 0u && d[7] == 0x80u);
-            CHECK(d[8] == 1u && d[9] == 0u && d[14] == 0u && d[15] == 0x80u && mset_eq(mset_read(d, ENG_MSET_WORDS), s));
+            CHECK(d[8] == 1u && d[9] == 0u && d[14] == 0u && d[15] == 0x80u && d[31] == 0x20u && mset_has(s, 253u) && mset_eq(mset_read(d, ENG_MSET_WORDS), s));
             nreplies = r0;
         }
         base = m1_notes_at();

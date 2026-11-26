@@ -176,7 +176,8 @@ static void m1_tempo(uint32_t patch, uint32_t bpm, uint32_t meter);   /* main.c:
 static void m1_arms(eng_mset_t mask);                         /* main.c: the editor's armed set (#191) */
 static void m1_pat_load(void);                                /* patlink.c: the pattern store (#901), the hooks proto.c needs */
 static uint64_t m1_pat_clean(void);
-static int m1_pat_spill(void);                                /* patlink.c: the patterns 2..64 into the store (#1199) */
+static int m1_pat_spill(uint32_t from);                       /* patlink.c: the patterns from..64 into the store (#1199, #1292) */
+static int m1_pat_back(uint32_t mod);                         /* patlink.c: a track's pattern 1 back from its clean link (#1292) */
 static void m1_patch_full(void);                              /* main.c: an edit the patch had no room for (#1199) */
 static const char *m1_patch_name(void);                       /* main.c: the running patch's name (the stored patterns') */
 static void m1_pat_info(uint8_t *p);

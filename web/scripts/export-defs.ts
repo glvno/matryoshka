@@ -8,7 +8,7 @@
 // Run from web/: npx vite-node scripts/export-defs.ts
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { ADSR_LONG, ANALOG_CURVE, ANALOG_DIP, ANALOG_DIP_S, ANALOG_PWO, ANALOG_SKEW, ANALOG_TOL, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, FILTER_DRIVE_KNEE, FILTER_DRIVE_TOP, DIODE_W180, DIODE_KCRIT, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_LENGTH_MAX, DELAY_REACH_MAX, DELAY_RATES, DELAY_TAIL, delayAaCoefs, DEVICE_SR, DELAY_TAPE_LP, DELAY_TAPE_HP, delayTapePole, DELAY_WOW_HZ, DELAY_FLUTTER_HZ, DELAY_WOW_MS, DELAY_FLUTTER_MS, turnInc, delayDepth8, DELAY_HEADS, DELAY_HEAD_MASK, DELAY_HEAD_GAIN, DELAY_LENGTH_MIN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, LFO_TEMPO, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, RANGE_T_MAX, SHREG_FLIP_SEED, SHREG_PAT_SEED, SHREG_PAT_ZERO, SHREG_STAGES, TRACK_POLY, METERS, METER_DEFAULT, CLICK_MS, CLICK_LEVEL_Q16, CLICK_HZ, CLICK_ACCENT_HZ } from '../src/modules';
-import { LPG_ATTACK, LPG_CLIP, LPG_RES_K } from '../src/modules';
+import { LPG_ATTACK, LPG_CLIP, LPG_RES_K, RIGHT_IN, RIGHT_OUT } from '../src/modules';
 import { EQ_LIM, EQ_SHELF_Q, EQ_SHELF_TOP, EUCLID_RATE_TICKS, EUCLID_STEPS_MAX, LIMIT_AHEAD, LIMIT_CHUNK, LIMIT_KA } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16, VERSION, deviceBudget, DEVICE } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX, trackName } from '../src/patch';
@@ -59,6 +59,13 @@ for (const t of TYPE_ORDER) {
   w(`#define ${up(t)}_NPAR ${d.params.length}`);
   w(`#define ${up(t)}_CVBASE ${d.paramInputs ? d.inputs.findIndex((i) => i.pin === 1) : -1}`);   /* index of p1; p2 follows (ports added later come after them: the Steps module's keys) */
   w(`#define ${up(t)}_NDATA ${d.data ?? 0}`);   /* bytes after the parameters and pins in a record */
+  w();
+}
+{   // stereo mode and the jack pairs (#1141, modules.ts ModuleDef.stereo, RIGHT_IN, RIGHT_OUT): macros, no table bytes
+  const of = (pairs: [string, string][]): string => pairs.map(([t, v]) => `(t) == T_${up(t)} ? ${v} : `).join('');
+  w(`#define DEF_STEREO(t) (${TYPE_ORDER.filter((t) => DEFS[t].stereo).map((t) => `(t) == T_${up(t)}`).join(' || ')})   /* a type that can run in stereo mode */`);
+  w(`#define DEF_RIN(t) (${of(Object.entries(RIGHT_IN).map(([t, r]) => [t, `${up(t)}_I_${up(r)}`]))}-1)   /* the right input of the pair whose left is input 0, -1 none */`);
+  w(`#define DEF_ROUT(t) (${of(Object.entries(RIGHT_OUT).map(([t, r]) => [t, `${up(t)}_O_${up(r)}`]))}-1)   /* the right output of the pair whose left is output 0, -1 none */`);
   w();
 }
 w(`#define DELAY_NDIV ${DELAY_DIVS.length}`);

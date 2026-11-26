@@ -7,9 +7,9 @@ import { attachMidi } from './input';
 import { legacyFactoryStore } from './pattern-store';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
-import { deviceBudget, encodePatch, FLAG_PATTERN_ORIGINS, FLAG_RACK, FORMAT_RACK, VERSION } from './patchbin';
+import { deviceBudget, encodePatch, FLAG_PATTERN_ORIGINS, FLAG_RACK, FORMAT_1_27, FORMAT_RACK, VERSION } from './patchbin';
 import { factoryWithPatterns, FM1_PRESETS } from './presets';
-import { CMD, frame, liveFrame, PADS_CMD, parse } from './protocol';
+import { CMD, FEATURE5_FORMAT_67, FEATURE_ARMS, FEATURE_WIDE_ARMS, frame, liveFrame, PADS_CMD, parse } from './protocol';
 import { subtractiveSaw } from './test-patches';
 import { withFxBus } from './factory-bank';
 import { convertLegacyBus } from './fx-drawer';
@@ -338,6 +338,46 @@ describe('DeviceLink.connect', () => {
       const sent = out.sent.length;
       await expect(link.uploadSlotBin(0, 'FX', bin)).rejects.toThrow();
       expect(out.sent).toHaveLength(sent);
+    });
+  });
+  it('refuses a format-67 patch (more than 128 modules, #1286) on firmware without INFO byte 25 bit 4, before sending any patch data', async () => {
+    const inp = port('i', 'FM-1'), out = port('o', 'FM-1');
+    answering(out, inp);
+    const link = new DeviceLink();
+    await withMidi([inp], [out], async () => {
+      await link.connect();
+      const p = newPatch(DEFS);
+      const o = p.modules.find((m) => m.type === 'output')!;
+      let prev = -1;
+      for (let k = 0; k < 140; k++) {
+        const m = addModule(p, DEFS.mixer, 800, 40 * k);
+        if (prev >= 0) connect(p, DEFS, { module: prev, port: 'out' }, { module: m.id, port: 'in1' });
+        prev = m.id;
+      }
+      connect(p, DEFS, { module: prev, port: 'out' }, { module: o.id, port: 'l' });
+      const bin = encodePatch(p, true);
+      expect(bin[1]).toBe(FORMAT_1_27);
+      link.info!.patchFormats = { min: 31, max: FORMAT_1_27 };
+      const sent = out.sent.length;
+      await expect(link.uploadSlotBin(0, 'Big', bin)).rejects.toThrow(/Update the FM-1/);
+      expect(out.sent).toHaveLength(sent);
+    });
+  });
+  it('sends ARMS as 2, 4 or 8 words by the firmware\'s feature bits (#721, #1286)', async () => {
+    const inp = port('i', 'FM-1'), out = port('o', 'FM-1');
+    answering(out, inp);
+    const link = new DeviceLink();
+    await withMidi([inp], [out], async () => {
+      await link.connect();
+      const words = [1, 2, 3, 4, 5, 6, 7, 8];
+      const lens: number[] = [];
+      for (const [f, f25] of [[FEATURE_ARMS, 0], [FEATURE_ARMS | FEATURE_WIDE_ARMS, 0], [FEATURE_ARMS | FEATURE_WIDE_ARMS, FEATURE5_FORMAT_67]]) {
+        link.info!.features = f;
+        link.info!.features25 = f25;
+        link.arms(words);
+        lens.push(parse(out.sent[out.sent.length - 1])!.payload.length);
+      }
+      expect(lens).toEqual([8, 16, 32]);
     });
   });
   it.each(['slot', 'upload'])('discards old patch snapshot indices at the %s boundary', async (boundary) => {

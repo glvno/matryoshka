@@ -1,7 +1,7 @@
 import { keyRouteError } from './key-routing';
 // SPDX-License-Identifier: GPL-3.0-only
 import type { AssemblyInst } from './assembly';
-import { migratePatchParts, migrateVoicing } from './poly';
+import { migratePatchParts, migrateVoicing, polyOfModule } from './poly';
 import { migrateKnobs } from './knob-migrate';
 import { fixLocks, fixNotes, fixPatterns, fixSeq, migrateSteps, type Pattern, type SeqState, type StepLock, type StepNote } from './track';
 import { fixMidiLearn, type MidiBinding } from './midi-learn';
@@ -150,6 +150,8 @@ export interface ModuleDef {
   paramInputs?: boolean;
   /** the input a bypassed module passes to all of its outputs; default: the input called `in`, or none (the outputs are silent) */
   thru?: string;
+  /** stereo mode is offered (#1141): the module may run as two copies, L and R (ModuleInst.stereo) */
+  stereo?: true;
   /**
    * Displays (the Scope's screen, an envelope's shape): editor-only entries a card draws and an assembly card can show
    * like a parameter (ParamRef.param names one), but not parameters: no value, never in `params`, so the engines, the
@@ -177,6 +179,9 @@ export interface Endpoint {
 export interface Cable {
   from: Endpoint; // an output
   to: Endpoint; // an input
+  /** a side cable (#1141, format 67): it carries only that side of a stereo source, or feeds only that copy of a stereo
+   *  module; ignored between mono jacks. Only an FX drawer's chain (fx-drawer.ts rewire) makes them */
+  side?: 'l' | 'r';
 }
 
 export interface ModuleInst {
@@ -193,6 +198,9 @@ export interface ModuleInst {
   map?: Record<Source, string[]>;
   /** bypassed: the module does not run; its outputs carry its through input (thruInput) or silence. Not on the panel or the output. */
   bypass?: boolean;
+  /** stereo mode (#1141, format 67): an eligible type (ModuleDef.stereo) runs as two copies, L and R, with one set of
+   *  parameters; ignored inside a poly assembly. Editor only: the FM-1 shows it, never changes it; no preset carries it */
+  stereo?: true;
   /** the parameters Mutate and Randomize leave alone (their ⋮ menus' Lock, #944); editor only, the FM-1 ignores it */
   mutateLock?: string[];
   /** the whole card is locked: Mutate and Randomize leave every parameter of it alone (#944); editor only */
@@ -495,11 +503,13 @@ export function morphValue(pd: ParamDef, a: number, b: number, t: number): numbe
 }
 
 /** the FM-1's module limit per patch (engine.h ENG_MAX_MODULES): the budget meter counts against it, the editor does not
- * stop at it. 128 since 1.11 (#721, D-256); firmware before it takes 64 (MODULES_1_10) */
-export const MAX_MODULES = 128;
+ * stop at it. 254 since 1.27 (#1286), 128 since 1.11 (#721, D-256); firmware before it takes 64 (MODULES_1_10) */
+export const MAX_MODULES = 254;
 /** the module limit of firmware before 1.11: a patch with more is written in FORMAT_1_11 (patchbin.ts formatOf), so an FM-1
  * with older firmware is told to update */
 export const MODULES_1_10 = 64;
+/** the module limit of firmware before 1.27: a patch with more is written in FORMAT_1_27 (patchbin.ts uses127) */
+export const MODULES_1_26 = 128;
 /** the words of an armed set (arm.ts armMask; engine.h ENG_MSET_WORDS, keep in step): 32 modules each, the last one partly */
 export const ARM_WORDS = Math.ceil(MAX_MODULES / 32);
 
@@ -750,8 +760,8 @@ export function removeModule(p: Patch, id: number): void {
   for (const k of SIDE_KEYS) if (p[k]?.module === id) delete p[k];
 }
 
-/** Connect an output to an input. Several cables into one input are summed. Returns false if rejected. */
-export function connect(p: Patch, defs: Record<string, ModuleDef>, from: Endpoint, to: Endpoint): boolean {
+/** Connect an output to an input (`side`: a side cable, Cable.side). Several cables into one input are summed. Returns false if rejected. */
+export function connect(p: Patch, defs: Record<string, ModuleDef>, from: Endpoint, to: Endpoint, side?: Cable['side']): boolean {
   const mf = p.modules.find((m) => m.id === from.module);
   const mt = p.modules.find((m) => m.id === to.module);
   if (!mf || !mt || mf.id === mt.id) return false;
@@ -760,7 +770,7 @@ export function connect(p: Patch, defs: Record<string, ModuleDef>, from: Endpoin
   if (p.cables.some((c) => sameEnd(c.from, from) && sameEnd(c.to, to))) return false;
   if (!kindsFit(defs, mf.type, from.port, mt.type, to.port)) return false;
   if (from.port === 'keys' && keyRouteError(p, { from, to })) return false;
-  p.cables.push({ from: { ...from }, to: { ...to } });
+  p.cables.push({ from: { ...from }, to: { ...to }, ...(side ? { side } : {}) });
   return true;
 }
 
@@ -927,6 +937,7 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
     if (!defs[mt.type].inputs.some((i) => i.name === c.to.port)) throw new Error(`no input "${c.to.port}" on ${mt.type}`);
   }
   p.cables = p.cables.filter((c) => kindsFit(defs, byId.get(c.from.module)!.type, c.from.port, byId.get(c.to.module)!.type, c.to.port));
+  for (const c of p.cables) if (c.side !== 'l' && c.side !== 'r') delete c.side;   // (#1141)
   const routingError = keyRouteError(p as Patch);
   if (routingError) throw new Error(routingError);
   convertLegacyBus(p as Patch, defs); // a D-1010 master FX bus becomes an FX drawer (fx-legacy.ts); nothing that plays changes
@@ -951,6 +962,8 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
   for (const a of p.assemblies ?? []) if (a && a.mutateLockAll !== true) delete a.mutateLockAll;
   if (!hasMorph(p as Patch) || typeof p.morphName !== 'string') delete p.morphName;
   for (const k of SIDE_KEYS) if (!sideSourceOk(p as Patch, k, defs)) delete p[k];
+  // stereo mode (#1141): an eligible type outside every poly assembly (C5), else the module runs mono
+  for (const m of p.modules) if (m.stereo !== true || !defs[m.type].stereo || polyOfModule(p as Patch, m.id)) delete m.stereo;
   if (!Number.isInteger(p.octave) || p.octave === 0 || p.octave! < OCTAVE_MIN || p.octave! > OCTAVE_MAX) delete p.octave;
   const v = p.view as { zoom?: unknown; x?: unknown; y?: unknown } | undefined;
   if (v && typeof v === 'object' && [v.zoom, v.x, v.y].every((n) => typeof n === 'number' && Number.isFinite(n)) && (v.zoom as number) > 0)

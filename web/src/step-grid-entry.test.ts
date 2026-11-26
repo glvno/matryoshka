@@ -26,7 +26,7 @@ it('records transformed pitches once on the first root release and ignores contr
   expect(m.notes?.length).toBe(6);
 });
 it('a full track never accepts a partial chord', () => {
-  const notes = Array.from({ length: 126 }, (_, note) => ({ at: 1, len: 1, note, vel: 100 }));
+  const notes = Array.from({ length: 254 }, (_, i) => ({ at: 1 + (i >> 7), len: 1, note: i & 127, vel: 100 }));
   expect(chordFits(notes, 0, [{note:60},{note:64}], 16)).toBe(true);
   expect(chordFits(notes, 0, [{note:60},{note:64},{note:67}], 16)).toBe(false);
 });
