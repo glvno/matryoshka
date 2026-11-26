@@ -243,10 +243,11 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_DRUM_BANK: return a->bank != b->bank && a->octave == b->octave && a->seq_pg == b->seq_pg && a->page == b->page;
     case CE_FILL: return a->msg_sum != b->msg_sum && a->page == b->page && a->notes_sum == b->notes_sum && a->mutes == b->mutes
                          && a->params == b->params && !eng_fill_on();   /* (FILL said, and let go with FX; FX's own job not done) */
-    case CE_CHORD_BUTTON: {                             /* (#598) a chord button: its key under the split out, no note played */
+    case CE_CHORD_BUTTON: {                             /* (#598) a chord button: its key under the split out, no note played;
+                                                         * an inversion key (#1311): its key over the split */
         int i, btn = 0;
         for (i = b->mlen; i < a->mlen; i++)
-            btn |= mlog[i][0] == 0x90u && mlog[i][1] >= 53u && mlog[i][1] <= 59u;
+            btn |= mlog[i][0] == 0x90u && ((mlog[i][1] >= 53u && mlog[i][1] <= 59u) || (mlog[i][1] >= 77u && mlog[i][1] <= 79u));
         return btn && (sr_on ? eng_steps_harm((uint32_t)ct_mod) : eng_keys_harm()) >= 0 && !moved;
     }
     case CE_EDITOR: {                                   /* sandbox mode: out as MIDI to the editor, nothing here moved (D-232) */
@@ -442,12 +443,20 @@ static void ct_sandbox(void)
         m1_sandbox(&pg);
     later(500);
 }
+/* every Harmonizer's INVKEYS row on (#1311: its inversion keys) */
+static void ct_inv_on(void)
+{
+    uint32_t i;
+    for (i = 0; i < E.nharm; i++)
+        eng_set_param(E.harm[i].node, HARM_P_INVKEYS, ENG_ONE);
+}
 /* the FM-1 in state s, variant v (0..): 0 when there is no such variant */
 static int ct_enter(uint32_t s, uint32_t v)
 {
-    if ((s == HS_ROLL && v == 2u) || (s == HS_STEP && v == 3u)) {
+    if ((s == HS_ROLL && (v == 2u || v == 4u)) || (s == HS_STEP && (v == 3u || v == 4u))) {   /* (v 4: its inversion keys on) */
         ct_reset();
         if (load_fixture("build/panel-fixtures/route-harm-steps.m1p")) return 0;
+        if (v == 4u) ct_inv_on();
         pv_gen++; pages_ensure(); page = 0;
         ct_seq(0, 0, 1);
         if (s == HS_STEP) { tap(BTN_REC); later(100); }
@@ -473,10 +482,13 @@ static int ct_enter(uint32_t s, uint32_t v)
             later(500);
             return 1;
         }
-        if (v == 3) {                                   /* the keys on a Harmonizer (#598): its chord buttons */
+        if (v == 3 || v == 7) {                         /* the keys on a Harmonizer (#598): its chord buttons; v 7: its inversion
+                                                         * keys on too (#1311) */
             ct_reset();
             if (load_fixture("build/panel-fixtures/harm-side.m1p"))
                 return 0;
+            if (v == 7)
+                ct_inv_on();
             pv_gen++;
             page_show(0);
             screen_patch();
@@ -679,6 +691,10 @@ static void ct_part(const ctl_part_t *p, uint32_t how, int dir, uint32_t hold)
         ct_key(ct_white(CT_STEP + 2), 1);
         ct_key(ct_white(CT_STEP), 0);
         ct_key(ct_white(CT_STEP + 2), 0);
+        break;
+    case CK_TOP:                                        /* (the top key: G5, the 3rd inversion's) */
+        ct_key(26, 1);
+        ct_key(26, 0);
         break;
     }
 }

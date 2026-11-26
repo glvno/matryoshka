@@ -45,7 +45,7 @@ describe('format 66 FX rack codec', () => {
     setTarget(p, 'lfo', { module: harm.id });
     setSwitches(p, 'lfo', true);
     const bin = encodePatch(p, true);
-    expect(bin[1]).toBe(55);
+    expect(bin[1]).toBe(64);   // (format 55's indicator, written as format 64 at least: a Harmonizer, D-1041)
     expect((bin[6] | bin[7] << 8) & FLAG_RACK).toBe(0);
     setTarget(p, 'lfo', { module: p.modules.find(m => m.type === 'osc')!.id });
     expect(baseFormat(p)).toBeLessThan(55);

@@ -137,7 +137,8 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
             return;
         at += eng_rec_size(pv_bin, at);
     }
-    if (!eng_rec_ok(pv_bin, pv_len, at) || par >= eng_npar(&DEFS[pv_bin[at] & 0x7Fu], pv_bin[1]) || DEF_FIXED(pv_bin[at] & 0x7Fu, par))
+    if (!eng_rec_ok(pv_bin, pv_len, at) || DEF_FIXED(pv_bin[at] & 0x7Fu, par))   /* (a parameter appended after the binary's
+                                                     * format: eng_rec_grow raises the binary, or refuses) */
         return;
     if (par >= eng_rec_npar(pv_bin, at) && (pv_bin[1] < ENG_COUNTED || eng_rec_grow(pv_bin, &pv_len, sizeof pv_bin, mod, par + 1u)))
         return;
@@ -4900,6 +4901,99 @@ int main(void)
         check("moving SPLIT: the second key still holds the same chord button", E.harm[0].down == (1u << 1));
         eng_note_off(55, 1);
         check("moving SPLIT: the last key releases its original chord button", E.harm[0].down == 0);
+        {   /* the inversion keys (#1311, owner 2026-11-25): with INVKEYS on, the three highest keys (F5 F#5 G5 at OCT 0) are
+             * the 1st, 2nd and 3rd inversion, at any octave (I2), in place of VOICING (I3), lowest notes up an octave (I4),
+             * the last pressed winning (I5), latched with the chord buttons (I6), the same as MIDI's F5..G5 over a C4 split
+             * (I7); INVKEYS off they play notes */
+            const uint32_t MIN = 1u << 3, MAJ = 1u << 1, SEV = 1u << 4, C4 = 1u << 7, I1 = 1u << 24, I2 = 1u << 25, I3 = 1u << 26;
+            eng_set_param((uint32_t)h, HARM_P_SPLIT, 60 * ENG_ONE);
+            eng_set_param((uint32_t)h, HARM_P_TYPE, 0);     /* (the card's chord none: a key alone plays itself) */
+            octave = 0;
+            panel_keys(I3);
+            check("INVKEYS off (as made, every older patch): G5 plays itself", !strcmp(harm_notes(h), "79") && E.harm[0].down == 0);
+            panel_keys(0);
+            eng_set_param((uint32_t)h, HARM_P_INVKEYS, ENG_ONE);
+            mlen = 0;
+            m0 = mlen;
+            panel_keys(MIN | SEV | I3);
+            panel_keys(MIN | SEV | I3 | C4);
+            check("the owner's Cmin7, 3rd inversion: min + 7 + G5 + C4 plays Bb C Eb G (70 72 75 79), G5 sent as itself, no note of its own",
+                  !strcmp(harm_notes(h), "70 72 75 79") && sent(m0, 0x90u, 79u, 100u));
+            panel_keys(0);
+            check("all up: silent, G5's key let go out", !strcmp(harm_notes(h), "") && sent(m0, 0x80u, 79u, 0u) && E.harm[0].down == 0);
+            panel_keys(MAJ | I3);                           /* (the buttons first: panel_keys takes the keys from the lowest up) */
+            panel_keys(MAJ | I3 | C4);
+            check("I4: a triad's 3rd inversion is root position an octave up (C major: 72 76 79)", !strcmp(harm_notes(h), "72 76 79"));
+            panel_keys(0);
+            octave = -1;
+            mlen = 0;
+            m0 = mlen;
+            panel_keys(MAJ | I1);
+            panel_keys(MAJ | I1 | C4);
+            check("I2: at OCT -1 the top key F is still the 1st inversion (C3 major: 52 55 60), sent as F5",
+                  !strcmp(harm_notes(h), "52 55 60") && sent(m0, 0x90u, 77u, 100u));
+            panel_keys(0);
+            octave = 0;
+            eng_set_param((uint32_t)h, HARM_P_VOICING, -2 * ENG_ONE);
+            panel_keys(MAJ | I2);
+            panel_keys(MAJ | I2 | C4);
+            check("I3: F#5 held sets the 2nd inversion exactly, VOICING -2 aside (67 72 76)", !strcmp(harm_notes(h), "67 72 76"));
+            panel_keys(MAJ);
+            panel_keys(MAJ | C4);
+            check("I3: none held, VOICING applies again (-2: 52 55 60)", !strcmp(harm_notes(h), "52 55 60"));
+            panel_keys(0);
+            eng_set_param((uint32_t)h, HARM_P_VOICING, 0);
+            panel_keys(MAJ | I1);
+            panel_keys(MAJ | I1 | I3);
+            panel_keys(MAJ | I1 | I3 | C4);
+            check("I5: F5 then G5 held, the last pressed wins (3rd: 72 76 79)", !strcmp(harm_notes(h), "72 76 79"));
+            panel_keys(MAJ | I1);
+            panel_keys(MAJ | I1 | C4);
+            check("I5: G5 let go, F5 still held: the 1st (64 67 72)", !strcmp(harm_notes(h), "64 67 72"));
+            panel_keys(0);
+            eng_set_param((uint32_t)h, HARM_P_LOCK, ENG_ONE);
+            panel_keys(MAJ);
+            panel_keys(MAJ | I2);
+            panel_keys(0);
+            panel_keys(C4);
+            check("I6: LOCK on, maj + F#5 pressed together stay latched (C major 2nd inversion: 67 72 76)", !strcmp(harm_notes(h), "67 72 76"));
+            panel_keys(0);
+            panel_keys(MAJ);
+            panel_keys(0);
+            panel_keys(C4);
+            check("I6: maj alone next replaces the latch, the inversion with it (60 64 67)", !strcmp(harm_notes(h), "60 64 67"));
+            panel_keys(0);
+            panel_keys(MAJ);
+            panel_keys(0);
+            eng_set_param((uint32_t)h, HARM_P_LOCK, 0);
+            eng_midi_channel(0);
+            eng_note_on(54, ENG_ONE, 1);
+            eng_note_on(79, ENG_ONE, 1);
+            eng_note_on(60, ENG_ONE, 1);
+            check("I7: from MIDI, F#3 (maj) and G5 held play C4 in the 3rd inversion (72 76 79)", !strcmp(harm_notes(h), "72 76 79"));
+            eng_note_off(60, 1);
+            eng_note_off(79, 1);
+            eng_note_off(54, 1);
+            check("I7: their note-offs let the buttons go", E.harm[0].down == 0 && !strcmp(harm_notes(h), ""));
+            eng_set_param((uint32_t)h, HARM_P_INVKEYS, 0);
+            eng_note_on(79, ENG_ONE, 1);
+            check("INVKEYS off: MIDI's G5 is a root again", !strcmp(harm_notes(h), "79") && E.harm[0].down == 0);
+            eng_note_off(79, 1);
+            {   /* I1: INVKEYS changed on the FM-1 is kept in its copy of the patch: the format 64 binary (a Harmonizer's
+                 * lowest, D-1041) is raised to 68 and its record grows to hold the row; loaded again, the row is on */
+                static uint8_t copy[sizeof pv_bin];
+                uint32_t was = pv_bin[1], n = pv_len;
+                m1_patch_param((uint32_t)h, HARM_P_INVKEYS, ENG_ONE);
+                for (uint32_t i = 0; i < pv_len; i++) copy[i] = pv_bin[i];
+                check("I1: the FM-1's INVKEYS edit raises its copy from format 64 to 68 and is kept",
+                      was == 64u && pv_bin[1] == 68u && pv_len > n && eng_load(copy, pv_len) == 0
+                      && eng_get_param((uint32_t)h, HARM_P_INVKEYS) == ENG_ONE);
+                m1_patch_param((uint32_t)h, HARM_P_INVKEYS, 0);
+                for (uint32_t i = 0; i < pv_len; i++) copy[i] = pv_bin[i];
+                check("I1: and off again, still format 68 (never narrowed back)", pv_bin[1] == 68u && eng_load(copy, pv_len) == 0
+                      && eng_get_param((uint32_t)h, HARM_P_INVKEYS) == 0);
+            }
+        }
         eng_set_bypass((uint32_t)h, 1);
         check("bypassed: the keys reach no Harmonizer (plain notes)", eng_keys_harm() < 0);
         (void)load("808 KIT");
@@ -4946,6 +5040,25 @@ int main(void)
             check("root release commits once, preview independent", sr_k == 1 && sr_notes(mod) == (order ? 1 : 3) && sr_len_at(mod, 0, 60) == 1);
             if (!order) check("printed minor chord remains editable pitches", sr_len_at(mod, 0, 63) == 1 && sr_len_at(mod, 0, 67) == 1 && sr_len_at(mod, 0, 64) == 0);
             check("all audition notes released", seq_aud_count(K_C4) == 0);
+            sr_stop();
+        }
+        {   /* I6 (#1311): an inversion key works in step recording as a chord button does: G5 held with min prints C minor's
+             * 3rd inversion (72 75 79) into the track */
+            panel_keys(0); sr_held = 0; sr_stop();
+            check("inversion capture fixture loads", !load_fixture(fixtures[0]));
+            for (uint32_t i = 0; i < E.nharm; i++) eng_set_param(E.harm[i].node, HARM_P_INVKEYS, ENG_ONE);
+            pv_gen++; pages_ensure(); seq_select(0); page = 0; page_set(PAGE_SEQ); later(1500); octave = 0; panel_held = 0; sb_on = 0;
+            int mod = eng_steps_module(0);
+            sr_empty(mod); sr_preview = 1; sr_start(0, -1);
+            sr_down(3);
+            sr_down(26);
+            check("I6: an inversion key does not enter or advance in step recording", sr_n == 0 && sr_k == 0 && sr_keys == 0);
+            sr_down(K_C4);
+            sr_up(K_C4);
+            check("I6: min + G5 + C4 prints C minor's 3rd inversion (72 75 79)", sr_k == 1 && sr_notes(mod) == 3
+                  && sr_len_at(mod, 0, 72) == 1 && sr_len_at(mod, 0, 75) == 1 && sr_len_at(mod, 0, 79) == 1);
+            sr_up(26);
+            sr_up(3);
             sr_stop();
         }
         panel_keys(0); sr_held = 0; sr_stop();

@@ -84,6 +84,11 @@ static int hc_menu_guide(void) { return menu_tab == MT_GUIDE; }
 static int hc_menu_page(void) { return menu_page() != 0; }
 static int hc_menu_system(void) { return menu_tab == MT_SYSTEM && !menu_page2; }   /* (its first page: UPDATE MODE, FACTORY RESET) */
 static int hc_harm(void) { return (sr_on ? eng_steps_harm((uint32_t)seq_module()) : eng_keys_harm()) >= 0; }   /* (the keys reach a Harmonizer: its chord buttons, #598) */
+static int hc_harm_inv(void)                       /* (... with its INVKEYS row on: its inversion keys, #1311; panel.c chord_button_of) */
+{
+    int h = sr_on ? eng_steps_harm((uint32_t)seq_module()) : eng_keys_harm();
+    return h >= 0 && eng_get_param((uint32_t)h, HARM_P_INVKEYS) >= ENG_ONE / 2;
+}
 static int hc_fx_rack(void) { return fx_rack(); }  /* (FX goes to the rack's effects: panel.c fx_button) */
 static int hc_pattern_store(void) { return pt_on; }   /* (the pattern store is claimed: the SEQ page's pattern rows, #901) */
 static int hc_oct_banks(void) { return drum_bank_oct(); }   /* (OCT picks the drum bank, not the octave: D-520) */

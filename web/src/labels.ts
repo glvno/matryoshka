@@ -38,7 +38,7 @@ const BY_TYPE: Record<string, Record<string, string>> = {
     ...Object.fromEntries([1, 2, 3, 4].flatMap((i) => [1, 2, 3, 4].map((o) => [`i${i}o${o}`, `in ${i} → out ${o}`]))),
   },
   steps: { dir: 'play mode' },
-  harm: { type: 'chord', sus: 'sus / add', ext: '7th / 9th' },
+  harm: { type: 'chord', sus: 'sus / add', ext: '7th / 9th', invkeys: 'inversion keys' },
   lpg: { cv: 'open (cv)' },
   rateenv: { ar: 'attack rate', d1r: 'decay 1 rate', d1l: 'decay 1 level', d2r: 'decay 2 rate', rr: 'release rate', krs: 'key rate scaling' },
   env8: { ...Object.fromEntries(Array.from({ length: 8 }, (_, i) => [[`l${i + 1}`, `level ${i + 1}`], [`r${i + 1}`, `rate ${i + 1}`]]).flat()), sus: 'sustain step', end: 'end step' },

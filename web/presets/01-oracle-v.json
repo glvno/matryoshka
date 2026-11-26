@@ -1724,7 +1724,8 @@
     "ext": 0,
     "voicing": 0,
     "lock": 0,
-    "split": 60
+    "split": 60,
+    "invkeys": 0
    },
    "bypass": true
   },

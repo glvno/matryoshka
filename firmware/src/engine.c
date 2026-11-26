@@ -58,6 +58,9 @@
 #define ENG_MAX_ARPS 2               /* Arpeggiator modules of a patch (a third does not load) */
 #define ENG_MAX_HARMS 2              /* Harmonizer modules of a patch (#598; a third does not load) */
 #define HARM_ZONE 7                  /* the keys under a Harmonizer's split that are its chord buttons (harmonizer.ts HARM_ZONE) */
+#define HARM_INV_KEYS 3              /* its inversion keys (`invkeys` on, #1311): buttons HARM_ZONE.. are the 1st..3rd inversion */
+#define HARM_INV_AT 17               /* the first inversion key, over the split (F5 over C4; harmonizer.ts HARM_INV_AT) */
+#define HARM_ALL (HARM_ZONE + HARM_INV_KEYS)
 #define HARM_ROOTS 10                /* roots a Harmonizer holds at once (a further one is not played) */
 #define HARM_TONES 8                 /* notes of one chord at most (root, 2nd, 3rd, 4th, 5th, 7th, 9th) */
 #define HARM_VOICING 8               /* the voicing's reach, inversions up or down */
@@ -858,10 +861,11 @@ typedef struct {
  * way, latched set and toggle, the buttons' press order (the quality pressed last wins), the roots held (oldest first)
  * with the notes each started, and per note how many held roots sound it */
 typedef struct {
-    uint8_t node, down, gesture, locked, toggle, nroots;
+    uint8_t node, toggle, nroots;
+    uint16_t down, gesture, locked;              /* bit b: button b (the chord buttons, then the inversion keys) */
     uint8_t root[HARM_ROOTS], nnote[HARM_ROOTS], note[HARM_ROOTS][HARM_TONES];
     uint8_t count[128], button_key[128];          /* MIDI note -> press-time button + 1; zero is not a button */
-    uint32_t stamp[HARM_ZONE], clock;
+    uint32_t stamp[HARM_ALL], clock;
 } harm_t;
 
 typedef struct {
@@ -1940,11 +1944,22 @@ int eng_widen(uint8_t *p, uint32_t *len, uint32_t cap)
 void eng_narrow(uint8_t *p, uint32_t *len, uint32_t v)
 {
     uint32_t at;
-    if (*len < 8u || p[0] != 0xA1u || p[1] < ENG_WIDE || v >= ENG_WIDE || v < ENG_SLIM || !(at = eng_sides_at(p, *len, v))
+    if (*len < 8u || p[0] != 0xA1u || p[1] != ENG_WIDE || v >= ENG_WIDE || v < ENG_SLIM || !(at = eng_sides_at(p, *len, v))
         || at >= *len || p[at])
-        return;
+        return;                                  /* (a binary raised past ENG_WIDE holds that format's parameters: kept) */
     eng_cut(p, len, at, 1u);
     p[1] = (uint8_t)v;
+}
+/* a counted binary raised to format v for an FM-1 edit of a parameter appended in v (the Harmonizer's `invkeys`, format 68,
+ * #1311): from ENG_SLIM it is made ENG_WIDE first (eng_widen); the formats after ENG_WIDE only append parameters, so the
+ * format byte is then all that changes. 0 done, -1 an older layout, an FX bus, malformed or too big for cap */
+static int eng_raise(uint8_t *p, uint32_t *len, uint32_t cap, uint32_t v)
+{
+    if (v > ENG_PATCH_VERSION || eng_widen(p, len, cap))
+        return -1;
+    if (p[1] < v)
+        p[1] = (uint8_t)v;
+    return 0;
 }
 
 /* the offset of module `mod`'s record in a counted binary, 0 if malformed */
@@ -1988,8 +2003,8 @@ int eng_rec_grow(uint8_t *p, uint32_t *len, uint32_t cap, uint32_t mod, uint32_t
         return -1;
     d = &DEFS[p[at] & 0x7Fu];
     n = p[at + 1u] & ENG_REC_COUNT;
-    if (npar > eng_npar(d, p[1]))
-        return -1;
+    if (npar > eng_npar(d, p[1]) && (npar > d->npar || !d->psince || eng_raise(p, len, cap, d->psince[npar - 1u])))
+        return -1;                               /* (raised: the record stays where it was, the side section is after the cables) */
     if (npar <= n)
         return 0;
     k = npar - n;
@@ -4252,14 +4267,15 @@ static int harm_locks(const harm_t *h) { return harm_par(h, HARM_P_LOCK, 0, 1) =
 /* the buttons in effect: those held (Lock: of the press under way), else the latched ones (Lock on) */
 static uint32_t harm_buttons(const harm_t *h) { return harm_locks(h) ? (h->down ? h->gesture : h->locked) : h->down; }
 
-/* a chord button pressed or let go (harmonizer.ts harmButton) */
+/* a chord button or an inversion key pressed or let go (harmonizer.ts harmButton; an inversion key goes down only while
+ * the INVKEYS row is on) */
 static void harm_button(harm_t *h, uint32_t b, int down)
 {
-    uint8_t bit = (uint8_t)(1u << b);
-    if (b >= HARM_ZONE)
+    uint16_t bit = (uint16_t)(1u << b);
+    if (b >= HARM_ALL)
         return;
     if (down) {
-        if (h->down & bit)
+        if ((h->down & bit) || (b >= HARM_ZONE && harm_par(h, HARM_P_INVKEYS, 0, 1) != 1))
             return;
         h->stamp[b] = ++h->clock;
         if (!h->down) {
@@ -4273,7 +4289,7 @@ static void harm_button(harm_t *h, uint32_t b, int down)
     } else {
         if (!(h->down & bit))
             return;
-        h->down &= (uint8_t)~bit;
+        h->down &= (uint16_t)~bit;
         if (!h->down && harm_locks(h))
             h->locked = h->toggle ? 0u : h->gesture;
         if (!h->down) {
@@ -4283,11 +4299,12 @@ static void harm_button(harm_t *h, uint32_t b, int down)
     }
 }
 
-/* the chord as intervals over the root, low to high, before the voicing (harmonizer.ts harmIntervals): from the buttons in
- * effect (bit 0 sus2, 1 maj, 2 sus4, 3 min, 4 7, 5 dim, 6 9; the quality pressed last wins), else the card's. Its count */
+/* the chord as intervals over the root, low to high, before the voicing (harmonizer.ts harmIntervals): from the chord
+ * buttons in effect (bit 0 sus2, 1 maj, 2 sus4, 3 min, 4 7, 5 dim, 6 9; the quality pressed last wins), else the card's.
+ * Its count */
 static uint32_t harm_intervals(const harm_t *h, int32_t *t)
 {
-    uint32_t bits = harm_buttons(h), n = 0, i, j, at = 0;
+    uint32_t bits = harm_buttons(h) & ((1u << HARM_ZONE) - 1u), n = 0, i, j, at = 0;
     int32_t type = 0, sus2, sus4, sev, nine, x;
     if (bits) {
         for (i = 0; i < 3u; i++)
@@ -4336,11 +4353,25 @@ static uint32_t harm_intervals(const harm_t *h, int32_t *t)
     return n;
 }
 
+/* the inversion in effect (harmonizer.ts harmVoicing): the inversion key in effect pressed last (1..3) while the INVKEYS
+ * row is on, else `voicing` */
+static int32_t harm_voicing(const harm_t *h)
+{
+    uint32_t bits = harm_par(h, HARM_P_INVKEYS, 0, 1) == 1 ? harm_buttons(h) : 0u, i, at = 0;
+    int32_t v = harm_par(h, HARM_P_VOICING, -HARM_VOICING, HARM_VOICING);
+    for (i = 0; i < HARM_INV_KEYS; i++)
+        if ((bits >> (HARM_ZONE + i) & 1u) && h->stamp[HARM_ZONE + i] > at) {
+            at = h->stamp[HARM_ZONE + i];
+            v = (int32_t)i + 1;
+        }
+    return v;
+}
+
 static const uint8_t HARM_INTERVALS[9] = {0, 2, 3, 4, 5, 6, 7, 10, 14};
 static uint32_t harm_snapshot(const harm_t *h)
 {
     int32_t tones[HARM_TONES];
-    uint32_t n = harm_intervals(h, tones), bits = 0x8000u | (uint32_t)(harm_par(h, HARM_P_VOICING, -8, 8) + 8) << 9;
+    uint32_t n = harm_intervals(h, tones), bits = 0x8000u | (uint32_t)(harm_voicing(h) + 8) << 9;
     for (uint32_t i = 0; i < n; i++) for (uint32_t j = 0; j < 9u; j++) if (tones[i] == HARM_INTERVALS[j]) bits |= 1u << j;
     return bits;
 }
@@ -4349,7 +4380,7 @@ static uint32_t harm_snapshot(const harm_t *h)
  * note an octave up, its steps down the highest an octave down (a chord only, not the root alone). Their count */
 static uint32_t harm_chord_snapshot(const harm_t *h, uint32_t root, uint8_t *out, uint32_t snapshot)
 {
-    int32_t t[HARM_TONES], v = harm_par(h, HARM_P_VOICING, -HARM_VOICING, HARM_VOICING), x;
+    int32_t t[HARM_TONES], v = harm_voicing(h), x;
     uint32_t n = harm_intervals(h, t), i, k = 0;
     if (snapshot) {
         n = 0;
@@ -4454,7 +4485,15 @@ static void harm_root_on_snapshot(harm_t *h, uint32_t key, int32_t vel, uint32_t
 
 static void harm_root_on(harm_t *h, uint32_t key, int32_t vel) { harm_root_on_snapshot(h, key, vel, 0); }
 
-/* a key from Main: one of the seven under the split a button (not from the FM-1's keys: harm_raw), else a root */
+/* the button note is to h (harmonizer.ts harmButtonOf): one of the seven under the split a chord button (0..6), with the
+ * inversion keys on one of the three at split + HARM_INV_AT an inversion key (7..9); -1 a root */
+static int32_t harm_button_of(const harm_t *h, uint32_t note)
+{
+    int32_t split = harm_par(h, HARM_P_SPLIT, 0, 127), b = (int32_t)note - (split - HARM_ZONE), i = (int32_t)note - (split + HARM_INV_AT);
+    return b >= 0 && b < HARM_ZONE ? b : harm_par(h, HARM_P_INVKEYS, 0, 1) == 1 && i >= 0 && i < HARM_INV_KEYS ? HARM_ZONE + i : -1;
+}
+
+/* a key from Main: a button (harm_button_of; not from the FM-1's keys: harm_raw), else a root */
 static void harm_key(harm_t *h, uint32_t note, int32_t vel, int down)
 {
     int32_t b;
@@ -4475,8 +4514,8 @@ static void harm_key(harm_t *h, uint32_t note, int32_t vel, int down)
         harm_root_off(h, note);
         return;
     }
-    b = (int32_t)note - (harm_par(h, HARM_P_SPLIT, 0, 127) - HARM_ZONE);
-    if (!harm_raw && b >= 0 && b < HARM_ZONE) {
+    b = harm_raw ? -1 : harm_button_of(h, note);
+    if (b >= 0) {
         harm_root_off(h, note);
         h->button_key[note] = (uint8_t)(b + 1);
         harm_button(h, (uint32_t)b, 1);
@@ -5064,9 +5103,8 @@ static int steps_control(uint32_t track, uint32_t note, int down)
     if (harm_raw) return 0;
     for (i = 0; i < E.nharm; i++) {
         harm_t *h = &E.harm[i];
-        int32_t b = (int32_t)note - (harm_par(h, HARM_P_SPLIT, 0, 127) - HARM_ZONE);
         if (E.node[h->node].bypass || !key_after(h->node, track)) continue;
-        if (h->button_key[note] || (down && b >= 0 && b < HARM_ZONE)) {
+        if (h->button_key[note] || (down && harm_button_of(h, note) >= 0)) {
             harm_key(h, note, 0, down);
             return 1;
         }

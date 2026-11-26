@@ -264,8 +264,8 @@ describe('the FM-1\'s module limit (#721: 128, D-256; #1286: 254)', () => {
 
   it('more than 128 modules is format 67 (FORMAT_1_27); 128 keeps the older format', async () => {
     const { FORMAT_1_27, VERSION } = await import('./patchbin');
-    expect(VERSION).toBe(FORMAT_1_27);
-    expect(cNum('engine.h', 'ENG_PATCH_VERSION')).toBe(FORMAT_1_27);
+    expect(VERSION).toBeGreaterThanOrEqual(FORMAT_1_27);
+    expect(cNum('engine.h', 'ENG_PATCH_VERSION')).toBe(VERSION);
     const chained = (n: number) => {
       const p = linesPatch([]);
       const out = p.modules.find((m) => m.type === 'output')!;

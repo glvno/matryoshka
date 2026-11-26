@@ -4337,6 +4337,21 @@ for (const voicing of [-8, -4, 4, 8]) {
   events[name] = [[0, 'on', 60], [128 * 30, 'off', 60], [128 * 60, 'on', 67], [128 * 90, 'off', 67]];
   ends[name] = 128 * 120;
 }
+// the inversion keys (#1311, format 68): `invkeys` on, voicing -1. From MIDI, min (56) + 7 (57) + G5 (79, the 3rd inversion)
+// play C4's minor seventh as Bb C Eb G (the owner's example); F5 (77) then G5 held: the last pressed wins (3rd), G5 let go:
+// F5's 1st again; nothing held: voicing -1. From the FM-1's keys: maj (cbon 1) and the 2nd inversion (cbon 8) over a root
+// (kon), then voicing -1 after cboff 8. harm-inversion-off: the row off, G5 is a root
+harmVoice('harm-inversion-keys', { invkeys: 1, voicing: -1 });
+events['harm-inversion-keys'] = [[0, 'on', 56], [128 * 1, 'on', 57], [128 * 2, 'on', 79], [128 * 3, 'on', 60], [128 * 25, 'off', 60],
+  [128 * 26, 'off', 79], [128 * 30, 'on', 77], [128 * 31, 'on', 79], [128 * 32, 'on', 62], [128 * 55, 'off', 62], [128 * 56, 'off', 79],
+  [128 * 57, 'on', 64], [128 * 80, 'off', 64], [128 * 81, 'off', 77], [128 * 85, 'on', 65], [128 * 105, 'off', 65], [128 * 106, 'off', 57],
+  [128 * 107, 'off', 56], [128 * 110, 'cbon', 1], [128 * 111, 'cbon', 8], [128 * 112, 'kon', 60], [128 * 135, 'koff', 60],
+  [128 * 136, 'cboff', 8], [128 * 137, 'kon', 60], [128 * 160, 'koff', 60], [128 * 161, 'cboff', 1]];
+ends['harm-inversion-keys'] = 128 * 190;
+harmVoice('harm-inversion-off', { voicing: -1 });
+events['harm-inversion-off'] = [[0, 'on', 54], [128 * 1, 'on', 79], [128 * 25, 'off', 79], [128 * 26, 'cbon', 9], [128 * 27, 'kon', 60],
+  [128 * 50, 'koff', 60], [128 * 51, 'cboff', 9], [128 * 52, 'off', 54]];
+ends['harm-inversion-off'] = 128 * 80;
 
 if (process.argv.includes('--panel-fixtures')) {
   const out = new URL('../../build/panel-fixtures/', import.meta.url);

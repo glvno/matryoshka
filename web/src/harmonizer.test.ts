@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
-import { harmButton, harmChord, harmInit, harmIntervals, harmKey, harmName, HARM_BUTTONS, type HarmParams, type HarmState } from './harmonizer';
+import { harmButton, harmButtonOf, harmChord, harmInit, harmIntervals, harmKey, harmName, HARM_BUTTONS, HARM_ZONE, type HarmParams, type HarmState } from './harmonizer';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
-import { encodePatch, formatOf, FORMAT_1_11, FORMAT_1_12 } from './patchbin';
+import { encodePatch, formatOf, FORMAT_1_11, FORMAT_1_22, FORMAT_1_28 } from './patchbin';
+import { SandboxKeys } from './sandbox-keys';
 import { deviceView, keySource } from './poly';
 import { armable, armMask } from './arm';
 
-const P = (p: Partial<HarmParams> = {}): HarmParams => ({ type: 0, sus: 0, ext: 0, voicing: 0, lock: 0, split: 60, ...p });
+const P = (p: Partial<HarmParams> = {}): HarmParams => ({ type: 0, sus: 0, ext: 0, voicing: 0, lock: 0, split: 60, invkeys: 0, ...p });
 const B = (name: string): number => HARM_BUTTONS.indexOf(name);
 const press = (s: HarmState, p: HarmParams, ...names: string[]): void => names.forEach((n) => harmButton(s, B(n), true, p));
 const lift = (s: HarmState, p: HarmParams, ...names: string[]): void => names.forEach((n) => harmButton(s, B(n), false, p));
@@ -199,17 +200,17 @@ describe('Harmonizer note logic (#598)', () => {
 });
 
 describe('Harmonizer module (#598)', () => {
-  it('is appended after the Matrix, in format 52, between Main and a Voicing', () => {
+  it('is appended after the Matrix, in format 52, between Main and a Voicing; a patch with one is written in format 64 at least (D-1041)', () => {
     const { p, harm, alloc } = harmPatch();
     expect(keySource(p, p.modules.find((m) => m.id === alloc)!)?.id).toBe(harm);
     const view = deviceView(p, true);
     expect(view.groups.find((g) => g.src === harm)).toBeTruthy();
     expect(view.patch.modules.some((m) => m.id === harm)).toBe(true); // (the compile pass keeps it: a group plays it)
-    expect(formatOf(p)).toBe(FORMAT_1_12);
+    expect(formatOf(p)).toBe(FORMAT_1_22);
     p.modules = p.modules.filter((m) => m.type !== 'harm');
     p.cables = p.cables.filter((c) => c.from.module !== harm && c.to.module !== harm);
     expect(formatOf(p)).toBeLessThanOrEqual(FORMAT_1_11); // (without one: an older format)
-    expect(encodePatch(harmPatch().p)[1]).toBe(FORMAT_1_12);
+    expect(encodePatch(harmPatch().p)[1]).toBe(FORMAT_1_22);
   });
 
   it('plays a chord from one key, the buttons under the split, and the card\'s chord', () => {
@@ -262,5 +263,104 @@ describe('Harmonizer module (#598)', () => {
     e.arm([`m${alloc.id}`]);
     e.noteOn(60);
     expect(sounding(e)).toEqual([60, 64, 67]);
+  });
+});
+
+describe('Harmonizer inversion keys (#1311)', () => {
+  const INV = (n: 1 | 2 | 3): number => HARM_ZONE + n - 1;
+  it('the owner\'s example: min + 7 + the 3rd inversion over C plays B♭ C E♭ G', () => {
+    const s = harmInit(), p = P({ invkeys: 1 });
+    press(s, p, 'min', '7');
+    harmButton(s, INV(3), true, p);
+    expect(harmChord(s, 60, p)).toEqual([70, 72, 75, 79]);
+  });
+
+  it('I2 / I7: the three keys at split + 17 (F5 F♯5 G5 over C4) are the inversion keys while the row is on, and follow the split', () => {
+    expect([77, 78, 79].map((n) => harmButtonOf(n, P({ invkeys: 1 })))).toEqual([INV(1), INV(2), INV(3)]);
+    expect([76, 80].map((n) => harmButtonOf(n, P({ invkeys: 1 })))).toEqual([-1, -1]);
+    expect([77, 78, 79].map((n) => harmButtonOf(n, P()))).toEqual([-1, -1, -1]);
+    expect(harmButtonOf(65, P({ invkeys: 1, split: 48 }))).toBe(INV(1));
+  });
+
+  it('I3 / I4: a held inversion key sets the inversion exactly, replacing voicing; inversion n takes the lowest n notes up an octave', () => {
+    const s = harmInit(), p = P({ invkeys: 1, voicing: -2, type: 1 });
+    expect(harmChord(s, 60, p)).toEqual([52, 55, 60]);
+    harmButton(s, INV(2), true, p);
+    expect(harmChord(s, 60, p)).toEqual([67, 72, 76]);
+    harmButton(s, INV(2), false, p);
+    harmButton(s, INV(3), true, p);
+    expect(harmChord(s, 60, p)).toEqual([72, 76, 79]); // (a triad's 3rd: root position an octave up, as voicing +3)
+    expect(harmChord(s, 60, p)).toEqual(harmChord(harmInit(), 60, P({ type: 1, voicing: 3 })));
+    harmButton(s, INV(3), false, p);
+    expect(harmChord(s, 60, p)).toEqual([52, 55, 60]);
+    expect(harmName(s, p)).toBe('MAJ');
+  });
+
+  it('I5: between two held inversion keys the one pressed last wins', () => {
+    const s = harmInit(), p = P({ invkeys: 1, type: 1 });
+    harmButton(s, INV(1), true, p);
+    harmButton(s, INV(3), true, p);
+    expect(harmChord(s, 60, p)).toEqual([72, 76, 79]);
+    harmButton(s, INV(3), false, p);
+    expect(harmChord(s, 60, p)).toEqual([64, 67, 72]);
+  });
+
+  it('I6: latched with the chord buttons pressed together (Lock on), replaced by the next press', () => {
+    const s = harmInit(), p = P({ invkeys: 1, lock: 1 });
+    press(s, p, 'maj');
+    harmButton(s, INV(2), true, p);
+    lift(s, p, 'maj');
+    harmButton(s, INV(2), false, p);
+    expect(harmChord(s, 60, p)).toEqual([67, 72, 76]);
+    press(s, p, 'min');
+    lift(s, p, 'min');
+    expect(harmChord(s, 60, p)).toEqual([60, 63, 67]);
+  });
+
+  it('the row off: an inversion key does nothing, a latched one stops counting', () => {
+    const s = harmInit(), on = P({ invkeys: 1, type: 1 }), off = P({ type: 1 });
+    harmButton(s, INV(1), true, off);
+    expect(s.down).toBe(0);
+    harmButton(s, INV(1), true, on);
+    expect(harmChord(s, 60, on)).toEqual([64, 67, 72]);
+    expect(harmChord(s, 60, off)).toEqual([60, 64, 67]);
+  });
+
+  it('I7: in the engine, MIDI F5..G5 are the inversion keys with the row on, roots with it off; FM-1 buttons 7..9 likewise', () => {
+    const { p, harm } = harmPatch({ invkeys: 1 });
+    const e = new Engine(44100);
+    e.load(p);
+    e.noteOn(56); // min
+    e.noteOn(57); // 7
+    e.noteOn(79); // G5: 3rd inversion
+    e.noteOn(60);
+    expect(sounding(e)).toEqual([70, 72, 75, 79]);
+    for (const n of [60, 79, 57, 56]) e.noteOff(n);
+    expect(sounding(e)).toEqual([]);
+    e.chordButton(B('maj'), true);
+    e.chordButton(INV(1), true);
+    e.noteOn(60, 1, 1, true);
+    expect(sounding(e)).toEqual([64, 67, 72]);
+    e.noteOff(60, 1, true);
+    e.chordButton(INV(1), false);
+    e.chordButton(B('maj'), false);
+    p.modules.find((m) => m.id === harm)!.params.invkeys = 0;
+    e.load(p);
+    e.noteOn(79);
+    expect(sounding(e)).toEqual([79]);
+  });
+
+  it('is saved as format 68 only while on; off, the patch keeps its older format', () => {
+    expect(formatOf(harmPatch().p)).toBe(FORMAT_1_22);
+    expect(formatOf(harmPatch({ invkeys: 1 }).p)).toBe(FORMAT_1_28);
+    expect(encodePatch(harmPatch({ invkeys: 1 }).p)[1]).toBe(FORMAT_1_28);
+  });
+
+  it('in sandbox mode the FM-1\'s three highest keys go to the editor as the inversion keys while the row is on', () => {
+    const keys = new SandboxKeys();
+    expect(keys.route({ t: 'on', note: 79, vel: 1 }, harmPatch({ invkeys: 1 }).p, [], 0)).toEqual([{ t: 'chord', button: INV(3), down: true }]);
+    expect(keys.route({ t: 'off', note: 79 }, harmPatch({ invkeys: 1 }).p, [], 0)).toEqual([{ t: 'chord', button: INV(3), down: false }]);
+    expect(keys.route({ t: 'on', note: 65, vel: 1 }, harmPatch({ invkeys: 1 }).p, [], -1)).toEqual([{ t: 'chord', button: INV(1), down: true }]); // (F4 at OCT -1: the top key F)
+    expect(keys.route({ t: 'on', note: 79, vel: 1 }, harmPatch().p, [], 0)).toEqual([{ t: 'on', note: 79, vel: 1, root: true }]);
   });
 });
