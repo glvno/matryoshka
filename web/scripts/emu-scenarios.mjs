@@ -3367,6 +3367,102 @@ async function main() {
       await page.evaluate(() => JSON.stringify({ palette: localStorage.getItem('matryoshka.palette'), copies: localStorage.getItem('matryoshka.palette-copies') }))
         .then((s) => writeFileSync(join(OUT, 'palette-kept.json'), s)).catch(() => {});
     },
+    // 1.28.1 (#1327, D-605): a slot this browser has no copy of opens from the FM-1. The factory Hera 6 stored on the FM-1
+    // under another name (no saved patch, factory patch or kept copy has its name and length) is dragged from the Library's
+    // FM-1 column onto an empty chip; HOME + its black key on the FM-1 switches to it: under Live the editor reads the slot
+    // back (SLOT_GET, palette.ts follow → bank.ts readFm1Slot), its assemblies rebuilt, Live on, nothing sent back. A row of
+    // the rebuilt Hera 6 card turned in the editor then goes to the FM-1 as a PARAM, no upload, and the FM-1 plays it
+    async openFromFm1() {
+      const NAME = 'T1327 READ';   // (whole in the LCD's footer, which cuts a longer name)
+      const pal = async () => (await T()).palette;
+      const statusText = () => page.evaluate(() => document.getElementById('audio-status')?.textContent ?? '');
+      const sentSince = (t) => page.evaluate((t0) => window.__sent.filter((s) => s[0] >= t0).map((s) => s[1]), t);
+      const now = () => page.evaluate(() => Math.round(performance.now()));
+      const hex = (s) => s.map((c) => c.toString(16)).join(' ');
+      await check('open from FM-1: Init opens, synced', await openSynced('Init'));
+      await check('open from FM-1: the chips are live (an FM-1 that keeps a palette and sends slots back)', !!(await until(async () => (await pal())?.linked, 4000)));
+      const slots = await page.evaluate(() => window.__m1test.slots());
+      const slot = slots.findIndex((s) => !s.used), pos = (await pal()).chips.findIndex((c) => c.state === 'empty');
+      if (slot < 0 || pos < 0) return skip('open from FM-1: a slot this browser has no copy of opens from the FM-1', slot < 0 ? 'the bank has no empty slot' : 'the palette has no empty position');
+      // (the factory Hera 6 as the editor encodes it for this FM-1's buffers: 4 assemblies on the card, Drive, Delay, Reverb)
+      const bin = await page.evaluate(async (alloc) => {
+        const { FM1_PRESETS } = await import('/src/presets.ts');
+        const { encodePatch } = await import('/src/patchbin.ts');
+        return Array.from(encodePatch(FM1_PRESETS['Hera 6'](), false, 0, alloc));
+      }, (await T()).bufferAllocation);
+      try {
+        await page.evaluate(([n, nm, b]) => window.__m1test.storeBin(n, nm, b), [slot, NAME, bin]);
+        await check(`open from FM-1: the factory Hera 6 stored into slot ${slot + 1} as ${NAME}`, await page.evaluate(([n, nm]) => window.__m1test.slots().then((x) => x[n].used && x[n].name === nm), [slot, NAME]));
+        // the FM-1 column read again, its row dragged onto the empty chip (a slot is pointed at as it is: no prompt, no SLOT)
+        await page.click('#view-switch [data-view="library"]');
+        await page.waitForSelector('#lib-patches section[aria-label="FM-1"]', { timeout: 5000 });
+        await page.locator('#lib-patches section[aria-label="FM-1"] button', { hasText: 'Read again' }).click({ timeout: 5000 });
+        const row = await until(() => page.evaluate((nm) => {
+          const s = [...document.querySelectorAll('#lib-patches section[aria-label="FM-1"] .patch-drag-source')].find((e) => e.textContent === nm);
+          if (s) { s.id = 'fm1-read-row'; s.scrollIntoView({ block: 'center' }); }
+          return !!s;
+        }, NAME), 6000);
+        const box = (sel) => page.evaluate((s) => { const b = document.querySelector(s)?.getBoundingClientRect(); return b ? [b.x + b.width / 2, b.y + b.height / 2] : null; }, sel);
+        await sleep(200);   // (the scroll settles before the boxes are measured)
+        const a = row ? await box('#fm1-read-row') : null, b = await box(`.lib-dock .pal-chip[data-pos="${pos}"]`);
+        if (a && b) {
+          await page.mouse.move(a[0], a[1]);
+          await page.mouse.down();
+          for (let i = 1; i <= 8; i++) await page.mouse.move(a[0] + ((b[0] - a[0]) * i) / 8, a[1] + ((b[1] - a[1]) * i) / 8);
+          await page.mouse.up();
+        }
+        await check(`open from FM-1: ${NAME} dragged from the FM-1 column onto chip ${pos + 1}`, !!(await until(async () => (await pal()).chips[pos]?.name === NAME, 8000)), JSON.stringify([a, b, (await pal()).chips[pos], await statusText()]));
+        await shot('open-from-fm1-drop');
+        const c = (await pal()).chips[pos];
+        await check(`open from FM-1: chip ${pos + 1}: no copy of it in this browser, it opens from the FM-1`, c?.state === 'ok' && c.copy === false && c.fromFm1 === true, JSON.stringify(c));
+        await page.click('#view-switch [data-view="patch"]');
+        // HOME + the chip's black key tapped on the FM-1, stopped: it plays the slot at once, and the editor follows
+        const t0 = await now();
+        await emu.key(B.home, true);
+        await emu.elapse(100);
+        await emu.key(BLACK[pos], true);
+        await emu.elapse(150);
+        await emu.key(BLACK[pos], false);
+        await emu.elapse(60);
+        await emu.key(B.home, false);
+        await check(`open from FM-1: HOME + black key ${pos + 1}: the FM-1 plays ${NAME}`, !!(await until(async () => (await pal()).cur === pos, 4000)) && (await emu.waitText(NAME, 3000)));
+        const want = `FM-1 switched to palette ${pos + 1} · ${NAME}: Read from the FM-1 · layout rebuilt · 4 of 4 assemblies recognised`;
+        await check('open from FM-1: the editor reads it back: layout rebuilt, 4 of 4 assemblies recognised', !!(await until(async () => (await statusText()) === want, 8000)), await statusText());
+        const s = await T();
+        await check(`open from FM-1: the editor plays ${NAME}, Live still on, synced`, s.patch === NAME && s.live && s.chip === 'synced', JSON.stringify([s.patch, s.live, s.chip, s.status]));
+        const card = await page.evaluate(async () => {
+          const { devicesOf } = await import('/src/pages.ts');
+          const { DEFS } = await import('/src/modules.ts');
+          const p = JSON.parse(window.__m1test.patchJson()), devs = devicesOf(p, DEFS), top = devs.find((d) => !d.kind);
+          const level = top?.pages.find((g) => g.name === 'vca')?.rows.find((r) => r.label === 'level');
+          return { top: top?.name ?? null, asm: top?.asm !== undefined, cards: devs.filter((d) => d.asm !== undefined).map((d) => d.name), level: level ? { module: level.module, param: level.param, v: p.modules.find((m) => m.id === level.module)?.params[level.param] } : null };
+        });
+        await check('open from FM-1: its top card is the factory assembly Hera 6, then Drive, Delay, Reverb', card.top === 'Hera 6' && card.asm && JSON.stringify(card.cards) === JSON.stringify(['Hera 6', 'Drive', 'Delay', 'Reverb']), JSON.stringify(card));
+        await check('open from FM-1: following sent nothing back (no upload)', !(await sentSince(t0)).some((c) => c === 0x10 || c === 0x11), hex(await sentSince(t0)));
+        // a Live edit on the rebuilt card: Hera 6 > vca > level down to 0 reaches the FM-1 as a PARAM, the slot not uploaded
+        await emu.elapse(1500);
+        const before = await emu.notePeak();
+        await loudCheck(`open from FM-1: ${NAME} sounds on the FM-1`, before, before > QUIET, `peak ${before}`);
+        const t1 = await now();
+        if (card.level) await page.evaluate((l) => window.__m1test.param(l.module, l.param, 0), card.level);
+        await until(async () => (await sentSince(t1)).includes(0x20), 3000);
+        await emu.elapse(600);
+        const sent = await sentSince(t1);
+        await check('open from FM-1: Hera 6 > vca > level to 0 in the editor: a PARAM, no upload', !!card.level && sent.includes(0x20) && !sent.includes(0x10) && !sent.includes(0x11), `sent ${hex(sent)}, row ${JSON.stringify(card.level)}`);
+        await emu.elapse(1500);
+        const after = await emu.notePeak();
+        await check('open from FM-1: the FM-1 plays the edit (its voices\' VCA at 0: silent under a key)', after < Math.max(QUIET, before / 8), `peak ${after}, ${before} before`);
+        const e = await T();
+        await check('open from FM-1: Live still on, synced, on the patch read back', e.live && e.chip === 'synced' && e.patch === NAME, JSON.stringify([e.patch, e.live, e.chip, e.status]));
+        await emu.snap('open-from-fm1');
+        await shot('open-from-fm1');
+      } finally {
+        await page.evaluate((p) => document.querySelector(`#snap-column .pal-chip[data-pos="${p}"] .pal-x`)?.click(), pos).catch(() => {});
+        await until(async () => (await pal())?.chips[pos]?.state === 'empty', 4000);
+        await page.evaluate((n) => window.__m1test.eraseSlot(n), slot).catch((err) => console.log(`  note: slot ${slot + 1} not emptied: ${err.message}`));
+      }
+      await openSynced('Init');
+    },
     async editorIgnore() {   // #702: GLO > SYSTEM > EDITOR at IGNORE: the editor lets go, Connect skips the FM-1 and says why
       // (the rig tools' page connects to an FM-1 at IGNORE all the same: the test rig is set so, D-123)
       if (DEVICE) return skip('editor ignore: the editor leaves an FM-1 at IGNORE alone', 'the test tools\' page connects to it by design (#702)');
