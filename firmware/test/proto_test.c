@@ -1159,7 +1159,8 @@ int main(int argc, char **argv)
         uint8_t *in = slurp(argv[2], &nb), out[M1_PATCH_MAX];
         uint32_t len = (uint32_t)nb;
         FILE *f;
-        CHECK(len <= M1_PATCH_MAX);
+        if (len > M1_PATCH_MAX)
+            return 3;                                           /* (over a slot: no room; --old says it skips the file) */
         memcpy(out, in, len);
         if (!eng_map_edit(out, &len, M1_PATCH_MAX, 1, 0, 0, 0, 255, 1))
             return 3;                                           /* (malformed, or no room) */
