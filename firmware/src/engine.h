@@ -663,16 +663,29 @@ int eng_upgrade(uint8_t *p, uint32_t *len, uint32_t cap);
 /* Rewrite a binary of a format from ENG_SLIM (without a master FX bus before format 66: its flag bit 14 is the FX rack
  * since) in place as format ENG_WIDE, the empty side section after the cables (the editor writes the same patch so):
  * what an FM-1 edit needs for a pattern past ENG_NOTES_1_26 words or a link of pattern 1 (#1292). *len grows by 1, up to
- * cap; 0 = done or already ENG_WIDE, -1 older, with an FX bus, malformed or too big (left as it was). eng_narrow: the
- * other way, back to format v (ENG_SLIM..ENG_WIDE - 1), when the side section is empty (else left as it is) */
+ * cap; 0 = done or already ENG_WIDE, -1 older, with an FX bus, malformed or too big (left as it was). eng_can_wide: its
+ * format allows it (ENG_WIDE already, or eng_widen's formats). eng_narrow: the other way, back to format v
+ * (ENG_SLIM..ENG_WIDE - 1), when the side section is empty (else left as it is) */
 int eng_widen(uint8_t *p, uint32_t *len, uint32_t cap);
+static inline int eng_can_wide(const uint8_t *p)
+{
+    return p[1] >= ENG_WIDE || (p[1] >= ENG_SLIM && (p[1] >= 66u || !(p[7] & (ENG_FLAG_FX_BUS >> 8))));
+}
+/* a binary's format lets eng_rec_grow raise it for a parameter appended later: counted, without a master FX bus before
+ * format 66 (one before ENG_SLIM takes SLIM's layout first) */
+static inline int eng_can_raise(const uint8_t *p)
+{
+    return p[1] >= ENG_COUNTED && (p[1] >= 66u || !(p[7] & (ENG_FLAG_FX_BUS >> 8)));
+}
 void eng_narrow(uint8_t *p, uint32_t *len, uint32_t v);
 /* A counted binary's (ENG_COUNTED) record of module `mod` holds at least `npar` parameters (at most its type's): the
  * missing ones go in at their defaults (and its morph B bitmap grows: their B is their A), so an edit of one can be
- * written in place. A parameter appended after the binary's format raises the binary to that format first, from ENG_SLIM
- * on (made ENG_WIDE, then the format byte: the Harmonizer's `invkeys`, format 68, #1311). *len grows, up to cap; 0 = done
- * (or it held them), -1 malformed, not counted, an older layout than ENG_SLIM for an appended parameter, or too big for
- * cap (left as it was, but for a raise already done). eng_narrow never narrows a binary raised past ENG_WIDE. */
+ * written in place. A parameter appended after the binary's format raises the binary to that format first
+ * (eng_can_raise: one before ENG_SLIM takes SLIM's layout, then it is made ENG_WIDE, then the format byte: the
+ * Harmonizer's `invkeys`, format 68, #1311; the FM-1 does not turn a row a binary cannot be raised for: pages_ui.c
+ * row_old). *len grows (or shrinks: SLIM's layout), up to cap; 0 = done (or it held them), -1 malformed, not counted, a
+ * master FX bus for an appended parameter, or too big for cap (left as it was). eng_narrow never narrows a binary raised
+ * past ENG_WIDE. */
 int eng_rec_grow(uint8_t *p, uint32_t *len, uint32_t cap, uint32_t mod, uint32_t npar);
 /* Before parameter `par` of module `mod` (one its record holds: eng_rec_grow first) gets a new A value in a counted
  * binary with a morph B set: a module with a B side whose B set leaves that parameter out (its B is its A) gets its A

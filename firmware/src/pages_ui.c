@@ -177,6 +177,22 @@ static int row_fixed(uint32_t m, uint32_t j)
     ui_msg("SET IN THE EDITOR", 1200);
     return 1;
 }
+/* a row whose parameter came in a later format than the running counted binary's (defs.h psince: the Harmonizer's INVKEYS,
+ * format 68), when the binary cannot be raised to it (engine.h eng_can_raise: a master FX bus before format 66), does not
+ * turn here, as SAVE could not keep it (D-1041): the editor writes it (`say`: in the bar) */
+static int row_old(uint32_t m, uint32_t j, int say)
+{
+    uint32_t len;
+    const uint8_t *p = pages_src(&len);
+    int t = eng_type(m);
+    if (t < 0 || !p || len < 8u || !DEFS[t].psince || j >= DEFS[t].npar)
+        return 0;
+    if (p[1] >= DEFS[t].psince[j] || p[1] < ENG_COUNTED || eng_can_raise(p))
+        return 0;
+    if (say)
+        ui_msg(MSG_OLD_ROW, 1200);
+    return 1;
+}
 
 /* a row a cable's macro range sets (#1202 K1, eng_set_by) does not turn here: SET BY and the source's name, the bar's 26
  * characters: its device's name when it is a device, else the label of a row of its own (an assembly's PRE-SCALE), else the
@@ -749,7 +765,7 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, int fine, uint32_t *
         *v = clampi(poly_value(m, j & 0x7Fu) + (clicks > 0 ? 1 : -1), (j & 0x7Fu) == 0u ? 1 : 0, poly_top(pg, k));
         return 1;
     }
-    if (row_fixed(m, j) || row_set_by(m, j))
+    if (row_fixed(m, j) || row_set_by(m, j) || row_old(m, j, 1))
         return -1;
     d = &DEFS[eng_type(m)];
     lag_note(k, m, j);                                  /* (the engine runs with it from its next block) */
@@ -817,7 +833,8 @@ static int row_set_unit(const ppage_t *pg, uint32_t k, int32_t u, uint32_t *mod,
         *v = lo + (int32_t)((((int64_t)u * (hi - lo)) + 32768) >> 16);
         return 1;
     }
-    if (eng_type(m) >= 0 && DEF_FIXED((uint32_t)eng_type(m), j))   /* (MIDI CC: no message, the editor's knob says it) */
+    if (eng_type(m) >= 0 && (DEF_FIXED((uint32_t)eng_type(m), j) || row_old(m, j, 0)))   /* (MIDI CC: no message, the
+                                                     * editor's knob says it) */
         return -1;
     d = &DEFS[eng_type(m)];
     if (d->pchoice && d->pchoice[j]) {
@@ -2997,8 +3014,8 @@ static void pb_param(dp_at_t *s, uint32_t mod, uint32_t par, int32_t v)
     uint32_t at = pb_record(s, mod);
     if (ds_tempo_row(s, mod, par) || !at || DEF_FIXED(p[at] & 0x7Fu, par))
         return;
-    if (par >= eng_rec_npar(p, at) && (p[1] < ENG_COUNTED || eng_rec_grow(p, s->len, s->cap, mod, par + 1u)))
-        return;
+    if (par >= eng_rec_npar(p, at) && (p[1] < ENG_COUNTED || eng_rec_grow(p, s->len, s->cap, mod, par + 1u) || !(at = pb_record(s, mod))))
+        return;                                         /* (a raise to SLIM's layout moves the record: found again) */
     if (eng_b_keep(p, s->len, s->cap, mod, par))
         return;
     at += eng_rec_head(p[1]) + 4u * par;

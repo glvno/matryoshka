@@ -109,7 +109,7 @@ import { inlineWordmarks } from './brand';
 import { clipText, parseClip, type Clip } from './clipboard';
 import { isGlobalTempo, patchTempo, readTempo, tempo, TEMPO_KEY, tempoNow } from './tempo';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
-import { binaryPage, deviceBudget, editorPage, encodePatch, kb, linesAdvice, overText, POLY_ROW, POLY_ROW_PARAMS, SANITY_CAPS, toQ16, type BudgetStore } from './patchbin';
+import { binaryPage, deviceBudget, editorPage, encodePatch, kb, linesAdvice, overText, POLY_ROW, POLY_ROW_PARAMS, SANITY_CAPS, SLIM, toQ16, type BudgetStore } from './patchbin';
 import { UploadGate } from './upload-gate';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
@@ -1119,6 +1119,20 @@ const editor = new Editor($('canvas'), firstPatch, {
       const was = fitsDevice;
       showBudget();
       if (!was && fitsDevice && live() && !fromDevice) queueUpload();
+    }
+    // a parameter appended in a format from SLIM on (ParamDef.since: the Harmonizer's `invkeys`, format 68) past the format
+    // of the FM-1's copy: when the patch now encodes in another format, the FM-1 takes the whole patch again, as it cannot
+    // raise every older copy itself (D-1041)
+    const held = uploadGate.format;
+    if (pd?.since !== undefined && pd.since >= SLIM && held !== undefined && pd.since > held && live() && !fromDevice) {
+      let v: number | undefined;
+      try { v = device.encodeFor(editor.patch)[1]; } catch { /* over the budget: sendPatch says so */ }
+      if (v !== held) {
+        if (!fromEmu) emuParam(id, name, value);
+        uploadGate.forget();
+        queueUpload();
+        return;
+      }
     }
     if (!fromEmu) emuParam(id, name, value);
     if (fromDevice) return;

@@ -370,9 +370,11 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
                                                               * patch from the editor changes it, so a stored patch always fits) */
         return;
     if (par >= eng_rec_npar(m1_cur, at)) {                   /* a counted record that leaves it out (at its default) grows to
-                                                              * hold it; an older format's record without it: m1_set_current
-                                                              * upgrades the binary, unless it would not fit */
-        if (m1_cur[1] < ENG_COUNTED || eng_rec_grow(m1_cur, &m1_cur_len, M1_PATCH_MAX, mod, par + 1u))
+                                                              * hold it (one in a later format raises the binary, eng_rec_grow:
+                                                              * SLIM's layout moves the record); an older format's record
+                                                              * without it: m1_set_current upgrades the binary, unless it would
+                                                              * not fit */
+        if (m1_cur[1] < ENG_COUNTED || eng_rec_grow(m1_cur, &m1_cur_len, M1_PATCH_MAX, mod, par + 1u) || !(at = m1_record(mod)))
             return;
     }
     if (eng_b_keep(m1_cur, &m1_cur_len, M1_PATCH_MAX, mod, par))   /* (a module with a B side whose B set leaves this
@@ -751,10 +753,10 @@ static int m1_steps_size(uint32_t s, uint64_t omit, uint32_t *sec, uint32_t *old
     *n = s == ENG_SEC_NOTES ? eng_notes_record(0, 0) : s == ENG_SEC_PATTERNS ? eng_patterns_record(0, 0) : eng_locks_record(0, 0);
     return 0;
 }
-/* the running binary is ENG_WIDE or eng_widen can make it so (from ENG_SLIM, without a master FX bus before format 66) */
+/* the running binary is ENG_WIDE or eng_widen can make it so (engine.h eng_can_wide) */
 static int m1_can_wide(void)
 {
-    return m1_cur[1] >= ENG_WIDE || (m1_cur[1] >= ENG_SLIM && (m1_cur[1] >= 66u || !(m1_cur[7] & (ENG_FLAG_FX_BUS >> 8))));
+    return eng_can_wide(m1_cur);
 }
 /* the binary must become ENG_WIDE before a Steps section with the omit m1_steps_size set goes in (a pattern of more than
  * ENG_NOTES_1_26 words, #1292): 1 (one byte more: eng_widen), 0 not, -1 its format cannot (m1_can_wide) */

@@ -35,7 +35,7 @@ describe('cable-order harmony', () => {
   it.each([['harm','arp'], ['harm','steps'], ['steps','harm'], ['harm','steps','arp'], ['steps','harm','arp']])('plays %j in both compiler modes', (...chain) => {
     const { p } = fixture(chain);
     for (const compiled of [false, true]) { const e = new Engine(48000); e.load(p, compiled); e.noteOn(60); expect(blocks(e, 30)).toBeGreaterThan(.001); e.noteOff(60); blocks(e, 60); }
-    expect(formatOf(p)).toBe(64); expect(encodePatch(p)[1]).toBe(64);   // (format 53's routes, written as format 64 at least: a Harmonizer, D-1041)
+    expect(formatOf(p)).toBe(53); expect(encodePatch(p)[1]).toBe(53);
   });
   it.each([['harm','steps'], ['steps','harm']])('captures pitches by order %j', (...chain) => {
     const { p, get } = fixture(chain); const e = new Engine(48000); e.load(p);

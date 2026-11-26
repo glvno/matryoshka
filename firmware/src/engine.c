@@ -1933,7 +1933,7 @@ int eng_widen(uint8_t *p, uint32_t *len, uint32_t cap)
     uint32_t at;
     if (*len >= 8u && p[0] == 0xA1u && p[1] >= ENG_WIDE)
         return 0;
-    if (*len < 8u || p[0] != 0xA1u || p[1] < ENG_SLIM || (p[1] < 66u && (p[7] & (ENG_FLAG_FX_BUS >> 8))) || *len + 1u > cap
+    if (*len < 8u || p[0] != 0xA1u || !eng_can_wide(p) || *len + 1u > cap
         || !(at = eng_sides_at(p, *len, p[1])) || at > *len)
         return -1;
     eng_gap(p, len, at, 1u);
@@ -1950,12 +1950,145 @@ void eng_narrow(uint8_t *p, uint32_t *len, uint32_t v)
     eng_cut(p, len, at, 1u);
     p[1] = (uint8_t)v;
 }
+/* the length of a text of at most n bytes, zero padded (a label or a row name before ENG_SLIM) */
+static uint32_t eng_padded_len(const uint8_t *s, uint32_t n)
+{
+    uint32_t k = 0;
+    while (k < n && s[k])
+        k++;
+    return k;
+}
+/* a Drum map row name of ENG_DRUM_NAME bytes, zero padded, is row r's default (DRUM_ROW_NAME) */
+static int eng_name_default(const uint8_t *s, uint32_t r)
+{
+    const uint8_t *d = (const uint8_t *)DRUM_ROW_NAME[r];
+    uint32_t k;
+    for (k = 0; k < ENG_DRUM_NAME && (s[k] || d[k]); k++)
+        if (s[k] != d[k])
+            return 0;
+    return 1;
+}
+static void eng_copy(uint8_t *d, const uint8_t *s, uint32_t n)
+{
+    while (n--)
+        *d++ = *s++;
+}
+/* a counted binary of a format before ENG_SLIM rewritten in place in ENG_SLIM's layout (patchbin.ts SLIM, D-1025), as
+ * the editor writes the same patch in it: the panel labels by their length; the 3-byte cables (ENG_FLAG_CABLES3) grouped
+ * by the module they go into when that is smaller and no module takes more than 15 (cablesGrouped), else 4 bytes each
+ * (the flag cleared); the Drum map row names only off their default (DRUM_ROW_NAME). The same values: it plays the same.
+ * The sections after it are found by their sizes, and no format gate before ENG_SLIM refuses what an older one allowed.
+ * 0 done, -1 malformed or too big for cap (left as it was) */
+static int eng_slim(uint8_t *p, uint32_t *len, uint32_t cap)
+{
+    uint8_t buf[5u + ENG_PANEL_LABELS * (1u + ENG_PANEL_LABEL)], cnt[ENG_MAX_MODULES];
+    uint32_t pan = eng_panel_at(p, *len), cab = eng_records_end(p, *len, 0), ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
+    uint32_t nb = (p[2] + 1u) / 2u, three = p[7] & ENG_FLAG_CABLES3, group = three && nb < 2u * ncab, nam = 0, nm = 0;
+    uint32_t np = 5u, nn = 0, grow = 0, i, r, k, w;
+    if (*len < 8u || p[1] < ENG_COUNTED || p[1] >= ENG_SLIM || !pan || !cab || !eng_cables_to(p, *len, cab))
+        return -1;
+    for (i = 0; i < ENG_PANEL_LABELS; i++)       /* (the sizes first: the labels, the cables, the names) */
+        if ((w = eng_padded_len(p + pan + 4u + i * ENG_PANEL_LABEL, ENG_PANEL_LABEL)))
+            np += 1u + w;
+    for (i = 0; i < p[2]; i++)
+        cnt[i] = 0;
+    for (i = 0; three && i < ncab; i++)
+        if (++cnt[p[cab + 3u * i + 1u]] > 15u)
+            group = 0;
+    if ((p[6] & 128u) && (!(nam = eng_section_at(p, *len, ENG_SEC_NAMES)) || !eng_names_end(p, *len, nam)))
+        return -1;
+    nm = nam ? p[nam] : 0u;
+    for (i = 0; i < nm; i++)
+        for (nn += 2u, r = 0; r < ENG_DRUM_ROWS; r++) {
+            const uint8_t *s = p + nam + 2u + i * (1u + ENG_DRUM_ROWS * ENG_DRUM_NAME) + r * ENG_DRUM_NAME;
+            if (!eng_name_default(s, r))
+                nn += 1u + eng_padded_len(s, ENG_DRUM_NAME);
+        }
+    grow += np > ENG_PANEL_BYTES ? np - ENG_PANEL_BYTES : 0u;
+    grow += three && !group ? ncab : group && nb > ncab ? nb - ncab : 0u;
+    grow += nn > nm * (1u + ENG_DRUM_ROWS * ENG_DRUM_NAME) ? nn - nm * (1u + ENG_DRUM_ROWS * ENG_DRUM_NAME) : 0u;
+    if (*len + grow > cap)
+        return -1;
+    for (i = nm; i-- > 0;) {                     /* the names, the last map first (the offsets before it stay) */
+        uint32_t e = nam + 1u + i * (1u + ENG_DRUM_ROWS * ENG_DRUM_NAME);
+        uint8_t ent[2u + ENG_DRUM_ROWS * (1u + ENG_DRUM_NAME)];
+        ent[0] = p[e];
+        ent[1] = 0;
+        for (k = 2u, r = 0; r < ENG_DRUM_ROWS; r++) {
+            const uint8_t *s = p + e + 1u + r * ENG_DRUM_NAME;
+            if (eng_name_default(s, r))
+                continue;
+            w = eng_padded_len(s, ENG_DRUM_NAME);
+            ent[1] |= (uint8_t)(1u << r);
+            ent[k++] = (uint8_t)w;
+            eng_copy(ent + k, s, w);
+            k += w;
+        }
+        if (k < 1u + ENG_DRUM_ROWS * ENG_DRUM_NAME)
+            eng_cut(p, len, e + k, 1u + ENG_DRUM_ROWS * ENG_DRUM_NAME - k);
+        else
+            eng_gap(p, len, e + 1u + ENG_DRUM_ROWS * ENG_DRUM_NAME, k - (1u + ENG_DRUM_ROWS * ENG_DRUM_NAME));
+        eng_copy(p + e, ent, k);
+    }
+    if (group) {                                 /* the cables by the module they go into, in their order (a stable sort),
+                                                  * then u8 from module, u8 the ports; the counts before them */
+        for (i = 1; i < ncab; i++)
+            for (k = i; k && p[cab + 3u * k - 2u] > p[cab + 3u * k + 1u]; k--)
+                for (r = 0; r < 3u; r++) {
+                    uint8_t t = p[cab + 3u * k - 3u + r];
+                    p[cab + 3u * k - 3u + r] = p[cab + 3u * k + r];
+                    p[cab + 3u * k + r] = t;
+                }
+        for (i = 0; i < ncab; i++) {
+            uint8_t from = p[cab + 3u * i], ports = p[cab + 3u * i + 2u];
+            p[cab + 2u * i] = from;
+            p[cab + 2u * i + 1u] = ports;
+        }
+        eng_cut(p, len, cab + 2u * ncab, ncab);
+        eng_gap(p, len, cab, nb);
+        for (i = 0; i < nb; i++)
+            p[cab + i] = 0;
+        for (i = 0; i < p[2]; i++)
+            p[cab + (i >> 1)] |= (uint8_t)(cnt[i] << (4u * (i & 1u)));
+    } else if (three) {                          /* 4 bytes a cable: from module, its output, to module, its input */
+        eng_gap(p, len, cab + 3u * ncab, ncab);
+        for (i = ncab; i-- > 0;) {
+            uint8_t from = p[cab + 3u * i], to = p[cab + 3u * i + 1u], ports = p[cab + 3u * i + 2u];
+            p[cab + 4u * i] = from;
+            p[cab + 4u * i + 1u] = ports >> 4;
+            p[cab + 4u * i + 2u] = to;
+            p[cab + 4u * i + 3u] = ports & 15u;
+        }
+        p[7] &= (uint8_t)~ENG_FLAG_CABLES3;
+    }
+    buf[0] = p[pan];                             /* the panel: its two masks, the labels it holds, each by its length */
+    buf[1] = p[pan + 1u];
+    buf[2] = p[pan + 2u];
+    buf[3] = p[pan + 3u];
+    buf[4] = 0;
+    for (k = 5u, i = 0; i < ENG_PANEL_LABELS; i++)
+        if ((w = eng_padded_len(p + pan + 4u + i * ENG_PANEL_LABEL, ENG_PANEL_LABEL))) {
+            buf[4] |= (uint8_t)(1u << i);
+            buf[k++] = (uint8_t)w;
+            eng_copy(buf + k, p + pan + 4u + i * ENG_PANEL_LABEL, w);
+            k += w;
+        }
+    if (k < ENG_PANEL_BYTES)
+        eng_cut(p, len, pan + k, ENG_PANEL_BYTES - k);
+    else
+        eng_gap(p, len, pan + ENG_PANEL_BYTES, k - ENG_PANEL_BYTES);
+    memcpy(p + pan, buf, k);
+    p[1] = ENG_SLIM;
+    return 0;
+}
 /* a counted binary raised to format v for an FM-1 edit of a parameter appended in v (the Harmonizer's `invkeys`, format 68,
- * #1311): from ENG_SLIM it is made ENG_WIDE first (eng_widen); the formats after ENG_WIDE only append parameters, so the
- * format byte is then all that changes. 0 done, -1 an older layout, an FX bus, malformed or too big for cap */
+ * #1311): one before ENG_SLIM takes its layout first (eng_slim), then it is made ENG_WIDE (eng_widen); the formats after
+ * ENG_WIDE only append parameters, so the format byte is then all that changes (no type's parameter masks change width
+ * from ENG_COUNTED on: eng_mask_bytes). 0 done, -1 not counted, an FX bus, malformed or too big for cap (left as it was) */
 static int eng_raise(uint8_t *p, uint32_t *len, uint32_t cap, uint32_t v)
 {
-    if (v > ENG_PATCH_VERSION || eng_widen(p, len, cap))
+    if (v > ENG_PATCH_VERSION || !eng_can_raise(p) || (p[1] < ENG_WIDE && *len + 1u > cap)
+        || (p[1] < ENG_SLIM && eng_slim(p, len, cap - 1u)) || eng_widen(p, len, cap))
         return -1;
     if (p[1] < v)
         p[1] = (uint8_t)v;
@@ -2003,17 +2136,24 @@ int eng_rec_grow(uint8_t *p, uint32_t *len, uint32_t cap, uint32_t mod, uint32_t
         return -1;
     d = &DEFS[p[at] & 0x7Fu];
     n = p[at + 1u] & ENG_REC_COUNT;
-    if (npar > eng_npar(d, p[1]) && (npar > d->npar || !d->psince || eng_raise(p, len, cap, d->psince[npar - 1u])))
-        return -1;                               /* (raised: the record stays where it was, the side section is after the cables) */
-    if (npar <= n)
+    if (npar > d->npar)
+        return -1;
+    k = npar > n ? npar - n : 0u;
+    if (!k && npar <= eng_npar(d, p[1]))
         return 0;
-    k = npar - n;
-    bm = eng_b_at(p, *len, mod, &bad);
-    if (bad)
-        return -1;
+    bm = k ? eng_b_at(p, *len, mod, &bad) : (bad = 0, 0u);
     gb = bm ? (npar + 7u) / 8u - (n + 7u) / 8u : 0u;   /* (its B bitmap's bytes: the new parameters' B is their A) */
-    if (*len + 4u * k + gb > cap)
+    if (bad || *len + 4u * k + gb > cap)
         return -1;
+    if (npar > eng_npar(d, p[1])) {              /* (the room for the record's growth kept: a raise is never undone) */
+        if (!d->psince || eng_raise(p, len, cap - 4u * k - gb, d->psince[npar - 1u]) || !(at = eng_rec_at(p, *len, mod)))
+            return -1;
+        bm = k ? eng_b_at(p, *len, mod, &bad) : 0u;   /* (SLIM's panel moved the record, the side section the B set) */
+        if (k && bad)
+            return -1;
+    }
+    if (!k)
+        return 0;
     if (gb) {                                    /* the B set first: it comes after the record */
         eng_gap(p, len, bm + (n + 7u) / 8u, gb);
         for (j = 0; j < gb; j++)

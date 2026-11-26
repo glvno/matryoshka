@@ -4,7 +4,7 @@ import { Engine } from './engine';
 import { harmButton, harmButtonOf, harmChord, harmInit, harmIntervals, harmKey, harmName, HARM_BUTTONS, HARM_ZONE, type HarmParams, type HarmState } from './harmonizer';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
-import { encodePatch, formatOf, FORMAT_1_11, FORMAT_1_22, FORMAT_1_28 } from './patchbin';
+import { encodePatch, formatOf, FORMAT_1_11, FORMAT_1_12, FORMAT_1_28 } from './patchbin';
 import { SandboxKeys } from './sandbox-keys';
 import { deviceView, keySource } from './poly';
 import { armable, armMask } from './arm';
@@ -200,17 +200,17 @@ describe('Harmonizer note logic (#598)', () => {
 });
 
 describe('Harmonizer module (#598)', () => {
-  it('is appended after the Matrix, in format 52, between Main and a Voicing; a patch with one is written in format 64 at least (D-1041)', () => {
+  it('is appended after the Matrix, in format 52, between Main and a Voicing', () => {
     const { p, harm, alloc } = harmPatch();
     expect(keySource(p, p.modules.find((m) => m.id === alloc)!)?.id).toBe(harm);
     const view = deviceView(p, true);
     expect(view.groups.find((g) => g.src === harm)).toBeTruthy();
     expect(view.patch.modules.some((m) => m.id === harm)).toBe(true); // (the compile pass keeps it: a group plays it)
-    expect(formatOf(p)).toBe(FORMAT_1_22);
+    expect(formatOf(p)).toBe(FORMAT_1_12);
     p.modules = p.modules.filter((m) => m.type !== 'harm');
     p.cables = p.cables.filter((c) => c.from.module !== harm && c.to.module !== harm);
     expect(formatOf(p)).toBeLessThanOrEqual(FORMAT_1_11); // (without one: an older format)
-    expect(encodePatch(harmPatch().p)[1]).toBe(FORMAT_1_22);
+    expect(encodePatch(harmPatch().p)[1]).toBe(FORMAT_1_12);
   });
 
   it('plays a chord from one key, the buttons under the split, and the card\'s chord', () => {
@@ -351,7 +351,7 @@ describe('Harmonizer inversion keys (#1311)', () => {
   });
 
   it('is saved as format 68 only while on; off, the patch keeps its older format', () => {
-    expect(formatOf(harmPatch().p)).toBe(FORMAT_1_22);
+    expect(formatOf(harmPatch().p)).toBe(FORMAT_1_12);
     expect(formatOf(harmPatch({ invkeys: 1 }).p)).toBe(FORMAT_1_28);
     expect(encodePatch(harmPatch({ invkeys: 1 }).p)[1]).toBe(FORMAT_1_28);
   });

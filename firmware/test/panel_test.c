@@ -140,8 +140,12 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
     if (!eng_rec_ok(pv_bin, pv_len, at) || DEF_FIXED(pv_bin[at] & 0x7Fu, par))   /* (a parameter appended after the binary's
                                                      * format: eng_rec_grow raises the binary, or refuses) */
         return;
-    if (par >= eng_rec_npar(pv_bin, at) && (pv_bin[1] < ENG_COUNTED || eng_rec_grow(pv_bin, &pv_len, sizeof pv_bin, mod, par + 1u)))
-        return;
+    if (par >= eng_rec_npar(pv_bin, at)) {
+        if (pv_bin[1] < ENG_COUNTED || eng_rec_grow(pv_bin, &pv_len, sizeof pv_bin, mod, par + 1u))
+            return;
+        for (at = eng_records_at(pv_bin, pv_len), i = 0; i < mod; i++)   /* (a raise to SLIM's layout moved the record) */
+            at += eng_rec_size(pv_bin, at);
+    }
     if (eng_b_keep(pv_bin, &pv_len, sizeof pv_bin, mod, par))
         return;
     at += eng_rec_head(pv_bin[1]) + 4u * par;
@@ -4979,23 +4983,69 @@ int main(void)
             eng_note_on(79, ENG_ONE, 1);
             check("INVKEYS off: MIDI's G5 is a root again", !strcmp(harm_notes(h), "79") && E.harm[0].down == 0);
             eng_note_off(79, 1);
-            {   /* I1: INVKEYS changed on the FM-1 is kept in its copy of the patch: the format 64 binary (a Harmonizer's
-                 * lowest, D-1041) is raised to 68 and its record grows to hold the row; loaded again, the row is on */
-                static uint8_t copy[sizeof pv_bin];
-                uint32_t was = pv_bin[1], n = pv_len;
+            {   /* I1 / D-1041: a patch that leaves INVKEYS off keeps its format (this one 52, the Harmonizer's); its row
+                 * turns on the FM-1 all the same. Only a binary eng_rec_grow cannot raise (a master FX bus before format
+                 * 66) keeps the row from turning: the bar says to set it in the editor (a learned or CC control: silently) */
+                uint32_t d, g, k, rk = 0, mo, par, n = pv_len, found = 0, b1 = pv_bin[1], b7 = pv_bin[7];
+                int32_t v = 0;
+                pv_gen++;
+                pages_ensure();
+                for (d = 0; d < pg_ndev && !found; d++)
+                    for (g = pg_dev[d].pg0; g < pg_dev[d].pg0 + pg_dev[d].npg && !found; g++)
+                        for (k = 0; k < pg_page[g].nrows && !found; k++)
+                            if (pg_page[g].mod[k] == (uint32_t)h && pg_page[g].par[k] == HARM_P_INVKEYS) {
+                                found = 1;
+                                rk = k;
+                                pages_focus(d, g - pg_dev[d].pg0);
+                            }
+                check("I1: the Harmonizer's page has INVKEYS; its patch is format 52", found && b1 == 52u);
+                check("I1: on a format 52 patch the row turns on", pages_turn(rk, 1, 0, 0, &mo, &par, &v) == 0 && v == ENG_ONE);
+                pv_bin[1] = 60u;                           /* (the same header as a format 60 binary with a master FX bus) */
+                pv_bin[7] |= (uint8_t)(ENG_FLAG_FX_BUS >> 8);
+                msg_text[0] = 0;
+                check("I1: on a binary with a master FX bus it stays off, the bar says " MSG_OLD_ROW,
+                      pages_turn(rk, 1, 0, 0, &mo, &par, &v) == -1 && !strcmp(msg_text, MSG_OLD_ROW) && str_len(MSG_OLD_ROW) <= 26u);
+                check("I1: nor from MIDI (CC 16..19) there", pages_set_unit(rk, ENG_ONE, &mo, &par, &v) == -1);
                 m1_patch_param((uint32_t)h, HARM_P_INVKEYS, ENG_ONE);
-                for (uint32_t i = 0; i < pv_len; i++) copy[i] = pv_bin[i];
-                check("I1: the FM-1's INVKEYS edit raises its copy from format 64 to 68 and is kept",
-                      was == 64u && pv_bin[1] == 68u && pv_len > n && eng_load(copy, pv_len) == 0
-                      && eng_get_param((uint32_t)h, HARM_P_INVKEYS) == ENG_ONE);
-                m1_patch_param((uint32_t)h, HARM_P_INVKEYS, 0);
-                for (uint32_t i = 0; i < pv_len; i++) copy[i] = pv_bin[i];
-                check("I1: and off again, still format 68 (never narrowed back)", pv_bin[1] == 68u && eng_load(copy, pv_len) == 0
-                      && eng_get_param((uint32_t)h, HARM_P_INVKEYS) == 0);
+                check("I1: nor is the copy changed", pv_len == n && pv_bin[1] == 60u);
+                pv_bin[1] = (uint8_t)b1;
+                pv_bin[7] = (uint8_t)b7;
             }
         }
         eng_set_bypass((uint32_t)h, 1);
         check("bypassed: the keys reach no Harmonizer (plain notes)", eng_keys_harm() < 0);
+        {   /* I1 / D-1041: INVKEYS changed on the FM-1 is kept in its copy: a factory patch with a Harmonizer (format 53, its
+             * cables 3 bytes each, ENG_FLAG_CABLES3) takes format 64's layout (eng_slim), is raised to 68 and its record
+             * grows to hold the row; loaded again, the row is on, and the rest reads the same */
+            static uint8_t copy[sizeof pv_bin];
+            uint32_t was = 0, hn = 0, fp, i;
+            char la[ENG_PANEL_LABELS][ENG_PANEL_LABEL + 1], lb[ENG_PANEL_LABEL + 1];
+            int labels = 1;
+            for (fp = 0; fp < N_PRESETS && (load_at(fp) || !E.nharm); fp++)
+                ;
+            check("I1: a factory patch with a Harmonizer loads", fp < N_PRESETS);
+            if (fp < N_PRESETS) {
+                hn = E.harm[0].node;
+                was = pv_bin[1];
+            }
+            for (i = 0; i < ENG_PANEL_LABELS; i++)
+                (void)eng_panel_label(pv_bin, pv_len, i, la[i]);
+            pv_gen++;
+            pages_ensure();
+            check("I1: its patch (format 53, 3-byte cables) can take INVKEYS on the FM-1", was == 53u
+                  && (pv_bin[7] & ENG_FLAG_CABLES3) && !row_old(hn, HARM_P_INVKEYS, 0));
+            m1_patch_param(hn, HARM_P_INVKEYS, ENG_ONE);
+            for (i = 0; i < pv_len; i++) copy[i] = pv_bin[i];
+            for (i = 0; i < ENG_PANEL_LABELS; i++)
+                labels &= eng_panel_label(copy, pv_len, i, lb) == str_len(la[i]) && !strcmp(la[i], lb);
+            printf("      (%s)\n", patch_label);
+            check("I1: the FM-1's INVKEYS edit raises its copy from format 53 to 68 and is kept, the panel labels the same",
+                  pv_bin[1] == 68u && eng_load(copy, pv_len) == 0 && eng_get_param(hn, HARM_P_INVKEYS) == ENG_ONE && labels);
+            m1_patch_param(hn, HARM_P_INVKEYS, 0);
+            for (i = 0; i < pv_len; i++) copy[i] = pv_bin[i];
+            check("I1: and off again, still format 68 (never narrowed back)", pv_bin[1] == 68u && eng_load(copy, pv_len) == 0
+                  && eng_get_param(hn, HARM_P_INVKEYS) == 0);
+        }
         (void)load("808 KIT");
         pv_gen++;
         page = 0;

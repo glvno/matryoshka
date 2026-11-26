@@ -364,11 +364,9 @@ function uses120(dev: Patch): boolean {
  * it uses one of those types or fits the FM-1's bytes in no older format (layout).
  */
 export const FORMAT_1_22 = 64;
-/** what a patch needs of FORMAT_1_22 (`dev`: its device form): a module of a type added with it (the EQ), or a Harmonizer,
- *  so that an FM-1 edit of its `invkeys` can raise the binary to FORMAT_1_28 (engine.c eng_raise, which needs SLIM's
- *  layout; D-1041) */
+/** what a patch uses of FORMAT_1_22 (`dev`: its device form): a module of a type added with it (the EQ) */
 function uses122(dev: Patch): boolean {
-  return dev.modules.some((m) => (DEFS[m.type]?.since ?? 0) >= FORMAT_1_22 || m.type === 'harm');
+  return dev.modules.some((m) => (DEFS[m.type]?.since ?? 0) >= FORMAT_1_22);
 }
 /**
  * The format of the release after 1.22 (D-1027): the MIDI learn mappings, the binary's last section (mapRecord, #1067).
