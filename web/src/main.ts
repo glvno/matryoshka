@@ -1074,14 +1074,14 @@ const editor = new Editor($('canvas'), firstPatch, {
     queueSave(p);
     showBudget();
     patternsPane?.refresh();
-    if (fromDevice) uploadGate.forget();   // (from the FM-1: P-locks set there, #524; it has them, its bytes are not known)
+    if (fromDevice) uploadGate.changedThere();   // (from the FM-1: P-locks set there, #524; it has them, its bytes are not known)
     else if (live()) structureChanged();
     if (!fromEmu) queueEmu();
     showLearned();
     showPads();   // (the open kit names the rows)
   },
   onAtt(id, index, value) {
-    if (fromDevice) uploadGate.forget();   // (the FM-1 changed its patch itself, or the copy of its panel did: its bytes are not known)
+    if (fromDevice) uploadGate.changedThere();   // (the FM-1 changed its patch itself, or the copy of its panel did: its bytes are not known)
     host.send({ t: 'att', id, index, value });
     queueEmu();
     queueSave(editor.patch);
@@ -1089,7 +1089,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     else if (live()) dirty = true;
   },
   onParam(id, name, value) {
-    if (fromDevice) uploadGate.forget();
+    if (fromDevice) uploadGate.changedThere();
     // Main's tempo while the tempo is global: the patch's own (an undo, A/B) is only saved; the engines, the FM-1 and the
     // FM-1 tab play the global tempo, which tempo.listen sends
     if (isGlobalTempo(editor.patch.modules.find((m) => m.id === id)?.type, name)) return queueSave(editor.patch);
@@ -1107,6 +1107,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     // a parameter set when the patch loads (ParamDef.fixed: a Delay's length, the size of its line) changes the effect
     // memory: the budget again, and the FM-1 takes the whole patch again (it sizes the lines as it loads)
     const pd = DEFS[editor.patch.modules.find((m) => m.id === id)?.type ?? '']?.params.find((q) => q.name === name);
+    if (fromDevice && pd?.since !== undefined) uploadGate.raised(pd.since);   // (set there, it raised its copy, D-1041)
     if (pd?.fixed) {
       showBudget();
       if (live() && !fromDevice) queueUpload();
@@ -1121,8 +1122,9 @@ const editor = new Editor($('canvas'), firstPatch, {
       if (!was && fitsDevice && live() && !fromDevice) queueUpload();
     }
     // a parameter appended in a format from SLIM on (ParamDef.since: the Harmonizer's `invkeys`, format 68) past the format
-    // of the FM-1's copy: when the patch now encodes in another format, or the copy's format is not known (an edit made on
-    // the FM-1 since the upload), the FM-1 takes the whole patch again, as it cannot raise every older copy itself (D-1041)
+    // of the FM-1's copy: when the patch now encodes in another format, or the copy's format is not known (no upload since
+    // the FM-1 was connected or switched patch), the FM-1 takes the whole patch again, as it cannot raise every older copy
+    // itself (D-1041). The FM-1's own edits keep the format known (UploadGate.changedThere, raised)
     const held = uploadGate.format;
     if (pd?.since !== undefined && pd.since >= SLIM && (held === undefined || pd.since > held) && live() && !fromDevice) {
       let v: number | undefined;
@@ -1140,7 +1142,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     else if (live()) dirty = true;
   },
   onTrack(id, notes, pat) {
-    if (fromDevice) uploadGate.forget();
+    if (fromDevice) uploadGate.changedThere();
     host.send({ t: 'track', id, notes, pat });
     if (!fromEmu) queueEmu();
     queueSave(editor.patch);
@@ -1152,7 +1154,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     else if (live()) dirty = true;
   },
   onPattern(pattern, song) {   // (#375) the patch's pattern / song: each track takes it at the end of its pass
-    if (fromDevice) uploadGate.forget();
+    if (fromDevice) uploadGate.changedThere();
     host.send({ t: 'pattern', p: pattern });
     host.send({ t: 'song', n: song });
     patternsPane?.refresh();
@@ -1163,7 +1165,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     else if (live()) dirty = true;
   },
   onSong(k, entries) {
-    if (fromDevice) uploadGate.forget();
+    if (fromDevice) uploadGate.changedThere();
     host.send({ t: 'songs', songs: editor.songs() });
     if (!fromEmu) queueEmu();
     queueSave(editor.patch);
@@ -1194,7 +1196,7 @@ const editor = new Editor($('canvas'), firstPatch, {
   onMute: muteTrack,
   onFill: (on) => host.send({ t: 'fill', on }),
   onBypass(id, on) {
-    if (fromDevice) uploadGate.forget();
+    if (fromDevice) uploadGate.changedThere();
     if (chainHelpers(editor.patch).has(id)) { queueSave(editor.patch); return; }   // (an effect's helper: its switch leaves it running)
     host.send({ t: 'bypass', id, on });
     queueEmu();
@@ -1204,7 +1206,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     else if (live()) dirty = true;
   },
   onRange(id, index, name, range) {
-    if (fromDevice) uploadGate.forget();
+    if (fromDevice) uploadGate.changedThere();
     host.send({ t: 'range', id, index, name, range });
     queueEmu();
     queueSave(editor.patch);
