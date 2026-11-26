@@ -2077,7 +2077,7 @@ static int eng_slim(uint8_t *p, uint32_t *len, uint32_t cap)
         eng_cut(p, len, pan + k, ENG_PANEL_BYTES - k);
     else
         eng_gap(p, len, pan + ENG_PANEL_BYTES, k - ENG_PANEL_BYTES);
-    memcpy(p + pan, buf, k);
+    eng_copy(p + pan, buf, k);
     p[1] = ENG_SLIM;
     return 0;
 }
