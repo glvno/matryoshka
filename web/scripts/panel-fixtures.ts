@@ -6,12 +6,12 @@
 import { writeFileSync } from 'node:fs';
 import { encodePatch } from '../src/patchbin';
 import { DEFS } from '../src/modules';
-import { connect, newPatch, type Patch } from '../src/patch';
+import { addModule, connect, newPatch, type Endpoint, type Patch } from '../src/patch';
 import { insertAssembly, type AssemblyInst } from '../src/assembly';
 import { FACTORY } from '../src/assemblies';
 import { wireEngine } from '../src/engines';
 import { setKind, setSwitches, setTarget } from '../src/buttons';
-import { addDrawer, insertEffect } from '../src/fx-drawer';
+import { addDrawer, EFFECT_CATALOG, insertEffect, takeOut } from '../src/fx-drawer';
 
 /** a factory instrument, its keys from Main (its audio into the Output when nothing feeds it yet) */
 function instrument(p: Patch, name: string, x: number): AssemblyInst {
@@ -64,5 +64,30 @@ export function writeFxPanelFixtures(out: URL): void {
     setTarget(p, 'fx', { asm: a.id });
     setSwitches(p, 'fx', true);
     write('fx-own', p);
+  }
+  {
+    // fx-canvas (#1312, D-947): Monolith D through effects on the canvas into the Output, each its own device: a Delay
+    // module, a Reverb card dragged out of the instrument's drawer (a rack effect on the canvas), the factory Overdrive
+    // (effect modules only, no chain: the rack lists it not) and Auto pan (an LFO among its modules)
+    const p = newPatch(DEFS);
+    const a = instrument(p, 'Monolith D', 300), out = p.modules.find((m) => m.type === 'output')!;
+    p.cables = p.cables.filter((c) => c.to.module !== out.id);
+    const delay = addModule(p, DEFS.delay, 900, 0);
+    const card = insertEffect(p, addDrawer(p, a.id), { type: 'reverb' });
+    takeOut(p, card.id, 1500, 0);
+    const factory = (name: string, x: number): AssemblyInst => {
+      const e = EFFECT_CATALOG.find((c) => c.name === name)!;
+      if (!('def' in e.source)) throw new Error(`fx-canvas: ${name} is no factory assembly`);
+      return insertAssembly(p, DEFS, structuredClone(e.source.def), x, 0);
+    };
+    const drive = factory('Overdrive', 2100), pan = factory('Auto pan', 2700);
+    const end = (r: Endpoint): Endpoint => ({ module: r.module, port: r.port });
+    connect(p, DEFS, end(a.outputs[0]), { module: delay.id, port: DEFS.delay.inputs[0].name });
+    for (const i of card.inputs) connect(p, DEFS, { module: delay.id, port: DEFS.delay.outputs[0].name }, end(i));
+    connect(p, DEFS, end(card.outputs[0]), end(drive.inputs[0]));
+    connect(p, DEFS, end(drive.outputs[0]), end(pan.inputs[0]));
+    connect(p, DEFS, end(pan.outputs[0]), { module: out.id, port: 'l' });
+    connect(p, DEFS, end(pan.outputs[1]), { module: out.id, port: 'r' });
+    write('fx-canvas', p);
   }
 }

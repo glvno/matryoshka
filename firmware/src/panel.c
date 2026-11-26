@@ -929,8 +929,9 @@ static uint8_t env_held_used;
 
 /* SEL (#197; arming: #395). A device page: arms its device, the others disarmed, or takes it out when armed; an
  * environment row: its device into the armed set or out of it (a layer); a device that takes no keys: the armed set as
- * it was, NOTHING HERE TAKES KEYS. An FX drawer effect's device page: the effect on or off instead (D-947, its Toggles
- * follow and the running patch keeps their state as a press would). On the SONG page: back */
+ * it was, NOTHING HERE TAKES KEYS. An effect's device page (in an FX drawer, or on the canvas taking no keys,
+ * fx_sel_effect): the effect on or off instead (D-947, its Toggles follow and the running patch keeps their state as a
+ * press would). On the SONG page: back */
 static void sel_open(void)
 {
     uint32_t e;

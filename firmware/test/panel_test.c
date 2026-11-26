@@ -952,6 +952,107 @@ static void fx_sel_suite(void)
     ct_reset();
 }
 
+/* #1312 (the owner, 2026-11-25: "S2: SEL switches canvas effects"), D-947 amended: SEL on the page of an effect on the
+ * canvas that takes no keys switches it. A single effect module by its bypass (the bar DELAY OFF, the editor told,
+ * SAVE keeps it), an effect card from a drawer as a drawer effect; a card of effect modules the rack lists not says
+ * SWITCH IT WITH A TOGGLE and switches nothing; a card with another module among its own is an ordinary device */
+static uint32_t fxc_dev(int type, int single)     /* (the pg device of a module of that type: its own, else a member) */
+{
+    uint32_t d, k;
+    for (d = 0; d < pg_ndev; d++) {
+        if (single && pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == type)
+            return d;
+        for (k = 0; !single && pg_dev[d].module < 0 && k < pg_dev[d].nmem; k++)
+            if (eng_type(pg_mem(d, k)) == type)
+                return d;
+    }
+    return pg_ndev;
+}
+static uint32_t fxc_bypassed(void)                /* (a hash of every module's bypass) */
+{
+    uint32_t h = 0x811c9dc5u, m;
+    for (m = 0; m < ENG_MAX_MODULES; m++)
+        h = ct_fnv(h, (uint32_t)eng_bypass(m));
+    return h;
+}
+static void fx_canvas_suite(void)
+{
+    const uint8_t *t;
+    uint32_t home, d, k, n, ok, was, h;
+    int m;
+    char want[40];
+    if (!fx_fixture("build/panel-fixtures/fx-canvas.m1p")) {
+        check("SEL on canvas effects: the fx-canvas fixture loads", 0);
+        return;
+    }
+    home = pg_cur_dev;
+    d = fxc_dev(T_DELAY, 1);
+    check("SEL on canvas effects: the fixture's Delay module, Reverb card (the rack's one effect, in no drawer), Overdrive and Auto pan",
+          d < pg_ndev && fxc_dev(T_REVERB, 0) < pg_ndev && fxc_dev(T_DYN, 0) < pg_ndev && fxc_dev(T_PAN, 0) < pg_ndev
+          && eng_fx_count() == 1u && fx_drawer_at(eng_fx_device(0)) == UINT32_MAX);
+    if (d >= pg_ndev || eng_fx_count() != 1u)
+        return;
+    m = pg_dev[d].module;
+    pages_focus(d, 0);
+    later(100);
+    check("  a Delay module's page: the sheet lists SEL as its switch, not as arming", hc_fx_effect() && !hc_dev_keys());
+    param_now = 0;
+    preset_record = 1;
+    preset_events = 0;
+    m1_edited = 0;
+    tap(BTN_SEL);
+    preset_record = 0;
+    caps(want, pg_dev[d].name, pg_dev[d].nlen, 16);
+    strcat(want, MSG_OFF);
+    check("  SEL bypasses it, the editor told (PARAM_NOW 0xFF), the bar says DELAY OFF",
+          eng_bypass((uint32_t)m) && fx_preset_event((uint32_t)m, 0xFFu, 65536) && !strcmp(msg_text, want));
+    check("  the page stays, nothing armed, the running patch edited (SAVE keeps it)",
+          page == 0u && pg_cur_dev == d && !m64(eng_arm_mask_get()) && m1_edited != 0);
+    check("  the running binary reloads with it bypassed", !eng_load(pv_bin, pv_len) && eng_bypass((uint32_t)m));
+    pv_gen++;
+    pages_ensure();
+    pages_focus(d, 0);
+    later(2000);
+    tap(BTN_SEL);
+    caps(want, pg_dev[d].name, pg_dev[d].nlen, 16);
+    strcat(want, MSG_ON);
+    check("  SEL again: it plays, DELAY ON", !eng_bypass((uint32_t)m) && !strcmp(msg_text, want));
+    later(2000);
+    d = fxc_dev(T_REVERB, 0);
+    pages_focus(d, 0);
+    later(100);
+    was = (uint32_t)eng_fx_on(0);
+    check("  the Reverb card's page (a rack effect on the canvas): SEL is its switch", hc_fx_effect() && !hc_dev_keys());
+    tap(BTN_SEL);
+    for (ok = (uint32_t)eng_fx_on(0) != was, n = eng_fx_targets(0, &t), k = 0; k < n; k++)
+        ok = ok && (uint32_t)eng_bypass(t[k]) == was;
+    caps(want, pg_dev[d].name, pg_dev[d].nlen, 16);
+    strcat(want, was ? MSG_OFF : MSG_ON);
+    check("  SEL switches it as a drawer effect: its targets follow, the bar says REVERB OFF", ok && n > 0u && !strcmp(msg_text, want));
+    later(2000);
+    tap(BTN_SEL);
+    check("  and back", (uint32_t)eng_fx_on(0) == was);
+    later(2000);
+    pages_focus(fxc_dev(T_DYN, 0), 0);
+    later(100);
+    h = fxc_bypassed();
+    tap(BTN_SEL);
+    check("  Overdrive (effect modules, no rack targets): SWITCH IT WITH A TOGGLE, nothing switched, nothing armed",
+          !strcmp(msg_text, MSG_FX_TOGGLE_ONLY) && fxc_bypassed() == h && !m64(eng_arm_mask_get()) && page == 0u);
+    later(2000);
+    pages_focus(fxc_dev(T_PAN, 0), 0);
+    later(100);
+    tap(BTN_SEL);
+    check("  Auto pan (an LFO among its modules): an ordinary device, NOTHING HERE TAKES KEYS",
+          !hc_fx_effect() && !strcmp(msg_text, MSG_NOTHING_TAKES_KEYS) && fxc_bypassed() == h);
+    later(2000);
+    pages_focus(home, 0);
+    later(100);
+    tap(BTN_SEL);
+    check("SEL on the canvas effects' instrument still arms it", env_armed(home));
+    ct_reset();
+}
+
 /* D-520, the banks (the owner, 2026-11-19): a drum track's rows are one list, the rows of every Drum map it plays; black
  * keys 1..8 play 8 of them, OCT picks which 8 on a device page (the footer ROWS 1-8 .. in the octave's place, a nudge naming
  * the bank), SEL + OCT on the SEQ page, where the grid shows those 8 with their names. A kit of 8 rows: as before */
@@ -6174,6 +6275,7 @@ int main(void)
     pt_on = 0;
     fx_suite();
     fx_sel_suite();
+    fx_canvas_suite();
     fx_preset_suite();
     fxd_preset_suite();
     report_suite();

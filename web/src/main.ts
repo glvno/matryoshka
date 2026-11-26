@@ -12,7 +12,7 @@ import { presetEngines } from './snapshot-presets';
 import { CandidateStore, idbBackend, legacySet, LEGACY_STORE, memoryBackend, SET_STORE } from './candidate-store';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
-import { chainHelpers, rackOf } from './assembly';
+import { assemblyOf, chainHelpers, rackOf } from './assembly';
 import { FEATURE_FX_PRESETS, FX_BYPASS_PARAM } from './protocol';
 import { applyImport, backupFile, backupKeys, collectKeys, importSummary, receiveMigration } from './migrate';
 import { moveOffer, onPagesDev } from './move-offer';
@@ -609,11 +609,15 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     const m = deviceView(editor.patch, true).patch.modules[e.module];
     if (e.param === FX_BYPASS_PARAM) {
       if (!m || (e.value !== 0 && e.value !== 1) || (from === 'device' && !(device.info && device.info.features & FEATURE_FX_PRESETS))) return;
+      const off = e.value !== 0;
       const effect = rackOf(editor.patch).effects.find((x) => x.targets.includes(m.id));
       const a = effect && editor.patch.assemblies?.find((x) => x.id === effect.asm);
-      if (!a) return;
-      // the FM-1 switched the whole effect (engine.c eng_fx_set): its card's ⏻, which never bypasses a helper
-      for (const id of editor.setBypass([], e.value !== 0, a)) {
+      // the FM-1 switched the whole effect (engine.c eng_fx_set): its card's ⏻, which never bypasses a helper (once: the
+      // FM-1 tells each target, and a second off would keep every member off); a module card of its own (a single effect
+      // module on the canvas, D-947): its own ⏻
+      if (!a && assemblyOf(editor.patch, m.id)) return;
+      if (a?.bypass && off) return;
+      for (const id of a ? editor.setBypass([], off, a) : editor.setBypass([m.id], off)) {
         const module = editor.patch.modules.find(module => module.id === id)!;
         host.send({ t: 'bypass', id, on: !!module.bypass });
       }

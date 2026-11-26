@@ -181,9 +181,9 @@ export const CONTROLS: ControlRow[] = [
   { id: 'fine', gesture: { hold: 'HOME', do: [K('1234')] }, does: 'fine adjust', sheet: { device: 40 }, effect: 'fine',
     help: 'fine turns: the least step of the row' },
   { id: 'arm-device', gesture: { do: [B('SEL')] }, does: 'arm only this', when: 'dev_keys', sheet: { device: 50 }, effect: 'arm',
-    help: 'arms the device on screen, so the keys play it, and disarms the others; on a device already armed it takes it out. A device with no keys input says NOTHING HERE TAKES KEYS, one whose keys input no cable reaches NO KEYS REACH THIS DEVICE. Nothing armed: Main’s cables decide what the keys play (KEYS WIRED). On the page of an effect in an FX drawer SEL switches the effect instead' },
+    help: 'arms the device on screen, so the keys play it, and disarms the others; on a device already armed it takes it out. A device with no keys input says NOTHING HERE TAKES KEYS, one whose keys input no cable reaches NO KEYS REACH THIS DEVICE. Nothing armed: Main’s cables decide what the keys play (KEYS WIRED). On the page of an effect SEL switches the effect instead: one in an FX drawer, or one on the canvas that takes no keys' },
   { id: 'fx-switch', gesture: { do: [B('SEL')] }, does: 'effect on / off', when: 'fx_effect', sheet: { device: 51 }, effect: 'fx_switch',
-    help: 'on the page of an effect in an FX drawer: that effect on or off, as its ⏻ in the editor; the bar says DRIVE ON or DRIVE OFF. A Delay or a Reverb rings out as it goes off. A Toggle on the effect or its drawer follows, and SAVE keeps the switch. An effect the FM-1 runs by plain bypass (one of more than 8 modules) says SWITCH IT WITH A TOGGLE. An effect on the canvas is an ordinary device: SEL arms it' },
+    help: 'on the page of an effect: that effect on or off, as its ⏻ in the editor; the bar says DRIVE ON or DRIVE OFF. The effect is one in an FX drawer, or one on the canvas that takes no keys: an effect card dragged out of a drawer, or a single effect module such as a Delay or a Filter. A Delay or a Reverb in a drawer, or dragged out of one, rings out as it goes off. A Toggle on the effect or its drawer follows, and SAVE keeps the switch. An effect the FM-1 runs by plain bypass (one of more than 8 modules) says SWITCH IT WITH A TOGGLE, and so does a card on the canvas made only of effect modules that came from no drawer: the patch does not list which of its modules its ⏻ switches (one you switched off yourself stays off), so the FM-1 leaves it to a Toggle' },
   { id: 'arm-several', gesture: { first: 'ENV', do: [B('SEL')] }, does: 'arm several', when: 'dev_keys', sheet: { device: 55 }, effect: 'arm',
     help: 'on the environment page (ENV), SEL adds the row’s device to the armed devices or drops it, so the keys play several at once (a layer or a split)' },
   // (the keys reach a Harmonizer, #598: its Side layout, the seven lowest keys its chord buttons)
@@ -529,7 +529,7 @@ export const CONDITION_TEXT: Record<Condition, string> = {
   roll_preview: 'a melodic track with note preview on', roll_silent: 'a melodic track with note preview off',
   fx_rack: 'a patch with an effect or an FX drawer', pattern_store: 'while the pattern store is on',
   oct_banks: 'the keys on a drum track of more than 8 rows', drum_banks: 'a drum track of more than 8 rows',
-  learning: 'while MIDI learn mode waits for a knob or a drum key (HOME + SEL)', fx_effect: 'an effect in an FX drawer',
+  learning: 'while MIDI learn mode waits for a knob or a drum key (HOME + SEL)', fx_effect: 'an effect, in an FX drawer or on the canvas',
 };
 
 /** a gesture in words: "HOME held + PRESET", "a held step + K2", "OCT- / OCT+" */

@@ -2587,6 +2587,82 @@ async function main() {
       await check('sel fx: SEL switches the Reverb on again', await sel('REVERB', true));
       await emu.elapse(1600);
     },
+    // #1312 (the owner, 2026-11-25: "S2: SEL switches canvas effects"), D-947 amended: Monolith D through effects on the
+    // canvas, as the panel fixture fx-canvas (web/scripts/panel-fixtures.ts). SEL on a Delay module's page switches it (the
+    // bar DELAY OFF / ON, the editor's card follows), on a Reverb card dragged out of a drawer switches it as a drawer
+    // effect, on the factory Overdrive (effect modules the rack lists not) says SWITCH IT WITH A TOGGLE and switches nothing
+    async selCanvas() {
+      const opener = (n) => page.evaluate(async (x) => {
+        const { DEFS } = await import('/src/modules.ts');
+        const { addModule, connect, newPatch } = await import('/src/patch.ts');
+        const { insertAssembly } = await import('/src/assembly.ts');
+        const { FACTORY } = await import('/src/assemblies.ts');
+        const { wireEngine } = await import('/src/engines.ts');
+        const { addDrawer, EFFECT_CATALOG, insertEffect, takeOut } = await import('/src/fx-drawer.ts');
+        const p = newPatch(DEFS);
+        const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Monolith D'), 300, 0);
+        wireEngine(p, a);
+        const out = p.modules.find((m) => m.type === 'output');
+        p.cables = p.cables.filter((c) => c.to.module !== out.id);
+        const delay = addModule(p, DEFS.delay, 900, 0);
+        const card = insertEffect(p, addDrawer(p, a.id), { type: 'reverb' });
+        takeOut(p, card.id, 1500, 0);
+        const factory = (name, at) => insertAssembly(p, DEFS, structuredClone(EFFECT_CATALOG.find((c) => c.name === name).source.def), at, 0);
+        const drive = factory('Overdrive', 2100), pan = factory('Auto pan', 2700);
+        const end = (r) => ({ module: r.module, port: r.port });
+        connect(p, DEFS, end(a.outputs[0]), { module: delay.id, port: DEFS.delay.inputs[0].name });
+        for (const i of card.inputs) connect(p, DEFS, { module: delay.id, port: DEFS.delay.outputs[0].name }, end(i));
+        connect(p, DEFS, end(card.outputs[0]), end(drive.inputs[0]));
+        connect(p, DEFS, end(drive.outputs[0]), end(pan.inputs[0]));
+        connect(p, DEFS, end(pan.outputs[0]), { module: out.id, port: 'l' });
+        connect(p, DEFS, end(pan.outputs[1]), { module: out.id, port: 'r' });
+        return window.__m1test.openFactory(x, JSON.stringify(p));
+      }, n);
+      await check('sel canvas: Monolith D through effects on the canvas opens, synced', await openSynced('Monolith D', opener));
+      const state = () => page.evaluate(async () => {   // the editor's switches: the Delay module, the Reverb card's targets, Overdrive's modules
+        const { allModules, assemblyOf, chainHelpers, parentOf } = await import('/src/assembly.ts');
+        const p = JSON.parse(window.__m1test.patchJson()), helpers = chainHelpers(p), as = (p.assemblies ?? []).filter(Boolean);
+        const off = (a) => (a ? allModules(p, a).filter((id) => !helpers.has(id)).map((id) => !!p.modules.find((m) => m.id === id).bypass) : []);
+        const card = as.find((a) => a.chain && !parentOf(p, a.id));
+        const drive = as.find((a) => a.modules.some((id) => p.modules.find((m) => m.id === id)?.type === 'dyn'));
+        return { delay: !!p.modules.find((m) => m.type === 'delay' && !assemblyOf(p, m.id))?.bypass, reverb: off(card), drive: off(drive) };
+      });
+      const walkTo = async (re) => {               // SELECT forward until the editor's focus (following the FM-1's) matches
+        for (let i = 0; i < 10 && !re.test((await T()).focusName); i++) {
+          await emu.turn(ENC.select, 1);
+          await emu.elapse(400);
+        }
+        return re.test((await T()).focusName);
+      };
+      const s0 = await state();
+      await check('sel canvas: every effect plays at load', !s0.delay && s0.reverb.length > 0 && !s0.reverb.some(Boolean) && s0.drive.length > 0 && !s0.drive.some(Boolean), JSON.stringify(s0));
+      await check('sel canvas: SELECT reaches the Delay module', await walkTo(/^delay/i), (await T()).focusName);
+      await emu.tap(B.scl);
+      await check('sel canvas: SEL switches the Delay module off, the bar says DELAY OFF', await emu.waitText('DELAY OFF', 1500));
+      await check('sel canvas: the editor\'s Delay card follows (bypassed)', !!(await until(async () => ((await state()).delay ? true : null), 3000)));
+      await emu.snap('sel-canvas-delay');
+      await emu.elapse(1300);
+      await emu.tap(B.scl);
+      await check('sel canvas: SEL again: DELAY ON, the editor follows', (await emu.waitText('DELAY ON', 1500)) && !!(await until(async () => (!(await state()).delay ? true : null), 3000)));
+      await emu.elapse(1300);
+      await check('sel canvas: SELECT reaches the Reverb card', await walkTo(/reverb/i), (await T()).focusName);
+      await emu.tap(B.scl);
+      await check('sel canvas: SEL switches the Reverb card off as a drawer effect, the bar says REVERB OFF, the editor follows',
+        (await emu.waitText('REVERB OFF', 1500)) && !!(await until(async () => ((await state()).reverb.every(Boolean) ? true : null), 3000)));
+      await emu.elapse(1300);
+      await emu.tap(B.scl);
+      await check('sel canvas: SEL again: REVERB ON, the editor follows',
+        (await emu.waitText('REVERB ON', 1500)) && !!(await until(async () => (!(await state()).reverb.some(Boolean) ? true : null), 3000)));
+      await emu.elapse(1300);
+      await check('sel canvas: SELECT reaches Overdrive', await walkTo(/overdrive/i), (await T()).focusName);
+      await emu.tap(B.scl);
+      await check('sel canvas: SEL on Overdrive (no rack targets) says SWITCH IT WITH A TOGGLE', await emu.waitText('SWITCH IT WITH A TOGGLE', 1500));
+      await emu.snap('sel-canvas-toggle');
+      await emu.elapse(1000);
+      const s1 = await state();
+      await check('sel canvas: nothing switched in the editor', JSON.stringify(s1) === JSON.stringify(s0), JSON.stringify(s1));
+      await emu.elapse(600);
+    },
     // #485: a Cassia 1 preset (153 rows since #755, D-747) stored on the FM-1 holds all its rows: sent from the editor (two store slots on
     // firmware with feature bit 17), read back whole, and loaded on the FM-1 with PRESET: every row reaches the editor.
     // Glass Bell differs from Init in 11 of the 31 rows past 88, which an 88-value store left at Init's

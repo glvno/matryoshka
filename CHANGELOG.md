@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **SEL switches an effect on the canvas too.** On the FM-1, SEL on the page of an effect that sits on the canvas, cabled by hand, now turns it on or off, as it does for an effect in an FX drawer; before, it said NOTHING HERE TAKES KEYS. That covers an effect you dragged out of a drawer (it rings out as a drawer effect does) and a single effect module such as a Delay or a Filter (the bar says DELAY OFF or DELAY ON, the editor's card follows, and SAVE keeps it). A card made only of effect modules that was never in a drawer, such as the factory Overdrive from the Effects shelf, says SWITCH IT WITH A TOGGLE: the patch does not tell the FM-1 which of its modules the card's ⏻ switches. A device that takes keys still arms ([D-947](docs/ledger/device-ui.md#D-947)).
+
 ## 1.27.1 — 2026-11-25
 
 - **SEL switches an effect on and off on the FM-1.** On the page of an effect in an FX drawer, such as the 909 Kit's Drive or Reverb, SEL now turns that effect on or off, as its ⏻ in the editor does; before, it said NOTHING HERE TAKES KEYS and only a Toggle could switch an effect. The bar says DRIVE ON or DRIVE OFF, a Delay or Reverb rings out as it goes off, the editor shows the change, a Toggle on the effect or its drawer follows, and SAVE keeps it. SEL on an instrument, on an effect on the canvas and on the environment page still arms, as before ([D-947](docs/ledger/device-ui.md#D-947)).
