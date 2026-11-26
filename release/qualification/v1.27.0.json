@@ -1,0 +1,170 @@
+{
+  "schema": 1,
+  "version": "1.27.0",
+  "firmware_product": "FM-1_7012700",
+  "source_commit": "65e9a3ccafad28314f07536cdd8df3b5367ce00b",
+  "source_tree": "6e07e7a6f70352a97d35af1a844bbed6023effa9",
+  "frozen_commit": "65e9a3ccafad28314f07536cdd8df3b5367ce00b",
+  "status": "automated and rig checks passed; the owner's device check (D-139, D-1179) and the go for publication pending",
+  "firmware_vs_first_freeze": "release run 45741073855 on 65e9a3cc against release run 45729524424 on ee96754d (#1303): matryoshka-1.27.0.fwsc matryoshka-1.27.0-app.bin matryoshka-1.27.0-font.bin matryoshka-emu.bin; that run against the first freeze 5dd9139a's (#1302, run 45727272679): matryoshka-1.27.0.fwsc matryoshka-1.27.0-app.bin matryoshka-1.27.0-font.bin matryoshka-emu.bin",
+  "rig_results_reused": "the candidate 65e9a3cc is ee96754d (#1303, text only over the first freeze) plus #1304 (the emulator's decoder: `R = sp #` for every register, old_format noise) and #1305 (fm1_install / m1_link close a MIDI input safely); firmware/ and web/src are unchanged and the firmware is byte-identical, so the rig session on that package (2026-11-25, build/release-1.27.0/qual) stands for it. rig127.py (its kit-footer check fixed), device:scenarios (wt/rel127x: F2 plus paletteCandidates answering the name prompt, D-1432) and the refused downgrade (#1305's install tool) re-ran on 65e9a3cc (rig2.sh); the full emu:scenarios + smoke, boot, old formats and the web RC with coverage ran on 65e9a3cc",
+  "release_approval": {
+    "status": "pending",
+    "scope": "Publication of v1.27.0 from the tag on release/1.27: the frozen commit plus only this record, the qualified package and its screen font in web/public/firmware/, the coverage record and the rig measurements (D-1163); its firmware/ and tools/ equal the qualified source (D-105)."
+  },
+  "plan": "D-1179 (freeze PRs #1302, #1303; candidate 65e9a3cc, #1304 and #1305 on top, tools/ only)",
+  "patch_format": 67,
+  "factory_content": {
+    "version": 23,
+    "set": "0187f5",
+    "layout": 4,
+    "format": 66,
+    "note": "format 66, so firmware 1.26.3 is offered it (D-1020); its 12 patches are v22 3af59e's bytes with new revisions; the frozen v19, v20 and v21 images equal v1.26.3's"
+  },
+  "artifacts": {
+    "package": {
+      "name": "matryoshka-1.27.0.fwsc",
+      "size": 610628,
+      "sha256": "2228bc0b1e43295b44f26d08acf5e10e1b3a5bd69dd6191df51d86aa3c5338ee"
+    },
+    "screen_font": {
+      "name": "matryoshka-1.27.0-font.bin",
+      "size": 40946,
+      "sha256": "765b681ae53c51855791860e8f1c6b7eb8113fdb8e6d8aec96261f4d8a7cc3fa",
+      "id": "528f1926"
+    },
+    "normal": {
+      "name": "matryoshka-1.27.0-app.bin",
+      "size": 561684,
+      "sha256": "78f486da41817190e6764692293fcbd135e9982cdbbc387f64ef5ed7ba5457f3"
+    },
+    "normal_elf": {
+      "name": "matryoshka-1.27.0-app.elf",
+      "size": 635028,
+      "sha256": "12ada6a1efc910176cfc331a60e73e47b44b53b18b83a34ffe78b567b2d44f35"
+    },
+    "normal_sidecar": {
+      "name": "matryoshka-1.27.0.json",
+      "size": 431,
+      "sha256": "5c01a2f04476a781809d2d95c083cf4ca4e813b420e6d6a872c99b30cf216257"
+    },
+    "bridge": {
+      "name": "matryoshka-emu.bin",
+      "size": 558628,
+      "sha256": "f14e9ced23287f6a4ab8fe79fcdb4a3957519072711bb0218d3a16c11f3aea9c"
+    }
+  },
+  "build_manifest_sha256": "fb266aba8cfa9f151da24e883eb4b30a08da3289c6b1a189adc3e65edb707e16",
+  "build": "release run 45741073855: image 561684 B; RAM .data+.bss 19440 B of 24448 (5008 B free); pool 408564 B of 417920 (9356 B headroom, the floor 8192)",
+  "ci_runs": {
+    "release": 45741073855,
+    "web_rc": 45741077934,
+    "freeze_pr": 1303,
+    "candidate_merge_pr": 1305,
+    "freeze_release": 45729524424,
+    "first_freeze_release": 45727272679
+  },
+  "coverage": "release/coverage/v1.27.0: coverage record: current, measured 65e9a3cc, fingerprint matches the frozen commit (web RC run 45741077934, D-147)",
+  "full_scenarios": "468 of 468 checks passed",
+  "smoke": [
+    "emu:smoke: passed; 325 checks, 0 failed, 0 level warnings; 537.3 s emulated in 362.3 s; snapshots in build/emu/smoke (/Users/mg/projects/music/fm1/wt/rel127r/bu"
+  ],
+  "boot": "boot check: PASS (49 checks, 0 failed; the editor link and the update handshake checked on the M1_EMU_MIDI build; 82.3 s emulated in 70.5 s; snapshots in /Users",
+  "old_format": [
+    "older format ok: 673 binaries load, upgrade and render bit-identically; 0 upgraded as today's encoder writes them, 332 differ, 341 too big to upgrade, 0 already in today's format; 2245 records grown to all their parameters render the same; 1 over a slot skipped",
+    "older format ok: 104 binaries load, upgrade and render bit-identically; 0 upgraded as today's encoder writes them, 103 differ, 1 too big to upgrade, 0 already in today's format; 1297 records grown to all their parameters render the same; 0 over a slot skipped"
+  ],
+  "editor_sync_with_1.26.3": "refused with \"update it to sync\" (VERSION 67; the editor on 65e9a3cc against the 1.26.3 emulator, qual3/install-offer-1263.log): ok   connect: the editor finds the emulated FM-1: This FM-1 runs older Matryoshka firmware that cannot play the editor's patches: update it to sync.",
+  "install_panel_for_1.26.3": [
+    "ok   installOffer: the FM-1 chip says update it to sync: This FM-1 runs older Matryoshka firmware that cannot play the editor's patches: update it to sync.",
+    "ok   installOffer: the toast offers Update the FM-1: Update the FM-1",
+    "install panel: Before you flash Flashing replaces the FM-1 firmware. You can go back with Return to stock below: the official V15, or Official Open for an FM-1 that came from M-VAVE Official Open. If the FM-1 runs Felucca, Sloop or another build, return to stock first. Keep the USB cable connected and this page open until it says done. If an install is cut off What has been tested on a real FM-1 Coming from Felucca Chromium on Linux I understand and accept the risk Install Matryoshka Matryoshka v1.27.0 (FM-1_7012700, 596 KB) comes with this app. GPL-3.0; three JieLi SDK files inside are Apache-2.0. Install factory instruments and presets (recommended) Install Matryoshka firmware Check the connection Licences: GPL-3.0, Apache-2.0. Source: Matryoshka source. Return to stock M-VAVE's official firmware V15 comes with this app; its size and checksum are checked before it is sent. Return to official V15 FM-1_015.fwsc © M-VAVE, Apache-2.0 (notice, source). Matryoshka is not affiliated with M-VAVE. Use your own copy Restore Official Open For an FM-1 that was set up by M-VAVE's Official Open: it refuses the V15 and takes Official Open back safely. Official Open includes M-VAVE's own sound engine, which is not open source. M-VAVE's licence would allow passing it on, but Matryoshka ships only open-source files, so you download it from M-VAVE yourself. Download the Workbench page (FM1-Open-…-Workbench.html) from M-VAVE's release page and choose it here (its .fwsc works too). Before anything is sent, this page checks that it is M-VAVE's Official Open and that it fits this FM-1. Restore Official Open Install another package Ready.",
+    "ok   installOffer: Update the FM-1 opens the Install panel",
+    "ok   installOffer: the panel offers Matryoshka v1.27.0 (FM-1_7012700)"
+  ],
+  "hardware": {
+    "upgrade_from_1.26.3": {
+      "checks": "12 of 12",
+      "method": "build/release-1.27.0/prep/carry127.py (1.26.3's carry.py): on 1.26.3 (installed this session over a fresh 1.25.0 with the 1.25.0 bank) every slot, the pattern store, the palette and each entry's sound recorded; after the 1.27.0 install all of it as on 1.26.3 (an untouched factory slot whose patch changed, D-887), the font, region v23, INFO byte 25 bits 0..4"
+    },
+    "upgrade_from_1.25.0": {
+      "checks": "70 of 70",
+      "method": "build/release-1.27.0/prep/upgrade127.py (1.26.3's upgrade1263.py): 1.25.0 fresh with the 1.25.0 bank, then 1.27.0 over it"
+    },
+    "upgrade_to_1.26.3_this_session": "70 of 70",
+    "palette": "9 of 9",
+    "region_v23_on_1.26.3": {
+      "bank": "bank unchanged by v23 on 1.26.3",
+      "909_hits_v22_vs_v23_worst_counts": 0
+    },
+    "909_drawer_off_sample_identical": {
+      "vs_1.26.3_worst_counts": 0,
+      "vs_909_today_same_firmware_worst_counts": 0,
+      "method": "build/release-1.27.0/prep/audeq.py: ten drum notes hit alone, 1.5 s each from the rig's USB audio (16-bit), aligned on the onset, the largest difference in counts"
+    },
+    "cpu_1.27": {
+      "set": {
+        "909 Kit today": {
+          "steady_pct": 68.8,
+          "dropped": 0
+        },
+        "909 drawer off": {
+          "steady_pct": 69.2,
+          "dropped": 0
+        },
+        "909 drawer on": {
+          "steady_pct": 75.2,
+          "dropped": 0
+        },
+        "big240": {
+          "steady_pct": 59.7,
+          "dropped": 0
+        },
+        "reverb r none": {
+          "steady_pct": 13.7,
+          "dropped": 0
+        },
+        "reverb r pair": {
+          "steady_pct": 14.3,
+          "dropped": 0
+        },
+        "stereo chain pair": {
+          "steady_pct": 10.4,
+          "dropped": 0
+        },
+        "stereo chain": {
+          "steady_pct": 10.5,
+          "dropped": 0
+        }
+      },
+      "909_today_on_1.26.3": {
+        "909 Kit today": 68.2
+      },
+      "method": "tools/rig_cpu_survey.py on build/r127/rig (stereo chain vs L/R pairs, Reverb r fed or not, the 909 today / drawer off / drawer on) and genbig.ts big240 (243 modules); worst steady audio ISR share, 85 % bar"
+    },
+    "rig127": {
+      "checks": "29 of 29",
+      "method": "build/release-1.27.0/prep/rig127.py on the panel (TEST_KEY/TEST_TURN/TEST_SCREEN) and the link: > 128 modules sent, plays, stored, SLOT_GET byte for byte, loaded, plays; P-lock paging every held-step combination of #1290; the 909 Kit's pattern 1 with 8 notes and 32 P-locks doubled, SAVEd, format 67; a refused double (past 256 notes) leaves SAVE's bytes as they were. On 1.26.3 the same double was refused (qual/double-1.26.3-baseline.json)"
+    },
+    "fx_drawer": "23 of 23 checks",
+    "hold_save": "18 of 18 checks",
+    "candidates": "15 of 15 checks",
+    "device_scenarios": "111 of 114 checks passed, 3 skipped (1.2 output: MONO, both sounds on both sides, each a bit quieter: the rig's USB audio is taken before OUTPUT's mix (audio.c): the emulator's I2S proves it, the owne",
+    "older_firmware_refused": true,
+    "midi_endpoint_names": {
+      "1.26.3": true,
+      "1.27.0": true
+    },
+    "irq_vs_1.26.3": "D-1165, one session: program 18 1967.7 -> 1923.4 us; program 6 1818.7 -> 1847.8 us; program 1 2196.2 -> 2183.2 us; 18 Cassia 1 fx 2175.8 -> 2151.2 us; 05 Expander S fx 2352.1 -> 2361.2 us; 03 Hera 6 fx 2097.6 -> 2101.5 us; 06 Algo Four fx 2184.2 -> 2210.0 us; differences [-44.3, 29.1]",
+    "cpu_survey_vs_1.26.3": "same session, stopped: 1.22.0's FX patches [-1.6, 1.3] mean -0.31; factory patches [-1.9, 1.3] mean -0.44 points",
+    "clock_in_at_0": "raw steady offset 40.0 ms against 1.26.3's 39.44 ms (difference 0.56 ms)",
+    "cores": [
+      "2 CORES; barred no; trace 0xc1000002; split on",
+      "self-test passed 12945, failed 0; refused jobs 0; jobs done 451049; core 1 stack 2144 B used; longest wait 2107 us since the last read"
+    ]
+  },
+  "owner_checks": {
+    "status": "pending",
+    "steps": "https://lighght-3.tail5744df.ts.net:8443/crate/ (D-139, D-1179): stereo heard wide, the 909's drawer on and off, a dense pattern doubling, P-lock paging by hand, a converted patch unchanged, a refused double, a power cycle"
+  }
+}
