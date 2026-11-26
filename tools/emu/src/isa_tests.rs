@@ -125,6 +125,32 @@ fn rmw_clear_by_register() {
     }
 }
 
+/// The dual-issue head `R = sp #` (`64 f0`, the seventh fix) takes its register from bits 28..31 as `R = sp` does:
+/// dev_preset_step's `64 f0 00 6e` r6 = sp # with `80 20` [sp] = r0 (0x0205a27e in 1.27.0), the PRESET encoder on a
+/// device page. fm1-emu knew `r3 = sp #` only.
+#[test]
+fn sp_to_register_pair_head() {
+    let mut ram = Ram(vec![0; 0x1000]);
+    let mut cpu = Cpu::new(0);
+    for d in 0..16u8 {
+        ram.0[..6].copy_from_slice(&[0x64, 0xf0, 0x00, d << 4 | 0xe, 0x80, 0x20]);
+        for i in 0..16 {
+            cpu.regs[i] = 0x5a5a_0000 | i as u32;
+        }
+        cpu.sp = 0x800;
+        ram.write32(0x800, 0);
+        cpu.pc = 0;
+        while cpu.pc != 6 {
+            step(&mut cpu, &mut ram);
+            assert!(cpu.pc <= 6, "64 f0 00 {:02x}: pc {:#x}", d << 4 | 0xe, cpu.pc);
+        }
+        assert_eq!(cpu.regs[d as usize], 0x800, "r{d} = sp #");
+        if d != 0 {
+            assert_eq!(ram.read32(0x800), 0x5a5a_0000, "r{d} = sp # with [sp] = r0");
+        }
+    }
+}
+
 /// Runs the 4-byte branch `code` at `at` on `cpu` and returns where it went.
 fn branch(cpu: &mut Cpu, ram: &mut Ram, at: u32, code: [u8; 4]) -> u32 {
     ram.0[at as usize..at as usize + 4].copy_from_slice(&code);
