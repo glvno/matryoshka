@@ -57,12 +57,12 @@ export const EFFECTS = [
   'tab', 'scroll', 'set', 'save_close', 'run_row',
   'editor', 'analog_out', 'chord_button', 'fx_open',
   'pattern_new', 'pattern_load', 'condition', 'fill', 'ratchet', 'micro', 'drum_bank', 'learn_row', 'learn_mode', 'learn_end',
-  'pattern_copy', 'clear_all', 'pattern_browse', 'pattern_double', 'palette_go', 'palette_save', 'pattern_halve',
+  'pattern_copy', 'clear_all', 'pattern_browse', 'pattern_double', 'palette_go', 'palette_save', 'pattern_halve', 'fx_switch',
 ] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 /** the conditions a row can show under (help_ui.c hc_<name>); '!name': when it is false */
-export const CONDITIONS = ['list', 'dev_presets', 'dev_store', 'dev_keys', 'long_track', 'tracks', 'menu_guide', 'menu_page', 'menu_system', 'roll', 'harm', 'roll_preview', 'roll_silent', 'fx_rack', 'pattern_store', 'oct_banks', 'drum_banks', 'learning'] as const;
+export const CONDITIONS = ['list', 'dev_presets', 'dev_store', 'dev_keys', 'long_track', 'tracks', 'menu_guide', 'menu_page', 'menu_system', 'roll', 'harm', 'roll_preview', 'roll_silent', 'fx_rack', 'pattern_store', 'oct_banks', 'drum_banks', 'learning', 'fx_effect'] as const;
 export type Condition = (typeof CONDITIONS)[number];
 
 export interface ControlRow {
@@ -181,7 +181,9 @@ export const CONTROLS: ControlRow[] = [
   { id: 'fine', gesture: { hold: 'HOME', do: [K('1234')] }, does: 'fine adjust', sheet: { device: 40 }, effect: 'fine',
     help: 'fine turns: the least step of the row' },
   { id: 'arm-device', gesture: { do: [B('SEL')] }, does: 'arm only this', when: 'dev_keys', sheet: { device: 50 }, effect: 'arm',
-    help: 'arms the device on screen, so the keys play it, and disarms the others; on a device already armed it takes it out. A device with no keys input says NOTHING HERE TAKES KEYS, one whose keys input no cable reaches NO KEYS REACH THIS DEVICE. Nothing armed: Main’s cables decide what the keys play (KEYS WIRED)' },
+    help: 'arms the device on screen, so the keys play it, and disarms the others; on a device already armed it takes it out. A device with no keys input says NOTHING HERE TAKES KEYS, one whose keys input no cable reaches NO KEYS REACH THIS DEVICE. Nothing armed: Main’s cables decide what the keys play (KEYS WIRED). On the page of an effect in an FX drawer SEL switches the effect instead' },
+  { id: 'fx-switch', gesture: { do: [B('SEL')] }, does: 'effect on / off', when: 'fx_effect', sheet: { device: 51 }, effect: 'fx_switch',
+    help: 'on the page of an effect in an FX drawer: that effect on or off, as its ⏻ in the editor; the bar says DRIVE ON or DRIVE OFF. A Delay or a Reverb rings out as it goes off. A Toggle on the effect or its drawer follows, and SAVE keeps the switch. An effect the FM-1 runs by plain bypass (one of more than 8 modules) says SWITCH IT WITH A TOGGLE. An effect on the canvas is an ordinary device: SEL arms it' },
   { id: 'arm-several', gesture: { first: 'ENV', do: [B('SEL')] }, does: 'arm several', when: 'dev_keys', sheet: { device: 55 }, effect: 'arm',
     help: 'on the environment page (ENV), SEL adds the row’s device to the armed devices or drops it, so the keys play several at once (a layer or a split)' },
   // (the keys reach a Harmonizer, #598: its Side layout, the seven lowest keys its chord buttons)
@@ -527,7 +529,7 @@ export const CONDITION_TEXT: Record<Condition, string> = {
   roll_preview: 'a melodic track with note preview on', roll_silent: 'a melodic track with note preview off',
   fx_rack: 'a patch with an effect or an FX drawer', pattern_store: 'while the pattern store is on',
   oct_banks: 'the keys on a drum track of more than 8 rows', drum_banks: 'a drum track of more than 8 rows',
-  learning: 'while MIDI learn mode waits for a knob or a drum key (HOME + SEL)',
+  learning: 'while MIDI learn mode waits for a knob or a drum key (HOME + SEL)', fx_effect: 'an effect in an FX drawer',
 };
 
 /** a gesture in words: "HOME held + PRESET", "a held step + K2", "OCT- / OCT+" */

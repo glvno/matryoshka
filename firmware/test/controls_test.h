@@ -21,6 +21,7 @@ typedef struct {
     int32_t micro_sum;
     uint32_t song_sel, song_cur, song_len, song_sum, song, clear_at, del_at, msg_sum;
     uint32_t fx_focus;                                  /* the device in focus is an effect in an FX drawer (fx_focus_effect) */
+    uint32_t fx_on;                                     /* the effects switched on (eng_fx_on, bit e) */
     uint32_t bank;                                      /* the drum bank (D-520) */
     uint32_t stored, store_sum, pat_sum;                /* the pattern store (#901): its entries, their ids and hashes, and
                                                          * the selected pattern's notes on every track */
@@ -74,6 +75,8 @@ static void ct_take(ct_snap_t *s)
     s->tempo = (panel >= 0 ? eng_get_param((uint32_t)panel, FM1_P_TEMPO) : 0) + (int32_t)eng_tempo_global_get();
     s->params = ct_params();
     s->fx_focus = (uint32_t)fx_focus_effect();
+    for (i = 0; i < eng_fx_count(); i++)
+        s->fx_on |= (uint32_t)eng_fx_on(i) << i;
     s->bank = drum_bank;
     s->arms = eng_arm_mask_get();
     for (i = 0; (int)i < eng_steps_count(); i++)
@@ -152,6 +155,8 @@ static int ct_effect(uint32_t e, const ct_snap_t *b, const ct_snap_t *a)
     case CE_ENV: return a->page == PAGE_ENV && b->page != PAGE_ENV;
     case CE_SEQ: return a->page == PAGE_SEQ && b->page != PAGE_SEQ;
     case CE_FX_OPEN: return a->page == 0u && a->fx_focus && (b->page != 0u || !b->fx_focus || a->dev != b->dev);
+    case CE_FX_SWITCH: return a->fx_on != b->fx_on && !moved && mset_eq(a->arms, b->arms);   /* (D-947: SEL on an FX drawer
+                                                         * effect's page switches it, the page stays, nothing armed) */
     case CE_OCTAVE: case CE_KEYS_OCTAVE: return a->octave != b->octave;
     case CE_TEMPO: return a->tempo != b->tempo || (sb_on && a->msg_sum != b->msg_sum);   /* (sandbox: the editor's) */
     case CE_PATCH: return a->stepped != b->stepped;
@@ -482,6 +487,13 @@ static int ct_enter(uint32_t s, uint32_t v)
         }
         if (v == 4)
             return ct_fx_load();
+        if (v == 6) {                                   /* an FX drawer effect's device page: SEL switches it (D-947) */
+            if (!ct_fx_load())
+                return 0;
+            pages_focus(pages_dev_of(eng_fx_device(eng_rack_first(0))), 0);
+            later(500);
+            return fx_sel_effect() != UINT32_MAX;
+        }
         if (v == 5) {                                   /* learn mode (HOME + SEL, D-939) on a page whose K1 takes MIDI */
             if (ct_load("ORACLE V"))
                 return 0;

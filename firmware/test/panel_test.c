@@ -794,6 +794,164 @@ static void fx_suite(void)
 
 #include "fx_preset_panel_test.h"
 
+/* D-947 (the owner, 2026-11-25: "should be SEL, shouldn't it?", "1. yes"): SEL on an FX drawer effect's device page
+ * switches that effect as the editor's on/off button does (eng_fx_set's tails, the running binary's bypass bits, PARAM_NOW
+ * 0xFF), the bar says NAME ON / NAME OFF; Toggles follow; SEL on an instrument still arms it */
+static uint32_t fx_sel_render(uint32_t n, uint64_t *energy)   /* (n blocks: a hash of the output, its energy added) */
+{
+    static int32_t l[128], r[128];
+    uint32_t h = 0x811c9dc5u, i;
+    while (n--) {
+        eng_render(l, r, 128);
+        for (i = 0; i < 128u; i++) {
+            h = ct_fnv(ct_fnv(h, (uint32_t)l[i]), (uint32_t)r[i]);
+            *energy += (uint64_t)((int64_t)l[i] * l[i] >> 16) + (uint64_t)((int64_t)r[i] * r[i] >> 16);
+        }
+    }
+    return h;
+}
+/* the fx-drawer fixture's effect e of its drawer playing a held note, then switched off by SEL (sel) or as the editor's
+ * BYPASS command does it (eng_set_bypass on its targets): the output after the switch (hash), its energy then and later */
+static uint32_t fx_sel_tail(uint32_t e, int sel, uint64_t *soon, uint64_t *late)
+{
+    const uint8_t *t;
+    uint32_t k, n, h;
+    *soon = *late = 0;
+    if (!ct_fx_load())
+        return 0;
+    e += eng_rack_first(0);
+    pages_focus(fx_dev(e), 0);
+    later(100);
+    eng_note_on(60, ENG_ONE, 1);
+    blocks(60);
+    eng_note_off(60, 1);
+    if (sel)
+        tap(BTN_SEL);
+    else
+        for (n = eng_fx_targets(e, &t), k = 0; k < n; k++)
+            eng_set_bypass(t[k], 1);
+    h = fx_sel_render(40, soon);
+    (void)fx_sel_render(1200, late);
+    return eng_fx_on(e) ? 0 : h;
+}
+static void fx_sel_suite(void)
+{
+    const uint8_t *t;
+    uint32_t home, first, e, k, n, ok, d, i;
+    char want[40];
+    check("SEL on effects: the FX drawer fixture", ct_fx_load() && eng_fx_count() == 3u);
+    if (eng_fx_count() != 3u)
+        return;
+    home = pg_cur_dev;
+    first = eng_rack_first(0);
+    for (ok = 1, e = first; e < first + 3u; e++)
+        ok = ok && eng_fx_on(e);
+    check("  every effect on at load", ok);
+    pages_focus(fx_dev(first), 0);
+    later(100);
+    d = pg_cur_dev;
+    check("  an effect's page: the sheet lists SEL as its switch, not as arming", hc_fx_effect() && !hc_dev_keys());
+    param_now = 0;
+    preset_record = 1;
+    preset_events = 0;
+    m1_edited = 0;
+    tap(BTN_SEL);
+    preset_record = 0;
+    caps(want, pg_dev[d].name, pg_dev[d].nlen, 16);
+    strcat(want, MSG_OFF);
+    for (ok = !eng_fx_on(first), n = eng_fx_targets(first, &t), k = 0; k < n; k++)
+        ok = ok && eng_bypass(t[k]) && fx_preset_event(t[k], 0xFFu, 65536);
+    check("  SEL switches the effect off: its targets bypassed, the editor told (PARAM_NOW 0xFF)", ok && n > 0u);
+    check("  the others stay on", eng_fx_on(first + 1u) && eng_fx_on(first + 2u));
+    check("  the bar says NAME OFF (the page header's name)", !strcmp(msg_text, want) && str_len(want) <= 26u);
+    check("  the page stays, nothing armed", page == 0u && pg_cur_dev == d && !m64(eng_arm_mask_get()));
+    check("  the running patch is edited (SAVE keeps it)", m1_edited != 0);
+    later(2000);
+    tap(BTN_SEL);
+    caps(want, pg_dev[d].name, pg_dev[d].nlen, 16);
+    strcat(want, MSG_ON);
+    for (ok = eng_fx_on(first), n = eng_fx_targets(first, &t), k = 0; k < n; k++)
+        ok = ok && !eng_bypass(t[k]);
+    check("  SEL again: on, NAME ON", ok && !strcmp(msg_text, want));
+    tap(BTN_SEL);
+    {   /* SAVE keeps it: the running binary (pv_bin, proto.c's m1_cur) loads with the effect off, the others on */
+        check("  the running binary reloads with it off", !eng_load(pv_bin, pv_len) && !eng_fx_on(first)
+              && eng_fx_on(first + 1u) && eng_fx_on(first + 2u));
+        pv_gen++;
+        pages_ensure();
+        pages_focus(d, 0);
+        later(100);
+    }
+    /* the drawer's Toggle (LFO) follows: on while every effect is off */
+    check("  the drawer's Toggle stays off while an effect plays", !(eng_buttons_get() & 8u));
+    for (e = first + 1u; e < first + 3u; e++) {
+        pages_focus(fx_dev(e), 0);
+        tap(BTN_SEL);
+    }
+    check("  every effect off by SEL: the drawer's Toggle on and lit", !eng_fx_on(first + 1u) && !eng_fx_on(first + 2u)
+          && (eng_buttons_get() & 8u) && (panel_lights() & 8u));
+    tap(BTN_SEL);
+    check("  one back on by SEL: the Toggle off", eng_fx_on(first + 2u) && !(eng_buttons_get() & 8u) && !(panel_lights() & 8u));
+    tap(5);
+    check("  the Toggle switches them all off, SEL's effect too", !eng_fx_on(first + 2u) && (eng_buttons_get() & 8u));
+    tap(5);
+    for (ok = 1, e = first; e < first + 3u; e++)
+        ok = ok && eng_fx_on(e);
+    check("  and on again: SEL's state follows", ok);
+    later(2000);
+    pages_focus(home, 0);
+    eng_arm_mask(mset_none());
+    later(100);
+    tap(BTN_SEL);
+    check("SEL on the instrument still arms it", env_armed(home) && eng_fx_on(first));
+    eng_arm_mask(mset_none());
+    tap(BTN_ENV);
+    for (i = 0; i < 8u && pg_cur_dev != fx_dev(first); i++)
+        enc(0, 1);
+    tap(BTN_SEL);
+    check("SEL on the environment's effect row: as before, no switch", page == PAGE_ENV && eng_fx_on(first));
+    tap(BTN_HOME);
+    later(2000);
+    {   /* the tail: SEL rings out exactly as the editor's bypass does (the same output), sound after the switch */
+        uint64_t s1, l1, s2, l2;
+        uint32_t a, b;
+        for (ok = 1, e = 0; e < 3u; e++) {
+            a = fx_sel_tail(e, 1, &s1, &l1);
+            b = fx_sel_tail(e, 0, &s2, &l2);
+            ok = ok && a && a == b && s1 == s2 && l1 == l2 && s1 > 0u;
+        }
+        check("  SEL off rings out as the editor's bypass does (each effect: the same output, sound after it)", ok);
+    }
+    /* formats 55..65: the bus device's page of a stage switches that stage */
+    if (fx_fixture("fx-bus") && eng_fx_count() == 4u) {
+        uint32_t was = eng_fx_on(0);
+        tap(2);
+        tap(BTN_SEL);
+        check("legacy bus: SEL on the first stage's page switches that stage", eng_fx_on(0) != was);
+        tap(BTN_SEL);
+        check("  and back", eng_fx_on(0) == was);
+    } else
+        check("legacy bus fixture loads", 0);
+    /* the factory 909 Kit (the owner's check): its drawer's Drive and Reverb each switch by SEL and back */
+    if (ct_load_factory("909 KIT") == 0 && eng_rack_count()) {
+        for (ok = 1, e = 0; e < eng_fx_count(); e++) {
+            uint32_t was = eng_fx_on(e);
+            if (pages_dev_of(eng_fx_device(e)) >= pg_ndev || fx_drawer_at(eng_fx_device(e)) == UINT32_MAX)
+                continue;
+            pages_focus(pages_dev_of(eng_fx_device(e)), 0);
+            later(100);
+            tap(BTN_SEL);
+            ok = ok && eng_fx_on(e) != was && page == 0u;
+            tap(BTN_SEL);
+            ok = ok && eng_fx_on(e) == was;
+            later(2000);
+        }
+        check("the factory 909 Kit: SEL switches each drawer effect and back", ok && eng_fx_count() >= 2u);
+    } else
+        check("the factory 909 Kit loads with an FX rack", 0);
+    ct_reset();
+}
+
 /* D-520, the banks (the owner, 2026-11-19): a drum track's rows are one list, the rows of every Drum map it plays; black
  * keys 1..8 play 8 of them, OCT picks which 8 on a device page (the footer ROWS 1-8 .. in the octave's place, a nudge naming
  * the bank), SEL + OCT on the SEQ page, where the grid shows those 8 with their names. A kit of 8 rows: as before */
@@ -6015,6 +6173,7 @@ int main(void)
     plock_suite();
     pt_on = 0;
     fx_suite();
+    fx_sel_suite();
     fx_preset_suite();
     fxd_preset_suite();
     report_suite();

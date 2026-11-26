@@ -31,6 +31,7 @@
 #define MSG_ALL_STEPS_SHOWN "ALL 16 STEPS SHOWN"
 #define MSG_NOT_USED ": NOT USED IN PATCH"              /* after the button's name */
 #define MSG_NO_FX "NO FX IN THE RACK"                  /* FX with no effect for here (fx_button) */
+#define MSG_FX_TOGGLE_ONLY "SWITCH IT WITH A TOGGLE"   /* SEL on an effect the FM-1 switches by bypass only (fx_sel_switch) */
 #define MSG_ON " ON"                                    /* after a button's or a track's name */
 #define MSG_OFF " OFF"
 #define MSG_OCTAVE "OCTAVE "                            /* then +1, 0, -1 */
