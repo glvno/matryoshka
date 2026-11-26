@@ -352,7 +352,7 @@ static int old_format(int n, char **argv)
 {
     static int32_t a_l[128 * 40], a_r[128 * 40], b_l[128 * 40], b_r[128 * 40];
     static uint8_t old[M1_PATCH_MAX];
-    int k, same = 0, other = 0, kept = 0, current = 0, grown = 0, big = 0;
+    int k, same = 0, other = 0, kept = 0, current = 0, grown = 0, big = 0, raised = 0;
     for (k = 0; k + 1 < n; k += 2) {
         long no, nn = 0;
         uint8_t *o = slurp(argv[k], &no), *nw = strcmp(argv[k + 1], "-") ? slurp(argv[k + 1], &nn) : 0;
@@ -391,6 +391,26 @@ static int old_format(int n, char **argv)
         run(a_l, a_r);
         eng_all_notes_off();
         CHECK(m1_set_current(old, (uint32_t)no) == 0);
+        {   /* (D-1041) raised on the FM-1 to today's format, as for an edit of a parameter appended since (eng_rec_grow: one
+             * before format 64 takes its layout first, eng_slim): it plays the same; one that cannot be (not counted, a master
+             * FX bus, no room) is left as it was */
+            static uint8_t up[M1_PATCH_MAX];
+            uint32_t ul = m1_cur_len;
+            memcpy(up, m1_cur, ul);
+            if (!eng_raise(up, &ul, sizeof up, ENG_PATCH_VERSION)) {
+                CHECK(up[1] == ENG_PATCH_VERSION && m1_valid(up, ul) && eng_load(up, ul) == 0);
+                E.tick_acc = E.ticks = 0;
+                E.idle_blk = 0;
+                run(b_l, b_r);
+                eng_all_notes_off();
+                if (memcmp(a_l, b_l, sizeof a_l) || memcmp(a_r, b_r, sizeof a_r)) {
+                    fprintf(stderr, "FAIL %s: raised to format %u it renders differently\n", argv[k], ENG_PATCH_VERSION);
+                    return 1;
+                }
+                raised++;
+            } else
+                CHECK(ul == m1_cur_len && !memcmp(up, m1_cur, ul));
+        }
         if (old[1] >= ENG_COUNTED || m1_cur[1] != ENG_UPGRADED) {   /* (eng_upgrade writes ENG_UPGRADED, D-299) */
             kept++;                                           /* (too big to upgrade: it stays in its format) */
             CHECK(m1_cur_len == (uint32_t)no && !memcmp(m1_cur, old, (size_t)no));
@@ -447,8 +467,8 @@ static int old_format(int n, char **argv)
         free(o);
         free(nw);
     }
-    printf("older format ok: %d binaries load, upgrade and render bit-identically; %d upgraded as today's encoder writes them, %d differ, %d too big to upgrade, %d already in today's format; %d records grown to all their parameters render the same; %d over a slot skipped\n",
-           n / 2 - big, same, other, kept, current, grown, big);
+    printf("older format ok: %d binaries load, upgrade and render bit-identically; %d upgraded as today's encoder writes them, %d differ, %d too big to upgrade, %d already in today's format; %d records grown to all their parameters render the same; %d raised to format %u render the same; %d over a slot skipped\n",
+           n / 2 - big, same, other, kept, current, grown, raised, ENG_PATCH_VERSION, big);
     return 0;
 }
 
@@ -553,12 +573,15 @@ static int grow_test(int n, char **argv)
 /* proto_test --same A.m1p B.m1p ... (tools/golden.sh, the format 64 golden kits): B is A's patch written in format 64's
  * shorter layout (D-1025: the panel labels by their length, the cables grouped by the module they go into, only the Drum
  * map row names off their default). Both pass m1_valid and load; B's cables are A's in the order of the module they go
- * into, each module's in A's order; the panel labels and the row names read the same; the two render bit-identically. */
+ * into, each module's in A's order; the panel labels and the row names read the same; the two render bit-identically.
+ * And A (counted) rewritten in that layout on the FM-1 (engine.c eng_slim, for a raise, D-1041) has B's header, panel,
+ * cables and row names byte for byte, and renders as A. */
 static int same_test(int n, char **argv)
 {
     static int32_t a_l[128 * 40], a_r[128 * 40], b_l[128 * 40], b_r[128 * 40];
     static uint32_t cf[ENG_MAX_CABLES], cfp[ENG_MAX_CABLES], ct[ENG_MAX_CABLES], ctp[ENG_MAX_CABLES];
-    int k, grouped = 0;
+    static uint8_t s[M1_PATCH_MAX];
+    int k, grouped = 0, slimmed = 0;
     for (k = 0; k + 1 < n; k += 2) {
         long na, nb;
         uint8_t *a = slurp(argv[k], &na), *b = slurp(argv[k + 1], &nb);
@@ -605,10 +628,40 @@ static int same_test(int n, char **argv)
             uint32_t lx = eng_panel_label(a, (uint32_t)na, r, x), ly = eng_panel_label(b, (uint32_t)nb, r, y);
             CHECK(lx == ly && !strcmp(x, y));
         }
+        if (a[1] >= ENG_COUNTED && a[1] < ENG_SLIM && (uint32_t)na <= sizeof s) {   /* (the records may differ: format 64
+                                                              * keeps more of the parameters the FM-1 can change, fm1Rows) */
+            uint32_t sl = (uint32_t)na, ps, pb = eng_panel_at(b, (uint32_t)nb), cs, cb, ns = 0, nbm = 0;
+            memcpy(s, a, sl);
+            CHECK(eng_slim(s, &sl, sizeof s) == 0 && m1_valid(s, sl));
+            ps = eng_panel_at(s, sl);
+            cs = eng_records_end(s, sl, 0);
+            cb = eng_records_end(b, (uint32_t)nb, 0);
+            if ((s[6] & 128u) && (ns = eng_section_at(s, sl, ENG_SEC_NAMES)))
+                nbm = eng_section_at(b, (uint32_t)nb, ENG_SEC_NAMES);
+            if (memcmp(s, b, 8u) || ps != pb || memcmp(s + ps, b + pb, eng_records_at(s, sl) - ps) || !cs || !cb
+                || eng_cables_to(s, sl, cs) - cs != eng_cables_to(b, (uint32_t)nb, cb) - cb
+                || memcmp(s + cs, b + cb, eng_cables_to(s, sl, cs) - cs)
+                || (ns && (!nbm || eng_names_end(s, sl, ns) - ns != eng_names_end(b, (uint32_t)nb, nbm) - nbm
+                           || memcmp(s + ns, b + nbm, eng_names_end(s, sl, ns) - ns)))) {
+                fprintf(stderr, "FAIL %s: eng_slim's header, panel, cables or row names are not %s's\n", argv[k], argv[k + 1]);
+                return 1;
+            }
+            CHECK(eng_load(s, sl) == 0);
+            E.tick_acc = E.ticks = 0;
+            E.idle_blk = 0;
+            run(b_l, b_r);
+            eng_all_notes_off();
+            if (memcmp(a_l, b_l, sizeof a_l) || memcmp(a_r, b_r, sizeof a_r)) {
+                fprintf(stderr, "FAIL %s: rewritten by eng_slim it renders differently\n", argv[k]);
+                return 1;
+            }
+            slimmed++;
+        }
         free(a);
         free(b);
     }
-    printf("format %u ok: %d kits read and render the same in the shorter layout (%d with their cables grouped)\n", ENG_SLIM, n / 2, grouped);
+    printf("format %u ok: %d kits read and render the same in the shorter layout (%d with their cables grouped; %d rewritten so by eng_slim: B's sections, A's sound)\n",
+           ENG_SLIM, n / 2, grouped, slimmed);
     return 0;
 }
 

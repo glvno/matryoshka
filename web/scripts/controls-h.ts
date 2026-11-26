@@ -150,8 +150,8 @@ export function controlsHeader(helpUi: string, fontH: string): string {
   w('/* what each row does (firmware/test/controls_test.h checks it) */');
   w(`enum { ${EFFECTS.map((e) => `CE_${cname(e)}`).join(', ')}, CE_COUNT };`);
   w('/* a gesture part: a button (id: its matrix id), an encoder (id: panel_encoders\' index), K1..K4 (id: a mask, bit 0 K1), a');
-  w(' * white key, a black key (n: black key n, 0 any), any key, the keys played, keys together */');
-  w('enum { CK_BUTTON, CK_ENCODER, CK_KNOBS, CK_WHITE, CK_BLACK, CK_ANY, CK_KEYS, CK_CHORD };');
+  w(' * white key, a black key (n: black key n, 0 any), any key, the keys played, keys together, the three highest keys */');
+  w('enum { CK_BUTTON, CK_ENCODER, CK_KNOBS, CK_WHITE, CK_BLACK, CK_ANY, CK_KEYS, CK_CHORD, CK_TOP };');
   w('#define CH_NONE 255u                       /* hold: nothing held; CH_STEP a step (its white key) held; else a matrix id */');
   w('#define CH_STEP 254u');
   w('enum { CW_PRESS, CW_TAP, CW_HELD, CW_HOLD2S, CW_HOLD1S };   /* how: as the handler takes it, a tap, held while keys play, held 2 s, held 1 s */');
@@ -163,7 +163,7 @@ export function controlsHeader(helpUi: string, fontH: string): string {
     if ('button' in p) return `{CK_BUTTON, ${BUTTON_ID[p.button]}, 0}`;
     if ('encoder' in p) return `{CK_ENCODER, ${ENCODER_ID[p.encoder]}, 0}`;
     if ('knobs' in p) return `{CK_KNOBS, ${[...p.knobs].reduce((m, d) => m | 1 << (Number(d) - 1), 0)}, 0}`;
-    return `{CK_${p.key === 'white' ? 'WHITE' : p.key === 'black' ? 'BLACK' : p.key === 'any' ? 'ANY' : p.key === 'keys' ? 'KEYS' : 'CHORD'}, 0, ${p.n ?? 0}}`;
+    return `{CK_${p.key === 'white' ? 'WHITE' : p.key === 'black' ? 'BLACK' : p.key === 'any' ? 'ANY' : p.key === 'keys' ? 'KEYS' : p.key === 'top' ? 'TOP' : 'CHORD'}, 0, ${p.n ?? 0}}`;
   };
   w(`#define CTL_NROWS ${CONTROLS.length}`);
   w('static const ctl_row_t CTL_ROW[CTL_NROWS] = {');

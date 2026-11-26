@@ -25,6 +25,7 @@
 #define MSG_NONE_PATCHES "NONE. HOME+PRESET: PATCHES"
 #define MSG_OLD_PATCH "OLD PATCH: SEND + SAVE IT"
 #define MSG_NONE_YET "NONE YET: ENV+SAVE STORES"
+#define MSG_OLD_ROW "OLD PATCH: SET IN EDITOR"         /* a row its format cannot hold (pages_ui.c row_old, D-1041) */
 
 /* the panel (panel.c) */
 #define MSG_BANK_EMPTY "BANK EMPTY"

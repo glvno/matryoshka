@@ -109,7 +109,7 @@ import { inlineWordmarks } from './brand';
 import { clipText, parseClip, type Clip } from './clipboard';
 import { isGlobalTempo, patchTempo, readTempo, tempo, TEMPO_KEY, tempoNow } from './tempo';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
-import { binaryPage, deviceBudget, editorPage, encodePatch, kb, linesAdvice, overText, POLY_ROW, POLY_ROW_PARAMS, SANITY_CAPS, toQ16, type BudgetStore } from './patchbin';
+import { binaryPage, deviceBudget, editorPage, encodePatch, kb, linesAdvice, overText, POLY_ROW, POLY_ROW_PARAMS, SANITY_CAPS, SLIM, toQ16, type BudgetStore } from './patchbin';
 import { UploadGate } from './upload-gate';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
@@ -1119,6 +1119,20 @@ const editor = new Editor($('canvas'), firstPatch, {
       const was = fitsDevice;
       showBudget();
       if (!was && fitsDevice && live() && !fromDevice) queueUpload();
+    }
+    // a parameter appended in a format from SLIM on (ParamDef.since: the Harmonizer's `invkeys`, format 68) past the format
+    // of the FM-1's copy: when the patch now encodes in another format, or the copy's format is not known (an edit made on
+    // the FM-1 since the upload), the FM-1 takes the whole patch again, as it cannot raise every older copy itself (D-1041)
+    const held = uploadGate.format;
+    if (pd?.since !== undefined && pd.since >= SLIM && (held === undefined || pd.since > held) && live() && !fromDevice) {
+      let v: number | undefined;
+      try { v = device.encodeFor(editor.patch)[1]; } catch { /* over the budget: sendPatch says so */ }
+      if (held === undefined || v !== held) {
+        if (!fromEmu) emuParam(id, name, value);
+        uploadGate.forget();
+        queueUpload();
+        return;
+      }
     }
     if (!fromEmu) emuParam(id, name, value);
     if (fromDevice) return;
@@ -4533,10 +4547,11 @@ if (import.meta.env.DEV) {
     unsave: (name: string): boolean => !!removeSaved(name),
     chip: (name: string): string | null => openableGroups(device.bufferAllocation, device.budgetStore).flatMap((g) => g.items).find((x) => x.name === name)?.chip().text ?? null,
     // the FM-1's bank: its slots (SLOT_INFO), a slot emptied, a binary stored as it is (an older format's, as a bank an earlier
-    // firmware wrote holds)
+    // firmware wrote holds), a slot's binary as stored (SLOT_GET; null empty)
     slots: async (): Promise<SlotInfo[]> => device.readBank(),
     eraseSlot: (slot: number): Promise<void> => device.eraseSlot(slot),
     storeBin: (slot: number, name: string, bytes: number[]): Promise<void> => device.uploadSlotBin(slot, name, Uint8Array.from(bytes)),
+    slotBin: async (slot: number): Promise<number[] | null> => { const b = await device.readSlotBin(slot); return b && Array.from(b); },
     // the browser's own output (sandbox mode plays here) since the last ask, read every 20 ms from an analyser on the
     // engine's output (audio.ts meter): its loudest sample (0..1) and its energy (the sum of the squares of each read, an
     // analyser's 2048 samples: comparable between asks, not a level); null while the audio does not run

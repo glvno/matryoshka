@@ -33,6 +33,11 @@ export class UploadGate {
     return this.behind;
   }
 
+  /** the format of the patch the FM-1 holds (its byte 1), undefined when unknown */
+  get format(): number | undefined {
+    return this.held?.[1];
+  }
+
   /** the editor's patch encoded, after live edits only (no structural change since): what the FM-1 now holds */
   refresh(bin: Uint8Array): void {
     if (!this.behind) return;

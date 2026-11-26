@@ -58,6 +58,9 @@
 #define ENG_MAX_ARPS 2               /* Arpeggiator modules of a patch (a third does not load) */
 #define ENG_MAX_HARMS 2              /* Harmonizer modules of a patch (#598; a third does not load) */
 #define HARM_ZONE 7                  /* the keys under a Harmonizer's split that are its chord buttons (harmonizer.ts HARM_ZONE) */
+#define HARM_INV_KEYS 3              /* its inversion keys (`invkeys` on, #1311): buttons HARM_ZONE.. are the 1st..3rd inversion */
+#define HARM_INV_AT 17               /* the first inversion key, over the split (F5 over C4; harmonizer.ts HARM_INV_AT) */
+#define HARM_ALL (HARM_ZONE + HARM_INV_KEYS)
 #define HARM_ROOTS 10                /* roots a Harmonizer holds at once (a further one is not played) */
 #define HARM_TONES 8                 /* notes of one chord at most (root, 2nd, 3rd, 4th, 5th, 7th, 9th) */
 #define HARM_VOICING 8               /* the voicing's reach, inversions up or down */
@@ -858,10 +861,11 @@ typedef struct {
  * way, latched set and toggle, the buttons' press order (the quality pressed last wins), the roots held (oldest first)
  * with the notes each started, and per note how many held roots sound it */
 typedef struct {
-    uint8_t node, down, gesture, locked, toggle, nroots;
+    uint8_t node, toggle, nroots;
+    uint16_t down, gesture, locked;              /* bit b: button b (the chord buttons, then the inversion keys) */
     uint8_t root[HARM_ROOTS], nnote[HARM_ROOTS], note[HARM_ROOTS][HARM_TONES];
     uint8_t count[128], button_key[128];          /* MIDI note -> press-time button + 1; zero is not a button */
-    uint32_t stamp[HARM_ZONE], clock;
+    uint32_t stamp[HARM_ALL], clock;
 } harm_t;
 
 typedef struct {
@@ -1929,7 +1933,7 @@ int eng_widen(uint8_t *p, uint32_t *len, uint32_t cap)
     uint32_t at;
     if (*len >= 8u && p[0] == 0xA1u && p[1] >= ENG_WIDE)
         return 0;
-    if (*len < 8u || p[0] != 0xA1u || p[1] < ENG_SLIM || (p[1] < 66u && (p[7] & (ENG_FLAG_FX_BUS >> 8))) || *len + 1u > cap
+    if (*len < 8u || p[0] != 0xA1u || !eng_can_wide(p) || *len + 1u > cap
         || !(at = eng_sides_at(p, *len, p[1])) || at > *len)
         return -1;
     eng_gap(p, len, at, 1u);
@@ -1940,11 +1944,155 @@ int eng_widen(uint8_t *p, uint32_t *len, uint32_t cap)
 void eng_narrow(uint8_t *p, uint32_t *len, uint32_t v)
 {
     uint32_t at;
-    if (*len < 8u || p[0] != 0xA1u || p[1] < ENG_WIDE || v >= ENG_WIDE || v < ENG_SLIM || !(at = eng_sides_at(p, *len, v))
+    if (*len < 8u || p[0] != 0xA1u || p[1] != ENG_WIDE || v >= ENG_WIDE || v < ENG_SLIM || !(at = eng_sides_at(p, *len, v))
         || at >= *len || p[at])
-        return;
+        return;                                  /* (a binary raised past ENG_WIDE holds that format's parameters: kept) */
     eng_cut(p, len, at, 1u);
     p[1] = (uint8_t)v;
+}
+/* the length of a text of at most n bytes, zero padded (a label or a row name before ENG_SLIM) */
+static uint32_t eng_padded_len(const uint8_t *s, uint32_t n)
+{
+    uint32_t k = 0;
+    while (k < n && s[k])
+        k++;
+    return k;
+}
+/* a Drum map row name of ENG_DRUM_NAME bytes, zero padded, is row r's default (DRUM_ROW_NAME) */
+static int eng_name_default(const uint8_t *s, uint32_t r)
+{
+    const uint8_t *d = (const uint8_t *)DRUM_ROW_NAME[r];
+    uint32_t k;
+    for (k = 0; k < ENG_DRUM_NAME && (s[k] || d[k]); k++)
+        if (s[k] != d[k])
+            return 0;
+    return 1;
+}
+static void eng_copy(uint8_t *d, const uint8_t *s, uint32_t n)
+{
+    while (n--)
+        *d++ = *s++;
+}
+/* a counted binary of a format before ENG_SLIM rewritten in place in ENG_SLIM's layout (patchbin.ts SLIM, D-1025), as
+ * the editor writes the same patch in it: the panel labels by their length; the 3-byte cables (ENG_FLAG_CABLES3) grouped
+ * by the module they go into when that is smaller and no module takes more than 15 (cablesGrouped), else 4 bytes each
+ * (the flag cleared); the Drum map row names only off their default (DRUM_ROW_NAME). The same values: it plays the same.
+ * The sections after it are found by their sizes, and no format gate before ENG_SLIM refuses what an older one allowed.
+ * 0 done, -1 malformed or too big for cap (left as it was) */
+static int eng_slim(uint8_t *p, uint32_t *len, uint32_t cap)
+{
+    uint8_t buf[5u + ENG_PANEL_LABELS * (1u + ENG_PANEL_LABEL)], cnt[ENG_MAX_MODULES];
+    uint32_t pan = eng_panel_at(p, *len), cab = eng_records_end(p, *len, 0), ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
+    uint32_t nb = (p[2] + 1u) / 2u, three = p[7] & ENG_FLAG_CABLES3, group = three && nb < 2u * ncab, nam = 0, nm = 0;
+    uint32_t np = 5u, nn = 0, grow = 0, i, r, k, w;
+    if (*len < 8u || p[1] < ENG_COUNTED || p[1] >= ENG_SLIM || !pan || !cab || !eng_cables_to(p, *len, cab))
+        return -1;
+    for (i = 0; i < ENG_PANEL_LABELS; i++)       /* (the sizes first: the labels, the cables, the names) */
+        if ((w = eng_padded_len(p + pan + 4u + i * ENG_PANEL_LABEL, ENG_PANEL_LABEL)))
+            np += 1u + w;
+    for (i = 0; i < p[2]; i++)
+        cnt[i] = 0;
+    for (i = 0; three && i < ncab; i++)
+        if (++cnt[p[cab + 3u * i + 1u]] > 15u)
+            group = 0;
+    if ((p[6] & 128u) && (!(nam = eng_section_at(p, *len, ENG_SEC_NAMES)) || !eng_names_end(p, *len, nam)))
+        return -1;
+    nm = nam ? p[nam] : 0u;
+    for (i = 0; i < nm; i++)
+        for (nn += 2u, r = 0; r < ENG_DRUM_ROWS; r++) {
+            const uint8_t *s = p + nam + 2u + i * (1u + ENG_DRUM_ROWS * ENG_DRUM_NAME) + r * ENG_DRUM_NAME;
+            if (!eng_name_default(s, r))
+                nn += 1u + eng_padded_len(s, ENG_DRUM_NAME);
+        }
+    grow += np > ENG_PANEL_BYTES ? np - ENG_PANEL_BYTES : 0u;
+    grow += three && !group ? ncab : group && nb > ncab ? nb - ncab : 0u;
+    grow += nn > nm * (1u + ENG_DRUM_ROWS * ENG_DRUM_NAME) ? nn - nm * (1u + ENG_DRUM_ROWS * ENG_DRUM_NAME) : 0u;
+    if (*len + grow > cap)
+        return -1;
+    for (i = nm; i-- > 0;) {                     /* the names, the last map first (the offsets before it stay) */
+        uint32_t e = nam + 1u + i * (1u + ENG_DRUM_ROWS * ENG_DRUM_NAME);
+        uint8_t ent[2u + ENG_DRUM_ROWS * (1u + ENG_DRUM_NAME)];
+        ent[0] = p[e];
+        ent[1] = 0;
+        for (k = 2u, r = 0; r < ENG_DRUM_ROWS; r++) {
+            const uint8_t *s = p + e + 1u + r * ENG_DRUM_NAME;
+            if (eng_name_default(s, r))
+                continue;
+            w = eng_padded_len(s, ENG_DRUM_NAME);
+            ent[1] |= (uint8_t)(1u << r);
+            ent[k++] = (uint8_t)w;
+            eng_copy(ent + k, s, w);
+            k += w;
+        }
+        if (k < 1u + ENG_DRUM_ROWS * ENG_DRUM_NAME)
+            eng_cut(p, len, e + k, 1u + ENG_DRUM_ROWS * ENG_DRUM_NAME - k);
+        else
+            eng_gap(p, len, e + 1u + ENG_DRUM_ROWS * ENG_DRUM_NAME, k - (1u + ENG_DRUM_ROWS * ENG_DRUM_NAME));
+        eng_copy(p + e, ent, k);
+    }
+    if (group) {                                 /* the cables by the module they go into, in their order (a stable sort),
+                                                  * then u8 from module, u8 the ports; the counts before them */
+        for (i = 1; i < ncab; i++)
+            for (k = i; k && p[cab + 3u * k - 2u] > p[cab + 3u * k + 1u]; k--)
+                for (r = 0; r < 3u; r++) {
+                    uint8_t t = p[cab + 3u * k - 3u + r];
+                    p[cab + 3u * k - 3u + r] = p[cab + 3u * k + r];
+                    p[cab + 3u * k + r] = t;
+                }
+        for (i = 0; i < ncab; i++) {
+            uint8_t from = p[cab + 3u * i], ports = p[cab + 3u * i + 2u];
+            p[cab + 2u * i] = from;
+            p[cab + 2u * i + 1u] = ports;
+        }
+        eng_cut(p, len, cab + 2u * ncab, ncab);
+        eng_gap(p, len, cab, nb);
+        for (i = 0; i < nb; i++)
+            p[cab + i] = 0;
+        for (i = 0; i < p[2]; i++)
+            p[cab + (i >> 1)] |= (uint8_t)(cnt[i] << (4u * (i & 1u)));
+    } else if (three) {                          /* 4 bytes a cable: from module, its output, to module, its input */
+        eng_gap(p, len, cab + 3u * ncab, ncab);
+        for (i = ncab; i-- > 0;) {
+            uint8_t from = p[cab + 3u * i], to = p[cab + 3u * i + 1u], ports = p[cab + 3u * i + 2u];
+            p[cab + 4u * i] = from;
+            p[cab + 4u * i + 1u] = ports >> 4;
+            p[cab + 4u * i + 2u] = to;
+            p[cab + 4u * i + 3u] = ports & 15u;
+        }
+        p[7] &= (uint8_t)~ENG_FLAG_CABLES3;
+    }
+    buf[0] = p[pan];                             /* the panel: its two masks, the labels it holds, each by its length */
+    buf[1] = p[pan + 1u];
+    buf[2] = p[pan + 2u];
+    buf[3] = p[pan + 3u];
+    buf[4] = 0;
+    for (k = 5u, i = 0; i < ENG_PANEL_LABELS; i++)
+        if ((w = eng_padded_len(p + pan + 4u + i * ENG_PANEL_LABEL, ENG_PANEL_LABEL))) {
+            buf[4] |= (uint8_t)(1u << i);
+            buf[k++] = (uint8_t)w;
+            eng_copy(buf + k, p + pan + 4u + i * ENG_PANEL_LABEL, w);
+            k += w;
+        }
+    if (k < ENG_PANEL_BYTES)
+        eng_cut(p, len, pan + k, ENG_PANEL_BYTES - k);
+    else
+        eng_gap(p, len, pan + ENG_PANEL_BYTES, k - ENG_PANEL_BYTES);
+    eng_copy(p + pan, buf, k);
+    p[1] = ENG_SLIM;
+    return 0;
+}
+/* a counted binary raised to format v for an FM-1 edit of a parameter appended in v (the Harmonizer's `invkeys`, format 68,
+ * #1311): one before ENG_SLIM takes its layout first (eng_slim), then it is made ENG_WIDE (eng_widen); the formats after
+ * ENG_WIDE only append parameters, so the format byte is then all that changes (no type's parameter masks change width
+ * from ENG_COUNTED on: eng_mask_bytes). 0 done, -1 not counted, an FX bus, malformed or too big for cap (left as it was) */
+static int eng_raise(uint8_t *p, uint32_t *len, uint32_t cap, uint32_t v)
+{
+    if (v > ENG_PATCH_VERSION || !eng_can_raise(p) || (p[1] < ENG_WIDE && *len + 1u > cap)
+        || (p[1] < ENG_SLIM && eng_slim(p, len, cap - 1u)) || eng_widen(p, len, cap))
+        return -1;
+    if (p[1] < v)
+        p[1] = (uint8_t)v;
+    return 0;
 }
 
 /* the offset of module `mod`'s record in a counted binary, 0 if malformed */
@@ -1988,17 +2136,24 @@ int eng_rec_grow(uint8_t *p, uint32_t *len, uint32_t cap, uint32_t mod, uint32_t
         return -1;
     d = &DEFS[p[at] & 0x7Fu];
     n = p[at + 1u] & ENG_REC_COUNT;
-    if (npar > eng_npar(d, p[1]))
+    if (npar > d->npar)
         return -1;
-    if (npar <= n)
+    k = npar > n ? npar - n : 0u;
+    if (!k && npar <= eng_npar(d, p[1]))
         return 0;
-    k = npar - n;
-    bm = eng_b_at(p, *len, mod, &bad);
-    if (bad)
-        return -1;
+    bm = k ? eng_b_at(p, *len, mod, &bad) : (bad = 0, 0u);
     gb = bm ? (npar + 7u) / 8u - (n + 7u) / 8u : 0u;   /* (its B bitmap's bytes: the new parameters' B is their A) */
-    if (*len + 4u * k + gb > cap)
+    if (bad || *len + 4u * k + gb > cap)
         return -1;
+    if (npar > eng_npar(d, p[1])) {              /* (the room for the record's growth kept: a raise is never undone) */
+        if (!d->psince || eng_raise(p, len, cap - 4u * k - gb, d->psince[npar - 1u]) || !(at = eng_rec_at(p, *len, mod)))
+            return -1;
+        bm = k ? eng_b_at(p, *len, mod, &bad) : 0u;   /* (SLIM's panel moved the record, the side section the B set) */
+        if (k && bad)
+            return -1;
+    }
+    if (!k)
+        return 0;
     if (gb) {                                    /* the B set first: it comes after the record */
         eng_gap(p, len, bm + (n + 7u) / 8u, gb);
         for (j = 0; j < gb; j++)
@@ -4252,14 +4407,15 @@ static int harm_locks(const harm_t *h) { return harm_par(h, HARM_P_LOCK, 0, 1) =
 /* the buttons in effect: those held (Lock: of the press under way), else the latched ones (Lock on) */
 static uint32_t harm_buttons(const harm_t *h) { return harm_locks(h) ? (h->down ? h->gesture : h->locked) : h->down; }
 
-/* a chord button pressed or let go (harmonizer.ts harmButton) */
+/* a chord button or an inversion key pressed or let go (harmonizer.ts harmButton; an inversion key goes down only while
+ * the INVKEYS row is on) */
 static void harm_button(harm_t *h, uint32_t b, int down)
 {
-    uint8_t bit = (uint8_t)(1u << b);
-    if (b >= HARM_ZONE)
+    uint16_t bit = (uint16_t)(1u << b);
+    if (b >= HARM_ALL)
         return;
     if (down) {
-        if (h->down & bit)
+        if ((h->down & bit) || (b >= HARM_ZONE && harm_par(h, HARM_P_INVKEYS, 0, 1) != 1))
             return;
         h->stamp[b] = ++h->clock;
         if (!h->down) {
@@ -4273,7 +4429,7 @@ static void harm_button(harm_t *h, uint32_t b, int down)
     } else {
         if (!(h->down & bit))
             return;
-        h->down &= (uint8_t)~bit;
+        h->down &= (uint16_t)~bit;
         if (!h->down && harm_locks(h))
             h->locked = h->toggle ? 0u : h->gesture;
         if (!h->down) {
@@ -4283,11 +4439,12 @@ static void harm_button(harm_t *h, uint32_t b, int down)
     }
 }
 
-/* the chord as intervals over the root, low to high, before the voicing (harmonizer.ts harmIntervals): from the buttons in
- * effect (bit 0 sus2, 1 maj, 2 sus4, 3 min, 4 7, 5 dim, 6 9; the quality pressed last wins), else the card's. Its count */
+/* the chord as intervals over the root, low to high, before the voicing (harmonizer.ts harmIntervals): from the chord
+ * buttons in effect (bit 0 sus2, 1 maj, 2 sus4, 3 min, 4 7, 5 dim, 6 9; the quality pressed last wins), else the card's.
+ * Its count */
 static uint32_t harm_intervals(const harm_t *h, int32_t *t)
 {
-    uint32_t bits = harm_buttons(h), n = 0, i, j, at = 0;
+    uint32_t bits = harm_buttons(h) & ((1u << HARM_ZONE) - 1u), n = 0, i, j, at = 0;
     int32_t type = 0, sus2, sus4, sev, nine, x;
     if (bits) {
         for (i = 0; i < 3u; i++)
@@ -4336,11 +4493,25 @@ static uint32_t harm_intervals(const harm_t *h, int32_t *t)
     return n;
 }
 
+/* the inversion in effect (harmonizer.ts harmVoicing): the inversion key in effect pressed last (1..3) while the INVKEYS
+ * row is on, else `voicing` */
+static int32_t harm_voicing(const harm_t *h)
+{
+    uint32_t bits = harm_par(h, HARM_P_INVKEYS, 0, 1) == 1 ? harm_buttons(h) : 0u, i, at = 0;
+    int32_t v = harm_par(h, HARM_P_VOICING, -HARM_VOICING, HARM_VOICING);
+    for (i = 0; i < HARM_INV_KEYS; i++)
+        if ((bits >> (HARM_ZONE + i) & 1u) && h->stamp[HARM_ZONE + i] > at) {
+            at = h->stamp[HARM_ZONE + i];
+            v = (int32_t)i + 1;
+        }
+    return v;
+}
+
 static const uint8_t HARM_INTERVALS[9] = {0, 2, 3, 4, 5, 6, 7, 10, 14};
 static uint32_t harm_snapshot(const harm_t *h)
 {
     int32_t tones[HARM_TONES];
-    uint32_t n = harm_intervals(h, tones), bits = 0x8000u | (uint32_t)(harm_par(h, HARM_P_VOICING, -8, 8) + 8) << 9;
+    uint32_t n = harm_intervals(h, tones), bits = 0x8000u | (uint32_t)(harm_voicing(h) + 8) << 9;
     for (uint32_t i = 0; i < n; i++) for (uint32_t j = 0; j < 9u; j++) if (tones[i] == HARM_INTERVALS[j]) bits |= 1u << j;
     return bits;
 }
@@ -4349,7 +4520,7 @@ static uint32_t harm_snapshot(const harm_t *h)
  * note an octave up, its steps down the highest an octave down (a chord only, not the root alone). Their count */
 static uint32_t harm_chord_snapshot(const harm_t *h, uint32_t root, uint8_t *out, uint32_t snapshot)
 {
-    int32_t t[HARM_TONES], v = harm_par(h, HARM_P_VOICING, -HARM_VOICING, HARM_VOICING), x;
+    int32_t t[HARM_TONES], v = harm_voicing(h), x;
     uint32_t n = harm_intervals(h, t), i, k = 0;
     if (snapshot) {
         n = 0;
@@ -4454,7 +4625,15 @@ static void harm_root_on_snapshot(harm_t *h, uint32_t key, int32_t vel, uint32_t
 
 static void harm_root_on(harm_t *h, uint32_t key, int32_t vel) { harm_root_on_snapshot(h, key, vel, 0); }
 
-/* a key from Main: one of the seven under the split a button (not from the FM-1's keys: harm_raw), else a root */
+/* the button note is to h (harmonizer.ts harmButtonOf): one of the seven under the split a chord button (0..6), with the
+ * inversion keys on one of the three at split + HARM_INV_AT an inversion key (7..9); -1 a root */
+static int32_t harm_button_of(const harm_t *h, uint32_t note)
+{
+    int32_t split = harm_par(h, HARM_P_SPLIT, 0, 127), b = (int32_t)note - (split - HARM_ZONE), i = (int32_t)note - (split + HARM_INV_AT);
+    return b >= 0 && b < HARM_ZONE ? b : harm_par(h, HARM_P_INVKEYS, 0, 1) == 1 && i >= 0 && i < HARM_INV_KEYS ? HARM_ZONE + i : -1;
+}
+
+/* a key from Main: a button (harm_button_of; not from the FM-1's keys: harm_raw), else a root */
 static void harm_key(harm_t *h, uint32_t note, int32_t vel, int down)
 {
     int32_t b;
@@ -4475,8 +4654,8 @@ static void harm_key(harm_t *h, uint32_t note, int32_t vel, int down)
         harm_root_off(h, note);
         return;
     }
-    b = (int32_t)note - (harm_par(h, HARM_P_SPLIT, 0, 127) - HARM_ZONE);
-    if (!harm_raw && b >= 0 && b < HARM_ZONE) {
+    b = harm_raw ? -1 : harm_button_of(h, note);
+    if (b >= 0) {
         harm_root_off(h, note);
         h->button_key[note] = (uint8_t)(b + 1);
         harm_button(h, (uint32_t)b, 1);
@@ -5064,9 +5243,8 @@ static int steps_control(uint32_t track, uint32_t note, int down)
     if (harm_raw) return 0;
     for (i = 0; i < E.nharm; i++) {
         harm_t *h = &E.harm[i];
-        int32_t b = (int32_t)note - (harm_par(h, HARM_P_SPLIT, 0, 127) - HARM_ZONE);
         if (E.node[h->node].bypass || !key_after(h->node, track)) continue;
-        if (h->button_key[note] || (down && b >= 0 && b < HARM_ZONE)) {
+        if (h->button_key[note] || (down && harm_button_of(h, note) >= 0)) {
             harm_key(h, note, 0, down);
             return 1;
         }

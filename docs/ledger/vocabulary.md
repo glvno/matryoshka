@@ -302,6 +302,10 @@ A part of a poly group that is released, has finished its envelopes and stayed s
 
 The editor's firmware install page, shown as a panel over the main area and closed with its Close button (`#flash`). It is not a view of the top switch. Also called the Flash view or the Flash tab.
 
+### Inversion key
+
+One of a [Harmonizer](#harmonizer)'s three keys that set the chord's inversion, the 1st, the 2nd or the 3rd, while its `invkeys` row is on. On the FM-1 they are its three highest keys, F, F♯ and G at the right edge ([Side layout](#side-layout)); from a MIDI keyboard they are the notes 17 to 19 semitones over the Harmonizer's split, F5 to G5 as made.
+
 ### Kept copy
 
 A stored pattern in the [pattern store](#pattern-store) that the user keeps under its own name, made by FX + SAVE on the FM-1 or Keep a copy in the editor (firmware 1.26). No patch has to link it. The FM-1 never frees it and never writes over it; only Delete removes it.
@@ -590,7 +594,7 @@ The FM-1's overload response: dropping the highest part of the busiest poly grou
 
 ### Side layout
 
-How the FM-1's keys work while they reach a [Harmonizer](#harmonizer), after CoralFlower's layout of the same name: the seven lowest keys are its [chord buttons](#chord-button) at any octave, and every other key plays a root. Black keys 1 to 3 are maj, min and dim; white keys 1 to 4 are sus2, sus4, 7 and 9.
+How the FM-1's keys work while they reach a [Harmonizer](#harmonizer), after CoralFlower's layout of the same name: the seven lowest keys are its [chord buttons](#chord-button) at any octave, and every other key plays a root. Black keys 1 to 3 are maj, min and dim; white keys 1 to 4 are sus2, sus4, 7 and 9. With the Harmonizer's `invkeys` row on, the three highest keys are its [inversion keys](#inversion-key) instead.
 
 ### Sidecar
 

@@ -8,7 +8,7 @@
 // does not hold the patch, so it has no banks of rows: its OCT stays the octave. This is firmware/src/panel.c panel_key,
 // engine.c eng_keys_harm and eng_keys_rows on the editor's patch. No DOM here: main.ts wires it.
 import { armView, keepArmed, type DeviceKey } from './arm';
-import { HARM_ZONE } from './harmonizer';
+import { HARM_INV_KEYS, HARM_ZONE } from './harmonizer';
 import { keyReach } from './key-routing';
 import { DEFS } from './modules';
 import type { ModuleDef, ModuleInst, Patch } from './patch';
@@ -98,10 +98,13 @@ export class SandboxKeys {
     }
     if (msg.t !== 'on') return [msg];
     const key = msg.note - KEY0 - 12 * octave;
-    if (keysHarm(p, armed)) {
-      const chord = key >= 0 && key < HARM_ZONE;
-      this.playing.set(msg.note, [chord ? { t: 'chord', button: key, down: false } : { t: 'off', note: msg.note, root: true }]);
-      return [chord ? { t: 'chord', button: key, down: true } : { ...msg, root: true }];
+    const harm = keysHarm(p, armed);
+    if (harm) {
+      // the seven lowest keys its chord buttons, the three highest its inversion keys while its row is on (panel.c chord_button_of)
+      const inv = Math.round(harm.params.invkeys ?? 0) === 1 && key >= KEYS - HARM_INV_KEYS && key < KEYS;
+      const button = key >= 0 && key < HARM_ZONE ? key : inv ? key - (KEYS - HARM_INV_KEYS) + HARM_ZONE : -1;
+      this.playing.set(msg.note, [button >= 0 ? { t: 'chord', button, down: false } : { t: 'off', note: msg.note, root: true }]);
+      return [button >= 0 ? { t: 'chord', button, down: true } : { ...msg, root: true }];
     }
     const map = keysDrumMap(p, armed);
     const n = map ? drumKeyNote(map, keysDrumRows(p, armed), msg.note, octave) : msg.note;

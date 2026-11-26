@@ -5027,6 +5027,7 @@ const harm: ModuleImpl<null> = {
       param('voicing', -HARM_VOICING, HARM_VOICING, 0, { step: 1 }),
       param('lock', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
       param('split', 0, 127, 60, { step: 1, choices: NOTE_NAMES }),
+      param('invkeys', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 68 }),
     ],
   },
   init: () => null,

@@ -544,7 +544,7 @@ export class Engine {
   };
   private harmParams(h: HarmRun): HarmParams {
     const p = h.node.params;
-    return { type: p.type ?? 0, sus: p.sus ?? 0, ext: p.ext ?? 0, voicing: p.voicing ?? 0, lock: p.lock ?? 0, split: p.split ?? 60 };
+    return { type: p.type ?? 0, sus: p.sus ?? 0, ext: p.ext ?? 0, voicing: p.voicing ?? 0, lock: p.lock ?? 0, split: p.split ?? 60, invkeys: p.invkeys ?? 0 };
   }
   private thruHeld = new Map<number, Set<number>>();
   private thruRoom(need: number): boolean {

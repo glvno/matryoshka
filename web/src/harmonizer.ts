@@ -8,7 +8,9 @@
 // all none: the root alone). Lock on: the buttons pressed together stay latched until the next press. A root's chord is
 // fixed when it goes down: a button pressed while a root is held changes the next root's chord. `voicing` moves the chord
 // through its inversions (each step up takes the lowest note an octave up; each step down the highest an octave down; the
-// root alone stays).
+// root alone stays). `invkeys` on (#1311): the three keys at split + 17..19 (F5, F♯5, G5 above C4; on the FM-1 its three
+// highest keys whatever the octave) are three more buttons, the 1st, 2nd and 3rd inversion: one in effect sets the
+// inversion exactly, in place of `voicing` (two in effect: the one pressed last wins); they latch with the chord buttons.
 // Its notes go out at once, in the same call (not at the next block): a note two held roots share sounds once and ends
 // with the last of them.
 
@@ -16,6 +18,13 @@
 export const HARM_BUTTONS = ['sus2', 'maj', 'sus4', 'min', '7', 'dim', '9'];
 /** how many keys under the split are buttons */
 export const HARM_ZONE = 7;
+/** the inversion keys (`invkeys` on): buttons HARM_ZONE..HARM_ZONE + 2 are the 1st, 2nd and 3rd inversion, the keys at
+ * split + HARM_INV_AT and the two above it (F5, F♯5, G5 above C4: the FM-1's three highest keys at octave 0) */
+export const HARM_INV_KEYS = 3;
+export const HARM_INV_AT = 17;
+/** every button: the chord buttons, then the inversion keys */
+export const HARM_ALL = HARM_ZONE + HARM_INV_KEYS;
+const CHORD_BITS = (1 << HARM_ZONE) - 1;
 /** the card's chord: its quality, its suspended or added 2nd / 4th, its 7th / 9th */
 export const HARM_TYPES = ['none', 'maj', 'min', 'dim'];
 export const HARM_SUS = ['none', 'sus2', 'sus4', 'sus2+4'];
@@ -35,10 +44,12 @@ export interface HarmParams {
   voicing: number;
   lock: number;
   split: number;
+  /** the inversion keys on (0 / 1) */
+  invkeys: number;
 }
 
 export interface HarmState {
-  /** the buttons down (bit b = HARM_BUTTONS[b]) */
+  /** the buttons down (bit b: HARM_BUTTONS[b], then the inversion keys) */
   down: number;
   /** Lock: the buttons of the press under way (from the first button down to the last up), the latched set, and whether
    * the press began on the only latched button (let go alone, it unlatches) */
@@ -56,26 +67,26 @@ export interface HarmState {
   buttonKeys: number[];
 }
 
-export const harmInit = (): HarmState => ({ down: 0, gesture: 0, locked: 0, toggle: false, stamp: [0, 0, 0, 0, 0, 0, 0], clock: 0, roots: [], count: Array(128).fill(0), buttonKeys: Array(128).fill(0) });
+export const harmInit = (): HarmState => ({ down: 0, gesture: 0, locked: 0, toggle: false, stamp: Array(HARM_ALL).fill(0), clock: 0, roots: [], count: Array(128).fill(0), buttonKeys: Array(128).fill(0) });
 
 const int = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, Math.round(v)));
 const locks = (p: HarmParams): boolean => int(p.lock, 0, 1) === 1;
 
-/** the button a note is (0..6), -1 a root */
+/** the button a note is (0..6 a chord button; with the inversion keys on, 7..9 an inversion key), -1 a root */
 export function harmButtonOf(note: number, p: HarmParams): number {
-  const b = note - (int(p.split, 0, 127) - HARM_ZONE);
-  return b >= 0 && b < HARM_ZONE ? b : -1;
+  const split = int(p.split, 0, 127), b = note - (split - HARM_ZONE), i = note - (split + HARM_INV_AT);
+  return b >= 0 && b < HARM_ZONE ? b : int(p.invkeys, 0, 1) === 1 && i >= 0 && i < HARM_INV_KEYS ? HARM_ZONE + i : -1;
 }
 
 /** the buttons in effect: those held (Lock: of the press under way), else the latched ones (Lock on) */
 export const harmButtons = (s: HarmState, p: HarmParams): number => (locks(p) ? (s.down ? s.gesture : s.locked) : s.down);
 
-/** a chord button pressed or let go */
+/** a chord button or an inversion key pressed or let go (an inversion key goes down only while `invkeys` is on) */
 export function harmButton(s: HarmState, b: number, down: boolean, p: HarmParams): void {
-  if (b < 0 || b >= HARM_ZONE) return;
+  if (b < 0 || b >= HARM_ALL) return;
   const bit = 1 << b;
   if (down) {
-    if (s.down & bit) return;
+    if (s.down & bit || (b >= HARM_ZONE && int(p.invkeys, 0, 1) !== 1)) return;
     s.stamp[b] = ++s.clock;
     if (!s.down) {
       s.gesture = bit;
@@ -96,9 +107,9 @@ export function harmButton(s: HarmState, b: number, down: boolean, p: HarmParams
   }
 }
 
-/** the chord as intervals over the root, low to high, before the voicing: from the buttons in effect, else the card */
+/** the chord as intervals over the root, low to high, before the voicing: from the chord buttons in effect, else the card */
 export function harmIntervals(s: HarmState, p: HarmParams): number[] {
-  const bits = harmButtons(s, p);
+  const bits = harmButtons(s, p) & CHORD_BITS;
   let type: number, sus2: boolean, sus4: boolean, sev: boolean, nine: boolean;
   if (bits) {
     type = 0;
@@ -143,14 +154,26 @@ export function harmVoice(tones: number[], voicing: number): number[] {
   return t;
 }
 
+/** the inversion in effect: the inversion key in effect pressed last (1..3) while `invkeys` is on, else the `voicing` row */
+export function harmVoicing(s: HarmState, p: HarmParams): number {
+  const bits = int(p.invkeys, 0, 1) === 1 ? harmButtons(s, p) : 0;
+  let v = int(p.voicing, -HARM_VOICING, HARM_VOICING), at = 0;
+  for (let i = 0; i < HARM_INV_KEYS; i++)
+    if (bits & (1 << (HARM_ZONE + i)) && s.stamp[HARM_ZONE + i] > at) {
+      at = s.stamp[HARM_ZONE + i];
+      v = i + 1;
+    }
+  return v;
+}
+
 /** the notes a root plays now, low to high, inside 0..127 */
 export const harmChord = (s: HarmState, root: number, p: HarmParams): number[] =>
-  harmVoice(harmIntervals(s, p), p.voicing).sort((a, b) => a - b).map((x) => root + x).filter((n) => n >= 0 && n <= 127);
+  harmVoice(harmIntervals(s, p), harmVoicing(s, p)).sort((a, b) => a - b).map((x) => root + x).filter((n) => n >= 0 && n <= 127);
 
 const SNAP_INTERVALS = [0, 2, 3, 4, 5, 6, 7, 10, 14];
 /** Transient live-input chord choice carried through Steps' block delay; never stored in a patch. */
 export function harmSnapshot(s: HarmState, p: HarmParams): number {
-  return 0x8000 | ((int(p.voicing, -8, 8) + 8) << 9) | harmIntervals(s, p).reduce((bits, t) => bits | (1 << SNAP_INTERVALS.indexOf(t)), 0);
+  return 0x8000 | ((harmVoicing(s, p) + 8) << 9) | harmIntervals(s, p).reduce((bits, t) => bits | (1 << SNAP_INTERVALS.indexOf(t)), 0);
 }
 export function harmSnapshotChord(snapshot: number, root: number): number[] {
   return harmVoice(SNAP_INTERVALS.filter((_, i) => snapshot & (1 << i)), ((snapshot >> 9) & 31) - 8).map(n => root + n).filter(n => n >= 0 && n <= 127);
@@ -174,8 +197,8 @@ export function harmRootOn(s: HarmState, key: number, p: HarmParams, on: (note: 
   for (const n of notes) if (s.count[n]++ === 0) on(n);
 }
 
-/** a key from Main (`zone`: the keys under the split are buttons; the FM-1's keys come without it: its seven lowest keys
- * are the buttons, engine.c eng_chord_button) */
+/** a key from Main (`zone`: the keys under the split are buttons, and with the inversion keys on the three at split + 17;
+ * the FM-1's keys come without it: its seven lowest and three highest keys are the buttons, engine.c eng_chord_button) */
 export function harmKey(s: HarmState, note: number, down: boolean, p: HarmParams, zone: boolean, on: (note: number) => void, off: (note: number) => void, room: (notes: number[]) => boolean = () => true, snapshot = 0): void {
   if (zone && s.buttonKeys[note]) {
     const held = s.buttonKeys[note];

@@ -29,8 +29,8 @@ export type Part =
   | { button: Button }
   | { encoder: Encoder }
   | { knobs: '1' | '2' | '3' | '4' | '1234' }           // K1..K4: the ones named
-  | { key: 'white' | 'black' | 'any' | 'keys' | 'chord'; n?: number };   // a white key, a black key (n: black key n), any
-                                                        // key, the keys played, keys pressed together
+  | { key: 'white' | 'black' | 'any' | 'keys' | 'chord' | 'top'; n?: number };   // a white key, a black key (n: black key
+                                                        // n), any key, the keys played, keys pressed together, the three highest keys
 /** what is done: `do` while `hold` is held. Several parts in `do` are alternatives (either one), or with `join: 'list'`
  * a list of buttons that all do the same, or with `join: 'together'` buttons all pressed together. `how`: tap (a short
  * press), held (kept down while the keys play), hold 1 s, hold 2 s.
@@ -62,7 +62,7 @@ export const EFFECTS = [
 export type Effect = (typeof EFFECTS)[number];
 
 /** the conditions a row can show under (help_ui.c hc_<name>); '!name': when it is false */
-export const CONDITIONS = ['list', 'dev_presets', 'dev_store', 'dev_keys', 'long_track', 'tracks', 'menu_guide', 'menu_page', 'menu_system', 'roll', 'harm', 'roll_preview', 'roll_silent', 'fx_rack', 'pattern_store', 'oct_banks', 'drum_banks', 'learning', 'fx_effect'] as const;
+export const CONDITIONS = ['list', 'dev_presets', 'dev_store', 'dev_keys', 'long_track', 'tracks', 'menu_guide', 'menu_page', 'menu_system', 'roll', 'harm', 'roll_preview', 'roll_silent', 'fx_rack', 'pattern_store', 'oct_banks', 'drum_banks', 'learning', 'fx_effect', 'harm_inv'] as const;
 export type Condition = (typeof CONDITIONS)[number];
 
 export interface ControlRow {
@@ -115,6 +115,7 @@ const K = (knobs: '1' | '2' | '3' | '4' | '1234'): Part => ({ knobs });
 const WHITE: Part = { key: 'white' };
 const BLACK: Part = { key: 'black' };
 const ANY_KEY: Part = { key: 'any' };
+const TOP_KEYS: Part = { key: 'top' };
 
 export const CONTROLS: ControlRow[] = [
   // ---- EVERYWHERE: each button's job everywhere, then the combinations, but what the state's tab lists or gives another
@@ -191,6 +192,8 @@ export const CONTROLS: ControlRow[] = [
     help: 'with the keys on a Harmonizer: black keys 1..3 are its chord buttons maj, min and dim, at any octave (held with others, the one pressed last wins); every key from C up plays that chord on its root. With no button held (and none latched) a key plays the card’s chord, or itself' },
   { id: 'chord-add', gesture: { do: [WHITE] }, does: '1-4 sus2 sus4 7 9', plain: 'chord buttons sus2, sus4, 7, 9', when: 'harm', sheet: { device: 26, roll: 26, step: 26 }, effect: 'chord_button',
     help: 'with the keys on a Harmonizer: white keys 1..4 add to the chord: sus2 and sus4 (beside maj, min or dim an added 2nd or 4th), 7 (the minor seventh) and 9; pressed together the buttons combine. Its LOCK row on: the buttons pressed together stay latched until the next press (the same button alone again lets go)' },
+  { id: 'chord-inversion', gesture: { do: [TOP_KEYS] }, does: 'inversions 1 2 3', plain: 'inversion keys 1st, 2nd, 3rd', when: 'harm_inv', sheet: { device: 27, roll: 27, step: 27 }, effect: 'chord_button',
+    help: 'with the keys on a Harmonizer whose INVKEYS row is on (#1311): the three highest keys, F, F♯ and G at the right edge, play the 1st, 2nd and 3rd inversion at any octave, in place of its VOICING row (held together, the one pressed last wins). They are held and latched as the chord buttons are, and MIDI out sends them as their keys over the split (F5, F♯5, G5 over C4). Its row off: they play notes' },
 
   // ---- ENVIRONMENT: one row per device
   { id: 'env-rows', gesture: { do: [E('SELECT')] }, does: 'device row', sheet: { env: 10 }, effect: 'focus' },
@@ -467,6 +470,7 @@ export function gestureSpec(g: Gesture): string {
       case 'black': return p.n ? `b:${p.n}` : 'b:';
       case 'any': return 'm:ANY KEY';
       case 'keys': return 'm:KEYS';
+      case 'top': return 'm:TOP 3';
       default: return 't:keys together';
     }
   };
@@ -526,6 +530,7 @@ export const CONDITION_TEXT: Record<Condition, string> = {
   list: 'while a Page button’s list shows', dev_presets: 'a device with presets', dev_store: 'an assembly', dev_keys: 'a device that takes keys',
   long_track: 'a track of more than 16 steps', tracks: 'a patch with Steps tracks', menu_guide: 'the GUIDE tab', menu_page: 'the MIDI, PANEL, SYSTEM and EQ tabs',
   menu_system: 'the SYSTEM tab', roll: 'a melodic track', harm: 'the keys on a Harmonizer: the seven lowest keys',
+  harm_inv: 'the keys on a Harmonizer with its INVKEYS row on: the three highest keys',
   roll_preview: 'a melodic track with note preview on', roll_silent: 'a melodic track with note preview off',
   fx_rack: 'a patch with an effect or an FX drawer', pattern_store: 'while the pattern store is on',
   oct_banks: 'the keys on a drum track of more than 8 rows', drum_banks: 'a drum track of more than 8 rows',
@@ -543,6 +548,7 @@ export function gestureText(g: Gesture): string {
       case 'black': return p.n ? `black key ${p.n}` : 'a black key';
       case 'any': return 'any key';
       case 'keys': return 'the keys';
+      case 'top': return 'the three highest keys';
       default: return 'keys together';
     }
   };
