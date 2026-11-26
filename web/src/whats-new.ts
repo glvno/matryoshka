@@ -11,6 +11,13 @@ const USED = ['matryoshka.patch', 'matryoshka.patches', 'modular-1.patch', 'modu
 
 /** the main changes, by "major.minor"; a version without an entry shows no card */
 export const HIGHLIGHTS: Record<string, string[]> = {
+  '1.27': [
+    'Update your FM-1 to firmware 1.27 before you sync it with this editor: install it from Install firmware. Until then the editor says "update it to sync".',
+    'Stereo modules: the ST button on a Filter, VCA, Mixer, Drive, Compressor and other in-line modules plays left and right with one set of knobs. The Delay, Reverb and Chorus take a right input r.',
+    'A patch can have up to 254 modules on the FM-1, and a pattern up to 256 notes. Pattern 1 goes to the pattern store when the patch runs out of room.',
+    'The 909 Kit has an FX drawer with Drive and Reverb, off: the FX button opens them.',
+    'P-lock paging: hold a step on the drum grid and turn ALGO to see the device\'s real pages; let go to return to the grid.',
+  ],
   '1.26': [
     'The palette: up to 8 sounds to switch between on the FM-1. Hold HOME and hold a black key for a second to save the sound playing there; hold HOME and tap it to switch, on the next bar line while playing, with a short fade. The editor shows the 8 chips at the bottom of Sound design; drag patches onto them.',
     'Patterns 2 to 64 live in the FM-1\'s pattern store, so a patch no longer fills up with patterns. SEQ + SEL on the SEQ page lists the stored patterns to load one. The bank has 48 slots.',
