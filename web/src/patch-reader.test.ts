@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The FM-1 reader (patch-reader.ts, bin-parse.ts, D-1354): a binary read back is a patch that writes the same bytes, in
 // every format the encoder writes, with its patterns from the FM-1's store where the binary links them.
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, validatePatch, type ModuleInst, type Patch } from './patch';
@@ -8,7 +9,7 @@ import { COUNTED, encodePatch, SLIM, VERSION, WRITE_FLOOR } from './patchbin';
 import { linkedIds, parseBinary } from './bin-parse';
 import { readFromFm1, readLabel, type FromFm1 } from './patch-reader';
 import { FM1_PRESETS, make } from './presets';
-import { patchDefs, shippedLibrary } from './assembly-match';
+import { browserLibrary, patchDefs, shippedLibrary } from './assembly-match';
 import { encodePayload, payloadHash } from './pattern-store';
 import { setKind, setSwitches } from './buttons';
 
@@ -166,6 +167,41 @@ describe('the FM-1 reader (D-1354)', () => {
     const bare = readFromFm1(bin, { name: 'linked' })!;
     expect(bare.patch.modules.find((m) => m.type === 'steps')!.patterns).toBeUndefined();
     expect(bare.patch.modules.find((m) => m.type === 'fm1')!.seq?.links).toBeUndefined();
+  });
+
+  it('reads a 1.25 binary with the old master FX bus (formats 55..65): the same sound, the bus effects a plain card, no bus written back', () => {
+    // Monolith D as 1.25.0 wrote it to a slot: format 55, flag bit 14 the D-1010 bus (four stages over its FX device's
+    // shapers, choruses, delays and reverb)
+    const bin = new Uint8Array(readFileSync(new URL('./test-fixtures/monolith-d-1.25.0.bin', import.meta.url)));
+    const src = parseBinary(bin)!;
+    expect(src).not.toBeNull();
+    expect(src.version).toBeGreaterThanOrEqual(55);
+    expect(src.version).toBeLessThanOrEqual(65);
+    expect(src.bus).toBe(true);
+    expect(src.rack).toBeUndefined();
+    for (const library of [browserLibrary(), [...shippedLibrary(), ...Object.values(FM1_PRESETS).flatMap((mk) => patchDefs(mk()))]]) {
+      const read = readFromFm1(bin, { name: 'Monolith D', library })!;
+      expect(read).not.toBeNull();
+      expect(read.exact).toBe(false);   // (the editor writes no bus)
+      expect([read.devices, read.recognised]).toEqual([2, 1]);   // (Monolith D rebuilt; the bus's FX device has no definition)
+      const again = parseBinary(encodePatch(read.patch, true))!;
+      // what the FM-1 plays: the bus is metadata the engine skips (eng_skip_fx), the cables carry the sound
+      for (const k of ['modules', 'cables', 'groups', 'routes', 'panel', 'buttons', 'devices'] as const) expect(again[k], k).toEqual(src[k]);
+      expect(again.version).toBe(src.version);
+      expect(again.bus).toBe(false);
+      expect(again.rack).toBeUndefined();
+      expect(again.flags).toBe(src.flags & ~(1 << 14));
+      // the bus's FX device comes back as a plain card, not an FX drawer (nothing in the binary but the bus says it was
+      // one, and the reader drops the bus); its device extras list the same members, its rows in the card's own order
+      const fx = read.patch.assemblies!.find((a) => a.name === 'FX')!;
+      expect(fx.drawer).toBeUndefined();
+      expect(read.patch.assemblies!.some((a) => a.drawer)).toBe(false);
+      expect(fx.modules.map((id) => read.patch.modules.find((m) => m.id === id)!.type)).toEqual(expect.arrayContaining(['shape', 'chorus', 'delay', 'reverb']));
+      const fxExtra = src.extras.findIndex((e) => e.members.length && e.track === 255 && e.structure !== 0);
+      expect(again.extras[fxExtra].members).toEqual(src.extras[fxExtra].members);
+      expect([...again.extras[fxExtra].rows].sort()).toEqual([...src.extras[fxExtra].rows].sort());
+      expect(again.extras.filter((_, i) => i !== fxExtra)).toEqual(src.extras.filter((_, i) => i !== fxExtra));
+    }
   });
 
   it('refuses what is no binary it reads', () => {
