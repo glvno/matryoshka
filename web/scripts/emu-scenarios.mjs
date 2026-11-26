@@ -2583,7 +2583,10 @@ async function main() {
       const rung = await tail('switch');
       await check('sel fx: SEL switched the Reverb off mid-tail, the editor follows', !!(await follows('Reverb', 'off')));
       const dry = await tail('off');
-      await loudCheck('sel fx: a Reverb switched off right after a hit rings out (its tail stays, louder than with it off before)', rung, rung > dry * 1.1 && rung > QUIET, `tail peak on ${wet}, switched off ${rung}, off before ${dry}`);
+      // (the floor scales with the Reverb's own tail, not the emulator's absolute QUIET: the rig's USB audio is quieter,
+      // 1.27.1's rig run: on 229, switched off 28, off before 0; the emulator 354 / 78 / 0)
+      await loudCheck('sel fx: the Reverb on has a tail (so the next check is not blind)', wet, wet > QUIET, `tail peak on ${wet}`);
+      await loudCheck('sel fx: a Reverb switched off right after a hit rings out (its tail stays, louder than with it off before)', rung, rung > dry * 1.1 && rung > wet / 20, `tail peak on ${wet}, switched off ${rung}, off before ${dry}`);
       await check('sel fx: SEL switches the Reverb on again', await sel('REVERB', true));
       await emu.elapse(1600);
     },
