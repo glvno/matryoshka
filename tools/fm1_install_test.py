@@ -786,5 +786,86 @@ class M1LinkRig(RigFakes, unittest.TestCase):
             m1_link.fm1s_connected = old
 
 
+class CloseWhileInput(unittest.TestCase):
+    """1.27.0's rig: a refused install hung for good in older_check's link close. A packet's callback was waiting for the
+    GIL while close_port, keeping the GIL, waited in MIDIPortDispose for that callback. Modelled here: `gil` held by the
+    test except in time.sleep, close_port waiting (1 s at most) for the delivery under way, which (as python-rtmidi's
+    C++ side) points at the (function, data) pair that cancel_callback drops: freed before the delivery runs, the rig
+    crashed (SIGSEGV). RtLink and m1_link's input let the delivery finish, the pair alive, before they close"""
+
+    def setUp(self):
+        import threading
+        self.gil, self.delivered, self.waiting = threading.Lock(), threading.Event(), threading.Event()
+        self.deadlock = self.freed = self.crashed = False
+        self.gil.acquire()
+        self.old_sleep = fm1_usb.time.sleep
+        real = self.old_sleep
+
+        def sleep(s):           # (as Python's sleep: the GIL let go while it sleeps)
+            self.gil.release()
+            real(s)
+            self.gil.acquire()
+        fm1_usb.time.sleep = sleep
+
+    def tearDown(self):
+        fm1_usb.time.sleep = self.old_sleep
+        self.gil.release()
+
+    def port(self):
+        import threading
+        test = self
+
+        class Data:
+            def __del__(self):
+                test.freed = True
+
+        class MidiIn:
+            __slots__ = ("pair",)  # (the pair a direct referent, as python-rtmidi's _callback)
+
+            def __init__(self):
+                self.pair = None
+
+            def ignore_types(self, **k):
+                pass
+
+            def set_callback(self, cb):
+                self.pair = (cb, Data())
+                # (a packet's delivery under way: CoreMIDI's thread waits for the GIL to run the callback)
+                threading.Thread(target=self.deliver, args=(cb,), daemon=True).start()
+                test.waiting.wait(1.0)
+
+            def deliver(self, cb):
+                test.waiting.set()
+                with test.gil:
+                    if test.freed:
+                        test.crashed = True
+                    else:
+                        cb(([0xF0, 0x7D, 0xF7], 0.0), None)
+                test.delivered.set()
+
+            def cancel_callback(self):
+                self.pair = None
+
+            def close_port(self):
+                if not test.delivered.wait(1.0):
+                    test.deadlock = True
+
+        return MidiIn()
+
+    def closed(self):
+        self.assertFalse(self.deadlock, "close_port waited on a callback that waited for the GIL")
+        self.assertFalse(self.crashed, "the delivery under way ran on a freed callback pair")
+
+    def test_rtlink_close_lets_a_waiting_callback_finish(self):
+        out = type("Out", (), {"close_port": lambda self: None})()
+        fm1_usb.RtLink(None, "rig", self.port(), out).close()
+        self.closed()
+
+    @unittest.skipUnless(m1_link, "needs mido (build/venv/bin/python)")
+    def test_m1_link_input_close_lets_a_waiting_callback_finish(self):
+        m1_link._RtIn(self.port()).close()
+        self.closed()
+
+
 if __name__ == "__main__":
     unittest.main()
