@@ -170,9 +170,10 @@ class _RtIn:
 
     def close(self):
         """stop CoreMIDI calling back into Python: a packet that arrives while the interpreter shuts down crashed it
-        (python-rtmidi's callback taking the GIL during finalization, SIGSEGV)"""
-        self.port.cancel_callback()
-        self.port.close_port()
+        (python-rtmidi's callback taking the GIL during finalization, SIGSEGV); one already under way finishes before the
+        port closes (fm1_usb.close_input)"""
+        import fm1_usb
+        fm1_usb.close_input(self.port)
 
     def iter_pending(self):
         while self.q:

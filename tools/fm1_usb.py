@@ -233,15 +233,35 @@ class RtLink:
             self.q.get_nowait()
 
     def close(self):
+        close_input(self.inp)
         try:
-            self.inp.cancel_callback()
+            self.out.close_port()
         except Exception:
             pass
-        for p in (self.inp, self.out):
-            try:
-                p.close_port()
-            except Exception:
-                pass
+
+
+CALLBACK_SETTLE = 0.05
+
+
+def close_input(midi_in):
+    """a python-rtmidi input closed while packets may still be arriving (1.27.0 sends a few after HELLO). close_port keeps
+    the GIL while CoreMIDI's MIDIPortDispose waits for a delivery under way, whose callback waits for the GIL: closed at
+    once, the two waited for each other for ever (1.27.0's rig: a refused install hung in older_check's close). So the
+    callback is taken away first and the GIL let go a moment, for a delivery under way to finish. cancel_callback frees
+    the (function, data) pair that delivery still points at (a SIGSEGV on the rig): it is kept here until the port is
+    closed and CoreMIDI delivers nothing more"""
+    import gc
+    kept = [o for o in gc.get_referents(midi_in) if isinstance(o, tuple) and len(o) == 2 and callable(o[0])]
+    try:
+        midi_in.cancel_callback()
+    except Exception:
+        pass
+    time.sleep(CALLBACK_SETTLE)
+    try:
+        midi_in.close_port()
+    except Exception:
+        pass
+    del kept
 
 
 class LocatedBackend:
