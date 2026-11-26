@@ -1,0 +1,78 @@
+{
+ "a": "/Users/mg/projects/music/fm1/modular-1/build/release-1.27.0/qual/aud909-1.26.3.json",
+ "b": "/Users/mg/projects/music/fm1/modular-1/build/release-1.27.0/qual/aud909-1.26.3-v23.json",
+ "notes": {
+  "36": {
+   "peak": 0,
+   "max_diff": 0,
+   "share_differ": 0.0,
+   "floor_a": 0,
+   "floor_b": null
+  },
+  "38": {
+   "peak": 0,
+   "max_diff": 0,
+   "share_differ": 0.0,
+   "floor_a": 0,
+   "floor_b": null
+  },
+  "41": {
+   "peak": 0,
+   "max_diff": 0,
+   "share_differ": 0.0,
+   "floor_a": 0,
+   "floor_b": null
+  },
+  "42": {
+   "peak": 0,
+   "max_diff": 0,
+   "share_differ": 0.0,
+   "floor_a": 0,
+   "floor_b": null
+  },
+  "45": {
+   "peak": 0,
+   "max_diff": 0,
+   "share_differ": 0.0,
+   "floor_a": 0,
+   "floor_b": null
+  },
+  "46": {
+   "peak": 0,
+   "max_diff": 0,
+   "share_differ": 0.0,
+   "floor_a": 0,
+   "floor_b": null
+  },
+  "49": {
+   "peak": 0,
+   "max_diff": 0,
+   "share_differ": 0.0,
+   "floor_a": 0,
+   "floor_b": null
+  },
+  "51": {
+   "peak": 0,
+   "max_diff": 0,
+   "share_differ": 0.0,
+   "floor_a": 0,
+   "floor_b": null
+  },
+  "37": {
+   "peak": 0,
+   "max_diff": 0,
+   "share_differ": 0.0,
+   "floor_a": 0,
+   "floor_b": null
+  },
+  "39": {
+   "peak": 0,
+   "max_diff": 0,
+   "share_differ": 0.0,
+   "floor_a": 0,
+   "floor_b": null
+  }
+ },
+ "worst": 0,
+ "identical": true
+}

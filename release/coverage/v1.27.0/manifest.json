@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "reportSha256": "33ecc48ea3c17a9f0da281b8026d69dd69afead097dfb9f2c8be7013f5ae59bb",
+  "measuredAt": "2026-11-26",
+  "measuredCommit": "65e9a3ccafad28314f07536cdd8df3b5367ce00b",
+  "sourceFingerprint": "6bc9404938be93af3d66e522916877efd638ffec949b4439111312b29546811d",
+  "sourceUrl": "https://github.com/glvno/matryoshka/actions/runs/45741077934",
+  "measurementLabel": "v1.27.0",
+  "targetRelease": "v1.27.0",
+  "display": "current",
+  "qualification": "display-only",
+  "instrumentation": "All web tests except the slow renders (levels-*, headroom-*, kit909, audition-render); those pass separately without coverage."
+}
