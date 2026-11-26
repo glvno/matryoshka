@@ -2498,6 +2498,80 @@ async function main() {
       await emu.snap('fx-drawer-none');
       await emu.elapse(1600);
     },
+    // D-947 (the owner, 2026-11-25: "should be SEL, shouldn't it?", "1. yes"): on the 909 Kit, SEL on its drawer's Drive
+    // and Reverb pages switches that effect (the bar says DRIVE OFF / ON), the editor follows (its modules bypassed), the
+    // kick's peak changes with Drive, and a Reverb switched off right after a hit still rings out (D-1100); SEL on the kit
+    // page still arms it
+    async selFx909() {
+      await check('sel fx: the 909 Kit opens, synced', await openSynced('909 Kit'));
+      const state = (label) => page.evaluate(async (lb) => {   // an effect's switch in the editor: on, off or mixed
+        const { allModules, chainHelpers } = await import('/src/assembly.ts');
+        const p = JSON.parse(window.__m1test.patchJson()), helpers = chainHelpers(p);
+        const a = (p.assemblies ?? []).filter(Boolean).find((x) => x.label === lb && !x.drawer);
+        const ms = a ? allModules(p, a).filter((id) => !helpers.has(id)).map((id) => p.modules.find((m) => m.id === id)) : [];
+        return !ms.length ? 'none' : ms.every((m) => m.bypass) ? 'off' : ms.some((m) => m.bypass) ? 'mixed' : 'on';
+      }, label);
+      const follows = (label, want) => until(async () => ((await state(label)) === want ? want : null), 3000);
+      await emu.elapse(300);
+      await emu.tap(B.scl);
+      await check('sel fx: SEL on the kit page still arms it', await emu.waitText('909 KIT ARMED', 1500));
+      await emu.elapse(1300);
+      const hit = async (ms) => {                  // black key 1 (the kick); the peak over `ms` from the press
+        const m = await emu.mark();
+        await emu.key(BLACK[0], true);
+        await emu.elapse(200);
+        await emu.key(BLACK[0], false);
+        await emu.elapse(ms - 200);
+        return emu.peak(m);
+      };
+      const sel = async (name, on) => {            // SEL on the effect's page: the bar, the editor
+        await emu.tap(B.scl);
+        const said = await emu.waitText(`${name} ${on ? 'ON' : 'OFF'}`, 1500);
+        const ed = await follows(name === 'DRIVE' ? 'Drive' : 'Reverb', on ? 'on' : 'off');
+        return said && !!ed;
+      };
+      await emu.tap(B.fx);
+      await check('sel fx: FX opens the Drive', await emu.waitText('DRIVE', 2000));
+      const drive0 = await state('Drive');
+      await check('sel fx: the Drive is on or off as a whole in the editor', drive0 === 'on' || drive0 === 'off', drive0);
+      const p0 = await hit(600);
+      await emu.elapse(1000);
+      await check(`sel fx: SEL switches the Drive ${drive0 === 'on' ? 'off' : 'on'}, the bar says so, the editor follows`, await sel('DRIVE', drive0 !== 'on'));
+      await emu.snap('sel-fx-drive');
+      await emu.elapse(1300);
+      const p1 = await hit(600);
+      await emu.elapse(1000);
+      await loudCheck('sel fx: the kick plays either way, its peak changes with the Drive', Math.max(p0, p1), Math.min(p0, p1) > LOUD && Math.abs(p1 - p0) > p0 / 50, `peak ${p0} -> ${p1}`);
+      await check('sel fx: SEL again switches the Drive back', await sel('DRIVE', drive0 === 'on'));
+      await emu.elapse(1300);
+      await emu.turn(ENC.select, 1);
+      await check('sel fx: SELECT walks to the Reverb', await emu.waitText('REVERB', 2000));
+      if ((await state('Reverb')) === 'off') {
+        await check('sel fx: SEL switches the Reverb on', await sel('REVERB', true));
+        await emu.elapse(1300);
+      }
+      // the tail: the window from 300 ms to 1.5 s after a hit, the Reverb on throughout, switched off at 250 ms, off before
+      const tail = async (how) => {
+        await emu.key(BLACK[0], true);
+        await emu.elapse(200);
+        await emu.key(BLACK[0], false);
+        await emu.elapse(50);
+        if (how === 'switch') await emu.tap(B.scl);
+        await emu.elapse(50);
+        const m = await emu.mark();
+        await emu.elapse(1200);
+        const p = await emu.peak(m);
+        await emu.elapse(2500);
+        return p;
+      };
+      const wet = await tail('on');
+      const rung = await tail('switch');
+      await check('sel fx: SEL switched the Reverb off mid-tail, the editor follows', !!(await follows('Reverb', 'off')));
+      const dry = await tail('off');
+      await loudCheck('sel fx: a Reverb switched off right after a hit rings out (its tail stays, louder than with it off before)', rung, rung > dry * 1.1 && rung > QUIET, `tail peak on ${wet}, switched off ${rung}, off before ${dry}`);
+      await check('sel fx: SEL switches the Reverb on again', await sel('REVERB', true));
+      await emu.elapse(1600);
+    },
     // #485: a Cassia 1 preset (153 rows since #755, D-747) stored on the FM-1 holds all its rows: sent from the editor (two store slots on
     // firmware with feature bit 17), read back whole, and loaded on the FM-1 with PRESET: every row reaches the editor.
     // Glass Bell differs from Init in 11 of the 31 rows past 88, which an 88-value store left at Init's

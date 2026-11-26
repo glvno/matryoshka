@@ -2614,6 +2614,31 @@ static int fx_focus_effect(void)
 {
     return (page == 0u || page == PAGE_ENV) && pg_cur_dev < pg_ndev && fx_drawer_at(pg_dev[pg_cur_dev].bin) != UINT32_MAX;
 }
+/* the effect SEL switches on the device page in focus (D-947): the effect in an FX drawer whose device this is; on a
+ * format 55..65 bus device, the stage whose modules this page shows. UINT32_MAX none: an instrument, a canvas effect
+ * (an ordinary device, D-945), a bus page of no stage. The page's own, so it never asks pages_ensure */
+static uint32_t fx_sel_effect(void)
+{
+    const ppage_t *pg;
+    const uint8_t *t;
+    uint32_t r, e, bin, k, j, n;
+    if (page != 0u || pg_cur_dev >= pg_ndev)
+        return UINT32_MAX;
+    bin = pg_dev[pg_cur_dev].bin;
+    for (r = 0; r < eng_rack_count(); r++)
+        for (e = eng_rack_first(r); e < eng_rack_first(r) + eng_rack_len(r); e++) {
+            if (eng_fx_device(e) != bin)
+                continue;
+            if (eng_format() >= 66u)
+                return e;
+            pg = pages_now();
+            for (n = eng_fx_targets(e, &t), k = 0; pg && k < pg->nrows; k++)
+                for (j = 0; j < n; j++)
+                    if (pg->mod[k] == t[j])
+                        return e;
+        }
+    return UINT32_MAX;
+}
 /* the effect FX goes to (pages_ensure first): the first of the drawer of the instrument on show (an effect's page counts
  * as its drawer's instrument's), else of the first armed instrument with one, else of the Output drawer, the first that
  * has a page (pages_build leaves out a device of no rows); UINT32_MAX none */
@@ -3698,6 +3723,26 @@ static void ds_fx_switch(dp_at_t *s, uint32_t e, int on)
         m1_patch_bypass(targets[t], !on);
         m1_param_now(targets[t], 0xFFu, on ? 0 : 65536);
     }
+}
+
+/* SEL on an FX drawer effect's device page (D-947): effect e on or off as the editor's on/off button does it (the
+ * targets through eng_fx_set: a Delay or Reverb rings out, D-1100; the running binary's bypass bits, so SAVE keeps it;
+ * the editor told, PARAM_NOW 0xFF), the bar saying DRIVE ON / DRIVE OFF (the name as the page's header has it). An
+ * effect of no runtime targets switches by its members' bypass, which the FM-1 cannot tell from its helpers
+ * (ds_fx_switch): a Toggle on it switches it, SEL says so */
+static void fx_sel_switch(uint32_t e)
+{
+    dp_at_t s;
+    char m[32];
+    int on = !eng_fx_on(e);
+    if (!eng_fx_targets(e, 0)) {
+        ui_msg(MSG_FX_TOGGLE_ONLY, 1200);
+        return;
+    }
+    ds_fx_switch(dp_eng(&s, pg_cur_dev), e, on);
+    caps(m, pg_dev[pg_cur_dev].name, pg_dev[pg_cur_dev].nlen, 16);
+    put(m + str_len(m), on ? MSG_ON : MSG_OFF)[0] = 0;
+    ui_msg(m, 1200);
 }
 
 /* an FXP1 preset's rack (its values after the device's rows at pr_at, ds_check passed) into the patch s */

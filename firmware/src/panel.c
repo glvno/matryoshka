@@ -929,15 +929,25 @@ static uint8_t env_held_used;
 
 /* SEL (#197; arming: #395). A device page: arms its device, the others disarmed, or takes it out when armed; an
  * environment row: its device into the armed set or out of it (a layer); a device that takes no keys: the armed set as
- * it was, NOTHING HERE TAKES KEYS. On the SONG page: back */
+ * it was, NOTHING HERE TAKES KEYS. An FX drawer effect's device page: the effect on or off instead (D-947, its Toggles
+ * follow and the running patch keeps their state as a press would). On the SONG page: back */
 static void sel_open(void)
 {
+    uint32_t e;
     pages_ensure();
     if (page == PAGE_ENV) {
         dev_arm(1);
         ui_dirty = ui_dirty ? ui_dirty : 1;          /* (its row) */
     } else if (page == PAGE_SONG) {
         screen_back();
+    } else if (page == 0 && (e = fx_sel_effect()) != UINT32_MAX) {
+        const uint8_t *pn = m1_panel();
+        uint32_t tog = pn ? ((uint32_t)pn[0] | (uint32_t)pn[1] << 8) & ~FIXED_BTNS : 0u, was = eng_buttons_get();
+        fx_sel_switch(e);
+        if ((eng_buttons_get() ^ was) & tog)
+            m1_panel_on(eng_buttons_get() & tog);
+        leds_panel();
+        ui_dirty = ui_dirty ? ui_dirty : 1;          /* (the footer) */
     } else if (page == 0) {
         dev_arm(0);
         ui_dirty = ui_dirty ? ui_dirty : 1;          /* (the footer) */

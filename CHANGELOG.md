@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **SEL switches an effect on and off on the FM-1.** On the page of an effect in an FX drawer, such as the 909 Kit's Drive or Reverb, SEL now turns that effect on or off, as its ⏻ in the editor does; before, it said NOTHING HERE TAKES KEYS and only a Toggle could switch an effect. The bar says DRIVE ON or DRIVE OFF, a Delay or Reverb rings out as it goes off, the editor shows the change, a Toggle on the effect or its drawer follows, and SAVE keeps it. SEL on an instrument, on an effect on the canvas and on the environment page still arms, as before ([D-947](docs/ledger/device-ui.md#D-947)).
 - **An effect in an FX drawer is named for itself.** Put your own "Smear" assembly (or a factory effect such as Time smear) into a drawer and its card reads "Smear", in every drawer and however many times you add it, undo and add it again. It gets a number only when the same drawer already has an effect of that name: "Smear", then "Smear 2". Before, it could read "Smear 2" or "Smear 3" because of cards elsewhere in the patch, the copy on the canvas included ([D-1438](docs/ledger/editor.md#D-1438)).
 
 ## 1.27.0 — 2026-11-25
