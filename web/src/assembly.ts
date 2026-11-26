@@ -675,7 +675,8 @@ export function outsideCables(p: Patch, a: AssemblyInst): Cable[] {
   return p.cables.filter((c) => m.has(c.from.module) !== m.has(c.to.module));
 }
 
-function uniqueLabel(taken: Iterable<string>, want: string): string {
+/** `want`, or the first "`want` n" (n from 2) that is not in `taken` */
+export function uniqueLabel(taken: Iterable<string>, want: string): string {
   const set = new Set(taken);
   if (!set.has(want)) return want;
   for (let n = 2; ; n++) if (!set.has(`${want} ${n}`)) return `${want} ${n}`;

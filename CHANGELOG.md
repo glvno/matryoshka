@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **An effect in an FX drawer is named for itself.** Put your own "Smear" assembly (or a factory effect such as Time smear) into a drawer and its card reads "Smear", in every drawer and however many times you add it, undo and add it again. It gets a number only when the same drawer already has an effect of that name: "Smear", then "Smear 2". Before, it could read "Smear 2" or "Smear 3" because of cards elsewhere in the patch, the copy on the canvas included ([D-1438](docs/ledger/editor.md#D-1438)).
+
 ## 1.27.0 — 2026-11-25
 
 - **Update your FM-1 to firmware 1.27.0 before you sync it with this editor.** The editor now writes patch format 67, which only the 1.27.0 firmware reads, so an FM-1 still on 1.26.x does not sync until it is updated: the editor says "update it to sync" and the Install panel offers the update. The patches, palette and stored patterns already on the FM-1 keep playing as before, and the update keeps them ([D-1353](docs/ledger/link-and-midi.md#D-1353)).

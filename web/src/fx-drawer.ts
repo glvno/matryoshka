@@ -39,6 +39,7 @@ import {
   type ParamRef,
   type PortRef,
   type Target,
+  uniqueLabel,
 } from './assembly';
 import { convertLegacyBus as convertBus, LEGACY_STAGE_ROWS, type FxStageKind } from './fx-legacy';
 import { DEFS } from './modules';
@@ -485,10 +486,22 @@ export function insertEffect(p: Patch, drawer: AssemblyInst, effect: EffectSourc
     for (const s of extra.sources[ch]) addOnce(ends.sources[ch], s);
     for (const t of extra.dests[ch]) addOnce(ends.dests[ch], t);
   }
+  // its card's name (#1298): its own, numbered only when another effect of this drawer already has it ("Smear",
+  // "Smear 2"); cards elsewhere in the patch do not count, and the number comes from what the drawer holds now, so an
+  // add that was undone leaves none behind
+  e.label = uniqueLabel(effectsOf(p, drawer).filter((x) => x.id !== e.id).map((x) => x.label), ownName(e));
   addChild(p, drawer, e.id);
   place(drawer, e.id, at);
   applyChain(p, drawer, ends);
   return e;
+}
+
+/** an effect's own name: its label, less a number it took only because another card had the same name ("Smear 2" of an
+ *  effect named "Smear"); a name the user gave it stays */
+function ownName(a: AssemblyInst): string {
+  const label = a.label || a.name;
+  const n = label.startsWith(`${a.name} `) ? label.slice(a.name.length + 1) : '';
+  return /^\d+$/.test(n) ? a.name : label;
 }
 
 /**
@@ -696,7 +709,7 @@ export function wrapEffect(p: Patch, target: { module: number } | { assembly: nu
   }
   const ports = audioPorts(p, { assembly: a });
   if (!ports) throw new Error(`"${a.label}" has no audio input and output: it cannot go in an FX drawer.`);
-  return wrapAssembly(p, a, chosen, name ?? known?.name ?? a.label, ports, form);
+  return wrapAssembly(p, a, chosen, name ?? known?.name ?? ownName(a), ports, form);
 }
 
 /** the user's stereo assembly as an effect as it is: its first two audio inputs and outputs become the chain's L / R

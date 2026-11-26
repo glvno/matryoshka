@@ -8,7 +8,7 @@ import { loadLibrary, storeAssembly } from './assemblies';
 import { allModules, assemblyById, childrenOf, exposePort, makeAssembly, promote, toDef, type AssemblyInst } from './assembly';
 import { applyPreset, capturePreset, storePreset, userPresets } from './device-presets';
 import { Editor, type EditorEvents } from './editor';
-import { addDrawer, chainIns, chainOuts, effectModes, effectsOf, insertEffect, removeEffect } from './fx-drawer';
+import { addDrawer, chainIns, chainOuts, EFFECT_CATALOG, effectModes, effectsOf, insertEffect, removeEffect } from './fx-drawer';
 import { drawerScope } from './fx-preset';
 import { effectGroups, entryOf, userEffects } from './library-effects';
 import { DEFS } from './modules';
@@ -240,5 +240,73 @@ describe('an instrument preset with a custom effect in its drawer (FXD1)', () =>
     p.modules.find((m) => m.id === row.module)!.params[row.param] = 12;
     expect(applyPreset(p, inst, fromDevice)).toBe(true);
     expect(p.modules.find((m) => m.id === row.module)!.params[row.param]).toBe(8);
+  });
+});
+
+describe('an effect’s card name in a drawer (#1298)', () => {
+  const names = (p: Patch, d: AssemblyInst): string[] => effectsOf(p, assemblyById(p, d.id)!).map((x) => x.label);
+
+  it('a wrapped custom effect is named for itself in every drawer, numbered only beside one of its name in the same drawer', () => {
+    const { p, drawer } = rig();
+    const out = addDrawer(p, 'output');
+    insertEffect(p, drawer, { assembly: mono(p).id });
+    expect(names(p, drawer)).toEqual(['Smear']);
+    // the second canvas copy is "Smear 2" on the canvas; in a drawer of its own it is "Smear" again
+    const second = mono(p);
+    expect(second.label).toBe('Smear 2');
+    insertEffect(p, out, { assembly: second.id }, undefined, 'wet');
+    expect(names(p, out)).toEqual(['Smear']);
+    // two in the same drawer: "Smear", "Smear 2", whatever the mode
+    insertEffect(p, drawer, { assembly: mono(p).id }, undefined, 'wet');
+    expect(names(p, drawer)).toEqual(['Smear', 'Smear 2']);
+    // removed, then added again: its own name, nothing counted from before
+    for (const e of effectsOf(p, drawer)) removeEffect(p, e.id);
+    insertEffect(p, drawer, { assembly: mono(p).id });
+    expect(names(p, drawer)).toEqual(['Smear']);
+  });
+
+  it('add, undo, add again: "Smear" again', () => {
+    const { p, drawer } = rig();
+    const e = editorOn(p);
+    const id = mono(p).id;
+    expect(e.addToDrawerFromCanvas(id, drawer.id, 0)).toBe(true);
+    pick('As an L/R pair');
+    expect(names(e.patch, drawer)).toEqual(['Smear']);
+    e.undo();
+    expect(names(e.patch, drawer)).toEqual([]);
+    expect(e.addToDrawerFromCanvas(id, drawer.id, 0)).toBe(true);
+    pick('As an L/R pair');
+    expect(names(e.patch, drawer)).toEqual(['Smear']);
+    e.undo();
+    expect(e.addToDrawerFromCanvas(id, drawer.id, 0)).toBe(true);
+    pick('Wet');
+    expect(names(e.patch, drawer)).toEqual(['Smear']);
+  });
+
+  it('a renamed effect keeps the name it was given; one moved to another drawer is numbered by that drawer', () => {
+    const { p, drawer } = rig();
+    const out = addDrawer(p, 'output');
+    const a = mono(p);
+    a.label = 'Big smear';
+    insertEffect(p, drawer, { assembly: a.id });
+    const moved = insertEffect(p, drawer, { assembly: mono(p).id });
+    expect(names(p, drawer)).toEqual(['Big smear', 'Smear']);
+    insertEffect(p, out, { assembly: mono(p).id });
+    insertEffect(p, out, { assembly: moved.id });
+    expect(names(p, out)).toEqual(['Smear', 'Smear 2']);
+    expect(names(p, drawer)).toEqual(['Big smear']);
+  });
+
+  it('factory effects likewise: a wrapped one (Time smear) and a module type (Reverb)', () => {
+    const { p, drawer } = rig();
+    const out = addDrawer(p, 'output');
+    for (const name of ['Time smear', 'Reverb']) {
+      const entry = EFFECT_CATALOG.find((x) => x.name === name)!;
+      insertEffect(p, drawer, entry.source);
+      insertEffect(p, out, entry.source);
+      insertEffect(p, out, entry.source);
+    }
+    expect(names(p, drawer)).toEqual(['Time smear', 'Reverb']);
+    expect(names(p, out)).toEqual(['Time smear', 'Time smear 2', 'Reverb', 'Reverb 2']);
   });
 });
