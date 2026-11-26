@@ -953,7 +953,7 @@ void eng_chord_button(uint32_t b, int down);
 /* off: the notes eng_note_on / eng_note_off take next are roots for the Harmonizers whatever their note (the panel's root
  * keys, which an octave shift may move under a split); on (the default): the seven keys under a split are its buttons */
 void eng_harm_zone(int on);
-/* the chord Harmonizer module m plays now, by name (at most 20 characters: MIN9B5 ADD2 ADD4; "" the root alone) */
+/* the chord Harmonizer module m plays now, by name (at most 23 characters: MAJ ADD2 ADD4 ADD9 INV3; "" the root alone) */
 void eng_harm_name(uint32_t m, char *out);
 #define ENG_HARM 1
 void eng_steps_rec(uint32_t module, int on);
