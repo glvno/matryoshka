@@ -322,7 +322,11 @@ function parse(bin: ArrayLike<number>): BinPatch | null {
       for (let k = r.u8(); k > 0; k--) rack.drawers.push({ owner: r.u8(), first: r.u8(), count: r.u8() });
     } else {   // (formats 55..65: the master FX bus, eng_skip_fx: u8 count, per stage four bytes, the last its target count, then the targets)
       bus = true;
-      for (let k = r.u8(); k > 0; k--) { r.at += 3; r.at += r.u8(); }
+      for (let k = r.u8(); k > 0; k--) {
+        r.at += 3;
+        const n = r.u8();
+        r.at += n;
+      }
     }
   }
   const ranges: BinPatch['ranges'] = [];
