@@ -1,0 +1,23 @@
+{
+ "method": "D-1165: one session; the rig on 1.27.0 measured, then 1.27.1 installed over it and measured; tools/m1_link.py --rig blocktime 4 --notes 8, three windows per patch (build/release-1.25.0/prep/irq_ab.sh)",
+ "mean_us": {
+  "1.27.0": {
+   "program 18": 1922.4,
+   "program 6": 1847.5,
+   "program 1": 2183.7,
+   "18 Cassia 1 fx": 2149.8,
+   "05 Expander S fx": 2360.4,
+   "03 Hera 6 fx": 2100.5,
+   "06 Algo Four fx": 2209.0
+  },
+  "1.27.1": {
+   "program 18": 1886.0,
+   "program 6": 1809.1,
+   "program 1": 2167.3,
+   "18 Cassia 1 fx": 2113.9,
+   "05 Expander S fx": 2333.4,
+   "03 Hera 6 fx": 2080.2,
+   "06 Algo Four fx": 2158.4
+  }
+ }
+}

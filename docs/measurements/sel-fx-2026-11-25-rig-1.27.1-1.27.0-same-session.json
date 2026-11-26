@@ -1,0 +1,47 @@
+{
+ "checks": [
+  {
+   "name": "the 909 Kit is in the bank",
+   "ok": true,
+   "info": "slot 18"
+  },
+  {
+   "name": "SEL on the kit page arms it (909 KIT ARMED)",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "FX opens the Drive",
+   "ok": true,
+   "info": "['0.00', '1.00', '1.00', '137', 'ARM DRUMS', 'DRIVE', 'DRIVE', 'LEVEL']"
+  },
+  {
+   "name": "1.27.0: SEL on the Drive says NOTHING HERE TAKES KEYS",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "1.27.0: the kick is unchanged after SEL",
+   "ok": true,
+   "info": "hit -120.0 / -120.0 -> -120.0 dB"
+  }
+ ],
+ "drive_off": [
+  {
+   "hit": -120.0,
+   "peak": -120.0,
+   "tail": -120.0
+  },
+  {
+   "hit": -120.0,
+   "peak": -120.0,
+   "tail": -120.0
+  }
+ ],
+ "drive_after_sel": {
+  "hit": -120.0,
+  "peak": -120.0,
+  "tail": -120.0
+ },
+ "all_ok": true
+}
