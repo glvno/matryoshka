@@ -7,7 +7,7 @@ on fm1-emu's `fm1-core` / `fm1-soc`, pinned to commit `7ca5b96` in `tools/emu/Ca
 of fm1-emu is copied into this repository). Two changes are applied to it at build time: `tools/emu/isa_fix.sh` copies
 fm1-emu's `fm1-isa` crate from cargo's checkout into `tools/emu/target/fm1-isa` and corrects its decoder entries, and
 copies `fm1-core` into `tools/emu/target/fm1-core` with the hook the timing model needs (`tools/emu/core_timing_patch.py`,
-below) and the semantics of the fourth fix's shifts and the sixth fix (`tools/emu/core_isa_patch.py`). It writes a cargo config file that patches both in and prints its path for `--config` (`emu_smoke.sh` and `npm run emu` do this for m1emu). fm1-live cannot take that patch (inside fm1-emu's workspace fm1-isa is a path dependency: cargo says "patch was not used"), so `tools/emu/live_build.sh` builds it from a copy of the pinned checkout with the fixed fm1-isa swapped in and `core_isa_patch.py` applied (`tools/emu/target/fm1-emu-src`); fm1-live builds without all six fixes (markers `.isa-fixed` to `.isa-fixed-6`, not `.isa-fixed-7`) are rebuilt. The first entry: the
+below) and the semantics of the fourth fix's shifts and the sixth fix (`tools/emu/core_isa_patch.py`). It writes a cargo config file that patches both in and prints its path for `--config` (`emu_smoke.sh` and `npm run emu` do this for m1emu). fm1-live cannot take that patch (inside fm1-emu's workspace fm1-isa is a path dependency: cargo says "patch was not used"), so `tools/emu/live_build.sh` builds it from a copy of the pinned checkout with the fixed fm1-isa swapped in and `core_isa_patch.py` applied (`tools/emu/target/fm1-emu-src`); fm1-live builds without all seven fixes (markers `.isa-fixed` to `.isa-fixed-7`, not `.isa-fixed-8`) are rebuilt. The first entry: the
 forward `if ((R & #h) == #i) goto #i` (6 bytes, `..ff60`) had a 13-bit offset field (bits 32..44, learned from
 samples with short jumps) while its `!=` sibling has 15 (bits 32..46). A JieLi build that jumps 8 KB or more forward
 with it stopped the emulator at boot with UnknownInstruction (every build from the cpu-opt work on, 2026-10-18: pc
@@ -42,8 +42,13 @@ for ever, and the emulated FM-1 stopped answering after its first palette change
 palette. Each pending skip now keeps the start of its then-part, and a jump from inside the then-part to outside it
 drops the skip; a call keeps it, since it returns into the then-part. The firmware has two such tail calls (`eng_maps`
 is the other) and no call inside a then-part that has an else (`cargo test` in `tools/emu`:
-`goto_out_of_if_else_ends_it`). The firmware CI keeps the ELF and its disassembly (artifact `matryoshka-elf`) for
-tracing such faults to a function.
+`goto_out_of_if_else_ends_it`). The seventh (2026-11-25) is in the decoder again: the dual-issue head `R = sp #`
+(`64 f0`) was fitted to its one corpus sample, `r3 = sp #`, with a mask over all 32 bits and the register a constant.
+1.27.0's `dev_preset_step` (the PRESET encoder on a device page) has `r6 = sp #` (`64 f0 00 6e`), so smoke step 4 and
+the `hats909` scenario stopped at it with UnknownInstruction; `panel_edges` has `r4 = sp #`. It takes the register
+from bits 28..31 now, as `R = sp` (`64 e0`) does; fm1-core already ran it (`cargo test` in `tools/emu`:
+`sp_to_register_pair_head`). The test rig ran the same build's PRESET on a device page without a fault. The firmware CI
+keeps the ELF and its disassembly (artifact `matryoshka-elf`) for tracing such faults to a function.
 
 ## Choosing checks
 

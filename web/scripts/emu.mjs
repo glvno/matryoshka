@@ -98,9 +98,9 @@ if (boot) {
 }
 const live = join(EMU, 'live/bin', process.platform === 'win32' ? 'fm1-live.exe' : 'fm1-live');
 // (built from a patched copy of fm1-emu, tools/emu/live_build.sh: a cargo patch does not reach it. Builds made before
-// that, marked .isa-fixed / .isa-fixed-2 / .isa-fixed-3 / .isa-fixed-4 / .isa-fixed-5 / .isa-fixed-6, ran a decoder or
-// fm1-core without one of the fixes; they are rebuilt)
-const liveFixed = join(EMU, 'live/.isa-fixed-7');
+// that, marked .isa-fixed / .isa-fixed-2 / .isa-fixed-3 / .isa-fixed-4 / .isa-fixed-5 / .isa-fixed-6 / .isa-fixed-7,
+// ran a decoder or fm1-core without one of the fixes; they are rebuilt)
+const liveFixed = join(EMU, 'live/.isa-fixed-8');
 if (!existsSync(live) || !existsSync(liveFixed)) {
   console.log('building fm1-live (once)...');
   if (run('sh', [join(ROOT, 'tools/emu/live_build.sh')]) !== 0) process.exit(1);
