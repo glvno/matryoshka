@@ -2133,11 +2133,26 @@ async function main() {
       await check('arming: SEL on the kit card arms it with its track, the bar names the card', await emu.waitText('808 KIT ARMED', 1500));
       await check('arming: the editor shows the set the FM-1 armed (ARMS_NOW, #191)', !!(await until(async () => (await T()).armed.length > 0, 2000)));
       await emu.elapse(1300);
-      await emu.turn(ENC.select, 2);                // past the FX bus to the Output: it takes no keys
+      // two past the kit card: the kit's FX drawer Reverb, which SEL switches instead of arming (D-947, #1308)
+      await emu.turn(ENC.select, 2);
+      await check('arming: SELECT walks to the drawer Reverb', await emu.waitText('REVERB', 2000));
+      await emu.elapse(300);
+      const reverbSel = async () => {               // the bar: REVERB ON or REVERB OFF
+        await emu.tap(B.scl);
+        if (!(await emu.waitText('REVERB O', 1500))) return null;
+        return (await emu.text('REVERB OFF')) ? 'OFF' : (await emu.text('REVERB ON')) ? 'ON' : null;
+      };
+      const was = await reverbSel();
+      await emu.elapse(1300);
+      const back = await reverbSel();
+      await check('arming: SEL on the drawer Reverb switches it, not the arming; SEL again switches it back (D-947)', !!was && !!back && was !== back, `${was} then ${back}`);
+      await emu.elapse(1300);
+      await emu.turn(ENC.select, 1);                // the Output: it takes no keys
+      await check('arming: SELECT walks on to the Output', await emu.waitText('OUTPUT', 2000));
       await emu.elapse(300);
       await emu.tap(B.scl);
       await check('arming: SEL on a device that takes no keys says so', await emu.waitText('NOTHING HERE TAKES KEYS', 1500));
-      await emu.turn(ENC.select, -2);
+      await emu.turn(ENC.select, -3);
       await emu.elapse(1300);
       await emu.tap(B.seq, 120);
       await check('arming: the SEQ page arms the track it shows', await emu.waitText('DRUMS ARM', 3000));
