@@ -2061,10 +2061,12 @@ async function main() {
     // #1311 (D-1041): a Harmonizer's INVKEYS row (its second page: LOCK, SPLIT, INVKEYS, so K3 on ALGO page 2). On, the
     // FM-1's three highest keys (24..26) send F5..G5 (77..79) under split and the editor plays them as the 1st..3rd
     // inversion over the chord held (the owner's example: min + 7 + the 3rd inversion over C sounds B♭ C E♭ G); off, they
-    // play notes. Turned on in the editor under Live, the patch's format changes (68) and the whole patch goes again (no FM-1
-    // copy is left in an older format with a row it cannot hold); turned on at the FM-1 on a format-53 patch from its bank
-    // (Monolith D as the factory bank stores it), the FM-1 raises its copy and SAVE keeps it. Latching is host-tested
-    // (panel_test I6, harmonizer.test); here LOCK is set and one latched inversion heard
+    // play notes. Turned on in the editor under Live, the patch's format changes (66 to 68) and the whole patch goes again (no
+    // FM-1 copy is left in an older format with a row it cannot hold); turned on at the FM-1, the editor keeps knowing its
+    // copy's format (68 now), so turning it off in the editor is a PARAM, not an upload; turned on at the FM-1 on the
+    // factory Monolith D from its bank (format 66, as every factory patch with a Harmonizer ships), the FM-1 raises its copy
+    // and SAVE keeps it. Latching is host-tested (panel_test I6, harmonizer.test); here LOCK is set and one latched
+    // inversion heard
     async invKeys() {
       const NAME = 'T1311 INV KEYS';
       const fixture = (invkeys = 0) => page.evaluate(async ([nm, on]) => {
@@ -2184,6 +2186,13 @@ async function main() {
         await check('inv keys: set on the FM-1: MIN + 7 + key 27 over C sounds B♭ C E♭ G in the editor',
           sentOn(r.down, 79) && r.down.played.some((m) => m.t === 'chord' && m.button === 9 && m.down) && JSON.stringify(got) === JSON.stringify(MIN7[2]), `${show(r.all)}; chord ${JSON.stringify(got)}`);
       }
+      // the FM-1 raised its copy to 68 itself: the editor knows (UploadGate.raised), so turning the row off here goes as a
+      // PARAM to a copy that holds it, with no upload
+      await page.evaluate((h) => (window.__sent.splice(0), window.__m1test.param(h, 'invkeys', 0)), id);
+      await emu.elapse(800);
+      sent = await page.evaluate(() => window.__sent.splice(0).map((x) => x[1]));
+      await check('inv keys: set on the FM-1, then off in the editor: a PARAM, no upload (the copy\'s format is known: 68)',
+        sent.includes(0x20) && !sent.includes(0x10) && !sent.includes(0x11) && (await invkeys()) === 0, `sent ${sent.map((c) => c.toString(16)).join(' ')}`);
 
       // the factory Monolith D in the FM-1's bank (presets.ts FM1_PRESETS, encoded as export-defs encodes the factory
       // content), its Harmonizer on so the keys reach it, stored in a free slot in the bank slot's format; Live off, HOME +

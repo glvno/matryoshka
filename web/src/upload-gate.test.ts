@@ -44,4 +44,35 @@ describe('Live uploads only what changes the FM-1\'s patch', () => {
     g.forget();
     expect(g.needs(encodePatch(p))).toBe(true);
   });
+
+  it('the FM-1\'s own edits keep its copy\'s format known; only a raise there moves it (#1311, D-1041)', () => {
+    const p = patch();
+    const h = p.modules.find((m) => m.type === 'harm')!;
+    const g = new UploadGate();
+    expect(g.format).toBe(undefined);                        // (nothing uploaded yet)
+    const was = encodePatch(p);
+    g.took(was);
+    expect(g.format).toBe(was[1]);
+    g.changedThere();                                        // a knob turned on the FM-1: its bytes unknown, its format not
+    expect(g.needs(was)).toBe(true);
+    expect(g.format).toBe(was[1]);
+    g.raised(was[1] - 1);                                    // (a parameter its copy already holds: no raise)
+    expect(g.format).toBe(was[1]);
+    g.raised(68);                                            // INVKEYS set on the FM-1: it raised its copy to format 68
+    expect(g.format).toBe(68);
+    g.forget();                                              // another patch there, a new connection: unknown
+    expect(g.format).toBe(undefined);
+    g.raised(68);
+    expect(g.format).toBe(undefined);
+    // a live edit back to a default narrows the editor's bytes, never the FM-1's copy
+    h.params.invkeys = 1;
+    const on = encodePatch(p);
+    expect(on[1]).toBe(68);
+    g.took(on);
+    h.params.invkeys = 0;
+    g.edited();
+    g.refresh(encodePatch(p));
+    expect(encodePatch(p)[1]).toBeLessThan(68);
+    expect(g.format).toBe(68);
+  });
 });

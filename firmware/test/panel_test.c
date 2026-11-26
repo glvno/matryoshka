@@ -5014,17 +5014,19 @@ int main(void)
         }
         eng_set_bypass((uint32_t)h, 1);
         check("bypassed: the keys reach no Harmonizer (plain notes)", eng_keys_harm() < 0);
-        {   /* I1 / D-1041: INVKEYS changed on the FM-1 is kept in its copy: a factory patch with a Harmonizer (format 53, its
-             * cables 3 bytes each, ENG_FLAG_CABLES3) takes format 64's layout (eng_slim), is raised to 68 and its record
-             * grows to hold the row; loaded again, the row is on, and the rest reads the same */
+        {   /* I1 / D-1041: INVKEYS changed on the FM-1 is kept in its copy: a user patch in format 53 (its cables 3 bytes
+             * each, ENG_FLAG_CABLES3) takes format 64's layout (eng_slim), is raised to 68 and its record grows to hold the
+             * row; loaded again, the row is on, and the rest reads the same. The patch is the panel bank's Monolith D
+             * (web/factory/bank.json, the source graph before the FX drawers: no effect, a Harmonizer and its keys route),
+             * as any editor from 1.27.1 on writes it, byte for byte. It is not the shipped Monolith D: every factory patch
+             * with a Harmonizer ships in format 66 (presets.h, the firmware tier and the factory region); 1.14 to 1.26.2
+             * shipped them in formats 55 to 61 with the master FX bus, which the FM-1 refuses to raise (the case above) */
             static uint8_t copy[sizeof pv_bin];
-            uint32_t was = 0, hn = 0, fp, i;
+            uint32_t was = 0, hn = 0, i;
             char la[ENG_PANEL_LABELS][ENG_PANEL_LABEL + 1], lb[ENG_PANEL_LABEL + 1];
-            int labels = 1;
-            for (fp = 0; fp < N_PRESETS && (load_at(fp) || !E.nharm); fp++)
-                ;
-            check("I1: a factory patch with a Harmonizer loads", fp < N_PRESETS);
-            if (fp < N_PRESETS) {
+            int labels = 1, ok = load("MONOLITH D") == 0 && E.nharm;
+            check("I1: the panel bank's Monolith D (a Harmonizer, no effect) loads", ok);
+            if (ok) {
                 hn = E.harm[0].node;
                 was = pv_bin[1];
             }
@@ -5038,7 +5040,6 @@ int main(void)
             for (i = 0; i < pv_len; i++) copy[i] = pv_bin[i];
             for (i = 0; i < ENG_PANEL_LABELS; i++)
                 labels &= eng_panel_label(copy, pv_len, i, lb) == str_len(la[i]) && !strcmp(la[i], lb);
-            printf("      (%s)\n", patch_label);
             check("I1: the FM-1's INVKEYS edit raises its copy from format 53 to 68 and is kept, the panel labels the same",
                   pv_bin[1] == 68u && eng_load(copy, pv_len) == 0 && eng_get_param(hn, HARM_P_INVKEYS) == ENG_ONE && labels);
             m1_patch_param(hn, HARM_P_INVKEYS, 0);
