@@ -1,0 +1,190 @@
+{
+  "schema": 1,
+  "version": "1.27.1",
+  "firmware_product": "FM-1_7012701",
+  "source_commit": "de300ea6901de1e75340a72dfdff9509bd941101",
+  "source_tree": "d9b893af8b178a7616bb9f75e308e0d8c8b16a42",
+  "frozen_commit": "de300ea6901de1e75340a72dfdff9509bd941101",
+  "status": "automated and rig checks passed; shipped without the owner's device check (waived by the owner 2026-11-25, D-1180)",
+  "release_approval": {
+    "status": "waived device check; the main agent publishes",
+    "waiver": "the owner, 2026-11-25: \"a but start working on the fix immediately and ship it without my input\" (D-1180)",
+    "scope": "Publication of v1.27.1 from the tag on release/1.27.1: the frozen commit plus only this record, the qualified package and its screen font in web/public/firmware/, the coverage record and the rig measurements (D-1163); its firmware/ and tools/ equal the qualified source (D-105)."
+  },
+  "contents": [
+    "#1308: SEL switches an FX drawer effect on its device page (D-947, D-213 amended)",
+    "#1309: drawer effect card names (D-1438)"
+  ],
+  "plan": "D-1180 (freeze PR #1310; candidate de300ea6)",
+  "patch_format": 67,
+  "factory_content": {
+    "version": 23,
+    "set": "0187f5",
+    "layout": 4,
+    "format": 66,
+    "note": "no new set: decoded v23 images: 55871 patch/preset/dict/pattern bytes, 1264 copy/migration bytes identical; RELEASED_SETS 22 -> 23 (+0x0187f5 v1.27.0): the 12 bytes are that entry only; the current image differs from v1.27.0's only by post-release #1307's RELEASED_SETS entry; the frozen v19, v19, v20 and v21 images equal v1.27.0's"
+  },
+  "artifacts": {
+    "package": {
+      "name": "matryoshka-1.27.1.fwsc",
+      "size": 610628,
+      "sha256": "68fda5c8c480f45befa34ed23f2ac37aec6667eee362078134999dcb506cee14"
+    },
+    "screen_font": {
+      "name": "matryoshka-1.27.1-font.bin",
+      "size": 40946,
+      "sha256": "765b681ae53c51855791860e8f1c6b7eb8113fdb8e6d8aec96261f4d8a7cc3fa",
+      "id": "528f1926"
+    },
+    "normal": {
+      "name": "matryoshka-1.27.1-app.bin",
+      "size": 562372,
+      "sha256": "17f2cace45b7d6ea09ae3042e66b0ce5486726fb15d9dd676d0e3c848cce7ed5"
+    },
+    "normal_elf": {
+      "name": "matryoshka-1.27.1-app.elf",
+      "size": 636388,
+      "sha256": "93fa3592eb5952b948cc358de6bd8cc6646cc611a270780d538dff34e5a1b020"
+    },
+    "normal_sidecar": {
+      "name": "matryoshka-1.27.1.json",
+      "size": 431,
+      "sha256": "e9d6635f339f5641b75660c7875a4e6e2e185c7cc5b343ba522077c2d4014087"
+    },
+    "bridge": {
+      "name": "matryoshka-emu.bin",
+      "size": 559332,
+      "sha256": "886699a6f6f5aef7a9f7097089b7fe46dfd5e2c4c52654919f578e91b7a99af1"
+    }
+  },
+  "build_manifest_sha256": "51c588f491515a59d3fe83ec53a1650d678eb588d66f7599f9d6b37c85d835ce",
+  "build": "release run 45751256792: image 562372 B; RAM .data+.bss 19440 B of 24448 (5008 B free); pool 408564 B of 417920 (9356 B headroom, the floor 8192)",
+  "ci_runs": {
+    "release": 45751256792,
+    "web_rc": 45751261071,
+    "freeze_pr": 1310
+  },
+  "coverage": "release/coverage/v1.27.1: coverage record: current, measured de300ea6, fingerprint matches the frozen commit (web RC run 45751261071, D-147)",
+  "full_scenarios": "479 of 480 checks passed; failed: [4] arming: SEL on a device that takes no keys says so",
+  "full_scenarios_failure": "arming: SEL on a device that takes no keys says so: a stale expectation, not a firmware defect. The page two past the 808 Kit's card is its FX drawer Reverb, which SEL now switches (#1308, D-947); the same script passes on the 1.27.0 emulator bin and fails on 1.27.1's. The corrected scenario (the Reverb switched by SEL and back; SEL on the Output says NOTHING HERE TAKES KEYS) on the 1.27.1 emulator bin: 41 of 41 checks passed (qual/arming-corrected.log; test-only PR from branch arming-sel-fx-1271 after the tag)",
+  "smoke": [
+    "emu:smoke: passed; 325 checks, 0 failed, 0 level warnings; 537.6 s emulated in 360.2 s; snapshots in build/emu/smoke (/Users/mg/projects/music/fm1/wt/rel1271/bu"
+  ],
+  "boot": "boot check: PASS (49 checks, 0 failed; the editor link and the update handshake checked on the M1_EMU_MIDI build; 82.3 s emulated in 69.6 s; snapshots in /Users",
+  "old_format": [
+    "older format ok: 699 binaries load, upgrade and render bit-identically; 0 upgraded as today's encoder writes them, 336 differ, 339 too big to upgrade, 24 already in today's format; 2276 records grown to all their parameters render the same; 0 over a slot skipped",
+    "older format ok: 104 binaries load, upgrade and render bit-identically; 0 upgraded as today's encoder writes them, 103 differ, 1 too big to upgrade, 0 already in today's format; 1297 records grown to all their parameters render the same; 0 over a slot skipped"
+  ],
+  "hardware": {
+    "upgrade_from_1.27.0": {
+      "checks": "8 of 8",
+      "method": "build/release-1.27.1/prep/carry1271.py: on 1.27.0 (the rig as 1.27.0 left it) every slot, the pattern store, the palette and each entry's sound recorded; after the 1.27.1 install all of it as on 1.27.0, the font, region v23 0187f5"
+    },
+    "region_on_a_1.27.0_fm1": {
+      "install": [
+        "factory region: valid; layout 4 (the firmware reads 4), format 66, version 23, set 0187f5, 57475 of 73728 bytes, 12 patches; the firmware tier: version 23, 11 patches; 21 factory patches in all"
+      ],
+      "second_install_pass": [
+        "done: the FM-1 runs FM-1_7012701",
+        "factory region: valid; layout 4 (the firmware reads 4), format 66, version 23, set 0187f5, 57475 of 73728 bytes, 12 patches; the firmware tier: version 23, 11 patches; 21 factory patches in all"
+      ],
+      "bank_after_second_pass": "unchanged",
+      "editor": "the editor offers a factory update only for another set id (factory-content.ts factoryOffer): 0187f5 on the FM-1 and on the site, so none"
+    },
+    "upgrade_from_1.26.3": {
+      "checks": "12 of 12",
+      "method": "carry1271.py: 1.25.0 fresh with the 1.25.0 bank, 1.26.3 over it (upgrade1263.py: 70 of 70), snapshot, then 1.27.1 over it"
+    },
+    "palette": {
+      "on_1.27.1": "9 of 9",
+      "on_1.26.3": "9 of 9",
+      "left": "9 of 9"
+    },
+    "sel_fx": {
+      "on_1.27.0_same_session": "5 of 5",
+      "on_1.27.1": "16 of 16",
+      "checks": [
+        "ok the 909 Kit is in the bank: slot 18",
+        "ok SEL on the kit page arms it (909 KIT ARMED): ",
+        "ok FX opens the Drive: ['0.00', '1.00', '1.00', '137', 'ARM DRUMS', 'DRIVE', 'DRIVE', 'LEVEL']",
+        "ok SEL switches the Drive on (DRIVE ON): ",
+        "ok SEL switches the Drive off again (DRIVE OFF): ",
+        "ok the kick changes with the Drive on (hit RMS or peak beyond the takes' spread): hit off -37.82/-37.89, on -35.21/-35.16 dB; peak off -26.56/-26.54, on -24.1/-24.07 dBFS",
+        "ok and back with it off: -37.85 vs -37.82 dB",
+        "ok SELECT walks to the Reverb: ",
+        "ok SEL switches the Reverb on (REVERB ON): ",
+        "ok SEL mid-tail switches the Reverb off (REVERB OFF): ",
+        "ok the Reverb on lengthens the kick's tail (so the next check is not blind): tail dry -120.0, wet -92.86 dBFS",
+        "ok switched off 0.35 s after the hit, the Reverb rings out (tail 6 dB or more over the dry tail): tail dry -120.0, wet -92.86, switched -93.4 dBFS",
+        "ok the 909 slot read before SAVE: 3781 bytes",
+        "ok SEL on again (REVERB ON): ",
+        "ok SAVE kept the Reverb on: after a reload SEL turns it off (REVERB OFF): ",
+        "ok the 909 slot written back as it was: "
+      ],
+      "method": "build/release-1.27.1/prep/sel_rig.py: the 909 Kit, SEL on its Drive and Reverb drawer pages, USB audio: the kick (note 54, black key 1) hit RMS/peak with the Drive off/on, the tail with the Reverb off, on and switched off by SEL 0.35 s after the hit; SAVE keeps the state; the slot restored. Its first run hit note 36, which the kit does not play (all levels -120 dBFS, qual/sel-note36.json; the 1.27.0 baseline's 'kick unchanged' was equally blind); re-run with note 54 on the same firmware the same session. The Toggle staying in sync is proven by panel_test fx_sel_suite and the emulator, and the editor follows on the rig (selFx909); no Toggle-assigned patch was driven on the rig"
+    },
+    "sel_fx_909_scenario": "11 of 12 checks; FAILED: sel fx: a Reverb switched off right after a hit rings out (its tail stays, louder than with it off before): tail peak on 229, switched off 28, off before 0",
+    "sel_fx_909_scenario_tail": "device:scenarios selFx909's 'rings out' check failed on the rig (tail peak on 229, switched off 28, off before 0): it rings out (28 > 0) but under the emulator-calibrated floor QUIET 64 at the rig's USB level (the emulator: 354 / 78 / 0). sel_rig's RMS over 1.0..2.6 s shows the full tail: switched -93.4 vs on -92.86 dBFS, dry silent",
+    "909_drawer_off_sample_identical": {
+      "engine_render": [
+        "host_test (F de300ea6 engine) render of v23 909 Kit vs v22 909, notes 24..96 at velocity 100, 0.5 s each:",
+        "sounding notes 21 [(53, 0.2282), (54, 0.2282), (55, 0.3023), (56, 0.3257), (57, 0.088), (59, 0.1638), (60, 0.0725), (62, 0.0867), (63, 0.0885), (64, 0.0971), (65, 0.0859), (66, 0.0861), (67, 0.0875), (68, 0.0898), (69, 0.0924), (70, 0.01), (71, 0.0702), (72, 0.0123), (73, 0.0041), (74, 0.0014), (75, 0.0004)]",
+        "v23 f7918069e737d65a v22 f7918069e737d65a bit-identical"
+      ],
+      "rig_usb_audio": {
+        "pass": false,
+        "sounding_notes": [
+          53,
+          54,
+          55,
+          56,
+          57,
+          59,
+          60,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          71,
+          72
+        ],
+        "worst_counts": 2390,
+        "min_usb_peak": 11,
+        "repeat_floor_max": 2796,
+        "reading": "17 keys play on both (TEST_PEAK scan, equal sets), every take loud (> 200 counts) except note 72 (11 counts); but the rig's USB audio is not sample-repeatable even for the same patch: each patch's own two takes differ by up to 2796 counts (the noise voices, and the hit's sub-sample timing against the audio clock), and TEST_PEAK differs between takes on the noise voices (the kicks 53/54: 1869 on both). So sample identity cannot be shown on USB audio; A vs B stays within the order of each patch's repeat floor"
+      },
+      "verdict": "bit-identical where it can be shown (the C engine at F renders v23's 909 Kit, drawer off, and v22's drawerless 909 to the same samples, 21 keys sounding); on the rig the two are equal within the hardware's own repeatability",
+      "replaces": "1.27.0's '909 drawer off sample-identical' (audeq.py), which was vacuous: it hit MIDI notes 36.. which the 909 Kit does not play from the keys, so every recording was silence (its peaks 0); 1.27.1's first audeq run (aud909-cmp.json) likewise",
+      "method": "render: firmware/test/host_test.c at F (HOST_TEST_DUMP), notes 24..96 at velocity 100, 0.5 s each, both binaries, cmp of the dumps. Rig: build/release-1.27.1/prep/aud909.py, same session on 1.27.1: v23's 909 Kit (presets.h at F) and v22's (v1.26.3's presets.h, = build/r127/rig/'909 Kit today.bin') each sent as the running patch; TEST_PEAK scan 24..96; each sounding key hit alone at velocity 100, 1.5 s of USB audio, two takes each; B aligned onto A (audeq.py best()), the largest difference with each patch's repeat as the floor"
+    },
+    "rig127": "29 of 29",
+    "device_scenarios": "122 of 126 checks passed, 3 skipped (1.2 output: MONO, both sounds on both sides, each a bit quieter: the rig's USB audio is taken before OUTPUT's mix (audio.c): the emulator's I2S proves it, the owne",
+    "fx_drawer": "23 of 23 checks",
+    "hold_save": "18 of 18 checks",
+    "candidates": "15 of 15 checks",
+    "downgrade_to_1.26.3": "accepted without --force, as the install tool is meant to (tools/fm1_install.py takes any package with a 48-slot bank: 1.26 or later); rig.sh had expected exit 11, which holds only for 1.25.0 and older",
+    "older_firmware_refused": {
+      "1.25.0_without_force_exit_11": true,
+      "log": "qual/downgrade-1.25.0.log (after the session, rig on 1.27.1: nothing was sent)"
+    },
+    "midi_endpoint_names": {
+      "1.27.0": true,
+      "1.27.1": true
+    },
+    "irq_vs_1.27.0": "D-1165, one session: program 18 1922.4 -> 1886.0 us; program 6 1847.5 -> 1809.1 us; program 1 2183.7 -> 2167.3 us; 18 Cassia 1 fx 2149.8 -> 2113.9 us; 05 Expander S fx 2360.4 -> 2333.4 us; 03 Hera 6 fx 2100.5 -> 2080.2 us; 06 Algo Four fx 2209.0 -> 2158.4 us; differences [-50.6, -16.4]",
+    "cpu_survey_vs_1.27.0": "same session, stopped: 1.22.0's FX patches [-2.5, 0.1] mean -0.74; factory patches [-2.4, 1.5] mean -0.89; the 1.27 set [-2.0, -0.4] mean -1.3 points",
+    "clock_in_at_0": "raw steady offset 39.44 ms against 1.27.0's 38.89 ms (difference 0.55 ms)",
+    "cores": [
+      "2 CORES; barred no; trace 0xc1000002; split on",
+      "self-test passed 13102, failed 0; refused jobs 0; jobs done 450611; core 1 stack 2144 B used; longest wait 2317 us since the last read"
+    ]
+  },
+  "owner_checks": {
+    "status": "waived (D-1180)",
+    "only_ears": "how the Drive sounds on the 909 kick; whether the Reverb's tail sounds natural on the analog output as it rings out after SEL OFF (sel_rig gives levels only)"
+  }
+}
