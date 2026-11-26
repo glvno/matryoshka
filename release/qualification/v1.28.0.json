@@ -1,0 +1,154 @@
+{
+  "schema": 1,
+  "version": "1.28.0",
+  "firmware_product": "FM-1_7012800",
+  "source_commit": "13a441da27c1d15c33be48aced0f8c13462c9fb9",
+  "source_tree": "3cae39356a284e3d558f3c40b28176b50c116842",
+  "frozen_commit": "13a441da27c1d15c33be48aced0f8c13462c9fb9",
+  "status": "automated and rig checks passed; the owner's device check (D-139) follows on this candidate before his go",
+  "release_approval": {
+    "status": "pending the owner's device check and go (D-139, D-1181)",
+    "scope": "Publication of v1.28.0 from the tag on release/1.28: the frozen commit plus only this record, the qualified package and its screen font in web/public/firmware/, the coverage record and the rig measurements (D-1163); its firmware/ and tools/ equal the qualified source (D-105)."
+  },
+  "contents": [
+    "#1315 + #1319: the Harmonizer inversion keys (INVKEYS, patch format 68; the FM-1 raises its copy, eng_slim for 52..63; an old FX-bus copy refused: OLD PATCH: SET IN EDITOR; issue #1311)",
+    "#1314: SEL switches canvas effects (issue #1312, D-947)",
+    "#1313: D-135 waived for 1.28",
+    "#1318: corrected arming scenario, selFx909 calibration",
+    "#1321: unsaved changes compared through validatePatch (editor; F2)"
+  ],
+  "plan": "D-1181 (freeze PR #1320 = f5bfa2da; candidate F2 13a441da = f5bfa2da + #1321, editor-only)",
+  "patch_format": 68,
+  "factory_content": {
+    "version": 23,
+    "set": "0187f5",
+    "layout": 4,
+    "format": 66,
+    "note": "no new set: decoded v23 images: header (format 66, set 0187f5), 55871 patch/preset/dict/pattern bytes, 23 RELEASED_SETS, 1264 copy/migration bytes identical to v1.27.1; 1.27.x firmware is offered it"
+  },
+  "artifacts": {
+    "package": {
+      "name": "matryoshka-1.28.0.fwsc",
+      "size": 610628,
+      "sha256": "ac1c1d75f99282dd53cb9d89492dbdf3cc8459aac844cd55748987e084cae503"
+    },
+    "screen_font": {
+      "name": "matryoshka-1.28.0-font.bin",
+      "size": 40946,
+      "sha256": "765b681ae53c51855791860e8f1c6b7eb8113fdb8e6d8aec96261f4d8a7cc3fa",
+      "id": "528f1926"
+    },
+    "normal": {
+      "name": "matryoshka-1.28.0-app.bin",
+      "size": 565340,
+      "sha256": "b7cab73de58e74b5c80ff76fa08dc017f70e5f02d0ece6e45de30bd50ef0b674"
+    },
+    "normal_elf": {
+      "name": "matryoshka-1.28.0-app.elf",
+      "size": 639204,
+      "sha256": "eab152a35de423bd17f6be42268dc99e167af54a019bd6eccb70dfd26025cd20"
+    },
+    "normal_sidecar": {
+      "name": "matryoshka-1.28.0.json",
+      "size": 431,
+      "sha256": "a26aa28e1655fdc3ad0071970beeb77f789cf51edd8c7e156b2f220a64cb04b3"
+    },
+    "bridge": {
+      "name": "matryoshka-emu.bin",
+      "size": 562284,
+      "sha256": "bbd546fbda523b104db7da978ec7e6294935f5c4ef6f1a6eaae7ea2f29988c09"
+    }
+  },
+  "build_manifest_sha256": "3d2533de9add2611c15a134d1a5aead7d9de151f3f5ae4f14c2cf6635c72256a",
+  "build": "release run 45779468083: image 565340 B; RAM .data+.bss 19440 B of 24448 (5008 B free); pool 408596 B of 417920 (9324 B headroom, the floor 8192)",
+  "firmware_identity": "firmware vs the first freeze's release run: matryoshka-1.28.0.fwsc matryoshka-1.28.0-app.bin matryoshka-1.28.0-font.bin matryoshka-emu.bin (f5bfa2da's release run 45774000076: the rig session ran its package, the same bytes)",
+  "ci_runs": {
+    "release": 45779468083,
+    "web_rc": 45779472813,
+    "freeze_pr": 1320,
+    "candidate_pr": 1321,
+    "release_f5bfa2da": 45774000076,
+    "web_rc_f5bfa2da_failed": "45774005914: saved.test.ts (a factory Harmonizer without invkeys read as unsaved; fixed by #1321)"
+  },
+  "coverage": "release/coverage/v1.28.0: coverage record: current, measured 13a441da, fingerprint matches the frozen commit (web RC run 45779472813, D-147)",
+  "full_scenarios": "523 of 523 checks passed",
+  "smoke": [
+    "emu:smoke: passed; 325 checks, 0 failed, 0 level warnings; 537.7 s emulated in 336.4 s; snapshots in build/emu/smoke (/Users/mg/projects/music/fm1/wt/rel128/bui"
+  ],
+  "boot": "boot check: PASS (49 checks, 0 failed; the editor link and the update handshake checked on the M1_EMU_MIDI build; 82.3 s emulated in 70.7 s; snapshots in /Users",
+  "old_format": [
+    "older format ok: 699 binaries load, upgrade and render bit-identically; 0 upgraded as today's encoder writes them, 336 differ, 363 too big to upgrade, 0 already in today's format; 2276 records grown to all their parameters render the same; 699 raised to format 68 render the same; 0 over a slot skipped",
+    "older format ok: 104 binaries load, upgrade and render bit-identically; 0 upgraded as today's encoder writes them, 103 differ, 1 too big to upgrade, 0 already in today's format; 1297 records grown to all their parameters render the same; 103 raised to format 68 render the same; 0 over a slot skipped"
+  ],
+  "install_panel_vs_1.27.1_emulator": [
+    "ok   connect: the editor finds the emulated FM-1: This FM-1 runs older Matryoshka firmware that cannot play the editor's patches: update it to sync.",
+    "FAIL connect: Sync turns Live on: chip not synced",
+    "ok   connect: the FM-1 shows its device page",
+    "ok   connect: the FM-1 plays Init from a key: peak 3243",
+    "ok   install panel: the status says to update: This FM-1 runs older Matryoshka firmware that cannot play the editor's patches: update it to sync.",
+    "Matryoshka v1.28.0 (FM-1_7012800, 596 KB) comes with this app. GPL-3.0; three JieLi SDK files inside are Apache-2.0.",
+    "ok   install panel: it offers 1.28.0: Install firmware"
+  ],
+  "hardware": {
+    "upgrade_from_1.27.1": {
+      "checks": "12 of 12",
+      "method": "build/release-1.28.0/prep/carry128.py: on 1.27.1 every slot, the pattern store, the palette and each entry's sound recorded; after the 1.28.0 install all of it as on 1.27.1, the font, region v23 0187f5"
+    },
+    "upgrade_from_1.26.3": {
+      "checks": "12 of 12",
+      "method": "carry128.py: 1.25.0 fresh with the 1.25.0 bank, 1.26.3 over it (upgrade1263.py: 70 of 70), snapshot, then 1.28.0 over it"
+    },
+    "palette": {
+      "on_1.28.0": "9 of 9",
+      "on_1.26.3": "9 of 9",
+      "left": "9 of 9"
+    },
+    "inversion_keys": {
+      "invKeys": "38 of 41 checks; FAILED: inv keys rig: SELECT to its Harmonizer, K3 on its second page; FAILED: inv keys rig: key 27 is an inversion key now (the bar names the chord); FAILED: inv keys rig: the slot reads back format 68 (was 53): format 67, 2358 bytes (was 2191)",
+      "invKeysRig": "14 of 14 checks",
+      "invKeysRig_first_run": "11 of 14 checks; FAILED: inv keys rig: SELECT to its Harmonizer, K3 on its second page; FAILED: inv keys rig: key 27 is an inversion key now (the bar names the chord); FAILED: inv keys rig: the slot reads back format 68 (was 53): format 67, 2358 bytes (was 2191) (tool: the FM-1 already stood on the free slot where invKeys's erased copy had been, so HOME + PRESET stopped at once and the stored format-53 patch never loaded; the scenario now loads another slot first; re-run 19/19, qual/device-invkeysrig2.log)",
+      "method": "device:scenarios on the rig (wt/rel128x, scratch RIG_SCENARIOS): invKeys: MIN + 7 + each of the top three keys over C at octaves 0 and 1, the FM-1's MIDI out (56, 57, 77/78/79, root) and the editor's chord (Cmin7 3rd inversion B♭ C E♭ G), LOCK latching, INVKEYS off = notes, INVKEYS on at the FM-1 (K3, page 2) followed by the editor, the factory Monolith D (format 66) raised and SAVE reads back 68; invKeysRig: the panel bank's Monolith D as the editor writes it (format 53) raised to 68 on SAVE, 1.25.0's Monolith D (format 55, master FX bus) refused with OLD PATCH: SET IN EDITOR and left byte for byte"
+    },
+    "sel_canvas": {
+      "checks": "14 of 14 checks",
+      "method": "device:scenarios selCanvas with USB audio: C4 held 400 ms then 1.4 s of tail, the Delay module on and switched off by SEL: both notes > 200 counts (not silent), the tail changes; the Reverb card dragged out of a drawer; Overdrive says SWITCH IT WITH A TOGGLE"
+    },
+    "sel_drawer_909": {
+      "sel_rig": "16 of 16",
+      "selFx909": "13 of 13 checks",
+      "method": "build/release-1.27.1/prep/sel_rig.py switch (kick = note 54)"
+    },
+    "909_hits_vs_1.27.1": {
+      "ok": true,
+      "worst_counts": 2914,
+      "silent_notes": [],
+      "over_floor": [],
+      "min_peak": 520,
+      "method": "build/release-1.28.0/prep/audeq128.py: the 909 Kit's 14 sounding keys (54..69), two takes each on each firmware, same session; every note > 200 counts and A vs B within 1.5 x the larger repeat floor + 300 (USB audio is not sample-repeatable)"
+    },
+    "rig127": "29 of 29",
+    "device_scenarios": "176 of 182 checks passed, 3 skipped (1.2 output: MONO, both sounds on both sides, each a bit quieter: the rig's USB audio is taken before OUTPUT's mix (audio.c): the emulator's I2S proves it, the owne",
+    "fx_drawer": "23 of 23 checks",
+    "hold_save": "18 of 18 checks",
+    "candidates": "15 of 15 checks",
+    "older_firmware_refused": {
+      "1.25.0_without_force_exit_11": true,
+      "log": "qual/downgrade.log"
+    },
+    "midi_endpoint_names": {
+      "1.27.1": true,
+      "1.28.0": true
+    },
+    "irq_vs_1.27.1": "D-1165, one session: program 18 1944.0 -> 1936.2 us; program 6 1846.5 -> 1841.6 us; program 1 2216.5 -> 2209.8 us; 18 Cassia 1 fx 2173.2 -> 2160.6 us; 05 Expander S fx 2372.5 -> 2364.2 us; 03 Hera 6 fx 2122.0 -> 2112.4 us; 06 Algo Four fx 2206.3 -> 2182.9 us; differences [-23.4, -4.9]",
+    "cpu_survey_vs_1.27.1": "same session, stopped: 1.22.0's FX patches [-0.6, 0.8] mean 0.04; factory patches [-1.1, 1.6] mean 0.18; the 1.27 set [-0.4, 1.3] mean 0.49 points",
+    "clock_in_at_0": "raw steady offset 38.89 ms against 1.27.1's 39.44 ms (difference -0.55 ms)",
+    "cores": [
+      "2 CORES; barred no; trace 0xc1000002; split on",
+      "self-test passed 15692, failed 0; refused jobs 0; jobs done 551719; core 1 stack 2144 B used; longest wait 2384 us since the last read"
+    ]
+  },
+  "owner_checks": {
+    "status": "pending: build/design/crate/index.html with the candidate editor at crate/v128/",
+    "only_ears": "the inversions by ear; SEL on the 909's drawer Drive and Reverb by ear; a canvas Drive switched by SEL by ear"
+  }
+}
