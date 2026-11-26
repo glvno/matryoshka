@@ -61,6 +61,8 @@
 #define HARM_INV_KEYS 3              /* its inversion keys (`invkeys` on, #1311): buttons HARM_ZONE.. are the 1st..3rd inversion */
 #define HARM_INV_AT 17               /* the first inversion key, over the split (F5 over C4; harmonizer.ts HARM_INV_AT) */
 #define HARM_ALL (HARM_ZONE + HARM_INV_KEYS)
+#define HARM_CHORD_BITS ((1u << HARM_ZONE) - 1u)                        /* the chord buttons of a button mask */
+#define HARM_INV_BITS (((1u << HARM_ALL) - 1u) & ~HARM_CHORD_BITS)     /* its inversion keys */
 #define HARM_ROOTS 10                /* roots a Harmonizer holds at once (a further one is not played) */
 #define HARM_TONES 8                 /* notes of one chord at most (root, 2nd, 3rd, 4th, 5th, 7th, 9th) */
 #define HARM_VOICING 8               /* the voicing's reach, inversions up or down */
@@ -4404,8 +4406,15 @@ static uint8_t harm_raw;                         /* the keys come as roots whate
 
 static int32_t harm_par(const harm_t *h, uint32_t p, int32_t lo, int32_t hi) { return clampi(round_q16(E.node[h->node].par[p]), lo, hi); }
 static int harm_locks(const harm_t *h) { return harm_par(h, HARM_P_LOCK, 0, 1) == 1; }
-/* the buttons in effect: those held (Lock: of the press under way), else the latched ones (Lock on) */
-static uint32_t harm_buttons(const harm_t *h) { return harm_locks(h) ? (h->down ? h->gesture : h->locked) : h->down; }
+/* the kinds of button among bits: HARM_CHORD_BITS if a chord button, HARM_INV_BITS if an inversion key (harmonizer.ts
+ * kinds: Lock latches the two apart) */
+static uint32_t harm_kinds(uint32_t bits) { return (bits & HARM_CHORD_BITS ? HARM_CHORD_BITS : 0u) | (bits & HARM_INV_BITS ? HARM_INV_BITS : 0u); }
+/* the buttons in effect: those held (Lock: of the press under way, and the latched ones of a kind it has none of), else
+ * the latched ones (Lock on) */
+static uint32_t harm_buttons(const harm_t *h)
+{
+    return harm_locks(h) ? (h->down ? h->gesture | (h->locked & ~harm_kinds(h->gesture)) : h->locked) : h->down;
+}
 
 /* a chord button or an inversion key pressed or let go (harmonizer.ts harmButton; an inversion key goes down only while
  * the INVKEYS row is on) */
@@ -4420,7 +4429,7 @@ static void harm_button(harm_t *h, uint32_t b, int down)
         h->stamp[b] = ++h->clock;
         if (!h->down) {
             h->gesture = bit;
-            h->toggle = h->locked == bit;
+            h->toggle = (h->locked & harm_kinds(bit)) == bit;   /* (alone, the only latched button of its kind) */
         } else {
             h->gesture |= bit;
             h->toggle = 0;
@@ -4431,7 +4440,7 @@ static void harm_button(harm_t *h, uint32_t b, int down)
             return;
         h->down &= (uint16_t)~bit;
         if (!h->down && harm_locks(h))
-            h->locked = h->toggle ? 0u : h->gesture;
+            h->locked = (uint16_t)(h->toggle ? h->locked & ~h->gesture : h->gesture | (h->locked & ~harm_kinds(h->gesture)));
         if (!h->down) {
             h->gesture = 0;
             h->toggle = 0;
@@ -4444,7 +4453,7 @@ static void harm_button(harm_t *h, uint32_t b, int down)
  * Its count */
 static uint32_t harm_intervals(const harm_t *h, int32_t *t)
 {
-    uint32_t bits = harm_buttons(h) & ((1u << HARM_ZONE) - 1u), n = 0, i, j, at = 0;
+    uint32_t bits = harm_buttons(h) & HARM_CHORD_BITS, n = 0, i, j, at = 0;
     int32_t type = 0, sus2, sus4, sev, nine, x;
     if (bits) {
         for (i = 0; i < 3u; i++)
@@ -4493,18 +4502,23 @@ static uint32_t harm_intervals(const harm_t *h, int32_t *t)
     return n;
 }
 
-/* the inversion in effect (harmonizer.ts harmVoicing): the inversion key in effect pressed last (1..3) while the INVKEYS
- * row is on, else `voicing` */
-static int32_t harm_voicing(const harm_t *h)
+/* the inversion key in effect pressed last (1..3) while the INVKEYS row is on, 0 none (harmonizer.ts harmInversion) */
+static int32_t harm_inversion(const harm_t *h)
 {
     uint32_t bits = harm_par(h, HARM_P_INVKEYS, 0, 1) == 1 ? harm_buttons(h) : 0u, i, at = 0;
-    int32_t v = harm_par(h, HARM_P_VOICING, -HARM_VOICING, HARM_VOICING);
+    int32_t v = 0;
     for (i = 0; i < HARM_INV_KEYS; i++)
         if ((bits >> (HARM_ZONE + i) & 1u) && h->stamp[HARM_ZONE + i] > at) {
             at = h->stamp[HARM_ZONE + i];
             v = (int32_t)i + 1;
         }
     return v;
+}
+/* the inversion in effect (harmonizer.ts harmVoicing): the inversion key's (harm_inversion), else `voicing` */
+static int32_t harm_voicing(const harm_t *h)
+{
+    int32_t v = harm_inversion(h);
+    return v ? v : harm_par(h, HARM_P_VOICING, -HARM_VOICING, HARM_VOICING);
 }
 
 static const uint8_t HARM_INTERVALS[9] = {0, 2, 3, 4, 5, 6, 7, 10, 14};
@@ -4798,7 +4812,8 @@ int eng_keys_harm(void)
 
 /* the chord harmonizer m plays now, by name (harmonizer.ts harmName: MIN7, MAJ ADD2, 7 SUS4..., "" the root alone). The 7
  * button's seventh is the minor one: beside maj it reads 7 (a dominant seventh), beside dim MIN7B5; 9 with 7 is a ninth
- * chord, without it ADD9; a 2nd or 4th beside a third is ADD2 / ADD4, without one SUS2 / SUS4 */
+ * chord, without it ADD9; a 2nd or 4th beside a third is ADD2 / ADD4, without one SUS2 / SUS4; an inversion key in effect
+ * ends it INV1..INV3 (the VOICING row does not show) */
 static char *harm_put(char *q, const char *out, const char *w)
 {
     if (q != out)
@@ -4844,6 +4859,10 @@ void eng_harm_name(uint32_t m, char *out)
         q = harm_put(q, out, q3 ? "ADD4" : "SUS4");
     if ((has >> 14 & 1u) && !(has >> 10 & 1u))
         q = harm_put(q, out, "ADD9");
+    if ((i = (uint32_t)harm_inversion(&E.harm[k])) != 0u) {
+        q = harm_put(q, out, "INV");
+        *q++ = (char)('0' + i);
+    }
     *q = 0;
 }
 

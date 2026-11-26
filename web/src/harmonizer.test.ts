@@ -305,7 +305,7 @@ describe('Harmonizer inversion keys (#1311)', () => {
     expect(harmChord(s, 60, p)).toEqual([64, 67, 72]);
   });
 
-  it('I6: latched with the chord buttons pressed together (Lock on), replaced by the next press', () => {
+  it('I6: latched with the chord buttons pressed together (Lock on); a press of chord buttons alone replaces only them', () => {
     const s = harmInit(), p = P({ invkeys: 1, lock: 1 });
     press(s, p, 'maj');
     harmButton(s, INV(2), true, p);
@@ -314,7 +314,86 @@ describe('Harmonizer inversion keys (#1311)', () => {
     expect(harmChord(s, 60, p)).toEqual([67, 72, 76]);
     press(s, p, 'min');
     lift(s, p, 'min');
-    expect(harmChord(s, 60, p)).toEqual([60, 63, 67]);
+    expect(harmChord(s, 60, p)).toEqual([67, 72, 75]); // (C minor, the 2nd inversion kept)
+  });
+
+  const tap = (s: HarmState, p: HarmParams, ...bs: number[]): void => {
+    bs.forEach((b) => harmButton(s, b, true, p));
+    bs.forEach((b) => harmButton(s, b, false, p));
+  };
+  it.each([0, 1])('Lock on, type %i (the owner\'s 1.28.0 check S2): an inversion key alone replaces the latched inversion, the latched chord buttons stay', (type) => {
+    const s = harmInit(), p = P({ invkeys: 1, lock: 1, type });
+    tap(s, p, B('min'), B('7'), INV(1));
+    expect(harmChord(s, 60, p)).toEqual([63, 67, 70, 72]);
+    tap(s, p, INV(2));
+    expect(harmChord(s, 60, p)).toEqual([67, 70, 72, 75]); // (before: the card's chord, so with type none C4 alone)
+    expect(harmName(s, p)).toBe('MIN7 INV2');
+    harmButton(s, INV(3), true, p); // (held, the latched chord plays under it)
+    expect(harmChord(s, 60, p)).toEqual([70, 72, 75, 79]);
+    harmButton(s, INV(3), false, p);
+    expect(harmChord(s, 60, p)).toEqual([70, 72, 75, 79]);
+  });
+
+  it.each([0, 1])('held, type %i: with min + 7 held, a new inversion key replaces the one let go', (type) => {
+    const s = harmInit(), p = P({ invkeys: 1, type });
+    press(s, p, 'min', '7');
+    harmButton(s, INV(1), true, p);
+    expect(harmChord(s, 60, p)).toEqual([63, 67, 70, 72]);
+    harmButton(s, INV(1), false, p);
+    harmButton(s, INV(2), true, p);
+    expect(harmChord(s, 60, p)).toEqual([67, 70, 72, 75]);
+  });
+
+  it('Lock on: the latched inversion key pressed again alone lets it go (the voicing row again), the chord buttons stay', () => {
+    const s = harmInit(), p = P({ invkeys: 1, lock: 1, voicing: -1 });
+    tap(s, p, B('maj'), INV(2));
+    expect(harmChord(s, 60, p)).toEqual([67, 72, 76]);
+    harmButton(s, INV(2), true, p);
+    expect(harmChord(s, 60, p)).toEqual([67, 72, 76]); // (held, still in effect: it lets go when let go)
+    harmButton(s, INV(2), false, p);
+    expect(harmChord(s, 60, p)).toEqual([55, 60, 64]); // (voicing -1)
+    expect(harmName(s, p)).toBe('MAJ');
+    tap(s, p, INV(1), INV(3)); // (two together: not the latched one alone, so the last pressed is latched)
+    expect(harmChord(s, 60, p)).toEqual([72, 76, 79]);
+    tap(s, p, INV(3)); // (the latch holds both; G5 is not the only one, so it stays, alone now)
+    expect(harmChord(s, 60, p)).toEqual([72, 76, 79]);
+    tap(s, p, INV(3));
+    expect(harmChord(s, 60, p)).toEqual([55, 60, 64]);
+    tap(s, p, B('maj'));
+    expect(s.locked).toBe(0);
+    expect(harmChord(s, 60, p)).toEqual([60]);
+  });
+
+  it('the chord\'s name ends with the inversion key in effect; the voicing row and a root alone show none', () => {
+    const s = harmInit(), p = P({ invkeys: 1, voicing: 2 });
+    press(s, p, 'min', '7');
+    expect(harmName(s, p)).toBe('MIN7');
+    harmButton(s, INV(3), true, p);
+    expect(harmName(s, p)).toBe('MIN7 INV3');
+    lift(s, p, 'min', '7');
+    expect(harmName(s, p)).toBe(''); // (the root alone: no inversion moves it)
+    press(s, p, 'maj', 'sus2', 'sus4', '9');
+    expect(harmName(s, p)).toBe('MAJ ADD2 ADD4 ADD9 INV3'); // (the longest: 23 characters)
+  });
+
+  it('in the engine (six voices), Lock on, type none: MIDI F5 then F♯5 alone after min + 7 + F5 sound Cmin7 in the 2nd inversion', () => {
+    const { p } = harmPatch({ invkeys: 1, lock: 1 });
+    const e = new Engine(44100);
+    e.load(p);
+    for (const n of [56, 57, 77]) e.noteOn(n); // min, 7, F5: the 1st inversion
+    for (const n of [77, 57, 56]) e.noteOff(n);
+    e.noteOn(60);
+    expect(sounding(e)).toEqual([63, 67, 70, 72]);
+    e.noteOff(60);
+    e.noteOn(78); // F♯5 alone: the 2nd inversion, min + 7 kept
+    e.noteOff(78);
+    e.noteOn(60);
+    expect(sounding(e)).toEqual([67, 70, 72, 75]);
+    e.noteOff(60);
+    e.noteOn(78); // F♯5 alone again: root position
+    e.noteOff(78);
+    e.noteOn(60);
+    expect(sounding(e)).toEqual([60, 63, 67, 70]);
   });
 
   it('the row off: an inversion key does nothing, a latched one stops counting', () => {

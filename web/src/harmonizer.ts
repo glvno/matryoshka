@@ -5,12 +5,13 @@
 // just under `split` (F3..B3 below C4), on the FM-1 its seven lowest keys whatever the octave. Every other key is a root.
 // The black keys among the seven pick the chord's quality (maj, min, dim), the white ones add to it (sus2, sus4, 7, 9);
 // buttons held together combine. With no button held (and none latched) the card's own chord plays (type, sus, ext;
-// all none: the root alone). Lock on: the buttons pressed together stay latched until the next press. A root's chord is
-// fixed when it goes down: a button pressed while a root is held changes the next root's chord. `voicing` moves the chord
-// through its inversions (each step up takes the lowest note an octave up; each step down the highest an octave down; the
-// root alone stays). `invkeys` on (#1311): the three keys at split + 17..19 (F5, F♯5, G5 above C4; on the FM-1 its three
-// highest keys whatever the octave) are three more buttons, the 1st, 2nd and 3rd inversion: one in effect sets the
-// inversion exactly, in place of `voicing` (two in effect: the one pressed last wins); they latch with the chord buttons.
+// all none: the root alone). Lock on: the buttons pressed together stay latched until the next press of their kind (the
+// chord buttons and the inversion keys latch apart, #1311); the only latched button of a kind, pressed again alone, lets
+// it go. A root's chord is fixed when it goes down: a button pressed while a root is held changes the next root's chord.
+// `voicing` moves the chord through its inversions (each step up takes the lowest note an octave up; each step down the
+// highest an octave down; the root alone stays). `invkeys` on (#1311): the three keys at split + 17..19 (F5, F♯5, G5
+// above C4; on the FM-1 its three highest keys whatever the octave) are three more buttons, the 1st, 2nd and 3rd
+// inversion: one in effect sets the inversion exactly, in place of `voicing` (two in effect: the one pressed last wins).
 // Its notes go out at once, in the same call (not at the next block): a note two held roots share sounds once and ends
 // with the last of them.
 
@@ -25,6 +26,7 @@ export const HARM_INV_AT = 17;
 /** every button: the chord buttons, then the inversion keys */
 export const HARM_ALL = HARM_ZONE + HARM_INV_KEYS;
 const CHORD_BITS = (1 << HARM_ZONE) - 1;
+const INV_BITS = ((1 << HARM_ALL) - 1) & ~CHORD_BITS;
 /** the card's chord: its quality, its suspended or added 2nd / 4th, its 7th / 9th */
 export const HARM_TYPES = ['none', 'maj', 'min', 'dim'];
 export const HARM_SUS = ['none', 'sus2', 'sus4', 'sus2+4'];
@@ -52,7 +54,7 @@ export interface HarmState {
   /** the buttons down (bit b: HARM_BUTTONS[b], then the inversion keys) */
   down: number;
   /** Lock: the buttons of the press under way (from the first button down to the last up), the latched set, and whether
-   * the press began on the only latched button (let go alone, it unlatches) */
+   * the press is one button alone, the only latched one of its kind (let go, it unlatches) */
   gesture: number;
   locked: number;
   toggle: boolean;
@@ -78,8 +80,13 @@ export function harmButtonOf(note: number, p: HarmParams): number {
   return b >= 0 && b < HARM_ZONE ? b : int(p.invkeys, 0, 1) === 1 && i >= 0 && i < HARM_INV_KEYS ? HARM_ZONE + i : -1;
 }
 
-/** the buttons in effect: those held (Lock: of the press under way), else the latched ones (Lock on) */
-export const harmButtons = (s: HarmState, p: HarmParams): number => (locks(p) ? (s.down ? s.gesture : s.locked) : s.down);
+/** the kinds of button among `bits`: CHORD_BITS if a chord button, INV_BITS if an inversion key */
+const kinds = (bits: number): number => (bits & CHORD_BITS ? CHORD_BITS : 0) | (bits & INV_BITS ? INV_BITS : 0);
+
+/** the buttons in effect: those held (Lock: of the press under way, and the latched ones of a kind it has none of),
+ * else the latched ones (Lock on) */
+export const harmButtons = (s: HarmState, p: HarmParams): number =>
+  locks(p) ? (s.down ? s.gesture | (s.locked & ~kinds(s.gesture)) : s.locked) : s.down;
 
 /** a chord button or an inversion key pressed or let go (an inversion key goes down only while `invkeys` is on) */
 export function harmButton(s: HarmState, b: number, down: boolean, p: HarmParams): void {
@@ -90,7 +97,7 @@ export function harmButton(s: HarmState, b: number, down: boolean, p: HarmParams
     s.stamp[b] = ++s.clock;
     if (!s.down) {
       s.gesture = bit;
-      s.toggle = s.locked === bit;
+      s.toggle = (s.locked & kinds(bit)) === bit;
     } else {
       s.gesture |= bit;
       s.toggle = false;
@@ -99,7 +106,7 @@ export function harmButton(s: HarmState, b: number, down: boolean, p: HarmParams
   } else {
     if (!(s.down & bit)) return;
     s.down &= ~bit;
-    if (!s.down && locks(p)) s.locked = s.toggle ? 0 : s.gesture;
+    if (!s.down && locks(p)) s.locked = s.toggle ? s.locked & ~s.gesture : s.gesture | (s.locked & ~kinds(s.gesture));
     if (!s.down) {
       s.gesture = 0;
       s.toggle = false;
@@ -154,10 +161,10 @@ export function harmVoice(tones: number[], voicing: number): number[] {
   return t;
 }
 
-/** the inversion in effect: the inversion key in effect pressed last (1..3) while `invkeys` is on, else the `voicing` row */
-export function harmVoicing(s: HarmState, p: HarmParams): number {
+/** the inversion key in effect pressed last (1..3) while `invkeys` is on, 0 none */
+export function harmInversion(s: HarmState, p: HarmParams): number {
   const bits = int(p.invkeys, 0, 1) === 1 ? harmButtons(s, p) : 0;
-  let v = int(p.voicing, -HARM_VOICING, HARM_VOICING), at = 0;
+  let v = 0, at = 0;
   for (let i = 0; i < HARM_INV_KEYS; i++)
     if (bits & (1 << (HARM_ZONE + i)) && s.stamp[HARM_ZONE + i] > at) {
       at = s.stamp[HARM_ZONE + i];
@@ -165,6 +172,9 @@ export function harmVoicing(s: HarmState, p: HarmParams): number {
     }
   return v;
 }
+
+/** the inversion in effect: the inversion key's (harmInversion), else the `voicing` row */
+export const harmVoicing = (s: HarmState, p: HarmParams): number => harmInversion(s, p) || int(p.voicing, -HARM_VOICING, HARM_VOICING);
 
 /** the notes a root plays now, low to high, inside 0..127 */
 export const harmChord = (s: HarmState, root: number, p: HarmParams): number[] =>
@@ -224,14 +234,15 @@ export function harmClear(s: HarmState): void {
 
 /** the chord's name as the FM-1's bar shows it (engine.c harm_name), from the buttons in effect, else the card's; '' for
  * the root alone. The 7 button's seventh is the minor one: with maj it reads 7 (a dominant seventh), with dim MIN7B5;
- * 9 with 7 is a ninth chord (9, MIN9), without it ADD9; a 2nd or 4th beside a third is ADD2 / ADD4, without one SUS2 / SUS4 */
+ * 9 with 7 is a ninth chord (9, MIN9), without it ADD9; a 2nd or 4th beside a third is ADD2 / ADD4, without one SUS2 / SUS4;
+ * an inversion key in effect ends it INV1..INV3 (the `voicing` row does not show) */
 export function harmName(s: HarmState, p: HarmParams): string {
-  const t = harmIntervals(s, p);
+  const t = harmIntervals(s, p), inv = harmInversion(s, p);
   if (t.length === 1) return '';
   const has = (x: number): boolean => t.includes(x);
   const q = has(3) && has(6) ? 'DIM' : has(3) ? 'MIN' : has(4) ? 'MAJ' : '';
   const ext = has(10) ? (has(14) ? '9' : '7') : '';
   const head = ext ? (q === 'MIN' ? `MIN${ext}` : q === 'DIM' ? `MIN${ext}B5` : ext) : q;
   const sus = (x: number, n: string): string => (has(x) ? (q ? `ADD${n}` : `SUS${n}`) : '');
-  return [head, sus(2, '2'), sus(5, '4'), has(14) && !has(10) ? 'ADD9' : ''].filter(Boolean).join(' ');
+  return [head, sus(2, '2'), sus(5, '4'), has(14) && !has(10) ? 'ADD9' : '', inv ? `INV${inv}` : ''].filter(Boolean).join(' ');
 }

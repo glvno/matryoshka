@@ -2058,20 +2058,21 @@ async function main() {
       await octave(0);
       await openSynced('Init');
     },
-    // #1311 (D-1041): a Harmonizer's INVKEYS row (its second page: LOCK, SPLIT, INVKEYS, so K3 on ALGO page 2). On, the
-    // FM-1's three highest keys (24..26) send F5..G5 (77..79) under split and the editor plays them as the 1st..3rd
-    // inversion over the chord held (the owner's example: min + 7 + the 3rd inversion over C sounds B♭ C E♭ G); off, they
-    // play notes. Turned on in the editor under Live, the patch's format changes (66 to 68) and the whole patch goes again (no
-    // FM-1 copy is left in an older format with a row it cannot hold); turned on at the FM-1, the editor keeps knowing its
-    // copy's format (68 now), so turning it off in the editor is a PARAM, not an upload; turned on at the FM-1 on the
-    // factory Monolith D from its bank (format 66, as every factory patch with a Harmonizer ships), the FM-1 raises its copy
-    // and SAVE keeps it. Latching is host-tested (panel_test I6, harmonizer.test); here LOCK is set and one latched
-    // inversion heard
+    // #1311 (D-1041): a Harmonizer's INVKEYS row (its second page: LOCK, SPLIT, INVKEYS, so K3 on ALGO page 2), on the
+    // polyphonic Hera 6 (chords need one: owner 2026-11-26). On, the FM-1's three highest keys (24..26) send F5..G5 (77..79)
+    // under split and the editor plays them as the 1st..3rd inversion over the chord held (the owner's example: min + 7 +
+    // the 3rd inversion over C sounds B♭ C E♭ G); off, they play notes. LOCK on (the owner's 1.28.0 check S2): an inversion
+    // key alone replaces only the latched inversion, with TYPE none and with a TYPE, and pressed again alone lets it go; the
+    // FM-1's bar names the chord with its inversion (CHORD: MIN7 INV2); held, a new inversion key replaces the one let go.
+    // Turned on in the editor under Live, the patch's format changes (66 to 68) and the whole patch goes again (no FM-1 copy
+    // is left in an older format with a row it cannot hold); turned on at the FM-1, the editor keeps knowing its copy's
+    // format (68 now), so turning it off in the editor is a PARAM, not an upload; turned on at the FM-1 on the factory Hera 6
+    // from its bank (format 66, as every factory patch with a Harmonizer ships), the FM-1 raises its copy and SAVE keeps it
     async invKeys() {
       const NAME = 'T1311 INV KEYS';
       const fixture = (invkeys = 0) => page.evaluate(async ([nm, on]) => {
         const { PRESETS } = await import('/src/presets.ts');
-        const p = PRESETS['Monolith D']();
+        const p = PRESETS['Hera 6']();
         p.name = nm;
         const h = p.modules.find((m) => m.type === 'harm');
         delete h.bypass;
@@ -2092,16 +2093,17 @@ async function main() {
       const heard = () => page.evaluate(() => ({ played: window.__played.splice(0), sent: (window.__noteLog ?? []).splice(0) }));
       const show = (h) => `FM-1 sent [${h.sent.map((d) => `${d[0] >> 4 === 9 && d[2] ? 'on' : 'off'} ${d[1]}`).join(', ')}], editor played [${h.played.map((m) => m.t === 'chord' ? `chord ${m.button}${m.down ? '' : ' up'}` : `${m.t} ${m.note}${m.root ? ' root' : ''}`).join(', ')}]`;
       const sentOn = (h, n) => h.sent.some((d) => d[0] >> 4 === 9 && d[1] === n && d[2]);
-      /** the chord the editor's Harmonizer makes over `root` after the chord events `played` (a fresh Engine on the editor's
-       *  patch: Monolith D is mono, so the chord is read from its Harmonizer, as engine.ts harmonizes a root) */
+      /** what the editor's engine sounds over `root` after the chord events `played`: a fresh Engine on the editor's patch
+       *  given those events, then the root (the editor's own engine plays in its worklet; Hera 6 is polyphonic, so every
+       *  note of the chord is a voice) */
       const chordOf = async (played, root) => page.evaluate(async ([evs, r, json]) => {
         const { Engine } = await import('/src/engine.ts');
-        const { harmChord } = await import('/src/harmonizer.ts');
         const e = new Engine(44100);
         e.load(JSON.parse(json));
         for (const m of evs) if (m.t === 'chord') e.chordButton(m.button, m.down);
-        const h = e.harms[0];
-        return harmChord(h.st, r, e.harmParams(h));
+        e.noteOn(r);
+        for (let i = 0; i < 4; i++) e.render(new Float32Array(128), new Float32Array(128));
+        return e.voiceNotes().filter((v) => v.on).map((v) => v.note).sort((a, b) => a - b);
       }, [played, root, await patchJson()]);
       const octave = async (want) => {
         for (let i = 0; i < 4 && (await T()).octave !== want; i++) {
@@ -2129,7 +2131,7 @@ async function main() {
       const MIN7 = [[63, 67, 70, 72], [67, 70, 72, 75], [70, 72, 75, 79]];   // (min7 over C: 1st, 2nd, 3rd inversion)
 
       // the editor turns it on under Live: the format changes, the whole patch goes (CHUNK, COMMIT), not a PARAM
-      await check('inv keys: Monolith D with its Harmonizer on (INVKEYS off) opens, synced', await openSynced(await fixture(0)));
+      await check('inv keys: Hera 6 with its Harmonizer on (INVKEYS off) opens, synced', await openSynced(await fixture(0)));
       const id = await harmId();
       const before = await page.evaluate(() => (window.__sent.splice(0), window.__m1test.state().loads));
       await page.evaluate((h) => window.__m1test.param(h, 'invkeys', 1), id);
@@ -2150,16 +2152,69 @@ async function main() {
         }
       }
       await octave(0);
-      // LOCK on (the editor sends it): chord keys pressed together latch, the inversion key with them
+      // LOCK on (the editor sends it): keys pressed together latch, the inversion key with them. Then the owner's 1.28.0
+      // check S2: an inversion key alone replaces only the latched inversion (before, the card's chord: with TYPE none
+      // single notes), and pressed again alone lets it go (root position). The FM-1's bar names its chord with the
+      // inversion; the editor, given every chord event since LOCK went on, sounds the same over C
       await page.evaluate((h) => window.__m1test.param(h, 'lock', 1), id);
       await emu.elapse(400);
-      {
-        const l = await chordKeys([MIN, INV[1]], 7);
-        const got = await chordOf(l.all.played, 60);
-        await check('inv keys: LOCK on: MIN and key 26 pressed together and let go stay latched: over C the editor sounds MIN in its 2nd inversion [67,72,75]',
-          JSON.stringify(got) === JSON.stringify([67, 72, 75]) && l.all.played.some((m) => m.t === 'chord' && m.button === 8 && !m.down), `${show(l.all)}; chord ${JSON.stringify(got)}`);
+      let since = [];
+      /** keys pressed together and let go, no root; whether the bar then shows `name` (and not `not`) */
+      const latch = async (keys, name, not) => {
+        await heard();
+        for (const k of keys) { await emu.key(14 + k, true); await emu.elapse(80); }
+        await emu.elapse(200);
+        for (const k of [...keys].reverse()) { await emu.key(14 + k, false); await emu.elapse(40); }
+        await emu.elapse(300);
+        const named = (await emu.text(name)) && !(not && (await emu.text(not)));
+        await until(async () => (await page.evaluate((n) => window.__played.filter((m) => m.t === 'chord').length >= n, 2 * keys.length)), 1500);
+        const h = await heard();
+        since.push(...h.played.filter((m) => m.t === 'chord'));
+        return { named, h };
+      };
+      const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+      for (const type of [0, 1]) {                   // (TYPE none, as Hera 6 ships, then maj)
+        const T_ = type ? 'maj' : 'none';
+        await page.evaluate(([h, t]) => window.__m1test.param(h, 'type', t), [id, type]);
+        await emu.elapse(400);
+        since = [];
+        let l = await latch([MIN, SEVEN, INV[0]], 'CHORD: MIN7 INV1');
+        let got = await chordOf(since, 60);
+        await check(`inv keys: LOCK on, TYPE ${T_}: MIN + 7 + key 25 pressed together latch: the bar says CHORD: MIN7 INV1, over C the editor sounds [${MIN7[0]}]`,
+          l.named && same(got, MIN7[0]), `${show(l.h)}; sounds ${JSON.stringify(got)}`);
+        l = await latch([INV[1]], 'CHORD: MIN7 INV2');
+        got = await chordOf(since, 60);
+        await check(`inv keys: LOCK on, TYPE ${T_}: key 26 alone next replaces the inversion, MIN + 7 stay: CHORD: MIN7 INV2, over C [${MIN7[1]}] (owner's S2: ${type ? 'the card\'s chord' : 'single notes'})`,
+          l.named && same(got, MIN7[1]), `${show(l.h)}; sounds ${JSON.stringify(got)}`);
+        l = await latch([INV[1]], 'CHORD: MIN7', 'MIN7 INV');
+        got = await chordOf(since, 60);
+        await check(`inv keys: LOCK on, TYPE ${T_}: key 26 alone again lets it go: CHORD: MIN7, over C root position [60,63,67,70]`,
+          l.named && same(got, [60, 63, 67, 70]), `${show(l.h)}; sounds ${JSON.stringify(got)}`);
+        await latch([MIN], 'CHORD: MIN');            // (unlatched: min alone replaces min + 7, alone again lets it go)
+        l = await latch([MIN], type ? 'CHORD: MAJ' : 'CHORD: SINGLE NOTES');
+        got = await chordOf(since, 60);
+        await check(`inv keys: LOCK on, TYPE ${T_}: nothing latched after, the card's chord plays (${type ? 'C major' : 'C4 alone'})`,
+          l.named && same(got, type ? [60, 64, 67] : [60]), `${show(l.h)}; sounds ${JSON.stringify(got)}`);
       }
+      await page.evaluate((h) => window.__m1test.param(h, 'type', 0), id);
       await page.evaluate((h) => window.__m1test.param(h, 'lock', 0), id);
+      await emu.elapse(400);
+      {                                              // held: MIN + 7 held, key 25 let go, key 26 pressed
+        await heard();
+        for (const k of [MIN, SEVEN, INV[0]]) { await emu.key(14 + k, true); await emu.elapse(80); }
+        await emu.key(14 + INV[0], false);
+        await emu.elapse(80);
+        await emu.key(14 + INV[1], true);
+        const named = await emu.waitText('CHORD: MIN7 INV2', 1500);
+        await until(async () => (await page.evaluate(() => window.__played.filter((m) => m.t === 'chord').length >= 5)), 1500);
+        const h = await heard();
+        const got = await chordOf(h.played, 60);
+        for (const k of [INV[1], SEVEN, MIN]) { await emu.key(14 + k, false); await emu.elapse(40); }
+        await emu.elapse(300);
+        await heard();
+        await check(`inv keys: held, TYPE none: MIN + 7 held, key 25 let go and key 26 pressed: CHORD: MIN7 INV2, over C [${MIN7[1]}]`,
+          named && same(got, MIN7[1]), `${show(h)}; sounds ${JSON.stringify(got)}`);
+      }
       // off again: the three keys play notes
       await page.evaluate((h) => (window.__sent.splice(0), window.__m1test.param(h, 'invkeys', 0)), id);
       await emu.elapse(600);
@@ -2194,19 +2249,19 @@ async function main() {
       await check('inv keys: set on the FM-1, then off in the editor: a PARAM, no upload (the copy\'s format is known: 68)',
         sent.includes(0x20) && !sent.includes(0x10) && !sent.includes(0x11) && (await invkeys()) === 0, `sent ${sent.map((c) => c.toString(16)).join(' ')}`);
 
-      // the factory Monolith D in the FM-1's bank (presets.ts FM1_PRESETS, encoded as export-defs encodes the factory
+      // the factory Hera 6 in the FM-1's bank (presets.ts FM1_PRESETS, encoded as export-defs encodes the factory
       // content), its Harmonizer on so the keys reach it, stored in a free slot in the bank slot's format; Live off, HOME +
       // PRESET to it, INVKEYS on at the FM-1: it raises its copy (no FX bus), SAVE keeps the row. (Copies older than format
       // 64, eng_slim, are host-tested: proto_test --same, old_format.sh, panel_test I1.)
       const slots = await page.evaluate(() => window.__m1test.slots());
-      const factory = slots.findIndex((s) => s.used && s.name.toUpperCase() === 'MONOLITH D');
+      const factory = slots.findIndex((s) => s.used && s.name.toUpperCase() === 'HERA 6');
       const slot = slots.findIndex((s) => !s.used);
-      if (factory < 0 || slot < 0) return skip('inv keys: SAVE keeps INVKEYS set on the FM-1', factory < 0 ? `no MONOLITH D in the bank (${slots.filter((s) => s.used).map((s) => s.name).join(', ')})` : 'the bank has no empty slot');
+      if (factory < 0 || slot < 0) return skip('inv keys: SAVE keeps INVKEYS set on the FM-1', factory < 0 ? `no HERA 6 in the bank (${slots.filter((s) => s.used).map((s) => s.name).join(', ')})` : 'the bank has no empty slot');
       const bank = await page.evaluate((n) => window.__m1test.slotBin(n), factory);
       const was = await page.evaluate(async () => {
         const { FM1_PRESETS } = await import('/src/presets.ts');
         const { encodePatch } = await import('/src/patchbin.ts');
-        const p = FM1_PRESETS['Monolith D']();
+        const p = FM1_PRESETS['Hera 6']();
         delete p.modules.find((m) => m.type === 'harm').bypass;
         return Array.from(encodePatch(p, true, 0, 1));
       });
@@ -2233,7 +2288,7 @@ async function main() {
         return { ok: false, seen };
       };
       try {
-        await check(`inv keys: the factory Monolith D, its Harmonizer on, is in the format of the bank's (slot ${factory + 1}) and older than 68`, !!bank && was[1] === bank[1] && was[1] < 68, `format ${was[1]}, the bank's ${bank?.[1]}`);
+        await check(`inv keys: the factory Hera 6, its Harmonizer on, is in the format of the bank's (slot ${factory + 1}) and older than 68`, !!bank && was[1] === bank[1] && was[1] < 68, `format ${was[1]}, the bank's ${bank?.[1]}`);
         await page.evaluate(([n, b]) => window.__m1test.storeBin(n, 'T1311 INV SAVE', b), [slot, was]);
         await check(`inv keys: copied into slot ${slot + 1}`, await page.evaluate((n) => window.__m1test.slots().then((x) => x[n].used), slot));
         await check('inv keys: Live off', await live(false));

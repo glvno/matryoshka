@@ -1521,7 +1521,9 @@ static void panel_status(void)
         eng_harm_name((uint32_t)chord_due, name);
         chord_due = -1;
         if (!help_on) {
-            put(put(m, MSG_CHORD), name[0] ? name : MSG_CHORD_NONE)[0] = 0;   /* (at most 26 characters, D-249) */
+            put(put(m, str_len(name) + sizeof MSG_CHORD - 1u > 26u ? "" : MSG_CHORD), name[0] ? name : MSG_CHORD_NONE)[0] = 0;   /* (at
+                                                     * most 26 characters, D-249: a name too long for CHORD: before it, such
+                                                     * as MAJ ADD2 ADD4 ADD9 INV3, shows alone) */
             ui_msg(m, NUDGE_MS);
         }
     }

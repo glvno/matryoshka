@@ -4352,6 +4352,17 @@ harmVoice('harm-inversion-off', { voicing: -1 });
 events['harm-inversion-off'] = [[0, 'on', 54], [128 * 1, 'on', 79], [128 * 25, 'off', 79], [128 * 26, 'cbon', 9], [128 * 27, 'kon', 60],
   [128 * 50, 'koff', 60], [128 * 51, 'cboff', 9], [128 * 52, 'off', 54]];
 ends['harm-inversion-off'] = 128 * 80;
+// the inversion keys' latch (owner's 1.28.0 check S2): Lock on, type none. From MIDI, min (56) + 7 (57) + F5 (77) pressed
+// together latch C4's minor seventh in the 1st inversion; F♯5 (78) alone replaces only the inversion (the 2nd, min + 7
+// kept: before, the card's chord, C4 alone); F♯5 alone again lets it go (root position); min alone replaces min + 7. From
+// the FM-1's keys: G5 (cbon 9) alone latches the 3rd inversion over the latched min; min alone again lets min go: C4 alone
+harmVoice('harm-inversion-latch', { invkeys: 1, lock: 1 });
+events['harm-inversion-latch'] = [[0, 'on', 56], [128 * 1, 'on', 57], [128 * 2, 'on', 77], [128 * 3, 'off', 77], [128 * 4, 'off', 57],
+  [128 * 5, 'off', 56], [128 * 6, 'on', 60], [128 * 25, 'off', 60], [128 * 26, 'on', 78], [128 * 27, 'off', 78], [128 * 28, 'on', 60],
+  [128 * 47, 'off', 60], [128 * 48, 'on', 78], [128 * 49, 'off', 78], [128 * 50, 'on', 60], [128 * 69, 'off', 60], [128 * 70, 'on', 56],
+  [128 * 71, 'off', 56], [128 * 72, 'cbon', 9], [128 * 73, 'cboff', 9], [128 * 74, 'kon', 60], [128 * 93, 'koff', 60],
+  [128 * 94, 'cbon', 3], [128 * 95, 'cboff', 3], [128 * 96, 'kon', 60], [128 * 115, 'koff', 60]];
+ends['harm-inversion-latch'] = 128 * 140;
 
 if (process.argv.includes('--panel-fixtures')) {
   const out = new URL('../../build/panel-fixtures/', import.meta.url);

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **A latched inversion changes on its own.** With the Harmonizer's LOCK on, an inversion key pressed alone now changes only the inversion, and the latched chord stays: min + 7 latched in the 1st inversion, then the second inversion key, plays the minor seventh in the 2nd inversion. Before, the new inversion also let the latched chord buttons go, so the keys played single notes, or the card's own chord when its chord row was not none. Press the latched inversion key again to go back to root position (or to the voicing row), and a new chord keeps the latched inversion ([D-1260](docs/ledger/modules.md#D-1260); [D-1261](docs/ledger/modules.md#D-1261), Proposed).
+- **The bar names the inversion.** On the FM-1 the chord message ends with the inversion key in effect, such as `CHORD: MIN7 INV2` ([D-1452](docs/ledger/device-ui.md#D-1452), Proposed).
+
 ## 1.28.0 — 2026-11-26
 
 - **Update your FM-1 to firmware 1.28.0 before you sync it with this editor.** The editor now reads and writes patch format 68, which only the 1.28.0 firmware reads, so an FM-1 still on 1.27.x does not sync until it is updated: the editor says "update it to sync" and the Install panel offers the update. A patch is saved in format 68 only when a Harmonizer has its inversion keys on; every other patch keeps its format byte for byte. Turn the row on on the FM-1 and it saves that patch in format 68 too, whatever format it had. Only a patch saved with the old master FX bus (before 1.26.3) cannot take the row on the FM-1: the bar says `OLD PATCH: SET IN EDITOR`. The patches, palette and stored patterns already on the FM-1 keep playing as before, and the update keeps them ([D-1041](docs/ledger/patch-format.md#D-1041), [D-1353](docs/ledger/link-and-midi.md#D-1353)).

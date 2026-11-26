@@ -4955,20 +4955,76 @@ int main(void)
             panel_keys(MAJ | I1 | C4);
             check("I5: G5 let go, F5 still held: the 1st (64 67 72)", !strcmp(harm_notes(h), "64 67 72"));
             panel_keys(0);
+            {   /* held, TYPE none (owner's 1.28.0 check S2): min + 7 held, F5 let go and F#5 pressed: the 2nd inversion */
+                panel_keys(MIN | SEV | I1);
+                panel_keys(MIN | SEV);
+                panel_keys(MIN | SEV | I2);
+                panel_keys(MIN | SEV | I2 | C4);
+                check("held, TYPE none: min + 7 held, F5 let go, F#5 pressed: Cmin7 in the 2nd inversion (67 70 72 75)", !strcmp(harm_notes(h), "67 70 72 75"));
+                panel_keys(0);
+            }
             eng_set_param((uint32_t)h, HARM_P_LOCK, ENG_ONE);
             panel_keys(MAJ);
             panel_keys(MAJ | I2);
             panel_keys(0);
+            loop();
             panel_keys(C4);
-            check("I6: LOCK on, maj + F#5 pressed together stay latched (C major 2nd inversion: 67 72 76)", !strcmp(harm_notes(h), "67 72 76"));
+            check("I6: LOCK on, maj + F#5 pressed together stay latched (C major 2nd inversion: 67 72 76), the bar says CHORD: MAJ INV2",
+                  !strcmp(harm_notes(h), "67 72 76") && !strcmp(msg_text, MSG_CHORD "MAJ INV2"));
+            panel_keys(0);
+            panel_keys(I1);                                 /* (owner's 1.28.0 check S2: with TYPE none it played single notes) */
+            panel_keys(0);
+            loop();
+            panel_keys(C4);
+            check("LOCK, TYPE none: F5 alone next replaces the latched inversion, maj stays (1st: 64 67 72), the bar says CHORD: MAJ INV1",
+                  !strcmp(harm_notes(h), "64 67 72") && !strcmp(msg_text, MSG_CHORD "MAJ INV1"));
+            panel_keys(0);
+            panel_keys(I1);
+            panel_keys(0);
+            loop();
+            panel_keys(C4);
+            check("LOCK: F5 alone again lets the inversion go, maj stays (root position: 60 64 67), the bar says CHORD: MAJ",
+                  !strcmp(harm_notes(h), "60 64 67") && !strcmp(msg_text, MSG_CHORD "MAJ"));
+            panel_keys(0);
+            panel_keys(I2);
+            panel_keys(0);
+            panel_keys(MIN);
+            panel_keys(0);
+            panel_keys(C4);
+            check("LOCK: F#5 alone, then min alone: min replaces maj, the inversion stays (C minor 2nd inversion: 67 72 75)", !strcmp(harm_notes(h), "67 72 75"));
+            panel_keys(0);
+            panel_keys(MIN);
+            panel_keys(0);
+            loop();
+            panel_keys(C4);
+            check("LOCK: min alone again lets it go: the card's chord, none (C4 alone, which no inversion moves), the bar says CHORD: SINGLE NOTES",
+                  !strcmp(harm_notes(h), "60") && !strcmp(msg_text, MSG_CHORD MSG_CHORD_NONE));
+            panel_keys(0);
+            panel_keys(I2);                                 /* (the 2nd inversion let go too) */
+            panel_keys(0);
+            check("LOCK: nothing latched now", E.harm[0].locked == 0);
+            eng_set_param((uint32_t)h, HARM_P_TYPE, ENG_ONE);   /* the card's chord maj: it worked before, the latched chord kept now */
+            panel_keys(MIN | SEV | I1);
+            panel_keys(0);
+            panel_keys(I3);
+            panel_keys(0);
+            loop();
+            panel_keys(C4);
+            check("LOCK, TYPE maj: min + 7 + F5 latched, then G5 alone: Cmin7 in the 3rd inversion (70 72 75 79), not the card's maj; CHORD: MIN7 INV3",
+                  !strcmp(harm_notes(h), "70 72 75 79") && !strcmp(msg_text, MSG_CHORD "MIN7 INV3"));
+            panel_keys(0);
+            panel_keys(MAJ | 1u << 0 | 1u << 2 | 1u << 6);  /* maj + sus2 + sus4 + 9: the longest name, with the 3rd inversion */
+            panel_keys(0);
+            loop();
+            check("a name too long for CHORD: before it shows alone (MAJ ADD2 ADD4 ADD9 INV3, 23 characters)", !strcmp(msg_text, "MAJ ADD2 ADD4 ADD9 INV3"));
+            panel_keys(I3);                                 /* (all let go: G5 alone, maj alone replaces the four, maj alone again) */
             panel_keys(0);
             panel_keys(MAJ);
             panel_keys(0);
-            panel_keys(C4);
-            check("I6: maj alone next replaces the latch, the inversion with it (60 64 67)", !strcmp(harm_notes(h), "60 64 67"));
-            panel_keys(0);
             panel_keys(MAJ);
             panel_keys(0);
+            check("LOCK: nothing latched again", E.harm[0].locked == 0);
+            eng_set_param((uint32_t)h, HARM_P_TYPE, 0);
             eng_set_param((uint32_t)h, HARM_P_LOCK, 0);
             eng_midi_channel(0);
             eng_note_on(54, ENG_ONE, 1);
