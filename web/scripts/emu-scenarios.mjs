@@ -2058,6 +2058,191 @@ async function main() {
       await octave(0);
       await openSynced('Init');
     },
+    // #1311 (D-1041): a Harmonizer's INVKEYS row (its second page: LOCK, SPLIT, INVKEYS, so K3 on ALGO page 2). On, the
+    // FM-1's three highest keys (24..26) send F5..G5 (77..79) under split and the editor plays them as the 1st..3rd
+    // inversion over the chord held (the owner's example: min + 7 + the 3rd inversion over C sounds B♭ C E♭ G); off, they
+    // play notes. Turned on in the editor under Live, the patch's format changes (68) and the whole patch goes again (no FM-1
+    // copy is left in an older format with a row it cannot hold); turned on at the FM-1 on a format-53 patch from its bank
+    // (Monolith D as the factory bank stores it), the FM-1 raises its copy and SAVE keeps it. Latching is host-tested
+    // (panel_test I6, harmonizer.test); here LOCK is set and one latched inversion heard
+    async invKeys() {
+      const NAME = 'T1311 INV KEYS';
+      const fixture = (invkeys = 0) => page.evaluate(async ([nm, on]) => {
+        const { PRESETS } = await import('/src/presets.ts');
+        const p = PRESETS['Monolith D']();
+        p.name = nm;
+        const h = p.modules.find((m) => m.type === 'harm');
+        delete h.bypass;
+        h.params.invkeys = on;
+        window.__m1test.save(JSON.stringify(p));
+        return nm;
+      }, [NAME, invkeys]);
+      const harmId = async () => JSON.parse(await patchJson()).modules.find((m) => m.type === 'harm').id;
+      const invkeys = async () => JSON.parse(await patchJson()).modules.find((m) => m.type === 'harm').params.invkeys ?? 0;
+      await page.evaluate(() => {                    // (as harmKeys: what the editor's engine gets, since the last read)
+        const s = window.__notes;
+        if (s.__logged) return;
+        const play = s.play.bind(s);
+        window.__played = [];
+        s.play = (m) => { if (['on', 'off', 'chord'].includes(m.t)) window.__played.push({ ...m }); return play(m); };
+        s.__logged = true;
+      });
+      const heard = () => page.evaluate(() => ({ played: window.__played.splice(0), sent: (window.__noteLog ?? []).splice(0) }));
+      const show = (h) => `FM-1 sent [${h.sent.map((d) => `${d[0] >> 4 === 9 && d[2] ? 'on' : 'off'} ${d[1]}`).join(', ')}], editor played [${h.played.map((m) => m.t === 'chord' ? `chord ${m.button}${m.down ? '' : ' up'}` : `${m.t} ${m.note}${m.root ? ' root' : ''}`).join(', ')}]`;
+      const sentOn = (h, n) => h.sent.some((d) => d[0] >> 4 === 9 && d[1] === n && d[2]);
+      /** the chord the editor's Harmonizer makes over `root` after the chord events `played` (a fresh Engine on the editor's
+       *  patch: Monolith D is mono, so the chord is read from its Harmonizer, as engine.ts harmonizes a root) */
+      const chordOf = async (played, root) => page.evaluate(async ([evs, r, json]) => {
+        const { Engine } = await import('/src/engine.ts');
+        const { harmChord } = await import('/src/harmonizer.ts');
+        const e = new Engine(44100);
+        e.load(JSON.parse(json));
+        for (const m of evs) if (m.t === 'chord') e.chordButton(m.button, m.down);
+        const h = e.harms[0];
+        return harmChord(h.st, r, e.harmParams(h));
+      }, [played, root, await patchJson()]);
+      const octave = async (want) => {
+        for (let i = 0; i < 4 && (await T()).octave !== want; i++) {
+          await emu.tap((await T()).octave < want ? B.octUp : B.octDown);
+          await until(async () => (await T()).octave === want, 1500);
+        }
+        return (await T()).octave === want;
+      };
+      /** keys (0 = the lowest) pressed in order and held, then C4's key (the root); what was sent and played while they
+       *  were down (`down`), and all of it after they were let go (`all`) */
+      const chordKeys = async (keys, rootKey = 7) => {
+        await heard();
+        for (const k of keys) { await emu.key(14 + k, true); await emu.elapse(80); }
+        await emu.key(14 + rootKey, true);
+        await emu.elapse(300);
+        await until(async () => (await page.evaluate((n) => (window.__noteLog ?? []).length >= n && window.__played.length >= n, keys.length + 1)), 1500);
+        const down = await heard();
+        await emu.key(14 + rootKey, false);
+        for (const k of [...keys].reverse()) { await emu.key(14 + k, false); await emu.elapse(40); }
+        await emu.elapse(300);
+        const up = await heard();
+        return { down, all: { played: [...down.played, ...up.played], sent: [...down.sent, ...up.sent] } };
+      };
+      const MIN = 3, SEVEN = 4, INV = [24, 25, 26];
+      const MIN7 = [[63, 67, 70, 72], [67, 70, 72, 75], [70, 72, 75, 79]];   // (min7 over C: 1st, 2nd, 3rd inversion)
+
+      // the editor turns it on under Live: the format changes, the whole patch goes (CHUNK, COMMIT), not a PARAM
+      await check('inv keys: Monolith D with its Harmonizer on (INVKEYS off) opens, synced', await openSynced(await fixture(0)));
+      const id = await harmId();
+      const before = await page.evaluate(() => (window.__sent.splice(0), window.__m1test.state().loads));
+      await page.evaluate((h) => window.__m1test.param(h, 'invkeys', 1), id);
+      await until(async () => { const s = await T(); return !s.uploadPending && s.status === 'patch on the FM-1' && (await page.evaluate(() => window.__sent.some((x) => x[1] === 0x11))); }, 15000);
+      let sent = await page.evaluate(() => window.__sent.splice(0).map((x) => x[1]));
+      await check('inv keys: INVKEYS on in the editor under Live: the patch is format 68 now, so it goes again (CHUNK, COMMIT), no PARAM',
+        sent.includes(0x10) && sent.includes(0x11) && !sent.includes(0x20) && (await T()).chip === 'synced', `sent ${sent.map((c) => c.toString(16)).join(' ')}, loads ${before} -> ${(await T()).loads}, chip ${(await T()).chip}`);
+      for (const [oct, invs] of [[0, [0, 1, 2]], [1, [2]]]) {
+        await check(`inv keys: the FM-1 at octave ${oct}`, await octave(oct));
+        for (const i of invs) {
+          const root = 60 + 12 * oct, want = MIN7[i].map((n) => n + 12 * oct);
+          const r = await chordKeys([MIN, SEVEN, INV[i]]);
+          const got = await chordOf(r.down.played, root);
+          await check(`inv keys (octave ${oct}): MIN + 7 + key ${INV[i] + 1}: the FM-1 sends ${77 + i} (inversion ${i + 1}), the editor plays it as inversion key ${7 + i} over the chord held, sounding [${want}]${i === 2 ? ' (B♭ C E♭ G)' : ''}`,
+            sentOn(r.down, 56) && sentOn(r.down, 57) && sentOn(r.down, 77 + i) && sentOn(r.down, root)
+            && r.down.played.some((m) => m.t === 'chord' && m.button === 7 + i && m.down) && r.all.played.some((m) => m.t === 'chord' && m.button === 7 + i && !m.down)
+            && !r.all.played.some((m) => m.t === 'on' && m.note === 77 + i) && JSON.stringify(got) === JSON.stringify(want), `${show(r.all)}; chord ${JSON.stringify(got)}`);
+        }
+      }
+      await octave(0);
+      // LOCK on (the editor sends it): chord keys pressed together latch, the inversion key with them
+      await page.evaluate((h) => window.__m1test.param(h, 'lock', 1), id);
+      await emu.elapse(400);
+      {
+        const l = await chordKeys([MIN, INV[1]], 7);
+        const got = await chordOf(l.all.played, 60);
+        await check('inv keys: LOCK on: MIN and key 26 pressed together and let go stay latched: over C the editor sounds MIN in its 2nd inversion [67,72,75]',
+          JSON.stringify(got) === JSON.stringify([67, 72, 75]) && l.all.played.some((m) => m.t === 'chord' && m.button === 8 && !m.down), `${show(l.all)}; chord ${JSON.stringify(got)}`);
+      }
+      await page.evaluate((h) => window.__m1test.param(h, 'lock', 0), id);
+      // off again (the format goes back to the FM-1's copy's: a PARAM): the three keys play notes
+      await page.evaluate((h) => (window.__sent.splice(0), window.__m1test.param(h, 'invkeys', 0)), id);
+      await emu.elapse(600);
+      for (const i of [0, 2]) {
+        const r = await chordKeys([], INV[i]);
+        await check(`inv keys: INVKEYS off: key ${INV[i] + 1} plays ${77 + i} as a note, no inversion key`,
+          sentOn(r.down, 77 + i) && r.all.played.some((m) => m.t === 'on' && m.note === 77 + i && m.root) && !r.all.played.some((m) => m.t === 'chord'), show(r.all));
+      }
+
+      // the FM-1 turns it on (K3 on the Harmonizer's second page): the editor follows, the keys are inversion keys
+      await check('inv keys: the fixture again (INVKEYS off), synced', await openSynced(await fixture(0)));
+      const focused = await page.evaluate(() => window.__m1test.focus('Harmonizer'));
+      await emu.elapse(600);
+      await emu.turn(ENC.algo, 1);
+      const page2 = await until(async () => { const f = (await T()).focus; return f?.page === 1 ? f : null; }, 2000);
+      await check('inv keys: the editor\'s focus on the Harmonizer, ALGO on the FM-1: its second page (LOCK, SPLIT, INVKEYS)', focused && !!page2,
+        JSON.stringify({ editor: (await T()).focus, mirror: await page.evaluate(() => window.__m1test.emu()) }));
+      await emu.turn(ENC.k3, 1);
+      await check('inv keys: K3 right on the FM-1: the editor follows, INVKEYS on', !!(await until(async () => (await invkeys()) === 1, 3000)), `invkeys ${await invkeys()}`);
+      await emu.elapse(400);
+      {
+        const r = await chordKeys([MIN, SEVEN, INV[2]]);
+        const got = await chordOf(r.down.played, 60);
+        await check('inv keys: set on the FM-1: MIN + 7 + key 27 over C sounds B♭ C E♭ G in the editor',
+          sentOn(r.down, 79) && r.down.played.some((m) => m.t === 'chord' && m.button === 9 && m.down) && JSON.stringify(got) === JSON.stringify(MIN7[2]), `${show(r.all)}; chord ${JSON.stringify(got)}`);
+      }
+
+      // a format-53 copy from the FM-1's bank (Live off, HOME + PRESET to it): INVKEYS on at the FM-1, SAVE keeps it
+      const stored = await page.evaluate(async (nm) => {
+        const { PRESETS } = await import('/src/presets.ts');
+        const { encodePatch } = await import('/src/patchbin.ts');
+        const p = PRESETS['Monolith D']();
+        p.name = nm;
+        delete p.modules.find((m) => m.type === 'harm').bypass;
+        const was = Array.from(encodePatch(p));
+        p.modules.find((m) => m.type === 'harm').params.invkeys = 1;
+        return { was, on: Array.from(encodePatch(p)) };
+      }, 'T1311 INV SAVE');
+      const slot = (await page.evaluate(() => window.__m1test.slots())).findIndex((s) => !s.used);
+      if (slot < 0) return skip('inv keys: SAVE keeps INVKEYS set on the FM-1', 'the bank has no empty slot');
+      const live = async (on) => {
+        if ((await T()).live === on) return true;
+        await page.evaluate(() => document.getElementById('dev-sync-btn')?.click());
+        if (on && (await until(async () => (await T()).syncAsk, 1500))) await page.click('#sync-ask button[value="sync"]');
+        return !!(await until(async () => (await T()).live === on && (!on || (await T()).chip === 'synced'), 6000));
+      };
+      try {
+        await page.evaluate(([n, b]) => window.__m1test.storeBin(n, 'T1311 INV SAVE', b), [slot, stored.was]);
+        await check(`inv keys: Monolith D as the factory bank stores it (format ${stored.was[1]}) in slot ${slot + 1}`, stored.was[1] === 53 && (await page.evaluate((n) => window.__m1test.slots().then((x) => x[n].used), slot)));
+        await check('inv keys: Live off', await live(false));
+        await emu.elapse(1000);
+        let at = false;
+        for (let i = 0; i < 65 && !at; i++) {
+          await emu.key(B.home, true);
+          await emu.elapse(150);
+          await emu.turn(ENC.preset, 1);
+          await emu.elapse(150);
+          await emu.key(B.home, false);
+          await emu.elapse(400);
+          at = !!(await until(async () => (await T()).slot === slot, 600 / SLACK)) && (await emu.waitText('T1311 INV', 1000));
+        }
+        await check('inv keys: HOME + PRESET to it', at, (await emu.texts()).slice(0, 3).join(' | '));
+        let harm = await emu.text('HARMONIZER');
+        for (let i = 0; i < 12 && !harm; i++) {
+          await emu.turn(ENC.select, 1);
+          harm = await emu.waitText('HARMONIZER', 800);
+        }
+        await check('inv keys: SELECT to its Harmonizer', harm, (await emu.texts()).join(' | '));
+        await emu.turn(ENC.algo, 1);
+        await emu.elapse(400);
+        await emu.turn(ENC.k3, 1);
+        await emu.elapse(400);
+        await check('inv keys: K3 on its second page is not refused (no OLD PATCH: SET IN EDITOR: no FX bus, so it is raised)', !(await emu.text('OLD PATCH')), (await emu.texts()).join(' | '));
+        await emu.tap(B.save);
+        await check('inv keys: SAVE: SAVED', await emu.waitText('SAVED', 3000), (await emu.texts()).join(' | '));
+        await emu.elapse(600);
+        const saved = await page.evaluate((n) => window.__m1test.slotBin(n), slot);
+        await check('inv keys: the slot now holds format 68 with INVKEYS on: the editor\'s own encoding of it, byte for byte',
+          saved?.[1] === 68 && JSON.stringify(saved) === JSON.stringify(stored.on), `saved format ${saved?.[1]}, ${saved?.length} bytes; the editor's ${stored.on.length} bytes, format ${stored.on[1]}; first difference at ${saved ? saved.findIndex((b, i) => b !== stored.on[i]) : '-'}`);
+      } finally {
+        await page.evaluate((n) => window.__m1test.eraseSlot(n), slot).catch((e) => console.log(`  note: slot ${slot + 1} not emptied: ${e.message}`));
+        await live(true);
+      }
+      await openSynced('Init');
+    },
     // #375: on a computer where no app reads the FM-1's MIDI, every message the FM-1 sends unasked (TRACK_NOW after a
     // step, PARAM_NOW after a knob) found the SysEx ring full and waited 200 ms: entering steps by hand stalled the panel
     // for seconds. The browser always read, so no scenario saw it: here m1emu stops taking the FM-1's packets (the same

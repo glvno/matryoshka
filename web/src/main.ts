@@ -4547,10 +4547,11 @@ if (import.meta.env.DEV) {
     unsave: (name: string): boolean => !!removeSaved(name),
     chip: (name: string): string | null => openableGroups(device.bufferAllocation, device.budgetStore).flatMap((g) => g.items).find((x) => x.name === name)?.chip().text ?? null,
     // the FM-1's bank: its slots (SLOT_INFO), a slot emptied, a binary stored as it is (an older format's, as a bank an earlier
-    // firmware wrote holds)
+    // firmware wrote holds), a slot's binary as stored (SLOT_GET; null empty)
     slots: async (): Promise<SlotInfo[]> => device.readBank(),
     eraseSlot: (slot: number): Promise<void> => device.eraseSlot(slot),
     storeBin: (slot: number, name: string, bytes: number[]): Promise<void> => device.uploadSlotBin(slot, name, Uint8Array.from(bytes)),
+    slotBin: async (slot: number): Promise<number[] | null> => { const b = await device.readSlotBin(slot); return b && Array.from(b); },
     // the browser's own output (sandbox mode plays here) since the last ask, read every 20 ms from an analyser on the
     // engine's output (audio.ts meter): its loudest sample (0..1) and its energy (the sum of the squares of each read, an
     // analyser's 2048 samples: comparable between asks, not a level); null while the audio does not run
