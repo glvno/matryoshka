@@ -15,6 +15,7 @@ import { DEFS } from './modules';
 import { connect, newPatch, type Patch } from './patch';
 import { moveOrder, Palette, PALETTE_FULL, PALETTE_STORE, repointed, type PalettePorts } from './palette';
 import { applyEntry, entryOf, NO_SAME_STRUCTURE, paletteDevices } from './preset-fit';
+import { encodePatch } from './patchbin';
 import { chipMeta } from './palette-view';
 import { FM1_PRESETS } from './presets';
 import { invalidatePresetPatterns } from './preset-patterns';
@@ -341,6 +342,54 @@ describe('the palette over the link (#1196)', () => {
     expect(await old.palette.add('B', null, { slot: { slot: 0, name: 'B' } })).toBe(false);
     expect(old.said.at(-1)).toMatch(/firmware 1\.26/);
     expect(old.fm1.ops).toEqual([]);
+  });
+  it('opens a position this browser has no copy of from the FM-1: under Live it adopts the patch read back and Live stays on', async () => {
+    const { p } = padPatch('Stranger Pad');
+    const bin = encodePatch(p);
+    const { fm1, palette, opened, off, said, live } = await linked({ live: true });
+    fm1.slots[4] = { slot: 4, used: true, length: bin.length, name: 'STRANGER PAD' };
+    fm1.bins[4] = bin;
+    fm1.entries[1] = { slot: 4, pattern: 0, name: 'STRANGER PAD', devices: [] };
+    fm1.report();
+    await fm1.quiet();
+    expect(palette.chips()[1]).toMatchObject({ copy: false, fromFm1: true });
+    fm1.tap(1);
+    await fm1.quiet();
+    expect(off).toEqual([]);
+    expect(live()).toBe(true);
+    expect(opened).toEqual([expect.objectContaining({ adopt: true, from: '' })]);
+    expect(opened[0].patch.name).toBe('STRANGER PAD');
+    expect(said.at(-1)).toMatch(/^FM-1 switched to palette 2 · STRANGER PAD: Read from the FM-1/);
+    expect(sentCmds(fm1)).not.toContain(CMD.slot);   // (nothing sent back: the FM-1 plays it already)
+  });
+  it('a click without Live opens a position with no copy from the FM-1 too', async () => {
+    const { p } = padPatch('Stranger Pad');
+    const bin = encodePatch(p);
+    const { fm1, palette, opened, said } = await linked();
+    fm1.slots[4] = { slot: 4, used: true, length: bin.length, name: 'STRANGER PAD' };
+    fm1.bins[4] = bin;
+    fm1.entries[0] = { slot: 4, pattern: 0, name: 'STRANGER PAD', devices: [] };
+    fm1.report();
+    await fm1.quiet();
+    await palette.click(0);
+    await fm1.quiet();
+    expect(opened).toEqual([expect.objectContaining({ adopt: false, from: '' })]);
+    expect(said.at(-1)).toMatch(/^Palette 1 · STRANGER PAD: Read from the FM-1/);
+  });
+  it('a browser copy of the slot\'s name and length still wins over reading the FM-1 (D-605)', async () => {
+    const { p } = padPatch('Stranger Pad');
+    const { fm1, palette, opened, off, said } = await linked({ live: true, candidates: [{ name: 'Stranger Pad', patch: () => structuredClone(p) }] });
+    fm1.slots[4] = { slot: 4, used: true, length: binLength(p), name: 'STRANGER PAD' };
+    fm1.bins[4] = encodePatch(p);
+    fm1.entries[1] = { slot: 4, pattern: 0, name: 'STRANGER PAD', devices: [] };
+    fm1.report();
+    await fm1.quiet();
+    expect(palette.chips()[1].copy).toBe(true);
+    fm1.tap(1);
+    await fm1.quiet();
+    expect(off).toEqual([]);
+    expect(opened).toEqual([expect.objectContaining({ adopt: true, from: 'Stranger Pad' })]);
+    expect(said.some((t) => t.includes('Read from the FM-1'))).toBe(false);
   });
   it('sends no unasked PALETTE_NOW before a GET', async () => {
     const fm1 = new PaletteFm1();

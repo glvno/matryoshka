@@ -4,6 +4,7 @@
 
 - **A latched inversion changes on its own.** With the Harmonizer's LOCK on, an inversion key pressed alone now changes only the inversion, and the latched chord stays: min + 7 latched in the 1st inversion, then the second inversion key, plays the minor seventh in the 2nd inversion. Before, the new inversion also let the latched chord buttons go, so the keys played single notes, or the card's own chord when its chord row was not none. Press the latched inversion key again to go back to root position (or to the voicing row), and a new chord keeps the latched inversion ([D-1260](docs/ledger/modules.md#D-1260), [D-1261](docs/ledger/modules.md#D-1261)).
 - **The bar names the inversion.** On the FM-1 the chord message ends with the inversion key in effect, such as `CHORD: MIN7 INV2` ([D-1452](docs/ledger/device-ui.md#D-1452)).
+- **A sound this browser has no copy of now opens from the FM-1 (firmware 1.26 or later).** Click a palette chip, or switch palettes on the FM-1, for a patch you made in another browser or on another computer: the editor reads it back from the FM-1 and rebuilds its assemblies from the ones this browser knows (factory, your Library, your saved patches), and the status line says how many it recognised. Live sync stays on while you edit it. In Library › Patches, ← and Save as bank… take such a slot from the FM-1 too, instead of leaving it out. A copy of the patch in this browser still opens first.
 
 ## 1.28.0 — 2026-11-26
 

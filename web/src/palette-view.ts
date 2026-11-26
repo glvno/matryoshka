@@ -54,7 +54,7 @@ function chipTitle(c: Chip, mode: PaletteMode): string {
   const presets = c.presets.length ? `, presets ${c.presets.join(', ')}` : '';
   const what = `Palette ${n}: ${c.name}${presets}, pattern ${c.pattern + 1}`;
   if (c.state === 'missing') return `${what}. MISSING: its slot no longer holds this patch, so the FM-1 skips it`;
-  const here = c.copy ? '' : ' (no copy of it in this browser)';
+  const here = c.copy ? '' : c.fromFm1 ? ' (no copy of it in this browser: it opens from the FM-1, its assemblies rebuilt from the ones this browser knows)' : ' (no copy of it in this browser)';
   return mode === 'live'
     ? `${what}${here}. Click to switch the FM-1 to it (playing: at the next bar line); drag onto another chip to move it`
     : `${what}${here}. Click to open it`;

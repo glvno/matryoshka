@@ -10,8 +10,10 @@ import type { BufferAllocation } from './signal-buffers';
 // remove) and sent whole with Send bank to FM-1; with a device it is what the FM-1's slots really hold (readBank: read on
 // connect and on entering the section; 48 slots on a 1.26 FM-1, 60 on an older one or a 1.26 one that kept that layout),
 // named after the bank when it holds the offline copy, else "Unsaved bank" with
-// Save as bank…. Nothing merges on its own. The FM-1 cannot send a patch back (SLOT_INFO gives a name and a length), so ←
-// copies this browser's own copy of the slot's patch: one with the slot's name and binary length (bankCopy). One bank for
+// Save as bank…. Nothing merges on its own. ← copies this browser's own copy of the slot's patch: one with the slot's name
+// and binary length (bankCopy). Without one, firmware 1.26 or later sends the slot's binary back (SLOT_GET, with the stored
+// patterns it links), which patch-reader.ts rebuilds with the assemblies this browser knows (readFm1Slot); older firmware
+// cannot send a patch back (SLOT_INFO gives a name and a length), so such a slot has no ← there. One bank for
 // now; several named banks are #220. To a 1.26 FM-1 each patch's patterns go into its pattern store first, then the patch
 // (DeviceLink.uploadSlot, #1202). Restore FM-1 bank backup writes the bank backup this browser keeps (bank-backup.ts, made
 // by the Flash tab before older firmware) back into the slots.
@@ -31,6 +33,8 @@ import { chipEl } from './sandbox';
 import { isSaved, onSavedChange, putBackSaved, renameSaved, savedPatches, savePatch } from './saved';
 import { showToast, showUndo } from './toast';
 import { patchDragSource, type PatchDragItem } from './patch-drag';
+import { linkedIds, readFromFm1, readLabel, type FromFm1 } from './patch-reader';
+import { browserLibrary } from './assembly-match';
 
 interface Entry {
   name: string;
@@ -199,7 +203,7 @@ export interface Candidate {
 export interface KnownCopy { name: string; patch: Patch; factory: boolean }
 
 /** this browser's copy of a slot's patch: the first candidate with the slot's name and binary length; null when there is
- *  none (the FM-1 cannot send the patch itself) */
+ *  none (slotCopy then reads it from an FM-1 that can send it) */
 export function knownCopy(s: SlotInfo, candidates: Candidate[], length: (p: Patch) => number = binLength): KnownCopy | null {
   if (!s.used) return null;
   for (const c of candidates) {
@@ -208,6 +212,34 @@ export function knownCopy(s: SlotInfo, candidates: Candidate[], length: (p: Patc
     if (length(p) === s.length) return { name: c.name, patch: p, factory: !!c.factory };
   }
   return null;
+}
+
+/** what reading a slot from the FM-1 takes (DeviceLink): SLOT_GET (firmware that readsSlots) and PAT_GET */
+export type SlotReader = Pick<DeviceLink, 'readsSlots' | 'readSlotBin' | 'getPattern'>;
+
+/** slot `slot`'s patch read from the FM-1 itself: its binary as stored (SLOT_GET) with the stored patterns it links
+ *  (PAT_GET; one the FM-1 does not send is left out), rebuilt by patch-reader.ts under `name` with every assembly
+ *  definition this browser has. Null when the firmware cannot send slots, the slot is empty, the read fails, or the
+ *  binary is not one this editor reads */
+export async function readFm1Slot(d: SlotReader, slot: number, name: string): Promise<FromFm1 | null> {
+  if (!d.readsSlots) return null;
+  const bin = await d.readSlotBin(slot).catch(() => null);
+  if (!bin) return null;
+  const patterns = new Map<number, Uint8Array>();
+  for (const id of linkedIds(bin)) {
+    const payload = await d.getPattern(id).catch(() => null);
+    if (payload) patterns.set(id, payload);
+  }
+  return readFromFm1(bin, { name, library: browserLibrary(load().flatMap((e) => (e.patch ? [e.patch] : []))), patterns });
+}
+
+/** a slot's patch for ← and Save as bank: this browser's copy (knownCopy) first, else the patch read from the FM-1
+ *  (readFm1Slot, under the slot's name; `read` says how it was rebuilt); null with neither */
+export async function slotCopy(s: SlotInfo, candidates: Candidate[], d: SlotReader, length: (p: Patch) => number = binLength): Promise<(KnownCopy & { read?: FromFm1 }) | null> {
+  const copy = knownCopy(s, candidates, length);
+  if (copy || !s.used) return copy;
+  const read = await readFm1Slot(d, s.slot, s.name);
+  return read && { name: s.name, patch: read.patch, factory: false, read };
 }
 
 /** the candidates for a slot's patch, in this order: the offline copy (`list`), Your patches, the added community
@@ -457,22 +489,35 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     if (onDevice) {
       const used = slots!.filter((s) => s.used);
       const known = candidates();
+      // (firmware 1.26 or later sends a slot back: one this browser has no copy of is read from the FM-1, readFm1Slot)
+      const reads = device.readsSlots;
       bankEl.replaceChildren(...(used.length ? used.map((s) => {
         const copy = knownCopy(s, known, lengthIn);
         return el('div', { class: 'bank-row' },
           el('span', { class: 'slot', textContent: slotLabel(s.slot) }),
           dragName(el('span', { class: 'grow', textContent: s.name }), { name: copy?.name ?? s.name, patch: () => copy?.patch ?? null, slot: { slot: s.slot, name: s.name } }),
           el('button', { class: 'delete', textContent: '×', title: 'Erase this slot on the FM-1 (asks first)', ariaLabel: `erase slot ${slotLabel(s.slot)} on the FM-1`, disabled: busy, onclick: () => {
-            if (!window.confirm(`Erase FM-1 slot ${slotLabel(s.slot)} ("${s.name}")? ${copy ? 'This browser keeps its copy.' : 'This browser has no copy of it, so it is gone for good.'}`)) return;
+            if (!window.confirm(`Erase FM-1 slot ${slotLabel(s.slot)} ("${s.name}")? ${copy ? 'This browser keeps its copy.' : reads ? 'This browser has no copy of it (← reads it from the FM-1 into Your patches first), so it is gone for good.' : 'This browser has no copy of it, so it is gone for good.'}`)) return;
             void run('Erasing', async () => {
               await device.eraseSlot(s.slot);
               slots![s.slot] = await device.readSlot(s.slot);
               status.textContent = `slot ${slotLabel(s.slot)} is empty`;
             });
           } }),
-          el('button', { class: 'lib-move', textContent: '←', ariaLabel: `copy "${s.name}" into Your patches`, disabled: busy || !copy,
-            title: copy ? `Copy into Your patches as "${copy.name}" (this browser's copy of it: the FM-1 cannot send a patch back)` : 'This browser has no copy of this patch, and the FM-1 cannot send a patch back',
-            onclick: () => copy && toBrowser(copy.name, copy.patch) }),
+          el('button', { class: 'lib-move', textContent: '←', ariaLabel: `copy "${s.name}" into Your patches`, disabled: busy || (!copy && !reads),
+            title: copy ? `Copy into Your patches as "${copy.name}" (this browser's copy of it${reads ? '' : ': the FM-1 cannot send a patch back'})`
+              : reads ? 'Copy into Your patches, read from the FM-1: its assemblies rebuilt from the ones this browser knows'
+                : 'This browser has no copy of this patch, and the FM-1 cannot send a patch back before firmware 1.26',
+            onclick: () => {
+              if (copy) return toBrowser(copy.name, copy.patch);
+              void run('Reading from the FM-1', async () => {
+                status.textContent = `Reading slot ${slotLabel(s.slot)} · ${s.name} from the FM-1…`;
+                const r = await readFm1Slot(device, s.slot, s.name);
+                if (!r) return void (status.textContent = `Slot ${slotLabel(s.slot)} · ${s.name} could not be read from the FM-1, and this browser has no copy of it`);
+                toBrowser(s.name, r.patch);
+                status.textContent = `${status.textContent}. ${readLabel(r)}`;
+              });
+            } }),
         );
       }) : [el('p', { class: 'muted', textContent: 'The bank is empty: HOME + PRESET steps through the factory patches built into the firmware.' })]));
       countEl.textContent = `${used.length} of ${device.bankSlots} slots used on the FM-1`;
@@ -508,13 +553,27 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     if (!slots) return;
     const used = slots.filter((s) => s.used);
     const known = candidates();
-    const kept = used.map((s) => ({ s, copy: knownCopy(s, known, lengthIn) }));
-    const missing = kept.filter((k) => !k.copy);
-    const lose = missing.length ? ` This browser has no copy of ${missing.length} of them (${missing.slice(0, 6).map((k) => `${slotLabel(k.s.slot)} ${k.s.name}`).join(', ')}${missing.length > 6 ? ', …' : ''}): they are left out, since the FM-1 cannot send a patch back.` : '';
+    const missing = used.filter((s) => !knownCopy(s, known, lengthIn));
+    const reads = device.readsSlots;
+    const which = `${missing.length} of them (${missing.slice(0, 6).map((s) => `${slotLabel(s.slot)} ${s.name}`).join(', ')}${missing.length > 6 ? ', …' : ''})`;
+    const lose = !missing.length ? '' : reads ? ` This browser has no copy of ${which}: they are read from the FM-1, their assemblies rebuilt from the ones this browser knows.`
+      : ` This browser has no copy of ${which}: they are left out, since the FM-1 cannot send a patch back before firmware 1.26.`;
     if (!window.confirm(`Keep the ${used.length} patches on the FM-1 as the ${BANK_NAME.toLowerCase()} in this browser? This replaces its offline copy (${list.length} patches).${lose}`)) return;
-    list = kept.flatMap(({ copy }) => (!copy ? [] : copy.factory ? [{ name: copy.name }] : [{ name: copy.name, patch: copyOf(copy.patch) }]));
-    changed();
-    status.textContent = `the ${BANK_NAME.toLowerCase()} is what the FM-1 holds${missing.length ? `, less ${missing.length} this browser has no copy of` : ''}`;
+    void run('Saving as bank', async () => {
+      if (missing.length && reads) status.textContent = `Reading ${missing.length} patch${missing.length === 1 ? '' : 'es'} from the FM-1…`;
+      const next: Entry[] = [];
+      let left = 0, read = 0;
+      for (const s of used) {
+        const copy = await slotCopy(s, known, device, lengthIn);
+        if (!copy) left++;
+        else if (copy.read) read++;
+        if (copy) next.push(copy.factory ? { name: copy.name } : { name: copy.name, patch: copyOf(copy.patch) });
+      }
+      list = next;
+      changed();
+      const notes = [...(read ? [`${read} read from the FM-1`] : []), ...(left ? [`less ${left} this browser has no copy of`] : [])];
+      status.textContent = `the ${BANK_NAME.toLowerCase()} is what the FM-1 holds${notes.length ? `, ${notes.join(', ')}` : ''}`;
+    });
   };
   send.onclick = () => void run('Sending the bank', async () => {
     // an FM-1 whose pattern store is on has fewer slots than the offline copy can hold (#901, 48 from 1.26): the entries

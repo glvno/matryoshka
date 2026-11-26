@@ -5,7 +5,9 @@
 // editor shows it as 8 chips (palette-view.ts), collects into it, reorders and removes, and opens an entry from this
 // browser's copy of its patch: the editor's own version or a saved patch its slot holds byte for byte (SLOT_GET), the copy
 // this browser kept of each sound it put into the palette (PALETTE_COPIES), else a saved patch of the slot's name and
-// binary length (D-605). Adding a sound first saves on the FM-1 what it needs to play it as the editor shows it: a sound
+// binary length (D-605); with none, from the FM-1 itself (firmware 1.26 or later: the slot's binary and the stored
+// patterns it links, rebuilt by patch-reader.ts with the assemblies this browser knows, bank.ts readFm1Slot). Adding a
+// sound first saves on the FM-1 what it needs to play it as the editor shows it: a sound
 // it reaches from a slot it has with device presets (D-1240: the same patch, other card values, tempo or patterns)
 // points at that slot with them, each preset it lacks sent (PRESET_PUT); any other sound is stored into a free slot, with
 // the user presets its entry names. A saved palette (saved-palettes.ts) is sent whole by the same rules (send: its sounds
@@ -14,7 +16,8 @@
 // The link: protocol.ts PALETTE / PALETTE_NOW / PALETTE_ENTRY (feature bit 31). With no FM-1 the chips show the last
 // palette read, read-only (kept in this browser).
 import { assemblyById } from './assembly';
-import { binLength, deviceName, knownCopy, type Candidate, type KnownCopy } from './bank';
+import { binLength, deviceName, knownCopy, readFm1Slot, type Candidate, type KnownCopy } from './bank';
+import { readLabel } from './patch-reader';
 import { deletePreset as dropUserPreset, rememberedPreset, replaceUserPresets, sameName, userPresets, type Preset } from './device-presets';
 import type { Patch } from './patch';
 import { layout } from './patchbin';
@@ -147,8 +150,10 @@ export interface Chip {
   /** playing on the FM-1 / waiting for the bar line there */
   cur: boolean;
   next: boolean;
-  /** this browser has a copy of its patch (false: a click cannot open it here) */
+  /** this browser has a copy of its patch (false: a click cannot open it here, unless `fromFm1`) */
   copy: boolean;
+  /** the FM-1 linked can send the slot back (firmware 1.26 or later): a position with no copy opens from the FM-1 */
+  fromFm1?: boolean;
 }
 
 /** what the palette needs from the editor */
@@ -169,6 +174,8 @@ export interface PalettePorts {
     /** SLOT_GET: a slot's binary as stored (firmware that readsSlots), null when empty */
     readonly readsSlots: boolean;
     readSlotBin(slot: number): Promise<Uint8Array | null>;
+    /** PAT_GET: a stored pattern's payload, null when the FM-1 has no such id */
+    getPattern(id: number): Promise<Uint8Array | null>;
     /** the user preset store (INFO feature bit 7) */
     readonly hasPresets: boolean;
     presetFits(n: number, preset?: { structure: string; values: number[] }): boolean;
@@ -361,6 +368,7 @@ export class Palette {
         cur: this.linked && this.now?.cur === pos,
         next: this.linked && this.now?.next === pos,
         copy: !!this.hasCopy[pos],
+        fromFm1: this.linked && this.ports.device.readsSlots,
       };
     });
   }
@@ -645,7 +653,7 @@ export class Palette {
   /**
    * A click on a chip: a linked FM-1 switches to it (stopped at once, playing at the bar line). Under Live the editor
    * follows when the FM-1 says it switched (received); otherwise the editor opens the entry now, from this browser's
-   * copy. With no FM-1 it opens the entry only.
+   * copy, or read from the FM-1 without one. With no FM-1 it opens the entry only.
    */
   async click(pos: number): Promise<void> {
     const p = this.now?.positions[pos];
@@ -668,24 +676,30 @@ export class Palette {
     if (!(await this.open(pos, false))) this.ports.say(`Palette ${pos + 1} · ${p.name}: no copy of this patch in this browser`);
   }
 
-  /** open position `pos` from this browser's copy, its presets and pattern applied; false without a copy (true, nothing
-   *  opened, when `stale` says a newer palette came meanwhile). A copy its slot holds byte for byte comes first
-   *  (exactCopy), kept for the switches after (keepCopy); then a saved patch of the slot's name and length, or with
-   *  firmware that cannot send a slot back, first the copy this browser kept of the sound it put there */
-  private async open(pos: number, adopt: boolean, stale = (): boolean => false): Promise<boolean> {
+  /** open position `pos` from this browser's copy, its presets and pattern applied; false without a copy and without a
+   *  patch the FM-1 sent back (true, nothing opened, when `stale` says a newer palette came meanwhile). A copy its slot
+   *  holds byte for byte comes first (exactCopy), kept for the switches after (keepCopy); then a saved patch of the slot's
+   *  name and length, or with firmware that cannot send a slot back, first the copy this browser kept of the sound it put
+   *  there; with none, the slot read from the FM-1 (readFm1Slot), said with `lead` before the position's name */
+  private async open(pos: number, adopt: boolean, stale = (): boolean => false, lead = `Palette ${pos + 1}`): Promise<boolean> {
     const p = this.now?.positions[pos];
     if (!p) return false;
     const copy = await this.copyAt(p);
     if (stale()) return true;   // (a newer palette came meanwhile: it follows on its own)
-    if (!copy) return false;
-    const patch = structuredClone(copy.patch);
+    const read = copy || p.state !== 1 ? null : await readFm1Slot(this.ports.device, p.slot, p.name);
+    if (stale()) return true;
+    const from = copy?.patch ?? read?.patch;
+    if (!from) return false;
+    const patch = structuredClone(from);
     const e = this.entries[pos];
     const gone = e ? applyEntry(patch, e) : [];
     const own = this.ownVersion(patch);
-    this.ports.open(own ?? patch, { adopt, from: copy.factory ? '' : copy.name });
+    this.ports.open(own ?? patch, { adopt, from: !copy || copy.factory ? '' : copy.name });
     // (the candidate heard keeps its own tempo and patterns, the FM-1 plays the slot's, D-1240: said, nothing sent back)
     const plays = own ? slotPlays(own, patch) : '';
-    if (gone.length) this.ports.say(`Palette ${pos + 1} · ${p.name}: this browser has not got the preset${gone.length > 1 ? 's' : ''} ${gone.join(', ')}`);
+    const lacks = gone.length ? `this browser has not got the preset${gone.length > 1 ? 's' : ''} ${gone.join(', ')}` : '';
+    if (read) this.ports.say(`${lead} · ${p.name}: ${readLabel(read)}${lacks ? `; ${lacks}` : plays ? `; it plays the ${plays} of slot ${p.slot + 1}` : ''}`);
+    else if (lacks) this.ports.say(`Palette ${pos + 1} · ${p.name}: ${lacks}`);
     else if (plays) this.ports.say(`Palette ${pos + 1} · ${p.name} plays the ${plays} of slot ${p.slot + 1}`);
     return true;
   }
@@ -749,7 +763,8 @@ export class Palette {
 
   /**
    * The FM-1's palette as sounds (Save from FM-1), each named as its slot. Linked: the palette is read again, each
-   * position's copy is the one a switch opens (copyAt), and the entry's presets this browser has not got are read from
+   * position's copy is the one a switch opens (copyAt, else the slot read from the FM-1), and the entry's presets this
+   * browser has not got are read from
    * the FM-1 (PRESETS + PRESET_GET: its name, in any case, of the entry's structure or namespace, any structure when the
    * entry does not know the namespace) and applied with it; they join the sound's presets. Offline: the last palette
    * read, each position's copy from the copies this browser kept first, then the editor's versions, the candidates and
@@ -766,7 +781,7 @@ export class Palette {
     const sounds: (PaletteSound | null)[] = [], missed: string[] = [];
     for (let pos = 0; pos < PALETTE_SIZE; pos++) {
       const p = now.positions[pos], e = this.entries[pos];
-      const copy = p.state !== 1 ? null : linked ? await this.copyAt(p) : positionCopy(p, known, undefined, this.copies);
+      const copy = p.state !== 1 ? null : linked ? (await this.copyAt(p)) ?? (await readFm1Slot(d, p.slot, p.name)) : positionCopy(p, known, undefined, this.copies);
       if (!copy) {
         if (p.state) missed.push(`${pos + 1} · ${p.name} (${p.state === 2 ? 'MISSING' : 'no copy in this browser'})`);
         sounds.push(null);
@@ -850,8 +865,9 @@ export class Palette {
   }
 
   /**
-   * The FM-1 plays position `pos` under Live (`now` the read that said so): a switch opens its copy without sending it
-   * back, or turns Live off without one. A position that holds the editor's patch (`at`: as it was when the FM-1 said it
+   * The FM-1 plays position `pos` under Live (`now` the read that said so): a switch opens its copy, or the slot read
+   * from the FM-1 without one, without sending it back (Live goes on), or turns Live off with neither. A position that
+   * holds the editor's patch (`at`: as it was when the FM-1 said it
    * plays the slot) is no switch: the FM-1 saved the patch it played from the editor there (HOME + a black key held,
    * #1244), so the editor keeps its patch and Live rather than open a copy of that name and length, which can be an older
    * one, or turn Live off for want of one. A position that holds anything else is a switch, whatever made it.
@@ -864,7 +880,7 @@ export class Palette {
       this.keepCopy(p.slot, p.name, at);   // (the FM-1 stored the editor's patch there: a switch back opens it)
       return this.ports.kept();
     }
-    if (await this.open(pos, true, () => this.taken !== now)) return;
+    if (await this.open(pos, true, () => this.taken !== now, `FM-1 switched to palette ${pos + 1}`)) return;
     this.ports.liveOff(`FM-1 switched to palette ${pos + 1} · ${p.name}: no copy in this browser, so Live sync is off`);
   }
 
