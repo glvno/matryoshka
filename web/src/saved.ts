@@ -85,10 +85,17 @@ const content = (p: Patch): string => {
     v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : v);
 };
 
-/** `p` has changes not kept in Your patches: it differs from the saved copy of its name, or there is none */
+/** `p` has changes not kept in Your patches: it differs from the saved copy of its name, or there is none. `p` is compared
+ *  as its copy reads back (`savedPatches` validates it), so what validation fills or drops is no change: a module built
+ *  before a format gave it a parameter (a factory Harmonizer without `invkeys`, format 68), an empty list */
 export function unsavedChanges(p: Patch, saved: SavedPatch[]): boolean {
   const copy = saved.find((e) => e.name === (p.name.trim() || 'Untitled'));
-  return !copy || content(copy.patch) !== content(p);
+  if (!copy) return true;
+  try {
+    return content(copy.patch) !== content(validatePatch(JSON.parse(JSON.stringify(p)), DEFS));
+  } catch {
+    return true; // a patch this version cannot read back differs from any copy it could read
+  }
 }
 
 /** delete the saved patch of that name; returns it as stored (for `restoreSaved`), or null when there was none */

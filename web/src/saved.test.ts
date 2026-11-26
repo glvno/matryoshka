@@ -76,6 +76,18 @@ it('unsaved changes: none when equal to the saved copy apart from view, octave a
   expect(unsavedChanges(same, saved)).toBe(true);
 });
 
+it('unsaved changes: none right after saving any factory patch or example as opened, though validation fills or drops some of it', () => {
+  for (const [name, make] of Object.entries(PRESETS)) {
+    const p = make(); // e.g. Monolith D's Harmonizer without invkeys (format 68), which its saved copy reads back as 0
+    savePatch(p);
+    expect(unsavedChanges(p, savedPatches()), name).toBe(false);
+  }
+  const p = PRESETS['Monolith D']();
+  savePatch(p);
+  p.modules.find((m) => m.type === 'harm')!.params.invkeys = 1; // a row validation would fill, turned on: a change
+  expect(unsavedChanges(p, savedPatches())).toBe(true);
+});
+
 it('renames a saved patch, keeping its date, never over another name', () => {
   const [a, b] = Object.values(PRESETS).map((make) => make());
   savePatch({ ...a, name: 'Old' });
