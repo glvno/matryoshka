@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { beforeEach, expect, it } from 'vitest';
-import { addToBank, bankMatches, bankPatches, knownCopy, slotFor, uploadLoses } from './bank';
+import { addToBank, bankMatches, bankPatches, binLength, knownCopy, slotCopy, slotFor, uploadLoses } from './bank';
+import { encodePatch } from './patchbin';
+import { readLabel } from './patch-reader';
 import type { Patch } from './patch';
 import { FM1_PRESETS, PRESETS } from './presets';
 import { SLOTS_MAX as SLOTS, type SlotInfo } from './protocol';
@@ -43,13 +45,33 @@ it('the FM-1 holds the bank when its used slots are the list, in order, by name 
   expect(bankMatches(bank([]), [])).toBe(true);
 });
 
-it('a slot’s patch comes from this browser’s copy with its name and length, never from the FM-1', () => {
+it('this browser’s copy of a slot’s patch is the candidate with its name and length (knownCopy, which never asks the FM-1)', () => {
   const p = { name: 'x' } as Patch;
   const len = (q: Patch): number => (q === p ? 100 : 50);
   const s = bank(['ACID'])[0];
   expect(knownCopy(s, [{ name: 'Acid', patch: () => ({ name: 'y' }) as Patch }, { name: 'acid', patch: () => p, factory: true }], len)).toEqual({ name: 'acid', patch: p, factory: true });
   expect(knownCopy(s, [{ name: 'Bass', patch: () => p }], len)).toBeNull();
   expect(knownCopy(bank([])[0], [{ name: '', patch: () => p }], len)).toBeNull(); // an empty slot
+});
+
+it('a slot this browser has no copy of is read from an FM-1 that sends slots back (← and Save as bank); a copy still wins', async () => {
+  const p = FM1_PRESETS['Monolith D']();
+  const bin = encodePatch(p);
+  const asked: number[] = [];
+  const fm1 = { readsSlots: true, readSlotBin: async (slot: number) => (asked.push(slot), slot === 3 ? bin : null), getPattern: async () => null };
+  const s: SlotInfo = { slot: 3, used: true, length: bin.length, name: 'MONOLITH D' };
+  const read = await slotCopy(s, [], fm1);
+  expect(read).toMatchObject({ name: 'MONOLITH D', factory: false });
+  expect(read!.patch.name).toBe('MONOLITH D');
+  expect(readLabel(read!.read!)).toMatch(/^Read from the FM-1/);
+  expect(asked).toEqual([3]);
+  // (this browser's copy of the slot's name and binary length: the FM-1 is not asked, D-605)
+  const copy = await slotCopy({ ...s, length: binLength(p) }, [{ name: 'Monolith D', patch: () => p, factory: true }], fm1);
+  expect(copy).toEqual({ name: 'Monolith D', patch: p, factory: true });
+  expect(asked).toEqual([3]);
+  expect(await slotCopy(s, [], { ...fm1, readsSlots: false })).toBeNull();   // (firmware before 1.26: no SLOT_GET)
+  expect(await slotCopy({ ...s, slot: 4 }, [], fm1)).toBeNull();   // (the FM-1 sends nothing back)
+  expect(await slotCopy(s, [], { ...fm1, readSlotBin: async () => Uint8Array.from([1, 2, 3]) })).toBeNull();   // (not a patch binary)
 });
 
 it('the bank takes patches that fit, never one over the FM-1 budget', () => {

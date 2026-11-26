@@ -78,7 +78,7 @@ function rowOrderFrom(def: AssemblyDef, lab: Map<number, string>): number[] {
 
 /** a definition without its FX drawers and all they hold (fx-drawer.ts): an instrument's structure is its own part's, so
  *  an instrument keeps its structure (and its presets keep loading) whatever its drawer holds */
-function withoutDrawers(def: AssemblyDef): AssemblyDef {
+export function withoutDrawers(def: AssemblyDef): AssemblyDef {
   const nested = def.assemblies ?? [];
   if (!nested.some((n) => n.drawer)) return def;
   const byId = new Map(nested.map((n) => [n.id, n]));

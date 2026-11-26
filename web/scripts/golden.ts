@@ -4751,6 +4751,12 @@ for (const name of [...Object.keys(audioPresets), 'morph', 'morph-unassigned', '
   }
 }
 
+// GOLDEN_PATCHES=FILE writes every kit's patch (and the layout its binary is forced to) as JSON and stops before rendering:
+// the reader's round trip (scripts/reader-roundtrip.ts) takes the kits from there
+if (process.env.GOLDEN_PATCHES) {
+  writeFileSync(process.env.GOLDEN_PATCHES, JSON.stringify(Object.entries(tests).map(([name, patch]) => ({ name, patch, events: events[name] ?? null, end: ends[name] ?? null, force: counted.has(name) ? COUNTED : slim.has(name) ? SLIM : 0, custom: !!bins[name] }))));
+  process.exit(0);
+}
 for (const [name, patch] of Object.entries(tests)) {
   if (process.env.GOLDEN_ONLY && name !== process.env.GOLDEN_ONLY) continue;
   const e = new Engine(SR);
