@@ -2158,7 +2158,7 @@ async function main() {
           JSON.stringify(got) === JSON.stringify([67, 72, 75]) && l.all.played.some((m) => m.t === 'chord' && m.button === 8 && !m.down), `${show(l.all)}; chord ${JSON.stringify(got)}`);
       }
       await page.evaluate((h) => window.__m1test.param(h, 'lock', 0), id);
-      // off again (the format goes back to the FM-1's copy's: a PARAM): the three keys play notes
+      // off again: the three keys play notes
       await page.evaluate((h) => (window.__sent.splice(0), window.__m1test.param(h, 'invkeys', 0)), id);
       await emu.elapse(600);
       for (const i of [0, 2]) {
@@ -2185,58 +2185,84 @@ async function main() {
           sentOn(r.down, 79) && r.down.played.some((m) => m.t === 'chord' && m.button === 9 && m.down) && JSON.stringify(got) === JSON.stringify(MIN7[2]), `${show(r.all)}; chord ${JSON.stringify(got)}`);
       }
 
-      // a format-53 copy from the FM-1's bank (Live off, HOME + PRESET to it): INVKEYS on at the FM-1, SAVE keeps it
-      const stored = await page.evaluate(async (nm) => {
-        const { PRESETS } = await import('/src/presets.ts');
+      // the factory Monolith D in the FM-1's bank (presets.ts FM1_PRESETS, encoded as export-defs encodes the factory
+      // content), its Harmonizer on so the keys reach it, stored in a free slot in the bank slot's format; Live off, HOME +
+      // PRESET to it, INVKEYS on at the FM-1: it raises its copy (no FX bus), SAVE keeps the row. (Copies older than format
+      // 64, eng_slim, are host-tested: proto_test --same, old_format.sh, panel_test I1.)
+      const slots = await page.evaluate(() => window.__m1test.slots());
+      const factory = slots.findIndex((s) => s.used && s.name.toUpperCase() === 'MONOLITH D');
+      const slot = slots.findIndex((s) => !s.used);
+      if (factory < 0 || slot < 0) return skip('inv keys: SAVE keeps INVKEYS set on the FM-1', factory < 0 ? `no MONOLITH D in the bank (${slots.filter((s) => s.used).map((s) => s.name).join(', ')})` : 'the bank has no empty slot');
+      const bank = await page.evaluate((n) => window.__m1test.slotBin(n), factory);
+      const was = await page.evaluate(async () => {
+        const { FM1_PRESETS } = await import('/src/presets.ts');
         const { encodePatch } = await import('/src/patchbin.ts');
-        const p = PRESETS['Monolith D']();
-        p.name = nm;
+        const p = FM1_PRESETS['Monolith D']();
         delete p.modules.find((m) => m.type === 'harm').bypass;
-        const was = Array.from(encodePatch(p));
-        p.modules.find((m) => m.type === 'harm').params.invkeys = 1;
-        return { was, on: Array.from(encodePatch(p)) };
-      }, 'T1311 INV SAVE');
-      const slot = (await page.evaluate(() => window.__m1test.slots())).findIndex((s) => !s.used);
-      if (slot < 0) return skip('inv keys: SAVE keeps INVKEYS set on the FM-1', 'the bank has no empty slot');
+        return Array.from(encodePatch(p, true, 0, 1));
+      });
       const live = async (on) => {
         if ((await T()).live === on) return true;
         await page.evaluate(() => document.getElementById('dev-sync-btn')?.click());
         if (on && (await until(async () => (await T()).syncAsk, 1500))) await page.click('#sync-ask button[value="sync"]');
         return !!(await until(async () => (await T()).live === on && (!on || (await T()).chip === 'synced'), 6000));
       };
-      try {
-        await page.evaluate(([n, b]) => window.__m1test.storeBin(n, 'T1311 INV SAVE', b), [slot, stored.was]);
-        await check(`inv keys: Monolith D as the factory bank stores it (format ${stored.was[1]}) in slot ${slot + 1}`, stored.was[1] === 53 && (await page.evaluate((n) => window.__m1test.slots().then((x) => x[n].used), slot)));
-        await check('inv keys: Live off', await live(false));
-        await emu.elapse(1000);
-        let at = false;
-        for (let i = 0; i < 65 && !at; i++) {
+      /** HOME held + PRESET a click at a time until the FM-1 plays slot n (SLOT_NOW); the slots it went through */
+      const presetTo = async (n) => {
+        const seen = [];
+        for (let i = 0; i < 65; i++) {
           await emu.key(B.home, true);
           await emu.elapse(150);
           await emu.turn(ENC.preset, 1);
           await emu.elapse(150);
           await emu.key(B.home, false);
           await emu.elapse(400);
-          at = !!(await until(async () => (await T()).slot === slot, 600 / SLACK)) && (await emu.waitText('T1311 INV', 1000));
+          const s = (await until(async () => { const x = (await T()).slot; return x === n ? x : null; }, 600 / SLACK)) ?? (await T()).slot;
+          seen.push(s);
+          if (s === n) return { ok: true, seen };
         }
-        await check('inv keys: HOME + PRESET to it', at, (await emu.texts()).slice(0, 3).join(' | '));
+        return { ok: false, seen };
+      };
+      try {
+        await check(`inv keys: the factory Monolith D, its Harmonizer on, is in the format of the bank's (slot ${factory + 1}) and older than 68`, !!bank && was[1] === bank[1] && was[1] < 68, `format ${was[1]}, the bank's ${bank?.[1]}`);
+        await page.evaluate(([n, b]) => window.__m1test.storeBin(n, 'T1311 INV SAVE', b), [slot, was]);
+        await check(`inv keys: copied into slot ${slot + 1}`, await page.evaluate((n) => window.__m1test.slots().then((x) => x[n].used), slot));
+        await check('inv keys: Live off', await live(false));
+        await emu.elapse(1000);
+        let at = await presetTo(slot);
+        await check('inv keys: HOME + PRESET to it', at.ok, `slots ${at.seen.join(' ')}`);
         let harm = await emu.text('HARMONIZER');
         for (let i = 0; i < 12 && !harm; i++) {
           await emu.turn(ENC.select, 1);
           harm = await emu.waitText('HARMONIZER', 800);
         }
-        await check('inv keys: SELECT to its Harmonizer', harm, (await emu.texts()).join(' | '));
+        await check('inv keys: SELECT to its Harmonizer', harm);
         await emu.turn(ENC.algo, 1);
         await emu.elapse(400);
         await emu.turn(ENC.k3, 1);
-        await emu.elapse(400);
-        await check('inv keys: K3 on its second page is not refused (no OLD PATCH: SET IN EDITOR: no FX bus, so it is raised)', !(await emu.text('OLD PATCH')), (await emu.texts()).join(' | '));
+        await check('inv keys: K3 on its second page is not refused (no OLD PATCH: SET IN EDITOR: no FX bus, so it is raised)', !(await emu.waitText('OLD PATCH', 800)));
+        await emu.elapse(1500);
+        /** key k (0 = the lowest) pressed: whether the bar names a chord (a chord or inversion key: CHORD: ...), let go */
+        const chordKey = async (k) => {
+          await emu.key(14 + k, true);
+          const named = await emu.waitText('CHORD:', 1500);
+          await emu.key(14 + k, false);
+          await emu.elapse(1500);
+          return named;
+        };
+        await check('inv keys: set on the FM-1, key 27 is an inversion key (the bar names the chord)', await chordKey(INV[2]));
         await emu.tap(B.save);
-        await check('inv keys: SAVE: SAVED', await emu.waitText('SAVED', 3000), (await emu.texts()).join(' | '));
+        await check('inv keys: SAVE: SAVED', await emu.waitText('SAVED', 3000));
         await emu.elapse(600);
         const saved = await page.evaluate((n) => window.__m1test.slotBin(n), slot);
-        await check('inv keys: the slot now holds format 68 with INVKEYS on: the editor\'s own encoding of it, byte for byte',
-          saved?.[1] === 68 && JSON.stringify(saved) === JSON.stringify(stored.on), `saved format ${saved?.[1]}, ${saved?.length} bytes; the editor's ${stored.on.length} bytes, format ${stored.on[1]}; first difference at ${saved ? saved.findIndex((b, i) => b !== stored.on[i]) : '-'}`);
+        await check('inv keys: the slot now holds format 68', saved?.[1] === 68, `format ${saved?.[1]}, ${saved?.length} bytes (was ${was?.length})`);
+        // loaded again from the bank: key 27 is an inversion key (a chord key: the bar names the chord), not a note
+        const away = await presetTo(factory);
+        at = await presetTo(slot);
+        await check('inv keys: HOME + PRESET round the bank and back to it', away.ok && at.ok, `slots ${away.seen.join(' ')} / ${at.seen.join(' ')}`);
+        await emu.elapse(1500);
+        const inv = await chordKey(INV[2]);
+        await check('inv keys: loaded again, key 27 is still an inversion key (the bar names the chord)', inv, `MIN's key: ${(await chordKey(MIN)) ? 'names a chord' : 'names none'}`);
       } finally {
         await page.evaluate((n) => window.__m1test.eraseSlot(n), slot).catch((e) => console.log(`  note: slot ${slot + 1} not emptied: ${e.message}`));
         await live(true);

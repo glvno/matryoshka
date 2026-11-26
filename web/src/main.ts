@@ -1121,13 +1121,13 @@ const editor = new Editor($('canvas'), firstPatch, {
       if (!was && fitsDevice && live() && !fromDevice) queueUpload();
     }
     // a parameter appended in a format from SLIM on (ParamDef.since: the Harmonizer's `invkeys`, format 68) past the format
-    // of the FM-1's copy: when the patch now encodes in another format, the FM-1 takes the whole patch again, as it cannot
-    // raise every older copy itself (D-1041)
+    // of the FM-1's copy: when the patch now encodes in another format, or the copy's format is not known (an edit made on
+    // the FM-1 since the upload), the FM-1 takes the whole patch again, as it cannot raise every older copy itself (D-1041)
     const held = uploadGate.format;
-    if (pd?.since !== undefined && pd.since >= SLIM && held !== undefined && pd.since > held && live() && !fromDevice) {
+    if (pd?.since !== undefined && pd.since >= SLIM && (held === undefined || pd.since > held) && live() && !fromDevice) {
       let v: number | undefined;
       try { v = device.encodeFor(editor.patch)[1]; } catch { /* over the budget: sendPatch says so */ }
-      if (v !== held) {
+      if (held === undefined || v !== held) {
         if (!fromEmu) emuParam(id, name, value);
         uploadGate.forget();
         queueUpload();
