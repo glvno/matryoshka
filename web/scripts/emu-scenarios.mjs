@@ -3607,6 +3607,11 @@ async function main() {
       await check('palette read back: Init opens, synced', await openSynced('Init'));
       await check('palette read back: the chips are live (an FM-1 that keeps a palette and sends slots back)', !!(await until(async () => (await pal())?.linked, 4000)));
       const slots = await page.evaluate(() => window.__m1test.slots());
+      // (a full palette, as paletteEditor leaves it: the last position emptied for this add)
+      if ((await pal()).chips.every((c) => c.state !== 'empty')) {
+        await page.evaluate(() => document.querySelector('#snap-column .pal-chip[data-pos="7"] .pal-x')?.click());
+        await until(async () => (await pal()).chips[7]?.state === 'empty', 4000);
+      }
       const slot = slots.findIndex((s) => !s.used), pos = (await pal()).chips.findIndex((c) => c.state === 'empty');
       if (slot < 0 || pos < 0) return skip('palette read back: a tweak goes in as a preset on a slot this browser has no copy of', slot < 0 ? 'the bank has no empty slot' : 'the palette has no empty position');
       // (what an earlier add, an FM-1 hold-save of its own edits or another browser left there: a Pal RB this browser never had)
