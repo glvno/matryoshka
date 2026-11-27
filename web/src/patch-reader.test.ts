@@ -3,15 +3,16 @@
 // every format the encoder writes, with its patterns from the FM-1's store where the binary links them.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { DEFS } from './modules';
+import { DEFS, DEVICE_SR, PANEL_BUTTONS } from './modules';
 import { addModule, connect, newPatch, validatePatch, type ModuleInst, type Patch } from './patch';
-import { COUNTED, encodePatch, SLIM, VERSION, WRITE_FLOOR } from './patchbin';
-import { linkedIds, parseBinary } from './bin-parse';
+import { COUNTED, encodePatch, Q, SLIM, toQ16, VERSION, WRITE_FLOOR } from './patchbin';
+import { linkedIds, parseBinary, type BinPatch } from './bin-parse';
 import { readFromFm1, readLabel, type FromFm1 } from './patch-reader';
 import { FM1_PRESETS, make } from './presets';
 import { browserLibrary, patchDefs, shippedLibrary } from './assembly-match';
 import { encodePayload, payloadHash } from './pattern-store';
-import { setKind, setSwitches } from './buttons';
+import { setKind, setSwitches, toggleTargets } from './buttons';
+import { Engine } from './engine';
 
 const same = (a: ArrayLike<number>, b: ArrayLike<number>): boolean => a.length === b.length && Array.prototype.every.call(a, (x: number, i: number) => x === b[i]);
 /** encode, read back, encode again: the second binary is the first */
@@ -169,38 +170,66 @@ describe('the FM-1 reader (D-1354)', () => {
     expect(bare.patch.modules.find((m) => m.type === 'fm1')!.seq?.links).toBeUndefined();
   });
 
-  it('reads a 1.25 binary with the old master FX bus (formats 55..65): the same sound, the bus effects a plain card, no bus written back', () => {
+  it('reads a 1.25 binary with the old master FX bus (formats 55..65) as FX drawers, as opening its JSON does, and writes format 66\'s rack', () => {
     // Monolith D as 1.25.0 wrote it to a slot: format 55, flag bit 14 the D-1010 bus (four stages over its FX device's
-    // shapers, choruses, delays and reverb)
+    // shapers, choruses, delays and reverb); and the same patch as 1.25.0's JSON (web/presets/00-monolith-d.json at v1.25.0)
     const bin = new Uint8Array(readFileSync(new URL('./test-fixtures/monolith-d-1.25.0.bin', import.meta.url)));
+    const opened = validatePatch(JSON.parse(readFileSync(new URL('./test-fixtures/monolith-d-1.25.0.json', import.meta.url), 'utf8')), DEFS);
     const src = parseBinary(bin)!;
     expect(src).not.toBeNull();
     expect(src.version).toBeGreaterThanOrEqual(55);
     expect(src.version).toBeLessThanOrEqual(65);
-    expect(src.bus).toBe(true);
+    expect(src.bus?.map((s) => s.kind)).toEqual([0, 1, 2, 3]);
     expect(src.rack).toBeUndefined();
+    const text = (b: BinPatch): string => JSON.stringify(b, (_k, v) => (v instanceof Map ? [...v] : v));
+    // what plays: the engine on the device form, a held chord through the drawer's effects switched on
+    const render = (p: Patch): Float32Array => {
+      const e = new Engine(DEVICE_SR);
+      e.load(p, true);
+      for (const id of [41, 42, 43, 44, 45, 46, 47]) e.setBypass(id, false);
+      for (const n of [48, 55, 60]) e.noteOn(n, 0.8);
+      const out = new Float32Array(2 * DEVICE_SR);
+      const l = new Float32Array(DEVICE_SR), r = new Float32Array(DEVICE_SR);
+      e.render(l, r);
+      out.set(l);
+      out.set(r, DEVICE_SR);
+      return out;
+    };
+    // (the JSON's values as the binary holds them, Q16.16, as scripts/reader-roundtrip.ts `held` does; a default stays exact)
+    const held = structuredClone(opened);
+    for (const m of held.modules) {
+      const def = (k: string): number | undefined => DEFS[m.type]?.params.find((x) => x.name === k)?.default;
+      const q = (v: number, d = NaN): number => (toQ16(v) === toQ16(d) ? d : toQ16(v) / Q);
+      for (const k of Object.keys(m.params)) m.params[k] = q(m.params[k], def(k));
+      if (m.att) m.att = [q(m.att[0]), q(m.att[1])];
+    }
+    const heard = render(held);
+    expect(heard.some((x) => Math.abs(x) > 1e-3)).toBe(true);
+    const targets = (p: Patch): unknown => {
+      const e = new Engine(DEVICE_SR);
+      e.load(p, true);
+      return [PANEL_BUTTONS.map((b) => toggleTargets(p, b)), e['btnTargets']];   // (the engine's own: what each button switches)
+    };
     for (const library of [browserLibrary(), [...shippedLibrary(), ...Object.values(FM1_PRESETS).flatMap((mk) => patchDefs(mk()))]]) {
       const read = readFromFm1(bin, { name: 'Monolith D', library })!;
       expect(read).not.toBeNull();
       expect(read.exact).toBe(false);   // (the editor writes no bus)
-      expect([read.devices, read.recognised]).toEqual([2, 1]);   // (Monolith D rebuilt; the bus's FX device has no definition)
+      // FX drawers, no plain "FX" card
+      const asm = read.patch.assemblies!;
+      expect(asm.some((a) => a.drawer)).toBe(true);
+      expect(asm.some((a) => a.name === 'FX' && !a.drawer)).toBe(false);
+      expect(asm.filter((a) => a.drawer).map((a) => a.name)).toEqual(opened.assemblies!.filter((a) => a.drawer).map((a) => a.name));
+      // the same sound, and the FX button and the Toggles switch the same modules, as the JSON opened the old way
+      expect(read.patch.modules.map((m) => [m.id, m.type])).toEqual(opened.modules.map((m) => [m.id, m.type]));
+      const got = render(read.patch);
+      expect(got.findIndex((x, i) => x !== heard[i]), 'first sample that differs').toBe(-1);
+      expect(targets(read.patch)).toEqual(targets(opened));
+      // written back: format 66's rack, byte for byte what the opened JSON writes
       const again = parseBinary(encodePatch(read.patch, true))!;
-      // what the FM-1 plays: the bus is metadata the engine skips (eng_skip_fx), the cables carry the sound
-      for (const k of ['modules', 'cables', 'groups', 'routes', 'panel', 'buttons', 'devices'] as const) expect(again[k], k).toEqual(src[k]);
-      expect(again.version).toBe(src.version);
-      expect(again.bus).toBe(false);
-      expect(again.rack).toBeUndefined();
-      expect(again.flags).toBe(src.flags & ~(1 << 14));
-      // the bus's FX device comes back as a plain card, not an FX drawer (nothing in the binary but the bus says it was
-      // one, and the reader drops the bus); its device extras list the same members, its rows in the card's own order
-      const fx = read.patch.assemblies!.find((a) => a.name === 'FX')!;
-      expect(fx.drawer).toBeUndefined();
-      expect(read.patch.assemblies!.some((a) => a.drawer)).toBe(false);
-      expect(fx.modules.map((id) => read.patch.modules.find((m) => m.id === id)!.type)).toEqual(expect.arrayContaining(['shape', 'chorus', 'delay', 'reverb']));
-      const fxExtra = src.extras.findIndex((e) => e.members.length && e.track === 255 && e.structure !== 0);
-      expect(again.extras[fxExtra].members).toEqual(src.extras[fxExtra].members);
-      expect([...again.extras[fxExtra].rows].sort()).toEqual([...src.extras[fxExtra].rows].sort());
-      expect(again.extras.filter((_, i) => i !== fxExtra)).toEqual(src.extras.filter((_, i) => i !== fxExtra));
+      expect(again.version).toBeGreaterThanOrEqual(66);
+      expect(again.bus).toBeUndefined();
+      expect(again.rack?.effects.map((e) => e.targets)).toEqual(src.bus!.map((s) => s.targets));
+      expect(text(again)).toBe(text(parseBinary(encodePatch(opened, true))!));
     }
   });
 

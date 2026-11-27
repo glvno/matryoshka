@@ -3,9 +3,9 @@
 import SOURCE from '../factory/bank.json';
 import AUDIT from '../factory/fx-audit.json';
 import { setKind, kindOf, setSwitches, setTarget, switches } from './buttons';
-import { addDrawer, convertLegacyBus, insertEffect } from './fx-drawer';
+import { addDrawer, convertLegacyBus, insertEffect, legacyStageName, promoteLegacyRows } from './fx-drawer';
 import { fxBusOf, LEGACY_STAGE_ROWS, type FxStageKind } from './fx-legacy';
-import { assembliesOf, bypassAssembly, exposePort, makeAssembly, mergeRows, parentOf, promote, type AssemblyInst, type RowTarget } from './assembly';
+import { assembliesOf, bypassAssembly, exposePort, makeAssembly, parentOf, type AssemblyInst, type RowTarget } from './assembly';
 import { sharedFilterFactory } from './factory-paraphony';
 import { sharedCassiaContours } from './factory-cassia-sharing';
 import { sharedAlgoContours } from './factory-algo-sharing';
@@ -274,15 +274,6 @@ function withKitDrawer(p: Patch, types: readonly string[]): Patch {
 }
 
 const BUS_KINDS: readonly FxStageKind[] = ['drive', 'chorus', 'delay', 'reverb'];
-const busName = (kind: FxStageKind): string => kind === 'drive' ? 'Drive' : kind[0].toUpperCase() + kind.slice(1);
-
-function promoteRows(p: Patch, a: AssemblyInst, rows: RowTarget[][], kind: FxStageKind): void {
-  rows.forEach((targets, i) => {
-    for (const t of targets) promote(a, t.module, t.param, p);
-    for (const t of targets.slice(1)) mergeRows(p, a, DEFS, targets[0], t);
-    a.params.find((r) => r.module === targets[0].module && r.param === targets[0].param)!.label = LEGACY_STAGE_ROWS[kind][i];
-  });
-}
 
 /**
  * The factory master FX bus of D-888 as the releases before 1.26.3 built it (the stages but the omitted ones, every
@@ -372,8 +363,8 @@ export function withFxBus(source: Patch, options: { omit?: readonly FxStageKind[
   for (const c of original) disconnect(p, c);
   previous.forEach((sources, ch) => sources.forEach((from) => wire(from, end(output.id, ch ? 'r' : 'l'))));
   const children = stages.map((stage) => {
-    const a = makeAssembly(p, stage.members, busName(stage.kind));
-    promoteRows(p, a, stage.rows, stage.kind);
+    const a = makeAssembly(p, stage.members, legacyStageName(stage.kind));
+    promoteLegacyRows(p, a, stage.rows, stage.kind);
     for (const input of stage.inputs) exposePort(a, 'in', input.module, input.port);
     // The group switch's own form (bypassAssembly): no member was off before it, so all come back on with it.
     a.bypass = true;
@@ -383,8 +374,8 @@ export function withFxBus(source: Patch, options: { omit?: readonly FxStageKind[
   const root = makeAssembly(p, [...corrections.values()], 'FX', children.map((a) => a.id));
   for (const input of stages[0].inputs) exposePort(root, 'in', input.module, input.port, undefined, p);
   for (const stage of stages) {
-    promoteRows(p, root, stage.rows, stage.kind);
-    root.params.find((r) => r.module === stage.rows[0][0].module)!.head = busName(stage.kind);
+    promoteLegacyRows(p, root, stage.rows, stage.kind);
+    root.params.find((r) => r.module === stage.rows[0][0].module)!.head = legacyStageName(stage.kind);
   }
   if (!fxBusOf(p, DEFS)) throw new Error('FX bus construction did not produce a proven stereo master insert');
   return p;

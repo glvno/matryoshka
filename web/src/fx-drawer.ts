@@ -19,15 +19,18 @@ import {
   drawerOfEffect,
   drawers,
   effectsOf,
+  exposePort,
   findRef,
   insertAssembly,
   makeAssembly,
+  mergeRows,
   moveAssembly,
   outputDrawer,
   ownerOf,
   parentOf,
   reconcile,
   removeChild,
+  promote,
   removeMember,
   rowTargets,
   targetsOf,
@@ -35,13 +38,14 @@ import {
   validateAssemblyDef,
   type AssemblyDef,
   type AssemblyInst,
+  type RowTarget,
   type ChainMode,
   type ParamRef,
   type PortRef,
   type Target,
   uniqueLabel,
 } from './assembly';
-import { convertLegacyBus as convertBus, LEGACY_STAGE_ROWS, type FxStageKind } from './fx-legacy';
+import { convertLegacyBus as convertBus, fxBusOf, LEGACY_STAGE_ROWS, type FxStageKind } from './fx-legacy';
 import { DEFS } from './modules';
 import { addModule, connect, disconnect, sameEnd, type Cable, type Endpoint, type ModuleInst, type Patch } from './patch';
 import { PAIR_LEFT, stereoModule } from './stereo';
@@ -563,6 +567,60 @@ export function removeEffect(p: Patch, effectId: number): void {
 
 /** the D-1010 bus of an old patch as an FX drawer (fx-legacy.ts; validatePatch does it on open) */
 export const convertLegacyBus = (p: Patch): Patch => convertBus(p, DEFS);
+
+/** a D-1010 stage's card name */
+export const legacyStageName = (kind: FxStageKind): string => kind[0].toUpperCase() + kind.slice(1);
+
+/** promote a D-1010 stage's rows onto a card (one row per control, both channels tied), labelled as the stage's card had them */
+export function promoteLegacyRows(p: Patch, a: AssemblyInst, rows: RowTarget[][], kind: FxStageKind): void {
+  rows.forEach((targets, i) => {
+    for (const t of targets) promote(a, t.module, t.param, p);
+    for (const t of targets.slice(1)) mergeRows(p, a, DEFS, targets[0], t);
+    a.params.find((r) => r.module === targets[0].module && r.param === targets[0].param)!.label = LEGACY_STAGE_ROWS[kind][i];
+  });
+}
+
+const STAGE_KINDS: readonly FxStageKind[] = ['drive', 'chorus', 'delay', 'reverb'];
+
+/**
+ * An old binary's master FX bus (formats 55..65: each stage's kind, 0 drive to 3 reverb, and its target modules) over the
+ * plain card that holds its modules: the card becomes the D-1010 bus (its stages its children, as the editor wrote it) and
+ * convertLegacyBus turns that into FX drawers, as opening such a patch's JSON does. Null when the card is not exactly that bus.
+ */
+export function restoreLegacyBus(src: Patch, stages: readonly { kind: number; targets: readonly number[] }[]): Patch | null {
+  const p = structuredClone(src);
+  const kinds = stages.map((s) => STAGE_KINDS[s.kind]);
+  const card = assembliesOf(p).find((a) => !parentOf(p, a.id) && !a.children?.length && stages.every((s) => s.targets.every((id) => a.modules.includes(id))));
+  if (!card || !stages.length || kinds.some((k) => !k)) return null;
+  const targets = new Set(stages.flatMap((s) => s.targets));
+  // the root's own members: the Chorus / Delay corrections (fed by those stages' targets), the rest the Reverb's helpers
+  const corrections = card.modules.filter((id) => !targets.has(id) && p.cables.some((c) => c.to.module === id && c.to.port === 'a' &&
+    stages.some((s, i) => (kinds[i] === 'chorus' || kinds[i] === 'delay') && s.targets.includes(c.from.module))));
+  const helpers = card.modules.filter((id) => !targets.has(id) && !corrections.includes(id));
+  const typeOf = (id: number): string | undefined => p.modules.find((m) => m.id === id)?.type;
+  try {
+    const built = stages.map((s, i) => {
+      const kind = kinds[i];
+      const rows = kind === 'reverb'
+        ? LEGACY_STAGE_ROWS.reverb.map((param) => [param === 'mix' ? { module: helpers.find((id) => typeOf(id) === 'macro')!, param: 'value' } : { module: s.targets[0], param }])
+        : LEGACY_STAGE_ROWS[kind].map((param) => s.targets.map((module) => ({ module, param })));
+      const a = makeAssembly(p, kind === 'reverb' ? [...s.targets, ...helpers] : [...s.targets], legacyStageName(kind));
+      promoteLegacyRows(p, a, rows, kind);
+      const inputs = kind === 'reverb' ? helpers.filter((id) => typeOf(id) === 'scale') : s.targets;
+      for (const id of inputs) exposePort(a, 'in', id, 'in');
+      if (s.targets.every((id) => p.modules.find((m) => m.id === id)!.bypass)) Object.assign(a, { bypass: true, kept: [] });
+      return { kind, rows };
+    });
+    card.params = [];
+    for (const s of built) {
+      promoteLegacyRows(p, card, s.rows, s.kind);
+      card.params.find((r) => r.module === s.rows[0][0].module)!.head = legacyStageName(s.kind);
+    }
+  } catch {
+    return null;
+  }
+  return fxBusOf(p, DEFS) ? convertBus(p, DEFS) : null;
+}
 
 // ---- wrapping: a plain module or a mono assembly as a stereo effect ----
 
