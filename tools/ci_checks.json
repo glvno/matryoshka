@@ -136,12 +136,14 @@
     "factory": ["sh", "tools/factory_test.sh"],
     "font-area": ["sh", "tools/font_area_test.sh"],
     "floor": ["sh", "tools/floor_test.sh"],
+    "dx7": ["sh", "tools/dx7_test.sh"],
     "worktree-gc": ["python3", "tools/worktree_gc_test.py"]
   },
-  "full_host": ["pan", "golden", "buffer-budget", "sched-record", "aot", "usb", "usb_return", "clock", "clock-in", "peak", "audio", "frame", "ota", "guard", "power", "input", "installer", "panel", "preset", "preset-pattern", "bank", "patstore", "ui", "fx-tail", "harness-compile", "patlink", "factory", "font-area", "floor", "palette", "pal-fade", "pal-preset"],
+  "full_host": ["pan", "golden", "buffer-budget", "sched-record", "aot", "usb", "usb_return", "clock", "clock-in", "peak", "audio", "frame", "ota", "guard", "power", "input", "installer", "panel", "preset", "preset-pattern", "bank", "patstore", "ui", "fx-tail", "harness-compile", "patlink", "factory", "font-area", "floor", "palette", "pal-fade", "pal-preset", "dx7"],
   "optional_host": {"usb_return": "firmware/src/usb_return.h"},
   "rules": [
     {"name": "Pan arithmetic", "paths": ["firmware/src/engine.c", "firmware/test/pan_exact_test.c", "tools/pan_test.sh"], "host": ["pan"], "web": []},
+    {"name": "The DX7 voice (#1338): the C port against the OPS chip's algorithm ROM and the corpus hashes, the TypeScript port against the same hashes", "paths": ["firmware/src/dx7.h", "firmware/src/dx7_tables.h", "firmware/src/dsp_tables.h", "firmware/test/dx7_test.c", "firmware/test/dx7_hashes.h", "tools/dx7_test.sh", "tools/gen_dx7_tables.py", "web/src/dx7.ts", "web/src/dx7.test.ts"], "host": ["dx7"], "web": ["web/src/dx7.test.ts"]},
     {"name": "Fixed-point floors (#969)", "paths": ["firmware/src/engine*", "firmware/src/defs.h", "firmware/test/host_test.c", "web/src/engine.ts", "web/src/modules.ts", "web/scripts/floor-kits.ts", "tools/floor_test.sh", "tools/floor_known.txt"], "host": ["floor"], "web": []},
     {"name": "Signal buffer accounting", "paths": ["firmware/test/buffer_budget.c", "tools/buffer_budget.py", "web/scripts/buffer-budget.ts", "web/src/signal-buffers.ts", "web/src/test-buffer-budget.ts", "firmware/src/engine*", "firmware/src/proto.c", "firmware/src/aot*", "firmware/src/defs.h", "firmware/test/lanes_host.h", "web/src/modules.ts", "web/src/poly.ts", "web/src/device-compile.ts", "web/src/patchbin.ts", "web/scripts/gen-aot.ts"], "host": ["buffer-budget"], "web": []},
     {"name": "Two-core plan with and without its wait record (#1073)", "paths": ["firmware/src/engine.c", "firmware/src/defs.h", "firmware/test/sched_dump.c", "firmware/test/lanes_host.h", "tools/sched_record.sh"], "host": ["sched-record"], "web": []},
