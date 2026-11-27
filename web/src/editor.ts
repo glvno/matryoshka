@@ -108,6 +108,7 @@ import { isGlobalTempo, patchTempo, tempo } from './tempo';
 import { rowOrder } from './structure';
 import { PAIR_LEFT, runsStereo, setStereo, stereoModule, stereoProblem } from './stereo';
 import type { Card } from './quick-patch';
+import { Dx7Card } from './dx7-view';
 import { EXCLUDED_TYPES,
   addChild,
   addMember,
@@ -1443,8 +1444,9 @@ export class Editor {
       return { el: this.paramRow(m, def, pd, { open, ...named, ...pos }), input: pd.input ? { module: m.id, port: pd.input } : undefined, gap: i > 0 && starts[i] };
     });
     // a second Main card (from an old patch) keeps its B side under the rows
-    // the Output card: its loudness readout under the level (#940); a Limiter's: its gain reduction (#1019)
-    const readout = def.type === 'output' ? this.ev.outputReadout?.() : def.type === 'limit' ? this.ev.limitReadout?.(m.id) : undefined;
+    // the Output card: its loudness readout under the level (#940); a Limiter's: its gain reduction (#1019); a DX7's voice (#1338)
+    const readout = def.type === 'output' ? this.ev.outputReadout?.() : def.type === 'limit' ? this.ev.limitReadout?.(m.id) : def.type === 'dx7' ? this.dx7.element(m) : undefined;
+    if (def.type === 'dx7') this.dx7.dropOnto(el, m);   // (a .syx dropped onto the card imports it)
     const extra = def.type === 'fm1' ? [this.morphRow()] : steps ? def.views!.map((pd) => this.paramRow(m, def, pd, { open })) : readout ? [readout] : [];
     body.append(...this.edgeLayout(ins, outs, params, extra));
     el.append(head, body);
@@ -1455,6 +1457,16 @@ export class Editor {
     }
     return el;
   }
+
+  /** the DX7 cards' voice editors (dx7-view.ts): an edit is one undoable change of the module's voice */
+  private dx7 = new Dx7Card({
+    setVoice: (id, hex) => {
+      const m = this.patch.modules.find((x) => x.id === id);
+      if (m && m.voice !== hex) this.change(() => (m.voice = hex));
+    },
+    say: (msg) => this.ev.onError(msg),
+    redraw: () => this.rebuild(),
+  });
 
   /** the Steps modules' grids drawn in this rebuild, by module id */
   private stepGrids = new Map<number, StepGrid>();
