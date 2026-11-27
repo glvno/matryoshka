@@ -1,0 +1,108 @@
+{
+ "a": "/Users/mg/projects/music/fm1/modular-1/build/release-1.28.1/qual/aud909-1.28.0.json",
+ "b": "/Users/mg/projects/music/fm1/modular-1/build/release-1.28.1/qual/aud909-1.28.1.json",
+ "notes": {
+  "54": {
+   "peak": 1544,
+   "max_diff": 1520,
+   "share_differ": 0.07424,
+   "floor_a": 1909,
+   "floor_b": 1908
+  },
+  "55": {
+   "peak": 1962,
+   "max_diff": 1924,
+   "share_differ": 0.04282,
+   "floor_a": 1776,
+   "floor_b": 2016
+  },
+  "56": {
+   "peak": 2455,
+   "max_diff": 2664,
+   "share_differ": 0.05964,
+   "floor_a": 2094,
+   "floor_b": 2566
+  },
+  "57": {
+   "peak": 666,
+   "max_diff": 613,
+   "share_differ": 0.11263,
+   "floor_a": 694,
+   "floor_b": 679
+  },
+  "59": {
+   "peak": 992,
+   "max_diff": 1203,
+   "share_differ": 0.04328,
+   "floor_a": 1216,
+   "floor_b": 1276
+  },
+  "60": {
+   "peak": 526,
+   "max_diff": 638,
+   "share_differ": 0.4028,
+   "floor_a": 641,
+   "floor_b": 690
+  },
+  "62": {
+   "peak": 572,
+   "max_diff": 918,
+   "share_differ": 0.2973,
+   "floor_a": 460,
+   "floor_b": 73
+  },
+  "63": {
+   "peak": 569,
+   "max_diff": 408,
+   "share_differ": 0.30975,
+   "floor_a": 339,
+   "floor_b": 577
+  },
+  "64": {
+   "peak": 613,
+   "max_diff": 354,
+   "share_differ": 0.02118,
+   "floor_a": 408,
+   "floor_b": 420
+  },
+  "65": {
+   "peak": 574,
+   "max_diff": 430,
+   "share_differ": 0.23679,
+   "floor_a": 97,
+   "floor_b": 71
+  },
+  "66": {
+   "peak": 592,
+   "max_diff": 270,
+   "share_differ": 0.25049,
+   "floor_a": 366,
+   "floor_b": 622
+  },
+  "67": {
+   "peak": 599,
+   "max_diff": 746,
+   "share_differ": 0.27157,
+   "floor_a": 46,
+   "floor_b": 854
+  },
+  "68": {
+   "peak": 582,
+   "max_diff": 865,
+   "share_differ": 0.28777,
+   "floor_a": 715,
+   "floor_b": 849
+  },
+  "69": {
+   "peak": 586,
+   "max_diff": 678,
+   "share_differ": 0.97395,
+   "floor_a": 712,
+   "floor_b": 691
+  }
+ },
+ "worst": 2664,
+ "silent_notes": [],
+ "over_floor": [],
+ "ok": true
+}
