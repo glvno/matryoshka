@@ -3579,6 +3579,85 @@ async function main() {
       }
       await openSynced('Init');
     },
+    async paletteReadBack() {   // owner 2026-11-27: a tweak added to the palette whose slot holds a version this browser has no copy of goes in as a preset on that slot, read back (SLOT_GET), not as a new patch
+      const NAME = 'PAL RB', SOUND = 'Pal RB', GIVEN = 'Pal RB pluck';
+      const pal = async () => (await T()).palette;
+      const statusText = () => page.evaluate(() => document.getElementById('audio-status')?.textContent ?? '');
+      const sentSince = (t) => page.evaluate((t0) => window.__sent.filter((s) => s[0] >= t0).map((s) => s[1]), t);
+      const now = () => page.evaluate(() => Math.round(performance.now()));
+      const hex = (s) => s.map((c) => c.toString(16)).join(' ');
+      /** Hera 6 named Pal RB, its instrument's card row `row` moved by `by` of its range, at tempo `tempo` (undefined: its own) */
+      const variant = (row, by, tempo) => page.evaluate(async ([r, b, t, n]) => {
+        const { FM1_PRESETS } = await import('/src/presets.ts');
+        const { rowOrder } = await import('/src/structure.ts');
+        const { currentValues } = await import('/src/device-presets.ts');
+        const { setRows } = await import('/src/fx-preset.ts');
+        const { DEFS } = await import('/src/modules.ts');
+        const p = FM1_PRESETS['Hera 6']();
+        p.name = n;
+        const a = p.assemblies.find((x) => x.name === 'Hera 4');
+        const rows = rowOrder(p, a), values = currentValues(p, a);
+        const pd = DEFS[p.modules.find((x) => x.id === rows[r].module).type].params.find((x) => x.name === rows[r].param);
+        const step = (pd.max - pd.min) * b;
+        values[r] += values[r] + step <= pd.max ? step : -step;
+        setRows(p, rows, values);
+        if (t !== undefined) p.modules.find((m) => m.type === 'fm1').params.tempo = t;
+        return JSON.stringify(p);
+      }, [row, by, tempo, SOUND]);
+      await check('palette read back: Init opens, synced', await openSynced('Init'));
+      await check('palette read back: the chips are live (an FM-1 that keeps a palette and sends slots back)', !!(await until(async () => (await pal())?.linked, 4000)));
+      const slots = await page.evaluate(() => window.__m1test.slots());
+      // (a full palette, as paletteEditor leaves it: the last position emptied for this add)
+      if ((await pal()).chips.every((c) => c.state !== 'empty')) {
+        await page.evaluate(() => document.querySelector('#snap-column .pal-chip[data-pos="7"] .pal-x')?.click());
+        await until(async () => (await pal()).chips[7]?.state === 'empty', 4000);
+      }
+      const slot = slots.findIndex((s) => !s.used), pos = (await pal()).chips.findIndex((c) => c.state === 'empty');
+      if (slot < 0 || pos < 0) return skip('palette read back: a tweak goes in as a preset on a slot this browser has no copy of', slot < 0 ? 'the bank has no empty slot' : 'the palette has no empty position');
+      // (what an earlier add, an FM-1 hold-save of its own edits or another browser left there: a Pal RB this browser never had)
+      const held = await variant(1, 0.2, 97);
+      const bin = await page.evaluate(async ([json, alloc]) => {
+        const { encodePatch } = await import('/src/patchbin.ts');
+        return Array.from(encodePatch(JSON.parse(json), false, 0, alloc));
+      }, [held, (await T()).bufferAllocation]);
+      try {
+        await page.evaluate(([n, nm, b]) => window.__m1test.storeBin(n, nm, b), [slot, NAME, bin]);
+        await check(`palette read back: a Pal RB with other card values and tempo 97 stored into slot ${slot + 1} as ${NAME}`, await page.evaluate(([n, nm]) => window.__m1test.slots().then((x) => x[n].used && x[n].name === nm), [slot, NAME]));
+        // the editor's Pal RB: another card row moved, its own tempo
+        await check('palette read back: the editor opens its own Pal RB (another card row moved), synced', await openSynced('Hera 6', async (n) => page.evaluate(([x, j]) => window.__m1test.openFactory(x, j), [n, await variant(0, 0.1)])));
+        const t0 = await now();
+        await page.keyboard.down('Control'); await page.keyboard.press('k'); await page.keyboard.up('Control');
+        await page.waitForSelector('#commands[open]', { timeout: 3000 }).catch(() => {});
+        await page.fill('#commands-input', 'add to palette');
+        await page.keyboard.press('Enter');
+        // (the name prompt answered with a name of the user's own, as the owner names his sounds)
+        const asked = !!(await page.waitForSelector('.name-prompt input', { timeout: 4000 }).catch(() => null));
+        await page.fill('.name-prompt input', GIVEN).catch(() => {});
+        await page.keyboard.press('Enter');
+        await check('palette read back: Commands > Add to palette asks for a name; given Pal RB pluck', asked);
+        await check(`palette read back: chip ${pos + 1} on slot ${slot + 1} · ${NAME} with preset ${GIVEN}`, !!(await until(async () => { const c = (await pal()).chips[pos]; return c?.name === NAME && c.presets.includes(GIVEN); }, 10000)), JSON.stringify([(await pal()).chips[pos], await statusText()]));
+        const sent = await sentSince(t0);
+        await check('palette read back: it read the slot back (SLOT_GET), sent one preset (PRESET_PUT) and stored no patch (no SLOT)', sent.includes(0x02) && sent.filter((c) => c === 0x2f).length === 1 && !sent.includes(0x13), hex(sent));
+        await check(`palette read back: the line says it plays the tempo of slot ${slot + 1}`, (await statusText()).endsWith(`It plays the tempo of slot ${slot + 1}`), await statusText());
+        const after = await page.evaluate((n) => window.__m1test.slotBin(n), slot);
+        await check(`palette read back: slot ${slot + 1} holds what it held`, JSON.stringify(after) === JSON.stringify(bin));
+        const kept = await page.evaluate(async (g) => {
+          const { userPresets } = await import('/src/device-presets.ts');
+          const mine = userPresets().find((x) => x.name === g);
+          const there = mine ? await window.__m1test.fm1Preset(mine.structure, mine.name) : null;
+          return { mine: !!mine, same: !!there && there.length === mine.values.length && there.every((v, i) => Math.abs(v - mine.values[i]) < 1e-4) };
+        }, GIVEN);
+        await check(`palette read back: preset ${GIVEN} in this browser's presets and on the FM-1 with the same values`, kept.mine && kept.same, JSON.stringify(kept));
+        await shot('palette-read-back');
+      } finally {
+        await page.evaluate((p) => document.querySelector(`#snap-column .pal-chip[data-pos="${p}"] .pal-x`)?.click(), pos).catch(() => {});
+        await until(async () => (await pal())?.chips[pos]?.state === 'empty', 4000);
+        // (the slot stored, and a patch the add stored when it failed to reach the slot with a preset)
+        const left = (await page.evaluate(() => window.__m1test.slots()).catch(() => [])).filter((s) => s.used && (s.slot === slot || s.name === GIVEN.toUpperCase()));
+        for (const s of left) await page.evaluate((n) => window.__m1test.eraseSlot(n), s.slot).catch((err) => console.log(`  note: slot ${s.slot + 1} not emptied: ${err.message}`));
+      }
+      await openSynced('Init');
+    },
     async editorIgnore() {   // #702: GLO > SYSTEM > EDITOR at IGNORE: the editor lets go, Connect skips the FM-1 and says why
       // (the rig tools' page connects to an FM-1 at IGNORE all the same: the test rig is set so, D-123)
       if (DEVICE) return skip('editor ignore: the editor leaves an FM-1 at IGNORE alone', 'the test tools\' page connects to it by design (#702)');

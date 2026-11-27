@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Fixed: Add to palette stored a whole new patch for a tweak of a sound your FM-1 already has.** When the FM-1's slot held a version of that patch this browser had no exact copy of (stored by an earlier add, saved on the FM-1 after turning its knobs, or written by another browser), every add from the editor took a new slot, saying "no patch of its name with its modules and cables is on the FM-1". The editor now reads that slot back from the FM-1 and compares it with the sound: when they differ only in card values, tempo and patterns, the sound goes in as a preset on that slot under the name you give it, as the FM-1's own HOME + key save does. When the slot differs in another setting, the patch is still stored and the status line names that slot. A drag onto a chip, Add to palette and Send to FM-1 from Library › Palettes all work this way ([D-1240](docs/ledger/patches-and-presets.md#D-1240)).
+- Opening a slot read back from the FM-1 now shows its FX drawer's switched-off effects as off (they showed as on, though they played off).
+
 ## 1.29.0 — 2026-11-27
 
 - **This editor syncs only with firmware 1.29.0: update your FM-1 before you sync it.** The editor now reads and writes patch format 70, which only the 1.29.0 firmware reads, so an FM-1 still on 1.28.x or older does not sync until it is updated: the editor says "update it to sync" and the Install panel offers the update. A patch is saved in format 70 only when a Freq shifter's `pm` is cabled or its row turned; every other patch keeps its format byte for byte. The editor also offers a factory sounds update (version 24): the same sounds as version 23, so installing it changes nothing you hear, and your saved slots stay as they are ([D-1043](docs/ledger/patch-format.md#D-1043), [D-1020](docs/ledger/patch-format.md#D-1020)).

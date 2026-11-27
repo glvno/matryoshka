@@ -10,7 +10,7 @@
 // encodes to what the plain read gives (patch-reader.ts keeps): it never changes what the FM-1 plays.
 import { FACTORY, loadLibrary } from './assemblies';
 import {
-  assembliesOf, assemblyById, descendants, insertAssembly, reconcile, rowTargets, toDef, type AssemblyDef, type AssemblyInst,
+  assembliesOf, assemblyById, chainHelpers, descendants, deviceModules, insertAssembly, reconcile, rowTargets, toDef, type AssemblyDef, type AssemblyInst,
   type NestedDef, type ParamRef, type PortRef,
 } from './assembly';
 import { savedPatches } from './saved';
@@ -336,7 +336,10 @@ const audioRefs = (p: Patch, list: PortRef[], dir: 'in' | 'out'): number[] => li
  * The FX rack the binary lists made again (format 66, #1214): each listed effect's card gets its stereo chain ports (a
  * definition's when it was rebuilt from one, else its first two audio ports, the cables decide nothing the binary holds),
  * and each FX drawer becomes a drawer holding its effects in order, an instrument's inside the instrument's card (its taps:
- * the instrument's ports that feed the first effect, else those cabled to the Output), the Output drawer on its own.
+ * the instrument's ports that feed the first effect, else those cabled to the Output), the Output drawer on its own. An
+ * effect whose every module its switch moves is bypassed is switched off, as bypassAssembly leaves it (the binary keeps
+ * only the modules' bypass; a drawer preset's on/off reads the switch, so without it a slot read back captured every
+ * effect on, owner 2026-11-27).
  */
 export function rebuildRack(p: Patch, keys: string[], b: BinPatch): void {
   if (!b.rack) return;
@@ -371,6 +374,14 @@ export function rebuildRack(p: Patch, keys: string[], b: BinPatch): void {
       owner.children = [...(owner.children ?? []), d.id];
     }
     p.assemblies = [...assembliesOf(p), d];
+  }
+  const helpers = chainHelpers(p);
+  for (const e of effects) {
+    if (!e?.chain) continue;
+    const moved = deviceModules(p, e).filter((id) => !helpers.has(id));
+    if (!moved.length || !moved.every((id) => p.modules.find((m) => m.id === id)?.bypass)) continue;
+    e.bypass = true;
+    e.kept = [];
   }
 }
 const targetsOfRef = (r: PortRef | undefined): { module: number; port: string }[] => (r ? [{ module: r.module, port: r.port }, ...(r.also ?? [])] : []);
