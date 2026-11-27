@@ -1,15 +1,17 @@
-msfa (the synthesis core of Dexed), ported to C as firmware/src/fm6_core.c
+msfa (the synthesis core of Dexed), ported for Matryoshka's DX7 module
 
 Copyright 2012 Google Inc.
 Copyright 2016-2025 Pascal Gauthier
-Source: https://github.com/asb2m10/dexed (Source/msfa)
-C port for Felucca (integer only), 2026: Leo Kuroshita (@kurogedelic), Hügelton Instruments
-Changes: no float (the start-up tables precomputed by tools/gen_tables.py), Felucca's sine table, 32-sample
-blocks; no portamento, controllers, MPE or microtuning (see the head of src/fm6_core.c).
+Source: https://github.com/asb2m10/dexed (Source/msfa at c314161a)
+Port: firmware/src/dx7.h (C), web/src/dx7.ts (TypeScript, the same code), tools/gen_dx7_tables.py and its output
+firmware/src/dx7_tables.h, 2026, Matryoshka (glvno).
+Changes (marked "FM-1:" in firmware/src/dx7.h): one voice per module copy; the firmware's sine, exp2 and frequency
+tables; const tables for 44,118 Hz; no floating point, tuning, MTS-ESP, MPE, portamento or pitch-bend wheel; the
+DX7's feedback loops of algorithms 4 and 6; operators that an outside signal can replace.
 
-msfa is licensed under the Apache License, Version 2.0 (below); src/fm6_core.c keeps that licence.
-Dexed as a whole is GPL-3.0; Felucca (GPL-3.0-only) takes only msfa from it. Apache-2.0 code may be
-combined into a GPL-3.0 work; the firmware built with it is GPL-3.0-only as a whole.
+msfa is licensed under the Apache License, Version 2.0 (below); those files keep that licence.
+Dexed as a whole is GPL-3.0; Matryoshka (GPL-3.0-only) takes only msfa from it. Apache-2.0 code may be
+combined into a GPL-3.0 work; the firmware and the editor built with it are GPL-3.0-only as a whole.
 
 ------------------------------------------------------------------------------
 
