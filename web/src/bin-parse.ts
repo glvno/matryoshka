@@ -77,9 +77,10 @@ export interface BinPatch {
   buttons?: { kinds: number[]; toggles: Map<string, number[]>; pages: Map<string, [number, number][]> };
   drumNames: Map<number, (string | undefined)[]>;
   origins: { module: number; pattern: number; id: number }[];
-  /** format 66's FX rack; `bus`: formats 55..65's master FX bus was there (the editor no longer writes one) */
+  /** format 66's FX rack; `bus`: formats 55..65's master FX bus, its stages (kind 0 drive, 1 chorus, 2 delay, 3 reverb,
+   *  ascending) and each stage's targets (module indices) */
   rack?: { effects: { device: number; targets: number[] }[]; drawers: { owner: number; first: number; count: number }[] };
-  bus: boolean;
+  bus?: { kind: number; targets: number[] }[];
   ranges: { module: number; pin: number; bi: boolean; par: number; lo: number; hi: number }[];
   maps: { src: number; module: number; par: number; lo: number; hi: number }[];
 }
@@ -314,18 +315,20 @@ function parse(bin: ArrayLike<number>): BinPatch | null {
   const origins: BinPatch['origins'] = [];
   if (flags & FLAG_PATTERN_ORIGINS) for (let k = r.u16(); k > 0; k--) origins.push({ module: r.u8(), pattern: r.u8(), id: r.u32() });
   let rack: BinPatch['rack'];
-  let bus = false;
+  let bus: BinPatch['bus'];
   if (flags & FLAG_RACK) {
     if (v >= FORMAT_RACK) {
       rack = { effects: [], drawers: [] };
       for (let k = r.u8(); k > 0; k--) { const device = r.u8(); const targets: number[] = []; for (let n = r.u8(); n > 0; n--) targets.push(r.u8()); rack.effects.push({ device, targets }); }
       for (let k = r.u8(); k > 0; k--) rack.drawers.push({ owner: r.u8(), first: r.u8(), count: r.u8() });
-    } else {   // (formats 55..65: the master FX bus, eng_skip_fx: u8 count, per stage four bytes, the last its target count, then the targets)
-      bus = true;
+    } else {   // (formats 55..65: the master FX bus, eng_skip_fx: u8 count, per stage four bytes, kind first and the target count last, then the targets)
+      bus = [];
       for (let k = r.u8(); k > 0; k--) {
-        r.at += 3;
-        const n = r.u8();
-        r.at += n;
+        const kind = r.u8();
+        r.at += 2;
+        const targets: number[] = [];
+        for (let n = r.u8(); n > 0; n--) targets.push(r.u8());
+        bus.push({ kind, targets });
       }
     }
   }

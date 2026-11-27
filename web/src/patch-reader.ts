@@ -20,7 +20,8 @@
 // group becomes a poly assembly fed by a Voicing; then assembly-match.ts swaps each card for the assembly definition this
 // browser has with the same structure fingerprint, when one does, and makes the FX drawers again. Each step is kept only
 // while every section the binary holds still encodes as it did (readFromFm1): matching never changes what the FM-1 plays.
-// A binary of formats 55..65 with the old master FX bus reads without it (the editor writes FX drawers instead).
+// A binary of formats 55..65 with the old master FX bus comes back as FX drawers, as the editor opens such a patch's JSON
+// (fx-drawer.ts restoreLegacyBus), and is written back as format 66's FX rack.
 import { DEFS, DRUM_MAP_DEFAULT, PANEL_BUTTONS } from './modules';
 import {
   defaultMap, defaultParams, trackName, validatePatch, type Cable, type ModuleInst, type Patch, type ParamDef, type Source,
@@ -34,6 +35,7 @@ import { applyPayload, fnv, FNV0 } from './pattern-store';
 import { SHARED_TYPES } from './patch';
 import { ALLOC } from './poly';
 import { matchAssemblies, rebuildRack } from './assembly-match';
+import { restoreLegacyBus } from './fx-drawer';
 import type { MidiBinding } from './midi-learn';
 
 export { linkedIds } from './bin-parse';
@@ -450,6 +452,17 @@ export function readFromFm1(bin: ArrayLike<number>, opts: { name: string; librar
     const p = structuredClone(patch);
     rebuildRack(p, keys, b);
     if (keeps(p)) patch = p;
+  }
+  if (b.bus) {
+    // (the old master FX bus as FX drawers, kept while the modules and cables, what plays, stay as they are: the drawers
+    // are written in format 66, whose rack, devices, extras and module layout differ by design, and an FX button that
+    // paged the bus does nothing now, fx-legacy.ts convertLegacyBus: the FM-1's FX button finds the drawers)
+    const p = restoreLegacyBus(patch, b.bus.map((s) => ({ kind: s.kind, targets: s.targets.map((i) => i + 1) })));
+    const sound = (q: Patch): string => JSON.stringify([q.modules.map(({ panel: _, ...m }) => m), q.cables]);
+    if (p && sound(p) === sound(patch)) {
+      patch = p;
+      held = matching(p);
+    }
   }
   if (b.buttons?.toggles.size) {   // (a Toggle that switches several modules: the card whose switch moves exactly them)
     const p = structuredClone(patch);
