@@ -311,7 +311,8 @@ static uint32_t host_led_mask(const uint8_t *a, uint32_t first)
 static void fm1_led_key(uint32_t id, int on) { host_led_set(fm1_led, id, on); fb_dirty |= 2; }
 #ifndef HOST_LED_HOOKS                      /* (the wasm build lights them as main.c does) */
 static void leds_avail(void) {}
-static void leds_octave(void) {}
+static uint32_t host_oct_leds;              /* the OCT LEDs set again (panel_test.c: a load's octave reset) */
+static void leds_octave(void) { host_oct_leds++; }
 #else
 static void leds_avail(void);
 static void leds_octave(void);

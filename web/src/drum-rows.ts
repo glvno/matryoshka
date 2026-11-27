@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // A drum track's rows as one list (docs/ledger/steps.md D-520, firmware/src/engine.c eng_steps_rows / eng_keys_rows): the
 // rows of every Drum map the track plays, directly or through the Arpeggiator it feeds, the maps in the FM-1's module
-// order. With two maps or more, the rows whose note is 0 are left out (unless that leaves none). The FM-1 shows the list
-// in banks of 8: black keys 1..8 play the bank shown, OCT (SEL + OCT on the SEQ page) picks it.
+// order. With two maps or more, the rows whose note is 0 are left out (unless that leaves none). Black keys 1..11 play 11
+// of them from a bank's first (rows 8b + 1 ..); OCT picks the bank, and the SEQ page's grid shows 8 at a time (D-521).
 import { keyReach } from './key-routing';
 import { DRUM_MAP_DEFAULT, DRUM_ROWS, drumRowName } from './modules';
 import type { ModuleInst, Patch } from './patch';

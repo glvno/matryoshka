@@ -1118,11 +1118,12 @@ static void fx_canvas_suite(void)
     ct_reset();
 }
 
-/* D-520, the banks (the owner, 2026-11-19): a drum track's rows are one list, the rows of every Drum map it plays; black
- * keys 1..8 play 8 of them, OCT picks which 8 on a device page (the footer ROWS 1-8 .. in the octave's place, a nudge naming
- * the bank), SEL + OCT on the SEQ page, where the grid shows those 8 with their names. A kit of 8 rows: as before */
-static const uint32_t BLACK_N[8] = {1, 3, 5, 8, 10, 13, 15, 17};   /* black keys 1..8 at octave 0 (F#3 G#3 A#3 C#4 ...) */
-/* black key b (0..7) pressed and let go: the note it sent on MIDI out, -1 none */
+/* D-520, the banks (the owner, 2026-11-19; 11 keys 2026-11-27): a drum track's rows are one list, the rows of every Drum
+ * map it plays; black keys 1..11 play 11 of them from the bank's first (rows 8b + 1 ..), OCT picks the bank on a device
+ * page when the keys reach more than 11 (the footer ROWS 1-11 .. in the octave's place, a nudge naming the rows). The SEQ
+ * page's grid shows 8 (D-521): SEL + OCT picks them, a black key or SELECT past them shows the bank holding the row */
+static const uint32_t BLACK_N[11] = {1, 3, 5, 8, 10, 13, 15, 17, 20, 22, 25};   /* black keys 1..11 at octave 0 (F#3 G#3 A#3 C#4 ...) */
+/* black key b (0..10) pressed and let go: the note it sent on MIDI out, -1 none */
 static int black_sends(uint32_t b)
 {
     int from = mlen, i, got = -1;
@@ -1137,7 +1138,7 @@ static int blacks_send(const int *want)
 {
     uint32_t b;
     int ok = 1;
-    for (b = 0; b < 8u; b++)
+    for (b = 0; b < 11u; b++)
         ok &= black_sends(b) == want[b];
     return ok;
 }
@@ -1147,7 +1148,7 @@ static void drum_open(const char *name)
     trail_n = 0;
     octave = 0;
     mlen = 0;                                               /* (the MIDI log from here: it holds 256) */
-    drum_bank = 0;
+    drum_bank = seq_view = 0;
     (void)load(name);
     pv_gen++;
     page_show(0);
@@ -1172,32 +1173,53 @@ static void sel_oct(uint32_t oct)                       /* SEL held + OCT- / OCT
     panel_edges(0, 1u << BTN_SEL);
     loop();
 }
+/* the first track into a Drum map, -1 none */
+static int drum_track(void)
+{
+    int t;
+    for (t = 0; t < eng_steps_count(); t++)
+        if (eng_steps_drummap((uint32_t)eng_steps_module((uint32_t)t)) >= 0)
+            return t;
+    return -1;
+}
+/* a patch loaded as every load path does it (a program change, a palette switch, the editor's upload or Live commit, a
+ * borrowed slot's return, the factory reset: each one is proto.c m1_set_current, which counts it in pages_gen) */
+static void load_as_device(const char *name)
+{
+    (void)load(name);
+    pv_gen++;
+    page_show(0);
+    screen_patch();
+    later(500);
+}
 static void drum_bank_suite(void)
 {
-    static const int K909[3][8] = {{53, 55, 57, 59, 60, 62, 64, 65}, {67, 69, 71, 72, 54, 56, 63, 68}, {66, -1, -1, -1, -1, -1, -1, -1}};
-    static const int K808[2][8] = {{53, 55, 57, 59, 60, 62, 64, 65}, {67, 69, 71, 72, -1, -1, -1, -1}};
+    static const int K909[3][11] = {{53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71}, {67, 69, 71, 72, 54, 56, 63, 68, 66, -1, -1},
+                                    {66, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}};
+    static const int K808[2][11] = {{53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71}, {67, 69, 71, 72, -1, -1, -1, -1, -1, -1, -1}};
     uint8_t rm[ENG_DRUM_LIST], rr[ENG_DRUM_LIST];
     char nm[16];
-    int drums, map;
-    uint32_t w;
+    int drums, map, t;
+    uint32_t w, n;
     cfg.midi_out = 1;
     drum_open("909 KIT");
     check("909 Kit (D-520 banks): its keys reach 17 drum rows, its three Drum maps' as one list", eng_keys_rows(rm, rr) == 17u);
-    check("  black keys 1..8 play KICK .. HI TOM, the footer reads ROWS 1-8", blacks_send(K909[0]) && foot_reads(MSG_ROWS "1-8"));
+    check("  black keys 1..11 play KICK .. RIDE (rows 1-11), the footer reads ROWS 1-11", blacks_send(K909[0]) && foot_reads(MSG_ROWS "1-11"));
     tap(BTN_OCT_UP);
-    check("  OCT+: ROWS 9-16, the nudge names its first rows, the octave stays", drum_bank == 1u && octave == 0
-          && !strcmp(msg_text, MSG_ROWS "9-16: MID TOM CRASH..") && str_len(msg_text) <= 26u && foot_reads(MSG_ROWS "9-16"));
-    check("  black keys 1..8 play MID TOM CRASH RIDE ACCENT and the BD SD LT MT FLAMs (MIDI out: each row's own note)", blacks_send(K909[1]));
+    check("  OCT+: ROWS 9-17, the nudge names its first rows, the octave stays", drum_bank == 1u && octave == 0
+          && !strcmp(msg_text, MSG_ROWS "9-17: MID TOM CRASH..") && str_len(msg_text) <= 26u && foot_reads(MSG_ROWS "9-17"));
+    check("  black keys 1..9 play MID TOM .. HT FLAM (rows 9-17, MIDI out: each row's own note), 10 and 11 nothing", blacks_send(K909[1]));
+    loop();                                                 /* (black keys 10 and 11 silent: DRUMS: BLACK KEYS 1-9 first) */
     tap(BTN_OCT_UP);
-    check("  OCT+ again: ROWS 17-24, HT FLAM on black key 1, the others silent", drum_bank == 2u && !strcmp(msg_text, MSG_ROWS "17-24: HT FLAM")
-          && foot_reads(MSG_ROWS "17-24") && blacks_send(K909[2]));
+    check("  OCT+ again: ROWS 17, HT FLAM on black key 1, the others silent", drum_bank == 2u && !strcmp(msg_text, MSG_ROWS "17: HT FLAM")
+          && foot_reads(MSG_ROWS "17") && blacks_send(K909[2]));
     tap(BTN_OCT_UP);
     check("  OCT+ at the last bank: it stays", drum_bank == 2u && octave == 0);
     tap(BTN_OCT_DOWN);
     tap(BTN_OCT_DOWN);
-    check("  OCT- twice: ROWS 1-8 again", drum_bank == 0u && foot_reads(MSG_ROWS "1-8") && blacks_send(K909[0]));
+    check("  OCT- twice: ROWS 1-11 again", drum_bank == 0u && foot_reads(MSG_ROWS "1-11") && blacks_send(K909[0]));
 
-    seq_select(0);                                          /* the SEQ page on DRUMS: the grid shows the bank's rows */
+    seq_select(0);                                          /* the SEQ page on DRUMS: the grid shows 8 rows */
     tap(BTN_SEQ);
     drums = eng_steps_module(0);
     map = seq_map();
@@ -1206,14 +1228,14 @@ static void drum_bank_suite(void)
           && foot_reads(MSG_ROWS "1-8"));
     tap(BTN_OCT_UP);
     check("  OCT+ alone pages the steps as before (one page: ALL STEPS SHOWN), the bank stays", drum_bank == 0u && page == PAGE_SEQ);
-    sel_oct(BTN_OCT_UP);
-    seq_row_name(seq_map(), 1, nm);
-    check("  SEL + OCT+: the grid shows ROWS 9-16 by name, SEL's release does not open SONG", drum_bank == 1u && page == PAGE_SEQ
-          && !strcmp(nm, "CRASH") && on_screen("CRASH") && foot_reads(MSG_ROWS "9-16"));
-    th = thru_head;
-    panel_keys(1u << BLACK_N[1]);                           /* black key 2: CRASH, picked and sounding through the track */
+    panel_keys(1u << BLACK_N[9]);                           /* black key 10: row 10, CRASH, past the rows shown */
+    w = seq_thru_note[BLACK_N[9]];
     panel_keys(0);
-    check("  black key 2 picks CRASH (note 69), the row the white keys write", seq_row == 1 && seq_row_note(seq_map(), seq_row) == 69u);
+    loop();
+    seq_row_name(seq_map(), seq_row, nm);
+    check("  black key 10: CRASH picked and heard, the grid jumps to ROWS 9-16 (D-521), the keys' bank stays", seq_rl_first() == 8u
+          && seq_row == 1 && !strcmp(nm, "CRASH") && on_screen("CRASH") && foot_reads(MSG_ROWS "9-16") && drum_bank == 0u
+          && seq_row_note(seq_map(), seq_row) == 69u && w == 69u + 1u);
     w = eng_steps_note((uint32_t)drums, 1, 69);
     panel_keys(1u << 2);                                    /* G3: step 2 */
     panel_keys(0);
@@ -1222,20 +1244,74 @@ static void drum_bank_suite(void)
     panel_keys(1u << 2);
     panel_keys(0);
     loop();
+    panel_keys(1u << BLACK_N[1]);                           /* black key 2: SNARE, back on the first rows */
+    panel_keys(0);
+    loop();
+    check("  black key 2: SNARE, the grid back on ROWS 1-8", seq_rl_first() == 0u && seq_row == 1 && foot_reads(MSG_ROWS "1-8"));
+    enc(0, 6);                                              /* SELECT: row 8 */
+    check("  SELECT to row 8: the grid stays", seq_rl_first() == 0u && seq_row == 7);
+    th = thru_head;
+    enc(0, 1);                                              /* past it: row 9 (option a, the owner 2026-11-27) */
+    seq_row_name(seq_map(), seq_row, nm);
+    check("  SELECT past row 8: row 9, MID TOM, the grid on ROWS 9-16, nothing sounds", seq_rl_first() == 8u && seq_row == 0
+          && !strcmp(nm, "MID TOM") && on_screen("MID TOM") && foot_reads(MSG_ROWS "9-16") && thru_head == th);
+    enc(0, 20);
+    check("  SELECT on: row 17, the last (clamped), ROWS 17", seq_rl_first() == 16u && seq_row == 0 && foot_reads(MSG_ROWS "17"));
+    enc(0, -9);
+    check("  SELECT back past row 9: row 8, the grid on ROWS 1-8", seq_rl_first() == 0u && seq_row == 7);
+    enc(0, -7);
     sel_oct(BTN_OCT_UP);
-    seq_row_name(seq_map(), 0, nm);
-    check("  SEL + OCT+ again: ROWS 17-24, HT FLAM alone, the selected row kept within it", drum_bank == 2u && !strcmp(nm, "HT FLAM")
-          && seq_row == 0 && (seq_row_name(seq_map(), 1, nm), nm[0] == 0));
+    seq_row_name(seq_map(), 1, nm);
+    check("  SEL + OCT+: the grid shows ROWS 9-16 by name, the keys from row 9, SEL's release does not open SONG", drum_bank == 1u
+          && page == PAGE_SEQ && !strcmp(nm, "CRASH") && on_screen("CRASH") && foot_reads(MSG_ROWS "9-16"));
+    panel_keys(1u << BLACK_N[1]);                           /* black key 2: CRASH */
+    panel_keys(0);
+    check("  black key 2 picks CRASH (note 69), the row the white keys write", seq_row == 1 && seq_row_note(seq_map(), seq_row) == 69u);
+    panel_keys(1u << BLACK_N[8]);                           /* black key 9: row 17, HT FLAM */
+    panel_keys(0);
+    loop();
+    seq_row_name(seq_map(), seq_row, nm);
+    check("  black key 9: HT FLAM, row 17, the grid on its bank", seq_rl_first() == 16u && seq_row == 0 && !strcmp(nm, "HT FLAM"));
+    sel_oct(BTN_OCT_UP);
+    check("  SEL + OCT+ from there: the last bank stays, the keys' bank 2", drum_bank == 2u && seq_rl_first() == 16u
+          && (seq_row_name(seq_map(), 1, nm), nm[0] == 0));
     panel_keys(1u << BLACK_N[3]);                           /* black key 4: no row in this bank */
     panel_keys(0);
-    check("  a black key past the bank's rows picks nothing", seq_row == 0);
+    check("  a black key past the list's rows picks nothing", seq_row == 0 && seq_rl_first() == 16u);
     sel_oct(BTN_OCT_DOWN);
     sel_oct(BTN_OCT_DOWN);
-    check("  SEL + OCT- twice: ROWS 1-8", drum_bank == 0u);
+    check("  SEL + OCT- twice: ROWS 1-8", drum_bank == 0u && seq_rl_first() == 0u);
     tap(BTN_HOME);
 
+    drum_open("VERONA DRUM 1");
+    n = eng_keys_rows(rm, rr);
+    check("Verona Drum 1: its keys reach 10 rows, no banks (the octave footer)", n == 10u && foot_reads(MSG_FOOT_OCT));
+    check("  black keys 9 and 10 play rows 9 and 10 (HH1, HH2), black key 11 nothing",
+          black_sends(8) == eng_drummap_note(rm[8], rr[8]) && black_sends(9) == eng_drummap_note(rm[9], rr[9])
+          && black_sends(10) == (eng_drummap_repeat((uint32_t)eng_keys_drummap()) ? 53 + 25 : -1));
+    tap(BTN_OCT_UP);
+    check("  OCT+ shifts the octave (11 keys reach every row: no bank to pick)", octave == 1 && drum_bank == 0u
+          && black_sends(9) == eng_drummap_note(rm[9], rr[9]));
+    tap(BTN_OCT_DOWN);
+    t = drum_track();
+    check("  (Verona Drum 1 has a drum track)", t >= 0);
+    if (t >= 0) {
+        seq_select((uint32_t)t);
+        tap(BTN_SEQ);
+        drums = eng_steps_module((uint32_t)t);
+        panel_keys(1u << BLACK_N[9]);                       /* black key 10: row 10 */
+        w = seq_thru_note[BLACK_N[9]];
+        panel_keys(0);
+        loop();
+        check("  its SEQ page: black key 10 picks and sounds row 10, the grid on ROWS 9-10", page == PAGE_SEQ && seq_rl_first() == 8u
+              && seq_row == 1 && foot_reads(MSG_ROWS "9-10") && drums >= 0 && w == (uint32_t)eng_drummap_note(rm[9], rr[9]) + 1u);
+        sel_oct(BTN_OCT_DOWN);
+        check("  SEL + OCT-: ROWS 1-8, black key 10 still row 10", seq_rl_first() == 0u && drum_key_row(seq_rl_n, 9) == 9);
+        tap(BTN_HOME);
+    }
+
     drum_open("808 KIT");
-    check("808 Kit: 12 rows, BD .. CB on black keys 1..8", eng_keys_rows(rm, rr) == 12u && blacks_send(K808[0]) && foot_reads(MSG_ROWS "1-8"));
+    check("808 Kit: 12 rows, BD .. HT/HC on black keys 1..11", eng_keys_rows(rm, rr) == 12u && blacks_send(K808[0]) && foot_reads(MSG_ROWS "1-11"));
     {                                                       /* (1.23 qualification: a condition past bit 15 holds here, OCT picks
                                                              * the bank; main.c guide_poll compared GUIDE_NOW byte 14, which a
                                                              * pass without the conditions reads as 0, so it sent one on every
@@ -1250,7 +1326,7 @@ static void drum_bank_suite(void)
     }
     tap(BTN_OCT_UP);
     check("  OCT+: MT/MC HT/HC CY AC on black keys 1..4, the rest silent", drum_bank == 1u && blacks_send(K808[1])
-          && !strcmp(msg_text, MSG_ROWS "9-16: MT/MC HT/HC..") && foot_reads(MSG_ROWS "9-16"));
+          && !strcmp(msg_text, MSG_ROWS "9-12: MT/MC HT/HC..") && foot_reads(MSG_ROWS "9-12"));
     {                                                       /* the global pad map (#1067): learn mode, a drum key, a pad */
         uint32_t told = host_pads_told;
         int bd, ac;
@@ -1317,31 +1393,46 @@ static void drum_bank_suite(void)
         octave = 0;
         check("  the footer: the tempo at the same x in every octave state, the octave's slot its widest", moved == 0u && widest == FOOT_OCT_W);
     }
-    {                                                       /* the bank stays across patch loads, clamped to the new kit's banks;
-                                                             * no bank on a kit of 8 rows (the owner, 2026-11-19) */
+    {                                                       /* a load sets the octave and the drum bank back (the owner,
+                                                             * 2026-11-27, D-1455): PRESET, any other load, never an edit */
+        uint32_t leds;
         drum_open("909 KIT");
         tap(BTN_OCT_UP);
         tap(BTN_OCT_UP);
-        check("bank across loads: the 909 Kit on ROWS 17-24", drum_bank == 2u && foot_reads(MSG_ROWS "17-24"));
-        (void)load("808 KIT");
-        pv_gen++;
-        page_show(0);
-        screen_patch();
+        check("a load resets: the 909 Kit on ROWS 17", drum_bank == 2u && foot_reads(MSG_ROWS "17"));
+        load_as_device("808 KIT");
+        check("  the 808 Kit loaded: the first bank, ROWS 1-11, BD on black key 1", drum_bank == 0u && foot_reads(MSG_ROWS "1-11")
+              && black_sends(0) == 53);
+        load_as_device("MERIDIAN 8");
+        tap(BTN_OCT_UP);
+        tap(BTN_OCT_UP);
+        check("  Meridian 8 (8 rows): OCT+ twice, octave +2", octave == 2 && foot_reads(MSG_FOOT_OCT_UP "++"));
+        enc(3, 4);                                          /* K1: a parameter edit, as the FM-1's knob */
+        {
+            uint32_t mod = (uint32_t)eng_keys_drummap();
+            m1_patch_param(mod, 0, eng_get_param(mod, 0));  /* and as the editor's Live sends one (PARAM: no load) */
+        }
+        loop();
+        check("  a knob turn, a Live parameter edit: the octave stays", octave == 2);
+        leds = host_oct_leds;
+        load_as_device("909 KIT");
+        check("  the 909 Kit loaded: octave 0, the OCT LEDs set again, ROWS 1-11", octave == 0 && host_oct_leds > leds
+              && foot_reads(MSG_ROWS "1-11"));
+        load_as_device("MERIDIAN 8");
+        tap(BTN_OCT_DOWN);
+        preset_loads = 1;
+        cur_preset = preset_at("MERIDIAN 8");
+        patch_enc(1);                                       /* PRESET: the next patch */
         later(500);
-        check("  the 808 Kit loaded: clamped to its last bank, ROWS 9-16, MT/MC on black key 1", drum_bank == 1u && foot_reads(MSG_ROWS "9-16")
-              && black_sends(0) == 67);
-        (void)load("MERIDIAN 8");
-        pv_gen++;
-        page_show(0);
-        screen_patch();
-        later(500);
-        check("  Meridian 8 loaded (8 rows): no bank, the octave footer", drum_bank == 0u && foot_reads(MSG_FOOT_OCT));
+        preset_loads = 0;
+        check("  PRESET from octave -1: the next patch at octave 0", octave == 0 && cur_preset != preset_at("MERIDIAN 8"));
+        load_as_device("MERIDIAN 8");
     }
     tap(BTN_OCT_UP);
     check("  OCT+ shifts the octave as before, black key 1 still plays row 1", octave == 1 && foot_reads(MSG_FOOT_OCT_UP "+")
           && black_sends(0) == eng_drummap_note((uint32_t)eng_keys_drummap(), 0));
     octave = 0;
-    drum_bank = 0;
+    drum_bank = seq_view = 0;
     mlen = 0;
     page_show(0);
 }
@@ -1611,18 +1702,18 @@ int main(void)
             if (o == -3)
                 xt = f.xt;
             moved += f.xt != xt;
-            rows &= !strcmp(f.o, o & 1 ? MSG_ROWS "9-16" : MSG_ROWS "1-8");
+            rows &= !strcmp(f.o, o & 1 ? MSG_ROWS "9-12" : MSG_ROWS "1-11");
         }
         octave = was;
         drum_bank = 0;
-        check("the footer on the 808 Kit: ROWS 1-8 / 9-16 in the octave's slot, the tempo at the same x in every state", moved == 0u && rows);
+        check("the footer on the 808 Kit: ROWS 1-11 / 9-12 in the octave's slot, the tempo at the same x in every state", moved == 0u && rows);
     }
     {                                                       /* #291: the screen as text, as SCREEN reports it */
         uint8_t idx[SCR_N];
         uint32_t n = scr_list(idx), i, ordered = 1;
         for (i = 1; i < n; i++)
             ordered &= scr_text[idx[i - 1]].y <= scr_text[idx[i]].y;
-        check("the screen as text: the device page's octave slot (ROWS 1-8) and K1's row, in reading order", on_screen(MSG_ROWS "1-8") && n > 4u && ordered);
+        check("the screen as text: the device page's octave slot (ROWS 1-11) and K1's row, in reading order", on_screen(MSG_ROWS "1-11") && n > 4u && ordered);
     }
 
     {   /* SELECT / ALGO (the owner's design, 2026-10-24): no toast, the header shows where they went; the header's sections
@@ -1684,10 +1775,10 @@ int main(void)
         enc(1, 1);                                          /* (on the kit card's second page, as the tests below expect) */
         later(700);
         tap(BTN_OCT_UP);                                    /* the transport stopped, nothing else to redraw: the footer at once */
-        check("OCT+ (the 808 Kit's drum rows, D-520): the footer's ROWS 9-16 at once, the nudge kept", drum_bank == 1u && octave == 0
-              && on_screen(MSG_ROWS "9-16: MT/MC") && !on_screen(MSG_ROWS "1-8"));
+        check("OCT+ (the 808 Kit's drum rows, D-520): the footer's ROWS 9-12 at once, the nudge kept", drum_bank == 1u && octave == 0
+              && on_screen(MSG_ROWS "9-12: MT/MC") && !on_screen(MSG_ROWS "1-11"));
         tap(BTN_OCT_DOWN);
-        check("OCT-: ROWS 1-8 again", drum_bank == 0u && octave == 0 && on_screen(MSG_ROWS "1-8"));
+        check("OCT-: ROWS 1-11 again", drum_bank == 0u && octave == 0 && on_screen(MSG_ROWS "1-11"));
         later(NUDGE_MS + 100u);                             /* (the bank's nudge ends) */
         param_now = 0;
     }
@@ -3500,7 +3591,7 @@ int main(void)
         for (kit = 0; kit < 4u; kit++) {
             char what[96];
             int map, ok = 1, quiet = 1, m0, i;
-            uint32_t b, n;
+            uint32_t b, n, kn;
             while (page != 0u && trail_n)
                 tap(BTN_HOME);
             if (eng_transport_running())
@@ -3569,8 +3660,13 @@ int main(void)
             }
             snprintf(what, sizeof what, "%s: black keys 1..8 play rows 1..8 (the device page), MIDI out the rows' notes", KIT[kit]);
             check(what, ok);
+            {
+                uint8_t km[ENG_DRUM_LIST], kr[ENG_DRUM_LIST];
+                kn = eng_keys_rows(km, kr);
+                kn = kn < DRUM_KEYS ? kn : DRUM_KEYS;       /* (the black keys that play a row, D-520) */
+            }
             for (n = 0; n < 27u; n++) {
-                if (seq_black(n) >= 0 && seq_black(n) < (int)ENG_DRUM_ROWS)
+                if (seq_black(n) >= 0 && seq_black(n) < (int)kn)
                     continue;
                 m0 = mlen;
                 panel_keys(1u << n);
@@ -3580,14 +3676,14 @@ int main(void)
                 panel_keys(0);
                 quiet &= mlen == m0;
             }
-            snprintf(what, sizeof what, "%s: white keys and black keys 9..11 play nothing, on MIDI out too", KIT[kit]);
+            snprintf(what, sizeof what, "%s: white keys and the black keys past its rows play nothing, on MIDI out too", KIT[kit]);
             check(what, quiet);
             if (kit == 0u) {                                /* the map repeats its rows (#184): those keys play their own note */
                 uint32_t rows = 0;
                 ok = 1;
                 eng_set_param((uint32_t)map, DRUMMAP_P_REPEAT, ENG_ONE);
                 for (n = 0; n < 27u; n++) {
-                    if (seq_black(n) >= 0 && seq_black(n) < (int)ENG_DRUM_ROWS)
+                    if (seq_black(n) >= 0 && seq_black(n) < (int)kn)
                         continue;
                     m0 = mlen;
                     panel_keys(1u << n);
@@ -3697,9 +3793,10 @@ int main(void)
         check("SELECT: the next row, only the two names redrawn", seq_row == 3u && all > 0u && all == part && fb_blinked() == 0
               && lcd_px <= 2u * GRID_NAME_W * FONT_S.h);
         enc(0, 20);
-        check("SELECT past the last row: the last (clamped, no wrap)", seq_row == ENG_DRUM_ROWS - 1u);
+        check("SELECT past the last row: the list's last (clamped, no wrap), the grid on its bank (D-521)",
+              seq_rl_first() + seq_row == seq_rl_n - 1u && seq_rl_first() == (seq_rl_n - 1u) / ENG_DRUM_ROWS * ENG_DRUM_ROWS);
         enc(0, -20);
-        check("SELECT back past the first: the first", seq_row == 0u);
+        check("SELECT back past the first: the first, the first bank", seq_row == 0u && seq_rl_first() == 0u);
         for (k = 0; k < 16 && !eng_steps_note((uint32_t)drums, (uint32_t)k, seq_row_note(map, 0)); k++)
             ;                                               /* a kick step: held, SELECT is still its chance */
         for (n = 0; seq_white(n) != k; n++)

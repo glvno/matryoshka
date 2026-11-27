@@ -57,7 +57,7 @@ export interface Fm1Events {
 }
 
 /** a note the panel's keys started or let go in the engine (panel.c panel_key): a key's own note at the octave, or a row
- * of the Drum map the keys reach (D-520: black keys 1..8 play rows 1..8); velocity Q16 (0 on a release) */
+ * of the Drum map the keys reach (D-520: black keys 1..11 play rows 1..11); velocity Q16 (0 on a release) */
 export interface KeyPlay { note: number; vel: number; on: boolean; kind?: number; target?: number }
 
 /** bits of lit buttons (matrix ids) and keys (key n = F3 + n) */

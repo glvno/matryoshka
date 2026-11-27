@@ -174,8 +174,14 @@ static void teach_suite(void)
     check("  the keys reach the Drum map only", page == 0u && eng_keys_drummap() >= 0);
     p = key_peak(0u);
     loop();
-    snprintf(want, sizeof want, "DRUMS armed: key 1 (F3, white) plays nothing (peak %d), the header says DRUMS: BLACK KEYS 1-8", (int)p);
-    check(want, p <= idle && nudged(MSG_DRUMS_BLACK_KEYS));
+    {
+        uint8_t km[ENG_DRUM_LIST], kr[ENG_DRUM_LIST];
+        uint32_t k = eng_keys_rows(km, kr);
+        char dm[28];
+        snprintf(dm, sizeof dm, MSG_DRUMS_BLACK_KEYS "%u", (unsigned)(k < DRUM_KEYS ? k : DRUM_KEYS));
+        snprintf(want, sizeof want, "DRUMS armed: key 1 (F3, white) plays nothing (peak %d), the header says %s", (int)p, dm);
+        check(want, p <= idle && nudged(dm));
+    }
     check("  the nudge ends: the screen as a whole redraw", nudge_ends_whole());
     p = key_peak(1u);
     check("  black key 1 (F#3) plays the Drum map's first row", p > 1000 && p > 16 * idle);

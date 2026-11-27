@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The editor's notes while the Emulator view shows (#110, #467): they are the emulated FM-1's keys. The panel's own
 // keys (the pill keys, the computer keyboard, the on-screen keyboard) sound what the firmware UI plays for them, as the
-// FM-1 does: with the keys reaching a Drum map, black keys 1..8 play its rows 1..8 (D-520), a white key nothing or its
+// FM-1 does: with the keys reaching a Drum map, black keys 1..11 play its rows 1..11 (D-520), a white key nothing or its
 // own note (D-430). A MIDI note, or one the FM-1 the editor follows played, keeps its note number (D-520: MIDI notes
 // play their note's row); it lights the key and enters steps on the SEQ page. No DOM here: main.ts wires it.
 import type { KeyPlay } from './fm1-ui';

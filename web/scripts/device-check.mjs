@@ -363,10 +363,10 @@ export function checkScenarios(h) {
       const m = await emu.mark();
       await emu.key(WHITE[4], true);
       await emu.elapse(300);
-      const said = await emu.waitText('DRUMS: BLACK KEYS 1-8', 1500);
+      const said = await emu.waitText('DRUMS: BLACK KEYS 1-10', 1500);
       await emu.key(WHITE[4], false);
       const p = await emu.peak(m);
-      await check('2.2 verona: a white key on its device page: nothing plays, the bar says DRUMS: BLACK KEYS 1-8', said && p < QUIET, `peak ${p}`);
+      await check('2.2 verona: a white key on its device page: nothing plays, the bar says DRUMS: BLACK KEYS 1-10', said && p < QUIET, `peak ${p}`);
       await emu.elapse(1600);
       // 2.5: the XL. Over the FM-1's budget it goes to sandbox mode and the browser plays it from the FM-1's keys (the level
       // of the editor's own output); since 1.15's headroom (#868) it fits, and the FM-1 plays it (the emulator's output)

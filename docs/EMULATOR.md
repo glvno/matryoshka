@@ -388,7 +388,7 @@ its feel, and every step across a power cycle ([D-139](ledger/releases.md#D-139)
     8 sits in both ears in STEREO, and in MONO it is as loud as in STEREO.
   - `checkVerona` (steps 2.1 to 2.5, [D-862](ledger/patches-and-presets.md#D-862) to
     [D-866](ledger/patches-and-presets.md#D-866)): the header reads VERONA DRUM1. A white key plays nothing and the bar
-    says DRUMS: BLACK KEYS 1-8. The hi-hats are measured as peaks in 25 ms windows. A closed hit cuts the open hat in
+    says DRUMS: BLACK KEYS 1-10. The hi-hats are measured as peaks in 25 ms windows. A closed hit cuts the open hat in
     both orders of pressing. An open hit pressed while the closed key is held rings on (#657). Verona Drum 1 XL goes to
     sandbox mode, and the browser's own output (an analyser on the editor's engine) plays every black key and no white
     key. Which drum each black key plays is judged by ear only on the owner's page.

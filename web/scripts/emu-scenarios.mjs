@@ -264,7 +264,7 @@ class Target {
   }
   /** wait up to `ms` (times SLACK) for `s` on the LCD */
   waitText(s, ms = 3000) { return this.waitFor(() => this.text(s), ms); }
-  /** wait up to `ms` for the FM-1's own device page (its octave in the footer, or a drum track's bank, ROWS 1-8, D-520),
+  /** wait up to `ms` for the FM-1's own device page (its octave in the footer, or the drum rows its black keys play, ROWS 1-11, D-520),
    *  not the sandbox page, which has the same footer with SANDBOX in it (D-232) */
   waitOwnPage(ms = 3000) { return this.waitFor(async () => ((await this.text('= OCT =')) || (await this.text('ROWS '))) && !(await this.text('SANDBOX')), ms); }
   /** wait up to `ms` for the sandbox page with the editor's page on it (D-232): a device page (its octave in the footer)
@@ -1521,11 +1521,11 @@ async function main() {
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
     },
-    async drumBanks() {   // D-520 (banks, the owner 2026-11-19): the 909 Kit's 17 rows from the black keys, 8 at a time
+    async drumBanks() {   // D-520 (banks, the owner 2026-11-19; 11 keys 2026-11-27): the 909 Kit's 17 rows from the black keys
       await check('banks: the 909 Kit opens, synced', await openSynced('909 Kit'));
-      await check('banks: the footer reads ROWS 1-8 (its drum rows in banks, not the octave)', await emu.waitText('ROWS 1-8', 3000));
+      await check('banks: the footer reads ROWS 1-11 (black keys 1..11 its first 11 rows, not the octave)', await emu.waitText('ROWS 1-11', 3000));
       await emu.tap(B.octUp);
-      await check('banks: OCT+ shows ROWS 9-16, the nudge names its first rows', await emu.waitText('ROWS 9-16: MID TOM CRASH', 3000));
+      await check('banks: OCT+ shows ROWS 9-17, the nudge names its first rows', await emu.waitText('ROWS 9-17: MID TOM CRASH', 3000));
       const before = await emu.windows(8, 25);      // (quiet first)
       await emu.key(BLACK[1], true);                // black key 2 in bank 2: CRASH
       const held = await emu.windows(16, 25);
@@ -1547,6 +1547,52 @@ async function main() {
         && (await emu.text('ALGO track')));
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
+    },
+    async drumKeys() {   // D-520 (the owner, 2026-11-27): Verona Drum 1's 10 rows on black keys 1..10 with no paging; the SEQ
+      // grid moves to the 8 rows that hold the row a black key picks (D-521); a palette switch sets the octave back (D-1455)
+      const BLACK9_11 = [14 + 20, 14 + 22, 14 + 25];   // (black keys 9, 10, 11: C#5 D#5 F#5, the keybed's F3 + 20, 22, 25)
+      const hit = async (id) => {
+        const before = await emu.windows(6, 25);
+        await emu.key(id, true);
+        const held = await emu.windows(10, 25);
+        await emu.key(id, false);
+        await emu.windows(16, 25);
+        return { top: Math.max(...held.map((x) => x[1])), floor: Math.max(...before.map((x) => x[1])), held };
+      };
+      await check('drum keys: Verona Drum 1 opens, synced', await openSynced('Verona Drum 1'));
+      await check('drum keys: its 10 rows need no bank: the footer shows the octave (= OCT =)', (await emu.waitText('= OCT =', 3000)) && !(await emu.text('ROWS ')));
+      for (const [i, name] of [[0, 'HH 1 CL'], [1, 'HH 2 CL']]) {
+        const h = await hit(BLACK9_11[i]);
+        await loudCheck(`drum keys: black key ${9 + i} plays row ${9 + i} (${name}) from the device page, heard`, h.top, h.top > 4 * QUIET && h.top > 4 * h.floor,
+          `peak ${h.top}, quiet before ${h.floor}; ${prof(h.held)}`);
+      }
+      await emu.tap(B.seq, 120);
+      await check('drum keys: SEQ opens the drum grid on rows 1-8 (ROWS 1-8)', (await emu.waitText('ALGO track', 3000)) && (await emu.waitText('ROWS 1-8', 2000)));
+      await emu.tap(BLACK9_11[1], 120);
+      await check('drum keys: black key 10 on the grid: the grid shows ROWS 9-10, HH 2 CL on screen', (await emu.waitText('ROWS 9-10', 2000)) && (await emu.waitText('HH 2 CL', 2000)));
+      await emu.tap(B.seq, 120);
+      await emu.waitOwnPage(3000);
+      // palette 1 holds Verona Drum 1 (HOME + black key 1 held 1 s); another patch, OCT+ twice, then the palette switch
+      await emu.key(B.home, true);
+      await emu.elapse(100);
+      await emu.key(BLACK[0], true);
+      await emu.elapse(1300);
+      await emu.key(BLACK[0], false);
+      await emu.elapse(60);
+      await emu.key(B.home, false);
+      await check('drum keys: HOME + black key 1 held 1 s saves Verona Drum 1 to palette 1', await emu.waitText('PALETTE 1', 2000));
+      await emu.elapse(1600);
+      await check('drum keys: Meridian 8 opens, synced', await openSynced('Meridian 8'));
+      await emu.tap(B.octUp);
+      await emu.tap(B.octUp);
+      await check('drum keys: OCT+ twice: OCT ++', await emu.waitText('OCT ++', 2000));
+      await emu.key(B.home, true);
+      await emu.elapse(100);
+      await emu.tap(BLACK[0], 150);
+      await emu.key(B.home, false);
+      await emu.elapse(400);
+      await check('drum keys: HOME + black key 1 tapped: palette 1 plays (VERONA), at octave 0 (= OCT =)', (await emu.waitText('VERONA', 2000))
+        && (await emu.waitText('= OCT =', 2000)) && !(await emu.text('OCT +')));
     },
     async playOnce() {   // #632 (D-820): SEQ held + PLAY counts in a bar with a click, plays the pattern once, stops by itself
       await check('play once: the 808 Kit opens, synced', await openSynced('808 Kit'));
@@ -2481,7 +2527,7 @@ async function main() {
       const took = (await emu.ms()) - t0;
       await emu.snap('deaf-steps');
       await emu.press(B.seq, 120);
-      const back = await emu.until(3000, 'ROWS 1-8');  // (the 808 Kit's device page: its drum bank where the octave was, D-520)
+      const back = await emu.until(3000, 'ROWS 1-11');  // (the 808 Kit's device page: the rows its black keys play where the octave was, D-520)
       await check('deaf: 30 steps entered with no app reading the FM-1, the panel keeps up', back !== null && back <= 400,
         `SEQ closed the page ${back === null ? 'not within 3000' : `after ${back}`} emulated ms (a reading host: about 140; the 30 steps took ${took} ms)`);
       await emu.deaf(false);
@@ -2497,7 +2543,7 @@ async function main() {
       await emu.press(WHITE[0], 40);                // (the step back)
       await emu.wait(200);
       await emu.press(B.seq, 120);
-      await emu.until(3000, 'ROWS 1-8');
+      await emu.until(3000, 'ROWS 1-11');
       const n1 = (await T()).loads;
       await open('Init');
       const s = await sentAfter(n1);
