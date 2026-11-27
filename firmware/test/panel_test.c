@@ -506,6 +506,7 @@ static uint32_t panel_buttons_at(void)
 #include "plock_test.h"                             /* #1213: P-lock paging shows the device's real pages until release */
 #include "report_test.h"                            /* #549: KEYS_NOW, GUIDE_NOW, panel_align */
 #include "pal_panel_test.h"                         /* #1196: the palette's keys, its overview, the bar's NEXT: */
+#include "held_load_test.h"                         /* #1339: a button or key held through a patch load lets go of it there */
 
 /* the notes the groups a Harmonizer plays sound now, low to high (#598) */
 static const char *harm_notes(int h)
@@ -6646,6 +6647,7 @@ int main(void)
     fxd_preset_suite();
     report_suite();
     palette_panel_suite();
+    held_load_suite();
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;
 }

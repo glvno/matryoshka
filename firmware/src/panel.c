@@ -121,9 +121,11 @@ static void page_mask(void);
 static void screen_back(void);                 /* (below: one step back on the trail) */
 static uint32_t glo_t0;                        /* fm1_ms | 1 of a GLO press in the menu, 0: none; bit 1: its 2 s hold fired (menu_fire) */
 static int fx_button(uint32_t b, int down);
+static void panel_patch_follow(void);
 static void panel_button_set(uint32_t b, int down)
 {
     const uint8_t *pn;
+    panel_patch_follow();
     if (fx_button(b, down))
         return;
     if (eng_button_kind(b) == ENG_BTN_PAGE && !(FIXED_BTNS >> b & 1u)) {   /* a page list (#117): its own press / hold rules */
@@ -426,6 +428,27 @@ static void page_hold_poll(void)
     list_focus();
 }
 
+/* Another patch became current: proto.c m1_set_current counts every load (PRESET, a program change, a palette switch,
+ * the editor's upload, a SLOT_GET borrow and its end, the fallback). A button or key held through the load lets go of
+ * what it did in the patch before, and its release does nothing (#1339): a Page button's hold (its jack, its peek of the
+ * list; a button the new patch makes a Toggle would keep it for good) and a held step (its tap, its lock view:
+ * seq_hold_drop). The trail's steps keep no page list of the patch before. The new patch's pages are read first
+ * (pages_ensure: its home page, no list). Every panel input and every draw looks here first */
+static uint32_t panel_gen;
+static void panel_patch_follow(void)
+{
+    uint32_t i;
+    if (panel_gen == pages_gen())
+        return;
+    panel_gen = pages_gen();
+    pages_ensure();
+    page_held = -1;
+    for (i = 0; i < trail_n; i++)
+        trail[i].lbtn = -1;
+    seq_hold_drop();
+    page_mask();
+}
+
 static void play_toggle(void)                       /* PLAY: the transport (the Main module's run output and clock); a stop
                                                      * ends recording too (#395: PLAY stops everything). A start in step
                                                      * record makes it a live take: REC records (the owner, 2026-11-02,
@@ -507,6 +530,7 @@ static void panel_encoders(int32_t *st)
     uint32_t k;
     int panel = eng_find(T_FM1);
     int fine = panel_held >> BTN_HOME & 1u;         /* HOME held + K1..K4: fine turns (#340); HOME's release then goes nowhere */
+    panel_patch_follow();
     if (help_on == HELP_QUICK && (st[0] | st[1] | st[2] | st[3] | st[4] | st[5] | st[6]))
         help_close();                               /* the quick start: a knob turned closes it and then does its job (#582,
                                                      * D-247; PLAY held + PRESET the tempo at once) */
@@ -781,6 +805,7 @@ static void m1_keys_now(uint32_t n, int down);
  * taken. */
 static int panel_key(uint32_t n, int down, int quick)
 {
+    panel_patch_follow();
     (void)sr_guard();
     uint32_t bit = 1u << n;
     if (n >= 27u || !(keys_now & bit) == !down)
@@ -1123,6 +1148,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
 {
     uint32_t oct_rel;
     int pair = 0;
+    panel_patch_follow();
     if (p & OCT_BTNS) {                             /* an OCT down while the other is (or both at once): the pair (D-245) */
         if ((panel_held & OCT_BTNS) == OCT_BTNS) {
             oct_used = (uint8_t)OCT_BTNS;
@@ -1606,6 +1632,7 @@ static void panel_draw(void)
 }
 static void panel_draw_now(void)
 {
+    panel_patch_follow();
     pal_follow();                                   /* the palette's overview (pal_ui.c) and its NEXT: bar, as the card */
     seq_lock_follow();                              /* the SEQ page's lock view: on or off as the held step asks (#1213) */
     help_follow();                                  /* a card first (help_ui.c), then the page: under it, a dim frame */

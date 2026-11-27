@@ -7,3 +7,5 @@ declare module '*?worker&url' {
 declare const __BUILD__: string;
 /** the firmware version Get started > Install names ("v1.2.0"; the dev server: the app's own, "1.3.0-dev"), set by vite.config.ts */
 declare const __INSTALL_VERSION__: string;
+/** the released versions the changelog page lists ("1.2.0"; null: unknown, every version heading), set by vite.config.ts */
+declare const __RELEASED__: string[] | null;
