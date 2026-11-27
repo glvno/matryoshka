@@ -4972,7 +4972,19 @@ int main(void)
             v = m1_voice_at(m);
             (void)pages_focus((uint32_t)dx, 2);           /* OP 1 1/6: K1 the picker */
             loop();
-            ok_show &= DX7_SHOWS(0u, "1", "") && DX7_SHOWS(1u, "99", "") && DX7_SHOWS(2u, "1.00", "");
+            ok_show &= DX7_SHOWS(0u, "1", "") && DX7_SHOWS(1u, "99", "") && DX7_SHOWS(2u, "1", "") && DX7_SHOWS(3u, "0", "");
+            fm1_ms += 150u;
+            enc(4, -1);                                   /* K3: ratio coarse 0 is 0.50 */
+            ok_show &= DX7_SHOWS(2u, "0.50", "");
+            for (i = 0; i < 5u; i++) {                    /* (single clicks, apart: never the fast step) */
+                fm1_ms += 150u;
+                enc(4, 1);
+            }
+            ok_show &= DX7_SHOWS(2u, "5", "");
+            dx7_turn(m, DXF_FINE, 50, 0);                 /* fine 0 -> 50: its raw number, as the DX7 and the card */
+            ok_show &= DX7_SHOWS(3u, "50", "") && DX7_SHOWS(2u, "5", "");
+            dx7_turn(m, DXF_FINE, -50, 0);
+            dx7_turn(m, DXF_COARSE, -4, 0);               /* (operator 1 back to coarse 1) */
             enc(2, 2);                                    /* K1: operator 3 */
             ok_show &= dx7_op == 2u && !memcmp(pg_page[g0 + 3u].name, "OP 3", 4) && DX7_SHOWS(0u, "3", "");
             enc(3, -9);                                   /* K2: operator 3's output level 99 -> 90 (packed: operator 6 first) */
@@ -4981,13 +4993,14 @@ int main(void)
             loop();
             ok_show &= DX7_SHOWS(0u, "RATIO", "") && DX7_SHOWS(1u, "0", "");
             enc(3, 3);
-            enc(2, 1);                                    /* fixed: coarse 1, fine 0 is 10 Hz */
+            enc(2, 1);                                    /* fixed: coarse 1 is 10 Hz */
             ok_show &= DX7_SHOWS(1u, "+3", "") && DX7_SHOWS(0u, "FIXED", "");
             (void)pages_focus((uint32_t)dx, 2);
             loop();
-            ok_show &= DX7_SHOWS(2u, "10.0", "Hz");
-            enc(5, 2);                                    /* K4 fine 0 -> 2: 10.5 Hz (10 ^ 1.02) */
-            ok_show &= DX7_SHOWS(2u, "10.5", "Hz") && DX7_SHOWS(3u, "10.5", "Hz");
+            ok_show &= DX7_SHOWS(2u, "10", "Hz") && DX7_SHOWS(3u, "0", "");
+            fm1_ms += 150u;
+            enc(4, 1);                                    /* K3: fixed coarse 2 is 100 Hz */
+            ok_show &= DX7_SHOWS(2u, "100", "Hz");
             (void)pages_focus((uint32_t)dx, 6);           /* OP 3 5/6: BREAK as a note (39: C3), L CURVE */
             loop();
             ok_show &= DX7_SHOWS(0u, "C3", "") && DX7_SHOWS(3u, "-LIN", "");

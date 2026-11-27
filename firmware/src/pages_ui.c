@@ -301,14 +301,14 @@ static void m1_voice_edited(uint32_t mod);              /* proto.c: it changed h
 enum { DXF_OP, DXF_OUT, DXF_COARSE, DXF_FINE, DXF_MODE, DXF_DETUNE, DXF_VEL, DXF_AMS, DXF_R1, DXF_L1 = DXF_R1 + 4,
        DXF_BP = DXF_L1 + 4, DXF_LD, DXF_RD, DXF_LC, DXF_RC, DXF_RS, DXF_ALG, DXF_FB, DXF_PR1, DXF_PL1 = DXF_PR1 + 4,
        DXF_WAVE = DXF_PL1 + 4, DXF_SPEED, DXF_DELAY, DXF_SYNC, DXF_PMD, DXF_AMD, DXF_PMS, DXF_OKS, DXF_TRANS, DXF_N };
-enum { DXK_NUM, DXK_OP, DXK_FREQ, DXK_MODE, DXK_DETUNE, DXK_NOTE, DXK_CURVE, DXK_ALG, DXK_WAVE, DXK_ONOFF, DXK_TRANS };
+enum { DXK_NUM, DXK_OP, DXK_COARSE, DXK_MODE, DXK_DETUNE, DXK_NOTE, DXK_CURVE, DXK_ALG, DXK_WAVE, DXK_ONOFF, DXK_TRANS };
 #define DXG 0x80u                                       /* a byte of the voice's own (102..117), not the operator's 17 */
 #define DXB(sh, w) ((sh) | (w) << 3)
 #define DX7_NPAGES 13u
 /* each field: its byte (in the picked operator's 17, operator 6 first; DXG: in the voice), bits (shift | width << 3), its
  * top, its display (dx7_show) */
 static const uint8_t DX7_FIELD[DXF_N][4] = {
-    {0, 0, 5, DXK_OP}, {14, DXB(0, 7), 99, DXK_NUM}, {15, DXB(1, 5), 31, DXK_FREQ}, {16, DXB(0, 7), 99, DXK_FREQ},
+    {0, 0, 5, DXK_OP}, {14, DXB(0, 7), 99, DXK_NUM}, {15, DXB(1, 5), 31, DXK_COARSE}, {16, DXB(0, 7), 99, DXK_NUM},
     {15, DXB(0, 1), 1, DXK_MODE}, {12, DXB(3, 4), 14, DXK_DETUNE}, {13, DXB(2, 3), 7, DXK_NUM}, {13, DXB(0, 2), 3, DXK_NUM},
     {0, DXB(0, 7), 99, DXK_NUM}, {1, DXB(0, 7), 99, DXK_NUM}, {2, DXB(0, 7), 99, DXK_NUM}, {3, DXB(0, 7), 99, DXK_NUM},
     {4, DXB(0, 7), 99, DXK_NUM}, {5, DXB(0, 7), 99, DXK_NUM}, {6, DXB(0, 7), 99, DXK_NUM}, {7, DXB(0, 7), 99, DXK_NUM},
@@ -396,14 +396,15 @@ static void dx7_turn(uint32_t m, uint32_t f, int32_t clicks, int fast)
     *b = (uint8_t)((*b & ~mask) | ((uint32_t)v << sh & mask));
     m1_voice_edited(m);
 }
-/* voice row f of module m as its bar shows it: ratios 1.00, fixed frequencies in Hz, detune -7..+7, curves, the break
- * point as a note (A-1 .. C8), the LFO's waves, the algorithm 1..32; *base its place over `width` px */
+/* voice row f of module m as its bar shows it, as the DX7 and the editor's card: coarse 0.50 / 1..31 (ratio) or 1, 10,
+ * 100, 1000 Hz (fixed), fine 0..99, detune -7..+7, curves, the break point as a note (A-1 .. C8), the LFO's waves, the
+ * algorithm 1..32; *base its place over `width` px */
 static void dx7_show(uint32_t m, uint32_t f, char *num, char *unit, uint32_t width, uint32_t *base)
 {
     static const char *const CURVE[4] = {"-LIN", "-EXP", "+EXP", "+LIN"};
     static const char *const WAVE[6] = {"TRI", "SAW DN", "SAW UP", "SQUARE", "SINE", "S/H"};
     static const char NOTE[] = "C C#D D#E F F#G G#A A#B ";
-    int32_t v = dx7_get(m, f), c, fi;
+    int32_t v = dx7_get(m, f);
     char *q = num;
     unit[0] = 0;
     *base = (uint32_t)v * width / DX7_FIELD[f][2];
@@ -438,15 +439,14 @@ static void dx7_show(uint32_t m, uint32_t f, char *num, char *unit, uint32_t wid
             *q++ = '#';
         fmt_int(q, v / 12 - 2);
         return;
-    case DXK_FREQ:
-        c = dx7_get(m, DXF_COARSE);
-        fi = dx7_get(m, DXF_FINE);
-        if (dx7_get(m, DXF_MODE)) {                     /* fixed: 10 ^ (coarse & 3 + fine / 100) Hz (log2 10 / 100 = 2177 in Q16) */
-            uint32_t hz = exp2_q16((16 << 16) + ((c & 3) * 100 + fi) * 2177);
-            *put_num(num, (int32_t)(hz >= 1000u << 16 ? hz / 1000u : hz)) = 0;
-            put(unit, hz >= 1000u << 16 ? "kHz" : "Hz")[0] = 0;
-        } else                                          /* a ratio: coarse (0 is 0.50) times 1 + fine / 100 */
-            put_hundredths(num, c ? c * (100 + fi) : (100 + fi) / 2, 2);
+    case DXK_COARSE:                                    /* (fixed: 10 ^ (coarse & 3) Hz; a ratio: coarse 0 is 0.50) */
+        if (dx7_get(m, DXF_MODE)) {
+            put(num, (v & 3) == 0 ? "1" : (v & 3) == 1 ? "10" : (v & 3) == 2 ? "100" : "1000")[0] = 0;
+            put(unit, "Hz")[0] = 0;
+        } else if (!v)
+            put(num, "0.50")[0] = 0;
+        else
+            fmt_int(num, v);
         return;
     default:
         fmt_int(num, v);
