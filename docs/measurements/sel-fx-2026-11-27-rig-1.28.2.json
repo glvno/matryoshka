@@ -1,0 +1,131 @@
+{
+ "checks": [
+  {
+   "name": "the 909 Kit is in the bank",
+   "ok": true,
+   "info": "slot 18"
+  },
+  {
+   "name": "SEL on the kit page arms it (909 KIT ARMED)",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "FX opens the Drive",
+   "ok": true,
+   "info": "['0.00', '1.00', '1.00', '137', 'ARM DRUMS', 'DRIVE', 'DRIVE', 'LEVEL']"
+  },
+  {
+   "name": "SEL switches the Drive on (DRIVE ON)",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "SEL switches the Drive off again (DRIVE OFF)",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "the kick changes with the Drive on (hit RMS or peak beyond the takes' spread)",
+   "ok": true,
+   "info": "hit off -41.52/-41.57, on -38.82/-38.8 dB; peak off -30.23/-30.23, on -27.76/-27.76 dBFS"
+  },
+  {
+   "name": "and back with it off",
+   "ok": true,
+   "info": "-41.5 vs -41.52 dB"
+  },
+  {
+   "name": "SELECT walks to the Reverb",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "SEL switches the Reverb on (REVERB ON)",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "SEL mid-tail switches the Reverb off (REVERB OFF)",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "the Reverb on lengthens the kick's tail (so the next check is not blind)",
+   "ok": true,
+   "info": "tail dry -120.0, wet -95.27 dBFS"
+  },
+  {
+   "name": "switched off 0.35 s after the hit, the Reverb rings out (tail 6 dB or more over the dry tail)",
+   "ok": true,
+   "info": "tail dry -120.0, wet -95.27, switched -95.49 dBFS"
+  },
+  {
+   "name": "the 909 slot read before SAVE",
+   "ok": true,
+   "info": "3781 bytes"
+  },
+  {
+   "name": "SEL on again (REVERB ON)",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "SAVE kept the Reverb on: after a reload SEL turns it off (REVERB OFF)",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "the 909 slot written back as it was",
+   "ok": true,
+   "info": ""
+  }
+ ],
+ "drive_off": [
+  {
+   "hit": -41.52,
+   "peak": -30.23,
+   "tail": -120.0
+  },
+  {
+   "hit": -41.57,
+   "peak": -30.23,
+   "tail": -120.0
+  }
+ ],
+ "drive_on": [
+  {
+   "hit": -38.82,
+   "peak": -27.76,
+   "tail": -120.0
+  },
+  {
+   "hit": -38.8,
+   "peak": -27.76,
+   "tail": -120.0
+  }
+ ],
+ "drive_back": {
+  "hit": -41.5,
+  "peak": -30.23,
+  "tail": -120.0
+ },
+ "reverb": {
+  "dry": {
+   "hit": -41.55,
+   "peak": -30.24,
+   "tail": -120.0
+  },
+  "wet": {
+   "hit": -43.59,
+   "peak": -31.64,
+   "tail": -95.27
+  },
+  "switched": {
+   "hit": -43.61,
+   "peak": -31.36,
+   "tail": -95.49
+  }
+ },
+ "all_ok": true
+}
