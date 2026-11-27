@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **A button no longer acts as the one beside it.** The FM-1 reads its buttons one column at a time. When the short glow pulse that ends each column's turn finished late, it read the next column before that column was ready, and a held button also counted as its right-hand neighbour: LFO as SEQ (on the SEQ page in step record, a rest ended step record and the next one left the page, where REC then started the transport), OCT- as OCT+. The glowing button lights looked fully lit meanwhile. A pulse ends late when the FM-1's USB handling runs long, which we expect after the cable is pulled out; a power cycle cleared it. Each column is now read only once it has settled. Firmware 1.15.0 and later had it.
+
 ## 1.28.1 — 2026-11-26
 
 - **This editor syncs only with firmware 1.28.1: update your FM-1 before you sync it.** The editor now reads and writes patch format 69, which only the 1.28.1 firmware reads, so an FM-1 still on 1.28.0 or older does not sync until it is updated: the editor says "update it to sync" and the Install panel offers the update. A patch is saved in format 69 only when a Harmonizer has RETRIG at ALL or DIFF; every other patch keeps its format byte for byte. Set RETRIG on the FM-1 and it saves the patch in format 69 too ([D-1042](docs/ledger/patch-format.md#D-1042)).

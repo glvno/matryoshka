@@ -556,7 +556,10 @@ static void fm1_led_anim_stop(void) { fm1__an_f = 0; }   /* (the LEDs as the las
  *   interrupt and does the rest of the tick (the latch, column n lit, column p's keys, the frame). Not while any LED
  *   breathes in that column (its share of the pulse rides on the shift as before), nor without a one-shot (host
  *   builds): the pulse is waited as before. A tick that finds the last one's end still due ends it first
- *   (fm1_in_stat.split_late) */
+ *   (fm1_in_stat.split_late), and then reads no rows: that end has just latched the column, and a row a key in the last
+ *   column pulled low has not risen again yet, so that key would read as its right-hand neighbour's (LFO as SEQ, OCT-
+ *   as OCT+). The column's rows are read one tick later (fm1__latch_t; also after an end that came just before the tick).
+ *   An end comes late when the USB poll in TIMER5's interrupt runs long, as it does once the cable is out */
 #ifndef FM1_TICK_SPLIT_ARM
 #define FM1_TICK_SPLIT_ARM(ticks) 0              /* (ticks: TIMER4 ticks; 1 when armed) */
 #endif
@@ -565,12 +568,14 @@ static struct { uint8_t due, p, n; uint16_t late; uint32_t t1, spent; } fm1__hal
                                                                                        * this much early for its interrupt's
                                                                                        * lateness; it moves one tick a pulse
                                                                                        * towards the target width */
+static uint32_t fm1__latch_t;                     /* TIMER4 tick of the last latch (fm1__tick_rest) */
 /* the tick from the latch on: column n latched and lit, column p's keys, the frame; spent: the tick's time before this */
 static void fm1__tick_rest(uint32_t p, uint32_t n, uint32_t t0, uint32_t spent)
 {
     uint32_t g;
     fm1__sr_latch();                               /* column n, the lines dark */
     fm1__sr_ok = 1;
+    fm1__latch_t = fm1_ticks();
     if (n == 0u)                                   /* (a new frame: the mid level's turn, before column 0 lights) */
         fm1__mid_ph = (uint8_t)(fm1__mid_ph + 1u >= fm1__mid_n ? 0u : fm1__mid_ph + 1u);
     fm1__led_lines(FM1__LIT(n));
@@ -610,6 +615,8 @@ static void fm1_input_tick(void)
         fm1_in_stat.split_late++;
         fm1_input_tick_end();
     }
+    if (fm1_ticks() - fm1__latch_t < FM1_SETTLE_US * FM1_TICKS_PER_US)
+        return;                                    /* (column p latched just now: its rows next tick, see above) */
     p = fm1__tick_col;
     n = p + 1u == FM1_NCOL ? 0u : p + 1u;
     t0 = fm1_ticks();
