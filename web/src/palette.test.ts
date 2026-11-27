@@ -934,4 +934,15 @@ describe('a palette entry names a preset only while the device plays it (owner 2
     await kept.fm1.quiet();
     expect(kept.fm1.entries[0]).toMatchObject({ slot: 22, devices: [{ name: 'Glass' }] });
   });
+  it('a device that keeps the slot\'s values but whose card names another preset that has them: the entry names that preset, sent', async () => {
+    const held = hera();
+    const sound = hera();
+    replaceUserPresets([], [capturePreset(sound, synth(sound), 'Mine')]);
+    synth(sound).preset = 'Mine';
+    const { fm1, palette } = await stored(held);
+    expect(await palette.add('Hera 6', sound)).toBe(true);
+    await fm1.quiet();
+    expect(fm1.entries[0]).toMatchObject({ slot: 22, devices: [{ name: 'Mine' }] });
+    expect(fm1.presets.map((p) => p.name)).toEqual(['Mine']);
+  });
 });

@@ -266,8 +266,21 @@ export function presetFit(sound: Patch, held: Patch, name: string, encode: (p: P
       else delete e.preset;
     }
     const keep = (n: string | undefined): void => { if (n) a.preset = n; else delete a.preset; };
-    // (as the FM-1 keeps values: a slot read back holds them in Q16, and a device left as it is takes no preset)
-    if (want.structure === was.structure && want.values.length === was.values.length && want.values.every((v, i) => q16(v) === q16(was.values[i]))) { keep(h.preset); continue; }
+    const same = (x: readonly number[]): boolean => x.length === want.values.length && x.every((v, i) => q16(v) === q16(want.values[i]));
+    // (as the FM-1 keeps values: a slot read back holds them in Q16, and a device left as it is takes no preset of its own)
+    if (want.structure === was.structure && same(was.values)) {
+      // (it keeps the slot's preset name, unless the sound's own name is true and another: the entry then names that
+      // preset, which has these values, D-1226)
+      const mine = presetsOf(named, a);
+      const truth = (p: Preset): boolean => p.structure === want.structure && sameName(p.name, a.preset) && same(p.values);
+      const own = a.preset && !samePreset(h.preset, a.preset) ? mine.find(truth) ?? extra.find(truth) ?? onFm1.find(truth) : undefined;
+      if (!own) { keep(h.preset); continue; }
+      const from = mine.includes(own) ? (own.factory ? 'factory' : 'browser') : extra.includes(own) ? 'sound' : 'fm1';
+      const preset = from === 'fm1' ? { ...want, name: devicePresetName(own.name) } : own;
+      keep(preset.name);
+      picks.push({ preset, from, asm: a.id });
+      continue;
+    }
     const label = a.label || a.name;
     if (want.values.length > PRESET_VALUES_MAX) return { why: `${label} needs ${want.values.length} preset values, ${PRESET_VALUES_MAX} at most` };
     // (a preset of the slot's device's name is never applied by the FM-1: the name is all it compares)
