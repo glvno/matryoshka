@@ -359,6 +359,9 @@ type DrawerView = {
 /** what a drawer shows of a preset's change to it (presetDiff): while the preset is pointed at in its menu, or just after
  *  it loaded (while its note shows); each change's `effect` is the effect it is on now */
 type FxMarks = { mode: 'preview' | 'loaded'; fx: EffectChange[] };
+/** a drawn cable's path (or one of its inner lines, or its copy on a card), between the jacks it is drawn to; `origin`: the
+ *  element its coordinates are in (the world, or the card) */
+type CablePath = { path: SVGPathElement; from: HTMLElement; to: HTMLElement; origin: HTMLElement; cable?: Cable };
 /** where a dragged effect would go: a drawer, at a gap of its chain, or at its end (`at` null: over the closed plug) */
 type FxSpot = { id: number; at: number | null };
 /** how the user's own assembly can sit in an FX drawer, as a menu's choice (fx-drawer.ts effectModes) */
@@ -493,7 +496,7 @@ export class Editor {
   private dragPointer: Pt | null = null;
   private drag: { path: SVGPathElement; cancel: () => void } | null = null;
   private sliderPorts: { m: ModuleInst; pd: ParamDef; jack: HTMLElement; ticks: (t: { knob: string; unit: number }[]) => void }[] = [];
-  private cablePaths: { path: SVGPathElement; from: HTMLElement; to: HTMLElement; origin: HTMLElement; cable?: Cable }[] = [];
+  private cablePaths: CablePath[] = [];
   private stack: string[] = [];
   private routingOpen = new Set<string>();
   /** the current candidate's undo steps (owner 2026-11-24: undo is per candidate; a switch is not a step) */
@@ -545,9 +548,9 @@ export class Editor {
       if (this.drawerViews.size && this.narrowCanvas() !== this.fxNarrow) this.rebuild();   // (the tab or the plug and its strip)
     }).observe(canvas);
     if (dock) {
-      // the docked jacks stay put while the canvas scrolls under them
-      canvas.addEventListener('scroll', () => this.positionCables(), { passive: true });
-      dock.addEventListener('scroll', () => this.positionCables(), { passive: true, capture: true });
+      // the docked jacks stay put while the canvas scrolls under them: their cables follow, once a frame (positionViewCables)
+      canvas.addEventListener('scroll', () => this.viewMoved(), { passive: true });
+      dock.addEventListener('scroll', () => this.viewMoved(), { passive: true, capture: true });
       new ResizeObserver(() => this.positionCables()).observe(dock);
     }
     document.fonts.addEventListener('loadingdone', () => {
@@ -3036,9 +3039,10 @@ export class Editor {
       this.queueView();
     }
     this.sizeCanvas();
-    // a live zoom only moves the cables' ends (the same cables); the user's redraws them
-    if (live) this.positionCables();
-    else this.drawCables();
+    // the cables are drawn in world coordinates and scale with the world: only those drawn against the window follow,
+    // unless a drawer under its card (as wide as the view) changed with the zoom
+    if (this.layoutDrawers()) this.positionCables();
+    else this.positionViewCables();
     this.onZoom(this.zoom, live);
   }
 
@@ -6157,8 +6161,15 @@ export class Editor {
     return [...this.drawerViews.values()].flatMap((v) => (v.geom ? [v.plug, v.lip, v.drawer].filter((el): el is HTMLElement => !!el) : []));
   }
 
-  private layoutDrawers(): void {
-    for (const v of this.drawerViews.values()) if (v.host.isConnected) this.layoutDrawer(v);
+  /** lay the drawers out (layoutDrawer); true when one changed */
+  private layoutDrawers(): boolean {
+    let changed = false;
+    for (const v of this.drawerViews.values()) if (v.host.isConnected) {
+      const was = v.geom;
+      this.layoutDrawer(v);
+      changed ||= v.geom !== was;
+    }
+    return changed;
   }
 
   /**
@@ -8380,10 +8391,42 @@ export class Editor {
     this.positionBindings();
     this.positionTraces();
     this.layoutDrawers();
+    this.placeCables(this.cablePaths, this.ribbonRoutes());
+  }
+
+  /** a scroll's or zoom's update of the cables, due at the next frame */
+  private viewFrame = 0;
+
+  /** the view scrolled (the canvas or the dock): its cables follow once per frame (positionViewCables) */
+  private viewMoved(): void {
+    if (this.viewFrame) return;
+    this.viewFrame = requestAnimationFrame(() => {
+      this.viewFrame = 0;
+      this.positionViewCables();
+    });
+  }
+
+  /**
+   * The view scrolled or zoomed: a cable between two cards is drawn in world coordinates and moves with the world, so only
+   * what is drawn against the window follows (the docked jacks stay put while the world moves under them): the cables at a
+   * docked jack with their copies over the dock and their glow, the sidebar sliders' cables and the dials' lines. Every
+   * other cable keeps its path, unless a docked one moved past it in a ribbon (dockRibbonRoutes).
+   */
+  private positionViewCables(): void {
+    this.positionSideCables();
+    this.positionBindings();
+    const docked = (e: { from: HTMLElement; to: HTMLElement }): boolean => this.inDock(e.from) || this.inDock(e.to);
+    if (!this.cablePaths.some(docked)) return;
+    const { routes, moved } = this.dockRibbonRoutes();
+    this.placeCables(this.cablePaths.filter((e) => docked(e) || moved.get(e.from)?.has(e.to)), routes);
+    if (this.glowing.some(docked)) this.glow(this.glowing);
+  }
+
+  /** set these cables' paths (and their copies over the dock) along their ribbon routes, gutter routes or curves */
+  private placeCables(paths: CablePath[], routed: Map<HTMLElement, Map<HTMLElement, Pt[]>>): void {
     const w = this.world.getBoundingClientRect();
     const o = this.dockCables?.getBoundingClientRect();
-    const routed = this.ribbonRoutes();
-    for (const { path, from, to, origin } of this.cablePaths) {
+    for (const { path, from, to, origin } of paths) {
       let pts = routed.get(from)?.get(to) ?? this.gutterRoute(from, to);
       if (pts && origin !== this.world) {
         // a copy on a card: the same route in the card's coordinates
@@ -8413,6 +8456,9 @@ export class Editor {
   }
 
   private clampLayer: SVGGElement | null = null;
+  /** what the last ribbonRoutes measured (the frames, the cables' ends in world coordinates, each cable's route as drawn),
+   *  so a scroll or zoom works the routes out again with only the docked ends moved; null: no expanded frame */
+  private ribbonState: { frames: RibbonFrame[]; entries: CablePath[]; cables: RibbonCable[]; docked: number[]; drawn: string[] } | null = null;
 
   /**
    * The routes of the cables that cross an expanded assembly's border (ribbons.ts, #85), by their drawn ends, in world
@@ -8445,18 +8491,20 @@ export class Editor {
         },
       });
     }
-    if (!frames.length) return out;
+    if (!frames.length) {
+      this.ribbonState = null;
+      return out;
+    }
     const entries = this.cablePaths.filter((e) => e.origin === this.world && e.cable && !e.path.classList.contains('alias'));
     const cables: RibbonCable[] = entries.map(({ from, to, cable }) => ({
       from: { pt: this.center(from), dir: this.endOf(from), module: cable!.from.module, port: cable!.from.port },
       to: { pt: this.center(to), dir: this.endOf(to), module: cable!.to.module, port: cable!.to.port, param: to.dataset.param },
     }));
     const { routes, clamps } = ribbons(frames, cables, (a, b, da, db) => this.curvePts(a, b, da, db));
-    for (const [i, pts] of routes) {
-      const { from, to } = entries[i];
-      if (!out.has(from)) out.set(from, new Map());
-      out.get(from)!.set(to, pts);
-    }
+    const drawn = entries.map((_, i) => { const pts = routes.get(i); return pts ? pathOf(pts) : ''; });
+    const docked = entries.flatMap(({ from, to }, i) => (this.inDock(from) || this.inDock(to) ? [i] : []));
+    this.ribbonState = { frames, entries, cables, docked, drawn };
+    this.routeMap(entries, routes, out);
     for (const c of clamps) {
       const r = document.createElementNS(SVGNS, 'rect');
       r.setAttribute('x', String(c.x));
@@ -8469,17 +8517,59 @@ export class Editor {
     return out;
   }
 
+  /** the routes by drawn ends (from, then to) */
+  private routeMap(entries: CablePath[], routes: Map<number, Pt[]>, out = new Map<HTMLElement, Map<HTMLElement, Pt[]>>()): Map<HTMLElement, Map<HTMLElement, Pt[]>> {
+    for (const [i, pts] of routes) {
+      const { from, to } = entries[i];
+      if (!out.has(from)) out.set(from, new Map());
+      out.get(from)!.set(to, pts);
+    }
+    return out;
+  }
+
+  /**
+   * The ribbon routes after a scroll or zoom, without measuring the canvas again: the frames and the ends on cards stay
+   * where the last ribbonRoutes measured them (world coordinates), the docked ends are measured anew. `moved`: the other
+   * cables whose routes that changed (a docked cable taking another slot in a shared ribbon), by drawn ends.
+   */
+  private dockRibbonRoutes(): { routes: Map<HTMLElement, Map<HTMLElement, Pt[]>>; moved: Map<HTMLElement, Set<HTMLElement>> } {
+    const routes = new Map<HTMLElement, Map<HTMLElement, Pt[]>>(), moved = new Map<HTMLElement, Set<HTMLElement>>();
+    const st = this.ribbonState;
+    if (!st?.docked.length) return { routes, moved };
+    for (const i of st.docked) {
+      const { from, to } = st.entries[i], c = st.cables[i];
+      if (this.inDock(from)) c.from.pt = this.center(from);
+      if (this.inDock(to)) c.to.pt = this.center(to);
+    }
+    const next = ribbons(st.frames, st.cables, (a, b, da, db) => this.curvePts(a, b, da, db)).routes;
+    const docked = new Set(st.docked);
+    st.entries.forEach(({ from, to }, i) => {
+      if (docked.has(i)) return;
+      const pts = next.get(i);
+      const d = pts ? pathOf(pts) : '';
+      if (d === st.drawn[i]) return;
+      st.drawn[i] = d;
+      if (!moved.has(from)) moved.set(from, new Set());
+      moved.get(from)!.add(to);
+    });
+    return { routes: this.routeMap(st.entries, next, routes), moved };
+  }
+
   /** a cable end as the status line names it: the module and its port */
   private endName(e: Endpoint): string {
     const m = this.patch.modules.find((x) => x.id === e.module);
     return m ? `${this.nameOf(m)} ${e.port}` : e.port;
   }
 
+  /** the cables glowing now (glow): a scroll moves the glow of one at a docked jack with it */
+  private glowing: { path: SVGPathElement; from: HTMLElement; to: HTMLElement }[] = [];
+
   /** the hovered cable's glow (design A): a copy over the cards, so its whole run shows where it passes behind one, and
    * rings on its jacks on the canvas; it takes no pointer */
   private glow(paths: { path: SVGPathElement; from: HTMLElement; to: HTMLElement }[]): void {
     const layer = this.glowLayer;
     if (!layer) return;
+    this.glowing = paths;
     layer.replaceChildren();
     for (const { path, from, to } of paths) {
       const d = path.getAttribute('d');
