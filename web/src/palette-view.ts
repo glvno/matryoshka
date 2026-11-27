@@ -97,7 +97,7 @@ export class PaletteView {
     this.saveBtn.onclick = () => this.act.save?.();
     this.consolidateBtn = document.createElement('button');
     this.consolidateBtn.type = 'button';
-    this.consolidateBtn.className = 'palette-save palette-consolidate';
+    this.consolidateBtn.className = 'palette-consolidate';
     this.consolidateBtn.textContent = 'Consolidate…';
     this.consolidateBtn.hidden = true;
     this.consolidateBtn.onclick = () => this.act.consolidate?.(this.consolidateBtn);

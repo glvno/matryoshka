@@ -475,10 +475,10 @@ body:has(.snap-column:not([hidden])) .workspace { margin-right: var(--snap-col-w
 .palette-keys { margin-left: auto; font: 400 11px/1 'Barlow', system-ui, sans-serif; color: var(--muted); opacity: .8; }
 /* after Send to FM-1, the saved palette it came from; Save as a palette (#1236) */
 .palette-from { font: 400 11px/1 'Barlow', system-ui, sans-serif; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.palette-from[hidden], .palette-save[hidden], .palette-keys[hidden] { display: none; }
-.palette-save { margin-left: auto; flex: none; height: 20px; padding: 0 7px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--ink);
+.palette-from[hidden], .palette-save[hidden], .palette-consolidate[hidden], .palette-keys[hidden] { display: none; }
+.palette-save, .palette-consolidate { margin-left: auto; flex: none; height: 20px; padding: 0 7px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--ink);
   font: 500 11px/1 'Barlow', system-ui, sans-serif; cursor: pointer; }
-.palette-save:hover { border-color: var(--secondary); color: var(--secondary); }
+.palette-save:hover, .palette-consolidate:hover { border-color: var(--secondary); color: var(--secondary); }
 /* Consolidate… before Save as a palette (D-1441): the first shown takes the push to the right */
 .palette-consolidate:not([hidden]) + .palette-save { margin-left: 4px; }
 /* the name a sound goes into a palette under (name-prompt.ts): a small popover by what the add came from */
