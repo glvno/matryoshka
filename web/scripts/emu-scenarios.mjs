@@ -3389,6 +3389,10 @@ async function main() {
         const { paletteDevices } = await import('/src/preset-fit.ts');
         const { structureOf } = await import('/src/structure.ts');
         const p = { ...JSON.parse(window.__m1test.patchJson()), name: 'Pal Test' };
+        // (Silver Box with its Output's level changed, a setting no device preset holds: Add to palette finds the Silver Box
+        // slot by its structure, D-1227, and still stores it as a patch of its own)
+        const out = p.modules.find((m) => m.type === 'output');
+        if (out) out.params.level = 0.33;
         const name = `Pal ${Date.now() % 100000}`;   // (a name no earlier run left on the FM-1)
         for (const a of p.assemblies ?? []) {
           const structure = structureOf(p, a), was = a.preset;
@@ -3794,6 +3798,100 @@ async function main() {
         const left = (await page.evaluate(() => window.__m1test.slots()).catch(() => [])).filter((s) => s.used && (s.slot === slot || s.name === GIVEN.toUpperCase()));
         for (const s of left) await page.evaluate((n) => window.__m1test.eraseSlot(n), s.slot).catch((err) => console.log(`  note: slot ${s.slot + 1} not emptied: ${err.message}`));
       }
+      await openSynced('Init');
+    },
+    async paletteStructure() {   // owner 2026-11-27 (D-1227): a sound is recognised by its structure, not its name: a Hera 6 tweak under a name no slot has goes in as a preset on a slot that holds Hera 6; and what reading every slot back costs
+      const BASE = 'PAL ST BASE', SOUND = 'Pal St Sound', GIVEN = ['Pal St one', 'Pal St two'];
+      const pal = async () => (await T()).palette;
+      const statusText = () => page.evaluate(() => document.getElementById('audio-status')?.textContent ?? '');
+      const sentSince = (t) => page.evaluate((t0) => window.__sent.filter((s) => s[0] >= t0).map((s) => s[1]), t);
+      const now = () => page.evaluate(() => Math.round(performance.now()));
+      /** Hera 6 named `n`, its instrument's card row `row` moved by `by` of its range */
+      const variant = (n, row, by) => page.evaluate(async ([r, b, nm]) => {
+        const { FM1_PRESETS } = await import('/src/presets.ts');
+        const { rowOrder } = await import('/src/structure.ts');
+        const { currentValues } = await import('/src/device-presets.ts');
+        const { setRows } = await import('/src/fx-preset.ts');
+        const { DEFS } = await import('/src/modules.ts');
+        const p = FM1_PRESETS['Hera 6']();
+        p.name = nm;
+        const a = p.assemblies.find((x) => x.name === 'Hera 4');
+        const rows = rowOrder(p, a), values = currentValues(p, a);
+        const pd = DEFS[p.modules.find((x) => x.id === rows[r].module).type].params.find((x) => x.name === rows[r].param);
+        const step = (pd.max - pd.min) * b;
+        values[r] += values[r] + step <= pd.max ? step : -step;
+        setRows(p, rows, values);
+        return JSON.stringify(p);
+      }, [row, by, n]);
+      await check('palette structure: Init opens, synced', await openSynced('Init'));
+      await check('palette structure: the chips are live (an FM-1 that keeps a palette and sends slots back)', !!(await until(async () => (await pal())?.linked, 4000)));
+      for (const p of [6, 7]) {
+        if ((await pal()).chips[p]?.state === 'empty') continue;
+        await page.evaluate((x) => document.querySelector(`#snap-column .pal-chip[data-pos="${x}"] .pal-x`)?.click(), p);
+        await until(async () => (await pal()).chips[p]?.state === 'empty', 4000);
+      }
+      // (the emulator can drop an answer after many reads back to back: asked again)
+      const again = async (f) => { for (let k = 0; ; k++) { try { return await f(); } catch (err) { if (k >= 2) throw err; await emu.elapse(500); } } };
+      const slots = await again(() => page.evaluate(() => window.__m1test.slots()));
+      const slot = slots.findIndex((s) => !s.used);
+      if (slot < 0) return skip('palette structure: a Hera 6 tweak under another name goes in as a preset', 'the bank has no empty slot');
+      const bin = await page.evaluate(async ([json, alloc]) => {
+        const { encodePatch } = await import('/src/patchbin.ts');
+        return Array.from(encodePatch(JSON.parse(json), false, 0, alloc));
+      }, [await variant(BASE, 1, 0.2), (await T()).bufferAllocation]);
+      const added = [];
+      try {
+        await again(() => page.evaluate(([n, nm, b]) => window.__m1test.storeBin(n, nm, b), [slot, BASE, bin]));
+        await check(`palette structure: a Hera 6 with other card values stored into slot ${slot + 1} as ${BASE}`, await page.evaluate(([n, nm]) => window.__m1test.slots().then((x) => x[n].used && x[n].name === nm), [slot, BASE]));
+        const frames = [];
+        for (const [k, given] of GIVEN.entries()) {
+          await check(`palette structure: the editor opens a Hera 6 tweak named ${SOUND}, synced`, await openSynced('Hera 6', async (n) => page.evaluate(([x, j]) => window.__m1test.openFactory(x, j), [n, await variant(SOUND, 0, k ? 0.33 : 0.17)])));
+          const pos = (await pal()).chips.findIndex((c) => c.state === 'empty');
+          const t0 = await now();
+          await page.keyboard.down('Control'); await page.keyboard.press('k'); await page.keyboard.up('Control');
+          await page.waitForSelector('#commands[open]', { timeout: 3000 }).catch(() => {});
+          await page.fill('#commands-input', 'add to palette');
+          await page.keyboard.press('Enter');
+          await page.waitForSelector('.name-prompt input', { timeout: 4000 }).catch(() => null);
+          await page.fill('.name-prompt input', given).catch(() => {});
+          await page.keyboard.press('Enter');
+          const chip = await until(async () => { const c = (await pal()).chips[pos]; return c?.state === 'ok' && c.presets.includes(given) ? c : null; }, 20000);
+          const ms = (await now()) - t0;
+          if (chip) added.push(pos);
+          const sent = await sentSince(t0);
+          frames.push(sent.filter((c) => c === 0x02).length);
+          console.log(`  timing: add ${k + 1}: ${ms} ms, ${frames[k]} SLOT_GET frames`);
+          await check(`palette structure: "${given}" is chip ${pos + 1} on a slot that holds Hera 6 (${chip?.name}) with preset ${given}, no patch stored (no SLOT)`, !!chip && (chip.name === BASE || chip.name === 'HERA 6') && !sent.includes(0x13), JSON.stringify([(await pal()).chips[pos], await statusText()]));
+        }
+        await check(`palette structure: the second add reads no more slots back than the first (${frames.join(' then ')} SLOT_GET frames)`, frames[1] <= frames[0], JSON.stringify(frames));
+        await shot('palette-structure');
+      } finally {
+        for (const p of added) {
+          await page.evaluate((x) => document.querySelector(`#snap-column .pal-chip[data-pos="${x}"] .pal-x`)?.click(), p).catch(() => {});
+          await until(async () => (await pal())?.chips[p]?.state === 'empty', 4000);
+        }
+        const left = (await page.evaluate(() => window.__m1test.slots()).catch(() => [])).filter((s) => s.used && (s.slot === slot || GIVEN.some((g) => s.name === g.toUpperCase())));
+        for (const s of left) await page.evaluate((n) => window.__m1test.eraseSlot(n), s.slot).catch((err) => console.log(`  note: slot ${s.slot + 1} not emptied: ${err.message}`));
+      }
+      // (every used slot read back as Add to palette reads one: SLOT_GET, 256 bytes a frame; the cost of a first add that
+      // compares them all. The emulator runs the firmware at about 0.44x and does not time USB: a measure of the round trips)
+      const timing = await page.evaluate(async () => {
+        const all = await window.__m1test.slots();
+        const used = all.filter((s) => s.used);
+        const t0 = performance.now();
+        let bytes = 0, frames = 0;
+        const failed = [];
+        for (const s of used) {
+          const b = await window.__m1test.slotBin(s.slot).catch(() => null);
+          if (!b) failed.push(`${s.slot + 1} ${s.name}`);
+          else { bytes += b.length; frames += Math.max(1, Math.ceil(b.length / 256)); }
+        }
+        return { slots: all.length, used: used.length, bytes, frames, failed, ms: Math.round(performance.now() - t0) };
+      });
+      const per = timing.used ? timing.ms / timing.used : 0;
+      console.log(`  timing: ${timing.used} of ${timing.slots} slots read back, ${timing.bytes} bytes in ${timing.frames} SLOT_GET frames, ${timing.ms} ms (${per.toFixed(1)} ms a slot, ${(timing.ms / Math.max(1, timing.frames)).toFixed(1)} ms a frame; 48 slots ≈ ${Math.round(per * 48)} ms)`);
+      if (timing.failed.length) console.log(`  note: slots that sent no binary back: ${timing.failed.join(', ')}`);
+      await check(`palette structure: the used slots read back (${timing.used} slots, ${timing.ms} ms)`, timing.used > timing.failed.length, JSON.stringify(timing));
       await openSynced('Init');
     },
     async editorIgnore() {   // #702: GLO > SYSTEM > EDITOR at IGNORE: the editor lets go, Connect skips the FM-1 and says why

@@ -7,7 +7,7 @@
 import { assemblyById } from './assembly';
 import { addPresetOf, type Preset } from './device-presets';
 import type { Patch } from './patch';
-import { NO_SAME_STRUCTURE, patchPattern, presetFit } from './preset-fit';
+import { patchPattern, presetFit, samePatch } from './preset-fit';
 
 /** what Save… did: presets saved (`made`: the new ones, for a linked FM-1), nothing (the same as its patch), or a patch is
  *  needed (`why`: one line) */
@@ -22,10 +22,12 @@ export type CandidateSave =
  * `onFm1`, else a new user preset named `name`), kept in this browser. `encode`: the binary the comparison uses.
  */
 export function saveCandidate(sound: Patch, base: Patch, name: string, encode: (p: Patch) => Uint8Array, onFm1: readonly Preset[] = []): CandidateSave {
-  const fit = presetFit(sound, base, name, encode, onFm1);
   const patch = base.name.trim() || 'Untitled';
-  // (Add to palette's reason speaks of the FM-1's slots: here it is the patch the candidate is a version of)
-  if ('why' in fit) return { kind: 'patch', why: fit.why === NO_SAME_STRUCTURE ? `its modules, cables or name differ from ${patch}` : fit.why };
+  // (Save… compares with the patch the candidate is a version of, its name included, D-1426; Add to palette's reason
+  // speaks of the FM-1's slots)
+  if (!samePatch(sound, base)) return { kind: 'patch', why: `its modules, cables or name differ from ${patch}` };
+  const fit = presetFit(sound, base, name, encode, onFm1);
+  if ('why' in fit) return { kind: 'patch', why: fit.why };
   // (a preset holds no tempo, patterns, songs or selected pattern: Save… keeps them in a patch)
   if (fit.plays || patchPattern(sound) !== patchPattern(base)) return { kind: 'patch', why: 'tempo/pattern changes need a patch' };
   if (!fit.picks.length) return { kind: 'same', line: `${name} is the same as ${patch}: nothing saved` };
