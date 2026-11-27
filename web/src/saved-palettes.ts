@@ -8,7 +8,7 @@ import { assemblyById } from './assembly';
 import { fixPreset, sameName, type Preset } from './device-presets';
 import { drawerScope } from './fx-preset';
 import { entryPresets, type Chip } from './palette';
-import { paletteDevices, patchPattern } from './preset-fit';
+import { paletteDevices, patchPattern, truePresetNames } from './preset-fit';
 import type { Patch } from './patch';
 import { layout } from './patchbin';
 import { devicePresetName, PALETTE_SIZE } from './protocol';
@@ -38,31 +38,43 @@ export interface SavedPalette {
   sounds: (PaletteSound | null)[];
   made: number;
   changed: number;
+  /** its sounds keep only true preset names (D-1226). Absent: kept before that rule, its names worked out again once
+   *  when this browser loads it (truthful) */
+  presetNames?: 'true';
 }
 
 /** a preset as a sound keeps it: no factory mark, its own arrays */
 const kept = ({ structure, name, values, fx }: Preset): Preset =>
   structuredClone(fx ? { structure, name, values, fx } : { structure, name, values });
 
-/** `patch` as a sound named `name`: a copy, with the user presets its devices name from this browser (entryPresets), then
- *  each of `extra` a device of it names (its structure or its drawer's, the name as the FM-1 compares it) that this
- *  browser did not give */
+/** `p` is a preset a device of `patch` names: of the device's structure or its drawer's, the name as the FM-1 compares it */
+function namedBy(patch: Patch, p: Preset): boolean {
+  const devs = layout(patch).devs;
+  return paletteDevices(patch).some((d) => {
+    const asm = devs[d.dev]?.asm, a = asm === undefined ? undefined : assemblyById(patch, asm);
+    return !!a && [structureAndRows(patch, a).structure, drawerScope(patch, a)?.structure].includes(p.structure) && sameName(devicePresetName(p.name), d.name);
+  });
+}
+
+/** `patch` as a sound named `name`: a copy whose devices keep only their true preset names (truePresetNames, owner
+ *  2026-11-27, D-1226: values exactly those of a preset of that name, this browser's or one of `extra`), with the user
+ *  presets they name from this browser (entryPresets), then each of `extra` a device of it names that this browser did
+ *  not give */
 export function soundOf(name: string, patch: Patch, extra: readonly Preset[] = []): PaletteSound {
+  const told = truePresetNames(patch, extra);
   const presets: Preset[] = [];
   const has = (p: Preset): boolean => presets.some((x) => x.structure === p.structure && sameName(x.name, p.name));
-  for (const { preset } of entryPresets(patch)) if (!has(preset)) presets.push(kept(preset));
-  if (extra.length) {
-    const devs = layout(patch).devs;
-    for (const d of paletteDevices(patch)) {
-      const asm = devs[d.dev]?.asm, a = asm === undefined ? undefined : assemblyById(patch, asm);
-      if (!a) continue;
-      const mine = [structureAndRows(patch, a).structure, drawerScope(patch, a)?.structure];
-      for (const p of extra) {
-        if (!p.factory && mine.includes(p.structure) && sameName(devicePresetName(p.name), d.name) && !has(p)) presets.push(kept(p));
-      }
-    }
-  }
-  return { name, patch: structuredClone(patch), presets };
+  for (const { preset } of entryPresets(told)) if (!has(preset)) presets.push(kept(preset));
+  for (const p of extra) if (!p.factory && !has(p) && namedBy(told, p)) presets.push(kept(p));
+  return { name, patch: told, presets };
+}
+
+/** a sound kept before D-1226 with its preset names worked out again: a device keeps its name only while its values are
+ *  exactly that preset's (this browser's, or one the sound carries); a preset no device names any more leaves the sound.
+ *  Nothing else changes (owner 2026-11-27: "what's going to happen to the palettes i have saved?") */
+export function truthful(s: PaletteSound): PaletteSound {
+  const patch = truePresetNames(s.patch, s.presets);
+  return { name: s.name, patch, presets: s.presets.filter((p) => namedBy(patch, p)) };
 }
 
 /** a saved palette's chip at `pos` (palette-view.ts): the sound's name as given, its devices' preset names, its pattern */
@@ -111,6 +123,7 @@ function loaded(raw: unknown, validate: (p: unknown) => Patch): SavedPalette | n
     sounds: slots(r.sounds.map((s: unknown) => (s ? readSound(s, validate) : null))),
     made: typeof r.made === 'number' ? r.made : 0,
     changed: typeof r.changed === 'number' ? r.changed : 0,
+    ...(r.presetNames === 'true' ? { presetNames: 'true' as const } : {}),
   };
 }
 
@@ -202,7 +215,15 @@ export class SavedPaletteStore {
       .then((raw) => {
         for (const r of raw) {
           const p = loaded(r, validate);
-          if (p && !this.palettes.has(p.id) && !this.gone.has(p.id)) this.palettes.set(p.id, p);
+          if (!p || this.palettes.has(p.id) || this.gone.has(p.id)) continue;
+          // (kept before D-1226: its preset names worked out again, once and silently; written back as it was changed)
+          if (!p.presetNames) {
+            p.sounds = p.sounds.map((s) => s && truthful(s));
+            p.presetNames = 'true';
+            const written = structuredClone(p);
+            this.write(p.id, (b) => b.put(written));
+          }
+          this.palettes.set(p.id, p);
         }
       })
       .catch(() => undefined)
@@ -228,7 +249,7 @@ export class SavedPaletteStore {
     const now = Date.now();
     const p: SavedPalette = {
       id: newSetId(), name: name?.trim() || nextPaletteName(this.all().map((x) => x.name)),
-      sounds: slots(structuredClone(sounds.slice(0, PALETTE_SLOTS))), made: now, changed: now,
+      sounds: slots(structuredClone(sounds.slice(0, PALETTE_SLOTS))), made: now, changed: now, presetNames: 'true',
     };
     this.palettes.set(p.id, p);
     this.changed(p, false);
@@ -352,7 +373,8 @@ export function readPaletteFile(raw: unknown, validate: (p: unknown) => Patch): 
     if (!s) return null;
     const sound = readSound(s, validate);
     if (!sound) dropped++;
-    return sound;
+    // (a file an editor before D-1226 wrote can name stale presets)
+    return sound && truthful(sound);
   });
   return { name: typeof r.name === 'string' ? r.name.trim() : '', sounds, dropped };
 }

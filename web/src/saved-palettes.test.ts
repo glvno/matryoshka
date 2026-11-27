@@ -4,14 +4,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FACTORY } from './assemblies';
 import { insertAssembly, type AssemblyInst } from './assembly';
-import { addUserPreset, applyPreset, currentValues, presetsOf, setFactoryPresets, type Preset } from './device-presets';
+import { addUserPreset, applyPreset, currentValues, deletePreset, presetsOf, setFactoryPresets, type Preset } from './device-presets';
 import { DEFS } from './modules';
 import { connect, newPatch, validatePatch, type Patch } from './patch';
 import {
   idbBackend, isPaletteFile, memoryBackend, nextPaletteName, PALETTE_FILE_VERSION, PALETTE_SLOTS, paletteFile, paletteFileName,
   readPaletteFile, SavedPaletteStore, soundChip, soundOf, type PaletteBackend, type PaletteSound, type SavedPalette,
 } from './saved-palettes';
-import { structureOf } from './structure';
+import { rowOrder, structureOf } from './structure';
 
 const mem = new Map<string, string>();
 const storage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) };
@@ -90,6 +90,15 @@ describe('a sound and its chip', () => {
     p.modules.find((m) => m.type === 'fm1')!.seq = { pattern: 2 };
     expect(soundChip(soundOf('Night Bus b', p), 3)).toEqual({ pos: 3, state: 'ok', name: 'Night Bus b', presets: ['Warm1'], pattern: 2, cur: false, next: false, copy: true });
     expect(soundChip(null, 0)).toMatchObject({ pos: 0, state: 'empty', presets: [], cur: false, next: false, copy: true });
+  });
+
+  it('soundOf drops a card\'s preset name that knob edits made stale, and its preset (D-1226)', () => {
+    const { p, a } = padPatch();
+    p.modules.find((m) => m.id === rowOrder(p, a)[0].module)!.params[rowOrder(p, a)[0].param] += 0.01;
+    const s = soundOf('MY PAD', p);
+    expect(s.patch.assemblies!.find((x) => x.id === a.id)!.preset).toBeUndefined();
+    expect(s.presets).toEqual([]);
+    expect(a.preset).toBe('Warm1');   // (the editor's patch as it was)
   });
 });
 
@@ -241,11 +250,11 @@ describe('the saved palettes', () => {
   it('the check on load: a sound whose patch fails is empty, bad presets dropped, sounds padded or cut, no palette dropped', async () => {
     const good = named('Good');
     const raw = [
-      { id: 'a', name: ' Pads ', made: 1, changed: 2, sounds: [
+      { id: 'a', name: ' Pads ', made: 1, changed: 2, presetNames: 'true', sounds: [
         { name: 'BAD', patch: { not: 'a patch' }, presets: [] },
         { name: 'GOOD', patch: good, presets: [{ structure: 'deadbeef', name: 'Ok', values: [1, 2] }, { structure: 'deadbeef', values: [1] }, 'x'] },
       ] },
-      { id: 'b', name: 'Long', made: 1, changed: 1, sounds: Array.from({ length: 10 }, () => ({ name: 'S', patch: good, presets: [] })) },
+      { id: 'b', name: 'Long', made: 1, changed: 1, presetNames: 'true', sounds: Array.from({ length: 10 }, () => ({ name: 'S', patch: good, presets: [] })) },
       { id: 'c', sounds: [] },
       { name: 'No id', sounds: [] },
       'junk',
@@ -260,6 +269,49 @@ describe('the saved palettes', () => {
     expect(a.sounds[1]).toMatchObject({ name: 'GOOD', patch: { name: 'Good' }, presets: [{ structure: 'deadbeef', name: 'Ok', values: [1, 2] }] });
     expect(a.sounds[1]!.presets).toHaveLength(1);
     expect(store.get('b')!.sounds).toHaveLength(PALETTE_SLOTS);
+  });
+
+  it('a palette kept before D-1226 has its preset names worked out again once, silently: stale ones and their presets go, true ones stay, nothing else changes', async () => {
+    const { p, a, structure } = padPatch();
+    const stale = structuredClone(p);
+    const row = rowOrder(stale, a)[0];
+    stale.modules.find((m) => m.id === row.module)!.params[row.param] += 0.01;
+    // (a name only the sound's own preset holds is true too: another browser's preset)
+    const theirs = structuredClone(p);
+    theirs.assemblies!.find((x) => x.id === a.id)!.preset = 'Theirs';
+    const own: Preset = { structure, name: 'Theirs', values: currentValues(p, a) };
+    const warm: Preset = { structure, name: 'Warm1', values: currentValues(p, a) };
+    const seed = { id: 'old', name: 'Old', made: 5, changed: 6, sounds: [
+      { name: 'STALE', patch: stale, presets: [warm] }, { name: 'TRUE', patch: p, presets: [warm] }, { name: 'THEIRS', patch: theirs, presets: [own] },
+    ] } as unknown as SavedPalette;
+    const backend = memoryBackend([seed]);
+    const store = new SavedPaletteStore(backend, validate);
+    await store.ready;
+    const got = store.get('old')!;
+    const presetOf = (s: PaletteSound | null): string | undefined => s!.patch.assemblies!.find((x) => x.id === a.id)!.preset;
+    expect(got.sounds.slice(0, 3).map(presetOf)).toEqual([undefined, 'Warm1', 'Theirs']);
+    expect(got.sounds.slice(0, 3).map((s) => s!.presets.map((x) => x.name))).toEqual([[], ['Warm1'], ['Theirs']]);
+    expect(got.sounds.map((s) => s?.name ?? null)).toEqual(['STALE', 'TRUE', 'THEIRS', null, null, null, null, null]);
+    expect([got.name, got.made, got.changed, got.presetNames]).toEqual(['Old', 5, 6, 'true']);
+    await settle();
+    const [written] = await backend.load();
+    expect(written.presetNames).toBe('true');
+    expect(written.changed).toBe(6);
+    expect(presetOf(written.sounds[0])).toBeUndefined();
+    // (once: a later load leaves the names alone, whatever this browser's presets are by then)
+    deletePreset(structure, 'Warm1');
+    const again = new SavedPaletteStore(backend, validate);
+    await again.ready;
+    expect(presetOf(again.get('old')!.sounds[1])).toBe('Warm1');
+  });
+
+  it('a palette file an older editor wrote is read with true preset names only', () => {
+    const { p, a } = padPatch();
+    const row = rowOrder(p, a)[0];
+    p.modules.find((m) => m.id === row.module)!.params[row.param] += 0.01;
+    const file = JSON.parse(JSON.stringify({ format: 'matryoshka-palette', version: 1, name: 'Old', sounds: [{ name: 'MY PAD', patch: p, presets: [] }] }));
+    const got = readPaletteFile(file, validate);
+    expect(got.sounds[0]!.patch.assemblies!.find((x) => x.id === a.id)!.preset).toBeUndefined();
   });
 
   it('without a backend the palettes live in memory; idbBackend is null without IndexedDB', async () => {

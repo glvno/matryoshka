@@ -3,11 +3,11 @@
 // cables and drawers) with other card values, tempo or patterns, each differing device then taking a preset of its values
 // (one this browser or the FM-1 has, else a new one). Add to palette (palette.ts) points a palette entry at an FM-1 slot
 // with it; a candidate's Save… (candidate-save.ts) stores those presets instead of a new patch.
-import { assemblyById } from './assembly';
+import { assemblyById, type AssemblyInst } from './assembly';
 import { parseBinary } from './bin-parse';
 import { deviceName } from './bank';
 import type { DeviceLink } from './device';
-import { applyPreset, capturePreset, presetsOf, rememberedPreset, sameName, type Preset } from './device-presets';
+import { applyPreset, capturePreset, currentValues, matchesPreset, presetsOf, rememberedPreset, sameName, type Preset } from './device-presets';
 import { drawerScope } from './fx-preset';
 import { DEFS } from './modules';
 import type { Patch } from './patch';
@@ -54,6 +54,26 @@ export const patchPattern = (patch: Patch): number => patch.modules.find((m) => 
  *  slots it stores) */
 export const entryOf = (patch: Patch, slot: number, name = deviceName(patch.name.trim() || 'PATCH')): PaletteEntry =>
   ({ slot, pattern: patchPattern(patch), name, devices: paletteDevices(patch) });
+
+/** device `a` of `p` still plays its card's preset name (owner 2026-11-27, D-1226: a palette entry records a preset name
+ *  only when it is true): its card values are exactly those of a preset of that name, one this browser has (factory or
+ *  the user's) or one of `extra` (a saved sound's own presets, the FM-1's, the presets an add makes), compared as the
+ *  FM-1 keeps values (Q16). An instrument with an FX drawer counts with its drawer or alone */
+export function truePresetName(p: Patch, a: AssemblyInst, extra: readonly Preset[] = []): boolean {
+  if (!a.preset) return false;
+  if (matchesPreset(p, a)) return true;
+  const now = [capturePreset(p, a, '')];
+  if (drawerScope(p, a)) now.push({ structure: structureOf(p, a), name: '', values: currentValues(p, a) });
+  return extra.some((x) => samePreset(x.name, a.preset!) && now.some((n) => n.structure === x.structure && n.values.length === x.values.length && n.values.every((v, i) => q16(v) === q16(x.values[i]))));
+}
+
+/** a copy of `patch` whose devices keep only the preset names that are true (truePresetName), the rest dropped: a stale
+ *  "Init" after knob edits names nothing. `extra` as truePresetName's */
+export function truePresetNames(patch: Patch, extra: readonly Preset[] = []): Patch {
+  const out = structuredClone(patch);
+  for (const a of out.assemblies ?? []) if (a.preset && !truePresetName(out, a, extra)) delete a.preset;
+  return out;
+}
 
 /**
  * The entry applied to `patch` (a copy of its slot's patch) as the FM-1 applies it before its load: each device whose
@@ -246,7 +266,21 @@ export function presetFit(sound: Patch, held: Patch, name: string, encode: (p: P
       else delete e.preset;
     }
     const keep = (n: string | undefined): void => { if (n) a.preset = n; else delete a.preset; };
-    if (want.structure === was.structure && sameValues(want.values, was.values)) { keep(h.preset); continue; }
+    const same = (x: readonly number[]): boolean => x.length === want.values.length && x.every((v, i) => q16(v) === q16(want.values[i]));
+    // (as the FM-1 keeps values: a slot read back holds them in Q16, and a device left as it is takes no preset of its own)
+    if (want.structure === was.structure && same(was.values)) {
+      // (it keeps the slot's preset name, unless the sound's own name is true and another: the entry then names that
+      // preset, which has these values, D-1226)
+      const mine = presetsOf(named, a);
+      const truth = (p: Preset): boolean => p.structure === want.structure && sameName(p.name, a.preset) && same(p.values);
+      const own = a.preset && !samePreset(h.preset, a.preset) ? mine.find(truth) ?? extra.find(truth) ?? onFm1.find(truth) : undefined;
+      if (!own) { keep(h.preset); continue; }
+      const from = mine.includes(own) ? (own.factory ? 'factory' : 'browser') : extra.includes(own) ? 'sound' : 'fm1';
+      const preset = from === 'fm1' ? { ...want, name: devicePresetName(own.name) } : own;
+      keep(preset.name);
+      picks.push({ preset, from, asm: a.id });
+      continue;
+    }
     const label = a.label || a.name;
     if (want.values.length > PRESET_VALUES_MAX) return { why: `${label} needs ${want.values.length} preset values, ${PRESET_VALUES_MAX} at most` };
     // (a preset of the slot's device's name is never applied by the FM-1: the name is all it compares)

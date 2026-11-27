@@ -886,3 +886,63 @@ describe('a slot whose patch this browser has no copy of (owner 2026-11-27: "add
     expect(off).toEqual([]);
   });
 });
+
+describe('a palette entry names a preset only while the device plays it (owner 2026-11-27: "agree with your proposal", D-1226)', () => {
+  const hera = (): Patch => FM1_PRESETS['Hera 6']();
+  const synth = (p: Patch): AssemblyInst => p.assemblies!.find((a) => a.name === 'Hera 4')!;
+  /** card row 0 of `a` moved, as the card moves it */
+  function edit(p: Patch, a: AssemblyInst): void {
+    const rows = rowOrder(p, a), values = currentValues(p, a);
+    const pd = DEFS[p.modules.find((x) => x.id === rows[0].module)!.type].params.find((x) => x.name === rows[0].param)!;
+    const step = (pd.max - pd.min) * 0.1;
+    values[0] += values[0] + step <= pd.max ? step : -step;
+    setRows(p, rows, values);
+  }
+  /** the FM-1 with `held` in slot 23 as HERA 6, which this browser keeps no copy of */
+  async function stored(held: Patch) {
+    const r = await linked({ features25: FEATURE25_SLOT_GET | FEATURE5_FX_DRAWERS, candidates: [{ name: 'Hera 6', patch: hera, factory: true }] });
+    const bin = r.link.encodeFor(held);
+    r.fm1.slots[22] = { slot: 22, used: true, length: bin.length, name: 'HERA 6' };
+    r.fm1.bins[22] = bin;
+    return r;
+  }
+
+  it('a patch stored whole leaves out a card\'s preset name that knob edits made stale, and sends no preset for it', async () => {
+    const { fm1, palette, said } = await linked();
+    const { p, a } = padPatch();
+    edit(p, a);
+    expect(a.preset).toBe('Warm1');   // (the card still says so)
+    expect(await palette.add('My Pad', p)).toBe(true);
+    await fm1.quiet();
+    expect(fm1.entries[0]).toMatchObject({ slot: 0, name: 'MY PAD', devices: [] });
+    expect(fm1.presets).toEqual([]);
+    expect(palette.chips()[0].presets).toEqual([]);
+    expect(said.at(-1)).not.toMatch(/preset/);
+  });
+  it('a device the add reaches with a preset keeps the slot\'s preset name only while its values are that preset\'s', async () => {
+    const held = hera();
+    synth(held).preset = 'Glass';   // (a name its card showed before edits)
+    const sound = structuredClone(held);
+    sound.modules.find((m) => m.type === 'fm1')!.params.tempo = 97;   // (the entry plays the slot's tempo)
+    const stale = await stored(held);
+    expect(await stale.palette.add('Hera 6 fast', sound)).toBe(true);
+    await stale.fm1.quiet();
+    expect(stale.fm1.entries[0]).toMatchObject({ slot: 22, devices: [] });
+    replaceUserPresets([], [capturePreset(held, synth(held), 'Glass')]);
+    const kept = await stored(held);
+    expect(await kept.palette.add('Hera 6 fast', sound)).toBe(true);
+    await kept.fm1.quiet();
+    expect(kept.fm1.entries[0]).toMatchObject({ slot: 22, devices: [{ name: 'Glass' }] });
+  });
+  it('a device that keeps the slot\'s values but whose card names another preset that has them: the entry names that preset, sent', async () => {
+    const held = hera();
+    const sound = hera();
+    replaceUserPresets([], [capturePreset(sound, synth(sound), 'Mine')]);
+    synth(sound).preset = 'Mine';
+    const { fm1, palette } = await stored(held);
+    expect(await palette.add('Hera 6', sound)).toBe(true);
+    await fm1.quiet();
+    expect(fm1.entries[0]).toMatchObject({ slot: 22, devices: [{ name: 'Mine' }] });
+    expect(fm1.presets.map((p) => p.name)).toEqual(['Mine']);
+  });
+});
