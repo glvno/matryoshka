@@ -1,0 +1,45 @@
+{
+ "checks": [
+  {
+   "name": "Vernon 100 note 60: candidate as 1.28.2 (RMS within max(1 dB, 2x spread))",
+   "ok": true,
+   "info": "1.28.2 [-25.74, -25.74], 1.29.0 [-25.74, -25.74] dBFS, diff +0.00 dB, spread 0.00"
+  },
+  {
+   "name": "Vernon 100 note 72: candidate as 1.28.2 (RMS within max(1 dB, 2x spread))",
+   "ok": true,
+   "info": "1.28.2 [-25.74, -25.74], 1.29.0 [-25.74, -25.75] dBFS, diff -0.00 dB, spread 0.01"
+  },
+  {
+   "name": "Vernon 100 note 77: candidate as 1.28.2 (RMS within max(1 dB, 2x spread))",
+   "ok": true,
+   "info": "1.28.2 [-25.74, -25.74], 1.29.0 [-25.74, -25.74] dBFS, diff +0.00 dB, spread 0.00"
+  },
+  {
+   "name": "Vernon 100 note 79: candidate as 1.28.2 (RMS within max(1 dB, 2x spread))",
+   "ok": true,
+   "info": "1.28.2 [-25.74, -25.74], 1.29.0 [-25.74, -25.74] dBFS, diff +0.00 dB, spread 0.00"
+  },
+  {
+   "name": "Vernon 100 note 84: candidate as 1.28.2 (RMS within max(1 dB, 2x spread))",
+   "ok": true,
+   "info": "1.28.2 [-25.75, -25.75], 1.29.0 [-25.75, -25.76] dBFS, diff -0.01 dB, spread 0.01"
+  },
+  {
+   "name": "Vernon 100 note 88: candidate as 1.28.2 (RMS within max(1 dB, 2x spread))",
+   "ok": true,
+   "info": "1.28.2 [-25.75, -25.75], 1.29.0 [-25.75, -25.75] dBFS, diff +0.00 dB, spread 0.00"
+  },
+  {
+   "name": "Vernon 100 note 91: candidate as 1.28.2 (RMS within max(1 dB, 2x spread))",
+   "ok": true,
+   "info": "1.28.2 [-25.76, -25.75], 1.29.0 [-25.77, -25.78] dBFS, diff -0.02 dB, spread 0.01"
+  },
+  {
+   "name": "Vernon 100 note 96: candidate as 1.28.2 (RMS within max(1 dB, 2x spread))",
+   "ok": true,
+   "info": "1.28.2 [-25.75, -25.76], 1.29.0 [-25.77, -25.78] dBFS, diff -0.02 dB, spread 0.01"
+  }
+ ],
+ "all_ok": true
+}

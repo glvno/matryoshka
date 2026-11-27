@@ -1,0 +1,533 @@
+{
+  "schema": 1,
+  "version": "1.29.0",
+  "firmware_product": "FM-1_7012900",
+  "source_commit": "256cd9a7da0196faad13b8fca9d574ef6619af75",
+  "source_tree": "db5a24129782479438d7b9f30b1c7f5b09ee41f8",
+  "frozen_commit": "256cd9a7da0196faad13b8fca9d574ef6619af75",
+  "status": "automated and rig checks passed; the owner's device check (D-139) follows on this candidate before his go",
+  "release_approval": {
+    "status": "pending the owner's device check and go (D-139, D-1186)",
+    "scope": "Publication of v1.29.0 from the tag on release/1.29.0: the frozen commit plus only this record, the qualified package and its screen font in web/public/firmware/, the coverage record and the rig measurements (D-1163); its firmware/ and tools/ equal the qualified source (D-105)."
+  },
+  "contents": [
+    "#1344: the Freq shifter's audio-rate pm input and row, any sound as an FM carrier; the Library voice wavetable fm (patch format 70, D-1263, D-1043)",
+    "#1347: an effect's page header says NAME OFF (dim) while it is off (D-1453)",
+    "#1351: the Wavetable reads 256 / 128 / 64 samples per level (D-1121); Vernon 100's top notes change by at most -42.7 dB re the note",
+    "#1352: Algo Four and Cassia 1 only in the factory region, the FM-1's preset migrations and the FPU probe pages removed (D-1020, D-179, D-865, D-1114); factory content v24 df0852 with v23's content",
+    "#1361: a slider row's value clear of the handle near its top",
+    "#1345: the changelog page lists only released versions",
+    "#1346: tools/aot_capacity.sh passes",
+    "#1354: the DX7 voice core's source (firmware/src/dx7.h, included by no firmware source: inert)",
+    "#1356 / #1360: D-135 retired (D-1185)",
+    "#1340, #1341, #1348: also shipped in 1.28.2",
+    "not in it: the DX7 module stack (#1355, #1357, #1358, #1362)"
+  ],
+  "plan": "D-1186 (freeze PR #1364 = 256cd9a7)",
+  "patch_format": 70,
+  "factory_content": {
+    "version": 24,
+    "set": "df0852",
+    "layout": 4,
+    "format": 66,
+    "note": "decoded v23 (v1.28.2) vs v24 (F) images: header equal but version 23->24 and set 0187f5->df0852 (format 66); 55871 patch/preset/dict/pattern bytes identical once the 12 patch revisions (23->24) are set aside; 23 RELEASED_SETS and 1264 copy/migration bytes identical; 1.26.3 to 1.29.0 firmware (layout 4, plays 66) is offered it, older firmware its frozen set (Tests  21 passed (21): factory-protocol / factory-content tests)"
+  },
+  "artifacts": {
+    "package": {
+      "name": "matryoshka-1.29.0.fwsc",
+      "size": 610628,
+      "sha256": "abeead47bef97d5aaf751951592c6213717bbb6d5202500890a804857835b3b5"
+    },
+    "screen_font": {
+      "name": "matryoshka-1.29.0-font.bin",
+      "size": 40946,
+      "sha256": "765b681ae53c51855791860e8f1c6b7eb8113fdb8e6d8aec96261f4d8a7cc3fa",
+      "id": "528f1926"
+    },
+    "normal": {
+      "name": "matryoshka-1.29.0-app.bin",
+      "size": 527172,
+      "sha256": "a5a32298e0e8f916e4c42710761bfaef7c6366c359fdf3bc6f4bab0f26f502ff"
+    },
+    "normal_elf": {
+      "name": "matryoshka-1.29.0-app.elf",
+      "size": 600944,
+      "sha256": "c2458291c81104af5e10a6c9eb70104c8320a5e7991da313109d15f1efd08a0b"
+    },
+    "normal_sidecar": {
+      "name": "matryoshka-1.29.0.json",
+      "size": 431,
+      "sha256": "088134f3155b0662264cda4e3d16d1815420735efffa65cb391e59827e2bcd90"
+    },
+    "bridge": {
+      "name": "matryoshka-emu.bin",
+      "size": 524916,
+      "sha256": "1885f784009fe4bb14a2769da9e470ed11d6879505ee885a2e245a2b7c93854a"
+    }
+  },
+  "build_manifest_sha256": "5bdfad7ec73707fa420adcd9f8435fe23777bd28b6ec9c79b4cda2926d59bc0a",
+  "build": "release run 46049226609: image 527172 B; RAM .data+.bss 19376 B of 24448 (5072 B free); pool 408676 B of 417920 (9244 B headroom, the floor 8192)",
+  "ci_runs": {
+    "release": 46049226609,
+    "web_rc": 46049232337,
+    "freeze_pr": 1364
+  },
+  "coverage": "release/coverage/v1.29.0: coverage record: current, measured 256cd9a7, fingerprint matches the frozen commit (web RC run 46049232337, D-147)",
+  "full_scenarios": "577 of 577 checks passed",
+  "smoke": [
+    "emu:smoke: passed; 317 checks, 0 failed, 0 level warnings; 537.2 s emulated in 351.2 s; snapshots in build/emu/smoke (/Users/mg/projects/music/fm1/wt/rel129/bui"
+  ],
+  "boot": "boot check: PASS (49 checks, 0 failed; the editor link and the update handshake checked on the M1_EMU_MIDI build; 82.1 s emulated in 68.9 s; snapshots in /Users",
+  "old_format": [
+    "older format ok: 706 binaries load, upgrade and render bit-identically; 0 upgraded as today's encoder writes them, 336 differ, 370 too big to upgrade, 0 already in today's format; 2276 records grown to all their parameters render the same; 706 raised to format 70 render the same; 0 over a slot skipped",
+    "older format ok: 104 binaries load, upgrade and render bit-identically; 0 upgraded as today's encoder writes them, 103 differ, 1 too big to upgrade, 0 already in today's format; 1297 records grown to all their parameters render the same; 103 raised to format 70 render the same; 0 over a slot skipped",
+    "differences against v1.28.2: DIFFERS wavetable-eml-high; DIFFERS wavetable (the wavetable kits: #1351's intended change, tools/old_format_known.txt lists them for v1.28.1, the same engine as v1.28.2)"
+  ],
+  "install_panel_vs_1.28.2_emulator": [
+    "ok   connect: the editor finds the emulated FM-1: Newer factory sounds for this FM-1 (version 23 → 24).",
+    "FAIL connect: Sync turns Live on: chip not synced",
+    "ok   connect: the FM-1 shows its device page",
+    "ok   connect: the FM-1 plays Init from a key: peak 3369",
+    "ok   install panel: on 1.28.2 (patch format 69) the editor asks to update: \"update it to sync\": This FM-1 runs older Matryoshka firmware that cannot play the editor's patches: update it to sync.",
+    "factory offer: (none shown)",
+    "FAIL install panel: the factory sounds update is offered, version 23 → 24",
+    "Matryoshka v1.29.0 (FM-1_7012900, 596 KB) comes with this app. GPL-3.0; three JieLi SDK files inside are Apache-2.0.",
+    "ok   install panel: it offers 1.29.0: Install firmware"
+  ],
+  "hardware": {
+    "upgrade_from_1.28.2": {
+      "checks": "14 of 14",
+      "method": "build/release-1.29.0/prep/carry129.py: on 1.28.2 every slot, the pattern store, the palette and each entry's sound recorded; after the 1.29.0 install (which updated the factory region v23 0187f5 -> v24 df0852) all of it as on 1.28.2, the font, region v24"
+    },
+    "upgrade_from_1.26.3": {
+      "checks": "12 of 12",
+      "method": "carry129.py: 1.25.0 fresh with the 1.25.0 bank, 1.26.3 over it (upgrade1263.py: 70 of 70), snapshot, then 1.29.0 over it"
+    },
+    "from_1.25.0_straight_old_preset": {
+      "install": [
+        "screen font: /Users/mg/projects/music/fm1/modular-1/build/release-1.29.0/dl/matryoshka-release-1.29.0/matryoshka-1.29.0-font.bin (font 528f1926)",
+        "done: the FM-1 runs FM-1_7012900",
+        "screen font: current (font 528f1926)",
+        "factory region: valid; layout 4 (the firmware reads 4), format 66, version 24, set df0852, 57475 of 73728 bytes, 12 patches; the firmware tier: version 24, 9 patches; 21 factory patches in all"
+      ],
+      "on_the_fm1": "T129 OLD KIT: under fa71d127: kept, 29 values; under 63a8df70: absent; 4 user presets",
+      "editor": "ok   the editor moves T129 OLD KIT fa71d127 -> 63a8df70 (31 values)",
+      "detail": {
+        "fm1": {
+          "presets": [
+            {
+              "structure": "7e57417e",
+              "name": "FLASH TEST",
+              "values": 4
+            },
+            {
+              "structure": "7e57417e",
+              "name": "MATRYOSHKA RIG",
+              "values": 4
+            },
+            {
+              "structure": "aaa2b095",
+              "name": "Monolith D C",
+              "values": 64
+            },
+            {
+              "structure": "fa71d127",
+              "name": "T129 OLD KIT",
+              "values": 29
+            }
+          ],
+          "old": [
+            1000,
+            2000,
+            3000,
+            4000,
+            5000,
+            6000,
+            7000,
+            8000,
+            9000,
+            10000,
+            11000,
+            12000,
+            13000,
+            14000,
+            15000,
+            16000,
+            17000,
+            18000,
+            19000,
+            20000,
+            21000,
+            22000,
+            23000,
+            24000,
+            25000,
+            26000,
+            27000,
+            28000,
+            29000
+          ],
+          "new": null,
+          "name": "T129 OLD KIT",
+          "old_structure": "fa71d127",
+          "new_structure": "63a8df70"
+        },
+        "editor": {
+          "from": "fa71d127",
+          "moved_to": "63a8df70",
+          "as_expected": true,
+          "values_before": [
+            1000,
+            2000,
+            3000,
+            4000,
+            5000,
+            6000,
+            7000,
+            8000,
+            9000,
+            10000,
+            11000,
+            12000,
+            13000,
+            14000,
+            15000,
+            16000,
+            17000,
+            18000,
+            19000,
+            20000,
+            21000,
+            22000,
+            23000,
+            24000,
+            25000,
+            26000,
+            27000,
+            28000,
+            29000
+          ],
+          "values_after": [
+            0.0152587890625,
+            0.4119873046875,
+            0.42724609375,
+            0.4425048828125,
+            0.030517578125,
+            0.2899169921875,
+            0.30517578125,
+            0.3204345703125,
+            0.06103515625,
+            0.1068115234375,
+            0.3814697265625,
+            0.244140625,
+            0.1678466796875,
+            0.18310546875,
+            0.1983642578125,
+            0.213623046875,
+            0.2288818359375,
+            0,
+            16,
+            0.091552734375,
+            0.396728515625,
+            0.274658203125,
+            0.0457763671875,
+            0.2593994140625,
+            0.0762939453125,
+            0.1220703125,
+            0.1373291015625,
+            0.335693359375,
+            0.152587890625,
+            0.3662109375,
+            0.3509521484375
+          ]
+        }
+      },
+      "method": "build/release-1.29.0/prep/oldpreset.py: on 1.25.0 with its bank a user preset T129 OLD KIT of the 808 Kit's 1.25 structure fa71d127 (the migration 1.26.0 added); 1.29.0 installed straight over 1.25.0: the FM-1 keeps it under fa71d127, unmoved (D-865 as amended by #1352); the candidate editor's movedPreset (device-presets.ts, which addUserPreset, the FM-1 read path, calls) moves it to 63a8df70 (oldpreset_ts.ts)"
+    },
+    "palette": {
+      "on_1.29.0": "9 of 9",
+      "on_1.26.3": "9 of 9",
+      "left": "9 of 9"
+    },
+    "freq_shifter_pm": {
+      "checks": "9 of 9",
+      "levels": {
+        "pm2": {
+          "rms_dbfs": -37.0,
+          "db": {
+            "f0": 0.0,
+            "2f0": -1.6,
+            "f0+fm": 0.1,
+            "fm-f0": 1.6,
+            "f0+2fm": 2.2,
+            "2fm-f0": -1.3,
+            "2f0+fm": 1.6
+          },
+          "ts_db": {
+            "f0": 0,
+            "2f0": -4.1,
+            "f0+fm": -10.8,
+            "fm-f0": -0.9,
+            "f0+2fm": 3.6,
+            "2fm-f0": -23.9,
+            "2f0+fm": 3.8
+          },
+          "rate": 44100,
+          "bands_rel": [
+            -65.7,
+            -14.9,
+            -40.5,
+            -75.4,
+            -16.8,
+            -59.1,
+            -22.2,
+            -16.4,
+            -11.9,
+            -14.8,
+            -8.6,
+            -5.9,
+            -1.4,
+            0.0,
+            -1.6,
+            -5.7,
+            -19.1,
+            -44.6,
+            -69.9,
+            -69.3,
+            -68.5
+          ],
+          "ts_bands_rel": [
+            -65.7,
+            -14.6,
+            -40.1,
+            -75.2,
+            -15.7,
+            -58.1,
+            -20.9,
+            -15.8,
+            -12.6,
+            -14.1,
+            -8.0,
+            -5.6,
+            -1.6,
+            0.0,
+            -1.3,
+            -5.4,
+            -18.9,
+            -44.5,
+            -80.7,
+            -86.8,
+            -89.9
+          ]
+        },
+        "pm0": {
+          "rms_dbfs": -37.0,
+          "db": {
+            "f0": 0.0,
+            "2f0": -18.9,
+            "f0+fm": -81.1,
+            "fm-f0": -92.4,
+            "f0+2fm": -5.5,
+            "2fm-f0": -18.2,
+            "2f0+fm": -81.8
+          },
+          "ts_db": {
+            "f0": 0,
+            "2f0": -18,
+            "f0+fm": -147.7,
+            "fm-f0": -139.9,
+            "f0+2fm": -5.7,
+            "2fm-f0": -22.6,
+            "2f0+fm": -138.4
+          },
+          "rate": 44100,
+          "bands_rel": [
+            -90.2,
+            -89.5,
+            -87.8,
+            -73.3,
+            -12.0,
+            -54.1,
+            -83.6,
+            -30.0,
+            -79.3,
+            -20.5,
+            -13.2,
+            -8.0,
+            -4.7,
+            0.0,
+            -2.5,
+            -10.6,
+            -35.2,
+            -71.7,
+            -71.2,
+            -70.7,
+            -70.4
+          ],
+          "ts_bands_rel": [
+            -106.0,
+            -99.5,
+            -92.1,
+            -73.5,
+            -12.0,
+            -54.1,
+            -91.1,
+            -30.0,
+            -86.5,
+            -20.5,
+            -13.2,
+            -8.0,
+            -4.7,
+            0.0,
+            -2.5,
+            -10.6,
+            -35.2,
+            -79.2,
+            -84.3,
+            -88.1,
+            -91.6
+          ]
+        }
+      },
+      "method": "build/release-1.29.0/prep/fsh_pm.ts + fm_rig.py pm: a Wavetable carrier, a sine a fifth up into the Freq shifter's pm, shift 0 Hz, sent live; C4 held, the rig's USB audio, Hann Goertzel over 1 s: the sidebands f0+fm, fm-f0, 2f0+fm against the TS engine's levels (dB re the fundamental), and absent with the pm row at 0"
+    },
+    "vernon_100_high_notes": {
+      "checks": "8 of 8",
+      "ts_change_db_re_note": {
+        "60": {
+          "rms_dbfs": -19.6,
+          "diff_db_re_note": -180.4
+        },
+        "72": {
+          "rms_dbfs": -19.6,
+          "diff_db_re_note": -180.4
+        },
+        "77": {
+          "rms_dbfs": -19.6,
+          "diff_db_re_note": -53.4
+        },
+        "79": {
+          "rms_dbfs": -19.6,
+          "diff_db_re_note": -52.3
+        },
+        "84": {
+          "rms_dbfs": -19.6,
+          "diff_db_re_note": -53.8
+        },
+        "88": {
+          "rms_dbfs": -19.6,
+          "diff_db_re_note": -54
+        },
+        "91": {
+          "rms_dbfs": -19.6,
+          "diff_db_re_note": -44
+        },
+        "96": {
+          "rms_dbfs": -19.6,
+          "diff_db_re_note": -43.7
+        }
+      },
+      "method": "fm_rig.py vrec/vcmp: Vernon 100's slot, notes 60..96 held 1.2 s, two takes each on 1.28.2 and on 1.29.0 in one session: never silent, RMS as on 1.28.2; the TS engines of v1.28.2 and the candidate give the change itself (vernon_ts.ts)"
+    },
+    "effect_header": {
+      "sel_rig": "21 of 21",
+      "scenarios": "15 of 15 checks",
+      "method": "sel_rig.py switch with the #1347 header read from the screen (TEST_SCREEN's top row: DRIVE OFF / DRIVE, REVERB OFF / REVERB) and device:scenarios selFx909 / selCanvas (#1323 checks: SEL, the editor's power switch)"
+    },
+    "inversion_latch": {
+      "invKeys": "49 of 49 checks",
+      "invKeysRig": "14 of 14 checks"
+    },
+    "retrig": "17 of 17 checks",
+    "open_from_fm1_rig": "13 of 13 checks",
+    "held_through_palette_switch": {
+      "on_1.29.0": "PASS held through a palette switch, LFO rests in step record on 1.29.0",
+      "method": "build/release-1.28.2/prep/held_rig.py: LFO held through a palette switch, then LFO taps in step record enter rests"
+    },
+    "counters": {
+      "1.28.2": {
+        "firmware": "1.28.2",
+        "secs": 30.0,
+        "armed": [
+          "STEP 1/16  DRUMS ARM P01"
+        ],
+        "ticks_per_s": 9991,
+        "usb_polls": 60046,
+        "usb_poll_mean_us": 4.66,
+        "t5_gap_max_us": 105,
+        "audio_peak_pct": 68,
+        "overload": 0,
+        "usb_before": {
+          "sie_timeouts": 0,
+          "retries": 0,
+          "resets": 1,
+          "suspends": 0
+        },
+        "usb_after": {
+          "sie_timeouts": 0,
+          "retries": 0,
+          "resets": 1,
+          "suspends": 0
+        }
+      },
+      "1.29.0": {
+        "firmware": "1.29.0",
+        "secs": 30.0,
+        "armed": [
+          "STEP 1/16  PATTERN ARM G#3-D#4 "
+        ],
+        "ticks_per_s": 9987,
+        "usb_polls": 60021,
+        "usb_poll_mean_us": 4.82,
+        "t5_gap_max_us": 103,
+        "audio_peak_pct": 48,
+        "overload": 0,
+        "usb_before": {
+          "sie_timeouts": 0,
+          "retries": 0,
+          "resets": 1,
+          "suspends": 0
+        },
+        "usb_after": {
+          "sie_timeouts": 0,
+          "retries": 0,
+          "resets": 1,
+          "suspends": 0
+        }
+      }
+    },
+    "909_hits_vs_1.28.2": {
+      "ok": true,
+      "worst_counts": 5488,
+      "silent_notes": [],
+      "over_floor": [],
+      "min_peak": 1311,
+      "method": "audeq128.py: the 909 Kit's 14 sounding keys (54..69), two takes each on each firmware, same session; every note > 200 counts and A vs B within 1.5 x the larger repeat floor + 300"
+    },
+    "rig127": "29 of 29",
+    "sel_canvas": "21 of 21 checks",
+    "device_scenarios": "232 of 235 checks passed, 3 skipped (1.2 output: MONO, both sounds on both sides, each a bit quieter: the rig's USB audio is taken before OUTPUT's mix (audio.c): the emulator's I2S proves it, the owne",
+    "fx_drawer": "23 of 23 checks",
+    "hold_save": "18 of 18 checks",
+    "candidates": "15 of 15 checks",
+    "older_firmware_refused": {
+      "1.25.0_without_force_exit_11": true,
+      "log": "qual/downgrade.log"
+    },
+    "midi_endpoint_names": {
+      "1.28.2": true,
+      "1.29.0": true
+    },
+    "irq_vs_1.28.2": "D-1165, one session: program 18 1964.6 -> 1938.8 us; program 6 1872.5 -> 1878.9 us; program 1 2228.0 -> 2199.3 us; 18 Cassia 1 fx 2179.9 -> 2137.8 us; 05 Expander S fx 2373.2 -> 2364.3 us; 03 Hera 6 fx 2127.6 -> 2103.1 us; 06 Algo Four fx 2223.0 -> 2239.9 us; differences [-42.1, 16.9]",
+    "cpu_survey_vs_1.28.2": "same session, stopped: 1.22.0's FX patches [-2.4, 1.6] mean 0.28; factory patches [-3.1, 1.6] mean 0.1; the 1.27 set [-2.0, 0.7] mean -0.16 points",
+    "clock_in_at_0": "raw steady offset 39.44 ms against 1.28.2's 39.72 ms (difference -0.28 ms)",
+    "cores": [
+      "2 CORES; barred no; trace 0xc1000002; split on",
+      "self-test passed 17597, failed 0; refused jobs 0; jobs done 627057; core 1 stack 2144 B used; longest wait 2353 us since the last read"
+    ]
+  },
+  "owner_checks": {
+    "status": "pending: build/design/crate/index.html with the candidate editor at crate/v129/",
+    "only_ears": "wavetable fm and PM by ear; Vernon 100 high by ear; the header by eye; the editor's region update on the rig; a slider at max; a power cycle"
+  }
+}

@@ -1,0 +1,34 @@
+{
+ "60": {
+  "rms_dbfs": -19.6,
+  "diff_db_re_note": -180.4
+ },
+ "72": {
+  "rms_dbfs": -19.6,
+  "diff_db_re_note": -180.4
+ },
+ "77": {
+  "rms_dbfs": -19.6,
+  "diff_db_re_note": -53.4
+ },
+ "79": {
+  "rms_dbfs": -19.6,
+  "diff_db_re_note": -52.3
+ },
+ "84": {
+  "rms_dbfs": -19.6,
+  "diff_db_re_note": -53.8
+ },
+ "88": {
+  "rms_dbfs": -19.6,
+  "diff_db_re_note": -54
+ },
+ "91": {
+  "rms_dbfs": -19.6,
+  "diff_db_re_note": -44
+ },
+ "96": {
+  "rms_dbfs": -19.6,
+  "diff_db_re_note": -43.7
+ }
+}
