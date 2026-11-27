@@ -125,6 +125,11 @@ export function arpKeyOff(s: ArpState, note: number, p: ArpParams): void {
   if (!latched(p)) s.held = s.held.filter((k) => k.note !== note);
 }
 
+/** a key leaves the held keys even when latched (a Harmonizer's RETRIG ended its note: engine.c arp_key_drop) */
+export function arpKeyDrop(s: ArpState, note: number): void {
+  s.held = s.held.filter((k) => k.note !== note);
+}
+
 export function arpClear(s: ArpState): void {
   s.held = [];
 }

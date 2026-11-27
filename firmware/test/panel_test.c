@@ -5068,6 +5068,38 @@ int main(void)
                 pv_bin[7] = (uint8_t)b7;
             }
         }
+        {   /* RETRIG (#1329, owner 2026-11-26): OFF (as made) keeps a held root's chord as it went down (D-778); ALL re-forms
+             * it at the next block, every note started again (the part playing C4 takes a new note); DIFF ends only the
+             * notes the new chord drops and starts only the ones it adds (C4 and G keep sounding on their parts). The FM-1's
+             * chord button min (black key 2) pressed while C4 is held, the card's chord maj */
+            static const char *const want[3] = {"60 64 67", "60 63 67", "60 63 67"};
+            static const char *const name[3] = {"RETRIG OFF: C major stays", "RETRIG ALL: C minor at once, C4 struck again",
+                                                "RETRIG DIFF: C minor at once, C4 and G untouched"};
+            uint32_t k, g, v, before = 0, after = 0;
+            eng_set_param((uint32_t)h, HARM_P_TYPE, ENG_ONE);
+            octave = 0;
+            for (k = 0; k < 3u; k++) {
+                eng_set_param((uint32_t)h, HARM_P_RETRIG, (int32_t)k * ENG_ONE);
+                panel_keys(1u << 7);                        /* C4: C major */
+                blocks(1);
+                for (g = 1; g <= E.ngrp; g++)
+                    for (v = 0; v < E.grp[g].parts; v++)
+                        if (E.pv[E.grp[g].pv0 + v].on && E.pv[E.grp[g].pv0 + v].note == 60u)
+                            before = E.pv[E.grp[g].pv0 + v].on_stamp;
+                panel_keys(1u << 7 | 1u << 3);              /* + black key 2: min */
+                blocks(1);
+                for (g = 1; g <= E.ngrp; g++)
+                    for (v = 0; v < E.grp[g].parts; v++)
+                        if (E.pv[E.grp[g].pv0 + v].on && E.pv[E.grp[g].pv0 + v].note == 60u)
+                            after = E.pv[E.grp[g].pv0 + v].on_stamp;
+                check(name[k], !strcmp(harm_notes(h), want[k]) && (k == 1u) == (after != before));
+                panel_keys(0);
+                blocks(1);
+                check("RETRIG: the root let go ends its chord", !strcmp(harm_notes(h), ""));
+            }
+            eng_set_param((uint32_t)h, HARM_P_RETRIG, 0);
+            eng_set_param((uint32_t)h, HARM_P_TYPE, 0);
+        }
         eng_set_bypass((uint32_t)h, 1);
         check("bypassed: the keys reach no Harmonizer (plain notes)", eng_keys_harm() < 0);
         {   /* I1 / D-1041: INVKEYS changed on the FM-1 is kept in its copy: a user patch in format 53 (its cables 3 bytes
@@ -5102,6 +5134,32 @@ int main(void)
             for (i = 0; i < pv_len; i++) copy[i] = pv_bin[i];
             check("I1: and off again, still format 68 (never narrowed back)", pv_bin[1] == 68u && eng_load(copy, pv_len) == 0
                   && eng_get_param(hn, HARM_P_INVKEYS) == 0);
+        }
+        {   /* RETRIG (#1329, D-1041's rule for format 69): the Harmonizer's page has it; the panel bank's Monolith D (format
+             * 53) takes it on the FM-1, raised to format 69 and kept; off again it stays 69 */
+            static uint8_t copy[sizeof pv_bin];
+            uint32_t d, g, k, i, hn = 0, was = 0, found = 0;
+            int ok = load("MONOLITH D") == 0 && E.nharm;
+            if (ok) {
+                hn = E.harm[0].node;
+                was = pv_bin[1];
+            }
+            pv_gen++;
+            pages_ensure();
+            for (d = 0; d < pg_ndev && !found; d++)
+                for (g = pg_dev[d].pg0; g < pg_dev[d].pg0 + pg_dev[d].npg && !found; g++)
+                    for (k = 0; k < pg_page[g].nrows && !found; k++)
+                        found = pg_page[g].mod[k] == hn && pg_page[g].par[k] == HARM_P_RETRIG;
+            check("RETRIG: the Harmonizer's page has the row, OFF ALL DIFF; Monolith D (format 53) can take it", ok && found
+                  && was == 53u && !row_old(hn, HARM_P_RETRIG, 0) && !strcmp(HARM_CH[HARM_P_RETRIG][2], "DIFF"));
+            m1_patch_param(hn, HARM_P_RETRIG, 2 * ENG_ONE);
+            for (i = 0; i < pv_len; i++) copy[i] = pv_bin[i];
+            check("RETRIG: the FM-1's edit raises its copy from format 53 to 69 and is kept", pv_bin[1] == 69u
+                  && eng_load(copy, pv_len) == 0 && eng_get_param(hn, HARM_P_RETRIG) == 2 * ENG_ONE);
+            m1_patch_param(hn, HARM_P_RETRIG, 0);
+            for (i = 0; i < pv_len; i++) copy[i] = pv_bin[i];
+            check("RETRIG: OFF again, still format 69", pv_bin[1] == 69u && eng_load(copy, pv_len) == 0
+                  && eng_get_param(hn, HARM_P_RETRIG) == 0);
         }
         (void)load("808 KIT");
         pv_gen++;

@@ -905,7 +905,8 @@
     "voicing": 0,
     "lock": 0,
     "split": 60,
-    "invkeys": 0
+    "invkeys": 0,
+    "retrig": 0
    },
    "bypass": true
   },

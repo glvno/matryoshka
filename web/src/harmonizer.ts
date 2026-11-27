@@ -7,11 +7,12 @@
 // buttons held together combine. With no button held (and none latched) the card's own chord plays (type, sus, ext;
 // all none: the root alone). Lock on: the buttons pressed together stay latched until the next press of their kind (the
 // chord buttons and the inversion keys latch apart, #1311); the only latched button of a kind, pressed again alone, lets
-// it go. A root's chord is fixed when it goes down: a button pressed while a root is held changes the next root's chord.
+// it go. A root's chord is fixed when it goes down (RETRIG off): a button pressed while a root is held changes the next root's chord.
 // `voicing` moves the chord through its inversions (each step up takes the lowest note an octave up; each step down the
 // highest an octave down; the root alone stays). `invkeys` on (#1311): the three keys at split + 17..19 (F5, F♯5, G5
 // above C4; on the FM-1 its three highest keys whatever the octave) are three more buttons, the 1st, 2nd and 3rd
 // inversion: one in effect sets the inversion exactly, in place of `voicing` (two in effect: the one pressed last wins).
+// `retrig` (OFF as made): ALL or DIFF re-form the held roots' chords as soon as what is set changes (harmRetrig).
 // Its notes go out at once, in the same call (not at the next block): a note two held roots share sounds once and ends
 // with the last of them.
 
@@ -31,6 +32,8 @@ const INV_BITS = ((1 << HARM_ALL) - 1) & ~CHORD_BITS;
 export const HARM_TYPES = ['none', 'maj', 'min', 'dim'];
 export const HARM_SUS = ['none', 'sus2', 'sus4', 'sus2+4'];
 export const HARM_EXT = ['none', '7', '9', '7+9'];
+/** the `retrig` row: OFF a root's chord stays as it went down; ALL / DIFF re-form the held chords at once (harmRetrig) */
+export const HARM_RETRIG = ['off', 'all', 'diff'];
 /** the voicing's reach: inversions up or down */
 export const HARM_VOICING = 8;
 /** roots held at once (a further one is not played) */
@@ -48,6 +51,8 @@ export interface HarmParams {
   split: number;
   /** the inversion keys on (0 / 1) */
   invkeys: number;
+  /** RETRIG: 0 off, 1 all, 2 diff */
+  retrig: number;
 }
 
 export interface HarmState {
@@ -61,8 +66,8 @@ export interface HarmState {
   /** press order of the buttons (the quality pressed last wins over another held), and the counter */
   stamp: number[];
   clock: number;
-  /** the roots held, oldest first: the key and the notes its chord started */
-  roots: { key: number; notes: number[] }[];
+  /** the roots held, oldest first: the key, the notes its chord started and its velocity */
+  roots: { key: number; notes: number[]; vel: number }[];
   /** per note, how many held roots sound it */
   count: number[];
   /** MIDI note -> button at press time plus one, or zero (the split can move while a key is held) */
@@ -197,19 +202,51 @@ export function harmRootOff(s: HarmState, key: number, off: (note: number) => vo
   for (const n of r.notes) if (--s.count[n] === 0) off(n);
 }
 
-/** a root pressed: its chord's notes that no held root sounds yet start (`on`); one already held plays again */
-export function harmRootOn(s: HarmState, key: number, p: HarmParams, on: (note: number) => void, off: (note: number) => void, room: (notes: number[]) => boolean = () => true, snapshot = 0): void {
+/** a root pressed (at velocity `vel`, which RETRIG's re-formed notes take too): its chord's notes that no held root
+ * sounds yet start (`on`); one already held plays again */
+export function harmRootOn(s: HarmState, key: number, p: HarmParams, on: (note: number) => void, off: (note: number) => void, room: (notes: number[]) => boolean = () => true, snapshot = 0, vel = 1): void {
   harmRootOff(s, key, off);
   if (s.roots.length >= HARM_ROOTS) return;
   const notes = snapshot ? harmSnapshotChord(snapshot, key) : harmChord(s, key, p);
   if (!room(notes)) return;
-  s.roots.push({ key, notes });
+  s.roots.push({ key, notes, vel });
   for (const n of notes) if (s.count[n]++ === 0) on(n);
 }
 
+/**
+ * RETRIG (`retrig` ALL or DIFF; OFF: nothing, a root's chord stays as it went down): when the chord a held root would
+ * get now differs from the one it sounds for any of them (a chord button, an inversion key, the type, sus, ext, voicing or
+ * lock row changed), every held root takes its new chord. ALL ends every note they sounded (`off`, oldest root first, in
+ * chord order) and then starts every note of the new chords (`on`, oldest root first, at its root's velocity; `again`:
+ * the note sounded before, a re-attack). DIFF ends only the notes no new chord has and starts only those no old chord
+ * had; the shared ones keep sounding. Nothing changes when `room` refuses the notes that would start. The engines run it
+ * at the start of every block, before the Arpeggiators (engine.c harm_retrig). Whether anything changed.
+ */
+export function harmRetrig(s: HarmState, p: HarmParams, on: (note: number, vel: number, again: boolean) => void, off: (note: number) => void, room: (notes: number[]) => boolean = () => true): boolean {
+  const mode = int(p.retrig, 0, 2);
+  if (!mode || !s.roots.length) return false;
+  const fresh = s.roots.map((r) => harmChord(s, r.key, p));
+  if (fresh.every((c, i) => c.length === s.roots[i].notes.length && c.every((n, j) => n === s.roots[i].notes[j]))) return false;
+  const was = s.count.map((c) => c > 0);
+  const next = Array<number>(128).fill(0);
+  for (const c of fresh) for (const n of c) next[n]++;
+  const starts: number[] = [];
+  const seen = Array<boolean>(128).fill(false);
+  for (const c of fresh) for (const n of c) if (!seen[n]) { seen[n] = true; if (mode === 1 || !was[n]) starts.push(n); }
+  if (!room(starts)) return false;
+  for (const r of s.roots) for (const n of r.notes) if (s.count[n] && (mode === 1 || !next[n])) { s.count[n] = 0; off(n); }
+  for (const r of s.roots) for (const n of r.notes) s.count[n] = 0;
+  s.roots.forEach((r, i) => {
+    r.notes = fresh[i];
+    for (const n of r.notes) if (s.count[n]++ === 0 && (mode === 1 || !was[n])) on(n, r.vel, was[n]);
+  });
+  return true;
+}
+
 /** a key from Main (`zone`: the keys under the split are buttons, and with the inversion keys on the three at split + 17;
- * the FM-1's keys come without it: its seven lowest and three highest keys are the buttons, engine.c eng_chord_button) */
-export function harmKey(s: HarmState, note: number, down: boolean, p: HarmParams, zone: boolean, on: (note: number) => void, off: (note: number) => void, room: (notes: number[]) => boolean = () => true, snapshot = 0): void {
+ * the FM-1's keys come without it: its seven lowest and three highest keys are the buttons, engine.c eng_chord_button);
+ * `vel`: a root's velocity (harmRootOn) */
+export function harmKey(s: HarmState, note: number, down: boolean, p: HarmParams, zone: boolean, on: (note: number) => void, off: (note: number) => void, room: (notes: number[]) => boolean = () => true, snapshot = 0, vel = 1): void {
   if (zone && s.buttonKeys[note]) {
     const held = s.buttonKeys[note];
     if (!down) {
@@ -224,7 +261,7 @@ export function harmKey(s: HarmState, note: number, down: boolean, p: HarmParams
     harmRootOff(s, note, off);
     s.buttonKeys[note] = b + 1;
     harmButton(s, b, true, p);
-  } else harmRootOn(s, note, p, on, off, room, snapshot);
+  } else harmRootOn(s, note, p, on, off, room, snapshot, vel);
 }
 
 /** every root and button let go, the latch cleared (what sounded is the caller's to end) */

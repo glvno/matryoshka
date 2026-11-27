@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
-import { harmButton, harmButtonOf, harmChord, harmInit, harmIntervals, harmKey, harmName, HARM_BUTTONS, HARM_ZONE, type HarmParams, type HarmState } from './harmonizer';
+import { harmButton, harmButtonOf, harmChord, harmInit, harmIntervals, harmKey, harmName, harmRetrig, HARM_BUTTONS, HARM_ZONE, type HarmParams, type HarmState } from './harmonizer';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
-import { encodePatch, formatOf, FORMAT_1_11, FORMAT_1_12, FORMAT_1_28 } from './patchbin';
+import { encodePatch, formatOf, FORMAT_1_11, FORMAT_1_12, FORMAT_1_28, FORMAT_1_28_1 } from './patchbin';
 import { SandboxKeys } from './sandbox-keys';
 import { deviceView, keySource } from './poly';
 import { armable, armMask } from './arm';
 
-const P = (p: Partial<HarmParams> = {}): HarmParams => ({ type: 0, sus: 0, ext: 0, voicing: 0, lock: 0, split: 60, invkeys: 0, ...p });
+const P = (p: Partial<HarmParams> = {}): HarmParams => ({ type: 0, sus: 0, ext: 0, voicing: 0, lock: 0, split: 60, invkeys: 0, retrig: 0, ...p });
 const B = (name: string): number => HARM_BUTTONS.indexOf(name);
 const press = (s: HarmState, p: HarmParams, ...names: string[]): void => names.forEach((n) => harmButton(s, B(n), true, p));
 const lift = (s: HarmState, p: HarmParams, ...names: string[]): void => names.forEach((n) => harmButton(s, B(n), false, p));
@@ -441,5 +441,114 @@ describe('Harmonizer inversion keys (#1311)', () => {
     expect(keys.route({ t: 'off', note: 79 }, harmPatch({ invkeys: 1 }).p, [], 0)).toEqual([{ t: 'chord', button: INV(3), down: false }]);
     expect(keys.route({ t: 'on', note: 65, vel: 1 }, harmPatch({ invkeys: 1 }).p, [], -1)).toEqual([{ t: 'chord', button: INV(1), down: true }]); // (F4 at OCT -1: the top key F)
     expect(keys.route({ t: 'on', note: 79, vel: 1 }, harmPatch().p, [], 0)).toEqual([{ t: 'on', note: 79, vel: 1, root: true }]);
+  });
+});
+
+describe('Harmonizer RETRIG (#1329)', () => {
+  /** roots down at velocity 0.5, a change, then what RETRIG sends: 'on N V' (a re-attack: 'on N again V') and 'off N' */
+  const run = (p: HarmParams, roots: number[], change: (s: HarmState) => void): { s: HarmState; heard: string[]; changed: boolean } => {
+    const s = harmInit();
+    roots.forEach((r) => harmKey(s, r, true, p, false, () => {}, () => {}, undefined, 0, 0.5));
+    change(s);
+    const heard: string[] = [];
+    const changed = harmRetrig(s, p, (n, v, again) => heard.push(`on ${n}${again ? ' again' : ''} ${v}`), (n) => heard.push(`off ${n}`));
+    return { s, heard, changed };
+  };
+  const toMin = (s: HarmState): void => harmButton(s, B('min'), true, P());
+
+  it('OFF (as made) keeps a held root\'s chord as it went down (D-778)', () => {
+    const r = run(P({ type: 1 }), [60], toMin);
+    expect(r.changed).toBe(false);
+    expect(r.heard).toEqual([]);
+    expect(r.s.roots[0].notes).toEqual([60, 64, 67]);
+  });
+
+  it('ALL ends every note of the held chords and starts every note of the new ones, at the root\'s velocity', () => {
+    const r = run(P({ type: 1, retrig: 1 }), [60], toMin);
+    expect(r.changed).toBe(true);
+    expect(r.heard).toEqual(['off 60', 'off 64', 'off 67', 'on 60 again 0.5', 'on 63 0.5', 'on 67 again 0.5']);
+    expect(r.s.roots[0].notes).toEqual([60, 63, 67]);
+    expect([60, 63, 64, 67].map((n) => r.s.count[n])).toEqual([1, 1, 0, 1]);
+  });
+
+  it('DIFF ends only the notes the new chord drops and starts only those it adds; shared notes keep sounding', () => {
+    const r = run(P({ type: 1, retrig: 2 }), [60], toMin);
+    expect(r.heard).toEqual(['off 64', 'on 63 0.5']);
+    expect(r.s.roots[0].notes).toEqual([60, 63, 67]);
+  });
+
+  it('re-forms every held root, oldest first; a note two chords share still sounds once', () => {
+    const r = run(P({ type: 1, retrig: 2 }), [60, 64], toMin); // C E G + E G# B -> C Eb G + E G B
+    expect(r.heard).toEqual(['off 68', 'on 63 0.5']);
+    expect(r.s.count[67]).toBe(2);
+    expect(r.s.count[64]).toBe(1);
+  });
+
+  it('follows the card\'s rows and the inversion keys too, and does nothing without a change or a held root', () => {
+    const p = P({ type: 1, retrig: 2 });
+    expect(run(p, [60], () => {}).changed).toBe(false);
+    expect(run(p, [], toMin).changed).toBe(false);
+    const s = harmInit();
+    harmKey(s, 60, true, p, false, () => {}, () => {});
+    const heard: number[] = [];
+    expect(harmRetrig(s, { ...p, ext: 1 }, (n) => heard.push(n), () => {})).toBe(true);
+    expect(heard).toEqual([70]);
+    const inv = { ...p, ext: 1, invkeys: 1 };
+    harmButton(s, HARM_ZONE, true, inv); // the 1st inversion
+    expect(harmRetrig(s, inv, () => {}, () => {})).toBe(true);
+    expect(s.roots[0].notes).toEqual([64, 67, 70, 72]);
+  });
+
+  it('changes nothing when there is no room for the notes that would start', () => {
+    const s = harmInit(), p = P({ type: 1, retrig: 1 });
+    harmKey(s, 60, true, p, false, () => {}, () => {});
+    toMin(s);
+    expect(harmRetrig(s, p, () => {}, () => {}, () => false)).toBe(false);
+    expect(s.roots[0].notes).toEqual([60, 64, 67]);
+  });
+
+  it('in the engine: a chord button or a card row changes the held chord at the next block with ALL or DIFF, not with OFF', () => {
+    for (const [retrig, want] of [[0, [60, 64, 67]], [1, [60, 63, 67]], [2, [60, 63, 67]]] as const) {
+      const { p, harm } = harmPatch({ type: 1, retrig });
+      const e = new Engine(44100);
+      e.load(p);
+      e.noteOn(60);
+      expect(sounding(e)).toEqual([60, 64, 67]);
+      e.chordButton(B('min'), true);
+      expect(sounding(e)).toEqual(want);
+      e.chordButton(B('min'), false); // (let go: the card's chord again)
+      expect(sounding(e)).toEqual([60, 64, 67]);
+      e.setParam(harm, 'ext', 1);
+      expect(sounding(e)).toEqual(retrig ? [60, 64, 67, 70] : [60, 64, 67]);
+      e.noteOff(60);
+      expect(sounding(e)).toEqual([]);
+    }
+  });
+
+  it('an Arpeggiator after it holds the new chord at once, even latched: ALL as a new press, DIFF swapping the notes', () => {
+    for (const [retrig, want] of [[0, [60, 64, 67]], [1, [60, 63, 67]], [2, [60, 67, 63]]] as const) {
+      const { p, harm, alloc } = harmPatch({ type: 1, retrig });
+      const arp = addModule(p, DEFS.arp, 450, 0);
+      arp.params.latch = 1;
+      p.cables = p.cables.filter((c) => !(c.from.module === harm && c.to.module === alloc));
+      if (!connect(p, DEFS, { module: harm, port: 'keys' }, { module: arp.id, port: 'keys' })) throw new Error('harm -> arp');
+      if (!connect(p, DEFS, { module: arp.id, port: 'keys' }, { module: alloc, port: 'keys' })) throw new Error('arp -> alloc');
+      const e = new Engine(44100);
+      e.load(p);
+      e.noteOn(60);
+      sounding(e);
+      e.chordButton(B('min'), true);
+      sounding(e);
+      const held = e['arps'][0].st.held;
+      expect(held.map((k) => k.note)).toEqual(want);
+      expect(held.every((k) => k.down)).toBe(true);
+    }
+  });
+
+  it('is saved as format 69 only when ALL or DIFF; OFF keeps the older format', () => {
+    expect(formatOf(harmPatch({ retrig: 0 }).p)).toBe(FORMAT_1_12);
+    expect(formatOf(harmPatch({ retrig: 1 }).p)).toBe(FORMAT_1_28_1);
+    expect(encodePatch(harmPatch({ retrig: 2 }).p)[1]).toBe(FORMAT_1_28_1);
+    expect(encodePatch(harmPatch({ invkeys: 1 }).p)[1]).toBe(FORMAT_1_28);
   });
 });
