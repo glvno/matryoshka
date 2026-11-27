@@ -1901,6 +1901,18 @@ static void seq_lock_follow(void)
         ui_dirty = ui_dirty ? ui_dirty : 1;
     }
 }
+/* another patch became current (panel.c panel_patch_follow, #1339): a step held through the load is let go of there, its
+ * key's release switching nothing; the lock view closes on the new patch's home page (seq_lock_follow) */
+static void seq_hold_drop(void)
+{
+    if (seq_held < 0)
+        return;
+    seq_held = -1;
+    seq_held_tap = 0;
+    seq_lv_dev = pages_home();
+    seq_lv_pg = 0;
+    ui_dirty = ui_dirty ? ui_dirty : 1;          /* (the hint line: no step held, #450) */
+}
 /* row (m, j) of the lock view's page (pages_ui.c row_show): 1 and *v its value when the held step locks it */
 static int seq_lock_value(uint32_t m, uint32_t j, int32_t *v)
 {
