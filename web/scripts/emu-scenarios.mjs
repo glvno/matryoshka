@@ -3825,25 +3825,6 @@ async function main() {
       }, [row, by, n]);
       await check('palette structure: Init opens, synced', await openSynced('Init'));
       await check('palette structure: the chips are live (an FM-1 that keeps a palette and sends slots back)', !!(await until(async () => (await pal())?.linked, 4000)));
-      // (every used slot read back as Add to palette reads one: SLOT_GET, 256 bytes a frame; the cost of a first add that
-      // compares them all. The emulator runs the firmware at about 0.44x and does not time USB: a measure of the round trips)
-      const timing = await page.evaluate(async () => {
-        const all = await window.__m1test.slots();
-        const used = all.filter((s) => s.used);
-        const t0 = performance.now();
-        let bytes = 0, frames = 0;
-        const failed = [];
-        for (const s of used) {
-          const b = await window.__m1test.slotBin(s.slot).catch(() => null);
-          if (!b) failed.push(`${s.slot + 1} ${s.name}`);
-          else { bytes += b.length; frames += Math.max(1, Math.ceil(b.length / 256)); }
-        }
-        return { slots: all.length, used: used.length, bytes, frames, failed, ms: Math.round(performance.now() - t0) };
-      });
-      const per = timing.used ? timing.ms / timing.used : 0;
-      console.log(`  timing: ${timing.used} of ${timing.slots} slots read back, ${timing.bytes} bytes in ${timing.frames} SLOT_GET frames, ${timing.ms} ms (${per.toFixed(1)} ms a slot, ${(timing.ms / Math.max(1, timing.frames)).toFixed(1)} ms a frame; 48 slots ≈ ${Math.round(per * 48)} ms)`);
-      if (timing.failed.length) console.log(`  note: slots that sent no binary back: ${timing.failed.join(', ')}`);
-      await check(`palette structure: the used slots read back (${timing.used} slots, ${timing.ms} ms)`, timing.used > timing.failed.length, JSON.stringify(timing));
       for (const p of [6, 7]) {
         if ((await pal()).chips[p]?.state === 'empty') continue;
         await page.evaluate((x) => document.querySelector(`#snap-column .pal-chip[data-pos="${x}"] .pal-x`)?.click(), p);
@@ -3892,6 +3873,25 @@ async function main() {
         const left = (await page.evaluate(() => window.__m1test.slots()).catch(() => [])).filter((s) => s.used && (s.slot === slot || GIVEN.some((g) => s.name === g.toUpperCase())));
         for (const s of left) await page.evaluate((n) => window.__m1test.eraseSlot(n), s.slot).catch((err) => console.log(`  note: slot ${s.slot + 1} not emptied: ${err.message}`));
       }
+      // (every used slot read back as Add to palette reads one: SLOT_GET, 256 bytes a frame; the cost of a first add that
+      // compares them all. The emulator runs the firmware at about 0.44x and does not time USB: a measure of the round trips)
+      const timing = await page.evaluate(async () => {
+        const all = await window.__m1test.slots();
+        const used = all.filter((s) => s.used);
+        const t0 = performance.now();
+        let bytes = 0, frames = 0;
+        const failed = [];
+        for (const s of used) {
+          const b = await window.__m1test.slotBin(s.slot).catch(() => null);
+          if (!b) failed.push(`${s.slot + 1} ${s.name}`);
+          else { bytes += b.length; frames += Math.max(1, Math.ceil(b.length / 256)); }
+        }
+        return { slots: all.length, used: used.length, bytes, frames, failed, ms: Math.round(performance.now() - t0) };
+      });
+      const per = timing.used ? timing.ms / timing.used : 0;
+      console.log(`  timing: ${timing.used} of ${timing.slots} slots read back, ${timing.bytes} bytes in ${timing.frames} SLOT_GET frames, ${timing.ms} ms (${per.toFixed(1)} ms a slot, ${(timing.ms / Math.max(1, timing.frames)).toFixed(1)} ms a frame; 48 slots ≈ ${Math.round(per * 48)} ms)`);
+      if (timing.failed.length) console.log(`  note: slots that sent no binary back: ${timing.failed.join(', ')}`);
+      await check(`palette structure: the used slots read back (${timing.used} slots, ${timing.ms} ms)`, timing.used > timing.failed.length, JSON.stringify(timing));
       await openSynced('Init');
     },
     async editorIgnore() {   // #702: GLO > SYSTEM > EDITOR at IGNORE: the editor lets go, Connect skips the FM-1 and says why
