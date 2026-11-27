@@ -212,6 +212,12 @@ export const OUTPUT_RANGES: Record<string, Record<string, Range>> = {
       return shape === 5 ? `${FOLLOWS}, no louder` : `${FOLLOWS}; a q above 0.707 peaks it at freq (up to q × the input)`;
     },
   },
+  dx7: {
+    out: (p) => {
+      const l = get(p, 'level', 1);
+      return `audio: one carrier at output level 99 peaks at ${sym(0.5 * l)}, all six at ${sym(3 * l)}; held to ${sym(4 * l)} (±4 × level)`;
+    },
+  },
 };
 
 /** the range an output carries, worked out from the module's parameters now ('' for an output without one) */
