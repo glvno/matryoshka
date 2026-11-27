@@ -14,8 +14,10 @@ import { drawerPresetInfo } from './fx-preset-format';
 import { DEFS } from './modules';
 import { connect, newPatch, type Patch } from './patch';
 import { moveOrder, Palette, PALETTE_FULL, PALETTE_STORE, repointed, type PalettePorts } from './palette';
-import { applyEntry, entryOf, NO_SAME_STRUCTURE, paletteDevices } from './preset-fit';
+import { applyEntry, asSlot, entryOf, NO_SAME_STRUCTURE, paletteDevices, sameBytes } from './preset-fit';
 import { encodePatch } from './patchbin';
+import { readFromFm1 } from './patch-reader';
+import { browserLibrary } from './assembly-match';
 import { chipMeta } from './palette-view';
 import { FM1_PRESETS } from './presets';
 import { invalidatePresetPatterns } from './preset-patterns';
@@ -461,7 +463,7 @@ describe('adding to the palette saves what the FM-1 needs to play the sound (own
     expect(sentCmds(fm1)).not.toContain(CMD.presetPut);
     expect(fm1.entries[0]).toMatchObject({ devices: [{ name: 'Lush' }] });
   });
-  it('does not point at a slot of the patch\'s name and length that holds other values: stores the patch, numbered', async () => {
+  it('never points at a slot of the patch\'s name and length that holds other values as it is: other card values take a preset, another setting a patch, numbered', async () => {
     const { fm1, palette, said, link } = await linked();
     const { p, a } = padPatch();
     const older = structuredClone(p);
@@ -471,12 +473,20 @@ describe('adding to the palette saves what the FM-1 needs to play the sound (own
     fm1.slots[0] = { slot: 0, used: true, length: binLength(older), name: 'MY PAD' };
     fm1.bins[0] = link.encodeFor(older);
     expect(fm1.bins[0].length).toBe(link.encodeFor(p).length);
+    // (the slot's device says Warm1, which the FM-1 compares by name alone: the sound's values take a preset of its own)
     expect(await palette.add('My Pad', p)).toBe(true);
+    await fm1.quiet();
+    expect(fm1.slots[1].used).toBe(false);
+    expect(fm1.entries[0]).toMatchObject({ slot: 0, name: 'MY PAD', devices: [{ name: 'My Pad' }] });
+    expect(said.at(-1)).toBe('"My Pad" is palette 1: slot 1 · MY PAD with preset My Pad (preset My Pad sent to the FM-1)');
+    older.modules.find((m) => m.type === 'output')!.params.level = 0.33;
+    fm1.bins[0] = link.encodeFor(older);
+    expect(await palette.add('My Pad', p, { pos: 1 })).toBe(true);
     await fm1.quiet();
     expect(fm1.slots[1]).toMatchObject({ used: true, name: 'MY PAD 2' });
     expect(fm1.bins[1]).toEqual(link.encodeFor(p));
-    expect(fm1.entries[0]).toMatchObject({ slot: 1, name: 'MY PAD 2' });
-    expect(said.at(-1)).toBe(`"My Pad" is palette 1 (stored as a new patch in slot 2, as ${NO_SAME_STRUCTURE}; preset Warm1 sent to the FM-1; slot 1 holds another "MY PAD", so it is stored as "MY PAD 2")`);
+    expect(fm1.entries[1]).toMatchObject({ slot: 1, name: 'MY PAD 2' });
+    expect(said.at(-1)).toBe('"My Pad" is palette 2 (stored as a new patch in slot 2, as slot 1 · MY PAD differs from it in settings no device preset holds; preset Warm1 sent to the FM-1; slot 1 holds another "MY PAD", so it is stored as "MY PAD 2")');
   });
   it('finds this browser\'s copy of a numbered slot by the name before the number', async () => {
     const { p } = padPatch();
@@ -788,5 +798,91 @@ describe('a sound the FM-1 reaches with device presets takes no new slot (owner 
     await again.fm1.quiet();
     synth(sound).preset = 'Monolith D C';
     expect(again.opened.map((x) => link.encodeFor(x.patch))).toEqual([link.encodeFor(sound)]);
+  });
+});
+
+describe('a slot whose patch this browser has no copy of (owner 2026-11-27: "adding a sound to the palette is still getting added as an additional patch instead of a preset unless i add it using the fm1 key combination")', () => {
+  // (his slot "HERA 6" held what an earlier add or an FM-1 hold-save stored: its card values, tempo or patterns other than
+  // any patch this browser keeps, so no copy matched it byte for byte and every add stored a new patch, "as no patch of
+  // its name with its modules and cables is on the FM-1". The slot is read back and compared as the sound's structure)
+  const hera = (): Patch => FM1_PRESETS['Hera 6']();
+  /** Hera 6's instrument (with its FX drawer) */
+  const synth = (p: Patch): AssemblyInst => p.assemblies!.find((a) => a.name === 'Hera 4')!;
+  /** card row `row` of the instrument of `p` moved by `by` of its range */
+  function moved(p: Patch, row: number, by = 0.1): Patch {
+    const a = synth(p);
+    const rows = rowOrder(p, a), values = currentValues(p, a);
+    const pd = DEFS[p.modules.find((x) => x.id === rows[row].module)!.type].params.find((x) => x.name === rows[row].param)!;
+    const step = (pd.max - pd.min) * by;
+    values[row] += values[row] + step <= pd.max ? step : -step;
+    setRows(p, rows, values);
+    return p;
+  }
+  /** the FM-1 with `held` (a Hera 6 this browser keeps no copy of) in slot 23 under `name`, this browser's factory copy */
+  async function stored(held: Patch, name = 'HERA 6') {
+    const r = await linked({ features25: FEATURE25_SLOT_GET | FEATURE5_FX_DRAWERS, candidates: [{ name: 'Hera 6', patch: hera, factory: true }] });
+    const bin = r.link.encodeFor(held);
+    r.fm1.slots[22] = { slot: 22, used: true, length: bin.length, name };
+    r.fm1.bins[22] = bin;
+    return { ...r, bin, puts: () => sentCmds(r.fm1).filter((c) => c === CMD.presetPut).length, slotWrites: () => sentCmds(r.fm1).filter((c) => c === CMD.slot).length };
+  }
+
+  it('a tweak of Hera 6 named at the prompt goes in as a preset of that name on the slot, which keeps its values', async () => {
+    const { fm1, link, palette, said, bin, puts, slotWrites, opened } = await stored(moved(hera(), 1, 0.2));
+    const sound = moved(hera(), 0);
+    expect(await palette.add('Hera 6 pluckpad', sound)).toBe(true);
+    await fm1.quiet();
+    expect([puts(), slotWrites(), fm1.slots[23].used]).toEqual([1, 0, false]);
+    expect(fm1.entries[0]).toMatchObject({ slot: 22, name: 'HERA 6', devices: [{ name: 'Hera 6 pluckpad' }] });
+    expect(said.at(-1)).toBe('"Hera 6 pluckpad" is palette 1: slot 23 · HERA 6 with preset Hera 6 pluckpad (preset Hera 6 pluckpad sent to the FM-1)');
+    expect(fm1.bins[22]).toEqual(bin);   // (the slot as it was)
+    // (the FM-1 plays the sound, its device under the preset's name; the copy kept is the slot's patch, so a click opens it)
+    await palette.click(0);
+    await fm1.quiet();
+    const named = structuredClone(sound);
+    synth(named).preset = 'Hera 6 pluckpad';
+    expect(opened.map((x) => link.encodeFor(x.patch))).toEqual([link.encodeFor(named)]);
+  });
+  it('the slot\'s own tempo and patterns never force a patch: the entry plays them, and says so', async () => {
+    const held = moved(hera(), 1, 0.2);
+    held.modules.find((m) => m.type === 'fm1')!.params.tempo = 97;
+    const steps = held.modules.find((m) => m.type === 'steps')!;
+    steps.params.len = steps.params.len === 8 ? 16 : 8;
+    const { fm1, palette, said, slotWrites } = await stored(held);
+    expect(await palette.add('Hera 6 B', moved(hera(), 0))).toBe(true);
+    await fm1.quiet();
+    expect([slotWrites(), fm1.entries[0]?.slot]).toEqual([0, 22]);
+    expect(said.at(-1)).toMatch(/\. It plays the tempo and patterns of slot 23$/);
+  });
+  it('a slot that differs in a setting no device preset holds still takes a patch, and the line says which slot', async () => {
+    const held = hera();
+    held.modules.find((m) => m.type === 'output')!.params.level = 0.33;
+    const { fm1, palette, said, puts } = await stored(held);
+    expect(await palette.add('Hera 6 B', moved(hera(), 0))).toBe(true);
+    await fm1.quiet();
+    expect([fm1.entries[0]?.slot, puts()]).toEqual([0, 0]);
+    expect(said.at(-1)).toBe('"Hera 6 B" is palette 1 (stored as a new patch in slot 1, as slot 23 · HERA 6 differs from it in settings no device preset holds)');
+  });
+  it('a slot of another name is another patch, as before (D-1240)', async () => {
+    const { fm1, palette, said } = await stored(moved(hera(), 1, 0.2), 'MY HERA');
+    expect(await palette.add('Hera 6 B', moved(hera(), 0))).toBe(true);
+    await fm1.quiet();
+    expect(fm1.entries[0]?.slot).toBe(0);
+    expect(said.at(-1)).toBe(`"Hera 6 B" is palette 1 (stored as a new patch in slot 1, as ${NO_SAME_STRUCTURE})`);
+  });
+  it('every factory patch read back from its slot is the editor\'s patch as asSlot takes it: the same bytes, each drawer preset the same, effects off included', () => {
+    const off: string[] = [];
+    for (const [name, make] of Object.entries(FM1_PRESETS)) {
+      const bin = encodePatch(make());
+      const read = readFromFm1(bin, { name: name.toUpperCase(), library: browserLibrary() })!;
+      const held = asSlot(make(), read.patch);
+      if (!held || !sameBytes(encodePatch(held), bin)) off.push(`${name}: ${held ? 'other bytes' : 'other devices'}`);
+      const p = make();
+      for (const a of p.assemblies ?? []) {
+        const t = read.patch.assemblies?.find((x) => x.name === a.name && !x.chain && !x.drawer);
+        if (!a.chain && !a.drawer && t && drawerScope(p, a) && JSON.stringify(q16(capturePreset(p, a, '').values)) !== JSON.stringify(q16(capturePreset(read.patch, t, '').values))) off.push(`${name} ${a.name}: drawer preset`);
+      }
+    }
+    expect(off).toEqual([]);
   });
 });

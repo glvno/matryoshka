@@ -16,13 +16,13 @@
 // The link: protocol.ts PALETTE / PALETTE_NOW / PALETTE_ENTRY (feature bit 31). With no FM-1 the chips show the last
 // palette read, read-only (kept in this browser).
 import { assemblyById } from './assembly';
-import { binLength, deviceName, knownCopy, readFm1Slot, type Candidate, type KnownCopy } from './bank';
+import { binLength, deviceName, knownCopy, readFm1Bin, readFm1Slot, type Candidate, type KnownCopy } from './bank';
 import { readLabel } from './patch-reader';
 import { deletePreset as dropUserPreset, rememberedPreset, replaceUserPresets, sameName, userPresets, type Preset } from './device-presets';
 import type { Patch } from './patch';
 import { layout } from './patchbin';
 import { devicePresetName, NAME_BYTES, PAL_EMPTY, PAL_GO_CANCELLED, PAL_GO_WAITING, PAL_MISSING, PAL_REFUSED, PALETTE_SIZE, paletteHash, STATUS_PRESETS_FULL, type Ack, type DevicePresetEntry, type PaletteEntry, type PaletteNow, type PalettePos, type SlotInfo } from './protocol';
-import { applyEntry, entryOf, fm1Presets, NO_SAME_STRUCTURE, paletteDevices, presetFit, q16, sameBytes, samePatch, samePreset, slotPlays, takeTempoAndPatterns, type PresetFit } from './preset-fit';
+import { applyEntry, asSlot, entryOf, fm1Presets, NO_SAME_STRUCTURE, paletteDevices, presetFit, q16, sameBytes, samePatch, samePreset, sameWiring, slotPlays, takeTempoAndPatterns, type PresetFit } from './preset-fit';
 import { drawerScope } from './fx-preset';
 import { soundOf, type PaletteSound } from './saved-palettes';
 import { structureAndRows } from './structure';
@@ -483,11 +483,13 @@ export class Palette {
   }
 
   /**
-   * The FM-1 slot from which device presets reach `sound` (presetFit), or why none does. Its patch must be one this
-   * browser knows (the sound itself, the editor's candidates, the copies it kept, a saved or factory patch of a slot's
-   * name) and the slot must hold it byte for byte (SLOT_GET: firmware that cannot send a slot back has none). A slot of
-   * the sound's own patch (its name, or its name numbered) comes first, then any slot that holds that patch. Nothing is
-   * written. `extra`: a saved sound's own presets (presetFit)
+   * The FM-1 slot from which device presets reach `sound` (presetFit), or why none does. The slot must hold, byte for byte
+   * (SLOT_GET: firmware that cannot send a slot back has none), a patch of the sound's name and structure: one this browser
+   * knows (the sound itself, the editor's candidates, the copies it kept, a saved or factory patch of a slot's name), else
+   * a slot of the sound's own name (or the name it is added under) read back from the FM-1 and taken as the sound with
+   * that slot's card values, tempo and patterns (asSlot: a slot stored by an earlier add, an FM-1 hold-save of its own
+   * edits, another browser; owner 2026-11-27). A slot of the sound's own patch (its name, or its name numbered) comes
+   * first, then any slot that holds that patch. Nothing is written. `extra`: a saved sound's own presets (presetFit)
    */
   private async presetPlace(sound: Patch, name: string, bank: SlotInfo[], extra: readonly Preset[] = []): Promise<PresetFit & { slot: number; label: string; held: Patch } | { why: string }> {
     const d = this.ports.device;
@@ -525,6 +527,29 @@ export class Palette {
       if (!bins.has(s.slot)) bins.set(s.slot, await d.readSlotBin(s.slot).catch(() => null));
       const there = bins.get(s.slot);
       if (!there || !sameBytes(there, bin)) continue;
+      onFm1 ??= await fm1Presets(sound, d);
+      const fit = presetFit(sound, held, name, (p) => d.encodeFor(p), onFm1, extra);
+      if (!('why' in fit)) return { ...fit, slot: s.slot, label: s.name, held };
+      why ||= fit.why;
+    }
+    // (a slot of the sound's name that no patch this browser knows matches: what it holds, read back)
+    for (const s of used.filter((x) => own.some((n) => named(x, n)))) {
+      if (!bins.has(s.slot)) bins.set(s.slot, await d.readSlotBin(s.slot).catch(() => null));
+      const there = bins.get(s.slot);
+      if (!there || pairs.some((p) => p.s.slot === s.slot && sameBytes(there, p.bin))) continue;   // (compared above)
+      const read = await readFm1Bin(d, there, s.name);
+      const held = read && asSlot(sound, read.patch);
+      if (!held) continue;
+      let bin: Uint8Array;
+      try {
+        bin = d.encodeFor(held);
+      } catch {
+        continue;
+      }
+      if (!sameBytes(bin, there)) {
+        if (sameWiring(bin, there)) why ||= `slot ${s.slot + 1} · ${s.name} differs from it in settings no device preset holds`;
+        continue;
+      }
       onFm1 ??= await fm1Presets(sound, d);
       const fit = presetFit(sound, held, name, (p) => d.encodeFor(p), onFm1, extra);
       if (!('why' in fit)) return { ...fit, slot: s.slot, label: s.name, held };
