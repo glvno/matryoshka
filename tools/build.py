@@ -410,6 +410,12 @@ def build_app():
     flags += [f"-DM1_FW_{k}={v}" for k, v in zip(("MAJOR", "MINOR", "PATCH"), FW_VERSION)]
     if VERSION:
         flags.append(f'-DFELUCCA_VERSION="{VERSION}"')
+    # Spike #1338 (never merged): DXS_SPIKE=1 links msfa's voices (spike/dexed/core, C++ at SPEED) and the hooks in
+    # audio.c / engine.c; DXS_TABLES=own uses msfa's own tables, else the firmware's SIN_T and EXP2_T
+    dxs = os.environ.get("DXS_SPIKE") == "1"
+    dxs_own = os.environ.get("DXS_TABLES") == "own"
+    if dxs:
+        flags.append("-DDXS_SPIKE=1")
     # #798: the audio path for speed. modular.c goes to LLVM IR at SPEED without the optimizer, tools/size_fns.py marks
     # every function the audio interrupt cannot reach 'optsize' (what -Os gives each function), then the IR is compiled
     # at SPEED. FELUCCA_SPEED=0: -Os everywhere, compiled directly (the build before #798)
@@ -424,6 +430,14 @@ def build_app():
            ("cc", "-c", FW / "hal" / "fm1_isr.S", "-o", OUT / "fm1_isr.o"),
            ("cc", "-c", FW / "hal" / "fm1_cpu1.S", "-o", OUT / "fm1_cpu1.o"),   # the second core's entry (#271)
            cmain)
+    dxs_objs = []
+    if dxs:
+        core = SRC / "spike" / "dexed" / "core"
+        cxx = ["-x", "c++", "-std=c++11", "-nostdinc++", "-fno-exceptions", "-fno-rtti", "-fno-threadsafe-statics",
+               *[f for f in sflags if not f.startswith(("-I", "-D"))], *(["-DMSFA_OWN_TABLES"] if dxs_own else [])]
+        names = ("tables", "freqlut", "env", "lfo", "pitchenv", "fm_op_kernel", "fm_core", "dx7note", "unit")
+        dxs_objs = [OUT / f"dxs_{n}.o" for n in names]
+        tc_all(*[("cc", *cxx, "-c", core / f"{n}.cc", "-o", o) for n, o in zip(names, dxs_objs)])
     if size:
         subprocess.run([sys.executable, SRC / "tools" / "size_fns.py", OUT / "matryoshka.ll", OUT / "matryoshka_size.ll"],
                        check=True)
@@ -437,7 +451,7 @@ def build_app():
     lib = toolchain() / "pi32v2" / "lib" / "r3"     # the FPU's libm and float helpers (FPU_FLAGS)
     libm = [str(lib / "libm.a")] if os.environ.get("M1_BENCH") == "1" else []   # the benchmark's sinf, expf, ...
     tc("pi32v2/bin/ld", "-T", FW / "app.ld", OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o", OUT / "fm1_cpu1.o",
-       OUT / "matryoshka.o", *libm, str(lib / "libcompiler-rt.a"), "-o", elf)   # float and 64-bit helpers
+       OUT / "matryoshka.o", *dxs_objs, *libm, str(lib / "libcompiler-rt.a"), "-o", elf)   # float and 64-bit helpers
     for sect in ("text.bin", "data.bin", "ramtext.bin", "c1text.bin", "fasttext.bin"):
         (OUT / sect).unlink(missing_ok=True)
     *_, syms, dis, rt, c1 = tc_all(("common/bin/objcopy", "-O", "binary", "-j", ".text", elf, OUT / "text.bin"),

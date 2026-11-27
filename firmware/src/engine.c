@@ -14,6 +14,9 @@
 #include "dsp_tables.h"
 #include "wt_tables.h"
 #include "rate_envelope.h"
+#if DXS_SPIKE
+#include "../../spike/dexed/fw_hook.h"          /* spike #1338 (never merged): msfa's voices beside the patch */
+#endif
 
 #if defined(__clang__)
 #pragma STDC FP_CONTRACT OFF            /* float as the FM-1 computes it (tools/build.py -ffp-contract=off), on every host */
@@ -5351,6 +5354,9 @@ static int steps_control(uint32_t track, uint32_t note, int down)
 void eng_note_on(uint32_t note, int32_t vel_q16, uint32_t ch)
 {
     uint32_t g, v = (uint32_t)clampi((int32_t)(((int64_t)vel_q16 * 127 + 32768) >> 16), 1, 127);
+#if DXS_SPIKE
+    dxs_key(note, v, 1);                         /* spike #1338 */
+#endif
     for (g = 0; g <= E.ngrp; g++)
         if ((E.grp[g].src ? grp_src(g) == 0u : hears_grp(g)) && takes_key(&E.grp[g], note, ch))
             group_on(&E.grp[g], note, vel_q16);
@@ -5371,6 +5377,9 @@ void eng_note_on(uint32_t note, int32_t vel_q16, uint32_t ch)
 void eng_note_off(uint32_t note, uint32_t ch)
 {
     uint32_t g;
+#if DXS_SPIKE
+    dxs_key(note, 0, 0);                         /* spike #1338 */
+#endif
     for (g = 0; g <= E.ngrp; g++)
         if ((E.grp[g].src ? grp_src(g) == 0u : hears_grp(g)) && takes_key(&E.grp[g], note, ch))
             group_off(&E.grp[g], note);

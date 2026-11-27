@@ -1,0 +1,75 @@
+name: dexed-spike
+# Spike #1338 (never merged): msfa's voices built with the JieLi toolchain. Object sizes per file (-Os and -O2, msfa's own
+# tables and the firmware's shared ones), then firmware builds with the voices beside the patch (DXS_SPIKE=1, shared
+# tables) and the same commit without them, each with its emulator twin (M1_EMU_MIDI=1).
+on:
+  push:
+    branches: [spike/dexed-1338]
+  workflow_dispatch:
+
+jobs:
+  spike:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - name: JieLi toolchain and AC79 SDK (cached)
+        id: jieli
+        uses: actions/cache@v5
+        with:
+          path: ~/.jieli
+          key: jieli-AC79NN_SDK_V1.2.1_2023-12-13-toolchain-v1
+      - name: fetch the toolchain and the three SDK files
+        if: steps.jieli.outputs.cache-hit != 'true'
+        run: |
+          tools/get_toolchain.sh
+          git clone --filter=blob:none --no-checkout --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 \
+            https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/.jieli/ac79-sdk
+          git -C ~/.jieli/ac79-sdk sparse-checkout set cpu/wl82/tools
+          git -C ~/.jieli/ac79-sdk checkout
+      - name: msfa objects with the firmware's flags
+        run: |
+          set -o pipefail
+          TC="$HOME/.jieli/toolchain"
+          mkdir -p build/spike
+          for opt in Os O2; do for tab in own shared; do
+            d=build/spike/obj-$opt-$tab; mkdir -p $d
+            def=""; [ $tab = own ] && def=-DMSFA_OWN_TABLES
+            for n in tables freqlut env lfo pitchenv fm_op_kernel fm_core dx7note unit; do
+              "$TC/pi32v2/bin/clang" -target pi32v2 -x c++ -std=c++11 -nostdinc++ -fno-exceptions -fno-rtti \
+                -fno-threadsafe-statics -$opt -ffunction-sections -fno-builtin -Wall -Wno-unused-function \
+                -mcpu=r3 -mfprev1 -ffp-contract=off $def -c spike/dexed/core/$n.cc -o $d/$n.o
+            done
+            echo "== -$opt, $tab tables" | tee -a build/spike/sizes.txt
+            python3 spike/dexed/elfsize.py --json build/spike/sizes-$opt-$tab.json $d/*.o | tee -a build/spike/sizes.txt
+          done; done
+          "$TC/common/bin/objdump" -d build/spike/obj-O2-shared/fm_op_kernel.o > build/spike/fm_op_kernel-O2.dis
+          "$TC/common/bin/objdump" -d build/spike/obj-O2-shared/dx7note.o > build/spike/dx7note-O2.dis
+      - name: firmware without and with the voices, each with its emulator twin
+        run: |
+          set -o pipefail
+          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
+          one() {                                   # one NAME VAR=VALUE...
+            name=$1; shift
+            env "$@" python3 tools/build.py --out-dir "build/out/$name" 2>&1 | tee "build/spike/$name.log"
+            env "$@" M1_EMU_MIDI=1 python3 tools/build.py --out-dir "build/out/$name-emu" 2>&1 | tee "build/spike/$name-emu.log"
+            mkdir -p "build/spike/$name"
+            cp build/out/$name/matryoshka.{bin,fwsc,json,elf,dis} "build/spike/$name/"
+            cp "build/out/$name-emu/matryoshka.bin" "build/spike/$name/matryoshka-emu.bin"
+            cp "build/out/$name-emu/matryoshka.elf" "build/spike/$name/matryoshka-emu.elf"
+          }
+          one base
+          one dxs DXS_SPIKE=1
+          one dxs-own DXS_SPIKE=1 DXS_TABLES=own || echo "dxs-own did not build (expected if it overflows the slot)" | tee -a build/spike/sizes.txt
+          ls -l build/spike/*/matryoshka.bin | tee -a build/spike/sizes.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dexed-spike
+          path: build/spike/

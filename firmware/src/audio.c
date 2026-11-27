@@ -147,6 +147,9 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         if (run) {
             uint32_t loud = 0;
             eng_render(eng_l, eng_r, HALF_FRAMES);
+#if DXS_SPIKE
+            dxs_half(eng_l, eng_r, HALF_FRAMES);        /* spike #1338: msfa's voices (spike/dexed/fw_hook.h) */
+#endif
             bt_m[BT_M_REND1] = fm1_ticks();
             if (pal_fade_st)                            /* (a switch's few halves: pal_fade.h, in the flash) */
                 pal_fade_half(eng_l, eng_r, HALF_FRAMES);
