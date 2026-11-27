@@ -1,0 +1,59 @@
+{
+ "presets": [
+  {
+   "structure": "7e57417e",
+   "name": "FLASH TEST",
+   "values": 4
+  },
+  {
+   "structure": "7e57417e",
+   "name": "MATRYOSHKA RIG",
+   "values": 4
+  },
+  {
+   "structure": "aaa2b095",
+   "name": "Monolith D C",
+   "values": 64
+  },
+  {
+   "structure": "fa71d127",
+   "name": "T129 OLD KIT",
+   "values": 29
+  }
+ ],
+ "old": [
+  1000,
+  2000,
+  3000,
+  4000,
+  5000,
+  6000,
+  7000,
+  8000,
+  9000,
+  10000,
+  11000,
+  12000,
+  13000,
+  14000,
+  15000,
+  16000,
+  17000,
+  18000,
+  19000,
+  20000,
+  21000,
+  22000,
+  23000,
+  24000,
+  25000,
+  26000,
+  27000,
+  28000,
+  29000
+ ],
+ "new": null,
+ "name": "T129 OLD KIT",
+ "old_structure": "fa71d127",
+ "new_structure": "63a8df70"
+}

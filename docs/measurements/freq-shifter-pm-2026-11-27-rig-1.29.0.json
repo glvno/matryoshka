@@ -1,0 +1,188 @@
+{
+ "checks": [
+  {
+   "name": "pm2: the patch sounds (RMS > -60 dBFS)",
+   "ok": true,
+   "info": "-37.0 dBFS"
+  },
+  {
+   "name": "pm0: the patch sounds (RMS > -60 dBFS)",
+   "ok": true,
+   "info": "-37.0 dBFS"
+  },
+  {
+   "name": "pm2: the spectrum as the TS engine's (mean 1/3-octave difference <= 3 dB over its 12 loudest bands)",
+   "ok": true,
+   "info": "0.44 dB"
+  },
+  {
+   "name": "pm0: the spectrum as the TS engine's (mean 1/3-octave difference <= 3 dB over its 7 loudest bands)",
+   "ok": true,
+   "info": "0.00 dB"
+  },
+  {
+   "name": "pm 2 vs pm 0 differ (rig: mean 1/3-octave difference > 3 dB)",
+   "ok": true,
+   "info": "16.50 dB"
+  },
+  {
+   "name": "pm 2 vs pm 0 differ (TS engine: mean 1/3-octave difference > 3 dB)",
+   "ok": true,
+   "info": "18.04 dB"
+  },
+  {
+   "name": "pm 0: sideband f0+fm absent (30 dB or more under pm 2)",
+   "ok": true,
+   "info": "pm 0 -81.1 dB vs pm 2 0.1 dB (TS pm 2 -10.8 dB)"
+  },
+  {
+   "name": "pm 0: sideband fm-f0 absent (30 dB or more under pm 2)",
+   "ok": true,
+   "info": "pm 0 -92.4 dB vs pm 2 1.6 dB (TS pm 2 -0.9 dB)"
+  },
+  {
+   "name": "pm 0: sideband 2f0+fm absent (30 dB or more under pm 2)",
+   "ok": true,
+   "info": "pm 0 -81.8 dB vs pm 2 1.6 dB (TS pm 2 3.8 dB)"
+  }
+ ],
+ "levels": {
+  "pm2": {
+   "rms_dbfs": -37.0,
+   "db": {
+    "f0": 0.0,
+    "2f0": -1.6,
+    "f0+fm": 0.1,
+    "fm-f0": 1.6,
+    "f0+2fm": 2.2,
+    "2fm-f0": -1.3,
+    "2f0+fm": 1.6
+   },
+   "ts_db": {
+    "f0": 0,
+    "2f0": -4.1,
+    "f0+fm": -10.8,
+    "fm-f0": -0.9,
+    "f0+2fm": 3.6,
+    "2fm-f0": -23.9,
+    "2f0+fm": 3.8
+   },
+   "rate": 44100,
+   "bands_rel": [
+    -65.7,
+    -14.9,
+    -40.5,
+    -75.4,
+    -16.8,
+    -59.1,
+    -22.2,
+    -16.4,
+    -11.9,
+    -14.8,
+    -8.6,
+    -5.9,
+    -1.4,
+    0.0,
+    -1.6,
+    -5.7,
+    -19.1,
+    -44.6,
+    -69.9,
+    -69.3,
+    -68.5
+   ],
+   "ts_bands_rel": [
+    -65.7,
+    -14.6,
+    -40.1,
+    -75.2,
+    -15.7,
+    -58.1,
+    -20.9,
+    -15.8,
+    -12.6,
+    -14.1,
+    -8.0,
+    -5.6,
+    -1.6,
+    0.0,
+    -1.3,
+    -5.4,
+    -18.9,
+    -44.5,
+    -80.7,
+    -86.8,
+    -89.9
+   ]
+  },
+  "pm0": {
+   "rms_dbfs": -37.0,
+   "db": {
+    "f0": 0.0,
+    "2f0": -18.9,
+    "f0+fm": -81.1,
+    "fm-f0": -92.4,
+    "f0+2fm": -5.5,
+    "2fm-f0": -18.2,
+    "2f0+fm": -81.8
+   },
+   "ts_db": {
+    "f0": 0,
+    "2f0": -18,
+    "f0+fm": -147.7,
+    "fm-f0": -139.9,
+    "f0+2fm": -5.7,
+    "2fm-f0": -22.6,
+    "2f0+fm": -138.4
+   },
+   "rate": 44100,
+   "bands_rel": [
+    -90.2,
+    -89.5,
+    -87.8,
+    -73.3,
+    -12.0,
+    -54.1,
+    -83.6,
+    -30.0,
+    -79.3,
+    -20.5,
+    -13.2,
+    -8.0,
+    -4.7,
+    0.0,
+    -2.5,
+    -10.6,
+    -35.2,
+    -71.7,
+    -71.2,
+    -70.7,
+    -70.4
+   ],
+   "ts_bands_rel": [
+    -106.0,
+    -99.5,
+    -92.1,
+    -73.5,
+    -12.0,
+    -54.1,
+    -91.1,
+    -30.0,
+    -86.5,
+    -20.5,
+    -13.2,
+    -8.0,
+    -4.7,
+    0.0,
+    -2.5,
+    -10.6,
+    -35.2,
+    -79.2,
+    -84.3,
+    -88.1,
+    -91.6
+   ]
+  }
+ },
+ "all_ok": true
+}

@@ -1,0 +1,578 @@
+[
+ {
+  "slot": 0,
+  "name": "909 Kit today",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "patterned": false,
+  "n0_us": 2125,
+  "n0_samples": [
+   2125,
+   1970,
+   1966,
+   1962
+  ],
+  "n0_mean_us": [
+   1846,
+   1846,
+   1849,
+   1853
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2105,
+  "n1_samples": [
+   2105,
+   1983,
+   2024,
+   2008
+  ],
+  "n1_mean_us": [
+   1866,
+   1863,
+   1867,
+   1869
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2074,
+  "n4_samples": [
+   2074,
+   1998,
+   2008,
+   1995
+  ],
+  "n4_mean_us": [
+   1868,
+   1871,
+   1877,
+   1873
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2216,
+  "n8_samples": [
+   2216,
+   1973,
+   1988,
+   1982
+  ],
+  "n8_mean_us": [
+   1873,
+   1860,
+   1870,
+   1873
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 1,
+  "name": "909 drawer off",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "patterned": false,
+  "n0_us": 2135,
+  "n0_samples": [
+   2135,
+   1970,
+   1983,
+   1986
+  ],
+  "n0_mean_us": [
+   1882,
+   1885,
+   1879,
+   1878
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2134,
+  "n1_samples": [
+   2134,
+   2021,
+   2021,
+   2029
+  ],
+  "n1_mean_us": [
+   1905,
+   1897,
+   1887,
+   1908
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2131,
+  "n4_samples": [
+   2131,
+   2025,
+   2029,
+   2025
+  ],
+  "n4_mean_us": [
+   1902,
+   1912,
+   1912,
+   1900
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2210,
+  "n8_samples": [
+   2210,
+   2021,
+   2023,
+   2013
+  ],
+  "n8_mean_us": [
+   1906,
+   1897,
+   1909,
+   1902
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 2,
+  "name": "909 drawer on",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "patterned": false,
+  "n0_us": 2358,
+  "n0_samples": [
+   2358,
+   2171,
+   2183,
+   2183
+  ],
+  "n0_mean_us": [
+   2049,
+   2053,
+   2055,
+   2044
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2338,
+  "n1_samples": [
+   2338,
+   2189,
+   2202,
+   2203
+  ],
+  "n1_mean_us": [
+   2075,
+   2063,
+   2062,
+   2068
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2359,
+  "n4_samples": [
+   2359,
+   2213,
+   2215,
+   2201
+  ],
+  "n4_mean_us": [
+   2073,
+   2075,
+   2072,
+   2083
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2405,
+  "n8_samples": [
+   2405,
+   2213,
+   2208,
+   2220
+  ],
+  "n8_mean_us": [
+   2075,
+   2064,
+   2073,
+   2082
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 3,
+  "name": "big240",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "patterned": false,
+  "n0_us": 1798,
+  "n0_samples": [
+   1798,
+   1757,
+   1759,
+   1750
+  ],
+  "n0_mean_us": [
+   1707,
+   1706,
+   1712,
+   1707
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 1765,
+  "n1_samples": [
+   1765,
+   1765,
+   1753,
+   1757
+  ],
+  "n1_mean_us": [
+   1709,
+   1704,
+   1706,
+   1711
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 1767,
+  "n4_samples": [
+   1767,
+   1767,
+   1761,
+   1764
+  ],
+  "n4_mean_us": [
+   1708,
+   1708,
+   1710,
+   1710
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 1782,
+  "n8_samples": [
+   1782,
+   1760,
+   1754,
+   1758
+  ],
+  "n8_mean_us": [
+   1706,
+   1706,
+   1711,
+   1708
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 4,
+  "name": "reverb r none",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "patterned": false,
+  "n0_us": 406,
+  "n0_samples": [
+   406,
+   391,
+   394,
+   397
+  ],
+  "n0_mean_us": [
+   369,
+   367,
+   361,
+   364
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 401,
+  "n1_samples": [
+   401,
+   396,
+   393,
+   390
+  ],
+  "n1_mean_us": [
+   373,
+   372,
+   370,
+   369
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 410,
+  "n4_samples": [
+   395,
+   410,
+   410,
+   396
+  ],
+  "n4_mean_us": [
+   369,
+   370,
+   371,
+   372
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 406,
+  "n8_samples": [
+   406,
+   401,
+   400,
+   397
+  ],
+  "n8_mean_us": [
+   370,
+   369,
+   371,
+   369
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 5,
+  "name": "reverb r pair",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "patterned": false,
+  "n0_us": 425,
+  "n0_samples": [
+   413,
+   411,
+   425,
+   407
+  ],
+  "n0_mean_us": [
+   382,
+   387,
+   383,
+   381
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 420,
+  "n1_samples": [
+   420,
+   408,
+   420,
+   415
+  ],
+  "n1_mean_us": [
+   385,
+   387,
+   386,
+   387
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 429,
+  "n4_samples": [
+   429,
+   410,
+   414,
+   414
+  ],
+  "n4_mean_us": [
+   387,
+   384,
+   385,
+   385
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 421,
+  "n8_samples": [
+   414,
+   409,
+   421,
+   408
+  ],
+  "n8_mean_us": [
+   391,
+   388,
+   383,
+   385
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 6,
+  "name": "stereo chain pair",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "patterned": false,
+  "n0_us": 412,
+  "n0_samples": [
+   412,
+   346,
+   346,
+   346
+  ],
+  "n0_mean_us": [
+   286,
+   288,
+   288,
+   280
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 416,
+  "n1_samples": [
+   416,
+   348,
+   352,
+   352
+  ],
+  "n1_mean_us": [
+   293,
+   290,
+   290,
+   294
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 412,
+  "n4_samples": [
+   412,
+   351,
+   355,
+   355
+  ],
+  "n4_mean_us": [
+   307,
+   292,
+   294,
+   299
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 411,
+  "n8_samples": [
+   411,
+   358,
+   358,
+   349
+  ],
+  "n8_mean_us": [
+   298,
+   298,
+   293,
+   297
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 7,
+  "name": "stereo chain",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "patterned": false,
+  "n0_us": 413,
+  "n0_samples": [
+   413,
+   349,
+   349,
+   349
+  ],
+  "n0_mean_us": [
+   291,
+   281,
+   287,
+   287
+  ],
+  "n0_late": 0,
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 413,
+  "n1_samples": [
+   413,
+   359,
+   358,
+   358
+  ],
+  "n1_mean_us": [
+   294,
+   295,
+   289,
+   294
+  ],
+  "n1_late": 0,
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 422,
+  "n4_samples": [
+   422,
+   358,
+   358,
+   358
+  ],
+  "n4_mean_us": [
+   298,
+   294,
+   297,
+   291
+  ],
+  "n4_late": 0,
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 422,
+  "n8_samples": [
+   422,
+   363,
+   362,
+   351
+  ],
+  "n8_mean_us": [
+   301,
+   294,
+   294,
+   297
+  ],
+  "n8_late": 0,
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ }
+]
