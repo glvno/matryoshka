@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.28.2 — 2026-11-27
 
 - **A button no longer acts as the one beside it.** The FM-1 reads its buttons one column at a time. When the short glow pulse that ends each column's turn finished late, it read the next column before that column was ready, and a held button also counted as its right-hand neighbour: LFO as SEQ (on the SEQ page in step record, a rest ended step record and the next one left the page, where REC then started the transport), OCT- as OCT+. The glowing button lights looked fully lit meanwhile. A pulse ends late when the FM-1's USB handling runs long, which we expect after the cable is pulled out; a power cycle cleared it. Each column is now read only once it has settled. Firmware 1.15.0 and later had it.
 - **An unplugged FM-1 no longer spends its time waiting on USB.** Without a cable, the FM-1's USB controller stops answering. Every USB check, twice a millisecond, could then wait out a long timeout for each question it asked, and if some questions still got answers USB never switched off. That waiting held up the button scan, which can then read a button as its neighbour (#1339). Now a check gives up at the first unanswered question, and three such checks in a row switch USB off until the cable is back. Looking for the cable no longer stops the panel, MIDI in and the screen for 25 ms every second, also on battery from power-on. Plug the cable back in and USB comes back within a second, as before.
