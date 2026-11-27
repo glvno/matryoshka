@@ -53,7 +53,7 @@
         <section class="spanel" aria-label="View">
           <div class="shead"><span class="mtag shp">VIEW</span><span class="stitle">Canvas</span></div>
           <div class="sbody">
-            <div class="view-row"><button id="tidy-btn" title="Line the cards up in columns, keeping their order (Alt+T; undo with Ctrl/Cmd+Z)">TIDY</button><button id="fit-btn" title="Zoom so every card is in view (Shift+1 or Alt+Z)">FIT</button></div>
+            <div class="view-row"><button id="tidy-btn" title="Lay the cards out along the signal: left to right as the cables run, then top to bottom (Alt+T; undo with Ctrl/Cmd+Z)">TIDY</button><button id="fit-btn" title="Zoom so every card is in view (Shift+1 or Alt+Z)">FIT</button></div>
             <div class="view-row"><button id="expand-all-btn" title="Open every assembly, nested ones too (undo with Ctrl/Cmd+Z)">EXPAND ALL</button><button id="collapse-all-btn" title="Close every assembly (undo with Ctrl/Cmd+Z)">COLLAPSE ALL</button></div>
             <div id="slack-bar" class="param bar side-bar"><span>Cable slack</span><output id="slack-out">0 %</output><input id="slack-input" type="range" min="0" max="1" step="any" value="0" aria-label="Cable slack" /></div>
             <div id="zoom-bar" class="param bar side-bar"><span>Zoom</span><output id="zoom-out">100 %</output><input id="zoom-input" type="range" min="0" max="1" step="any" value="0.63" aria-label="Zoom" /></div>
@@ -298,7 +298,7 @@
             <div class="hrow"><span class="hkeys"><kbd>Shift+1</kbd> <kbd>Shift+2</kbd></span><span>zoom so every card is in view (FIT) / the selection is</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd</kbd> + <kbd>=</kbd> <kbd>−</kbd> <kbd>0</kbd></span><span>zoom in, zoom out, 100 %, around the middle of the canvas</span></div>
             <div class="hrow"><span class="hkeys">drag to the edge</span><span>dragging a card, a cable or an area near the canvas’s edge moves the canvas, faster the closer to the edge</span></div>
-            <div class="hrow"><span class="hkeys"><kbd>Alt+T</kbd> <kbd>Alt+Z</kbd></span><span>TIDY: line the cards up in columns, keeping their order; FIT: zoom so every card is in view (the sidebar’s Canvas buttons)</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Alt+T</kbd> <kbd>Alt+Z</kbd></span><span>TIDY: lay the cards out along the signal, left to right as the cables run, then top to bottom; FIT: zoom so every card is in view (the sidebar’s Canvas buttons)</span></div>
             <div class="hrow"><span class="hkeys">right-click a title</span><span>the card’s ⋯ menu</span></div>
             <div class="hrow"><span class="hkeys">right-click the empty canvas</span><span><b>Add comment</b>: a box of free text (also in Commands). Double-click a comment to edit it (<kbd>Ctrl/Cmd+Enter</kbd> or a click elsewhere keeps it, <kbd>Esc</kbd> puts it back, left empty it goes); drag it, its corner resizes it. It is selected, copied, deleted and undone like a card, and saved in the patch, but never sent to the FM-1</span></div>
           </section>

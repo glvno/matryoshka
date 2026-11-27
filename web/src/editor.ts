@@ -7,7 +7,7 @@ import { resizeHandle } from './resize-handle';
 import { FINE, parseValue, stepOf, stepToward, wholeSteps } from './value-input';
 import { isTextEntry } from './input';
 import { lockOf } from './relevance';
-import { clearAround, isPile, pushAside, tidy, tidyAssembly } from './tidy';
+import { clearAround, isPile, pushAside, tidy, tidyAssembly, type CardKey, type TidySizes } from './tidy';
 import { breedPatch, cardScope, ENVELOPES, isLocked, MUTATE_DEFAULT, MUTATE_SKIP, mutatePatch, setParamLock, type Category, type MutateMode, type MutateOptions, type MutateScope } from './mutate';
 import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS, rowRange } from './modules';
 import { FIXED_BUTTONS, setBy, type Range } from './patch';
@@ -289,8 +289,9 @@ export interface EditorEvents {
 type CableEnd = 'side' | 'up' | 'down';
 /** the straight run of a cable out of its jack at full slack, px */
 const CABLE_STUB = 20;
-/** the zoom's range (the wheel, pinch, fit and the sidebar's zoom slider) */
-export const ZOOM_MIN = 0.3;
+/** the zoom's range (the wheel, pinch, fit and the sidebar's zoom slider): down to where Fit shows the widest factory patch,
+ *  the 909 Kit expanded and tidied (12,500 px), in a 1440 × 900 window (D-1447) */
+export const ZOOM_MIN = 0.07;
 export const ZOOM_MAX = 2;
 /** a chain of cubic Béziers: a start point, then three points per segment */
 const pathOf = ([a, ...rest]: { x: number; y: number }[]): string => {
@@ -663,18 +664,20 @@ export class Editor {
   /** set while a patch's view is put back: the zoom that causes is not the user's gesture (the tutorial's zoom step) */
   restoring = false;
 
-  /** a patch opens where it was last looked at; one without a view keeps the current one (and gets it on the next move) */
+  /** a patch opens where it was last looked at; one without a view (a factory patch, an example) opens with every card in
+   *  view, as Fit shows it, and gets a view of its own on the next move */
   private restoreView(): void {
     const v = this.patch.view;
-    if (!v) return;
     clearTimeout(this.viewTimer);
     this.restoring = true;
     try {
-      this.setZoom(v.zoom);
+      if (v) this.setZoom(v.zoom);
+      else this.zoomToFit();
     } finally {
       this.restoring = false;
     }
-    this.sizeCanvas({ x: v.x, y: v.y });
+    if (v) this.sizeCanvas({ x: v.x, y: v.y });
+    else clearTimeout(this.viewTimer);
   }
 
   private queueView(): void {
@@ -3039,7 +3042,7 @@ export class Editor {
     this.onZoom(this.zoom, live);
   }
 
-  /** the layout tidyUp made last: tidy reads the columns from the layout, so it is left alone until something moves or resizes */
+  /** the layout tidyUp made last: left alone (Tidy again says so) until something moves or resizes */
   private tidied = '';
   /** the cards' places and sizes, the frames' and which assemblies are open */
   private layoutKey(): string {
@@ -3060,7 +3063,7 @@ export class Editor {
     this.tidied = this.layoutKey();
   }
 
-  /** Tidy up: pack the cards, keeping their columns' order (tidy.ts); one undo step */
+  /** Tidy up: lay the canvas out along its signal flow, left to right (tidy.ts); one undo step */
   tidyUp(): void {
     if (this.layoutKey() === this.tidied) return this.ev.onError('already tidy');
     const before = this.mark();
@@ -3133,7 +3136,8 @@ export class Editor {
 
   /** the zoom that fits `elements` (at most 150 %), with them centred */
   private fitElements(elements: HTMLElement[]): void {
-    if (!elements.length) return;
+    // (a canvas not laid out, hidden or in a test, has no size to fit to)
+    if (!elements.length || !this.canvas.clientWidth || !this.canvas.clientHeight) return;
     const PAD = 24;
     // an open frame's cables run in a gutter round it (ribbons.ts): fit that too
     const out = (el: HTMLElement): number => (el.classList.contains('frame') ? GUTTER_ROOM : 0);
@@ -3142,7 +3146,8 @@ export class Editor {
     const w = Math.max(...elements.map((el) => el.offsetLeft + el.offsetWidth + out(el))) + PAD - x0;
     const h = Math.max(...elements.map((el) => el.offsetTop + el.offsetHeight + out(el))) + PAD - y0;
     const c = this.canvas;
-    this.setZoom(Math.min(1.5, c.clientWidth / w, c.clientHeight / h));
+    // (the user's zoom is in whole percent: rounded down, so a wide patch still fits)
+    this.setZoom(Math.floor(Math.min(1.5, c.clientWidth / w, c.clientHeight / h) * 100) / 100);
     const z = this.zoom;
     this.sizeCanvas({ x: x0 + w / 2 - c.clientWidth / z / 2, y: y0 + h / 2 - c.clientHeight / z / 2 });
   }
@@ -3595,13 +3600,42 @@ export class Editor {
     ], at);
   }
 
-  /** the sizes Tidy up works with: the cards as drawn, a grid cell when one is not drawn */
-  private tidySizes(): Parameters<typeof tidy>[1] {
-    const size = (el: HTMLElement | undefined): { w: number; h: number } => ({ w: el?.offsetWidth || CARD_W, h: el?.offsetHeight || CARD_H });
+  /** what Tidy up works with: the cards as drawn (a grid cell when one is not drawn; a card whose header overflows it takes
+   *  the room it shows in), where each cable's jacks are on them, the FX drawers hanging off them and the frames' gutters */
+  private tidySizes(): TidySizes {
+    const size = (el: HTMLElement | undefined): { w: number; h: number } => ({ w: Math.max(el?.offsetWidth || CARD_W, el?.scrollWidth ?? 0), h: el?.offsetHeight || CARD_H });
+    const z = this.zoom;
+    /** the card on the canvas a jack is on (an embedded child's card is inside its parent's) */
+    const canvasCard = (el: Element | undefined): HTMLElement | null => {
+      let card = el?.closest<HTMLElement>('.module') ?? null;
+      while (card && card.parentElement !== this.modulesEl) card = card.parentElement?.closest<HTMLElement>('.module') ?? null;
+      return card;
+    };
     return {
       module: (id) => size(this.cards.get(id)),
       container: (id) => size(this.containers.get(id)),
       frame: () => ({ pad: FRAME_PAD, padX: FRAME_PAD_X, head: FRAME_HEAD, minW: 0 }),
+      gutter: GUTTER_ROOM,
+      jack: (c, end) => {
+        const dot = end === 'from' ? this.outputJack(c.from, c.to) : this.inputJack(c.to);
+        const card = canvasCard(dot);
+        const key: CardKey | null = card?.dataset.asm ? `a${Number(card.dataset.asm)}` : card?.dataset.id ? `m${Number(card.dataset.id)}` : null;
+        if (!dot || !card || !key) return null;
+        const r = dot.getBoundingClientRect(), cr = card.getBoundingClientRect();
+        return { card: key, x: (r.left + r.width / 2 - cr.left) / z, y: (r.top + r.height / 2 - cr.top) / z };
+      },
+      overhang: (k) => {
+        const el = k[0] === 'm' ? this.cards.get(Number(k.slice(1))) : this.containers.get(Number(k.slice(1)));
+        const hung = [...this.drawerViews.values()].filter((v) => el && v.host === el && v.geom).flatMap((v) => [v.plug, v.lip, v.drawer]).filter((x): x is HTMLElement => !!x);
+        if (!el || !hung.length) return null;
+        const x = el.offsetLeft, y = el.offsetTop;
+        return {
+          l: Math.max(0, x - Math.min(...hung.map((b) => b.offsetLeft))),
+          t: Math.max(0, y - Math.min(...hung.map((b) => b.offsetTop))),
+          r: Math.max(0, Math.max(...hung.map((b) => b.offsetLeft + b.offsetWidth)) - x - el.offsetWidth),
+          b: Math.max(0, Math.max(...hung.map((b) => b.offsetTop + b.offsetHeight)) - y - el.offsetHeight),
+        };
+      },
     };
   }
 
