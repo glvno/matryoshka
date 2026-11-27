@@ -1,5 +1,6 @@
 name: web
-# Event/cancellation rules: D-102. Targeted and frozen-candidate test scope: D-144.
+# Event/cancellation rules: D-102. Targeted and frozen-candidate test scope: D-144. After every merge to main the test job
+# also runs the full web suite of a release candidate's coverage group, and a red run opens a `main-red` issue: D-1183.
 on:
   push:
     branches: [main]
@@ -7,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'targeted tests or the full web suite for a frozen release candidate'
+        description: 'targeted tests, the full web suite for a frozen release candidate, or the full web suite as after a merge to main'
         type: choice
-        options: [targeted, rc]
+        options: [targeted, rc, main]
         default: targeted
       base:
         description: 'comparison commit/ref (required for targeted dispatch)'
@@ -18,13 +19,15 @@ on:
         description: 'exact frozen 40-character commit (required for rc mode)'
         type: string
 
-# a newer run for the same branch / PR replaces an older one still running
+# a newer run for the same branch / PR replaces an older one still running (on main: a newer merge's full suite)
 concurrency:
   group: ${{ github.workflow }}-${{ inputs.mode == 'rc' && format('rc-{0}', inputs.rc_sha) || github.ref }}
   cancel-in-progress: ${{ inputs.mode != 'rc' }}
 jobs:
   test:
     runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.checks.outputs.mode }}
     defaults:
       run:
         working-directory: web
@@ -62,10 +65,19 @@ jobs:
         run: |
           sudo apt-get install -y --no-install-recommends clang lld
           npm run fm1-wasm
-      # A release candidate's slow renders run in the `slow` jobs beside this one (D-147's disjoint groups)
+      # A release candidate's slow renders run in the `slow` jobs beside this one (D-147's disjoint groups). After a merge
+      # to main the plan's mode is `main`: every web test but the slow renders, as the RC's coverage group runs them (D-1183)
       - name: Web tests selected for this scope
         working-directory: .
         run: python3 tools/ci_checks.py run --area web ${{ inputs.mode == 'rc' && '--group coverage' || '' }}
+      - name: Keep the failing tests of a red full suite for the main-red issue
+        if: failure() && steps.checks.outputs.mode == 'main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-main-report
+          path: build/web-main-report.json
+          retention-days: 7
+          if-no-files-found: ignore
       - run: npm run build
       - name: Keep the RC coverage stats for the seal job
         if: inputs.mode == 'rc'
@@ -129,3 +141,49 @@ jobs:
           name: coverage-${{ inputs.rc_sha }}
           path: build/coverage-record/
           if-no-files-found: error
+
+  # D-1183: a red full suite on main opens a `main-red` issue with the failing tests, or comments on the open one; the
+  # next green run on main closes it. The commit's `test` check is red either way.
+  main-red:
+    needs: test
+    if: ${{ !cancelled() && (github.event_name == 'push' || inputs.mode == 'main') && github.ref == 'refs/heads/main' && (needs.test.result == 'failure' || needs.test.result == 'success') }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      ROW_URL: ${{ github.server_url }}/${{ github.repository }}/blob/main/docs/ledger/releases.md#D-1183
+    steps:
+      - uses: actions/download-artifact@v4
+        if: needs.test.result == 'failure'
+        continue-on-error: true   # (no report when the job failed before the web tests)
+        with:
+          name: web-main-report
+          path: report
+      - name: Open or update the main-red issue
+        if: needs.test.result == 'failure'
+        run: |
+          failed=$(if [ -s report/web-main-report.json ]; then jq -r '.testResults[] | select(.status == "failed")
+            | "- `web/\(.name | split("/web/")[-1])`",
+              ([.assertionResults[] | select(.status == "failed") | "  - \(.fullName)"] as $tests
+               | if ($tests | length) > 0 then $tests[] else "  - \((.message | split("\n")[0]) // "failed to run")" end)' report/web-main-report.json; fi)
+          {
+            echo "The full web suite after a merge ([D-1183]($ROW_URL)) failed on \`main\` at $GITHUB_SHA: $RUN_URL"
+            echo
+            echo "${failed:-No failing web test in a report: a step outside the web tests failed (the run log has it).}"
+          } > body.md
+          gh label create main-red --force --color B60205 --description 'the full web suite fails on main (D-1183)'
+          issue=$(gh issue list --label main-red --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body-file body.md
+          else
+            gh issue create --label main-red --title 'main is red: the full web suite fails after a merge' --body-file body.md
+          fi
+      - name: Close the main-red issue once main is green
+        if: needs.test.result == 'success'
+        run: |
+          for issue in $(gh issue list --label main-red --state open --json number --jq '.[].number'); do
+            gh issue close "$issue" --comment "Green again at $GITHUB_SHA: $RUN_URL"
+          done

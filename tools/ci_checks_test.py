@@ -73,6 +73,23 @@ class SelectionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'explicit base'):
             ci.event_scope('workflow_dispatch', {'inputs': {'mode': 'targeted'}}, sha)
 
+    def test_a_merge_to_main_runs_the_full_web_suite_beside_its_targeted_scope(self):
+        sha = 'a' * 40
+        push = {'ref': 'refs/heads/main', 'before': 'b' * 40}
+        with patch.object(ci, 'changed_paths', return_value=['web/src/roll.ts']):
+            self.assertEqual(ci.event_scope('push', push, sha, area='web'), ('main', ['web/src/roll.ts']))
+            self.assertEqual(ci.event_scope('push', push, sha, area='firmware'), ('targeted', ['web/src/roll.ts']))
+            self.assertEqual(ci.event_scope('push', dict(push, ref='refs/heads/other'), sha, area='web')[0], 'targeted')
+            self.assertEqual(ci.event_scope('pull_request', {'pull_request': {'base': {'sha': 'b' * 40}}}, sha, area='web')[0], 'targeted')
+        self.assertEqual(ci.event_scope('workflow_dispatch', {'inputs': {'mode': 'main'}}, sha, area='web'), ('main', []))
+        with tempfile.TemporaryDirectory() as temp:
+            event = Path(temp) / 'event.json'
+            event.write_text(json.dumps({'inputs': {'mode': 'main'}}))
+            with patch.dict(os.environ, {'GITHUB_EVENT_NAME': 'workflow_dispatch', 'GITHUB_EVENT_PATH': str(event)}), patch.object(ci, 'git', return_value=sha):
+                self.assertEqual(ci.plan('web')['mode'], 'main')
+                with self.assertRaisesRegex(ValueError, 'full suite after a merge'):
+                    ci.plan('firmware')
+
     def test_release_candidate_includes_preset_pattern_checks(self):
         sha = 'a' * 40
         with tempfile.TemporaryDirectory() as temp:
@@ -175,6 +192,31 @@ class SelectionTests(unittest.TestCase):
             with patch.object(ci, 'ROOT', root), patch.object(ci, 'git', return_value='a'*40), patch.object(ci.subprocess, 'run'):
                 with self.assertRaises(ValueError):
                     ci.execute(plan, 'web', 'slow', (1, 3))
+
+    def test_main_mode_runs_the_coverage_group_with_a_report_then_only_the_slow_renders_the_merge_selects(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'web/src').mkdir(parents=True)
+            for number in range(1, 3):
+                (root / f'web/src/levels-{number}.test.ts').touch()
+            plan = root / 'plan.json'
+            report = ['--reporter=default', '--reporter=json', '--outputFile.json=' + str(ci.MAIN_REPORT)]
+            plan.write_text(json.dumps({'commit': 'a'*40, 'mode': 'main', 'web': ['web/src/levels-2.test.ts', 'web/src/roll.test.ts']}))
+            with patch.object(ci, 'ROOT', root), patch.object(ci, 'git', return_value='a'*40), patch.object(ci.subprocess, 'run') as run:
+                ci.execute(plan, 'web')
+                commands = [call.args[0] for call in run.call_args_list]
+                self.assertEqual(len(commands), 2)   # (no coverage stats)
+                self.assertIn('--coverage', commands[0])
+                self.assertIn('--testTimeout=60000', commands[0])
+                self.assertEqual(commands[0][-len(report) - 2 * len(ci.SLOW_RENDERS):-len(report)], [a for g in ci.SLOW_RENDERS for a in ('--exclude', g)])
+                self.assertEqual(commands[0][-len(report):], report)
+                self.assertEqual(commands[1], ['npx', '--no-install', 'vitest', 'run', 'src/levels-2.test.ts', *report])
+                run.reset_mock()
+                plan.write_text(json.dumps({'commit': 'a'*40, 'mode': 'main', 'web': ['web/src/roll.test.ts']}))
+                ci.execute(plan, 'web')
+                self.assertEqual(run.call_count, 1)
+                with self.assertRaises(ValueError):
+                    ci.execute(plan, 'web', 'coverage')
 
     def test_slow_parts_deal_the_longest_first_and_count_an_unlisted_file_as_the_median(self):
         files = sorted(ci.SLOW_RENDER_SECONDS)
