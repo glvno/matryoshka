@@ -94,6 +94,8 @@ interface Exports {
   /** (absent from a wasm built before #1196) the palette the copy shows: 8 x 24 bytes {state, slot, pattern, pad,
    * name[20]} at fm1w_palette_buf, taken with the position playing and the one waiting (0xFF none) */
   fm1w_palette_buf?(): number; fm1w_palette?(cur: number, next: number): void;
+  /** (absent from a wasm built before D-942's preset names) each position's first preset name: 8 x 16 bytes */
+  fm1w_palette_presets?(): number;
 }
 
 export class Fm1Ui {
@@ -194,15 +196,21 @@ export class Fm1Ui {
     this.x.fm1w_align();
   }
   /** the palette the copy's HOME-held overview shows (#1196): 8 positions {state 0 empty / 1 ok / 2 missing, slot,
-   *  pattern, name}, the one playing and the one waiting (null none); a wasm built before it ignores it */
-  palette(positions: readonly { state: number; slot: number; pattern: number; name: string }[], cur: number | null, next: number | null): void {
+   *  pattern, name, preset: the entry's first device preset's name, '' none (D-942)}, the one playing and the one waiting
+   *  (null none); a wasm built before it ignores it */
+  palette(positions: readonly { state: number; slot: number; pattern: number; name: string; preset?: string }[], cur: number | null, next: number | null): void {
     const at = this.x.fm1w_palette_buf?.();
     if (at === undefined || !this.x.fm1w_palette) return;
     const buf = new Uint8Array(this.x.memory.buffer, at, 8 * 24);
+    const pat = this.x.fm1w_palette_presets?.();
+    const pbuf = pat === undefined ? null : new Uint8Array(this.x.memory.buffer, pat, 8 * 16);
     buf.fill(0);
+    pbuf?.fill(0);
     positions.slice(0, 8).forEach((p, i) => {
       buf.set([p.state, p.slot, p.pattern, 0], i * 24);
       for (let k = 0; k < 20 && k < p.name.length; k++) buf[i * 24 + 4 + k] = p.name.charCodeAt(k) & 0x7f;
+      const pre = p.preset ?? '';
+      for (let k = 0; pbuf && k < 16 && k < pre.length; k++) pbuf[i * 16 + k] = pre.charCodeAt(k) & 0x7f;
     });
     this.x.fm1w_palette(cur ?? 0xff, next ?? 0xff);
   }

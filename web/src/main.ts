@@ -1835,8 +1835,9 @@ function renderPalette(): void {
     paletteLib.render(dock.saved.sounds.map(soundChip), 'saved');
   } else paletteLib.render(chips, mode);
   renderPaletteRail(paletteRail, chips, mode, paletteActs.click);
-  // (the FM-1 tab's HOME-held overview shows the same palette, as the FM-1 has it or as last read)
-  emu.ui?.palette(palette.now?.positions ?? [], palette.now?.cur ?? null, palette.now?.next ?? null);
+  // (the FM-1 tab's HOME-held overview shows the same palette, as the FM-1 has it or as last read, each entry by its first
+  // preset's name and its patch's, D-942)
+  emu.ui?.palette((palette.now?.positions ?? []).map((p, i) => ({ ...p, preset: chips[i]?.presets[0] ?? '' })), palette.now?.cur ?? null, palette.now?.next ?? null);
 }
 palette = new Palette({
   device,

@@ -44,6 +44,23 @@ static int pal_slot_name(uint32_t slot, char *name, uint32_t *len)
     *len = h.len;
     return 0;
 }
+/* palette.h: the entry's first device preset's name, read from the record (the entry's first device that keeps one:
+ * pal_capture writes them in page order) */
+static uint32_t pal_preset(uint32_t pos, char *out)
+{
+    uint8_t e[PAL_FIXED + 10u + PAL_PNAME];
+    uint32_t at, n, nl = 0, i;
+    if (pos < PAL_N && pal_ix[pos].state != PAL_EMPTY && !pal_at(pos, &at, &n) && n >= PAL_FIXED + 11u && n <= PAL_ENTRY_MAX
+        && !st_read(at + 2u, e, n < sizeof e ? n : sizeof e) && e[PAL_FIXED - 1u]) {
+        nl = e[PAL_FIXED + 9u];
+        if (nl > PAL_PNAME || PAL_FIXED + 10u + nl > n)
+            nl = 0;
+    }
+    for (i = 0; i < nl; i++)
+        out[i] = e[PAL_FIXED + 10u + i] >= 32u && e[PAL_FIXED + 10u + i] < 127u ? (char)e[PAL_FIXED + 10u + i] : ' ';
+    out[nl] = 0;
+    return nl;
+}
 
 /* PALETTE_NOW's payload (6 + 8 x 27 bytes) */
 static uint32_t pal_now_payload(uint8_t *p)

@@ -957,6 +957,12 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   - **Save** (`pal_save`, HOME + black key held 1 s): the slot first when edited (`m1_store`), or, for a patch in no slot
     (`cur_from_editor`, set by `m1_apply`), the first empty slot named by PALETTE NAME (else `PATCH nn`); then the entry
     (`pal_capture`: the devices with a preset name) into its position.
+  - **Names** ([D-942](ledger/device-ui.md#D-942), [D-1457](ledger/device-ui.md#D-1457)): the overview (`pal_ui.c` `pal_draw`) and the bar's
+    `NEXT:` (`ui.c` `header_draw_now`) name an entry by `pal_label` (`ui.c`): its first device preset's name, ` | `, the
+    patch's name, fitted into the pixels given (the patch's name shortens first, then the preset's, neither below
+    `PAL_FIT_MIN`). The preset's name is read on demand through `pal_preset` (palette.h), not kept in `pal_ix`: the
+    device reads the entry's first device from the record (`palette.c`), the FM-1 tab takes it from the page
+    (`fm1w_palette_presets`, `fm1-ui.ts` `palette`), the host tests stand in.
   - **Link**: PALETTE (0x1E), op byte first: 0 GET → PALETTE_NOW; 1 ENTRY_GET pos → PALETTE_ENTRY (0x67: pos, then the
     ENTRY, nothing for an empty position); 2 PUT pos + ENTRY (none: empty it) → ACK (seq pos), PALETTE_NOW; 3 ORDER
     from[8] (new position i takes old from[i], 0xFF empty) → ACK (seq 0), PALETTE_NOW; 4 GO pos (0xFF cancels) → ACK

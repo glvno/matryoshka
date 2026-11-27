@@ -72,7 +72,8 @@
 #define MSG_PAL_SAVED_SLOT "SAVED: SLOT "              /* SAVED: SLOT 31, PALETTE 3 (a patch in no slot stored first) */
 #define MSG_PAL_SAVED_AND ", PALETTE "
 #define MSG_PAL_BANK_FULL "BANK FULL: NOT SAVED"
-#define MSG_PAL_NEXT "NEXT: "                           /* the bar while a switch waits: NEXT: 3 MONOLITH D (18 of the name) */
+#define MSG_PAL_NEXT "NEXT: "                           /* the bar while a switch waits: NEXT: 3 BRIGHT PAD | MONOLITH D */
+#define MSG_PAL_SEP " | "                               /* an entry's preset name, then its patch name (ui.c pal_label, D-942) */
 #define MSG_PAL_HOLD_TO_SAVE "HOLD A BLACK KEY TO SAVE"  /* the overview of an empty palette */
 #define MSG_PAL_ROW_EMPTY "EMPTY"                       /* the overview's rows */
 #define MSG_PAL_ROW_MISSING " MISSING"                  /* after the name */

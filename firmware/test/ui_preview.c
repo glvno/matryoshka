@@ -28,6 +28,7 @@
 #ifndef UI_PREVIEW_LIB
 static void m1_param_now(uint32_t mod, uint32_t par, int32_t v) { (void)mod; (void)par; (void)v; }   /* (host_ui.h: a harness's) */
 static void screen_back(void) {}                   /* (panel.c's: midi_learn.c leaves the menu as a learn starts) */
+static uint32_t pal_preset(uint32_t pos, char *out) { (void)pos; out[0] = 0; return 0; }   /* (no palette here: ui.c's NEXT bar) */
 int main(int argc, char **argv)
 {
     uint32_t i, p;

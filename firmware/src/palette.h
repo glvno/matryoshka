@@ -16,7 +16,9 @@
 #define PAL_ENTRY_MAX (PAL_FIXED + PAL_DEVS * PAL_DEV_MAX)   /* 335 */
 #define PAL_HOLD_MS 1000u                        /* HOME + a black key held this long: save to that position */
 #define PAL_VIEW_MS 300u                         /* HOME held alone this long: the overview shows */
-#define PAL_NEXT_NAME 18u                        /* the bar's NEXT: n NAME cuts the name to this (C1) */
+#define PAL_FIT_MIN 8u                           /* a name shortened to fit keeps at least this many characters */
+#define PAL_LABEL (PAL_PNAME + 3u + PAL_NAME + 1u)   /* an entry's name as shown: PRESET | PATCH, its zero */
+#define PAL_SHOW_INIT 1u                         /* 0: an entry whose preset is Init is named by its patch alone (D-1457) */
 enum { PAL_EMPTY, PAL_OK, PAL_MISSING };         /* a position's state (PALETTE_NOW's too) */
 
 /* the index in RAM, made from the record at boot and after every change to the bank or the palette (palette.c
@@ -39,5 +41,11 @@ static uint8_t pal_next = PAL_NONE;              /* the position waiting for the
  * entry; says what it did on the bar */
 static uint32_t pal_request(uint32_t pos, uint32_t *aux);
 static void pal_save(uint32_t pos);
+/* pal_preset: the name of position pos's first device preset (the first device of the entry that keeps one, in page
+ * order: the instrument first, D-942) into out (PAL_PNAME + 1 bytes), its length; 0 and "" when it keeps none or pos is
+ * empty (the device: the record, palette.c; the FM-1 tab: the page's, fm1_ui.c; panel_test, ui_preview: stand-ins).
+ * pal_label (ui.c): position pos's name as the FM-1 shows it, fitted into px pixels of FONT_S */
+static uint32_t pal_preset(uint32_t pos, char *out);
+static char *pal_label(char *out, uint32_t pos, uint32_t px);
 
 #endif
