@@ -434,7 +434,8 @@ def build_app():
     if dxs:
         core = SRC / "spike" / "dexed" / "core"
         cxx = ["-x", "c++", "-std=c++11", "-nostdinc++", "-fno-exceptions", "-fno-rtti", "-fno-threadsafe-statics",
-               *[f for f in sflags if not f.startswith(("-I", "-D"))], *(["-DMSFA_OWN_TABLES"] if dxs_own else [])]
+               *[f for f in sflags if not f.startswith(("-I", "-D"))], *(["-DMSFA_OWN_TABLES"] if dxs_own else []),
+               "-DDXS_IN_POOL=1", "-DDXS_MAX=8"]   # (the RAM region has no room; the pool has about 9.5 KB)
         names = ("tables", "freqlut", "env", "lfo", "pitchenv", "fm_op_kernel", "fm_core", "dx7note", "unit")
         dxs_objs = [OUT / f"dxs_{n}.o" for n in names]
         tc_all(*[("cc", *cxx, "-c", core / f"{n}.cc", "-o", o) for n, o in zip(names, dxs_objs)])

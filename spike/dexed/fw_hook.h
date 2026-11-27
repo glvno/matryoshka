@@ -6,10 +6,10 @@
 #pragma once
 #include "../../spike/dexed/core/dxs.h"
 
-static volatile uint8_t dxs_ring[64][2];        /* note | 0x80 for on, velocity */
-static volatile uint32_t dxs_w, dxs_r;
-static int32_t dxs_buf[128];
-static uint8_t dxs_ready;
+static volatile uint8_t dxs_ring[64][2] ENG_POOL;    /* note | 0x80 for on, velocity */
+static volatile uint32_t dxs_w ENG_POOL, dxs_r ENG_POOL;
+static int32_t dxs_buf[128] ENG_POOL;
+static uint8_t dxs_ready ENG_POOL;
 
 static void dxs_key(uint32_t note, uint32_t vel, int on)
 {

@@ -49,7 +49,9 @@ static void silence(int n) {
 
 extern "C" int main(void) {
     static const int counts[5] = {1, 2, 4, 8, 16};
+    for (int op = 0; op < 6; op++) v[op * 21 + 3] = 99;   // release rate 99: the voices end within a few blocks
     dxs_init();
+    dxs_set_voice(v);
     for (int c = 0; c < 5; c++) {
         for (int i = 0; i < counts[c]; i++) dxs_note_on(keys[i], 100);
         for (int b = 0; b < 8; b++) render(0);

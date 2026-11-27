@@ -25,6 +25,12 @@
 #ifndef DXS_MAX
 #define DXS_MAX 16
 #endif
+// FM-1: DXS_IN_POOL puts the state in the firmware's .pool (zeroed at boot): its RAM region has no room for it
+#ifdef DXS_IN_POOL
+#define DXS_STATE __attribute__((section(".pool")))
+#else
+#define DXS_STATE
+#endif
 
 struct Voice {
     Dx7Note note;
@@ -33,13 +39,13 @@ struct Voice {
     bool live;
 };
 
-static Voice voices[DXS_MAX];
-static Lfo lfo;
-static Controllers controllers;
-static FmCore core;
-static uint8_t patch[156];
-static int next_voice;
-static int32_t audiobuf[N];
+static Voice voices[DXS_MAX] DXS_STATE;
+static Lfo lfo DXS_STATE;
+static Controllers controllers DXS_STATE;
+static FmCore core DXS_STATE;
+static uint8_t patch[156] DXS_STATE;
+static int next_voice DXS_STATE;
+static int32_t audiobuf[N] DXS_STATE;
 
 // "SPIKE 1": every operator sounding and modulated, the LFO on pitch and amplitude (the code paths a busy voice takes)
 static const uint8_t spike_voice[156] = {
