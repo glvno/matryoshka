@@ -22,7 +22,7 @@ import { deletePreset as dropUserPreset, rememberedPreset, replaceUserPresets, s
 import type { Patch } from './patch';
 import { layout } from './patchbin';
 import { devicePresetName, NAME_BYTES, PAL_EMPTY, PAL_GO_CANCELLED, PAL_GO_WAITING, PAL_MISSING, PAL_REFUSED, PALETTE_SIZE, paletteHash, STATUS_PRESETS_FULL, type Ack, type DevicePresetEntry, type PaletteEntry, type PaletteNow, type PalettePos, type SlotInfo } from './protocol';
-import { applyEntry, asSlot, entryOf, fm1Presets, NO_SAME_STRUCTURE, paletteDevices, presetFit, q16, sameBytes, samePatch, samePreset, sameWiring, slotPlays, takeTempoAndPatterns, type PresetFit } from './preset-fit';
+import { applyEntry, asSlot, entryOf, fm1Presets, NO_SAME_STRUCTURE, paletteDevices, presetFit, q16, sameBytes, samePatch, samePreset, sameWiring, slotPlays, takeTempoAndPatterns, truePresetNames, type PresetFit } from './preset-fit';
 import { drawerScope } from './fx-preset';
 import { soundOf, type PaletteSound } from './saved-palettes';
 import { structureAndRows } from './structure';
@@ -433,7 +433,10 @@ export class Palette {
       }
       const where = o.slot ? { slot: o.slot.slot, label: o.slot.name, store: false } : this.placeFor(deviceName(name.trim() || 'PATCH'), bank!);
       if (!where) return { ok: false, line: `The FM-1's bank is full: "${name}" was not added to the palette`, stored: false, sent: 0 };
-      const want = patch ? entryPresets(patch, o.presets) : [];
+      // (the entry names a device's preset only while the device plays it, D-1226: a stale "Init" after knob edits is
+      // left out, and so is its preset)
+      const told = patch && truePresetNames(patch, o.presets);
+      const want = told ? entryPresets(told, o.presets) : [];
       const presets = await this.sendPresets(want, undo);
       const lost = new Set(presets.lost.map((x) => x.name));
       // (a saved sound's own preset the entry names joins this browser's presets, as a made one does)
@@ -448,7 +451,7 @@ export class Palette {
         undo.push(() => d.eraseSlot(where.slot).then(() => { erased = true; }));
         this.ports.banked?.();
       }
-      const entry: PaletteEntry = patch ? entryOf(patch, where.slot, where.label) : { slot: where.slot, pattern: 0, name: where.label, devices: [] };
+      const entry: PaletteEntry = told ? entryOf(told, where.slot, where.label) : { slot: where.slot, pattern: 0, name: where.label, devices: [] };
       entry.devices = entry.devices.filter((x) => !lost.has(x.name));
       this.byHash.set(paletteHash(entry), entry);
       await d.putPaletteEntry(pos, entry);
@@ -491,7 +494,7 @@ export class Palette {
    * edits, another browser; owner 2026-11-27). A slot of the sound's own patch (its name, or its name numbered) comes
    * first, then any slot that holds that patch. Nothing is written. `extra`: a saved sound's own presets (presetFit)
    */
-  private async presetPlace(sound: Patch, name: string, bank: SlotInfo[], extra: readonly Preset[] = []): Promise<PresetFit & { slot: number; label: string; held: Patch } | { why: string }> {
+  private async presetPlace(sound: Patch, name: string, bank: SlotInfo[], extra: readonly Preset[] = []): Promise<PresetFit & { slot: number; label: string; held: Patch; known: Preset[] } | { why: string }> {
     const d = this.ports.device;
     if (!d.readsSlots) return { why: 'this FM-1 cannot send its slots back to compare' };
     const used = bank.filter((s) => s.used);
@@ -529,7 +532,7 @@ export class Palette {
       if (!there || !sameBytes(there, bin)) continue;
       onFm1 ??= await fm1Presets(sound, d);
       const fit = presetFit(sound, held, name, (p) => d.encodeFor(p), onFm1, extra);
-      if (!('why' in fit)) return { ...fit, slot: s.slot, label: s.name, held };
+      if (!('why' in fit)) return { ...fit, slot: s.slot, label: s.name, held, known: [...onFm1, ...extra] };
       why ||= fit.why;
     }
     // (a slot of the sound's name that no patch this browser knows matches: what it holds, read back)
@@ -552,7 +555,7 @@ export class Palette {
       }
       onFm1 ??= await fm1Presets(sound, d);
       const fit = presetFit(sound, held, name, (p) => d.encodeFor(p), onFm1, extra);
-      if (!('why' in fit)) return { ...fit, slot: s.slot, label: s.name, held };
+      if (!('why' in fit)) return { ...fit, slot: s.slot, label: s.name, held, known: [...onFm1, ...extra] };
       why ||= fit.why;
     }
     return { why: why || NO_SAME_STRUCTURE };
@@ -563,7 +566,7 @@ export class Palette {
    *  Mine: the entry opens here as the FM-1 plays it). Its line and how many presets it sent or updated when added; a
    *  preset the FM-1 cannot take makes it take back what it sent and return why the sound needs a patch; any other
    *  failure throws (each write's undo is on `undo`) */
-  private async addOnSlot(pos: number, name: string, fit: PresetFit & { slot: number; label: string; held: Patch }, undo: (() => Promise<unknown>)[]): Promise<{ line: string; sent: number } | string> {
+  private async addOnSlot(pos: number, name: string, fit: PresetFit & { slot: number; label: string; held: Patch; known: Preset[] }, undo: (() => Promise<unknown>)[]): Promise<{ line: string; sent: number } | string> {
     const send = fit.picks.filter((p) => p.from === 'browser' || p.from === 'sound' || p.from === 'new').map((p) => ({ name: p.preset.name, preset: p.preset }));
     const mark = undo.length;
     const presets = await this.sendPresets(send, undo);
@@ -576,7 +579,8 @@ export class Palette {
       replaceUserPresets(keep, keep);
       undo.push(async () => keep.forEach((p) => dropUserPreset(p.structure, p.name)));
     }
-    const entry = entryOf(fit.named, fit.slot, fit.label);
+    // (a device that keeps the slot's values keeps the slot's preset name only while it plays that preset, D-1226)
+    const entry = entryOf(truePresetNames(fit.named, [...fit.known, ...fit.picks.map((p) => p.preset)]), fit.slot, fit.label);
     this.byHash.set(paletteHash(entry), entry);
     await this.ports.device.putPaletteEntry(pos, entry);
     this.keepCopy(fit.slot, fit.label, fit.held);
