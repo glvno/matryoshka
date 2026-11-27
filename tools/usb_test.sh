@@ -4,7 +4,9 @@
 # logic under clock drift (firmware/test/usb_test.c), in the app's configuration and with the CDC console; and the
 # MIDI-only presentation (update mode) against a FELUCCA_UAC=0 build's descriptors, byte for byte; the app's build
 # (FELUCCA_OTA=1) also checks that SysEx is not held back by a full MIDI ring in an update session (#177), and that
-# SysEx out never stalls the main loop on a host that stops reading (#375); the MIDI-only presentation's bytes are pinned below.
+# SysEx out never stalls the main loop on a host that stops reading (#375); every build checks that an SIE that stops
+# answering costs a poll one timeout at most and stops USB after three, and that usb_retry never waits in the main loop
+# (#1339); the MIDI-only presentation's bytes are pinned below.
 #   tools/usb_test.sh
 set -e
 cd "$(dirname "$0")/.."

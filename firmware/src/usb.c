@@ -723,10 +723,26 @@ static void sie_dead(uint32_t r)                        /* the SIE stopped answe
     usb.up = 0;
 }
 
+#ifndef FELUCCA_LOADER
+/* #1339: an SIE that stops answering inside usb_poll (the cable pulled out: with no VBUS the SIE does not answer, see
+ * usb_retry) costs that poll one timeout, 20000 polls of _done inside TIMER5's interrupt, and no more: the rest of
+ * the poll touches no SIE register (sie_stuck), and SIE_STUCK_POLLS polls in a row with a timeout stop USB until
+ * usb_retry starts it again. Before, each SIE access of every poll waited its own timeout, and only 50 in a row
+ * stopped USB, never if some registers still answered: the key scan's glow pulse ends behind TIMER5 (#803) and
+ * came late. The update loader keeps its own rule (its build is unchanged) */
+#define SIE_STUCK_POLLS 3u
+static uint8_t sie_in_poll, sie_stuck, sie_stuck_polls;
+#define SIE_SKIP() (sie_stuck)
+#define SIE_TIMED_OUT() (sie_stuck = sie_in_poll)
+#else
+#define SIE_SKIP() 0
+#define SIE_TIMED_OUT() ((void)0)
+#endif
+
 static void sie_wr(uint32_t r, uint32_t v)
 {
     uint32_t n = 20000;
-    if (!fm1_usb_sie_on())
+    if (!fm1_usb_sie_on() || SIE_SKIP())
         return;
     fm1_usb_sie_wr_start(r, v);
     while (!fm1_usb_sie_done() && --n)
@@ -735,6 +751,7 @@ static void sie_wr(uint32_t r, uint32_t v)
         usb.timeouts = 0;                               /* consecutive failures only */
         return;
     }
+    SIE_TIMED_OUT();
     UL_COUNT(sie_timeouts);
     if (++usb.timeouts > 50u)
         sie_dead(r);                                    /* SIE dead (no clock?): stop polling it */
@@ -743,11 +760,12 @@ static void sie_wr(uint32_t r, uint32_t v)
 static uint32_t sie_rd(uint32_t r)
 {
     uint32_t n = 20000;
-    if (!fm1_usb_sie_on())
+    if (!fm1_usb_sie_on() || SIE_SKIP())
         return 0;
     fm1_usb_sie_rd_start(r);
     while (!fm1_usb_sie_done())
         if (!--n) {
+            SIE_TIMED_OUT();
             UL_COUNT(sie_timeouts);
             if (++usb.timeouts > 50u)
                 sie_dead(r);
@@ -1854,7 +1872,10 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz: th
     emu_midi_poll();
 }
 #else
-static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
+#ifdef FELUCCA_LOADER
+#define usb_poll_sie usb_poll
+#endif
+static void usb_poll_sie(void)                          /* TIMER5 ISR, 2 kHz (the app's through usb_poll below) */
 {
     uint32_t iu, it, ir;
     if (!usb.up)
@@ -1970,14 +1991,28 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
 #endif
 #endif
 }
+#ifndef FELUCCA_LOADER
+static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz: at most one SIE timeout a poll (#1339, above) */
+{
+    sie_in_poll = 1;
+    sie_stuck = 0;
+    usb_poll_sie();
+    sie_in_poll = 0;
+    if (!sie_stuck)
+        sie_stuck_polls = 0;
+    else if (++sie_stuck_polls >= SIE_STUCK_POLLS) {
+        sie_stuck_polls = 0;
+        sie_dead(0xFFu);                                /* (usb_retry starts it again once a second) */
+    }
+    sie_stuck = 0;
+}
+#endif
 
 #endif
 
-static void usb_start(void)                             /* boot, or main-loop retry while usb.up == 0 */
+static inline __attribute__((always_inline)) void usb_attach_start(void)   /* usb_start after the reset's wait (inline: the
+                                                                            * update loader's usb_start stays as built) */
 {
-    usb.timeouts = 0;
-    fm1_usb_reset();                                    /* reset whatever the ROM left */
-    fm1_delay_ms(25);
     fm1_usb_attach(ep0buf);
     sie_wr(S_POWER, USB_POWER_ON);                      /* full speed only unless FELUCCA_USB_HS */
     sie_wr(S_INTRUSBE, 0x07);                           /* suspend, resume, reset (polled) */
@@ -1990,17 +2025,45 @@ static void usb_start(void)                             /* boot, or main-loop re
     usb.up = usb.timeouts < 3u;                         /* a dead SIE leaves USB off */
 }
 
+#define USB_RESET_MS 25u
+static void usb_start(void)                             /* boot (the app's retries: usb_retry, in two steps) */
+{
+    usb.timeouts = 0;
+    fm1_usb_reset();                                    /* reset whatever the ROM left */
+    fm1_delay_ms(USB_RESET_MS);
+    usb_attach_start();
+}
+
 /* Powered on without a cable, the SIE does not answer and usb_start leaves
  * USB off: retry once a second from the main loop so a cable plugged in
- * later still enumerates. */
+ * later still enumerates. The app does it in two calls, the reset and, USB_RESET_MS later, the attach: the main loop
+ * never waits the reset out (it did 25 ms every second, the cable out or on battery from power-on: the panel, MIDI
+ * in, the screen stood still meanwhile; #1339) */
 static void usb_retry(uint32_t now_ms)
 {
     static uint32_t t;
+#ifndef FELUCCA_LOADER
+    static uint8_t resetting;
+    if (resetting && !usb.up && !usb.detached) {
+        if (now_ms - t >= USB_RESET_MS) {
+            resetting = 0;
+            usb_attach_start();
+        }
+        return;
+    }
+    resetting = 0;
+#endif
     if (usb.up || usb.detached || now_ms - t < 1000u)
         return;
     t = now_ms;
     usb.retries++;
+#ifndef FELUCCA_LOADER
+    usb.timeouts = 0;
+    fm1_usb_reset();
+    resetting = 1;
+#else
     usb_start();
+#endif
 }
 
 static void usb_detach(void)
