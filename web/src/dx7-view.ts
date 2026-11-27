@@ -2,12 +2,12 @@
 // The DX7 card's voice editor (#1338): the voice's name, the algorithm as a number with its diagram drawn from the
 // algorithm table (the FM-1 shows only the number; the owner, 2026-11-27: "agree with your dx7 choices"), feedback, six
 // operator strips and the picked operator in full, the voice's pitch envelope, LFO, transpose and key sync, and SysEx in
-// and out (a single voice, or a bank browsed here). Every edit goes through msfa's unpacked form (dx7Unpack, clamped,
-// dx7Pack) into ModuleInst.voice as one undoable change of the editor (Dx7Host.setVoice). A browsed bank stays in this
-// view's memory, never in the patch.
-import { DX7_ALG, DX7_RANGE, dx7Clamp, dx7Pack, dx7Unpack } from './dx7';
+// and out (Import, or a .syx dropped onto the card: a single voice, or a bank browsed here). Every edit goes through
+// msfa's unpacked form (dx7Unpack, clamped, dx7Pack) into ModuleInst.voice as one undoable change of the editor
+// (Dx7Host.setVoice). An imported bank is kept in this browser (localStorage, a few named banks), never in the patch.
+import { DX7_ALG, DX7_RANGE, DX7_VOICE, dx7Clamp, dx7Pack, dx7Unpack } from './dx7';
 import { bankSysex, parseDx7Sysex, singleSysex } from './dx7-sysex';
-import { DX7_INIT_VOICE, voiceBytes, voiceHex, voiceName } from './dx7-voice';
+import { canonicalVoice, DX7_INIT_VOICE, voiceBytes, voiceHex, voiceName } from './dx7-voice';
 import { paramHint } from './labels';
 import type { ModuleInst } from './patch';
 
@@ -190,6 +190,52 @@ function download(bytes: Uint8Array, name: string): void {
   URL.revokeObjectURL(a.href);
 }
 
+/** where this browser keeps its DX7 banks: a few named banks, never on the FM-1 or in a patch */
+export const DX7_BANKS_STORE = 'matryoshka.dx7-banks';
+/** how many banks it keeps: one more pushes out the one kept longest ago */
+export const DX7_BANKS_MAX = 8;
+type Store = Pick<Storage, 'getItem' | 'setItem'>;
+/** a kept bank: its name and its 32 voices */
+export interface KeptBank { name: string; voices: Uint8Array[] }
+
+/** the banks kept in `storage`, the newest first (each stored as its name and its 4,096 packed bytes in base64, about
+ *  5.5 KB of text); an entry that is not one is skipped */
+export function keptBanks(storage: Store | null): KeptBank[] {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(storage?.getItem(DX7_BANKS_STORE) ?? '[]');
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(raw)) return [];
+  const out: KeptBank[] = [];
+  for (const e of raw as unknown[]) {
+    if (typeof e !== 'object' || e === null || !('name' in e) || !('data' in e) || typeof e.name !== 'string' || typeof e.data !== 'string') continue;
+    let bin: string;
+    try {
+      bin = atob(e.data);
+    } catch {
+      continue;
+    }
+    if (bin.length !== 32 * DX7_VOICE) continue;
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    out.push({ name: e.name, voices: Array.from({ length: 32 }, (_, v) => canonicalVoice(bytes.subarray(v * DX7_VOICE, (v + 1) * DX7_VOICE))) });
+  }
+  return out;
+}
+
+/** `banks` into `storage` (at most DX7_BANKS_MAX); false when the browser would not keep them (storage full or blocked) */
+export function storeBanks(storage: Store | null, banks: readonly KeptBank[]): boolean {
+  const data = banks.slice(0, DX7_BANKS_MAX).map((b) => ({ name: b.name, data: btoa(String.fromCharCode(...b.voices.flatMap((v) => [...v]))) }));
+  try {
+    if (!storage) return false;
+    storage.setItem(DX7_BANKS_STORE, JSON.stringify(data));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ------------------------------------------------------------------ the view
 
 /** what the view needs of the editor */
@@ -211,8 +257,22 @@ const hint = (key: string): string => paramHint('dx7', `voice.${key}`) ?? '';
 
 export class Dx7Card {
   private states = new Map<number, ViewState>();
+  /** the banks this browser keeps (keptBanks), read at the first card */
+  private kept: KeptBank[] | null = null;
 
-  constructor(private host: Dx7Host) {}
+  constructor(private host: Dx7Host, private storage: Store | null = globalThis.localStorage ?? null) {}
+
+  private keptList(): KeptBank[] {
+    return (this.kept ??= keptBanks(this.storage));
+  }
+
+  /** keep bank `name` in this browser, first in the list (null voices: forget it) */
+  private keep(name: string, voices: Uint8Array[] | null): boolean {
+    const list = this.keptList().filter((k) => k.name !== name);
+    if (voices) list.unshift({ name, voices });
+    this.kept = list.slice(0, DX7_BANKS_MAX);
+    return storeBanks(this.storage, this.kept);
+  }
 
   private state(id: number): ViewState {
     let s = this.states.get(id);
@@ -227,7 +287,8 @@ export class Dx7Card {
     const bad = r.checksumOk ? '' : ' (its checksum is wrong: read anyway)';
     if (r.bank) {
       this.state(m.id).bank = r.bank;
-      this.host.say(`${name}: 32 voices${bad}; pick one on the card`);
+      const kept = this.keep(r.bank.name, r.bank.voices) ? 'kept in this browser' : 'not kept: the browser\'s storage is full';
+      this.host.say(`${name}: 32 voices${bad}, ${kept}; pick one on the card`);
       this.host.redraw();
       return;
     }
@@ -238,6 +299,27 @@ export class Dx7Card {
   /** the bank .syx module `m`'s Bank button saves (bankToSave with its browsed bank) */
   bankFile(m: ModuleInst): Uint8Array {
     return bankToSave(m.voice, this.state(m.id).bank);
+  }
+
+  /** a .syx file dropped onto DX7 module `m`'s card loads as Import does */
+  dropOnto(card: HTMLElement, m: ModuleInst): void {
+    card.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer?.types.includes('Files')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      card.classList.add('syx-over');
+    });
+    card.addEventListener('dragleave', (e) => {
+      if (!(e.relatedTarget instanceof Node && card.contains(e.relatedTarget))) card.classList.remove('syx-over');
+    });
+    card.addEventListener('drop', async (e) => {
+      const f = e.dataTransfer?.files[0];
+      card.classList.remove('syx-over');
+      if (!f) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.load(m, new Uint8Array(await f.arrayBuffer()), f.name);
+    });
   }
 
   /** bank slot `i` (0..31) into module `m` */
@@ -398,14 +480,23 @@ export class Dx7Card {
         field(GLOBAL.pmd, 'PMD', 'pmd'), field(GLOBAL.amd, 'AMD', 'amd'), field(GLOBAL.pms, 'PMS', 'pms'), field(GLOBAL.transpose, 'TRANSP', 'transpose', { off: -24 })));
     root.append(g);
 
-    // the browsed bank: 32 names, a click loads one
+    // the browsed bank: 32 names, a click loads one; with none open, the banks this browser keeps
+    const kept = this.keptList();
     if (s.bank) {
       const b = s.bank;
       const close = button('×', 'Close this bank (the module keeps its voice)', () => {
         s.bank = null;
         this.host.redraw();
       });
-      const head = div('dx7-st', `Bank ${b.name}${b.checksumOk ? '' : ' (checksum wrong)'}`, close);
+      const tools: HTMLElement[] = [close];
+      if (kept.some((k) => k.name === b.name))
+        tools.unshift(button('Forget', hint('forget'), () => {
+          this.keep(b.name, null);
+          s.bank = null;
+          this.host.say(`bank ${b.name} is no longer kept in this browser`);
+          this.host.redraw();
+        }));
+      const head = div('dx7-st', `Bank ${b.name}${b.checksumOk ? '' : ' (checksum wrong)'}`, div('dx7-tools', ...tools));
       head.title = hint('bank');
       const list = div('dx7-bank', ...b.voices.map((v, i) => {
         const e = button(`${i + 1} ${voiceName(v) || '—'}`, `Load voice ${i + 1} into this module`, () => this.pick(m, i));
@@ -413,6 +504,19 @@ export class Dx7Card {
         return e;
       }));
       root.append(div('dx7-sec', head, list));
+    } else if (kept.length) {
+      const sel = document.createElement('select');
+      sel.className = 'dx7-banks';
+      sel.title = hint('banks');
+      sel.setAttribute('aria-label', 'Open a bank kept in this browser');
+      sel.append(new Option('Kept banks…', '', true, true), ...kept.map((k, i) => new Option(k.name, String(i))));
+      sel.addEventListener('change', () => {
+        const k = kept[Number(sel.value)];
+        if (!k) return;
+        s.bank = { name: k.name, voices: k.voices, checksumOk: true, slot: null };
+        this.host.redraw();
+      });
+      root.append(div('dx7-sec', sel));
     }
     if (refocus) {
       const f: HTMLElement = refocus;

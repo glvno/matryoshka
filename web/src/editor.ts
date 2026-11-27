@@ -1446,6 +1446,7 @@ export class Editor {
     // a second Main card (from an old patch) keeps its B side under the rows
     // the Output card: its loudness readout under the level (#940); a Limiter's: its gain reduction (#1019); a DX7's voice (#1338)
     const readout = def.type === 'output' ? this.ev.outputReadout?.() : def.type === 'limit' ? this.ev.limitReadout?.(m.id) : def.type === 'dx7' ? this.dx7.element(m) : undefined;
+    if (def.type === 'dx7') this.dx7.dropOnto(el, m);   // (a .syx dropped onto the card imports it)
     const extra = def.type === 'fm1' ? [this.morphRow()] : steps ? def.views!.map((pd) => this.paramRow(m, def, pd, { open })) : readout ? [readout] : [];
     body.append(...this.edgeLayout(ins, outs, params, extra));
     el.append(head, body);

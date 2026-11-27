@@ -5,7 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { dx7Unpack } from './dx7';
 import { bankSysex, parseDx7Sysex, singleSysex } from './dx7-sysex';
-import { algDiagram, bankToSave, Dx7Card, editVoice, GLOBAL, OPF, opAt, opFreq } from './dx7-view';
+import { algDiagram, bankToSave, Dx7Card, DX7_BANKS_MAX, DX7_BANKS_STORE, editVoice, GLOBAL, keptBanks, OPF, opAt, opFreq, storeBanks } from './dx7-view';
 import { DX7_INIT_VOICE, voiceBytes, voiceHex, voiceName } from './dx7-voice';
 import { Editor, type EditorEvents } from './editor';
 import { DEFS } from './modules';
@@ -83,9 +83,14 @@ describe('DX7 voice edits (#1338)', () => {
 });
 
 describe('DX7 SysEx into a module (#1338)', () => {
-  const host = (m: ModuleInst) => {
+  /** a storage of its own, as localStorage keeps strings */
+  const memory = (): Pick<Storage, 'getItem' | 'setItem'> & { map: Map<string, string> } => {
+    const map = new Map<string, string>();
+    return { map, getItem: (k) => map.get(k) ?? null, setItem: (k, v) => void map.set(k, v) };
+  };
+  const host = (m: ModuleInst, storage = memory()) => {
     const said: string[] = [];
-    return { said, card: new Dx7Card({ setVoice: (_id, hex) => (m.voice = hex), say: (s) => said.push(s), redraw() {} }) };
+    return { said, storage, card: new Dx7Card({ setVoice: (_id, hex) => (m.voice = hex), say: (s) => said.push(s), redraw() {} }, storage) };
   };
 
   it('a single voice becomes the module\'s voice', () => {
@@ -127,6 +132,52 @@ describe('DX7 SysEx into a module (#1338)', () => {
     card.load(m, [0xf0, 0x41, 0x10, 0xf7], 'roland.syx');
     expect(m.voice).toBeUndefined();
     expect(said[0]).toMatch(/no DX7 voice/);
+  });
+
+  it('a bank is kept in this browser by name: another card lists it, Forget drops it, at most 8 are kept', () => {
+    const m = { id: 4, type: 'dx7', x: 0, y: 0, params: {} } as ModuleInst;
+    const { card, storage, said } = host(m);
+    card.load(m, bankSysex([named('KEPT', 7)], DX7_INIT_VOICE), 'Keepers.syx');
+    expect(said[0]).toMatch(/kept in this browser/);
+    expect(JSON.parse(storage.map.get(DX7_BANKS_STORE)!)[0].data.length).toBe(5464);   // (4,096 bytes in base64)
+    const kept = keptBanks(storage);
+    expect(kept.map((b) => b.name)).toEqual(['Keepers']);
+    expect(voiceName(kept[0].voices[0])).toBe('KEPT');
+    // a new card (a new page) lists it and opens it
+    const other = { id: 5, type: 'dx7', x: 0, y: 0, params: {} } as ModuleInst;
+    const second = new Dx7Card({ setVoice: (_id, hex) => (other.voice = hex), say() {}, redraw() {} }, storage);
+    const sel = second.element(other).querySelector<HTMLSelectElement>('select.dx7-banks')!;
+    expect([...sel.options].map((o) => o.text)).toEqual(['Kept banks…', 'Keepers']);
+    sel.value = '0';
+    sel.dispatchEvent(new Event('change'));
+    const el = second.element(other);
+    el.querySelectorAll<HTMLButtonElement>('.dx7-bank button')[0].click();
+    expect(voiceName(voiceBytes(other.voice))).toBe('KEPT');
+    [...second.element(other).querySelectorAll<HTMLButtonElement>('.dx7-tools button')].find((b) => b.textContent === 'Forget')!.click();
+    expect(keptBanks(storage)).toEqual([]);
+    // at most DX7_BANKS_MAX, the newest first; a bad entry is skipped
+    for (let i = 0; i < DX7_BANKS_MAX + 2; i++) card.load(m, bankSysex([named(`B${i}`, 1)], DX7_INIT_VOICE), `b${i}.syx`);
+    expect(keptBanks(storage).map((b) => b.name)).toEqual(Array.from({ length: DX7_BANKS_MAX }, (_, i) => `b${DX7_BANKS_MAX + 1 - i}`));
+    storage.setItem(DX7_BANKS_STORE, JSON.stringify([{ name: 'bad', data: 'AAAA' }, ...JSON.parse(storage.getItem(DX7_BANKS_STORE)!).slice(0, 1)]));
+    expect(keptBanks(storage).map((b) => b.name)).toEqual([`b${DX7_BANKS_MAX + 1}`]);
+    expect(storeBanks(null, [])).toBe(false);
+  });
+
+  it('a .syx dropped onto the card loads as Import does', async () => {
+    const m = { id: 6, type: 'dx7', x: 0, y: 0, params: {} } as ModuleInst;
+    const { card } = host(m);
+    const el = document.createElement('div');
+    card.dropOnto(el, m);
+    const bytes = singleSysex(named('DROPPED', 9));
+    const file = { name: 'dropped.syx', arrayBuffer: async () => bytes.buffer };
+    const over = Object.assign(new Event('dragover', { cancelable: true }), { dataTransfer: { types: ['Files'], dropEffect: 'none' } });
+    el.dispatchEvent(over);
+    expect(over.defaultPrevented).toBe(true);
+    expect(el.classList.contains('syx-over')).toBe(true);
+    const drop = Object.assign(new Event('drop', { cancelable: true }), { dataTransfer: { types: ['Files'], files: [file] } });
+    el.dispatchEvent(drop);
+    await vi.waitFor(() => expect(voiceName(voiceBytes(m.voice))).toBe('DROPPED'));
+    expect(el.classList.contains('syx-over')).toBe(false);
   });
 });
 
