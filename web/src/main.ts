@@ -951,15 +951,6 @@ host.onRun = (on) => {
 const sides = new Map<SideKey, SideSlider>();
 /** the zoom slider's setting (the user's zoom; a source adds to it) */
 let zoomBase = 1;
-/** the computer keyboard's octave (noteKeys), mirrored here because the editor's events run before noteKeys exists */
-let keyOctave = 0;
-/** the patch remembers the keyboard's octave (Patch.octave); undo / redo bring back older snapshots, so stamp it again */
-const stampOctave = (p: Patch): boolean => {
-  if ((p.octave ?? 0) === keyOctave) return false;
-  if (keyOctave) p.octave = keyOctave;
-  else delete p.octave;
-  return true;
-};
 // the FM-1 tab's emulator (see "the FM-1 tab" below): made before the editor, whose first events reach it
 /** the note each pill key started (the octave may change while it is held) */
 const pillNote = new Map<number, number>();
@@ -1077,7 +1068,6 @@ let capabilityInspector: CapabilityInspector | null = null;
 const editor = new Editor($('canvas'), firstPatch, {
   onStructure(p) {
     capabilityInspector?.sync();
-    stampOctave(p);
     $<HTMLInputElement>('patch-name').value = p.name;
     syncSides();
     host.setPatch(p);
@@ -1307,7 +1297,7 @@ const editor = new Editor($('canvas'), firstPatch, {
     uploadGate.forget();   // (a patch opened always goes to the FM-1 whole: its mutes, arms and pattern start afresh too)
     installedLayout = null;
     pendingMutes.clear();
-    noteKeys.set(p.octave ?? 0); // a patch opens in the octave it was last played in
+    noteKeys.set(p.octave ?? 0); // every open starts the computer keyboard at the patch's own octave, never the last patch's (D-1456)
     loudness.reset();
   },
   onHistory(kind) {
@@ -2610,6 +2600,7 @@ const loadNamed = (p: Patch, o: { from?: string; once?: boolean; stay?: boolean;
   let how: OpenHow = 'fresh';
   if (o.fresh) editor.setPatch(p);
   else ({ how } = editor.openPatch(p, (q, except) => candidateStore.find(q, except), o.palette));
+  if (o.palette) noteKeys.set(editor.patch.octave ?? 0);   // (a palette switch onto a candidate of the open set is no editor load, but the FM-1 loads it: D-1456)
   keepSet(editor.exportSet(), true);
   if (how !== 'fresh' && how !== 'switched') editor.rebuild();   // (the morph picker offers the candidates)
   setBaseline();
@@ -3932,11 +3923,7 @@ host.onFm1 = (error) => {
   if (error && host.engine === 'fm1') status.textContent = `FM-1 engine is silent: ${error}`;
 };
 engineBtn.onclick = () => void switchEngine();
-const noteKeys = attachKeyboard({ send: (m) => (audition.played(m), sink.send(m, true)) }, () => currentTab === 'patch' && !document.querySelector('dialog[open], [popover]:popover-open'), (o) => {
-  keyOctave = o;
-  piano.setOctave(o);
-  if (stampOctave(editor.patch)) queueSave(editor.patch);
-});
+const noteKeys = attachKeyboard({ send: (m) => (audition.played(m), sink.send(m, true)) }, () => currentTab === 'patch' && !document.querySelector('dialog[open], [popover]:popover-open'), (o) => piano.setOctave(o));
 noteKeys.set(editor.patch.octave ?? 0);
 /** the patch's learned MIDI sources in FM-1 & MIDI (#1067): each with its row, the job it gets back once removed, and Remove */
 function showLearned(): void {
