@@ -1948,6 +1948,41 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .gr-k { text-transform: uppercase; letter-spacing: .06em; }
 .gr-bar { position: relative; flex: 1 1 auto; height: 8px; margin-left: 4px; border-radius: 2px; background: color-mix(in srgb, var(--line) 60%, transparent); overflow: hidden; }
 .gr-bar > span { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: var(--warning); }
+/* the DX7 card's voice editor (#1338, dx7-view.ts): name and SysEx, the algorithm and its diagram, six operator lines, the
+   picked operator in full, the voice's values folded away, a browsed bank */
+.module:has(.dx7) { min-width: 300px; }
+.dx7 { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 2px; padding: 0 8px; font: 500 10px/1.25 'Barlow', system-ui, sans-serif; color: var(--muted); }
+.dx7 input[type=number] { width: 3.2em; padding: 1px 2px; font: 600 11px/1.2 'Barlow', system-ui, sans-serif; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; border: 1px solid var(--line); border-radius: 3px; appearance: textfield; -moz-appearance: textfield; }
+.dx7 input[type=number]::-webkit-inner-spin-button, .dx7 input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.dx7 select { max-width: 100%; padding: 0 1px; font: 500 11px/1.2 'Barlow', system-ui, sans-serif; color: var(--ink); }
+.dx7 button { min-height: 18px; padding: 0 6px; font: 600 10px/1 'Barlow', system-ui, sans-serif; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); }
+.dx7-top { display: flex; align-items: center; gap: 4px; }
+.dx7-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; color: var(--ink); font: 700 12px/1.2 ui-monospace, monospace; }
+.dx7-alg { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.dx7-algf { display: flex; flex-direction: column; gap: 3px; }
+.dx7-f { display: flex; align-items: center; justify-content: space-between; gap: 3px; white-space: nowrap; text-transform: uppercase; letter-spacing: .04em; }
+.dx7-alg-svg { flex: none; }
+.dx7-alg-svg .dx7-op { fill: var(--panel); stroke: var(--ink); stroke-width: 1; }
+.dx7-alg-svg .dx7-op.carrier { fill: color-mix(in srgb, var(--accent) 35%, var(--panel)); }
+.dx7-alg-svg text { fill: var(--ink); font: 700 9px/1 'Barlow', system-ui, sans-serif; }
+.dx7-alg-svg :is(.dx7-link, .dx7-out, .dx7-fb) { fill: none; stroke: var(--muted); stroke-width: 1; }
+.dx7-alg-svg .dx7-out { stroke: var(--ink); stroke-width: 1.5; }
+.dx7-alg-svg .dx7-fb { stroke: var(--accent); stroke-dasharray: 2 1.5; }
+.dx7-ops { display: grid; grid-template-columns: auto repeat(5, auto) 1fr; gap: 2px 3px; align-items: center; }
+.dx7-h { text-transform: uppercase; letter-spacing: .04em; font-size: 9px; }
+.dx7-ops .dx7-f { justify-content: flex-end; }
+.dx7 .dx7-pick { min-width: 20px; padding: 0 4px; }
+.dx7 .dx7-pick.carrier { border-bottom: 2px solid var(--accent); }
+.dx7 :is(.dx7-pick, .dx7-bank button).on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.dx7-freq { color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
+.dx7-sec { display: flex; flex-direction: column; gap: 3px; padding-top: 4px; border-top: 1px solid var(--line); }
+.dx7-sec > summary { cursor: pointer; color: var(--ink); }
+.dx7-st { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: var(--ink); font-weight: 700; }
+.dx7-eg { flex: none; }
+.dx7-eg polyline { fill: none; stroke: var(--accent); stroke-width: 1.2; }
+.dx7-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px 6px; }
+.dx7-bank { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.dx7 .dx7-bank button { justify-content: flex-start; overflow: hidden; text-overflow: ellipsis; white-space: pre; text-align: left; font-family: ui-monospace, monospace; font-weight: 500; }
 /* listening to one signal (#939): the chip under the view switch, the jack and cable listened to ringed in the accent */
 .listen-chip { position: absolute; top: 46px; left: 50%; transform: translateX(-50%); z-index: 8; display: flex; align-items: center; gap: 8px;
   max-width: calc(100% - 32px); padding: 4px 4px 4px 10px; border: 1.5px solid var(--accent); border-radius: 8px; background: var(--panel); color: var(--ink);
