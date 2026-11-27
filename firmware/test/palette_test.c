@@ -259,6 +259,10 @@ int main(void)
     put_entry(2, V1, sizeof V1);
     CHECK(ntx == 1u && acked(0, 2, S_OK, 0));
     CHECK(pal_ix[2].state == PAL_OK && pal_ix[2].hash == 0x9B74u && pal_ix[2].len == 2758u && pal_side == 0u && pal_seq == 1u);
+    {                                               /* D-942: the entry's first device preset's name, for the FM-1's names */
+        char pn[PAL_PNAME + 1];
+        CHECK(pal_preset(2, pn) == 5u && !strcmp(pn, "WARM1") && pal_preset(0, pn) == 0u && !pn[0]);
+    }
 
     /* GET: PALETTE_NOW, 222 bytes */
     {
@@ -274,6 +278,10 @@ int main(void)
     put_entry(5, V2, sizeof V2);
     CHECK(ntx == 2u && acked(0, 5, S_OK, 0) && tx_cmd[1] == R_PALETTE_NOW && now_pos(1, 5)[0] == PAL_OK &&
           now_pos(1, 5)[3] == 0x59u && now_pos(1, 5)[4] == 0x36u && tx[1][4] == 2u);
+    {
+        char pn[PAL_PNAME + 1] = "X";
+        CHECK(pal_preset(5, pn) == 0u && !pn[0]);   /* (an entry with no device preset: the patch's name alone) */
+    }
     memcpy(e, V2, sizeof V2);
     e[0] = 1;                                       /* (slot 2 is empty) */
     put_entry(6, e, sizeof V2);

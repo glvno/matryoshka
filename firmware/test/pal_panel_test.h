@@ -43,10 +43,16 @@ static void pt_name(uint32_t pos, const char *s)
     memset(pal_ix[pos].name, 0, sizeof pal_ix[pos].name);
     memcpy(pal_ix[pos].name, s, strlen(s) < PAL_NAME ? strlen(s) : PAL_NAME);
 }
+/* position pos's first preset name (panel_test.c pal_preset's stand-in; "" none) */
+static void pt_pname(uint32_t pos, const char *s)
+{
+    snprintf(pal_pnames[pos], sizeof pal_pnames[pos], "%s", s);
+}
 /* the palette: 1 MONOLITH D, 2 808 KIT, 3 SILVER BOX, 4 CANVAS missing, the rest empty; 1 playing */
 static void pt_palette(void)
 {
     memset(pal_ix, 0, sizeof pal_ix);
+    memset(pal_pnames, 0, sizeof pal_pnames);
     pal_ix[0].state = pal_ix[1].state = pal_ix[2].state = PAL_OK;
     pal_ix[3].state = PAL_MISSING;
     pt_name(0, "MONOLITH D");
@@ -394,8 +400,8 @@ static void palette_panel_suite(void)
     pt_name(1, "ABCDEFGHIJKLMNOPQRST");
     pal_ui_changed();
     loop();
-    snprintf(want, sizeof want, "%s2 %.18s", MSG_PAL_NEXT, "ABCDEFGHIJKLMNOPQRST");
-    check("  a 20-character name: cut to 18 (26 characters, as a nudge)", strlen(want) <= 26u && bar_shows(want, C_ACC));
+    snprintf(want, sizeof want, "%s2 %s", MSG_PAL_NEXT, "ABCDEFGHIJKLMNOPQRST");
+    check("  a 20-character name and no preset: whole (it fits the bar, D-942)", bar_shows(want, C_ACC));
     page_set(PAGE_SEQ);
     loop();
     check("  on the SEQ page too", page == PAGE_SEQ && on_screen(want));
@@ -409,6 +415,59 @@ static void palette_panel_suite(void)
     pal_ui_changed();
     loop();
     check("the switch done: the bar's NEXT: gone, the page's header back", page == 0u && !on_screen(MSG_PAL_NEXT));
+
+    /* D-942 (the owner 2026-11-27): an entry with a preset is named by its first device preset, then its patch, in the
+     * overview (the row's whole width) and in the bar's NEXT: (fitted to the bar); the patch's name shortens first */
+    later(NUDGE_MS + 100u);
+    pt_palette();
+    pt_pname(1, "BRIGHT PAD");
+    pt_pname(2, "SHIMMERING GLASS");
+    pt_pname(3, "Warm");                            /* (as the editor names a preset: in capitals on the FM-1) */
+    pt_name(2, "ABCDEFGHIJKLMNOPQRST");
+    pal_ui_changed();
+    loop();
+    pt_home(1);
+    later(400);
+    check("the overview: 2 BRIGHT PAD | 808 KIT, 4 WARM | CANVAS MISSING (in capitals); with no preset the patch alone, EMPTY as before",
+          pal_view && on_screen("2 BRIGHT PAD" MSG_PAL_SEP "808 KIT") && on_screen("4 WARM" MSG_PAL_SEP "CANVAS" MSG_PAL_ROW_MISSING)
+          && on_screen("1 MONOLITH D") && !on_screen("1 MONOLITH D" MSG_PAL_SEP) && on_screen("5 " MSG_PAL_ROW_EMPTY));
+    snap_to(getenv("PAL_SNAP_PRESET"));
+    {
+        char lb[PAL_LABEL], *e;
+        uint32_t pn;
+        e = pal_label(lb, 2, PAL_ROW_W - text_w(&FONT_S, "3 ", -1));
+        pn = (uint32_t)(e - lb) - (uint32_t)strlen("SHIMMERING GLASS" MSG_PAL_SEP);
+        check("  a 16-character preset and a 20-character patch: the preset whole, the patch shortened, filling the row",
+              !strncmp(lb, "SHIMMERING GLASS" MSG_PAL_SEP, strlen("SHIMMERING GLASS" MSG_PAL_SEP)) && pn >= PAL_FIT_MIN
+              && pn < PAL_NAME && !strncmp(lb + (e - lb) - pn, "ABCDEFGHIJKLMNOPQRST", pn)
+              && text_w(&FONT_S, lb, -1) <= PAL_ROW_W - text_w(&FONT_S, "3 ", -1)
+              && on_screen("3 SHIMMERING GLASS" MSG_PAL_SEP "ABCDEFGH"));
+        pt_name(2, "SILVER BOX");
+        e = pal_label(lb, 2, PAL_ROW_W - text_w(&FONT_S, "3 " MSG_PAL_ROW_NEXT, -1));
+        check("  with a 10-character patch both whole, NEXT too", !strcmp(lb, "SHIMMERING GLASS" MSG_PAL_SEP "SILVER BOX"));
+        e = pal_label(lb, 2, 1);
+        check("  never below 8 characters of each", !strcmp(lb, "SHIMMERI" MSG_PAL_SEP "SILVER B") && *e == 0);
+    }
+    pt_home(0);
+    pal_next = 1;
+    pal_ui_changed();
+    loop();
+    check("a switch waiting: the bar says NEXT: 2 BRIGHT PAD | 808 KIT", bar_shows(MSG_PAL_NEXT "2 BRIGHT PAD" MSG_PAL_SEP "808 KIT", C_ACC));
+    pt_pname(1, "SHIMMERING GLASS");
+    pt_name(1, "ABCDEFGHIJKLMNOPQRST");
+    pal_ui_changed();
+    loop();
+    {
+        char lb[PAL_LABEL];
+        (void)pal_label(lb, 1, 236u - text_w(&FONT_S, MSG_PAL_NEXT "2 ", -1));
+        snprintf(want, sizeof want, "%s2 %s", MSG_PAL_NEXT, lb);
+        check("  the longest names: the preset whole, the patch shortened to the bar", bar_shows(want, C_ACC)
+              && !strncmp(lb, "SHIMMERING GLASS" MSG_PAL_SEP "ABCDEFGH", strlen("SHIMMERING GLASS" MSG_PAL_SEP "ABCDEFGH"))
+              && strlen(lb) < strlen("SHIMMERING GLASS" MSG_PAL_SEP "ABCDEFGHIJKLMNOPQRST"));
+    }
+    pal_next = PAL_NONE;
+    pal_ui_changed();
+    loop();
 
     /* the editor's copy put in line (panel_align): HOME held there, then let go there */
     {

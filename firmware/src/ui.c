@@ -338,10 +338,11 @@ static void batt_mark_sync(void)
 
 static void bar_text(const char *s, uint16_t bg)
 {
-    char b[40];
+    char b[48];
     uint32_t n = str_len(s), i;
-    n = n > 38u ? 38u : n;                      /* (a nudge has at most 26, D-249; QUICK START OFF: GLO>SYSTEM 27, D-247; the
-                                                 * SEQ bar of a roll in step record about 36, D-809) */
+    n = n > 47u ? 47u : n;                      /* (a nudge has at most 26, D-249; QUICK START OFF: GLO>SYSTEM 27, D-247; the
+                                                 * SEQ bar of a roll in step record about 36, D-809; the palette's NEXT:
+                                                 * with a preset up to 47, fitted to the bar's pixels, D-942) */
     for (i = 0; i < n; i++)
         b[i] = s[i];
     b[n] = 0;
@@ -355,6 +356,38 @@ static void pages_strip(void);
 static uint8_t ui_yielding;                     /* panel.c: keys are taken from inside a redraw (#230): nothing may draw */
 static uint8_t ui_header_due;                   /* a header_draw asked for meanwhile: panel_draw does it at the end */
 static void header_draw_now(void);
+/* position pos's name as the FM-1 shows it (D-942, the owner 2026-11-27): its preset's name in capitals, then the patch's
+ * (BRIGHT PAD | HERA 6), or the patch's alone when the entry keeps no preset. Wider than px pixels of FONT_S, the patch's
+ * name shortens first, then the preset's, each down to PAL_FIT_MIN characters (a space left at the cut goes too); out:
+ * PAL_LABEL bytes, zero ended. Returns its end */
+static char *pal_label(char *out, uint32_t pos, uint32_t px)
+{
+    char pn[PAL_PNAME + 1u], *q;
+    const char *nm = pal_ix[pos].name;
+    uint32_t np = pal_preset(pos, pn), nn = 0, k;
+    if (!PAL_SHOW_INIT && np == 4u && (pn[0] | 32) == 'i' && (pn[1] | 32) == 'n' && (pn[2] | 32) == 'i' && (pn[3] | 32) == 't')
+        np = 0;                                 /* (Init: no name of its own, D-1457) */
+    while (nn < PAL_NAME && nm[nn])
+        nn++;
+    for (;;) {
+        q = out;
+        for (k = 0; k < np; k++)
+            *q++ = pn[k] >= 'a' && pn[k] <= 'z' ? (char)(pn[k] - 32) : pn[k];
+        if (np)
+            q = put(q, MSG_PAL_SEP);
+        for (k = 0; k < nn; k++)
+            *q++ = nm[k];
+        *q = 0;
+        if (text_w(&FONT_S, out, -1) <= px)
+            return q;
+        if (nn > PAL_FIT_MIN)
+            do nn--; while (nn > PAL_FIT_MIN && nm[nn - 1u] == ' ');
+        else if (np > PAL_FIT_MIN)
+            do np--; while (np > PAL_FIT_MIN && pn[np - 1u] == ' ');
+        else
+            return q;
+    }
+}
 static void header_draw(void)
 {
     if (ui_yielding) {
@@ -372,16 +405,15 @@ static void header_draw_now(void)
         msg_until = 0;
         return;
     }
-    if (pal_next < PAL_N && !eng_overload && !load_err) {   /* a palette switch waits for the bar line (#1196): NEXT: 3 MONOLITH D,
-                                                 * on every page but sandbox mode's, as the SEQ bar's P03>P04 (the device
-                                                 * page leaves its header band to it: pages_ui.c head_free) */
-        char b[40], *p = put(b, MSG_PAL_NEXT);
-        uint32_t i;
+    if (pal_next < PAL_N && !eng_overload && !load_err) {   /* a palette switch waits for the bar line (#1196): NEXT: 3 BRIGHT PAD
+                                                 * | MONOLITH D, fitted to the bar (pal_label), on every page but sandbox
+                                                 * mode's, as the SEQ bar's P03>P04 (the device page leaves its header
+                                                 * band to it: pages_ui.c head_free) */
+        char b[8 + PAL_LABEL], *p = put(b, MSG_PAL_NEXT);
         *p++ = (char)('1' + pal_next);
         *p++ = ' ';
-        for (i = 0; i < PAL_NEXT_NAME && pal_ix[pal_next].name[i]; i++)
-            *p++ = pal_ix[pal_next].name[i];
         *p = 0;
+        (void)pal_label(p, pal_next, 236u - text_w(&FONT_S, b, -1));
         bar_text(b, C_ACC);
         msg_until = 0;
         return;

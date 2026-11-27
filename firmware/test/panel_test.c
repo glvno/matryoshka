@@ -117,6 +117,14 @@ static void pal_save(uint32_t pos)
     pal_saves++;
     pal_save_pos = pos;
 }
+static char pal_pnames[PAL_N][PAL_PNAME + 1];       /* each position's first preset name (pal_panel_test.h pt_pname) */
+static uint32_t pal_preset(uint32_t pos, char *out)
+{
+    uint32_t n = pos < PAL_N && pal_ix[pos].state != PAL_EMPTY ? (uint32_t)strlen(pal_pnames[pos]) : 0u;
+    memcpy(out, n ? pal_pnames[pos] : "", n);
+    out[n] = 0;
+    return n;
+}
 #include "../src/poly_edit.h"
 /* a set of modules as one number, its first 64, and back (#721: most patches here have fewer; the ones past 63: mset_*) */
 static uint64_t m64(eng_mset_t s) { return (uint64_t)s.w[1] << 32 | s.w[0]; }

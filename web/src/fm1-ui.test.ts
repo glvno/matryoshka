@@ -360,4 +360,27 @@ describe('the FM-1 UI as WebAssembly', () => {
     expect(focus).toEqual([[2, 0], [3, 0], [3, 1]]);
     expect(pages).toEqual([0, 0, 0, 0, 8, 8, 0]);           // SEQ opens on its release, HOME goes back
   }, 30_000);
+
+  it('D-942: the copy\'s palette overview names an entry by its first preset, then its patch; with none the patch alone', async () => {
+    const ui = await Fm1Ui.create(bytes);
+    const kit = Object.keys(FM1_PRESETS).find((n) => /808/.test(n))!;
+    expect(ui.load(encodePatch(FM1_PRESETS[kit]()), '808 KIT')).toBe(0);
+    let t = 10_000;
+    // the overview's rows of positions 1 and 2 (pal_ui.c: from y 42, 19 px each)
+    const overview = (preset: string): string[] => {
+      ui.palette([{ state: 1, slot: 0, pattern: 0, name: 'MONOLITH D' }, { state: 1, slot: 1, pattern: 0, name: '808 KIT', preset }], 0, null);
+      ui.button(BUTTONS.home, true);
+      ui.tick((t += 400));
+      const fb = ui.rgba();
+      const r = [42, 61].map((y) => Array.from(fb.subarray(y * 240 * 4, (y + 19) * 240 * 4)).join());
+      ui.button(BUTTONS.home, false);
+      ui.tick((t += 100));
+      return r;
+    };
+    const plain = overview('');
+    const named = overview('BRIGHT PAD');
+    expect(named[0]).toBe(plain[0]);       // (no preset: the patch's name alone, as before)
+    expect(named[1]).not.toBe(plain[1]);   // BRIGHT PAD | 808 KIT
+    expect(overview('')[1]).toBe(plain[1]);
+  }, 30_000);
 });

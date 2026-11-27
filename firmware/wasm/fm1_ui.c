@@ -446,11 +446,25 @@ WASM_EXPORT("fm1w_align") void fm1w_align(void)
 }
 
 /* the palette the page shows (#1196): 8 positions of 24 bytes at fm1w_palette_buf, {u8 state (PAL_EMPTY, PAL_OK,
- * PAL_MISSING), u8 slot, u8 pattern, u8 pad, char name[20] (zero padded)}, taken with the position playing and the one
+ * PAL_MISSING), u8 slot, u8 pattern, u8 pad, char name[20] (zero padded)}, and each position's first preset name (D-942,
+ * palette.h pal_preset: 8 x 16 bytes, zero padded) at fm1w_palette_presets, taken with the position playing and the one
  * waiting (PAL_NONE none) by fm1w_palette: the overview and the bar's NEXT: follow */
 #define PAL_BUF_ROW 24u
 static uint8_t pal_buf[PAL_N * PAL_BUF_ROW];
+static uint8_t pal_pbuf[PAL_N * PAL_PNAME];
 WASM_EXPORT("fm1w_palette_buf") uint8_t *fm1w_palette_buf(void) { return pal_buf; }
+WASM_EXPORT("fm1w_palette_presets") uint8_t *fm1w_palette_presets(void) { return pal_pbuf; }
+static uint32_t pal_preset(uint32_t pos, char *out)
+{
+    uint32_t n = 0;
+    while (pos < PAL_N && pal_ix[pos].state != PAL_EMPTY && n < PAL_PNAME && pal_pbuf[pos * PAL_PNAME + n] >= 32u
+           && pal_pbuf[pos * PAL_PNAME + n] < 127u) {
+        out[n] = (char)pal_pbuf[pos * PAL_PNAME + n];
+        n++;
+    }
+    out[n] = 0;
+    return n;
+}
 WASM_EXPORT("fm1w_palette") void fm1w_palette(uint32_t cur, uint32_t next)
 {
     uint32_t i, k;

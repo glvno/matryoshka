@@ -27,6 +27,7 @@ static void m1_patch_bypass(uint32_t mod, int on) { (void)mod; (void)on; }
                                                      * palette, so every position reads empty and nothing is saved */
 static uint32_t pal_request(uint32_t pos, uint32_t *aux) { (void)pos; if (aux) *aux = 0; return 0; }
 static void pal_save(uint32_t pos) { (void)pos; }
+static uint32_t pal_preset(uint32_t pos, char *out) { (void)pos; out[0] = 0; return 0; }
 #include "../src/panel.c"
 static void leds_play(void) {}
 static void leds_panel(void) {}

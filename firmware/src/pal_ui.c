@@ -9,6 +9,7 @@
 
 #define PAL_KEY_NONE 0xFFu
 #define PAL_NUDGE_MS 1500u                          /* (panel.c NUDGE_MS: a nudge's time, D-249) */
+#define PAL_ROW_W (HC_IW - (HC_X0 - HC_IX) - 2u)   /* an overview row's text: 196 px */
 static uint8_t pal_view;                            /* the overview shows */
 static uint8_t pal_due;                             /* the overview to draw: 1 its rows and last line, 2 all of it */
 static uint8_t pal_shut;                            /* no overview until HOME's next press (another combo used this hold) */
@@ -156,9 +157,9 @@ static int pal_poll(int home_alone)
     return 1;
 }
 
-/* the overview: the title, the eight positions (1 MONOLITH D; the one playing inverse and marked >, the waiting one
- * NEXT, an empty one EMPTY, a missing one its name and MISSING), or one line for an empty palette; the last line the
- * bar's message while one shows */
+/* the overview: the title, the eight positions (1 BRIGHT PAD | MONOLITH D, pal_label: the row's whole width for the
+ * names, D-942; the one playing inverse and marked >, the waiting one NEXT, an empty one EMPTY, a missing one its name and
+ * MISSING), or one line for an empty palette; the last line the bar's message while one shows */
 static void pal_draw(void)
 {
     uint32_t full = pal_due > 1u, i, y, any = 0;
@@ -177,28 +178,29 @@ static void pal_draw(void)
     if (!any)
         text_bc(&FONT_S, HC_IX, HC_TOP + 3u * HC_ROW, MSG_PAL_HOLD_TO_SAVE, P_DIM, P_PANEL, HC_IW, TA_CENTER);
     for (i = 0, y = HC_TOP; any && i < PAL_N; i++, y += HC_ROW) {
-        char r[40], *q = r;
-        uint32_t k;
+        char r[2u + PAL_LABEL + sizeof MSG_PAL_ROW_MISSING + sizeof MSG_PAL_ROW_NEXT], s[sizeof MSG_PAL_ROW_MISSING + sizeof MSG_PAL_ROW_NEXT];
+        char *q = r, *t = s;
         int cur = i == pal_cur;
         uint16_t bg = cur ? help_pct(P_SKY, 75u) : P_PANEL;
         uint16_t ink = cur ? P_NIGHT : pal_ix[i].state == PAL_EMPTY ? P_FAINT : pal_ix[i].state == PAL_MISSING ? P_DIM : P_INK;
+        if (pal_ix[i].state == PAL_MISSING)
+            t = put(t, MSG_PAL_ROW_MISSING);
+        if (i == pal_next)
+            t = put(t, MSG_PAL_ROW_NEXT);
+        *t = 0;
         *q++ = (char)('1' + i);
         *q++ = ' ';
+        *q = 0;
         if (pal_ix[i].state == PAL_EMPTY)
             q = put(q, MSG_PAL_ROW_EMPTY);
         else
-            for (k = 0; k < PAL_NAME && pal_ix[i].name[k]; k++)
-                *q++ = pal_ix[i].name[k];
-        if (pal_ix[i].state == PAL_MISSING)
-            q = put(q, MSG_PAL_ROW_MISSING);
-        if (i == pal_next)
-            q = put(q, MSG_PAL_ROW_NEXT);
-        *q = 0;
+            q = pal_label(q, i, PAL_ROW_W - text_w(&FONT_S, r, -1) - text_w(&FONT_S, s, -1));
+        put(q, s)[0] = 0;
         if (cur) {
             lcd_fill(HC_IX, y, HC_IW, HC_ROW - 2u, bg);
             text_bc(&FONT_S, HC_IX + 2u, y + 2u, ">", ink, bg, HC_X0 - HC_IX - 2u, TA_LEFT);
         }
-        text_bc(&FONT_S, HC_X0, y + 2u, r, ink, bg, HC_IW - (HC_X0 - HC_IX) - 2u, TA_LEFT);
+        text_bc(&FONT_S, HC_X0, y + 2u, r, ink, bg, PAL_ROW_W, TA_LEFT);
     }
     pal_msg_shown = msg_until;
     if (msg_until && fm1_ms < msg_until)            /* (the bar's message, under the card's edge: here) */

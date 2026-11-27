@@ -86,7 +86,7 @@ const PER_PR_SCENARIOS = ['signalBuffers', 'liveCompile', 'rollPen', 'mirrorKeys
 for (const n of PER_PR_SCENARIOS) if (!SCENARIOS.includes(n)) throw new Error(`PER_PR_SCENARIOS names ${n}, which is no scenario`);
 /** scenarios that read the screen's texts and DIAG pages through the rig's page on the emulator's port, as the device
  *  check's do (their own reason: the palette's switch tick, DIAG 202) */
-const RP_SCENARIOS = ['paletteFm1'];
+const RP_SCENARIOS = ['paletteFm1', 'paletteNames'];
 if (flag('--list')) {
   console.log(SCENARIOS.join('\n'));
   process.exit(0);
@@ -3275,8 +3275,9 @@ async function main() {
       await emu.tap(B.play);
       await emu.elapse(700);
       await homeKey(0, 150);
-      const waiting = await emu.waitText(`NEXT: 1 ${name1}`, 1500);
-      await check('palette: playing, palette 1 tapped: NEXT: 1 PATCH nn while it waits', waiting);
+      // (the entry's first preset, then its patch: NEXT: 1 INIT | 8 LIRE, D-942)
+      const waiting = await emu.waitFor(async () => (await emu.texts()).some((t) => t.startsWith('NEXT: 1 ') && t.endsWith(name1)), 1500);
+      await check('palette: playing, palette 1 tapped: NEXT: 1 … 8 LIRE while it waits', waiting, (await emu.texts()).join(' | '));
       await check('palette: then palette 1 plays (at the bar line)', (await emu.waitFor(async () => !(await emu.text('NEXT:')), 4000)) && (await emu.text(name1)));
       const d1 = await emu.diagWords(202);
       await check('palette: the switch loaded on a bar line (DIAG 202: the run tick a whole number of bars)',
@@ -3292,6 +3293,50 @@ async function main() {
       await check('palette: the cancelled switch never loaded', d2[2] === d1[2] && (await emu.text(name1)), `switches ${d2[2]}`);
       await emu.tap(B.play);
       await emu.snap('palette');
+    },
+    async paletteNames() {   // D-942 (owner 2026-11-27): the FM-1 names an entry that keeps a preset by the preset, then the patch
+      /** HOME held, black key k (0..7: palette 1..8) held `ms`, both let go */
+      const homeKey = async (k, ms) => {
+        await emu.key(B.home, true);
+        await emu.elapse(100);
+        await emu.key(BLACK[k], true);
+        await emu.elapse(ms);
+        await emu.key(BLACK[k], false);
+        await emu.elapse(60);
+        await emu.key(B.home, false);
+        await emu.elapse(200);
+      };
+      // Silver Box with its engine on a factory preset (the one after Init, #432), held into palette 2
+      await check('palette names: Silver Box opens, synced', await openSynced('Silver Box'));
+      const factory = await factoryPresets('Silver Box');
+      const preset = factory[factory.findIndex((x) => x.name === 'Init') + 1]?.name.toUpperCase();
+      await emu.turn(ENC.preset, 1);
+      await check(`palette names: PRESET turned: its engine plays ${preset}`, !!preset && (await emu.waitText(`PRESET ${preset}`, 2000)));
+      await emu.elapse(1600);
+      await homeKey(1, 1300);
+      await check('palette names: HOME + black key 2 held 1 s: saved to palette 2', await emu.waitText('PALETTE 2', 2000), (await emu.texts()).join(' | '));
+      await check('palette names: 8 Lire opens, synced', await openSynced('8 Lire'));
+      await homeKey(0, 1300);
+      await check('palette names: saved to palette 1', await emu.waitText('PALETTE 1', 2000));
+      await emu.elapse(1600);
+      // HOME held alone: the overview names palette 2 by its preset, then its patch (the screen's texts keep 31 characters)
+      await emu.key(B.home, true);
+      await emu.elapse(600);
+      const view = await emu.texts();
+      await emu.snap('palette-names-overview');
+      await emu.key(B.home, false);
+      await emu.elapse(400);
+      await check(`palette names: the overview's row 2 reads 2 ${preset} | SILVER BOX`, view.some((t) => t === `2 ${preset} | SILVER BOX`.slice(0, 31)), view.join(' | '));
+      await check('palette names: row 1 names 8 Lire, the empty ones EMPTY', view.some((t) => t.startsWith('1 ') && t.endsWith('8 LIRE')) && view.some((t) => / EMPTY$/.test(t)), view.join(' | '));
+      // playing, palette 2 tapped: the bar's NEXT: names it the same way while it waits
+      await emu.tap(B.play);
+      await emu.elapse(700);
+      await homeKey(1, 150);
+      const next = await emu.waitText(`NEXT: 2 ${preset} | SILVER`, 1500);
+      await emu.snap('palette-names-next');
+      await check(`palette names: NEXT: 2 ${preset} | SILVER BOX while it waits`, next, (await emu.texts()).join(' | '));
+      await check('palette names: then palette 2 plays', (await emu.waitFor(async () => !(await emu.text('NEXT:')), 4000)) && (await emu.text('SILVER BOX')));
+      await emu.tap(B.play);
     },
     async paletteEditor() {   // #1196: the editor's palette chips against the FM-1: collect, reorder, a click that switches at the bar line, Live follow
       const pal = async () => (await T()).palette;
