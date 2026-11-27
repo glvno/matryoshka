@@ -276,6 +276,9 @@ export function slotMoves(have: SlotInfo[], sent: { name: string; length: number
 export const bankPatches = (factory: (name: string) => boolean = () => true): { name: string; patch: Patch }[] =>
   load().filter((e) => e.patch || !(e.name in FM1_PRESETS) || factory(e.name)).map((e) => ({ name: e.name, patch: patchOf(e) }));
 
+/** the bank list (Send bank) has a patch that goes into a slot named `slotName` (Consolidate never frees that slot) */
+export const inBank = (slotName: string): boolean => load().some((e) => deviceName(e.name) === slotName);
+
 /** a row's name, dragged onto a palette chip (#1196): it carries the row's patch */
 function dragName(span: HTMLElement, item: PatchDragItem): HTMLElement {
   span.title = 'Drag onto a palette chip to add it to the FM-1’s palette';

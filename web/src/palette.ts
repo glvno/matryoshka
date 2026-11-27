@@ -25,6 +25,7 @@ import { devicePresetName, NAME_BYTES, PAL_EMPTY, PAL_GO_CANCELLED, PAL_GO_WAITI
 import { applyEntry, asSlot, binStructure, entryOf, fm1Presets, NO_SAME_STRUCTURE, paletteDevices, patchStructure, presetFit, q16, sameBytes, samePatch, samePreset, slotPlays, takeTempoAndPatterns, truePresetNames, type PresetFit } from './preset-fit';
 import { drawerScope } from './fx-preset';
 import { soundOf, type PaletteSound } from './saved-palettes';
+import type { ConsolidateStep } from './consolidate-view';
 import { structureAndRows } from './structure';
 
 /** where this browser keeps the last palette read (the chips show it, greyed, with no FM-1) */
@@ -168,6 +169,8 @@ export interface PalettePorts {
     goPalette(pos: number | null): Promise<Ack>;
     readBank(): Promise<SlotInfo[]>;
     uploadSlot(slot: number, name: string, patch: Patch): Promise<unknown>;
+    /** a slot's binary stored as it was read (Consolidate's Undo) */
+    uploadSlotBin(slot: number, name: string, bin: Uint8Array): Promise<void>;
     eraseSlot(slot: number): Promise<void>;
     /** the binary a patch takes in a slot of this FM-1 (DeviceLink.encodeFor) */
     encodeFor(patch: Patch): Uint8Array;
@@ -208,6 +211,8 @@ export interface PalettePorts {
   full(text: string, replace: (pos: number) => void): void;
   /** a sound was stored into an FM-1 slot on its way into the palette: the Library's FM-1 column reads the bank again */
   banked?(): void;
+  /** the editor's bank list (Send bank) has a patch of slot name `name`: Consolidate never frees its slot */
+  inBank?(name: string): boolean;
   /** the chips changed: draw them again */
   changed(): void;
 }
@@ -216,6 +221,11 @@ export interface PalettePorts {
 const SWITCH_WAITS = 'The FM-1 is waiting to switch at the bar line: try again after it switched';
 /** what Add to palette says with no empty position */
 export const PALETTE_FULL = 'Palette full: drag onto a chip to replace';
+
+/** a change Consolidate offers (planConsolidate): the step its confirmation lists, and what doing it needs: the sound the
+ *  entry plays now (its slot's patch with the entry applied), the presets only the FM-1 had, the entry as it was, and the
+ *  extra slot's binary as read (Undo stores it again) */
+export interface ConsolidateItem { step: ConsolidateStep; sound: Patch; extra: Preset[]; was: PaletteEntry; bin: Uint8Array }
 
 export class Palette {
   /** the palette as last read (from the FM-1, or kept in this browser); null never read */
@@ -613,8 +623,7 @@ export class Palette {
       replaceUserPresets(keep, keep);
       undo.push(async () => keep.forEach((p) => dropUserPreset(p.structure, p.name)));
     }
-    // (a device that keeps the slot's values keeps the slot's preset name only while it plays that preset, D-1226)
-    const entry = entryOf(truePresetNames(fit.named, [...fit.known, ...fit.picks.map((p) => p.preset)]), fit.slot, fit.label);
+    const entry = this.fitEntry(fit);
     this.byHash.set(paletteHash(entry), entry);
     await this.ports.device.putPaletteEntry(pos, entry);
     this.keepCopy(fit.slot, fit.label, fit.held);
@@ -840,7 +849,7 @@ export class Palette {
     if (linked) await this.take(await d.readPalette(), false);
     const now = this.now;
     const known = [...this.ports.versions().map((v) => ({ name: v.name, patch: () => v })), ...this.ports.candidates()];
-    let onFm1: DevicePresetEntry[] | undefined;
+    const list: { on?: DevicePresetEntry[] } = {};
     const sounds: (PaletteSound | null)[] = [], missed: string[] = [];
     for (let pos = 0; pos < PALETTE_SIZE; pos++) {
       const p = now.positions[pos], e = this.entries[pos];
@@ -850,24 +859,173 @@ export class Palette {
         sounds.push(null);
         continue;
       }
-      const patch = structuredClone(copy.patch);
-      const extra: Preset[] = [];
-      if (e && linked && d.hasPresets) {
-        const gone = applyEntry(structuredClone(patch), e);
-        for (const x of e.devices.filter((x) => gone.includes(x.name))) {
-          onFm1 ??= await d.listPresets();
-          const spaces = [x.structure, x.pstructure].map((n) => (n >>> 0).toString(16).padStart(8, '0'));
-          for (const f of onFm1) {
-            if (devicePresetName(f.name).toLowerCase() !== devicePresetName(x.name).toLowerCase() || (x.pstructure && !spaces.includes(f.structure))) continue;
-            const values = await d.getPreset(f.structure, f.name);
-            if (values) extra.push({ structure: f.structure, name: f.name, values });
-          }
-        }
-      }
-      if (e) applyEntry(patch, e, extra);
+      const { patch, extra } = await this.played(copy.patch, e, linked && d.hasPresets ? list : null);
       sounds.push(soundOf(p.name, patch, extra));
     }
     return { sounds, missed };
+  }
+
+  /** a copy of `copy` (a slot's patch) with entry `e` applied as the FM-1 plays it, and the presets it names that this
+   *  browser has not got, read from the FM-1 when `list` is given (PRESETS + PRESET_GET: its name, in any case, of the
+   *  entry's structure or namespace, any structure when the entry does not know the namespace); `list.on` keeps the
+   *  FM-1's preset list for the next */
+  private async played(copy: Patch, e: PaletteEntry | null, list: { on?: DevicePresetEntry[] } | null): Promise<{ patch: Patch; extra: Preset[] }> {
+    const d = this.ports.device, patch = structuredClone(copy), extra: Preset[] = [];
+    if (e && list) {
+      const gone = applyEntry(structuredClone(patch), e);
+      for (const x of e.devices.filter((x) => gone.includes(x.name))) {
+        list.on ??= await d.listPresets();
+        const spaces = [x.structure, x.pstructure].map((n) => (n >>> 0).toString(16).padStart(8, '0'));
+        for (const f of list.on) {
+          if (devicePresetName(f.name).toLowerCase() !== devicePresetName(x.name).toLowerCase() || (x.pstructure && !spaces.includes(f.structure))) continue;
+          const values = await d.getPreset(f.structure, f.name);
+          if (values) extra.push({ structure: f.structure, name: f.name, values });
+        }
+      }
+    }
+    if (e) applyEntry(patch, e, extra);
+    return { patch, extra };
+  }
+
+  /** the entry `fit` gives: its slot, its pattern, and each device's preset while it plays it (D-1226: a device that keeps
+   *  the slot's values keeps the slot's preset name only while it plays that preset) */
+  private fitEntry(fit: PresetFit & { slot: number; label: string; known: Preset[] }): PaletteEntry {
+    return entryOf(truePresetNames(fit.named, [...fit.known, ...fit.picks.map((p) => p.preset)]), fit.slot, fit.label);
+  }
+
+  /**
+   * What Consolidate offers (owner 2026-11-27, D-1441: an entry an older editor stored as an extra whole patch becomes a
+   * preset on the slot it was made from). The palette and the bank are read again. For each entry, its slot's structure
+   * (binStructure) is compared with every other used slot's (slotStructure: read only as needed). Its base is a slot of
+   * the same structure whose name its slot's name starts with ("HERA 6" for "HERA 6 PLUCKPAD", or the name before its
+   * number), the longest such, else the lowest such slot below it; a slot whose name starts with its own is never its
+   * base. The entry's sound (its slot read back, the entry applied, its presets only the FM-1 has read from it) must
+   * reach the base with device presets (presetPlace, tempo and patterns noted); otherwise it is left out, said in
+   * `skipped`. A slot that is another step's base keeps its own entry. A step frees its slot when no other position
+   * points at it and the editor's bank list has no patch of its name (inBank). Nothing is written. A string: why not now.
+   */
+  async planConsolidate(): Promise<{ items: ConsolidateItem[]; skipped: string[] } | string> {
+    const why = this.blocked();
+    if (why) return why;
+    const d = this.ports.device;
+    if (!d.readsSlots) return 'Consolidating needs an FM-1 that sends its slots back: update the FM-1';
+    await this.take(await d.readPalette(), false);
+    const now = this.now!;
+    const used = (await d.readBank()).filter((s) => s.used);
+    const bins = new Map<number, Uint8Array | null>();
+    const list: { on?: DevicePresetEntry[] } = {};
+    const items: ConsolidateItem[] = [], skipped: string[] = [];
+    for (let pos = 0; pos < PALETTE_SIZE; pos++) {
+      const p = now.positions[pos], e = this.entries[pos];
+      const x = p.state === 1 && e ? used.find((s) => s.slot === p.slot) : undefined;
+      const key = x && (await this.slotStructure(x, bins));
+      if (!x || !e || !key) continue;
+      const mine = deviceName(x.name);
+      const same: SlotInfo[] = [];
+      for (const s of used) {
+        if (s.slot !== x.slot && !deviceName(s.name).startsWith(`${mine} `) && (await this.slotStructure(s, bins)) === key) same.push(s);
+      }
+      const named = (s: SlotInfo): boolean => mine.startsWith(`${deviceName(s.name)} `) || isNumbered(mine, deviceName(s.name));
+      const base = same.filter(named).sort((a, b) => b.name.length - a.name.length)[0] ?? same.find((s) => s.slot < x.slot);
+      if (!base) continue;
+      const bin = await this.readSlot(x, bins);
+      const read = bin && (await readFm1Bin(d, bin, x.name));
+      if (!bin || !read) {
+        skipped.push(`${pos + 1} · ${x.name} (its slot could not be read back)`);
+        continue;
+      }
+      const { patch: sound, extra } = await this.played(read.patch, e, d.hasPresets ? list : null);
+      const fit = await this.presetPlace(sound, x.name, [base], extra);
+      if ('why' in fit) {
+        skipped.push(`${pos + 1} · ${x.name} (${fit.why})`);
+        continue;
+      }
+      const step: ConsolidateStep = { pos, from: { slot: x.slot, name: x.name }, to: { slot: base.slot, name: base.name }, presets: this.fitEntry(fit).devices.map((v) => v.name), free: false, ...(fit.plays ? { plays: fit.plays } : {}) };
+      items.push({ step, sound, extra, was: e, bin });
+    }
+    const bases = new Set(items.map((i) => i.step.to.slot));
+    const kept = items.filter((i) => !bases.has(i.step.from.slot));
+    for (const { step } of kept) {
+      const other = now.positions.findIndex((q, k) => q.state && q.slot === step.from.slot && !kept.some((i) => i.step.pos === k));
+      if (other >= 0) step.keep = `palette ${other + 1} also uses it`;
+      else if (this.ports.inBank?.(step.from.name)) step.keep = 'it is in your bank list';
+      step.free = !step.keep;
+    }
+    return { items: kept, skipped };
+  }
+
+  /**
+   * Do the Consolidate steps `items` (planConsolidate's, the ones ticked), in order: each sound reaches its base again
+   * (presetPlace on that slot alone, as it is now) and its position points there with its presets (addOnSlot: the presets
+   * the FM-1 lacks sent first). A step that no longer fits, or fails, stops the rest; the steps done stay. Then each extra
+   * slot is erased when, read again, no position points at it, the editor's bank list has no patch of its name and it
+   * still holds what was read. Its line, and its Undo while anything was done: the erased slots stored again from the
+   * binaries read, each entry put back, the presets sent taken back.
+   */
+  async consolidate(items: readonly ConsolidateItem[]): Promise<{ line: string; undo: (() => Promise<string>) | null }> {
+    const why = this.blocked();
+    if (why) return { line: why, undo: null };
+    const d = this.ports.device;
+    const done: { item: ConsolidateItem; undo: (() => Promise<unknown>)[] }[] = [];
+    let stop = '';
+    for (const item of items) {
+      const { step } = item, undo: (() => Promise<unknown>)[] = [];
+      const at = `${step.pos + 1} · ${step.from.name}`;
+      try {
+        const base = (await d.readBank()).find((s) => s.slot === step.to.slot && s.used && s.name === step.to.name);
+        const fit = base ? await this.presetPlace(item.sound, step.from.name, [base], item.extra) : { why: `slot ${step.to.slot + 1} no longer holds ${step.to.name}` };
+        const r = 'why' in fit ? fit.why : await this.addOnSlot(step.pos, step.from.name, fit, undo);
+        if (typeof r === 'string') {
+          stop = `${at} was left as it is: ${r}`;
+          break;
+        }
+        done.push({ item, undo });
+      } catch (e) {
+        for (const back of undo.reverse()) await back().catch(() => undefined);
+        stop = `${at} failed: ${(e as Error).message}`;
+        break;
+      }
+    }
+    const freed: { slot: number; name: string; bin: Uint8Array }[] = [];
+    let keepWhy = '';
+    if (done.length) {
+      try {
+        await this.take(await d.readPalette(), false);
+        const bank = await d.readBank();
+        for (const { item: { step, bin } } of done) {
+          if (freed.some((f) => f.slot === step.from.slot)) continue;
+          const s = bank.find((x) => x.slot === step.from.slot);
+          if (this.now?.positions.some((p) => p.state && p.slot === step.from.slot) || this.ports.inBank?.(step.from.name) || !s?.used || s.name !== step.from.name || s.length !== bin.length) continue;
+          await d.eraseSlot(step.from.slot);
+          this.structures.delete(step.from.slot);
+          freed.push({ slot: step.from.slot, name: step.from.name, bin });
+        }
+      } catch (e) {
+        keepWhy = `; freeing the extra slots stopped: ${(e as Error).message}`;
+      }
+      if (freed.length) this.ports.banked?.();
+    }
+    const freedText = freed.length ? `; slot${freed.length > 1 ? 's' : ''} ${freed.map((f) => f.slot + 1).join(', ')} freed` : '';
+    const line = `${done.length ? `Consolidated ${done.map(({ item: { step } }) => `${step.pos + 1} onto slot ${step.to.slot + 1} · ${step.to.name}`).join(', ')}${freedText}${keepWhy}` : 'Nothing consolidated'}${stop ? `. ${stop}` : ''}`;
+    if (!done.length) return { line, undo: null };
+    const undo = async (): Promise<string> => {
+      try {
+        for (const f of freed) {
+          await d.uploadSlotBin(f.slot, f.name, f.bin);
+          this.structures.delete(f.slot);
+        }
+        if (freed.length) this.ports.banked?.();
+        for (const { item, undo: back } of [...done].reverse()) {
+          this.byHash.set(paletteHash(item.was), item.was);
+          await d.putPaletteEntry(item.step.pos, item.was);
+          for (const b of back.reverse()) await b();
+        }
+        return 'Consolidate undone: each entry is back on its own slot';
+      } catch (e) {
+        return `Undoing Consolidate failed: ${(e as Error).message}. Check the FM-1 column and the palette`;
+      }
+    };
+    return { line, undo };
   }
 
   /** the editor's own version that sounds as `patch` (a slot's patch with its entry applied) plays: the same patch
