@@ -3625,8 +3625,16 @@ export class Editor {
         const card = canvasCard(dot);
         const key: CardKey | null = card?.dataset.asm ? `a${Number(card.dataset.asm)}` : card?.dataset.id ? `m${Number(card.dataset.id)}` : null;
         if (!dot || !card || !key) return null;
+        // in layout px along the offsets, so a Tidy at any zoom reads the same places; the rectangles when the jack's offsets
+        // do not lead to its card
+        let x = dot.offsetWidth / 2, y = dot.offsetHeight / 2, e: HTMLElement | null = dot;
+        for (; e && e !== card; e = e.offsetParent instanceof HTMLElement ? e.offsetParent : null) {
+          x += e.offsetLeft;
+          y += e.offsetTop;
+        }
+        if (e === card) return { card: key, x, y };
         const r = dot.getBoundingClientRect(), cr = card.getBoundingClientRect();
-        return { card: key, x: (r.left + r.width / 2 - cr.left) / z, y: (r.top + r.height / 2 - cr.top) / z };
+        return { card: key, x: Math.round((r.left + r.width / 2 - cr.left) / z), y: Math.round((r.top + r.height / 2 - cr.top) / z) };
       },
       overhang: (k) => {
         const el = k[0] === 'm' ? this.cards.get(Number(k.slice(1))) : this.containers.get(Number(k.slice(1)));

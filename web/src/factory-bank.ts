@@ -12,6 +12,7 @@ import { sharedAlgoContours } from './factory-algo-sharing';
 import { sharedArticulationFactory } from './factory-shared-articulation';
 import { fitCanvasFactory } from './factory-canvas-fit';
 import { FACTORY_KITS, withKitPatterns } from './factory-kit-patterns';
+import { applyFactoryLayout } from './factory-layout';
 import { clearAllPatterns } from './pattern-ops';
 import { DEFS } from './modules';
 import { addModule, connect, disconnect, removeModule, type Endpoint, type Patch } from './patch';
@@ -81,7 +82,8 @@ export const selectedFactoryProfile: Readonly<Record<string, SelectedFactoryOpti
 export const selectedFactoryNames = SOURCE.map(({ name }) => selectedFactoryProfile[name]?.bankName ?? name);
 
 /** The approved bank shared by browser defaults, numeric exports and firmware. The patches of UNSHIPPED_PATTERNS ship
- *  without their patterns and songs; `full` keeps them, as bank.json holds them (test and measurement material only) */
+ *  without their patterns and songs; `full` keeps them, as bank.json holds them (test and measurement material only). Each
+ *  patch's top-level cards sit as Tidy lays them out (factory-layout.ts), which sets its FM-1 page order too */
 export function buildSelectedFactoryBank(opts: { full?: boolean } = {}): FactoryCandidate[] {
   const measurements = Object.fromEntries(Object.entries(selectedFactoryProfile).map(([name, { configurationId: _id, outputLevel: _level, ...options }]) => [name, options]));
   const bank = buildFactoryBank(measurements);
@@ -93,6 +95,7 @@ export function buildSelectedFactoryBank(opts: { full?: boolean } = {}): Factory
     const patch = bank.find(entry => entry.name === (options.bankName ?? sourceName))!.patch;
     patch.modules.find(module => module.type === 'output')!.params.level = options.outputLevel;
   }
+  for (const c of bank) applyFactoryLayout(c.patch, c.name);
   return opts.full ? bank : shippedFactoryBank(bank);
 }
 

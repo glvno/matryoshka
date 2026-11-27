@@ -272,7 +272,7 @@ Up to four card rows shown as one FM-1 page; groups fill in fours inside a secti
 
 ### Grouped order
 
-The one order of devices shared by editor and firmware: Main, each Steps track followed by the devices it drives, the rest in reading order, the Output last.
+The one order of devices shared by editor and firmware: Main, each Steps track followed by the devices it drives, the rest in reading order, the Output last. The reading order is where the cards sit on the canvas, so a Tidy can change it ([D-1458](device-ui.md#D-1458)).
 
 ### Guide
 

@@ -10,6 +10,7 @@ import { factoryQualificationPhaseIds, factoryQualificationTargetSeconds } from 
 import { exportSelectedFactoryAudition, parseAuditionExportOptions } from './factory-bank-audition';
 import { clearAllPatterns } from '../src/pattern-ops';
 import { FACTORY_KITS, withKitPatterns } from '../src/factory-kit-patterns';
+import { applyFactoryLayout } from '../src/factory-layout';
 import { selectedFactoryProfile, UNSHIPPED_PATTERNS } from '../src/factory-bank';
 import { FM1_PRESETS } from '../src/presets';
 import type { Patch } from '../src/patch';
@@ -56,6 +57,7 @@ describe('explicit final-profile audition export', () => {
         if (selected?.drumRack || selected?.drawer) expect(exported).toEqual({ name: source.name, patch: FM1_PRESETS[source.name]() });
         else {
           if (UNSHIPPED_PATTERNS.includes(source.name)) clearAllPatterns(full);
+          applyFactoryLayout(full, source.name);   // (its top-level cards where Tidy lays them out, D-1458)
           expect(exported).toEqual({ ...source, patch: full });
         }
       }

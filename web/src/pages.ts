@@ -60,15 +60,16 @@ export interface Device {
   asm?: number;
   module?: number;
   pages: Page[];
-  /** Main, a Steps track, an Arpeggiator or the Output (else an instrument, an effect, ...) */
-  kind?: 'main' | 'steps' | 'arp' | 'output';
+  /** Main, a Steps track, an Arpeggiator, a Harmonizer or the Output (else an instrument, an effect, ...) */
+  kind?: 'main' | 'steps' | 'arp' | 'harm' | 'output';
   /** the Steps track (module id) that drives it: it follows the track in the environment (#196). On a card with a track
    * inside, that track: the card drives itself (the binary's track byte is the card's own index) */
   track?: number;
 }
 
-/** where focus goes on a fresh patch: the first device that is not Main, a Steps track, an Arpeggiator or the Output, else
- * the first */
+/** where focus goes on a fresh patch: its first instrument, the first device that is not Main, a Steps track, an
+ *  Arpeggiator, a Harmonizer or the Output (a Tidy puts a Harmonizer before the instrument it plays, D-1458), else the
+ *  first. The FM-1's pages_home is the same */
 export const homeDevice = (devices: Device[]): number => Math.max(0, devices.findIndex((d) => !d.kind));
 
 /** a page's title as the editor and the FM-1 show it: the name, and "2/3" when its group spans pages */
@@ -294,7 +295,7 @@ function devicePages(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>)
 export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   const inAsm = new Set(assembliesOf(p).flatMap((a) => a.modules));
   const items: { x: number; y: number; dev: Device }[] = [];
-  const KINDS: Record<string, Device['kind']> = { fm1: 'main', steps: 'steps', arp: 'arp', output: 'output' };
+  const KINDS: Record<string, Device['kind']> = { fm1: 'main', steps: 'steps', arp: 'arp', harm: 'harm', output: 'output' };
   for (const m of p.modules) {
     if (inAsm.has(m.id) || NOT_DEVICES.has(m.type) || !defs[m.type]) continue;
     const pages = modulePages(p, m, defs);
@@ -336,7 +337,7 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
     // (a cable from it, or from an Arpeggiator it plays through)
     const from = new Set([...keyReach(p, track)].filter(id => ['steps', 'harm', 'arp'].includes(p.modules.find(m => m.id === id)?.type ?? '')));
     const direct = (d: Device): boolean => p.cables.some((c) => from.has(c.from.module) && deviceOf.get(c.to.module) === d);
-    const driven = reading.filter((d) => !placed.has(d) && !d.kind && !tracks.includes(d) && (direct(d) ||
+    const driven = reading.filter((d) => !placed.has(d) && (!d.kind || d.kind === 'harm') && !tracks.includes(d) && (direct(d) ||
       (drums.get(d)?.length === 1 && drums.get(d)![0] === track)));
     // Keep directly connected pages (the external Drum map) before the kit reached through that map.
     driven.sort((a, b) => Number(!direct(a)) - Number(!direct(b)));

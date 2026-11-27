@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import EXAMPLES from '../factory/examples.json';
 import { buildSelectedFactoryBank, selectedFactoryNames, shippedFactoryBank, type FactoryCandidate } from './factory-bank';
+import { applyFactoryLayout } from './factory-layout';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type Patch, type Source } from './patch';
 
@@ -27,7 +28,12 @@ export function make(name: string, build: Build): Patch {
 }
 
 
-const load = (raw: unknown): Patch => validatePatch(structuredClone(raw), DEFS);
+/** an example as it opens: validated, its top-level cards where Tidy lays them out (factory-layout.ts) */
+const load = (raw: unknown, name: string): Patch => {
+  const p = validatePatch(structuredClone(raw), DEFS);
+  applyFactoryLayout(p, name);
+  return p;
+};
 
 /** A named patch loaded only when opened. Editor example files are validated on first use. */
 interface Entry { name: string; patch: () => Patch }
@@ -59,7 +65,7 @@ export const factoryWithPatterns = (name: string): Patch => structuredClone(full
 /** Original editor/assembly examples never enter the hardware defaults. */
 export const EXAMPLE_PRESETS: Record<string, () => Patch> = makers(EXAMPLES.map(({ name, patch }) => {
   let checked: Patch | undefined;
-  return { name, patch: () => checked ??= load(patch) };
+  return { name, patch: () => checked ??= load(patch, name) };
 }));
 
 /** Everything the editor can open directly, independently of the opt-in Community catalogue. */
