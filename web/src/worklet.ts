@@ -38,6 +38,8 @@ export type HostMsg =
   | { t: 'button'; i: number; on: boolean }
   /** a Steps module's notes edited (#133), a Steps module muted */
   | { t: 'track'; id: number; notes: StepNote[] | undefined; pat?: number }
+  /** a DX7's voice edited (#1338, ModuleInst.voice as hex): its copies play it, no reload */
+  | { t: 'voice'; id: number; voice: string }
   | { t: 'pattern'; p: number }
   | { t: 'song'; n: number }
   | { t: 'songs'; songs: SongEntry[][] }
@@ -213,6 +215,7 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'meter') this.engine.meter = meterOf(m.meter);
         else if (m.t === 'button') this.engine.setButton(m.i, m.on);
         else if (m.t === 'track') this.engine.setTrack(m.id, m.notes, m.pat);
+        else if (m.t === 'voice') this.engine.setVoice(m.id, m.voice);
         else if (m.t === 'pattern') this.engine.setPattern(m.p);
         else if (m.t === 'song') this.engine.setSong(m.n);
         else if (m.t === 'songs') this.engine.setSongs(m.songs);

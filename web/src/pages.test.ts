@@ -7,7 +7,7 @@ import { layoutOf, moveRows, moveSection, setLayout, type KnobOf, type Layout } 
 import { devicesOf, patternDriver, findRow, fixFocus, homeDevice, groupStarts, LABEL_MAX, pageLabel, pageTitle } from './pages';
 import { PRESETS } from './presets';
 import { demoPatch } from './demo';
-import { encodePatch } from './patchbin';
+import { binaryPage, encodePatch } from './patchbin';
 
 describe('device pages', () => {
   it('control-only Steps grouping survives for poly engines without granting pattern permission', () => {
@@ -246,5 +246,41 @@ describe('knob migration', () => {
         expect(new Set(labels).size, `${name}: ${dev.name} ${labels.join(' | ')}`).toBe(labels.length);
       }
     }
+  });
+});
+
+describe('a DX7\'s pages (#1338, pages_ui.c dx7_page and pages_dx7_cards)', () => {
+  it('a DX7 of its own: 13 pages, its parameters then its voice rows, as the FM-1 makes them', () => {
+    const p = emptyPatch();
+    const dx = addModule(p, DEFS.dx7, 0, 0);
+    connect(p, DEFS, { module: dx.id, port: 'out' }, { module: addModule(p, DEFS.output, 300, 0).id, port: 'l' });
+    const dev = devicesOf(p, DEFS).find((d) => d.module === dx.id)!;
+    expect(dev.pages.map((pg) => `${pageTitle(pg)}: ${pg.rows.map((r) => r.param).join(' ')}`)).toEqual([
+      'DX7 1/2: level tune mod ops', 'DX7 2/2: range dest voice.alg voice.fb',
+      'operator 1/6: voice.op voice.level voice.coarse voice.fine', 'operator 2/6: voice.mode voice.detune voice.vel voice.ams',
+      'operator 3/6: voice.r1 voice.r2 voice.r3 voice.r4', 'operator 4/6: voice.l1 voice.l2 voice.l3 voice.l4',
+      'operator 5/6: voice.bp voice.ld voice.rd voice.lc', 'operator 6/6: voice.rc voice.rs',
+      'pitch eg 1/2: voice.pr1 voice.pr2 voice.pr3 voice.pr4', 'pitch eg 2/2: voice.pl1 voice.pl2 voice.pl3 voice.pl4',
+      'lfo 1/2: voice.wave voice.speed voice.delay voice.sync', 'lfo 2/2: voice.pmd voice.amd voice.pms voice.oks', 'voice: voice.transpose']);
+    expect(binaryPage(p, dev.key, 12)?.[1]).toBe(12);   // (FOCUS: the FM-1's page 12)
+  });
+  it('a card holding one DX7 (a poly DX7): the voice pages after its own, not in the binary\'s list; two DX7s: none', () => {
+    const p = emptyPatch();
+    const alloc = addModule(p, DEFS.alloc, 0, 0);
+    const dx = addModule(p, DEFS.dx7, 300, 0);
+    connect(p, DEFS, { module: dx.id, port: 'out' }, { module: addModule(p, DEFS.output, 900, 0).id, port: 'l' });
+    const a = makeAssembly(p, [alloc.id, dx.id], 'piano');
+    promote(a, dx.id, 'level');
+    const dev = devicesOf(p, DEFS).find((d) => d.asm === a.id)!;
+    const own = dev.pages.filter((pg) => !pg.voice).length;
+    expect(dev.pages.length).toBe(own + 12);
+    expect(dev.pages.slice(own).map(pageTitle)).toEqual(['dx7', 'operator 1/6', 'operator 2/6', 'operator 3/6', 'operator 4/6', 'operator 5/6',
+      'operator 6/6', 'pitch eg 1/2', 'pitch eg 2/2', 'lfo 1/2', 'lfo 2/2', 'voice']);
+    expect(dev.pages[own].rows.map((r) => [r.module, r.param])).toEqual([[dx.id, 'voice.alg'], [dx.id, 'voice.fb']]);
+    expect(binaryPage(p, dev.key, own + 11)?.[1]).toBe(own + 11);
+    expect(() => encodePatch(p, true)).not.toThrow();   // (the voice pages are not written: the FM-1 adds them)
+    const dx2 = addModule(p, DEFS.dx7, 600, 0);
+    a.modules.push(dx2.id);
+    expect(devicesOf(p, DEFS).find((x) => x.asm === a.id)!.pages.some((pg) => pg.voice)).toBe(false);
   });
 });

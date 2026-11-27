@@ -3699,6 +3699,17 @@ void eng_set_param(uint32_t module, uint32_t param, int32_t q16)
     }
 }
 
+/* module m's DX7 voice changed (DX7_NDATA packed bytes, #1338: VOICE from the editor, a voice row turned on the FM-1):
+ * every copy plays it from now on, a sounding note too (dx7.h dx7_set_voice, msfa's live edit), no reload */
+void eng_set_voice(uint32_t m, const uint8_t *v)
+{
+    uint32_t k;
+    if (m >= E.nmod || E.node[m].type != T_DX7 || !v)
+        return;
+    for (k = 0; k < E.node[m].ninst; k++)
+        dx7_set_voice(inst_pool[E.node[m].inst0 + k].s.dx7.s, v);
+}
+
 /* Knob ramps (#405). On the FM-1 a knob's click reaches the module over ENG_RAMP_BLOCKS blocks (23 ms) instead of at once,
  * so a stepped level, offset, tuning or cutoff neither clicks nor zippers. The parameter itself (par[]) takes the new
  * value at once: eng_get_param, the editor's mirror, MIDI out and a save all see it. Only the base apply_cv derives the

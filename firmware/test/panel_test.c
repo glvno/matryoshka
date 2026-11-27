@@ -4903,6 +4903,129 @@ int main(void)
         trail_n = 0;
         screen_idle();
     }
+    {   /* #1338: a DX7's pages (pages_ui.c dx7_page, pages.ts DX7_SECTIONS): 13, the parameters then the voice rows; K1 of
+         * the first operator page picks the operator the next five show (their name OP n); a voice row turned edits the
+         * voice in the binary and every copy, tells the editor (VOICE_NOW), not PARAM_NOW; the values as the DX7 shows them.
+         * After the turns the screen is the screen drawn whole */
+        static uint16_t inc[240 * 240];
+        static int32_t al[128], ar[128];
+        const char *const FIX[2] = {"build/panel-fixtures/dx7-voice.m1p", "build/panel-fixtures/dx7-poly.m1p"};
+        char num[24], unit[8];
+        uint32_t d, base, live, i, n, m = 0, ok_pages = 0, ok_alg = 0, ok_copies = 0;
+        int dx = -1, pn, ok_show = 1;
+        uint8_t *v;
+#define DX7_SHOWS(k, want, wunit) (row_show(pages_now(), k, num, unit, 100, &base, &live), !strcmp(num, want) && !strcmp(unit, wunit))
+        check("DX7 poly fixture loads", load_fixture(FIX[1]) == 0);   /* (a Voicing's four copies: the DX7 inside its card) */
+        pv_gen++;
+        eng_render(al, ar, 128);
+        screen_idle();
+        pages_ensure();
+        for (d = 0, dx = -1; d < pg_ndev; d++)            /* (the card's own pages, then its DX7's 12: DX7, OP 1 1/6 .. VOICE) */
+            if (pg_dev[d].module < 0 && pg_dev[d].npg > 12u && pg_page[pg_dev[d].pg0 + pg_dev[d].npg - 12u].mod[0] == VOICE_ROW)
+                dx = (int)d;
+        check("a card holding one DX7 has the DX7's voice pages after its own (DX7: ALGORITHM, FEEDBACK .. VOICE)", dx >= 0
+              && pg_page[pg_dev[dx].pg0 + pg_dev[dx].npg - 12u].par[0] == DXF_ALG && pg_page[pg_dev[dx].pg0 + pg_dev[dx].npg - 12u].nrows == 2u
+              && pg_page[pg_dev[dx].pg0 + pg_dev[dx].npg - 1u].nlen == 5u && !memcmp(pg_page[pg_dev[dx].pg0 + pg_dev[dx].npg - 1u].name, "VOICE", 5));
+        if (dx >= 0) {
+            m = pg_page[pg_dev[dx].pg0 + pg_dev[dx].npg - 12u].xo[0];
+            v = m1_voice_at(m);
+            (void)pages_focus((uint32_t)dx, pg_dev[dx].npg - 12u);
+            loop();
+            n = host_voice_told;
+            enc(2, 1);                                    /* K1: ALGORITHM 5 -> 6 */
+            for (i = 0, ok_copies = v && v[110] == 5u && host_voice_told == n + 1u; i < E.node[m].ninst; i++)   /* (each
+                                                         * copy's unpacked voice: msfa's 134 the algorithm) */
+                ok_copies &= inst_pool[E.node[m].inst0 + i].s.dx7.s->v[134] == 5u;
+            ok_copies &= E.node[m].ninst == 4u;
+        }
+        check("a voice row turned on the card reaches every copy of its DX7 (a Voicing's four), live", ok_copies);
+        check("DX7 fixture loads", load_fixture(FIX[0]) == 0);
+        pv_gen++;
+        eng_render(al, ar, 128);
+        screen_idle();
+        pages_ensure();
+        for (d = 0, dx = -1; d < pg_ndev; d++)
+            if (pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_DX7)
+                dx = (int)d;
+        if (dx >= 0) {
+            m = (uint32_t)pg_dev[dx].module;
+            v = m1_voice_at(m);
+            ok_pages = pg_dev[dx].npg == 13u && pg_page[pg_dev[dx].pg0 + 2u].nlen == 4u && !memcmp(pg_page[pg_dev[dx].pg0 + 2u].name, "OP 1", 4)
+                       && pg_page[pg_dev[dx].pg0 + 2u].parts == 6u && pg_page[pg_dev[dx].pg0 + 12u].nrows == 1u
+                       && pg_page[pg_dev[dx].pg0].mod[3] == m && pg_page[pg_dev[dx].pg0].par[3] == DX7_P_OPS
+                       && pg_page[pg_dev[dx].pg0 + 1u].mod[2] == VOICE_ROW && pg_page[pg_dev[dx].pg0 + 1u].par[2] == DXF_ALG;
+            (void)pages_focus((uint32_t)dx, 1);           /* DX7 2/2: K3 the algorithm, 1..32 */
+            ui_dirty = 2;
+            loop();
+            pn = param_now;
+            n = host_voice_told;
+            if (v && DX7_SHOWS(2u, "5", "")) {
+                enc(4, 1);
+                ok_alg = v[110] == 5u && DX7_SHOWS(2u, "6", "") && host_voice_told == n + 1u && param_now == pn
+                         && inst_pool[E.node[m].inst0].s.dx7.s->v[134] == 5u;
+            }
+        }
+        check("a DX7 is a device of 13 pages: DX7 1/2, 2/2, OP 1 1/6 .. 6/6, PITCH EG, LFO, VOICE", ok_pages);
+        check("ALGORITHM on DX7 2/2 is the voice's number 1..32; a turn edits the voice and every copy, says VOICE_NOW, not PARAM_NOW", ok_alg);
+        if (dx >= 0) {
+            uint32_t g0 = pg_dev[dx].pg0, was;
+            v = m1_voice_at(m);
+            (void)pages_focus((uint32_t)dx, 2);           /* OP 1 1/6: K1 the picker */
+            loop();
+            ok_show &= DX7_SHOWS(0u, "1", "") && DX7_SHOWS(1u, "99", "") && DX7_SHOWS(2u, "1.00", "");
+            enc(2, 2);                                    /* K1: operator 3 */
+            ok_show &= dx7_op == 2u && !memcmp(pg_page[g0 + 3u].name, "OP 3", 4) && DX7_SHOWS(0u, "3", "");
+            enc(3, -9);                                   /* K2: operator 3's output level 99 -> 90 (packed: operator 6 first) */
+            ok_show &= v[3u * 17u + 14u] == 90u && DX7_SHOWS(1u, "90", "") && inst_pool[E.node[m].inst0].s.dx7.s->v[3u * 21u + 16u] == 90u;
+            (void)pages_focus((uint32_t)dx, 3);           /* OP 3 2/6: MODE, DETUNE */
+            loop();
+            ok_show &= DX7_SHOWS(0u, "RATIO", "") && DX7_SHOWS(1u, "0", "");
+            enc(3, 3);
+            enc(2, 1);                                    /* fixed: coarse 1, fine 0 is 10 Hz */
+            ok_show &= DX7_SHOWS(1u, "+3", "") && DX7_SHOWS(0u, "FIXED", "");
+            (void)pages_focus((uint32_t)dx, 2);
+            loop();
+            ok_show &= DX7_SHOWS(2u, "10.0", "Hz");
+            enc(5, 2);                                    /* K4 fine 0 -> 2: 10.5 Hz (10 ^ 1.02) */
+            ok_show &= DX7_SHOWS(2u, "10.5", "Hz") && DX7_SHOWS(3u, "10.5", "Hz");
+            (void)pages_focus((uint32_t)dx, 6);           /* OP 3 5/6: BREAK as a note (39: C3), L CURVE */
+            loop();
+            ok_show &= DX7_SHOWS(0u, "C3", "") && DX7_SHOWS(3u, "-LIN", "");
+            (void)pages_focus((uint32_t)dx, 10);          /* LFO 1/2: WAVE (sine, as the kit set none: TRI), SYNC */
+            loop();
+            ok_show &= DX7_SHOWS(0u, "TRI", "") && (DX7_SHOWS(3u, "ON", "") || DX7_SHOWS(3u, "OFF", ""));
+            enc(2, 9);                                    /* (a choice: one step a click, held at its top) */
+            ok_show &= DX7_SHOWS(0u, "S/H", "");
+            (void)pages_focus((uint32_t)dx, 12);          /* VOICE: TRANSPOSE 24 is +0 */
+            loop();
+            ok_show &= DX7_SHOWS(0u, "0", "st") && pages_cc(0) == 24u * 127u / 48u;
+            check("the DX7's voice rows show its values as the DX7 does (operator picker, ratio, fixed Hz, detune, note, curve, wave)", ok_show);
+            check("a voice row takes no P-lock and no MIDI CC value", pages_lock_turn(pages_now(), 0, 0, 1, 0, (int32_t *)&base) < 0
+                  && row_set_unit(pages_now(), 0, 32768, &base, &live, (int32_t *)&i) < 0);
+            (void)pages_focus((uint32_t)dx, 0);           /* DX7 1/2: K1 the level, a parameter as before */
+            loop();
+            was = (uint32_t)eng_get_param(m, DX7_P_LEVEL);
+            pn = param_now;
+            enc(2, -3);
+            check("a parameter row on the DX7's pages turns the parameter (PARAM_NOW)", (uint32_t)eng_get_param(m, DX7_P_LEVEL) != was && param_now > pn);
+            (void)pages_focus((uint32_t)dx, 4);
+            loop();
+            enc(3, 5);
+            memcpy(inc, fb, sizeof inc);
+            ui_dirty = 2;
+            loop();
+            for (i = 0, n = 0; i < 240u * 240u; i++)
+                n += inc[i] != fb[i];
+            check("a voice row redrawn in place is the screen drawn whole", n == 0u);
+            dx7_turn(m, DXF_OP, -9, 0);                   /* (operator 1 again for the tests after) */
+        }
+#undef DX7_SHOWS
+        (void)load("808 KIT");
+        pv_gen++;
+        page = 0;
+        trail_n = 0;
+        screen_idle();
+    }
     {   /* the Harmonizer's Side layout (#598): with the keys on a Harmonizer the seven lowest keys are its chord buttons
          * (black 1..3 maj min dim, white 1..4 sus2 sus4 7 9) whatever the octave, sent out as their keys under the split;
          * the other keys are roots, under the split too after an octave shift; the bar names the chord */

@@ -145,7 +145,7 @@ import { countBytes, hasTiming, noteWords, patternWords, TRACK_NOTES_1_26, wordC
 import { payloadHash } from './pattern-store';
 import { lockPlan, PATCH_LOCKS_MAX } from './locks';
 import { deviceView, keysInto, MAX_POLY, type DeviceGroup, VOICING_CABLE_INPUTS } from './poly';
-import { devicesOf, NAME_MAX, type Device, type PageRow } from './pages';
+import { devicesOf, isVoiceRow, NAME_MAX, type Device, type PageRow } from './pages';
 import { assemblyById, chainHelpers, deviceModules, ROW_NAMES_MAX } from './assembly';
 import { structureAndRows } from './structure';
 import { CPU, cpuEstimate, planCosts, type CpuEstimate } from './cpu';
@@ -949,11 +949,15 @@ export const deviceText = (s: string): string => {
  * and devices left empty */
 export function deviceSection(source: Patch, dev: Patch): Device[] {
   const byId = new Map(dev.modules.map((m) => [m.id, m]));
-  const kept = (r: { module: number; param: string }): boolean => { const m = byId.get(r.module); return !!m && rowParam(m.type, r.param) >= 0; };
-  return devicesOf(source, DEFS).slice(0, MAX_DEVICES).map((d) => ({
-    ...d,
-    pages: d.pages.map((pg) => ({ ...pg, rows: pg.rows.filter(kept) })).filter((pg) => pg.rows.length).slice(0, MAX_PAGES),
-  })).filter((d) => d.pages.length);
+  // (a DX7's voice rows too: the FM-1 makes a DX7's pages itself, pages.ts DX7_SECTIONS, so its page indices count them;
+  // the voice pages after an assembly device's (Page.voice) only when the binary lists a page of its own, as
+  // pages_ui.c pages_dx7_cards adds them)
+  const kept = (r: { module: number; param: string }): boolean => { const m = byId.get(r.module); return !!m && (rowParam(m.type, r.param) >= 0 || (m.type === 'dx7' && isVoiceRow(r.param))); };
+  return devicesOf(source, DEFS).slice(0, MAX_DEVICES).map((d) => {
+    const pages = d.pages.map((pg) => ({ ...pg, rows: pg.rows.filter(kept) })).filter((pg) => pg.rows.length);
+    const own = pages.filter((pg) => !pg.voice).slice(0, MAX_PAGES);
+    return { ...d, pages: own.length ? [...own, ...pages.filter((pg) => pg.voice)] : [] };
+  }).filter((d) => d.pages.length);
 }
 
 /** a device page of the editor (pages.ts devicesOf) as the binary lists it, [device, page]; null when the binary has
@@ -1032,8 +1036,9 @@ export function deviceRecord(devs: Device[], p: Patch, v = COUNTED - 1): number[
     if (d.module !== undefined) { out.push(0, index.get(d.module)!); continue; }
     out.push(1);
     text(d.name);
-    out.push(d.pages.length);
-    for (const pg of d.pages) {
+    const pages = d.pages.filter((pg) => !pg.voice);   // (a DX7's voice pages: the FM-1 adds them itself, #1338)
+    out.push(pages.length);
+    for (const pg of pages) {
       text(short && deviceText(pg.name) === deviceText(d.name) ? '' : pg.name);
       out.push(pg.part, pg.parts, pg.display !== undefined && index.has(pg.display) ? index.get(pg.display)! + 1 : 0, pg.rows.length);
       for (const r of pg.rows) {

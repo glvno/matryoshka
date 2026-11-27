@@ -95,6 +95,11 @@ WASM_IMPORT("origin") void js_origin(uint32_t mod, uint32_t pattern, uint32_t id
 #define HOST_STEP_HOOKS
 #define HOST_LED_HOOKS
 #define HOST_THRU_HOOK
+/* a voice row turned on a DX7's pages (#1338): the module's DX7_NDATA packed voice bytes at `at`, as the device link's
+ * VOICE_NOW */
+WASM_IMPORT("voice") void js_voice(uint32_t mod, const uint8_t *at);
+#define HOST_VOICE_HOOK
+#define host_voice_notify(mod, v) js_voice(mod, v)
 
 #include "../test/host_ui.h"
 

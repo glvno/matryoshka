@@ -106,6 +106,10 @@ enum { R_PATTERN_OP = 0x65 };                               /* unasked (#1177, #
                                                              * pattern, cleared every pattern and song, or doubled or halved the
                                                              * pattern; op u8, from u8, to u8, hash u32 LE (always 0: op 3 is
                                                              * retired; m1_pattern_op_now) */
+enum { C_VOICE = 0x03, R_VOICE_NOW = 0x6A };               /* a DX7's voice (#1338, feature bit 37): VOICE module u8 + its
+                                                             * DX7_NDATA packed bytes, from the editor, into the running patch
+                                                             * live, no answer; unasked VOICE_NOW the same after a voice row
+                                                             * turned on the FM-1 (pages_ui.c dx7_turn, m1_voice_edited) */
 enum { C_SLOT_GET = 0x02, R_SLOT_DATA = 0x69 };            /* #1202 P2: slot u8, offset u16 LE, mode u8 (absent: 0) -> SLOT_DATA
                                                              * slot u8, total u16 LE, offset u16 LE, up to 256 bytes from there.
                                                              * Mode 0: the slot's patch binary as stored (SLOT_INFO's length:
@@ -137,7 +141,7 @@ enum { C_FONT = 0x1F, R_FONT_SUM = 0x68 };                  /* the font area (#6
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
 #define M1_FEATURES3 255u                                      /* INFO byte 12, feature bits 16..23: bit 16 = TEMPO / TEMPO_NOW, the global tempo (D-907), bit 17 = a preset carries up to 176 values (PRESET_PUT / PRESET_DATA; two store slots, #485), bit 18 = KEYS_NOW and GUIDE_NOW (the panel's keys and state, #549), bit 19 = INFO's flags bit 3 says GLO > SYSTEM > EDITOR (#702), bit 20 = ARMS, the editor's armed set (#191), bit 21 = ARMS and ARMS_NOW carry four words at least, modules 0..127 (#721; all ENG_MSET_WORDS with feature bit 36, #1286), bit 22 = device settings, bit 23 = explicit factory pattern origins / snapshots */
 #define M1_FEATURES4 253u                                     /* INFO byte 14, feature bits 24..31: bit 24 = complete FX-scoped preset recall; bit 25 = the pattern store is on (#901: PATS, PAT_GET, PAT_PUT, PAT_DEL, PAT_LINK_NOW, format 59's links; m1_pat_info sets it); bit 26 = the factory region (#915, D-490: FACT_INFO, FACT_BEGIN, FACT_WRITE, FACT_SUM, FACT_READ, FACT_COMMIT); bit 27 = MASTER_EQ (#1107); bit 28 = MIDI learn (#1067: MAP, MAP_NOW, the mapping section after the macro ranges); bit 29 = the global pad map (#1067: PADS, PADS_NOW); bit 30 = PATTERN_OP (#1177, #1178: the SEQ page's copy and clear all); bit 31 = the palette (#1196: PALETTE, PALETTE_NOW, PALETTE_ENTRY; the last free bit: later features go in M1_FEATURES5) */
-#define M1_FEATURES5 29u                                      /* INFO byte 25, the feature bits from 1.26 on (bytes 20..24 are the font area's, #1203): bit 0 = a top-level card with a Steps track inside is that track's device (the device extras name the card itself: SEQ, the environment, P-locks and SEL treat it as the track, pages_ui.c pg_track_mod; #1202 K2, D-1062); bit 1 = every saved patch keeps its patterns 2..64 in the store (m1_pat_info sets it, #1202); bit 2 = SLOT_GET and PAT's kept flag (flags bit 1; #1202 P2); bit 3 = format 66's FX rack and the FX drawer presets (FXD1, #1214); bit 4 (feature bit 36) = format 67 (up to ENG_MAX_MODULES 254 modules, #1286; patterns of up to TRACK_NOTES_MAX 256 words, ENG_COUNT_ESC, and a store payload of version 2; pattern 1 linked to the store when the patch cannot hold it, #1292), TRACK / TRACK_NOW in frames of M1_TRACK_WORDS, and ARMS / ARMS_NOW carry all ENG_MSET_WORDS (8) words */
+#define M1_FEATURES5 61u                                      /* INFO byte 25, the feature bits from 1.26 on (bytes 20..24 are the font area's, #1203): bit 0 = a top-level card with a Steps track inside is that track's device (the device extras name the card itself: SEQ, the environment, P-locks and SEL treat it as the track, pages_ui.c pg_track_mod; #1202 K2, D-1062); bit 1 = every saved patch keeps its patterns 2..64 in the store (m1_pat_info sets it, #1202); bit 2 = SLOT_GET and PAT's kept flag (flags bit 1; #1202 P2); bit 3 = format 66's FX rack and the FX drawer presets (FXD1, #1214); bit 4 (feature bit 36) = format 67 (up to ENG_MAX_MODULES 254 modules, #1286; patterns of up to TRACK_NOTES_MAX 256 words, ENG_COUNT_ESC, and a store payload of version 2; pattern 1 linked to the store when the patch cannot hold it, #1292), TRACK / TRACK_NOW in frames of M1_TRACK_WORDS, and ARMS / ARMS_NOW carry all ENG_MSET_WORDS (8) words; bit 5 (feature bit 37) = VOICE / VOICE_NOW (#1338) */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_INFO_EDITOR_IGNORE 8u                             /* INFO byte 3 (flags) bit 3: GLO > SYSTEM > EDITOR is at IGNORE, the
                                                               * editor leaves this FM-1 alone (with feature bit 19, #702) */
@@ -528,6 +532,39 @@ static void m1_track_pattern_now(uint32_t mod, uint32_t pattern)
     } while (from < (uint32_t)n);
 }
 static void m1_track_now(uint32_t mod) { m1_track_pattern_now(mod, (uint32_t)eng_pattern_playing(mod)); }
+
+/* module mod's DX7 voice in the running binary (DX7_NDATA packed bytes, its record's data, #1338), 0 if it is no DX7 */
+static uint8_t *m1_voice_at(uint32_t mod)
+{
+    uint32_t at = m1_record(mod);
+    if (!at || M1_TYPE(m1_cur[at]) != T_DX7)
+        return 0;
+    at += eng_rec_size(m1_cur, at) - DX7_NDATA;
+    return at + DX7_NDATA <= m1_cur_len ? m1_cur + at : 0;
+}
+/* a DX7's voice changed here (a voice row turned, pages_ui.c dx7_turn): every copy plays it, SAVE keeps it, and the
+ * editor follows: unasked VOICE_NOW, module u8 and the DX7_NDATA bytes */
+static void m1_voice_edited(uint32_t mod)
+{
+    uint8_t p[1u + DX7_NDATA], *f = m1_tx;
+    const uint8_t *v = m1_voice_at(mod);
+    uint32_t o = 5, i;
+    if (!v)
+        return;
+    eng_set_voice(mod, v);
+    m1_edited = 1;
+    p[0] = (uint8_t)mod;
+    for (i = 0; i < DX7_NDATA; i++)
+        p[1u + i] = v[i];
+    f[0] = 0xF0;
+    f[1] = 0x7D;
+    f[2] = 0x4D;
+    f[3] = 0x31;
+    f[4] = R_VOICE_NOW;
+    o += m1_pack7(p, sizeof p, f + o);
+    f[o++] = 0xF7;
+    m1_send(f, o);
+}
 
 /* a parameter turned on the FM-1 (K1..K4 on a device page): module, parameter, the value Q16.16 */
 static void m1_param_now(uint32_t mod, uint32_t par, int32_t v)
@@ -1387,6 +1424,19 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         break;
     case C_PADS:                                             /* the global pad map (#1067): -> PADS_NOW */
         m1_pads(d, len);
+        break;
+    case C_VOICE:                                            /* module u8, DX7_NDATA bytes: a DX7's voice, live (#1338) */
+        if (len >= 1u + DX7_NDATA) {
+            uint8_t *v = m1_voice_at(d[0]);
+            uint32_t i;
+            for (i = 0; v && i < DX7_NDATA; i++)
+                v[i] = d[1u + i] & 0x7Fu;
+            if (v) {
+                eng_set_voice(d[0], v);
+                m1_edited = 1;
+                m1_ui_rows();                                /* the LCD shows the voice the editor set */
+            }
+        }
         break;
     case C_TRACK:                                            /* module u8, n u8, n u32 LE notes (track.ts noteWord), [pattern u8
                                                               * (format 48; without it: the one the track plays); bit 7 (#1292):

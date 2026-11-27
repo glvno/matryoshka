@@ -48,8 +48,8 @@ export class Fm1Bridge {
       case 'track': return mod === undefined ? [] : [{ op: 'track', mod, pat: m.pat ?? -1, words: noteWords(m.notes).slice(0, TRACK_NOTES_MAX) }];
       case 'thru': return mod === undefined ? [] : [{ op: 'thru', mod, note: m.note, vel: m.vel }];
       case 'arm': return [{ op: 'arm', words: armMask(patch, m.devices) }];
-      // (rare edits the link sends in its own frames: here the whole patch again)
-      case 'range': case 'songs': return 'reload';
+      // (rare edits the link sends in its own frames, a DX7's voice: here the whole patch again)
+      case 'range': case 'songs': case 'voice': return 'reload';
       default: return [];
     }
   }

@@ -84,6 +84,7 @@ import { longName, moduleKeywords, moduleName } from './labels';
 import { DeckControls } from './deck';
 import { releaseFocusAfterPointer } from './focus';
 import { DEFS, METERS } from './modules';
+import { voiceBytes, voiceHex } from './dx7-voice';
 import { addModule, newPatch, NOTE_NAMES, trackLabel, validatePatch, type Patch, type SideKey } from './patch';
 import { diffCount, diffLines, diffPatches } from './diff';
 import { loadLibrary, summary } from './assemblies';
@@ -554,11 +555,18 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     return;
   }
   // (by module or device index, while the FM-1 still holds the patch from before an upload: see linkBusy)
-  if (from === 'device' && linkBusy() && ['track', 'mute', 'locks', 'param', 'arms', 'focus', 'patternOp'].includes(e.kind)) return;
+  if (from === 'device' && linkBusy() && ['track', 'voice', 'mute', 'locks', 'param', 'arms', 'focus', 'patternOp'].includes(e.kind)) return;
   // the copy's own edits while it replays an FM-1 that reports its panel (#549): the FM-1 sends its own (TRACK_NOW,
-  // LOCKS_NOW, PATTERN_NOW, SONG_NOW, MUTE, PATTERN_OP), under Live; the copy's would be the same edit twice, or one the
-  // FM-1's patch did not take
-  if (from === 'emu' && fromDevice && panelReported() && ['track', 'locks', 'pattern', 'song', 'mute', 'patternOp'].includes(e.kind)) return;
+  // LOCKS_NOW, PATTERN_NOW, SONG_NOW, MUTE, PATTERN_OP, VOICE_NOW), under Live; the copy's would be the same edit twice, or
+  // one the FM-1's patch did not take
+  if (from === 'emu' && fromDevice && panelReported() && ['track', 'voice', 'locks', 'pattern', 'song', 'mute', 'patternOp'].includes(e.kind)) return;
+  if (e.kind === 'voice') {   // a voice row turned on a DX7's FM-1 pages (#1338): into the patch and the card, an undo step
+    const id = deviceView(editor.patch, true).patch.modules[e.module]?.id;
+    if (id === undefined) return;
+    mark(true);
+    try { editor.voiceFromDevice(id, voiceHex(e.voice)); } finally { mark(false); }
+    return;
+  }
   if (e.kind === 'track' || e.kind === 'mute') {   // the FM-1's SEQ page (#83, #133): a track edited or recorded, a track muted
     const id = deviceView(editor.patch, true).patch.modules[e.module]?.id;   // (the compiled form the FM-1 got, as deviceIndex)
     if (id === undefined) return;
@@ -989,6 +997,7 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
   },
   origin: (m, pat, identity) => fm1Event({ kind: 'origins', update: { kind: 'change', record: { module: m, pattern: pat, identity } } }, 'emu'),
   track: (m, notes, pat) => fm1Event({ kind: 'track', module: m, notes, pat }, 'emu'),
+  voice: (m, v) => fm1Event({ kind: 'voice', module: m, voice: v }, 'emu'),
   locks: (m, pat, locks) => fm1Event({ kind: 'locks', module: m, pat, locks }, 'emu'),
   pattern: (p, song) => fm1Event({ kind: 'pattern', pattern: p, song }, 'emu'),
   song: (k, entries) => fm1Event({ kind: 'song', song: k, entries }, 'emu'),
@@ -1139,6 +1148,16 @@ const editor = new Editor($('canvas'), firstPatch, {
     if (!fromEmu) emuParam(id, name, value);
     if (fromDevice) return;
     if (live() && indexedLiveReady()) { device.param(editor.patch, id, name, value); liveEdited(); }
+    else if (live()) dirty = true;
+  },
+  onVoice(id, voice) {   // a DX7's voice (#1338): the engines and a Live FM-1 take it live (VOICE), no reload
+    if (fromDevice) uploadGate.changedThere();
+    host.send({ t: 'voice', id, voice });
+    if (!fromEmu) queueEmu();
+    queueSave(editor.patch);
+    if (fromDevice) return;
+    if (live() && !device.hasVoice) { queueUpload(); return; }   // (firmware without VOICE: the whole patch again)
+    if (live() && indexedLiveReady()) { device.voice(editor.patch, id, voiceBytes(voice)); liveEdited(); }
     else if (live()) dirty = true;
   },
   onTrack(id, notes, pat) {
