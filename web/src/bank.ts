@@ -224,7 +224,12 @@ export type SlotReader = Pick<DeviceLink, 'readsSlots' | 'readSlotBin' | 'getPat
 export async function readFm1Slot(d: SlotReader, slot: number, name: string): Promise<FromFm1 | null> {
   if (!d.readsSlots) return null;
   const bin = await d.readSlotBin(slot).catch(() => null);
-  if (!bin) return null;
+  return bin && readFm1Bin(d, bin, name);
+}
+
+/** a slot's binary `bin`, read from the FM-1 already, rebuilt as readFm1Slot rebuilds it (the stored patterns it links read
+ *  with PAT_GET); null when this editor does not read it */
+export async function readFm1Bin(d: Pick<DeviceLink, 'getPattern'>, bin: Uint8Array, name: string): Promise<FromFm1 | null> {
   const patterns = new Map<number, Uint8Array>();
   for (const id of linkedIds(bin)) {
     const payload = await d.getPattern(id).catch(() => null);

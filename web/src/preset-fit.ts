@@ -4,6 +4,7 @@
 // (one this browser or the FM-1 has, else a new one). Add to palette (palette.ts) points a palette entry at an FM-1 slot
 // with it; a candidate's Save… (candidate-save.ts) stores those presets instead of a new patch.
 import { assemblyById } from './assembly';
+import { parseBinary } from './bin-parse';
 import { deviceName } from './bank';
 import type { DeviceLink } from './device';
 import { applyPreset, capturePreset, presetsOf, rememberedPreset, sameName, type Preset } from './device-presets';
@@ -105,10 +106,11 @@ export function patchStructure(p: Patch): string {
 const TRACK_FIELDS = ['notes', 'patterns', 'locks', 'factoryPatterns'] as const;
 const TRACK_PARAMS = ['len', 'rate'] as const;
 
-/** `to` takes `from`'s tempo and patterns (TRACK_FIELDS; the same structure) */
-export function takeTempoAndPatterns(to: Patch, from: Patch): void {
+/** `to` takes `from`'s tempo and patterns (TRACK_FIELDS; the same structure). `pair`: the module of `from` that stands for
+ *  a module of `to` (default: the one with its id) */
+export function takeTempoAndPatterns(to: Patch, from: Patch, pair: (m: Patch['modules'][number]) => Patch['modules'][number] | undefined = (m) => from.modules.find((x) => x.id === m.id)): void {
   for (const m of to.modules) {
-    const o = from.modules.find((x) => x.id === m.id);
+    const o = pair(m);
     if (!o) continue;
     const keys: string[] = m.type === 'fm1' ? ['tempo'] : m.type === 'steps' ? [...TRACK_PARAMS] : [];
     for (const k of keys) {
@@ -121,6 +123,48 @@ export function takeTempoAndPatterns(to: Patch, from: Patch): void {
       else (m as unknown as Record<string, unknown>)[k] = structuredClone(o[k]);
     }
   }
+}
+
+/**
+ * `slot`, a slot's patch read back from the FM-1 (patch-reader.ts: its own module ids, its cards rebuilt), as a patch of
+ * `sound`'s structure: the sound with each device's card values and preset names (an instrument's with its FX drawer), the
+ * tempo and the patterns of the slot's patch. Null when their devices differ in number or structure. It encodes to the
+ * slot's bytes exactly when the two differ in nothing else: then it is the slot's patch as presetFit compares it, which
+ * Add to palette needs when this browser has no copy of what the slot holds (owner 2026-11-27: a slot stored by an
+ * earlier add, a hold-save of the FM-1's own edits, another browser).
+ */
+export function asSlot(sound: Patch, slot: Patch): Patch | null {
+  const out = structuredClone(sound);
+  const mine = layout(out).devs, theirs = layout(slot).devs;
+  if (mine.length !== theirs.length) return null;
+  for (const [i, d] of mine.entries()) {
+    const a = d.asm === undefined ? undefined : assemblyById(out, d.asm);
+    const t = theirs[i].asm === undefined ? undefined : assemblyById(slot, theirs[i].asm!);
+    if (!a !== !t) return null;
+    if (!a || !t || a.chain || a.drawer) continue;
+    const want = capturePreset(slot, t, ''), have = capturePreset(out, a, '');
+    if (want.structure !== have.structure || want.values.length !== have.values.length || !applyPreset(out, a, want)) return null;
+    if (t.preset) a.preset = t.preset;
+    else delete a.preset;
+    const there = drawerScope(slot, t)?.effects ?? [];
+    (drawerScope(out, a)?.effects ?? []).forEach((e, k) => {
+      if (there[k]?.preset) e.preset = there[k].preset;
+      else delete e.preset;
+    });
+  }
+  // (the Main module and the Steps modules, each paired with the slot's of its type in the same place: the binary keeps
+  // their order)
+  const main = out.modules.find((m) => m.type === 'fm1');
+  const names = main?.seq?.names;
+  takeTempoAndPatterns(out, slot, (m) => (m.type === 'fm1' || m.type === 'steps' ? slot.modules.filter((x) => x.type === m.type)[out.modules.filter((x) => x.type === m.type).indexOf(m)] : undefined));
+  if (main && names) main.seq = { ...main.seq, names };   // (editor only, never in the binary: the reader has none)
+  return out;
+}
+
+/** two patch binaries hold the same modules and cables (bin-parse.ts): what no device preset changes */
+export function sameWiring(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
+  const x = parseBinary(a), y = parseBinary(b);
+  return !!x && !!y && JSON.stringify([x.modules.map((m) => m.type), x.cables]) === JSON.stringify([y.modules.map((m) => m.type), y.cables]);
 }
 
 /** the notes of `p` as a palette entry would change them: its tracks' patterns and the song it plays and keeps (the
