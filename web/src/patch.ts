@@ -399,8 +399,9 @@ export interface Patch {
   /** (legacy) the firmware arpeggiator's settings before the Arpeggiator module (#58): validatePatch keeps only its tempo,
    * as the Main module's tempo, and drops the rest */
   arp?: { bpm?: number };
-  /** the computer keyboard's octave (Z / X, the octave buttons) when the patch was last played, so a bass patch opens low;
-   * absent = 0. Editor only: the engine, the encoder and the FM-1 ignore it */
+  /** the octave the computer keyboard (Z / X, the octave buttons) starts at whenever the patch opens: -1 for the drum kits,
+   * so their rows sit on the keys; absent = 0. Moving the octave does not change it (D-1456). Editor only: the engine, the
+   * encoder and the FM-1 ignore it */
   octave?: number;
   /** where the canvas was looked at: the user's zoom and the layout point at the view's top left, in unzoomed layout
    * pixels, of any sign: the canvas is endless (Editor.restoreView / stampView, #1075). Editor only */
