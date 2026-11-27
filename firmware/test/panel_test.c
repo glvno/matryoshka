@@ -5161,6 +5161,35 @@ int main(void)
             check("RETRIG: OFF again, still format 69", pv_bin[1] == 69u && eng_load(copy, pv_len) == 0
                   && eng_get_param(hn, HARM_P_RETRIG) == 0);
         }
+        {   /* the Freq shifter's PM row (#1337, D-1041's rule for format 70): its page has it after MIX; a counted copy of
+             * format 51 takes it on the FM-1, raised to format 70 and kept; back at 0 it stays 70 */
+            static uint8_t copy[sizeof pv_bin];
+            uint32_t d, g, k, i, sn = 0, was = 0, found = 0, m;
+            int ok = load_fixture("build/panel-fixtures/shift-counted.m1p") == 0;
+            for (m = 0; ok && m < E.nmod; m++)
+                if (E.node[m].type == T_SHIFT)
+                    sn = m, found = 1;
+            ok = ok && found;
+            found = 0;
+            was = pv_bin[1];
+            pv_gen++;
+            pages_ensure();
+            for (d = 0; d < pg_ndev && !found; d++)
+                for (g = pg_dev[d].pg0; g < pg_dev[d].pg0 + pg_dev[d].npg && !found; g++)
+                    for (k = 0; k < pg_page[g].nrows && !found; k++)
+                        found = pg_page[g].mod[k] == sn && pg_page[g].par[k] == SHIFT_P_PM && k > 0
+                                && pg_page[g].par[k - 1u] == SHIFT_P_MIX;
+            check("PM: the Freq shifter's page has the row after MIX; its counted copy (format 51) can take it", ok && found
+                  && was == 51u && !row_old(sn, SHIFT_P_PM, 0) && !strcmp(SHIFT_UNIT[SHIFT_P_PM], "RAD"));
+            m1_patch_param(sn, SHIFT_P_PM, 3 * ENG_ONE / 2);
+            for (i = 0; i < pv_len; i++) copy[i] = pv_bin[i];
+            check("PM: the FM-1's edit raises its copy from format 51 to 70 and is kept", pv_bin[1] == 70u
+                  && eng_load(copy, pv_len) == 0 && eng_get_param(sn, SHIFT_P_PM) == 3 * ENG_ONE / 2);
+            m1_patch_param(sn, SHIFT_P_PM, 0);
+            for (i = 0; i < pv_len; i++) copy[i] = pv_bin[i];
+            check("PM: back at 0, still format 70", pv_bin[1] == 70u && eng_load(copy, pv_len) == 0
+                  && eng_get_param(sn, SHIFT_P_PM) == 0);
+        }
         (void)load("808 KIT");
         pv_gen++;
         page = 0;

@@ -1866,6 +1866,39 @@ kit('shift', (add, wire) => {
   wire(sh, 'up', out, 'l');
   wire(sh, 'down', out, 'r');
 });
+// the Freq shifter's pm input (#1337, format 70): shift-pm, a wavetable as the carrier of a 2:1 sine modulator at 0 Hz (up
+// phase modulated forward, down backward), its index swept by an LFO on p1; shift-pm-moving, a saw shifted by 30 Hz with
+// cv while a sine phase modulates it too, mix 0.8
+kit('shift-pm', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const wt = add('wavetable', 0, 0, { bank: 2, pos: 0.4, level: 0.7 });
+  const mod = add('osc', 0, 0, { wave: 0, coarse: 12, level: 0.8 });
+  const lfo = add('lfo', 0, 0, { wave: 1, rate: 0.6, depth: 1 });
+  const sh = add('shift', 0, 0, { shift: 0, mix: 1, pm: 2 }, { map: { p1: ['pm'] }, att: [0.5, 1] });
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', wt, 'pitch');
+  wire(kb, 'pitch', mod, 'pitch');
+  wire(wt, 'out', sh, 'in');
+  wire(mod, 'out', sh, 'pm');
+  wire(lfo, 'out', sh, 'p1');
+  wire(sh, 'up', out, 'l');
+  wire(sh, 'down', out, 'r');
+});
+kit('shift-pm-moving', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.6 });
+  const mod = add('osc', 0, 0, { wave: 0, coarse: -5, level: 1 });
+  const lfo = add('lfo', 0, 0, { wave: 1, rate: 0.5, depth: 1 });
+  const sh = add('shift', 0, 0, { shift: 30, cvamt: 60, mix: 0.8, pm: 5.5 });
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(kb, 'pitch', mod, 'pitch');
+  wire(osc, 'out', sh, 'in');
+  wire(lfo, 'out', sh, 'cv');
+  wire(mod, 'out', sh, 'pm');
+  wire(sh, 'up', out, 'l');
+  wire(sh, 'down', out, 'r');
+});
 kit('bypass', (add, wire) => {
   // a bypassed filter (in -> every output), pan (in -> l, r) and LFO (silent, so the level stays at its base)
   const kb = add('fm1', 0, 0);
@@ -4432,6 +4465,8 @@ if (process.argv.includes('--panel-fixtures')) {
     p.cables = p.cables.filter((c) => !(c.from.module === main.id && c.from.port === 'keys'));
     writeFileSync(new URL('engine-unreached.m1p', out), encodePatch(p, true));
   }
+  // the Freq shifter kit in a counted older format (51), its pm row left out: the FM-1's PM edit raises the copy to 70 (#1337)
+  writeFileSync(new URL('shift-counted.m1p', out), encodePatch(tests.shift, true, COUNTED));
   {
     // a poly engine a Steps track drives through other cables, no keys cable reaching its Voicing (#633, D-295): basic
     // poly, Main's keys cable gone, a Steps track's pitch into its cutoff. Its group stays; the track byte keeps the track,

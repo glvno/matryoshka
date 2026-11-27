@@ -30523,16 +30523,29 @@
    "cv": 117
   },
   "shift": {
-   "run": 42504,
-   "cv": 106,
+   "run": 43543,
+   "cv": 100,
    "dims": [
+    {
+     "param": "pm",
+     "above": 0
+    },
+    {
+     "input": "pm"
+    },
     {
      "input": "cv"
     }
    ],
    "grid": [
-    42504,
-    44065
+    43543,
+    45104,
+    43543,
+    45104,
+    43543,
+    45104,
+    45719,
+    47280
    ]
   },
   "part": {
@@ -39285,6 +39298,10 @@
   {
    "name": "assembly Wanderer",
    "cycles": 182870
+  },
+  {
+   "name": "assembly wavetable fm",
+   "cycles": 80118
   },
   {
    "name": "assembly wavetable pad",

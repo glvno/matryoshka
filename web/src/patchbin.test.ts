@@ -7,7 +7,7 @@ import { devicesOf, NAME_MAX } from './pages';
 import { assembliesOf, assemblyById, makeAssembly, removeMember } from './assembly';
 import { instIsEngine } from './engines';
 import { engineBytes } from './test-bin';
-import { deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR, COUNTED, SLIM, layout, MAP_BEND, MAP_NOTE, mapSource, mapSourceByte } from './patchbin';
+import { deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR, COUNTED, SLIM, layout, MAP_BEND, MAP_NOTE, mapSource, mapSourceByte, FORMAT_1_29 } from './patchbin';
 import { PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
@@ -83,16 +83,16 @@ describe('binary patch format', () => {
   });
 
   it('writes WRITE_FLOOR only while every later format just appends parameters (`since`) or a section written only when used', () => {
-    // a format that changes anything else (a type, a port, a section always written) must raise WRITE_FLOOR to itself, or
-    // a patch that uses it would be written in an older format that does not have it
-    const later = new Set(Object.values(DEFS).flatMap((d) => d.params.map((q) => q.since ?? 0)).filter((v) => v > WRITE_FLOOR));
+    // a format that changes anything else (a type, a port not marked `since`, a section always written) must raise
+    // WRITE_FLOOR to itself, or a patch that uses it would be written in an older format that does not have it
+    const later = new Set(Object.values(DEFS).flatMap((d) => [...d.params, ...d.inputs].map((q) => q.since ?? 0)).filter((v) => v > WRITE_FLOOR));
     for (const v of Object.keys(SECTION_FORMATS)) later.add(Number(v));
     expect([...later].sort((a, b) => a - b)).toEqual(Array.from({ length: VERSION - WRITE_FLOOR }, (_, i) => WRITE_FLOOR + 1 + i));
   });
 
   it('marks the parameters appended since format 34 (`since`), which the FM-1 reads an older binary without', () => {
     // format 34's types and their parameter counts where they grew (firmware/src/defs.h at v1.4.1)
-    const v34: Record<string, number> = { osc: 11, lfo: 6, adsr: 4, delay: 5, reverb: 5, pulse: 1, drummap: 8, alloc: 8, steps: 4, filter: 5, ladder: 5, glide: 2, env: 9, arp: 5 };
+    const v34: Record<string, number> = { osc: 11, lfo: 6, adsr: 4, delay: 5, reverb: 5, pulse: 1, drummap: 8, alloc: 8, steps: 4, filter: 5, ladder: 5, glide: 2, env: 9, arp: 5, shift: 3 };
     const nTypes34 = TYPE_ORDER.indexOf('pd'); // pd, env8, select came with format 35
     for (const t of TYPE_ORDER.slice(0, nTypes34)) {
       const ps = DEFS[t].params;
@@ -105,6 +105,31 @@ describe('binary patch format', () => {
     for (const t of TYPE_ORDER.slice(nTypes34)) expect(DEFS[t].params.filter((q) => q.since !== undefined).map((q) => q.name), t).toEqual(t === 'harm' ? ['invkeys', 'retrig'] : []);
     // a module without a stored matrix routes as before: a Pulse's p2 does not reach its new `inf`
     expect(defaultMap(DEFS.pulse).p2).toEqual([]);
+  });
+
+  it('writes format 70 for a Freq shifter only when its pm input is cabled or its pm amount is turned (#1337)', () => {
+    const p = emptyPatch();
+    addModule(p, DEFS.fm1, 0, 0);
+    const o = addModule(p, DEFS.osc, 0, 0);
+    const sh = addModule(p, DEFS.shift, 0, 0);
+    const out = addModule(p, DEFS.output, 0, 0);
+    connect(p, DEFS, { module: o.id, port: 'out' }, { module: sh.id, port: 'in' });
+    connect(p, DEFS, { module: sh.id, port: 'up' }, { module: out.id, port: 'l' });
+    // the input comes after the parameter inputs: a cable into p1 or p2 keeps its index (port indices are append-only)
+    expect(DEFS.shift.inputs.map((q) => q.name)).toEqual(['in', 'cv', 'p1', 'p2', 'pm']);
+    const before = encodePatch(p);
+    expect(before[1]).toBeLessThan(FORMAT_1_29);
+    sh.params.pm = 0; // (at its default: nothing changes)
+    expect(encodePatch(p)).toEqual(before);
+    sh.params.pm = 1.5;
+    expect(formatOf(p)).toBe(FORMAT_1_29);
+    sh.params.pm = 0;
+    const w = addModule(p, DEFS.wavetable, 0, 0);
+    const lower = formatOf(p);
+    connect(p, DEFS, { module: w.id, port: 'out' }, { module: sh.id, port: 'pm' });
+    expect(lower).toBeLessThan(FORMAT_1_29);
+    expect(formatOf(p)).toBe(FORMAT_1_29);
+    expect(encodePatch(p)[1]).toBe(FORMAT_1_29);
   });
 
   it('a type with more than 16 parameters (Env 8) writes its matrix and route masks as u32, every other type as u16', () => {

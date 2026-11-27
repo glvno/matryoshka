@@ -227,6 +227,35 @@ asm('fm pair', 'Voices', (b) => {
   b.param('release', cenv, 'r4');
 });
 
+// wavetable fm (#1337): the fm pair with a wavetable as the carrier. A wavetable has a pm input of its own, but here the
+// Freq shifter at 0 Hz does it through its pm input, the way any sound can be a carrier: every partial of the wavetable gets
+// the same index
+asm('wavetable fm', 'Voices', (b) => {
+  const mod = b.add('osc', 0, 0, { wave: 0, coarse: 12, level: 1 });
+  const menv = b.add('env', 1, 0, { l1: 1, r1: 0.002, l2: 0.3, r2: 0.6, l3: 0.15, r3: 1, l4: 0, r4: 0.3 });
+  const mvca = b.add('vca', 2, 0);
+  const wt = b.add('wavetable', 0, 1, { bank: 2, pos: 0.4, level: 0.8 });
+  const fs = b.add('shift', 1, 1, { shift: 0, mix: 1, pm: 2.5 });
+  const cenv = b.add('env', 2, 1, { l1: 1, r1: 0.003, l2: 0.7, r2: 0.3, l3: 0.6, r3: 1, l4: 0, r4: 0.4 });
+  const cvca = b.add('vca', 3, 1);
+  b.wire(mod, 'out', mvca, 'in');
+  b.wire(menv, 'env', mvca, 'cv');
+  b.wire(mvca, 'out', fs, 'pm');
+  b.wire(wt, 'out', fs, 'in');
+  b.wire(fs, 'up', cvca, 'in');
+  b.wire(cenv, 'env', cvca, 'cv');
+  b.input('pitch', wt, 'pitch', [mod, 'pitch']);
+  b.input('gate', cenv, 'gate', [menv, 'gate']);
+  b.output('out', cvca, 'out');
+  b.param('index', fs, 'pm');
+  b.param('ratio', mod, 'coarse');
+  b.param('bank', wt, 'bank');
+  b.param('position', wt, 'pos');
+  b.param('mod decay', menv, 'r2');
+  b.param('attack', cenv, 'r1');
+  b.param('release', cenv, 'r4');
+});
+
 // a boom kick (808 style): a sine with a short, shallow pitch drop and a long decay, no click: five modules
 asm('boom kick', 'Drums', (b) => {
   const osc = b.add('osc', 0, 0, { wave: 0, coarse: -29, level: 1 });

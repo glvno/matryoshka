@@ -195,7 +195,7 @@ Assemblies are an editor-only overlay: the patch stays a flat list of modules an
 
 ## Frequency shifter
 
-- **Freq shifter** moves every partial by the same number of Hz (not a pitch shift: harmonics become inharmonic): `up` and `down` outputs, `shift` ±1000 Hz with `cv` × `cvamt`, `mix`. A few Hz for a slow barber-pole phasing, hundreds for bells and clangs out of a saw.
+- **Freq shifter** moves every partial by the same number of Hz (not a pitch shift: harmonics become inharmonic): `up` and `down` outputs, `shift` ±1000 Hz with `cv` × `cvamt`, `mix`. A few Hz for a slow barber-pole phasing, hundreds for bells and clangs out of a saw. Its `pm` input (patch format 70) phase modulates whatever goes into `in`, scaled by the `pm` row in radians as on the Oscillator: with `shift` at 0 Hz any sound, a Wavetable, a PD or a delay's output, becomes the carrier of an FM pair (`up` moves the phase forward, `down` back). The Library's **wavetable fm** voice is a wavetable carrier played this way.
 
 ## Performance controls
 

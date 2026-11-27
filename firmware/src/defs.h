@@ -712,14 +712,16 @@ enum {
 #define SHIFT_I_CV 1
 #define SHIFT_I_P1 2
 #define SHIFT_I_P2 3
+#define SHIFT_I_PM 4
 #define SHIFT_O_UP 0
 #define SHIFT_O_DOWN 1
 #define SHIFT_P_SHIFT 0
 #define SHIFT_P_CVAMT 1
 #define SHIFT_P_MIX 2
-#define SHIFT_NIN 4
+#define SHIFT_P_PM 3
+#define SHIFT_NIN 5
 #define SHIFT_NOUT 2
-#define SHIFT_NPAR 3
+#define SHIFT_NPAR 4
 #define SHIFT_CVBASE 2
 #define SHIFT_NDATA 0
 
@@ -1727,16 +1729,18 @@ static const char *const MODAL_PN[] = {"COARSE", "DECAY", "STRUCT", "BRIGHT", "D
 static const uint8_t MODAL_LOG[] = {0, 1, 0, 0, 0};
 static const char *const MODAL_UNIT[] = {"ST", "S", "", "", ""};
 static const char *const *const MODAL_CH[] = {0, 0, 0, 0, 0};
-static const char *const SHIFT_INNAMES[] = {"IN", "CV", "P1", "P2"};
-static const int32_t SHIFT_MIN[] = {-65536000, 0, 0};
-static const int32_t SHIFT_MAX[] = {65536000, 65536000, 65536};
-static const int32_t SHIFT_DEF[] = {6553600, 6553600, 65536};
-static const int32_t SHIFT_INC[] = {1310720, 655360, 655};
-static const int32_t SHIFT_STEP[] = {32768, 65536, 655};
-static const char *const SHIFT_PN[] = {"SHIFT", "CVAMT", "MIX"};
-static const uint8_t SHIFT_LOG[] = {0, 0, 0};
-static const char *const SHIFT_UNIT[] = {"HZ", "HZ", ""};
-static const char *const *const SHIFT_CH[] = {0, 0, 0};
+static const char *const SHIFT_INNAMES[] = {"IN", "CV", "P1", "P2", "PM"};
+static const int32_t SHIFT_MIN[] = {-65536000, 0, 0, 0};
+static const int32_t SHIFT_MAX[] = {65536000, 65536000, 65536, 524288};
+static const int32_t SHIFT_DEF[] = {6553600, 6553600, 65536, 0};
+static const int32_t SHIFT_INC[] = {1310720, 655360, 655, 5243};
+static const int32_t SHIFT_STEP[] = {32768, 65536, 655, 655};
+static const int32_t SHIFT_TOP[] = {65536000, 65536000, 65536, 1048576};
+static const uint8_t SHIFT_SINCE[] = {0, 0, 0, 70};
+static const char *const SHIFT_PN[] = {"SHIFT", "CVAMT", "MIX", "PM"};
+static const uint8_t SHIFT_LOG[] = {0, 0, 0, 0};
+static const char *const SHIFT_UNIT[] = {"HZ", "HZ", "", "RAD"};
+static const char *const *const SHIFT_CH[] = {0, 0, 0, 0};
 static const char *const PART_INNAMES[] = {"ASSIGN", "UNISON", "PRIORITY"};
 static const char *const RANDOM_INNAMES[] = {"P1", "P2", "CLOCK"};
 static const int32_t RANDOM_MIN[] = {0, 3277};
@@ -2018,7 +2022,7 @@ static const def_t DEFS[N_TYPES] = {
     {GRAIN_NIN, GRAIN_NOUT, GRAIN_NPAR, 0, GRAIN_CVBASE, 0, GRAIN_NDATA, 1, GRAIN_MIN, GRAIN_MAX, GRAIN_DEF, GRAIN_INC, "GRANULAR", GRAIN_PN, GRAIN_INNAMES, GRAIN_LOG, GRAIN_UNIT, GRAIN_CH, 0, 0, GRAIN_STEP},   /* grain */
     {COMB_NIN, COMB_NOUT, COMB_NPAR, 0, COMB_CVBASE, 0, COMB_NDATA, 1, COMB_MIN, COMB_MAX, COMB_DEF, COMB_INC, "COMB FILTER", COMB_PN, COMB_INNAMES, COMB_LOG, COMB_UNIT, COMB_CH, 0, 0, COMB_STEP},   /* comb */
     {MODAL_NIN, MODAL_NOUT, MODAL_NPAR, 0, MODAL_CVBASE, 0, MODAL_NDATA, 1, MODAL_MIN, MODAL_MAX, MODAL_DEF, MODAL_INC, "RESONATOR", MODAL_PN, MODAL_INNAMES, MODAL_LOG, MODAL_UNIT, MODAL_CH, 0, 0, MODAL_STEP},   /* modal */
-    {SHIFT_NIN, SHIFT_NOUT, SHIFT_NPAR, 2, SHIFT_CVBASE, 0, SHIFT_NDATA, 3, SHIFT_MIN, SHIFT_MAX, SHIFT_DEF, SHIFT_INC, "FREQ SHIFTER", SHIFT_PN, SHIFT_INNAMES, SHIFT_LOG, SHIFT_UNIT, SHIFT_CH, 0, 0, SHIFT_STEP},   /* shift */
+    {SHIFT_NIN, SHIFT_NOUT, SHIFT_NPAR, 2, SHIFT_CVBASE, 0, SHIFT_NDATA, 3, SHIFT_MIN, SHIFT_MAX, SHIFT_DEF, SHIFT_INC, "FREQ SHIFTER", SHIFT_PN, SHIFT_INNAMES, SHIFT_LOG, SHIFT_UNIT, SHIFT_CH, SHIFT_TOP, SHIFT_SINCE, SHIFT_STEP},   /* shift */
     {PART_NIN, PART_NOUT, PART_NPAR, 0, PART_CVBASE, -1, PART_NDATA, 0, 0, 0, 0, 0, "PART", 0, PART_INNAMES, 0, 0, 0, 0, 0, 0},   /* part */
     {RANDOM_NIN, RANDOM_NOUT, RANDOM_NPAR, 0, RANDOM_CVBASE, -1, RANDOM_NDATA, 0, RANDOM_MIN, RANDOM_MAX, RANDOM_DEF, RANDOM_INC, "RANDOM", RANDOM_PN, RANDOM_INNAMES, RANDOM_LOG, RANDOM_UNIT, RANDOM_CH, 0, 0, RANDOM_STEP},   /* random */
     {ALLOC_NIN, ALLOC_NOUT, ALLOC_NPAR, 14, ALLOC_CVBASE, -1, ALLOC_NDATA, 0, ALLOC_MIN, ALLOC_MAX, ALLOC_DEF, ALLOC_INC, "VOICING", ALLOC_PN, ALLOC_INNAMES, ALLOC_LOG, ALLOC_UNIT, ALLOC_CH, ALLOC_TOP, ALLOC_SINCE, ALLOC_STEP},   /* alloc */
@@ -2048,7 +2052,7 @@ static const uint16_t DEF_COST[N_TYPES] = {84, 147, 110, 56, 10, 20, 63, 30, 241
 /* a module bypassed when the patch loads, in the same units: passing an input through (D-1104) */
 #define DEF_COST_BYPASS 23u
 /* the same from web/src/cpu-costs.json: its run and parameter inputs, and its bypass (cpu.ts planCosts table) */
-static const uint16_t DEF_TCOST[N_TYPES] = {14, 77, 33, 52, 7, 8, 32, 8, 320, 9, 109, 1216, 2, 39, 94, 36, 328, 176, 325, 153, 87, 34, 34, 39, 47, 59, 273, 220, 52, 161, 103, 44, 27, 466, 276, 446, 666, 10, 13, 1, 11, 53, 7, 15, 131, 33, 13, 174, 8, 10, 11, 65, 92, 11, 3, 177, 176, 29, 135};
+static const uint16_t DEF_TCOST[N_TYPES] = {14, 77, 33, 52, 7, 8, 32, 8, 320, 9, 109, 1216, 2, 39, 94, 36, 328, 176, 325, 153, 87, 34, 34, 39, 47, 59, 273, 220, 52, 161, 103, 44, 27, 466, 276, 446, 682, 10, 13, 1, 11, 53, 7, 15, 131, 33, 13, 174, 8, 10, 11, 65, 92, 11, 3, 177, 176, 29, 135};
 #define DEF_TCOST_BYPASS 18u
 /* Gate-port kinds for pattern authorization, independent of environment grouping (bit n: port n is a gate) */
 static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u,4u,0u,3u,0u};

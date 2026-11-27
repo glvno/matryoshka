@@ -1,0 +1,321 @@
+{
+  "format": "matryoshka-assembly",
+  "version": 1,
+  "name": "wavetable fm",
+  "category": "Voices",
+  "modules": [
+    {
+      "id": 1,
+      "type": "osc",
+      "x": 0,
+      "y": 0,
+      "params": {
+        "wave": 0,
+        "pw": 0.5,
+        "coarse": 12,
+        "fine": 0,
+        "pm": 0,
+        "level": 1,
+        "fb": 0,
+        "unison": 1,
+        "detune": 10,
+        "blend": 0.5,
+        "stack": 0,
+        "pm2": 0,
+        "pm3": 0,
+        "analog": 0,
+        "phase": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "wave"
+        ],
+        "p2": [
+          "pw"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "env",
+      "x": 320,
+      "y": 0,
+      "params": {
+        "l1": 1,
+        "r1": 0.002,
+        "l2": 0.3,
+        "r2": 0.6,
+        "l3": 0.15,
+        "r3": 1,
+        "l4": 0,
+        "r4": 0.3,
+        "shot": 0,
+        "curve": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "l1"
+        ],
+        "p2": [
+          "r1"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "type": "vca",
+      "x": 640,
+      "y": 0,
+      "params": {
+        "gain": 1
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "wavetable",
+      "x": 0,
+      "y": 560,
+      "params": {
+        "bank": 2,
+        "pos": 0.4,
+        "coarse": 0,
+        "fine": 0,
+        "pm": 0,
+        "level": 0.8
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "bank"
+        ],
+        "p2": [
+          "pos"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "type": "shift",
+      "x": 320,
+      "y": 560,
+      "params": {
+        "shift": 0,
+        "cvamt": 100,
+        "mix": 1,
+        "pm": 2.5
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "shift"
+        ],
+        "p2": [
+          "cvamt"
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "type": "env",
+      "x": 640,
+      "y": 560,
+      "params": {
+        "l1": 1,
+        "r1": 0.003,
+        "l2": 0.7,
+        "r2": 0.3,
+        "l3": 0.6,
+        "r3": 1,
+        "l4": 0,
+        "r4": 0.4,
+        "shot": 0,
+        "curve": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "l1"
+        ],
+        "p2": [
+          "r1"
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "type": "vca",
+      "x": 960,
+      "y": 560,
+      "params": {
+        "gain": 1
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": []
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": {
+        "module": 1,
+        "port": "out"
+      },
+      "to": {
+        "module": 3,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 2,
+        "port": "env"
+      },
+      "to": {
+        "module": 3,
+        "port": "cv"
+      }
+    },
+    {
+      "from": {
+        "module": 3,
+        "port": "out"
+      },
+      "to": {
+        "module": 5,
+        "port": "pm"
+      }
+    },
+    {
+      "from": {
+        "module": 4,
+        "port": "out"
+      },
+      "to": {
+        "module": 5,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 5,
+        "port": "up"
+      },
+      "to": {
+        "module": 7,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 6,
+        "port": "env"
+      },
+      "to": {
+        "module": 7,
+        "port": "cv"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "module": 4,
+      "port": "pitch",
+      "label": "pitch",
+      "also": [
+        {
+          "module": 1,
+          "port": "pitch"
+        }
+      ]
+    },
+    {
+      "module": 6,
+      "port": "gate",
+      "label": "gate",
+      "also": [
+        {
+          "module": 2,
+          "port": "gate"
+        }
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "module": 7,
+      "port": "out",
+      "label": "out"
+    }
+  ],
+  "params": [
+    {
+      "module": 5,
+      "param": "pm",
+      "label": "index"
+    },
+    {
+      "module": 1,
+      "param": "coarse",
+      "label": "ratio"
+    },
+    {
+      "module": 4,
+      "param": "bank",
+      "label": "bank"
+    },
+    {
+      "module": 4,
+      "param": "pos",
+      "label": "position"
+    },
+    {
+      "module": 2,
+      "param": "r2",
+      "label": "mod decay"
+    },
+    {
+      "module": 6,
+      "param": "r1",
+      "label": "attack"
+    },
+    {
+      "module": 6,
+      "param": "r4",
+      "label": "release"
+    }
+  ]
+}

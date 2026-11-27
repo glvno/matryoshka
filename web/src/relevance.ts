@@ -42,6 +42,7 @@ export const RULES: Rule[] = [
   { type: 'osc', params: ['pm3'], reads: [], live: (c) => c.cabled('pm3'), why: 'Patch the pm3 input to use its modulation index.' },
   { type: 'wavetable', params: ['pm'], reads: [], live: (c) => c.cabled('pm'), why: 'Patch the pm input to use the modulation index.' },
   { type: 'pd', params: ['pm'], reads: [], live: (c) => c.cabled('pm'), why: 'Patch the pm input to use the modulation index.' },
+  { type: 'shift', params: ['pm'], reads: [], live: (c) => c.cabled('pm'), why: 'Patch the pm input to use the modulation index.' },
   { type: 'pd', params: ['range'], reads: ['wave', 'wave2'], live: (c) => Math.round(c.p('wave')) >= PD_RESO || Math.round(c.p('wave2')) > PD_RESO, why: 'Range raises only the resonance waveforms (reso 1, 2, 3).' },
   { type: 'shreg', params: ['len'], reads: [], live: (c) => !c.cabled('in'), why: 'With in patched the new bits come from it: nothing comes round.' },
   { type: 'lfo', params: ['rate', 'range'], reads: ['sync'], live: (c) => c.p('sync') < 0.5, why: 'While synced the division sets the rate.' },

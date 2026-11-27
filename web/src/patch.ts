@@ -18,6 +18,9 @@ export interface PortDef {
   label?: string;
   /** set on the two parameter inputs `p1` and `p2` (1 or 2) */
   pin?: 1 | 2;
+  /** the patch format (patchbin.ts VERSION) that appended this input to an existing type: a patch with a cable into it is
+   * written in that format (patchbin.ts baseFormat), so an FM-1 with older firmware is told to update */
+  since?: number;
 }
 
 /** What changes a module's parameters through its matrix: its two parameter inputs. (The FM-1 knobs' columns k1..k4 are
