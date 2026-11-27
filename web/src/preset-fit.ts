@@ -278,12 +278,14 @@ export function presetFit(sound: Patch, held: Patch, name: string, encode: (p: P
     if (want.structure === was.structure && same(was.values)) {
       // (it keeps the slot's preset name, unless the sound's own name is true and another: the entry then names that
       // preset, which has these values, D-1226)
-      const mine = presetsOf(named, a);
-      const truth = (p: Preset): boolean => p.structure === want.structure && sameName(p.name, a.preset) && same(p.values);
+      // (an instrument with an FX drawer: a preset with its drawer, or of the instrument alone)
+      const mine = presetsOf(named, a), alone = { structure: structureOf(named, a), values: currentValues(named, a) };
+      const truth = (p: Preset): boolean => sameName(p.name, a.preset) && (p.structure === want.structure ? same(p.values)
+        : p.structure === alone.structure && p.values.length === alone.values.length && p.values.every((v, i) => q16(v) === q16(alone.values[i])));
       const own = a.preset && !samePreset(h.preset, a.preset) ? mine.find(truth) ?? extra.find(truth) ?? onFm1.find(truth) : undefined;
       if (!own) { keep(h.preset); continue; }
       const from = mine.includes(own) ? (own.factory ? 'factory' : 'browser') : extra.includes(own) ? 'sound' : 'fm1';
-      const preset = from === 'fm1' ? { ...want, name: devicePresetName(own.name) } : own;
+      const preset = from === 'fm1' ? { ...own, name: devicePresetName(own.name) } : own;
       keep(preset.name);
       picks.push({ preset, from, asm: a.id });
       continue;

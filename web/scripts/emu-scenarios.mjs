@@ -3389,10 +3389,10 @@ async function main() {
         const { paletteDevices } = await import('/src/preset-fit.ts');
         const { structureOf } = await import('/src/structure.ts');
         const p = { ...JSON.parse(window.__m1test.patchJson()), name: 'Pal Test' };
-        // (an LFO more than Silver Box: another structure, so it is stored as a patch of its own, D-1227)
-        const { addModule } = await import('/src/patch.ts');
-        const { DEFS } = await import('/src/modules.ts');
-        addModule(p, DEFS.lfo, 40, 40);
+        // (Silver Box with its Output's level changed, a setting no device preset holds: Add to palette finds the Silver Box
+        // slot by its structure, D-1227, and still stores it as a patch of its own)
+        const out = p.modules.find((m) => m.type === 'output');
+        if (out) out.params.level = 0.33;
         const name = `Pal ${Date.now() % 100000}`;   // (a name no earlier run left on the FM-1)
         for (const a of p.assemblies ?? []) {
           const structure = structureOf(p, a), was = a.preset;
@@ -3849,7 +3849,9 @@ async function main() {
         await page.evaluate((x) => document.querySelector(`#snap-column .pal-chip[data-pos="${x}"] .pal-x`)?.click(), p);
         await until(async () => (await pal()).chips[p]?.state === 'empty', 4000);
       }
-      const slots = await page.evaluate(() => window.__m1test.slots());
+      // (the emulator can drop an answer after many reads back to back: asked again)
+      const again = async (f) => { for (let k = 0; ; k++) { try { return await f(); } catch (err) { if (k >= 2) throw err; await emu.elapse(500); } } };
+      const slots = await again(() => page.evaluate(() => window.__m1test.slots()));
       const slot = slots.findIndex((s) => !s.used);
       if (slot < 0) return skip('palette structure: a Hera 6 tweak under another name goes in as a preset', 'the bank has no empty slot');
       const bin = await page.evaluate(async ([json, alloc]) => {
@@ -3858,7 +3860,7 @@ async function main() {
       }, [await variant(BASE, 1, 0.2), (await T()).bufferAllocation]);
       const added = [];
       try {
-        await page.evaluate(([n, nm, b]) => window.__m1test.storeBin(n, nm, b), [slot, BASE, bin]);
+        await again(() => page.evaluate(([n, nm, b]) => window.__m1test.storeBin(n, nm, b), [slot, BASE, bin]));
         await check(`palette structure: a Hera 6 with other card values stored into slot ${slot + 1} as ${BASE}`, await page.evaluate(([n, nm]) => window.__m1test.slots().then((x) => x[n].used && x[n].name === nm), [slot, BASE]));
         const frames = [];
         for (const [k, given] of GIVEN.entries()) {

@@ -742,6 +742,16 @@ describe('a sound the FM-1 reaches with device presets takes no new slot (owner 
     expect([fm1.entries[0]?.slot, fm1.slots[1].used, puts(), slotWrites()]).toEqual([0, false, 1, 0]);
     expect(said.at(-1)).toBe('"My Mono" is palette 1: slot 1 · Monolith D with preset My Mono (preset My Mono sent to the FM-1)');
   });
+  it('an instrument with a drawer whose card names a preset of the instrument alone with exactly its values: the entry names it (D-1226)', async () => {
+    const { fm1, palette, held, synth, slotWrites } = await monolith();
+    const sound = structuredClone(held);
+    sound.name = 'Mono Mine';
+    addUserPreset(structureOf(sound, synth(sound)), 'Mine', currentValues(sound, synth(sound)));
+    synth(sound).preset = 'Mine';
+    expect(await palette.add('Mono Mine', sound)).toBe(true);
+    await fm1.quiet();
+    expect([fm1.entries[0]?.slot, fm1.entries[0]?.devices.map((x) => x.name), slotWrites(), fm1.presets.map((x) => x.name)]).toEqual([0, ['Mine'], 0, ['Mine']]);
+  });
   it('a cable or module change stores a patch, and says why', async () => {
     const { fm1, palette, held, said, puts } = await monolith();
     const sound = structuredClone(held);
