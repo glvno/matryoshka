@@ -2923,21 +2923,20 @@ const string: ModuleImpl<StringState> = {
 
 /**
  * The wavetables (tools/gen_wavetables.py): banks of eight frames, each frame its first 32 harmonics, at three mip
- * levels (32, 16, 8 harmonics) so the high notes do not alias. Built once from the coefficients in wavetables.json; the
- * firmware has the same tables as int16 in wt_tables.h.
+ * levels (32, 16, 8 harmonics, one cycle in 256, 128, 64 samples) so the high notes do not alias. Built once from the
+ * levels and coefficients in wavetables.json; the firmware has the same tables as int16 in wt_tables.h.
  */
-const WT_N = 256;
-const WT_MIPS = [32, 16, 8];
+const WT_MIPS = WT.mips as [number, number][];
 const WT_BANKS: string[] = WT.banks;
-const WT_T: Float32Array[][] = WT_MIPS.map((nh) =>
+const WT_T: Float32Array[][] = WT_MIPS.map(([nh, n]) =>
   (WT.frames as number[][][]).map((f) => {
-    const t = new Float32Array(WT_N + 1);
-    for (let i = 0; i < WT_N; i++) {
+    const t = new Float32Array(n + 1);
+    for (let i = 0; i < n; i++) {
       let y = 0;
-      for (let k = 1; k <= nh; k++) y += f[k - 1][0] * Math.cos((2 * Math.PI * k * i) / WT_N) + f[k - 1][1] * Math.sin((2 * Math.PI * k * i) / WT_N);
+      for (let k = 1; k <= nh; k++) y += f[k - 1][0] * Math.cos((2 * Math.PI * k * i) / n) + f[k - 1][1] * Math.sin((2 * Math.PI * k * i) / n);
       t[i] = y;
     }
-    t[WT_N] = t[0];
+    t[n] = t[0];
     return t;
   }),
 );
@@ -2979,6 +2978,7 @@ const wavetable: ModuleImpl<WtState> = {
     const mip = dt0 < 1 / 64 ? 0 : dt0 < 1 / 32 ? 1 : 2;
     const ta = WT_T[mip][bank * 8 + f0];
     const tb = WT_T[mip][bank * 8 + f1];
+    const len = WT_MIPS[mip][1];
     const dts = incRamp(0, pitch, c.n, base, c.sr);
     for (let i = 0; i < c.n; i++) {
       const dt = dts[i];
@@ -2988,7 +2988,7 @@ const wavetable: ModuleImpl<WtState> = {
       if (s.phase >= 1) s.phase -= 1;
       let ph = s.phase + idx * pm[i] * K;
       ph -= Math.floor(ph);
-      const x = ph * WT_N;
+      const x = ph * len;
       const xi = Math.floor(x);
       const xf = x - xi;
       const ya = ta[xi] + (ta[xi + 1] - ta[xi]) * xf;
