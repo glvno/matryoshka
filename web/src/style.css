@@ -1482,6 +1482,10 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
    go to the slider under it, wherever the thumb is (the name is part of the slider, #1025). A renamable name still takes
    its click; a selector's or a switch's name (no slider under it) keeps its tooltip */
 .module .param.bar > span:first-child, .module .param.bar > span:first-child.rename { z-index: 5; }
+/* a row past 90 % of its range (the thumb at its right end, as a level at 1): the value stands 3 px left of the thumb
+   (its left edge is --at-top of the way along the bar less the 14 px thumb); below 90 % the value stays at the right.
+   It spans both columns, so the whole bar is its containing block (an absolute grid item's is its grid area) */
+.param.bar.top > output { grid-area: 1 / 1 / 2 / 3; position: absolute; top: 0; right: calc((1 - var(--at-top)) * (100% - 14px) + 17px); padding-right: 0; line-height: 18px; }
 .module .param.bar:has(> .slider-jack) > span:first-child:not(.rename) { pointer-events: none; }
 .param.bar > output { grid-area: 1 / 2; padding-right: 6px; font-size: 11.5px; color: var(--ink); pointer-events: none; }
 .param.bar > output:empty { display: none; }
