@@ -18,7 +18,8 @@ import { fixNotes, PATTERNS_MAX, SONGS_MAX, type SongEntry, type StepNote } from
 import { lockPlan, lockValue } from './locks';
 import { arpBlock, arpClear, arpInit, arpKeyDrop, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
 import { harmButton, harmButtonOf, harmChord, harmSnapshot, harmClear, harmInit, harmKey, harmRetrig, type HarmParams, type HarmState } from './harmonizer';
-import { DEFS, DELAY_SWELL_DEN, DELAY_SWELL_NUM, RIGHT_IN } from './modules';
+import { DEFS, DELAY_SWELL_DEN, DELAY_SWELL_NUM, dx7Done, dx7Voice, RIGHT_IN } from './modules';
+import { voiceBytes } from './dx7-voice';
 import { rackPlan } from './rack-plan';
 import { cableFeeds, feedModel } from './feeds';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
@@ -227,6 +228,8 @@ export class Engine {
   private ticks = 0;
   /** blocks mod IDLE_CHECK (never reset, engine.c idle_blk): which idle parts run their check */
   private idleBlk = 0;
+  /** the samples since the patch loaded (engine.c E.frames): each block's start goes to Voice.frames */
+  private frames = 0;
   private tickAcc = 0;
   private extTicks = 0;
   private ext = false;
@@ -334,6 +337,7 @@ export class Engine {
     if (routingError) throw new Error(routingError);
     const rack = rackPlan(source);   // (the binary's FX rack: the FM-1 runs the same targets, engine.c fx_load)
     this.src = source;
+    this.frames = 0;
     this.compiled = compile;
     source = armView(source, this.armedKeys); // the armed devices hear Main's keys, the others not (#190); unchanged while none is
     this.keyPatch = source;
@@ -407,6 +411,7 @@ export class Engine {
       node.range = [{ ...(m.range?.p1 ?? {}) }, { ...(m.range?.p2 ?? {}) }];
       node.inputRoutes = Object.entries(m.inputMap ?? {}).map(([port, params]) => ({ port, params: [...params], mean: 0 }));
       for (const inst of node.inst) inst.dspInp = { ...inst.inp };
+      if (m.type === 'dx7') for (const inst of node.inst) dx7Voice(inst.state, voiceBytes(m.voice));
       if (m.type === 'steps')
         for (const inst of node.inst) {
           const st = inst.state as StepsState;
@@ -1759,8 +1764,9 @@ export class Engine {
   private partQuiet(g: number, v: number): boolean {
     let envs = 0;
     for (const node of this.order) {
-      if (node.group !== g || !ENVELOPE_TYPES.has(node.type)) continue;
-      if ((node.inst[v].state as { stage: number }).stage !== 0) return false;
+      const dx7 = node.type === 'dx7';
+      if (node.group !== g || (!ENVELOPE_TYPES.has(node.type) && !dx7)) continue;
+      if (dx7 ? !dx7Done(node.inst[v].state) : (node.inst[v].state as { stage: number }).stage !== 0) return false;
       envs++;
     }
     if (!envs) return false;
@@ -1936,6 +1942,7 @@ export class Engine {
           x.breath = this.ctl.breath;
           x.sustain = this.ctl.sustain;
           x.foot = this.ctl.foot;
+          x.frames = this.frames;
         }
       }
       // play once (D-820): where the last track still playing its passes ends them in this block (-1 not here); a shorter
@@ -1983,6 +1990,7 @@ export class Engine {
           }),
         );
       for (const g of all) for (const x of g.parts) { x.retrig = false; x.keyTrig = false; }
+      this.frames = (this.frames + n) >>> 0;
       if (this.modeParts.length) this.voicingCables();
       for (const o of this.outputs) {
         const inst = o.inst[0];

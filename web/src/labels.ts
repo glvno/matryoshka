@@ -100,6 +100,12 @@ const HINTS: Record<string, string> = {
   'lpg.decay': 'How long the gate takes to close after a strike or when cv falls. Like a vactrol (a lamp and a light-dependent resistor), it opens in about 2 ms and closes more slowly as it nears closed.',
   'lpg.offset': 'How far the gate stays open with nothing in cv, 0..1; cv adds to it. A strike opens it fully, then it closes back to this.',
   'lpg.res': 'Resonance: a peak near the cutoff, loudest while the gate is nearly closed and gone once it is open, so a struck note rings as it fades. Its level stays the same. 0: no peak. Not used in vca mode.',
+  'dx7.level': 'The output level. One carrier at output level 99 peaks at half scale; six at 99 together reach three times that, so turn this down for voices with many carriers.',
+  'dx7.tune': 'Fine tuning in cents, as the DX7\'s master tune.',
+  'dx7.mod': 'The mod wheel: how much of the voice\'s LFO reaches its destination, 0..1 (cable a source into p1 or p2 to move it).',
+  'dx7.range': 'The mod wheel\'s range, 0..99, as the DX7\'s function setting.',
+  'dx7.dest': 'Where the mod wheel sends the LFO: pitch (vibrato), amp (tremolo on the operators with AMS), EG bias (lowers the operators with AMS), or a mix.',
+  'dx7.ops': 'The operator switches, as the DX7\'s OP 1..6 buttons: bit 1 is operator 1 ... bit 32 operator 6. 63: all on.',
   'delay.pingpong': 'Ping-pong: half per side. Both sides share the Delay\'s line, so each echoes up to half its length.',
   'filter.drive': 'Drive: how hard the signal pushes the resonance. Above 0, the resonance passes a soft clip inside the filter, as in a Korg MS-20: a quiet signal plays as before, a loud one has its resonance squashed and roughened. More drive clips at a lower level. It does nothing without resonance. 0: off, the clean filter, exactly as before.',
   'ladder.diode': 'Diode: the diode ladder of the Roland TB-303 and the EMS VCS3 instead of the Moog ladder. Its four stages load each other, so it falls more gently near the cutoff (about 18 dB per octave) and the cutoff is where its resonance peaks. Its level follows the resonance as the Moog ladder\'s does, so switching it keeps the patch\'s level. Stage saturation does not apply in this mode.',
@@ -143,7 +149,7 @@ const TAGS: Record<string, [string, TagFamily]> = {
   mixer: ['MIX', 'util'], math: ['MATH', 'util'], logic: ['LOGIC', 'util'], const: ['DC', 'util'], macro: ['MACRO', 'util'], scale: ['SCALE', 'util'],
   output: ['OUT', 'util'], fm1: ['MAIN', 'util'], part: ['PART', 'util'], alloc: ['VOICES', 'util'], scope: ['SCOPE', 'util'],
   drummap: ['MAP', 'mod'], pd: ['PD', 'src'], select: ['SEL', 'util'], shreg: ['SHREG', 'mod'], comp: ['COMP', 'util'], range: ['RANGE', 'util'], matrix: ['MATRIX', 'util'], lpg: ['LPG', 'shp'],
-  limit: ['LIMIT', 'shp'], euclid: ['EUCLID', 'mod'], eq: ['EQ', 'shp'],
+  limit: ['LIMIT', 'shp'], euclid: ['EUCLID', 'mod'], eq: ['EQ', 'shp'], dx7: ['DX7', 'src'],
 };
 
 /** the short tag before a card's title and the family that colours it */
@@ -171,6 +177,7 @@ const ALIASES: Record<string, string> = {
   lpg: 'lpg lowpass gate lopass gate low pass gate vactrol buchla 292 pluck ping bongo strike filter vca',
   limit: 'brickwall peak ceiling clip maximizer loudness ear safety protect headphones feedback master dynamics',
   eq: 'equalizer equaliser parametric band tone bass treble presence shelf shelving bell peak peaking notch low cut high cut lowpass highpass mastering mix',
+  dx7: 'dx7 yamaha fm synthesis six operator 6op algorithm dexed msfa sysex voice e piano bass bell tx802 tx7',
   euclid: 'euclidean bjorklund rhythm pattern trigger gate clock drum sequencer fill hits pulses rotate accent tresillo polyrhythm',
   // (the envelopes, modules.ts ENVELOPE_TYPES: `envelope` finds all four, the ADSR first as the commonest, owner 2026-11-19)
   adsr: 'envelope eg contour attack decay sustain release',

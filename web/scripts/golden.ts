@@ -32,6 +32,7 @@ import PANEL_EXAMPLES from '../factory/examples.json';
 import { validatePatch } from '../src/patch';
 import { packedListC } from './factory-lz';
 import { writeFxPanelFixtures } from './panel-fixtures';
+import { DX7_INIT_VOICE, voiceHex } from '../src/dx7-voice';
 
 const SR = DEVICE_SR;
 const OUT = new URL('../../build/golden/', import.meta.url);
@@ -1899,6 +1900,44 @@ kit('shift-pm-moving', (add, wire) => {
   wire(sh, 'up', out, 'l');
   wire(sh, 'down', out, 'r');
 });
+// The DX7 (#1338, format 71): a voice of its own (packed bytes, ModuleInst.voice) played by Main's pitch, gate and vel.
+// dx7-voice: algorithm 5, three ratio pairs, the modulators decaying, the LFO's vibrato on the mod wheel row; dx7-alg4-fb
+// and dx7-alg6-fb: the DX7's own feedback loops (operator 4 or 5 back to 6) at feedback 7; dx7-opin: a saw replaces
+// operator 2's sine (algorithm 1, so it modulates operator 1); dx7-poly: four copies in a Voicing
+const dx7Voice = (alg: number, fb: number, ops: [number, number, number][]): string => {
+  const b = DX7_INIT_VOICE.slice();
+  ops.forEach(([level, coarse, r2], k) => {   // (operator k + 1; the packed voice lists operator 6 first)
+    const d = (5 - k) * 17;
+    b[d + 1] = r2;
+    b[d + 6] = level ? 70 : 99;
+    b[d + 14] = level;
+    b[d + 15] = coarse << 1;
+  });
+  b[110] = alg - 1;
+  b[111] = fb | (1 << 3);
+  b[112] = 40;
+  b[114] = 20;
+  return voiceHex(b);
+};
+const dx7Kit = (name: string, voice: string, extra?: (add: Parameters<Build>[0], wire: Parameters<Build>[1], dx: number, kb: number) => void, params: Record<string, number> = {}, voices = 1): void => {
+  kit(name, (add, wire) => {
+    const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+    const dx = add('dx7', 0, 0, params);
+    wire(kb, 'pitch', dx, 'pitch'); wire(kb, 'gate', dx, 'gate'); wire(kb, 'vel', dx, 'vel');
+    wire(dx, 'out', out, 'l'); wire(dx, 'out', out, 'r');
+    extra?.(add, wire, dx, kb);
+  }, voices);
+  for (const m of tests[name].modules) if (m.type === 'dx7') m.voice = voice;
+};
+dx7Kit('dx7-voice', dx7Voice(5, 3, [[99, 1, 60], [80, 1, 40], [99, 1, 60], [70, 3, 35], [95, 2, 55], [75, 7, 30]]), undefined, { mod: 0.7, range: 60 });
+dx7Kit('dx7-alg4-fb', dx7Voice(4, 7, [[99, 1, 50], [85, 2, 40], [70, 1, 45], [90, 1, 40], [80, 3, 35], [85, 1, 30]]));
+dx7Kit('dx7-alg6-fb', dx7Voice(6, 7, [[99, 1, 50], [85, 2, 40], [70, 1, 45], [90, 1, 40], [80, 3, 35], [85, 1, 30]]), undefined, { tune: 30 });
+dx7Kit('dx7-opin', dx7Voice(1, 0, [[99, 1, 50], [90, 1, 40], [0, 1, 99], [0, 1, 99], [0, 1, 99], [0, 1, 99]]), (add, wire, dx, kb) => {
+  const saw = add('osc', 0, 0, { wave: 2, level: 0.8 });
+  wire(kb, 'pitch', saw, 'pitch');
+  wire(saw, 'out', dx, 'op2');
+});
+dx7Kit('dx7-poly', dx7Voice(5, 3, [[99, 1, 60], [80, 1, 40], [99, 1, 60], [70, 3, 35], [95, 2, 55], [75, 7, 30]]), undefined, {}, 4);
 kit('bypass', (add, wire) => {
   // a bypassed filter (in -> every output), pan (in -> l, r) and LFO (silent, so the level stays at its base)
   const kb = add('fm1', 0, 0);

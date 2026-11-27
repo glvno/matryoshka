@@ -1,5 +1,6 @@
 import { keyRouteError } from './key-routing';
 // SPDX-License-Identifier: GPL-3.0-only
+import { voiceBytes, voiceHex } from './dx7-voice';
 import type { AssemblyInst } from './assembly';
 import { migratePatchParts, migrateVoicing, polyOfModule } from './poly';
 import { migrateKnobs } from './knob-migrate';
@@ -244,6 +245,9 @@ export interface ModuleInst {
   /** a Drum map only (#137): its rows' names (DRUM_ROWS, at most TRACK_NAME_MAX characters each; '' = the default name;
    * editor only: the roll shows them as its rows) */
   names?: string[];
+  /** a DX7 only (#1338): its voice, the DX7's own 128-byte packed voice (a 32-voice bulk dump's entry) as 256 lower-case
+   * hex characters (dx7-voice.ts voiceHex); the binary carries the bytes as the record's data. Absent: the init voice */
+  voice?: string;
 }
 
 export interface MainPanel {
@@ -298,13 +302,15 @@ export const MODULE_NAME_MAX = 24;
 export const moduleText = (s: unknown): string => String(s ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MODULE_NAME_MAX).trim();
 
 /** a module's Steps data (name, notes) made valid in place, a pattern from before #133 turned into notes, a Drum map's row
- * names; other modules lose those fields but their name (moduleText) */
+ * names, a DX7's voice (every value in the DX7's range); other modules lose those fields but their name (moduleText) */
 export function fixTrack(m: ModuleInst): void {
   if (m.type === 'drummap' && Array.isArray(m.names)) {
     const names = Array.from({ length: DRUM_ROWS }, (_, r) => trackName(m.names![r] ?? ''));
     if (names.some((n) => n)) m.names = names;
     else delete m.names;
   } else delete m.names;
+  if (m.type === 'dx7' && m.voice !== undefined) m.voice = voiceHex(voiceBytes(m.voice));
+  else delete m.voice;
   const old = m as ModuleInst & { steps?: unknown; vels?: unknown };
   const legacy = Array.isArray(old.steps) || (Array.isArray(old.notes) && old.notes.some((n) => typeof n !== 'object'));
   const notes = m.type !== 'steps' ? undefined : legacy ? migrateSteps(old.steps, old.notes, old.vels) : fixNotes(m.notes);

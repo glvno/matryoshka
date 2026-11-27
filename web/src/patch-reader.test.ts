@@ -153,7 +153,7 @@ describe('the FM-1 reader (D-1354)', () => {
     expect(same(again, bin)).toBe(true);
   });
   it('covers the formats', () => {
-    expect([...formats].sort((a, b) => a - b).join(' ')).toBe('46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 70');
+    expect([...formats].sort((a, b) => a - b).join(' ')).toBe('46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 70 71');
   });
 
   it('takes a linked pattern from the store, keeps its link, and lists the ids to fetch', () => {

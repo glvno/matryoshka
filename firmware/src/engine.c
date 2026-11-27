@@ -12,6 +12,8 @@
 #include "engine.h"
 #include "defs.h"
 #include "dsp_tables.h"
+#include "dx7.h"
+_Static_assert(sizeof(dx7_t) == 1328, "patchbin.ts LINES.dx7");
 #include "wt_tables.h"
 #include "rate_envelope.h"
 
@@ -606,6 +608,7 @@ typedef struct {
         struct { float s[4]; } lad;                   /* the four one-pole states (float in steps of Q16, D-1112) */
         struct { int32_t env; } dyn;                  /* the peak follower, Q24 */
         struct { esig_t *buf; int32_t g, cm, pm, c[LIMIT_AHEAD / LIMIT_CHUNK]; uint8_t w; } lim;   /* Limiter (#1019): its lookahead line, the gain (Q30), the peak of the chunk being filled and of the line's chunks (pm: the largest of c), the line's next place */
+        struct { dx7_t *s; } dx7;     /* DX7 (#1338): its voice state, its line (dx7.h dx7_t, LINES.dx7) */
         struct { int32_t env, lc, hc, pk, prev, y; uint32_t cnt; int32_t frac, t; uint8_t trig, arm, valid; } esp;   /* Q24: the envelope, the band pass's one-poles, its peak hold, its previous sample, the glided pitch; samples since the last crossing, that crossing's fraction (Q16), the measured pitch (Q16 octaves) */
         struct { float u[6], v[6], r[6], b[6]; int32_t kdec, kdamp, kbr; uint8_t ok; } mod;   /* the modal resonators' state pairs (float in steps of Q16,
                                                     * D-1112), the modes' radii and input gains for kdec kdamp kbr (ok: worked out) */
@@ -944,6 +947,7 @@ typedef struct {
     uint8_t main;                    /* the Main module, NO_MAIN without one */
     int32_t morph;                   /* the morph position of this block, Q16 0..1: the Main's MORPH parameter plus the mean of its morph input */
     uint8_t idle_blk;                /* blocks mod IDLE_CHECK (never reset): which idle parts run their check (part_quiet) */
+    uint32_t frames;                 /* the samples since the patch loaded (engine.ts frames): the DX7's shared LFO phase */
     uint8_t nlt;                     /* the locked rows (#524, locks.ts lockPlan): each a track's, its parameters, whether a */
     lrow_t lt[ENG_LOCK_TARGETS];     /* lock sets them now and to what */
     uint16_t nlk;                    /* the locks, by track, then pattern (as the binary lists them) */
@@ -1187,6 +1191,7 @@ static uint32_t line_bytes(uint32_t t, const int32_t *par)
     case T_REVERB: return LINE_BYTES(2u * RV_MEM);
     case T_CHORUS: return LINE_BYTES(2u * CH_LEN);
     case T_LIMIT: return LINE_BYTES(4u * LIMIT_AHEAD);
+    case T_DX7: return LINE_BYTES(sizeof(dx7_t));   /* (its voice state, it->s.dx7.s) */
     default: return 0;
     }
 }
@@ -2646,6 +2651,14 @@ static int bufs_place(const uint8_t *p, uint32_t len, uint8_t *pos, uint8_t *seg
     return 0;
 }
 
+/* module i's DX7 voice: the last DX7_NDATA bytes of its record (a DX7 record is always counted: format 71) */
+ENG_RARE const uint8_t *dx7_data(const uint8_t *p, uint32_t len, uint32_t i)
+{
+    uint32_t at = eng_records_at(p, len), j;
+    for (j = 0; j < i; j++)
+        at += eng_rec_size(p, at);
+    return p + at + eng_rec_size(p, at) - DX7_NDATA;
+}
 int eng_load(const uint8_t *p, uint32_t len)
 {
     uint32_t i, j, c, k, v, at, ncab, n0, nl, devices = 0;
@@ -2654,6 +2667,7 @@ int eng_load(const uint8_t *p, uint32_t len)
                                                                  * stack, 1 KB: not the RAM region's, which the interrupts need) */
     uint8_t line_reg[ENG_MAX_LINES];
     E.loaded = 0;
+    E.frames = 0;
     fx.count = fx.nrack = fx.legacy = 0;
     fx.on = 0;
     load_generation++;
@@ -3433,6 +3447,7 @@ int eng_load(const uint8_t *p, uint32_t len)
     for (i = 0; i < E.nmod; i++) {
         node_t *nd = &E.node[i];
         uint32_t b = line_bytes(nd->type, nd->par);
+        const uint8_t *vd = nd->type == T_DX7 ? dx7_data(p, len, i) : 0;   /* (each copy starts with the module's voice) */
         for (k = 0; b && k < nd->ninst; k++) {
             inst_t *it = &inst_pool[nd->inst0 + k];
             void *ln = line_at(line_reg[nl], line_off[nl], b);
@@ -3451,6 +3466,10 @@ int eng_load(const uint8_t *p, uint32_t len)
                 it->s.gr.ln = (grain_line_t *)ln;
             else if (nd->type == T_LIMIT)
                 it->s.lim.buf = (esig_t *)ln;
+            else if (nd->type == T_DX7) {
+                it->s.dx7.s = (dx7_t *)ln;
+                dx7_init(it->s.dx7.s, vd);
+            }
         }
     }
     E.nout = 0;
@@ -12039,6 +12058,27 @@ static void m_comp(const node_t *nd, inst_t *it, uint32_t n)
     (void)nd;
 }
 
+/* DX7 (modules.ts dx7, #1338): one DX7 voice, dx7.h run on this copy's state. vel and the operator inputs count only when
+ * cabled (an operator's cable replaces its sine). Out of line: kept off the hot code (FAST_TEXT) */
+static __attribute__((noinline)) void m_dx7(const node_t *nd, inst_t *it, uint32_t n)
+{
+    dx7_io_t io;
+    uint32_t k;
+    io.pitch = it->in[DX7_I_PITCH];
+    io.gate = it->in[DX7_I_GATE];
+    io.vel = (nd->conn >> DX7_I_VEL) & 1u ? it->in[DX7_I_VEL] : 0;
+    for (k = 0; k < 6u; k++)
+        io.x[k] = (nd->conn >> (DX7_I_OP1 + k)) & 1u ? it->in[DX7_I_OP1 + k] : 0;
+    io.level = EF(it, DX7_P_LEVEL);
+    io.tune = EF(it, DX7_P_TUNE);
+    io.mod = EF(it, DX7_P_MOD);
+    io.range = EF(it, DX7_P_RANGE);
+    io.dest = EF(it, DX7_P_DEST);
+    io.ops = EF(it, DX7_P_OPS);
+    io.t = E.frames;
+    dx7_run(it->s.dx7.s, &io, it->out[DX7_O_OUT], n);
+}
+
 /* Low pass gate (modules.ts lpg, #1018), ported from KITTEN RACK's m_lpg (https://github.com/BlackKittenDevices/kitten-rack,
  * a GPL-3.0 fork of Matryoshka): the vactrol opens two one-poles and, in combo, the gain. res (added here) feeds the
  * second one-pole back against the input, the input raised by as much, at LPG_RES_K x res x (1 - vac^2)^2, so it rings
@@ -12754,6 +12794,7 @@ static __attribute__((noinline)) void process(const node_t *nd, inst_t *it, uint
     case T_RANGE: m_range(nd, it, n); break;
     case T_MATRIX: m_matrix(nd, it, n); break;
     case T_LPG: m_lpg(nd, it, n); break;
+    case T_DX7: m_dx7(nd, it, n); break;
     case T_QUANT: m_quant(nd, it, n); break;
     case T_PULSE: m_pulse(nd, it, n); break;
     case T_PAN: m_pan(nd, it, n); break;
@@ -12972,10 +13013,10 @@ static int part_quiet(uint32_t k, uint32_t v)
     for (i = 0; i < E.nmod; i++) {
         const node_t *nd = &E.node[i];
         const inst_t *it;
-        if (nd->grp != k || (nd->type != T_ADSR && nd->type != T_ENV && nd->type != T_ENV8 && nd->type != T_RATEENV))
+        if (nd->grp != k || (nd->type != T_ADSR && nd->type != T_ENV && nd->type != T_ENV8 && nd->type != T_RATEENV && nd->type != T_DX7))
             continue;
         it = &inst_pool[nd->inst0 + v];
-        if (nd->type == T_ADSR ? it->s.adsr.stage != 0 : nd->type == T_ENV ? it->s.env.stage != 0 : nd->type == T_ENV8 ? it->s.env8.stage != 0 : it->s.rateenv.stage != 0)
+        if (nd->type == T_DX7 ? !dx7_quiet(it->s.dx7.s) : nd->type == T_ADSR ? it->s.adsr.stage != 0 : nd->type == T_ENV ? it->s.env.stage != 0 : nd->type == T_ENV8 ? it->s.env8.stage != 0 : it->s.rateenv.stage != 0)
             return 0;
         envs++;
     }
@@ -13949,6 +13990,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         E.idle_blk = (uint8_t)((E.idle_blk + 1u) % IDLE_CHECK);
         ENG_TMARK(0);
         render_sched(n);
+        E.frames += n;
         ENG_TMARK(1);
         if (n == ENG_BLOCK)
             for (k = 1; k <= E.ngrp; k++) {             /* a released part that has gone quiet goes idle (part_quiet) */
