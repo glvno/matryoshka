@@ -17,6 +17,21 @@ function buildSha(): string {
   }
 }
 
+/** the versions the changelog page lists (src/changelog.ts, #1115): pages.yml's MATRYOSHKA_RELEASED (the vX.Y.Z tags up
+ *  to the deployed one, space-separated), else this checkout's vX.Y.Z tags, else null (no tags known: every version) */
+function releasedVersions(): string[] | null {
+  let tags = process.env.MATRYOSHKA_RELEASED ?? '';
+  if (!tags.trim()) {
+    try {
+      tags = execSync("git tag -l 'v*'", { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    } catch {
+      tags = '';
+    }
+  }
+  const versions = tags.split(/\s+/).flatMap((t) => (/^v\d+\.\d+\.\d+$/.test(t) ? [t.slice(1)] : []));
+  return versions.length ? versions : null;
+}
+
 /** the firmware version Get started > Install names (src/changelog.ts shortVersion): the bundled package's
  *  (public/firmware/matryoshka.json, replaced at each release) for a build; the dev server installs this branch's
  *  firmware build instead (dev/branch-firmware.ts), so it names the app's own version (1.3.0-dev), unless
@@ -32,7 +47,7 @@ export default defineConfig(({ command }) => ({
   // index.html's link previews name the published address (src/site.ts), never the address it is served from
   // /__rig: the test rig's link for the device test mode's scripts (dev/rig-page.ts, #291)
   plugins: [lessonEditor(), branchFirmware(), rigPage(), { name: 'site-url', transformIndexHtml: { order: 'pre', handler: (html: string) => html.replaceAll('%SITE_URL%', SITE_URL) } }],
-  define: { __BUILD__: JSON.stringify(buildSha()), __INSTALL_VERSION__: JSON.stringify(installVersion(command)) },
+  define: { __BUILD__: JSON.stringify(buildSha()), __INSTALL_VERSION__: JSON.stringify(installVersion(command)), __RELEASED__: JSON.stringify(releasedVersions()) },
   // two pages: the app and the changelog (changelog.html, served at /changelog on Cloudflare Pages)
   build: { target: 'es2022', rollupOptions: { input: { main: fileURLToPath(new URL('./index.html', import.meta.url)), changelog: fileURLToPath(new URL('./changelog.html', import.meta.url)) } } },
   // stored share links (functions/, src/share-store.ts) in dev: `npm run api` serves them on 8788 (else storing fails and

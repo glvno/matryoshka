@@ -19,7 +19,8 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text = '
   return e;
 };
 
-for (const r of parseChangelog(changelogMd)) {
+// only versions whose release tag the build knew (vite.config.ts __RELEASED__; null: no tag list, every version heading)
+for (const r of parseChangelog(changelogMd, __RELEASED__ ? new Set(__RELEASED__) : null)) {
   const anchor = releaseAnchor(r.version);
   const section = el('section', 'cl-release');
   section.id = anchor;
