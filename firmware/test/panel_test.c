@@ -887,6 +887,19 @@ static void fx_sel_suite(void)
     check("  the running patch is edited (SAVE keeps it)", m1_edited != 0);
     later(2000);
     check("  #1323: the header shows it off once the bar's message goes (NAME OFF, dim)", head_fx_shown() == 1);
+    {   /* #1323: names too long for the header together: the effect's name gives up letters, OFF stays */
+        head_t h;
+        const char *nm = pg_dev[d].name;
+        uint8_t nl = pg_dev[d].nlen;
+        pg_dev[d].name = "WIDEST WOMBAT MW";
+        pg_dev[d].nlen = 16;
+        head_layout(&h);
+        n = str_len(h.a);
+        check("  #1323: a name too long for the header loses letters, OFF stays",
+              n > 4u && n < 20u && !strcmp(h.a + n - 4u, MSG_OFF) && !strncmp(h.a, "WIDEST", 6));
+        pg_dev[d].name = nm;
+        pg_dev[d].nlen = nl;
+    }
     tap(BTN_SEL);
     caps(want, pg_dev[d].name, pg_dev[d].nlen, 16);
     strcat(want, MSG_ON);

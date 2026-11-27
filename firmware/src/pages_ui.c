@@ -1316,7 +1316,9 @@ static void head_widths(head_t *h)
             break;
         if (str_len(h->a) >= str_len(h->b)) {
             char *q = h->a + str_len(h->a) - (h->off ? 5u : 1u);   /* (an effect that is off keeps its OFF) */
-            memmove(q, q + 1, str_len(q));
+            do
+                q[0] = q[1];
+            while (*q++);
         } else
             h->b[str_len(h->b) - 1u] = 0;
     }
