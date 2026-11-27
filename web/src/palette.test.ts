@@ -732,15 +732,15 @@ describe('a sound the FM-1 reaches with device presets takes no new slot (owner 
     expect([puts(), slotWrites()]).toEqual([0, 0]);
     expect(fm1.entries.slice(0, 2)).toMatchObject([{ slot: 0, pattern: 0, devices: [] }, { slot: 0, pattern: 2, devices: [] }]);
   });
-  it('a tweak saved under another name is another patch: it is stored, and says why', async () => {
-    const { fm1, palette, held, synth, said, puts } = await monolith();
+  it('a tweak saved under another name is recognised by its structure: a preset on the slot that holds its patch (D-1227)', async () => {
+    const { fm1, palette, held, synth, said, puts, slotWrites } = await monolith();
     const sound = structuredClone(held);
     sound.name = 'My Mono';
     tweak(sound, synth(sound));
     expect(await palette.add('My Mono', sound)).toBe(true);
     await fm1.quiet();
-    expect([fm1.entries[0]?.slot, fm1.slots[1].name, puts()]).toEqual([1, 'MY MONO', 0]);
-    expect(said.at(-1)).toBe(`"My Mono" is palette 1 (stored as a new patch in slot 2, as ${NO_SAME_STRUCTURE})`);
+    expect([fm1.entries[0]?.slot, fm1.slots[1].used, puts(), slotWrites()]).toEqual([0, false, 1, 0]);
+    expect(said.at(-1)).toBe('"My Mono" is palette 1: slot 1 · Monolith D with preset My Mono (preset My Mono sent to the FM-1)');
   });
   it('a cable or module change stores a patch, and says why', async () => {
     const { fm1, palette, held, said, puts } = await monolith();
@@ -863,12 +863,40 @@ describe('a slot whose patch this browser has no copy of (owner 2026-11-27: "add
     expect([fm1.entries[0]?.slot, puts()]).toEqual([0, 0]);
     expect(said.at(-1)).toBe('"Hera 6 B" is palette 1 (stored as a new patch in slot 1, as slot 23 · HERA 6 differs from it in settings no device preset holds)');
   });
-  it('a slot of another name is another patch, as before (D-1240)', async () => {
-    const { fm1, palette, said } = await stored(moved(hera(), 1, 0.2), 'MY HERA');
+  it('a slot of another name that holds the structure is that patch (D-1227): the sound goes in as a preset on it', async () => {
+    const { fm1, palette, said, slotWrites } = await stored(moved(hera(), 1, 0.2), 'MY HERA');
     expect(await palette.add('Hera 6 B', moved(hera(), 0))).toBe(true);
     await fm1.quiet();
-    expect(fm1.entries[0]?.slot).toBe(0);
-    expect(said.at(-1)).toBe(`"Hera 6 B" is palette 1 (stored as a new patch in slot 1, as ${NO_SAME_STRUCTURE})`);
+    expect([fm1.entries[0]?.slot, slotWrites()]).toEqual([22, 0]);
+    expect(said.at(-1)).toBe('"Hera 6 B" is palette 1: slot 23 · MY HERA with preset Hera 6 B (preset Hera 6 B sent to the FM-1)');
+  });
+  it('a sound saved as an extra patch (the old bug) goes in on its real base patch, a slot of its patch\'s name first (owner 2026-11-27: "recognize the actual patch it belongs to rather than the patch it\'s saved with")', async () => {
+    const sound = moved(hera(), 0);   // (the patch is Hera 6; the user named the sound "Hera 6 pluckpad")
+    const { fm1, link, palette, slotWrites } = await stored(moved(hera(), 1, 0.2));
+    const bin = link.encodeFor(sound);
+    fm1.slots[23] = { slot: 23, used: true, length: bin.length, name: 'HERA 6 PLUCKPAD' };   // (what the old bug stored)
+    fm1.bins[23] = bin;
+    expect(await palette.add('Hera 6 pluckpad', sound)).toBe(true);
+    await fm1.quiet();
+    expect([fm1.entries[0]?.slot, fm1.entries[0]?.devices.map((x) => x.name), slotWrites()]).toEqual([22, ['Hera 6 pluckpad'], 0]);
+  });
+  it('reads a slot back only as needed: a later add reads again only the slots whose structure may be the sound\'s', async () => {
+    const r = await stored(moved(hera(), 1, 0.2), 'MY HERA');
+    for (const [i, name] of ['Monolith D', 'Silver Box', '8 Lire'].entries()) {
+      const bin = r.link.encodeFor(FM1_PRESETS[name]());
+      r.fm1.slots[i] = { slot: i, used: true, length: bin.length, name: name.toUpperCase() };
+      r.fm1.bins[i] = bin;
+    }
+    const read = (from: number): number[] => [...new Set(r.fm1.o.sent.slice(from).filter((f) => f[4] === CMD.slotGet).map((f) => f[5]))].sort((a, b) => a - b);
+    let mark = r.fm1.o.sent.length;
+    expect(await r.palette.add('Hera 6 B', moved(hera(), 0))).toBe(true);
+    await r.fm1.quiet();
+    expect(read(mark)).toEqual([0, 1, 2, 22]);
+    mark = r.fm1.o.sent.length;
+    expect(await r.palette.add('Hera 6 C', moved(hera(), 0, 0.3), { pos: 1 })).toBe(true);
+    await r.fm1.quiet();
+    expect(read(mark)).toEqual([22]);
+    expect([r.fm1.entries[0]?.slot, r.fm1.entries[1]?.slot]).toEqual([22, 22]);
   });
   it('every factory patch read back from its slot is the editor\'s patch as asSlot takes it: the same bytes, each drawer preset the same, effects off included', () => {
     const off: string[] = [];

@@ -187,6 +187,14 @@ export function sameWiring(a: ArrayLike<number>, b: ArrayLike<number>): boolean 
   return !!x && !!y && JSON.stringify([x.modules.map((m) => m.type), x.cables]) === JSON.stringify([y.modules.map((m) => m.type), y.cables]);
 }
 
+/** a patch binary's structure as no device preset, tempo or pattern changes it, compared across slots (owner 2026-11-27,
+ *  D-1227: a sound is recognised by its structure, not its name): its module types, its cables, each device's structure
+ *  fingerprint and its FX drawers. Null when this editor does not read the binary */
+export function binStructure(bin: ArrayLike<number>): string | null {
+  const b = parseBinary(bin);
+  return b && JSON.stringify([b.modules.map((m) => m.type), b.cables, b.extras.map((e) => e.structure), b.rack?.drawers ?? []]);
+}
+
 /** the notes of `p` as a palette entry would change them: its tracks' patterns and the song it plays and keeps (the
  *  selected pattern aside: the entry selects the sound's; pattern origins and store links aside: bookkeeping) */
 const patternsOf = (p: Patch): string => JSON.stringify(p.modules.map((m) =>
@@ -210,9 +218,8 @@ export interface PresetPick { preset: Preset; from: 'browser' | 'factory' | 'fm1
  *  preset name the entry gives it), the presets named, and what the entry plays from the slot instead (slotPlays) */
 export interface PresetFit { named: Patch; picks: PresetPick[]; plays: string }
 
-/** why Add to palette stores a patch: no slot's patch has the sound's name (the patch's own, as the FM-1 keeps names),
- *  modules, cables and drawers */
-export const NO_SAME_STRUCTURE = 'no patch of its name with its modules and cables is on the FM-1';
+/** why Add to palette stores a patch: no slot's patch has the sound's modules, cables and drawers */
+export const NO_SAME_STRUCTURE = 'no patch with its modules and cables is on the FM-1';
 
 /** `sound` and `held` are one patch as device presets see it: its name, as the FM-1 keeps names, and its structure */
 export const samePatch = (sound: Patch, held: Patch): boolean =>
@@ -238,8 +245,8 @@ function differing(a: Patch, b: Patch): string | null {
 
 /**
  * The sound `sound` reached from `held` (a slot's patch) with device presets (owner 2026-11-24: "it should first
- * determine if it's a preset of the instrument the fm1 has already"), or why not. Both need one name and structure
- * (samePatch: a patch saved under another name is another patch, its slot named after it). Each device (a top-level
+ * determine if it's a preset of the instrument the fm1 has already"), or why not. Both need one structure (patchStructure;
+ * the names aside: a slot of another name holding that structure is that patch, D-1227). Each device (a top-level
  * assembly; an instrument with an FX drawer with its drawer, FXD1) whose card
  * values differ from the slot's takes a preset of exactly those values: one this browser has (factory or the user's, the
  * one the device remembers first), else one of `extra` (a saved sound's own presets), else one of `onFm1` (the FM-1's
@@ -250,7 +257,7 @@ function differing(a: Patch, b: Patch): string | null {
  * setting outside its card, a device past PRESET_VALUES_MAX values, the panel, names) is a reason to store the patch.
  */
 export function presetFit(sound: Patch, held: Patch, name: string, encode: (p: Patch) => Uint8Array, onFm1: readonly Preset[] = [], extra: readonly Preset[] = []): PresetFit | { why: string } {
-  if (!samePatch(sound, held)) return { why: NO_SAME_STRUCTURE };
+  if (patchStructure(sound) !== patchStructure(held)) return { why: NO_SAME_STRUCTURE };
   const named = structuredClone(sound);
   const picks: PresetPick[] = [];
   const base = devicePresetName(name) || 'Preset';

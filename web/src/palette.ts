@@ -22,7 +22,7 @@ import { deletePreset as dropUserPreset, rememberedPreset, replaceUserPresets, s
 import type { Patch } from './patch';
 import { layout } from './patchbin';
 import { devicePresetName, NAME_BYTES, PAL_EMPTY, PAL_GO_CANCELLED, PAL_GO_WAITING, PAL_MISSING, PAL_REFUSED, PALETTE_SIZE, paletteHash, STATUS_PRESETS_FULL, type Ack, type DevicePresetEntry, type PaletteEntry, type PaletteNow, type PalettePos, type SlotInfo } from './protocol';
-import { applyEntry, asSlot, entryOf, fm1Presets, NO_SAME_STRUCTURE, paletteDevices, presetFit, q16, sameBytes, samePatch, samePreset, sameWiring, slotPlays, takeTempoAndPatterns, truePresetNames, type PresetFit } from './preset-fit';
+import { applyEntry, asSlot, binStructure, entryOf, fm1Presets, NO_SAME_STRUCTURE, paletteDevices, patchStructure, presetFit, q16, sameBytes, samePatch, samePreset, slotPlays, takeTempoAndPatterns, truePresetNames, type PresetFit } from './preset-fit';
 import { drawerScope } from './fx-preset';
 import { soundOf, type PaletteSound } from './saved-palettes';
 import { structureAndRows } from './structure';
@@ -237,6 +237,9 @@ export class Palette {
   private atSlot: Patch | null = null;
   /** what Send to FM-1 left (PALETTE_FROM), until a palette read whose hashes differ */
   private sentFrom: SentFrom | null;
+  /** each slot's structure (binStructure) as last read, with the name and binary length it had then (slotStructure);
+   *  dropped when an FM-1 connects */
+  private structures = new Map<number, { name: string; length: number; key: string | null }>();
 
   constructor(private ports: PalettePorts, private storage: Pick<Storage, 'getItem' | 'setItem'> | null = globalThis.localStorage ?? null) {
     const kept = loadKept(storage);
@@ -267,6 +270,7 @@ export class Palette {
   async connected(): Promise<void> {
     const d = this.ports.device;
     this.linked = d.connected && d.hasPalette;
+    this.structures.clear();
     this.ports.changed();
     if (!this.linked) return;
     try {
@@ -486,13 +490,17 @@ export class Palette {
   }
 
   /**
-   * The FM-1 slot from which device presets reach `sound` (presetFit), or why none does. The slot must hold, byte for byte
-   * (SLOT_GET: firmware that cannot send a slot back has none), a patch of the sound's name and structure: one this browser
-   * knows (the sound itself, the editor's candidates, the copies it kept, a saved or factory patch of a slot's name), else
-   * a slot of the sound's own name (or the name it is added under) read back from the FM-1 and taken as the sound with
-   * that slot's card values, tempo and patterns (asSlot: a slot stored by an earlier add, an FM-1 hold-save of its own
-   * edits, another browser; owner 2026-11-27). A slot of the sound's own patch (its name, or its name numbered) comes
-   * first, then any slot that holds that patch. Nothing is written. `extra`: a saved sound's own presets (presetFit)
+   * The FM-1 slot from which device presets reach `sound` (presetFit), or why none does. The slot is recognised by the
+   * structure it holds, not by its name (owner 2026-11-27, D-1227: "recognize the actual patch it belongs to rather than
+   * the patch it's saved with"): every used slot is a candidate, a slot named as the sound's patch first (its name, or
+   * that name numbered), then one named as the name it is added under, then the others, lowest first. A slot must hold,
+   * byte for byte (SLOT_GET: firmware that cannot send a slot back has none), a patch of the sound's structure: one this
+   * browser knows (the sound itself, the editor's candidates, the copies it kept, a saved or factory patch of a slot's
+   * name), else what the slot holds read back and taken as the sound with that slot's card values, preset names, tempo
+   * and patterns (asSlot: a slot stored by an earlier add, an FM-1 hold-save of its own edits, another browser). A slot is
+   * read only when a known patch has its binary length or its structure may be the sound's: each slot's structure is kept
+   * by its name and length (slotStructure), so a later add reads only the slots that may match. Nothing is written.
+   * `extra`: a saved sound's own presets (presetFit)
    */
   private async presetPlace(sound: Patch, name: string, bank: SlotInfo[], extra: readonly Preset[] = []): Promise<PresetFit & { slot: number; label: string; held: Patch; known: Preset[] } | { why: string }> {
     const d = this.ports.device;
@@ -500,16 +508,18 @@ export class Palette {
     const used = bank.filter((s) => s.used);
     const named = (s: SlotInfo, x: string): boolean => deviceName(s.name) === x || isNumbered(deviceName(s.name), x);
     const own = [deviceName(sound.name.trim() || 'PATCH'), deviceName(name.trim() || 'PATCH')];
+    const shape = patchStructure(sound);
     const known = [
       sound,
       ...this.ports.versions(),
       ...this.copies.map((x) => x.patch),
       ...this.ports.candidates().filter((c) => used.some((s) => named(s, deviceName(c.name)))).map((c) => c.patch()),
     ];
-    const pairs: { s: SlotInfo; held: Patch; bin: Uint8Array }[] = [];
+    /** the binaries of the patches this browser knows with the sound's structure */
+    const pairs: { held: Patch; bin: Uint8Array }[] = [];
     const seen = new Set<string>();
     for (const held of known) {
-      if (!samePatch(sound, held)) continue;
+      if (patchStructure(held) !== shape) continue;
       let bin: Uint8Array;
       try {
         bin = d.encodeFor(held);
@@ -519,39 +529,42 @@ export class Palette {
       const key = bin.join();
       if (seen.has(key)) continue;
       seen.add(key);
-      for (const s of used) if (s.length === bin.length) pairs.push({ s, held, bin });
+      pairs.push({ held, bin });
     }
-    const mine = (s: SlotInfo): number => (own.some((x) => named(s, x)) ? 0 : 1);
-    pairs.sort((a, b) => mine(a.s) - mine(b.s));
+    let want: string | null = null;
+    try {
+      want = binStructure(d.encodeFor(sound));
+    } catch {
+      /* over the FM-1's budget: no slot holds it, and none is read back */
+    }
+    const rank = (s: SlotInfo): number => (named(s, own[0]) ? 0 : named(s, own[1]) ? 1 : 2);
+    const order = [...used].sort((a, b) => rank(a) - rank(b) || a.slot - b.slot);
     const bins = new Map<number, Uint8Array | null>();
     let onFm1: Preset[] | undefined;
     let why = '';
-    for (const { s, held, bin } of pairs) {
-      if (!bins.has(s.slot)) bins.set(s.slot, await d.readSlotBin(s.slot).catch(() => null));
-      const there = bins.get(s.slot);
-      if (!there || !sameBytes(there, bin)) continue;
-      onFm1 ??= await fm1Presets(sound, d);
-      const fit = presetFit(sound, held, name, (p) => d.encodeFor(p), onFm1, extra);
-      if (!('why' in fit)) return { ...fit, slot: s.slot, label: s.name, held, known: [...onFm1, ...extra] };
-      why ||= fit.why;
-    }
-    // (a slot of the sound's name that no patch this browser knows matches: what it holds, read back)
-    for (const s of used.filter((x) => own.some((n) => named(x, n)))) {
-      if (!bins.has(s.slot)) bins.set(s.slot, await d.readSlotBin(s.slot).catch(() => null));
-      const there = bins.get(s.slot);
-      if (!there || pairs.some((p) => p.s.slot === s.slot && sameBytes(there, p.bin))) continue;   // (compared above)
-      const read = await readFm1Bin(d, there, s.name);
-      const held = read && asSlot(sound, read.patch);
-      if (!held) continue;
-      let bin: Uint8Array;
-      try {
-        bin = d.encodeFor(held);
-      } catch {
-        continue;
-      }
-      if (!sameBytes(bin, there)) {
-        if (sameWiring(bin, there)) why ||= `slot ${s.slot + 1} · ${s.name} differs from it in settings no device preset holds`;
-        continue;
+    for (const s of order) {
+      const mine = pairs.filter((p) => p.bin.length === s.length);
+      if (!mine.length && (want === null || (await this.slotStructure(s, bins)) !== want)) continue;
+      const there = await this.readSlot(s, bins);
+      if (!there) continue;
+      let held = mine.find((p) => sameBytes(there, p.bin))?.held;
+      if (!held) {
+        // (what the slot holds, read back: no patch this browser knows matches it)
+        if (want === null || binStructure(there) !== want) continue;
+        const read = await readFm1Bin(d, there, s.name);
+        const as = read && asSlot(sound, read.patch);
+        if (!as) continue;
+        let bin: Uint8Array;
+        try {
+          bin = d.encodeFor(as);
+        } catch {
+          continue;
+        }
+        if (!sameBytes(bin, there)) {
+          why ||= `slot ${s.slot + 1} · ${s.name} differs from it in settings no device preset holds`;
+          continue;
+        }
+        held = as;
       }
       onFm1 ??= await fm1Presets(sound, d);
       const fit = presetFit(sound, held, name, (p) => d.encodeFor(p), onFm1, extra);
@@ -559,6 +572,27 @@ export class Palette {
       why ||= fit.why;
     }
     return { why: why || NO_SAME_STRUCTURE };
+  }
+
+  /** slot `s`'s binary as the FM-1 holds it now (SLOT_GET), read once per add (`bins`); null when empty or unread. Each
+   *  read keeps the slot's structure (slotStructure) */
+  private async readSlot(s: SlotInfo, bins: Map<number, Uint8Array | null>): Promise<Uint8Array | null> {
+    if (!bins.has(s.slot)) {
+      const bin = await this.ports.device.readSlotBin(s.slot).catch(() => null);
+      bins.set(s.slot, bin);
+      if (bin) this.structures.set(s.slot, { name: s.name, length: s.length, key: binStructure(bin) });
+    }
+    return bins.get(s.slot) ?? null;
+  }
+
+  /** slot `s`'s structure (binStructure): kept from its last read while the slot keeps its name and binary length (the
+   *  FM-1 keeps no revision of a slot, D-1227), else read now (`bins`, readSlot). A slot that may match is read again
+   *  before it is used, so a kept structure only spares the reads of slots that cannot */
+  private async slotStructure(s: SlotInfo, bins: Map<number, Uint8Array | null>): Promise<string | null> {
+    const kept = this.structures.get(s.slot);
+    if (kept && kept.name === s.name && kept.length === s.length) return kept.key;
+    const bin = await this.readSlot(s, bins);
+    return bin ? binStructure(bin) : null;
   }
 
   /** point position `pos` at the slot `fit` found, with the presets it names: the ones the FM-1 lacks are sent first, a
