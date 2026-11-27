@@ -4495,6 +4495,12 @@ if (import.meta.env.DEV) {
     arm: (keys: string[]): void => editor.setArmed(keys),
     param: (id: number, name: string, value: number): void => editor.setParam(id, name, value),
     mute: muteTrack,
+    /** an assembly's ⏻ by its label, as its card's button (#1323: the FM-1's page of it follows); false: none */
+    power: (label: string): boolean => {
+      const a = (editor.patch.assemblies ?? []).find((x) => x?.label === label && !x.drawer);
+      if (a) editor.switchAssembly(a);
+      return !!a;
+    },
     /** a device's first page into focus, by name (Main's knobs; with Live on, the FM-1 follows) */
     focus: (name: string): boolean => {
       const d = editor.devices.find((x) => x.name === name);

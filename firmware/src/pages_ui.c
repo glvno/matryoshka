@@ -1201,6 +1201,7 @@ static void dashes_onto(uint16_t *row, int32_t x0, int32_t x1, uint32_t gap, uin
 typedef struct {
     uint8_t mode, nd, cd, ng, cg, ns, cs;               /* devices, the one in focus; its page groups, the current; the group's
                                                          * pages, the current */
+    uint8_t off;                                        /* the effect on show is off (fx_page_off, #1323): its name and OFF, dim */
     char a[40], b[24];                                  /* the device's and the group's names (the bands: their texts) */
     int32_t xd, xs;                                     /* where the second and the third section start, 1/16 px */
 } head_t;
@@ -1211,6 +1212,7 @@ static uint32_t page_bar_h(void) { return LK_HH; }
 static int pages_unheaded(const ppage_t *pg, const pdev_t *d);
 static void sb_head(head_t *h);                         /* sandbox_ui.c: the editor's device page's header */
 static void head_widths(head_t *h);
+static int fx_page_off(void);
 
 /* the header as it is now */
 static void head_layout(head_t *h)
@@ -1292,6 +1294,8 @@ static void head_layout(head_t *h)
         h->cs = (uint8_t)(pg_cur_page - gs);
         pg = &pg_page[g0 + gs];
         caps(h->a, pg_dev[pg_cur_dev].name, pg_dev[pg_cur_dev].nlen, 16);
+        if ((h->off = (uint8_t)fx_page_off()) != 0)
+            put(h->a + str_len(h->a), MSG_OFF)[0] = 0;
         if (pages_unheaded(pg, &pg_dev[pg_cur_dev]))
             put(h->b, "PAGE")[0] = 0;
         else
@@ -1310,9 +1314,12 @@ static void head_widths(head_t *h)
         n1 = (text_w(&FONT_H, h->b, -1) + 14u + LK_AD) * 16u;
         if (n0 + n1 + n2 <= 240u * 16u)
             break;
-        if (str_len(h->a) >= str_len(h->b))
-            h->a[str_len(h->a) - 1u] = 0;
-        else
+        if (str_len(h->a) >= str_len(h->b)) {
+            char *q = h->a + str_len(h->a) - (h->off ? 5u : 1u);   /* (an effect that is off keeps its OFF) */
+            do
+                q[0] = q[1];
+            while (*q++);
+        } else
             h->b[str_len(h->b) - 1u] = 0;
     }
     need[0] = n0;
@@ -1386,7 +1393,7 @@ static void head_row(const head_t *h, uint32_t y, uint16_t *row)
     }
     {
         uint32_t px = ((uint32_t)h->xd + (LK_AD + 6u) * 16u + 8u) >> 4;   /* the group's name: the second section + A + 6 */
-        text_at(row, 240, &FONT_H, y, HEAD_BASE, h->a, 6u, P_INK);
+        text_at(row, 240, &FONT_H, y, HEAD_BASE, h->a, 6u, h->off ? P_DIM : P_INK);
         text_at(row, 240, &FONT_H, y, HEAD_BASE, h->b, px, P_INK);
         if (y >= LK_HH - 7u && y < LK_HH - 4u) {        /* the dashes: 3 px, their bottom 4 above the header's */
             dashes_onto(row, 6, (h->xd - 64) >> 4, 2u, h->nd, h->cd, P_GOLD, P_SEC1_OFF);
@@ -2669,6 +2676,33 @@ static uint32_t fx_sel_effect(void)
     for (k = 0; k < pg_dev[d].nmem && DEF_EFFECT(eng_type(pg_mem(d, k))); k++)
         ;
     return pg_dev[d].nmem && k == pg_dev[d].nmem ? FX_SEL_TOGGLE : UINT32_MAX;
+}
+/* the effect SEL switches on the page in focus is off (#1323: the header says NAME OFF, dim): a rack effect by
+ * its on/off, a canvas effect module by its bypass; an effect of no runtime targets and a canvas device of several effect
+ * modules (a Toggle switches them, fx_sel_switch) when every effect module of the device is bypassed. 0: on, or no effect */
+static int fx_page_off(void)
+{
+    uint32_t e = fx_sel_effect(), d = pg_cur_dev, k, m;
+    if (e == UINT32_MAX)
+        return 0;
+    if (e != FX_SEL_TOGGLE && (e & FX_SEL_MODULE))
+        return eng_bypass(e & 0xFFu);
+    if (e != FX_SEL_TOGGLE && eng_fx_targets(e, 0))
+        return !eng_fx_on(e);
+    if (pg_dev[d].module >= 0)
+        return eng_bypass((uint32_t)pg_dev[d].module);
+    for (k = 0; k < pg_dev[d].nmem; k++)
+        if (DEF_EFFECT(eng_type(m = pg_mem(d, k))) && !eng_bypass(m))
+            return 0;
+    return pg_dev[d].nmem != 0u;
+}
+/* the loop, before its redraw (panel.c): the header follows the effect on show whatever switched it (SEL, a Toggle, a
+ * preset, the editor's on/off button, MIDI), redrawing the device's section when it no longer says what the engine does */
+static void fx_head_follow(void)
+{
+    if (page == 0u && !sb_on && pg_plain && hd_ok && hd_drawn.mode == HM_DEV && head_free()
+        && (uint32_t)fx_page_off() != hd_drawn.off)
+        ui_dirty = ui_dirty ? ui_dirty : 1;
 }
 /* the effect FX goes to (pages_ensure first): the first of the drawer of the instrument on show (an effect's page counts
  * as its drawer's instrument's), else of the first armed instrument with one, else of the Output drawer, the first that

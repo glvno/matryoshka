@@ -1653,6 +1653,7 @@ static void panel_draw_now(void)
         if (left)
             ui_msg(msg_text, left);
     }
+    fx_head_follow();                               /* an effect's on/off in its page's header (#1323) */
     if (ui_dirty) {
         int full = ui_dirty > 1;
         ui_dirty = 0;
