@@ -123,6 +123,7 @@ it('with an FM-1 the column shows its slots: named when they hold the bank, else
   // Save as bank… makes the offline copy what the FM-1 holds (after a confirm)
   vi.stubGlobal('confirm', () => true);
   fm1.querySelector<HTMLButtonElement>('.lib-saveas')!.click();
+  await flush();   // (Save as bank… runs async since #1327: a slot without a copy is read from the FM-1)
   expect(JSON.parse(localStorage.getItem('matryoshka.bank')!)).toEqual(Object.keys(FM1_PRESETS).slice(0, 3).map((name) => ({ name })));
   expect(fm1.querySelector('.lib-state')!.textContent).toBe(inBank);
   vi.unstubAllGlobals();
@@ -162,6 +163,7 @@ it('recognizes an existing example slot and copies it without treating it as a f
   expect(rows(browser)).toContain(name);
   vi.stubGlobal('confirm', () => true);
   fm1.querySelector<HTMLButtonElement>('.lib-saveas')!.click();
+  await flush();
   expect(JSON.parse(localStorage.getItem('matryoshka.bank')!)[0]).toEqual({ name, patch: PRESETS[name]() });
   vi.unstubAllGlobals();
 });
