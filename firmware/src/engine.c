@@ -9925,7 +9925,8 @@ HOT uint32_t reverb_samples(inst_t *it, uint32_t n, const esig_t *in, esig_t *ou
  * with this block's dry input, keeps that input in the ring and its settings (kp) for the next block. */
 #define RV_RING(it) ((int32_t *)((it)->s.rev.buf + RV_LEN))
 /* the decay gains for the effective size and freeze, cached until either changes (reverb_kernel) */
-static void reverb_gains(inst_t *it, int32_t size, int frz)
+/* (noinline: out of line as when it had two callers, so reverb_kernel, in NOINIT's fast code, stays its size) */
+static __attribute__((noinline)) void reverb_gains(inst_t *it, int32_t size, int frz)
 {
     uint32_t k;
     if (!it->s.rev.gains_ok || it->s.rev.size != size || it->s.rev.frozen != frz) {
@@ -12711,7 +12712,9 @@ static void m_bypass(const node_t *nd, inst_t *it, uint32_t n)
             it->out[1][i] = it->in[rin][i];
 }
 
-static void process(const node_t *nd, inst_t *it, uint32_t n)
+/* (noinline: out of line as when it had two callers; inlined into its one caller, render_item, the audio path's code
+ * would change shape) */
+static __attribute__((noinline)) void process(const node_t *nd, inst_t *it, uint32_t n)
 {
     switch (nd->type) {
     case T_FM1: m_fm1(nd, it, n); break;
