@@ -3,7 +3,7 @@
 // its keys as plain notes (docs/ledger/device-ui.md D-232), and the editor plays them as the FM-1 plays its keys. While
 // the keys reach a Harmonizer, its Side layout (docs/ledger/modules.md D-781, #1053): the FM-1's seven lowest keys are its
 // chord buttons at any octave, every other key a root (under the split too). Else (docs/ledger/steps.md D-520) while the
-// keys reach a Drum map, black keys 1..8 play the first 8 of the rows of every Drum map they reach (drum-rows.ts) at any
+// keys reach a Drum map, black keys 1..11 play the first 11 of the rows of every Drum map they reach (drum-rows.ts) at any
 // octave, the white keys nothing, or their own note when the first map repeats its rows (D-430). The FM-1 in sandbox mode
 // does not hold the patch, so it has no banks of rows: its OCT stays the octave. This is firmware/src/panel.c panel_key,
 // engine.c eng_keys_harm and eng_keys_rows on the editor's patch. No DOM here: main.ts wires it.
@@ -70,11 +70,14 @@ export function keysHarm(p: Patch, armed: Iterable<DeviceKey> = [], defs: Record
   return v.modules.find((m) => m.type === 'harm' && !m.bypass && heard.has(m.id) && [...keyReach(v, m.id)].some((id) => type.get(id) === 'alloc')) ?? null;
 }
 
-/** what a key of the FM-1 plays while the keys reach `map` (the first Drum map) and these rows: black keys 1..8 the first 8
- * rows (sandbox mode has no banks), its own note when the map repeats its rows, or nothing */
+/** the black keys that play drum rows (firmware/src/seq_ui.c DRUM_KEYS, D-520) */
+const DRUM_KEYS = 11;
+
+/** what a key of the FM-1 plays while the keys reach `map` (the first Drum map) and these rows: black keys 1..11 the first
+ * 11 rows (sandbox mode has no banks), its own note when the map repeats its rows, or nothing */
 export function drumKeyNote(map: ModuleInst, rows: readonly DrumRow[], note: number, octave: number): number | null {
   const b = blackKey(note - KEY0 - 12 * octave);
-  if (b >= 0 && b < 8 && b < rows.length) return rows[b].note;
+  if (b >= 0 && b < DRUM_KEYS && b < rows.length) return rows[b].note;
   return Math.round(map.params.repeat ?? 0) >= 1 ? note : null;
 }
 

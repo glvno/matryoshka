@@ -42,7 +42,7 @@
 #define MSG_TEMPO_MIDI_CLOCK "TEMPO: MIDI CLOCK"
 #define MSG_CHORD "CHORD: "                             /* then the chord's name */
 #define MSG_CHORD_NONE "SINGLE NOTES"
-#define MSG_DRUMS_BLACK_KEYS "DRUMS: BLACK KEYS 1-8"
+#define MSG_DRUMS_BLACK_KEYS "DRUMS: BLACK KEYS 1-"         /* then the last black key that plays a row (panel.c, D-520) */
 #define MSG_COUNT_IN "COUNT-IN"                         /* alone, then with a space and the beat: 2, or bar.beat: 2.2 */
 #define MSG_PLAY_ONCE "PLAY ONCE"
 #define MSG_OUT35_OFF "3.5MM OUT OFF"
@@ -92,8 +92,9 @@
 #define MSG_FOOT_OCT "= OCT ="                          /* no octave shift */
 #define MSG_FOOT_OCT_UP "OCT "                          /* then a + per octave */
 #define MSG_FOOT_OCT_DOWN " OCT"                        /* after a - per octave */
-#define MSG_ROWS "ROWS "                                /* then 1-8, 9-16, 17-24: the drum bank the black keys play (D-520),
-                                                         * in the octave's place; the bank's nudge (panel.c drum_bank_step) too */
+#define MSG_ROWS "ROWS "                                /* then 1-11, 9-16, 17: the drum rows the black keys play or the grid
+                                                         * shows (D-520, D-521), in the octave's place; the bank's nudge
+                                                         * (panel.c drum_bank_step) too */
 #define MSG_FOOT_OUT35_OFF "3.5MM OFF"                  /* the mark left of the battery, as SCREEN reads it */
 #define MSG_FOOT_ARM "ARM "                             /* then the armed track's name */
 #define MSG_FOOT_REC "REC "

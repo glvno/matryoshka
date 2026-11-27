@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The FM-1's keys in sandbox mode play a Drum map's rows on black keys 1..8, as on the FM-1 (D-520, the 1.10 early check),
+// The FM-1's keys in sandbox mode play a Drum map's rows on black keys 1..11, as on the FM-1 (D-520, the 1.10 early check),
 // and a Harmonizer's Side layout: the seven lowest keys its chord buttons at any octave, the rest roots (D-781, #1053)
 import { describe, expect, it } from 'vitest';
 import { blackKey, drumKeyNote, keysDrumMap, keysDrumRows, keysHarm, SandboxKeys } from './sandbox-keys';
@@ -14,7 +14,7 @@ describe('sandbox keys (D-520 in sandbox mode)', () => {
     expect([0, 2, 4, 6, 7, 26, 27, -1].map(blackKey)).toEqual([-1, -1, -1, -1, -1, -1, -1, -1]);
   });
 
-  it('Verona Drum 1 XL: its keys reach the PATTERN track\'s Drum map, black keys 1..8 its rows, the white keys nothing', () => {
+  it('Verona Drum 1 XL: its keys reach the PATTERN track\'s Drum maps, black keys 1..10 its 10 rows, the white keys nothing', () => {
     const p = relocatedPatches['Verona Drum 1 XL']();
     const map = keysDrumMap(p)!;
     const list = keysDrumRows(p);
@@ -24,17 +24,18 @@ describe('sandbox keys (D-520 in sandbox mode)', () => {
     expect(drumKeyNote(map, list, 53, 0)).toBeNull();
     // at another octave the same black keys play the same rows
     expect(drumKeyNote(map, list, 54 + 12, 1)).toBe(rows[0]);
-    // the 9th black key and up play nothing
-    expect(drumKeyNote(map, list, 73, 0)).toBeNull();
+    // black keys 9 and 10 the two last rows (the owner, 2026-11-27: no paging for a kit of 11 rows or fewer), 11 nothing
+    expect(list.map((r) => r.name).slice(8)).toEqual(['HH 1 CL', 'HH 2 CL']);
+    expect([73, 75, 78].map((n) => drumKeyNote(map, list, n, 0))).toEqual([list[8].note, list[9].note, null]);
   });
 
-  it('the 909 Kit: the keys reach all three Drum maps, as one list of 17 rows; sandbox mode plays the first 8', () => {
+  it('the 909 Kit: the keys reach all three Drum maps, as one list of 17 rows; sandbox mode plays the first 11', () => {
     const p = FM1_PRESETS['909 Kit']();
     const list = keysDrumRows(p);
     expect(list.map((r) => r.name)).toEqual(['KICK', 'SNARE', 'CLAP', 'CL HAT', 'OP HAT', 'LOW TOM', 'RIM', 'HI TOM',
       'MID TOM', 'CRASH', 'RIDE', 'ACCENT', 'BD FLAM', 'SD FLAM', 'LT FLAM', 'MT FLAM', 'HT FLAM']);
     const map = keysDrumMap(p)!;
-    expect([54, 56, 58, 61, 63, 66, 68, 70].map((n) => drumKeyNote(map, list, n, 0))).toEqual(list.slice(0, 8).map((r) => r.note));
+    expect([54, 56, 58, 61, 63, 66, 68, 70, 73, 75, 78].map((n) => drumKeyNote(map, list, n, 0))).toEqual(list.slice(0, 11).map((r) => r.note));
   });
 
   it('a melodic patch plays the plain notes', () => {

@@ -418,8 +418,7 @@ static void steprec_suite(void)
           && sr_len_at(drums, 0, (uint32_t)eng_drummap_note((uint32_t)map, 2)) == 1u && sr_notes(drums) == 2 && sr_k == 1u
           && thru_heard(th0, (uint32_t)drums, y));
     sr_tap_key(2);                                      /* a white key: no row (the map does not repeat) */
-    sr_tap_key(20);                                     /* black key 9: no row */
-    check("a white key and black key 9: silent, nothing written, the cursor stays", !eng_drummap_repeat((uint32_t)map)
+    check("a white key: silent, nothing written, the cursor stays", !eng_drummap_repeat((uint32_t)map)
           && sr_notes(drums) == 2 && sr_k == 1u);
     panel_held |= 1u << BTN_ACC;
     sr_tap_key(3);                                      /* FX + black key 2: row 2 accented */
@@ -448,6 +447,35 @@ static void steprec_suite(void)
         check("REC held + a black key on the drum grid: the track disarmed, no step record, REC's release does nothing",
               m64(eng_arm_mask_get()) != was && !sr_on && !seq_rec && !eng_transport_running() && sr_notes(drums) == 3);
         eng_arm_mask(s64(was));
+    }
+    {                                                   /* black keys 9..11 write rows 9..11 of the 808 Kit's 12 (D-520), the
+                                                         * grid showing their bank; black key 10 a row, SEL + black key 10 the
+                                                         * step back (D-842) */
+        uint32_t r9, r10, r11;
+        sr_empty(drums);
+        sr_begin(0);
+        r9 = seq_list_note(8);
+        r10 = seq_list_note(9);
+        r11 = seq_list_note(10);
+        sr_tap_key(20);
+        check("step record, black key 9 on the 808 Kit: row 9 on step 1, the grid on rows 9-12, row 9 picked", sr_len_at(drums, 0, r9) == 1u
+              && sr_k == 1u && seq_rl_first() == 8u && seq_row == 0u);
+        sr_tap_key(SR_BACK);
+        check("  black key 10 (12 rows reach it): row 10 on step 2, not the step back", sr_len_at(drums, 1, r10) == 1u && sr_k == 2u
+              && sr_notes(drums) == 2);
+        panel_held |= 1u << BTN_SEL;
+        panel_edges(1u << BTN_SEL, 0);
+        loop();
+        sr_tap_key(SR_BACK);
+        panel_held &= ~(1u << BTN_SEL);
+        panel_edges(0, 1u << BTN_SEL);
+        loop();
+        check("  SEL + black key 10: back one step, step 2 cleared, SEL's release opens no SONG page", sr_on && sr_k == 1u
+              && sr_notes(drums) == 1 && page == PAGE_SEQ);
+        sr_tap_key(25);
+        check("  black key 11: row 11 on step 2", sr_len_at(drums, 1, r11) == 1u && sr_k == 2u);
+        tap(BTN_REC);
+        sr_empty(drums);
     }
     tap(BTN_SEQ);
     later(1500);

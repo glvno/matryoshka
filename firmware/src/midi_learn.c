@@ -19,7 +19,7 @@
  * row takes the note-on's velocity between them. Its note-off does nothing.
  *
  * The global pad map (pad_map.h, #1067): in learn mode while Main's keys reach a kit, a drum key picks its row (in the
- * bank OCT- / OCT+ show, D-520) and the next note played becomes that row's pad; learn mode then waits for the next
+ * bank the keys are on, D-520) and the next note played becomes that row's pad; learn mode then waits for the next
  * row's pad, until the last row, a HOME tap or HOME + SEL. A pad plays its row, after the patch's own learned notes
  * (pad_midi). GLO > MIDI 4/4 shows it: PAD MAP, a row and its pad, CLEAR, CLEAR ALL. */
 
