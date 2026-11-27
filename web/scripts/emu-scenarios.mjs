@@ -3046,11 +3046,13 @@ async function main() {
       await emu.elapse(600);
       // #1323: Overdrive (a Toggle or the editor's ⏻ switches it): its header says OVERDRIVE OFF while every module is bypassed
       await check('sel canvas: #1323: Overdrive\'s header: OVERDRIVE, no OFF', await header('OVERDRIVE', true));
-      await check('sel canvas: #1323: the editor\'s Overdrive ⏻ switches it off', await page.evaluate(() => window.__m1test.power('Overdrive'))
-        && !!(await until(async () => ((await state()).drive.every(Boolean) ? true : null), 3000)));
+      const od = (await T()).focusName;            // (its label as the editor has it: the FM-1's page in focus)
+      const powered = await page.evaluate((lb) => window.__m1test.power(lb), od);
+      await check('sel canvas: #1323: the editor\'s Overdrive ⏻ switches it off', powered
+        && !!(await until(async () => ((await state()).drive.every(Boolean) ? true : null), 3000)), `label ${od}, ${powered ? 'switched' : 'no such card'}`);
       await check('sel canvas: #1323: the FM-1\'s header follows: OVERDRIVE OFF', await emu.waitFor(() => header('OVERDRIVE', false), 2000));
       await emu.snap('sel-canvas-overdrive-header-off');
-      await page.evaluate(() => window.__m1test.power('Overdrive'));
+      await page.evaluate((lb) => window.__m1test.power(lb), od);
       await check('sel canvas: #1323: and on, the header too', !!(await until(async () => (!(await state()).drive.some(Boolean) ? true : null), 3000))
         && await emu.waitFor(() => header('OVERDRIVE', true), 2000));
       await emu.elapse(300);
