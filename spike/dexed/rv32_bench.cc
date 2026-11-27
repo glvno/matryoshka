@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include "core/dxs.h"
 
+#ifdef __riscv
 static inline long host(long n, long a, long b, long c) {
     register long a0 __asm__("a0") = a, a1 __asm__("a1") = b, a2 __asm__("a2") = c, a7 __asm__("a7") = n;
     __asm__ volatile("ecall" : "+r"(a0) : "r"(a1), "r"(a2), "r"(a7) : "memory");
@@ -24,6 +25,10 @@ extern "C" void *memcpy(void *d, const void *s, size_t n) {
     while (n--) *p++ = *q++;
     return d;
 }
+#else
+#include <stdio.h>
+static long host(long n, long a, long, long) { if (a == 7) fprintf(stderr, "."); return 0; }   // (a host check of the flow)
+#endif
 
 static int32_t out[128];
 static const int keys[16] = {48, 52, 55, 59, 60, 64, 67, 71, 72, 76, 79, 83, 84, 88, 91, 95};
@@ -61,7 +66,7 @@ extern "C" int main(void) {
     for (int a = 0; a < 32; a++) {
         v[134] = (uint8_t)a;
         dxs_set_voice(v);
-        dxs_note_on(60, 100);
+        dxs_note_on(keys[0], 100);              // (silence(1) lets keys[0] go)
         for (int b = 0; b < 8; b++) render(0);
         for (int b = 0; b < 4; b++) render(1);
         silence(1);
@@ -74,6 +79,8 @@ extern "C" int main(void) {
     return (int)out[0];
 }
 
+#ifdef __riscv
 extern "C" __attribute__((naked, section(".text.start"))) void _start(void) {
     __asm__ volatile("li sp, 0x00f00000\n call main\n li a7, 93\n ecall\n");
 }
+#endif
