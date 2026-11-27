@@ -694,6 +694,8 @@ int eng_b_keep(uint8_t *p, uint32_t *len, uint32_t cap, uint32_t mod, uint32_t p
  * at the returned offset, att1, att2, p1, p2. 0: malformed, no parameter inputs, or too big for cap (left as it was). */
 uint32_t eng_rec_matrix(uint8_t *p, uint32_t *len, uint32_t cap, uint32_t mod);
 void eng_set_param(uint32_t module, uint32_t param, int32_t q16);
+/* a DX7 module's voice (DX7_NDATA packed bytes) into every copy, live: a sounding note keeps sounding (#1338) */
+void eng_set_voice(uint32_t m, const uint8_t *v);
 /* a knob's click (K1..K4 = knob 0..3, or MIDI CC 16..19; #405), or a move of a learned MIDI control (knob ENG_KNOBS + its
  * ramp slot, #1067): the parameter takes the value at once, what the module uses reaches it over ENG_RAMP_BLOCKS blocks;
  * a choice parameter (defs.h pchoice) is set at once */

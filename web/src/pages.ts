@@ -49,6 +49,8 @@ export interface Page {
   rows: PageRow[];
   /** an envelope module whose shape is drawn above the rows */
   display?: number;
+  /** a DX7 voice page the FM-1 adds itself after an assembly device's pages (DX7_CARD_SECTIONS): not in the binary's list */
+  voice?: true;
 }
 export interface Device {
   /** `a<id>` for an assembly, `m<id>` for a module (stable while the patch is edited) */
@@ -159,13 +161,40 @@ export function moduleRows(def: ModuleDef): ModuleDef['params'] {
   return [...(def.type === 'steps' ? [] : def.views ?? []), ...def.params.filter((pd) => !pd.onScreen)];
 }
 
+/** a DX7's voice rows (#1338): their PageRow.param is `voice.<field>`, a value of the module's voice (ModuleInst.voice), not a
+ *  parameter; the FM-1 turns them (pages_ui.c dx7_page, VOICE_NOW), the editor's card edits them */
+export const VOICE_ROW = 'voice.';
+export const isVoiceRow = (param: string): boolean => param.startsWith(VOICE_ROW);
+/** a DX7's pages, as pages_ui.c dx7_page builds them (the same 13 pages, so FOCUS agrees): sections of groups of rows, a
+ *  row a parameter or `field:label` of a voice row. The operator pages show the operator the FM-1's picker (`op`) picked */
+const DX7_SECTIONS: [string, string[][]][] = [
+  ['', [['level', 'tune', 'mod', 'ops'], ['range', 'dest', 'alg:algorithm', 'fb:feedback']]],
+  ['operator', [['op:op', 'level:out level', 'coarse:coarse', 'fine:fine'], ['mode:mode', 'detune:detune', 'vel:velocity', 'ams:ams'],
+    ['r1:rate 1', 'r2:rate 2', 'r3:rate 3', 'r4:rate 4'], ['l1:level 1', 'l2:level 2', 'l3:level 3', 'l4:level 4'],
+    ['bp:break', 'ld:l depth', 'rd:r depth', 'lc:l curve'], ['rc:r curve', 'rs:rate scale']]],
+  ['pitch eg', [['pr1:rate 1', 'pr2:rate 2', 'pr3:rate 3', 'pr4:rate 4'], ['pl1:level 1', 'pl2:level 2', 'pl3:level 3', 'pl4:level 4']]],
+  ['lfo', [['wave:wave', 'speed:speed', 'delay:delay', 'sync:sync'], ['pmd:pmd', 'amd:amd', 'pms:pms', 'oks:osc sync']]],
+  ['voice', [['transpose:transpose']]],
+];
+/** the voice pages the FM-1 adds after the pages of an assembly device holding exactly one DX7 (a poly DX7 in its card;
+ *  pages_ui.c pages_dx7_cards): a page DX7 with the algorithm and feedback, then the operator, pitch EG, LFO and voice */
+const DX7_CARD_SECTIONS: [string, string[][]][] = [['dx7', [['alg:algorithm', 'fb:feedback']]], ...DX7_SECTIONS.slice(1)];
+/** a DX7's sections (DX7_SECTIONS or DX7_CARD_SECTIONS) for module `id`, the first named `device` when it has no name */
+const dx7Sections = (list: [string, string[][]][], id: number, device: string, label: (name: string) => string): Section[] =>
+  list.map(([head, groups]) => ({ name: head || device, groups: groups.map((g) => ({ displays: [], rows: g.map((r) => {
+    const [field, l] = r.split(':');
+    return l === undefined ? { module: id, param: field, label: label(field) } : { module: id, param: VOICE_ROW + field, label: l };
+  }) })) }));
+
 /** a plain module's sections: one, its parameters in groups of four */
 function moduleSections(type: string, def: ModuleDef, id: number, name?: string): Section[] {
   // the spelled-out name, or the short one where that would not fit the FM-1's screen
   const label = (name: string): string => { const long = longName(type, name); return long.length <= NAME_MAX ? long : name; };
+  const device = name || moduleName(type, def.label);
+  if (type === 'dx7') return dx7Sections(DX7_SECTIONS, id, device, label);
   // a Matrix (#525): a section per output, "out 1".."out 4", its four pins (pages_ui.c pages_plain the same)
   const items = moduleRows(def).map((pd, i) => ({ pd, knob: !pd.screen, head: type === 'matrix' && i % PAGE_ROWS === 0 ? `out ${i / PAGE_ROWS + 1}` : undefined }));
-  return sectionsOf(name || moduleName(type, def.label), items, ({ pd }) => (pd.screen ? id : { module: id, param: pd.name, label: label(pd.name) }));
+  return sectionsOf(device, items, ({ pd }) => (pd.screen ? id : { module: id, param: pd.name, label: label(pd.name) }));
 }
 
 /** an assembly's sections: its promoted parameters, cut at the headings, in groups */
@@ -249,9 +278,15 @@ export const cardTrack = (p: Patch, a: AssemblyInst): number | undefined =>
 export const holdsTrackCard = (p: Patch, defs: Record<string, ModuleDef>): boolean =>
   assembliesOf(p).some((a) => !parentOf(p, a.id) && cardTrack(p, a) !== undefined && assemblyPages(p, a, defs).length > 0);
 
-/** an assembly's device pages: its own, then those of the children it shows as embedded cards (`cards`) */
-const devicePages = (p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): Page[] =>
-  [...assemblyPages(p, a, defs), ...childrenOf(p, a).filter((c) => a.cards?.includes(c.id) && !c.drawer).flatMap((c) => assemblyPages(p, c, defs))];
+/** an assembly's device pages: its own, then those of the children it shows as embedded cards (`cards`); holding exactly
+ *  one DX7 (a poly DX7 in its card, #1338), then that DX7's voice pages, which the FM-1 adds itself (pages_ui.c
+ *  pages_dx7_cards) */
+function devicePages(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): Page[] {
+  const own = [...assemblyPages(p, a, defs), ...childrenOf(p, a).filter((c) => a.cards?.includes(c.id) && !c.drawer).flatMap((c) => assemblyPages(p, c, defs))];
+  const dx7 = deviceModules(p, a).filter((id) => p.modules.find((m) => m.id === id)?.type === 'dx7');
+  if (!own.length || dx7.length !== 1) return own;
+  return [...own, ...paginate(dx7Sections(DX7_CARD_SECTIONS, dx7[0], 'dx7', (n) => n), typeIn(p)).map((pg): Page => ({ ...pg, voice: true }))];
+}
 
 /** the patch's devices in the environment's grouped order (see the top of this file). An FX drawer is never a device: each
  *  of its effects is one, right after its instrument (the Output drawer's right before the Output), in chain order; an

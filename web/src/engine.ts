@@ -832,6 +832,11 @@ export class Engine {
     const node = this.nodes.get(id);
     return node?.type === 'steps' ? (node.inst[0].state as StepsState) : null;
   }
+  /** a DX7 module's voice changed (ModuleInst.voice as hex, #1338): every copy plays it, a sounding note too; no reload */
+  setVoice(id: number, voice: string): void {
+    const node = this.nodes.get(id);
+    if (node?.type === 'dx7') for (const inst of node.inst) dx7Voice(inst.state, voiceBytes(voice));
+  }
   /** a Steps module's notes changed (ModuleInst.notes, track.ts), of pattern `pat` (0-based; absent: the one it plays):
    * no reload, the track plays on; the notes sounding end as they would */
   setTrack(id: number, notes: readonly StepNote[] | undefined, pat?: number): void {

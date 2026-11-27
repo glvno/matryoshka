@@ -235,6 +235,17 @@ import { noteWords, PATTERNS_MAX, SHIFT_MAX, SONG_LEN_MAX, SONGS_MAX, TRACK_NOTE
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
 export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51, pattern: 0x36, song: 0x37, patternNow: 0x52, songNow: 0x53, armsNow: 0x54, arms: 0x39, tempo: 0x38, tempoNow: 0x55, locksNow: 0x56, keysNow: 0x57, guideNow: 0x58, deviceSettings: 0x3a, deviceSettingsReply: 0x59, originNow: 0x5a, pats: 0x3b, pat: 0x5b, patGet: 0x3c, patData: 0x5c, patPut: 0x3d, patStored: 0x5d, patDel: 0x3e, patLinkNow: 0x5e, slotGet: 0x02, slotData: 0x69 } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
+/** a DX7's voice over the link (#1338, FEATURE25_VOICE; firmware/src/proto.c C_VOICE, R_VOICE_NOW): VOICE (editor to
+ *  FM-1) module u8 and the DX7_VOICE packed bytes, into the running patch live, no answer; VOICE_NOW (FM-1 to editor,
+ *  unasked) the same after a voice row turned on the FM-1's pages */
+export const VOICE = { cmd: 0x03, now: 0x6a } as const;
+/** INFO byte 25 bit 5 (Info.features25; 1.30, #1338): the FM-1 takes VOICE and sends VOICE_NOW */
+export const FEATURE25_VOICE = 32;
+export const voiceFrame = (module: number, voice: ArrayLike<number>): Uint8Array =>
+  frame(VOICE.cmd, [module, ...Array.from({ length: 128 }, (_, i) => (voice[i] ?? 0) & 0x7f)]);
+/** a VOICE_NOW payload: the module (its index in the binary) and its 128 voice bytes; null when it is short */
+export const parseVoiceNow = (payload: number[]): { module: number; voice: Uint8Array } | null =>
+  payload.length >= 129 ? { module: payload[0], voice: Uint8Array.from(payload.slice(1, 129)) } : null;
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store', 'the preset store is full', 'no such preset', 'still in use', 'the bank holds more than 48 patches'];

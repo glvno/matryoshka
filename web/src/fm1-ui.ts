@@ -3,6 +3,7 @@
 // panel core and screens on the C engine, with no hardware. The page loads a patch binary (patchbin.ts encodePatch),
 // drives the panel and the clock, and draws the 240 x 240 RGB565 framebuffer. No DOM here: the editor's FM-1 tab
 // (#110) and the tests use it.
+import { DX7_VOICE } from './dx7';
 import { wordsNotes, type SongEntry, type StepNote } from './track';
 import { GUIDE_BYTES, parseGuideNow, type PanelState, type RawLock } from './protocol';
 
@@ -43,6 +44,9 @@ export interface Fm1Events {
   /** the FM-1 armed or disarmed (#139, #191, #395: REC held + a black key, SEL, the SEQ page): the armed modules, by
    * their index in the binary, as a mask in ARM_WORDS words (#721) */
   arms?(words: number[]): void;
+  /** a voice row turned on a DX7's pages (#1338, as the device link's VOICE_NOW): the module (its index in the binary) and
+   *  its packed voice (DX7_VOICE bytes) */
+  voice?(module: number, voice: Uint8Array): void;
   /** GLO > PANEL > TEMPO, the global tempo or TIME SIG changed on the emulated FM-1 (its menu, PLAY held + PRESET, Main's
    * tempo row while global; D-907, #1011): global, the global tempo (0: not known yet) and the time signature (a METERS index) */
   tempo?(global: boolean, bpm: number, meter: number): void;
@@ -122,6 +126,7 @@ export class Fm1Ui {
       }) : []),
       mute: (m: number, on: number) => ev.mute?.(m, on !== 0),
       pattern_op: (op: number, from: number, to: number, hash: number) => ev.patternOp?.(op, from, to, hash >>> 0),
+      voice: (m: number, at: number) => { if (memory) ev.voice?.(m, new Uint8Array(memory.buffer, at, DX7_VOICE).slice()); },
       arms: (...w: number[]) => ev.arms?.(w.map((x) => x >>> 0)),
       tempo: (patch: number, bpm: number, meter: number) => ev.tempo?.(patch === 0, bpm, meter),
       pal_go: (pos: number) => ev.paletteGo?.(pos),

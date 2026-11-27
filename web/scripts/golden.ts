@@ -4469,8 +4469,15 @@ if (process.argv.includes('--panel-fixtures')) {
     '#define PRESET_LIST PANEL_PRESET_LIST'];
   panelHeader.push(...packedListC('PANEL_PRESET', 'PANEL_PRESET_LIST', panelPatches), '');
   writeFileSync(new URL('panel_bank.h', out), panelHeader.join('\n'));
-  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio', 'harm-side', 'route-harm-steps', 'route-steps-harm', 'route-harm-arp', 'route-steps-harm-arp', 'route-harm-steps-arp', 'route-dense-steps', 'route-root-snapshot', 'route-branch-snapshot'])
+  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns', 'matrix-audio', 'harm-side', 'route-harm-steps', 'route-steps-harm', 'route-harm-arp', 'route-steps-harm-arp', 'route-harm-steps-arp', 'route-dense-steps', 'route-root-snapshot', 'route-branch-snapshot', 'dx7-voice'])
     writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));
+  {
+    // a poly DX7 whose card shows its level: the card is a device, and the FM-1 adds the DX7's voice pages after it (#1338)
+    const p = structuredClone(tests['dx7-poly']);
+    const dx = p.modules.find((m) => m.type === 'dx7')!;
+    p.assemblies!.find((a) => a.modules.includes(dx.id))!.params.push({ module: dx.id, param: 'level', label: 'level' });
+    writeFileSync(new URL('dx7-poly.m1p', out), encodePatch(p, true));
+  }
   // The FX drawer's fixtures (format 66; the master FX bus ones are frozen in firmware/test/legacy_fx_fixtures.h)
   writeFxPanelFixtures(out);
   {

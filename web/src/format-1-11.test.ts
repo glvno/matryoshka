@@ -7,6 +7,7 @@ import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type Patch } from './patch';
 import { FLAG_CABLES3, fm1Edits, morphRoom, COUNTED, presenceOf, PRES_ATT1, PRES_P2, REC_TEMPLATE, DEVICE, deviceBudget, deviceSection, encodePatch, fm1Rows, formatOf, layout, PANEL_BYTES, SLIM, storedParams, toQ16, TYPE_ORDER } from './patchbin';
 import { deviceView } from './poly';
+import { isVoiceRow } from './pages';
 import { PRESETS } from './presets';
 import { relocatedPatches } from './community-factory';
 import { communityEntries } from './community';
@@ -135,7 +136,7 @@ describe('counted records (#667, format 51)', () => {
         if (d.module !== undefined) expect(keep.get(d.module), name).toBe(DEFS[dev.modules.find((m) => m.id === d.module)!.type].params.length);
         for (const pg of d.pages) for (const r of pg.rows) {
           const m = dev.modules.find((x) => x.id === r.module)!;
-          if (m.type === 'part') continue;
+          if (m.type === 'part' || isVoiceRow(r.param)) continue;   // (a DX7's voice row is its voice's, not a parameter)
           const i = DEFS[m.type].params.findIndex((q) => q.name === r.param);
           // (a parameter appended after format 51, as the ADSR's ads in 57, is written only off its default, in its own
           // format; an FM-1 reading an older record plays it at its default)

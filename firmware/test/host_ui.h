@@ -357,6 +357,30 @@ static void m1_track_name(uint32_t mod, char *out)     /* (proto.c's, on the pre
         out[i] = (char)pv_bin[at + i];
     out[i] = 0;
 }
+/* a DX7's voice in the previewed binary (proto.c's m1_voice_at, #1338), 0 if module mod is no DX7 */
+static uint8_t *m1_voice_at(uint32_t mod)
+{
+    uint32_t at = eng_records_at(pv_bin, pv_len), i;
+    if (!at || eng_type(mod) != T_DX7)
+        return 0;
+    for (i = 0; i < mod; i++)
+        at += eng_rec_size(pv_bin, at);
+    at += eng_rec_size(pv_bin, at) - DX7_NDATA;
+    return at + DX7_NDATA <= pv_len ? pv_bin + at : 0;
+}
+static uint32_t host_voice_told;                    /* (panel_test.c: VOICE_NOW sent) */
+/* a voice row turned (pages_ui.c dx7_turn): the engine's copies play it; the wasm build tells the page (HOST_VOICE_HOOK) */
+static void m1_voice_edited(uint32_t mod)
+{
+    const uint8_t *v = m1_voice_at(mod);
+    if (!v)
+        return;
+    eng_set_voice(mod, v);
+    host_voice_told++;
+#ifdef HOST_VOICE_HOOK
+    host_voice_notify(mod, v);
+#endif
+}
 static void m1_patch_step(uint32_t mod, uint32_t k, uint32_t b) { eng_steps_set(mod, k, b); }
 static void m1_patch_notes(uint32_t mod) { (void)mod; }
 static void m1_patch_patterns(void) {}             /* (the preview keeps no patch: the engine has the patterns and songs) */

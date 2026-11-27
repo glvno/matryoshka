@@ -23,6 +23,7 @@ import { FEATURE_PATTERN_STORE, FEATURE25_PATTERNS_STORED, FEATURE25_TRACK_CARD,
 import { holdsTrackCard } from './pages';
 import './device-shown';   // (what the FM-1 shows, for the device compile pass)
 import { FEATURE5_FORMAT_67, FEATURE5_FX_DRAWERS, FEATURE_FACTORY, FEATURE_FX_PRESETS, FEATURE_MAP, MAP_CMD, mapFrame, parseMapNow, type FactoryInfo, type MapEntry } from './protocol';
+import { FEATURE25_VOICE, parseVoiceNow, VOICE, voiceFrame } from './protocol';
 import { FEATURE_PADS, PADS_CMD, padsClearAllFrame, padsOnFrame, padsReadFrame, padsSetFrame, parsePadsNow, parsePatternOp, PATTERN_OP, type PadMap } from './protocol';
 import { hasPaletteFeature, PAL_STATUS, PALETTE, paletteEntryGetFrame, paletteGetFrame, paletteGoFrame, paletteNameFrame, paletteOrderFrame, palettePutFrame, parsePaletteEntry, parsePaletteNow, type PaletteEntry, type PaletteNow } from './protocol';
 import { FEATURE25_SLOT_GET, readSlotBinary, SLOT_STORED } from './protocol';
@@ -205,6 +206,8 @@ export type DeviceEvent =
   | { kind: 'cc'; n: number; v: number }
   | { kind: 'slot'; slot: number; name: string }
   | { kind: 'track'; module: number; notes: StepNote[]; pat: number }
+  /** a DX7's voice after a voice row turned on the FM-1 (VOICE_NOW, #1338; `module`: its device index) */
+  | { kind: 'voice'; module: number; voice: Uint8Array }
   /** a track's P-locks of pattern `pat` after an edit on the SEQ page (LOCKS_NOW, #524; device-form indices) */
   | { kind: 'locks'; module: number; pat: number; locks: RawLock[] }
   /** the patch's pattern / song chosen on the FM-1 (PATTERN_NOW, format 48), a song edited there (SONG_NOW) */
@@ -448,6 +451,8 @@ export class DeviceLink {
         this.trackPart = { module: t.module, pat: t.pat, notes };
         return this.onEvent({ kind: 'track', module: t.module, notes, pat: t.pat });
       }
+      const vn = p?.cmd === VOICE.now ? parseVoiceNow(p.payload) : null;
+      if (vn) return this.onEvent({ kind: 'voice', ...vn });
       const lk = p?.cmd === CMD.locksNow ? parseLocksNow(p.payload) : null;
       if (lk) return this.onEvent({ kind: 'locks', ...lk });
       const pn = p?.cmd === CMD.patternNow ? parsePatternNow(p.payload) : null;
@@ -1050,6 +1055,18 @@ export class DeviceLink {
   /** a song's entries (format 48) */
   song(s: number, entries: readonly SongEntry[]): void {
     if (this.connected && this.hasPatterns) this.out!.send(songFrame(s, entries));
+  }
+
+  /** the firmware takes VOICE and sends VOICE_NOW (INFO byte 25 bit 5, #1338) */
+  get hasVoice(): boolean {
+    return !!((this.info?.features25 ?? 0) & FEATURE25_VOICE);
+  }
+
+  /** a DX7's voice (128 packed bytes) into the FM-1's running patch, live (#1338) */
+  voice(patch: Patch, moduleId: number, voice: Uint8Array): void {
+    if (!this.connected || !this.hasVoice) return;
+    const mi = deviceIndex(patch, moduleId);
+    if (mi >= 0) this.out!.send(voiceFrame(mi, voice));
   }
 
   /** a Steps module muted / unmuted (not part of the patch) */

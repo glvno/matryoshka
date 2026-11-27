@@ -132,6 +132,8 @@ static uint32_t pages_at(const uint8_t *p, uint32_t len)
  * assign, legato, priority, unison, steal, stack */
 #define POLY_ROW 0x80u
 #define POLY_FIELDS ENG_NPOLY
+#define VOICE_ROW 0xFEu                                 /* a DX7 voice row's module byte (no module: ENG_MAX_MODULES is 254;
+                                                         * dx7_page) */
 static int row_ok(uint32_t m, uint32_t par)
 {
     if (par & POLY_ROW)
@@ -229,7 +231,7 @@ static const uint8_t *row_more(const ppage_t *pg, uint32_t k)
 {
     uint32_t len;
     const uint8_t *p = pages_src(&len);
-    return p && k < pg->nrows && !(pg->par[k] & POLY_ROW) && pg->xo[k] && pg->xo[k] < len ? p + pg->xo[k] : 0;
+    return p && k < pg->nrows && !(pg->par[k] & POLY_ROW) && pg->mod[k] != VOICE_ROW && pg->xo[k] && pg->xo[k] < len ? p + pg->xo[k] : 0;
 }
 
 /* the top of poly row k of page pg: its own (format 51: the most voices a VOICES row offers, the CPU's limit for the patch,
@@ -289,6 +291,168 @@ static int row_name(const ppage_t *pg, uint32_t k, int32_t v, char *out)
     return 0;
 }
 
+/* ---- a DX7's pages (#1338; pages.ts moduleSections the same, so FOCUS agrees): its six parameters and its voice's values,
+ * 13 pages. A voice row is a field of the packed voice (DX7_NDATA bytes, the record's data: proto.c m1_voice_at): VOICE_ROW
+ * in its module byte, the field (DXF_*) in its parameter byte, the module in xo. The operator pages show one operator,
+ * the one K1 of the first picks (dx7_op; they are named after it, OP 1 .. OP 6): one picker for the six copies of the
+ * operator's rows (the owner, 2026-11-27). The algorithm is a number; the editor draws the diagram */
+static uint8_t *m1_voice_at(uint32_t mod);              /* proto.c: module mod's voice in the running binary, 0 none */
+static void m1_voice_edited(uint32_t mod);              /* proto.c: it changed here: the engine's copies, SAVE, VOICE_NOW */
+enum { DXF_OP, DXF_OUT, DXF_COARSE, DXF_FINE, DXF_MODE, DXF_DETUNE, DXF_VEL, DXF_AMS, DXF_R1, DXF_L1 = DXF_R1 + 4,
+       DXF_BP = DXF_L1 + 4, DXF_LD, DXF_RD, DXF_LC, DXF_RC, DXF_RS, DXF_ALG, DXF_FB, DXF_PR1, DXF_PL1 = DXF_PR1 + 4,
+       DXF_WAVE = DXF_PL1 + 4, DXF_SPEED, DXF_DELAY, DXF_SYNC, DXF_PMD, DXF_AMD, DXF_PMS, DXF_OKS, DXF_TRANS, DXF_N };
+enum { DXK_NUM, DXK_OP, DXK_COARSE, DXK_MODE, DXK_DETUNE, DXK_NOTE, DXK_CURVE, DXK_ALG, DXK_WAVE, DXK_ONOFF, DXK_TRANS };
+#define DXG 0x80u                                       /* a byte of the voice's own (102..117), not the operator's 17 */
+#define DXB(sh, w) ((sh) | (w) << 3)
+#define DX7_NPAGES 13u
+/* each field: its byte (in the picked operator's 17, operator 6 first; DXG: in the voice), bits (shift | width << 3), its
+ * top, its display (dx7_show) */
+static const uint8_t DX7_FIELD[DXF_N][4] = {
+    {0, 0, 5, DXK_OP}, {14, DXB(0, 7), 99, DXK_NUM}, {15, DXB(1, 5), 31, DXK_COARSE}, {16, DXB(0, 7), 99, DXK_NUM},
+    {15, DXB(0, 1), 1, DXK_MODE}, {12, DXB(3, 4), 14, DXK_DETUNE}, {13, DXB(2, 3), 7, DXK_NUM}, {13, DXB(0, 2), 3, DXK_NUM},
+    {0, DXB(0, 7), 99, DXK_NUM}, {1, DXB(0, 7), 99, DXK_NUM}, {2, DXB(0, 7), 99, DXK_NUM}, {3, DXB(0, 7), 99, DXK_NUM},
+    {4, DXB(0, 7), 99, DXK_NUM}, {5, DXB(0, 7), 99, DXK_NUM}, {6, DXB(0, 7), 99, DXK_NUM}, {7, DXB(0, 7), 99, DXK_NUM},
+    {8, DXB(0, 7), 99, DXK_NOTE}, {9, DXB(0, 7), 99, DXK_NUM}, {10, DXB(0, 7), 99, DXK_NUM},
+    {11, DXB(0, 2), 3, DXK_CURVE}, {11, DXB(2, 2), 3, DXK_CURVE}, {12, DXB(0, 3), 7, DXK_NUM},
+    {DXG | 110u, DXB(0, 5), 31, DXK_ALG}, {DXG | 111u, DXB(0, 3), 7, DXK_NUM},
+    {DXG | 102u, DXB(0, 7), 99, DXK_NUM}, {DXG | 103u, DXB(0, 7), 99, DXK_NUM}, {DXG | 104u, DXB(0, 7), 99, DXK_NUM},
+    {DXG | 105u, DXB(0, 7), 99, DXK_NUM}, {DXG | 106u, DXB(0, 7), 99, DXK_NUM}, {DXG | 107u, DXB(0, 7), 99, DXK_NUM},
+    {DXG | 108u, DXB(0, 7), 99, DXK_NUM}, {DXG | 109u, DXB(0, 7), 99, DXK_NUM},
+    {DXG | 116u, DXB(1, 3), 5, DXK_WAVE}, {DXG | 112u, DXB(0, 7), 99, DXK_NUM}, {DXG | 113u, DXB(0, 7), 99, DXK_NUM},
+    {DXG | 116u, DXB(0, 1), 1, DXK_ONOFF}, {DXG | 114u, DXB(0, 7), 99, DXK_NUM}, {DXG | 115u, DXB(0, 7), 99, DXK_NUM},
+    {DXG | 116u, DXB(4, 3), 7, DXK_NUM}, {DXG | 111u, DXB(3, 1), 1, DXK_ONOFF}, {DXG | 117u, DXB(0, 7), 48, DXK_TRANS}};
+static const char *const DX7_FNAME[DXF_N] = {"OP", "OUT LEVEL", "COARSE", "FINE", "MODE", "DETUNE", "VELOCITY", "AMS",
+    "RATE 1", "RATE 2", "RATE 3", "RATE 4", "LEVEL 1", "LEVEL 2", "LEVEL 3", "LEVEL 4", "BREAK", "L DEPTH", "R DEPTH",
+    "L CURVE", "R CURVE", "RATE SCALE", "ALGORITHM", "FEEDBACK", "RATE 1", "RATE 2", "RATE 3", "RATE 4", "LEVEL 1",
+    "LEVEL 2", "LEVEL 3", "LEVEL 4", "WAVE", "SPEED", "DELAY", "SYNC", "PMD", "AMD", "PMS", "OSC SYNC", "TRANSPOSE"};
+#define DXV(f) (0x40u + (f))                            /* a page's row: below 0x40 a parameter, else a voice field */
+static const uint8_t DX7_ROW[DX7_NPAGES][PG_ROWS] = {
+    {DX7_P_LEVEL, DX7_P_TUNE, DX7_P_MOD, DX7_P_OPS}, {DX7_P_RANGE, DX7_P_DEST, DXV(DXF_ALG), DXV(DXF_FB)},
+    {DXV(DXF_OP), DXV(DXF_OUT), DXV(DXF_COARSE), DXV(DXF_FINE)}, {DXV(DXF_MODE), DXV(DXF_DETUNE), DXV(DXF_VEL), DXV(DXF_AMS)},
+    {DXV(DXF_R1), DXV(DXF_R1 + 1), DXV(DXF_R1 + 2), DXV(DXF_R1 + 3)}, {DXV(DXF_L1), DXV(DXF_L1 + 1), DXV(DXF_L1 + 2), DXV(DXF_L1 + 3)},
+    {DXV(DXF_BP), DXV(DXF_LD), DXV(DXF_RD), DXV(DXF_LC)}, {DXV(DXF_RC), DXV(DXF_RS), 0xFF, 0xFF},
+    {DXV(DXF_PR1), DXV(DXF_PR1 + 1), DXV(DXF_PR1 + 2), DXV(DXF_PR1 + 3)}, {DXV(DXF_PL1), DXV(DXF_PL1 + 1), DXV(DXF_PL1 + 2), DXV(DXF_PL1 + 3)},
+    {DXV(DXF_WAVE), DXV(DXF_SPEED), DXV(DXF_DELAY), DXV(DXF_SYNC)}, {DXV(DXF_PMD), DXV(DXF_AMD), DXV(DXF_PMS), DXV(DXF_OKS)},
+    {DXV(DXF_TRANS), 0xFF, 0xFF, 0xFF}};
+static const uint8_t DX7_SECTION[5] = {2, 6, 2, 2, 1};   /* the device's, the operator's, PITCH EG, LFO, VOICE */
+static uint8_t dx7_op;                                  /* the operator the operator pages show, 0..5 (operator 1..6) */
+static char dx7_opname[5] = "OP 1";
+
+/* page j of DX7 module m into pg (its name the device's, no rows yet) */
+static __attribute__((noinline)) void dx7_page(ppage_t *pg, uint32_t m, uint32_t j)
+{
+    static const char *const SEC[5] = {0, dx7_opname, "PITCH EG", "LFO", "VOICE"};
+    uint32_t s = 0, g = j, r;
+    while (g >= DX7_SECTION[s])
+        g -= DX7_SECTION[s++];
+    if (s) {
+        pg->name = SEC[s];
+        pg->nlen = (uint8_t)str_len(SEC[s]);
+    }
+    pg->part = (uint8_t)g;
+    pg->parts = DX7_SECTION[s];
+    for (r = 0; r < PG_ROWS && DX7_ROW[j][r] != 0xFFu; r++) {
+        uint32_t x = DX7_ROW[j][r], v = x >= 0x40u;
+        pg->mod[r] = (uint8_t)(v ? VOICE_ROW : m);
+        pg->par[r] = (uint8_t)(v ? x - 0x40u : x);
+        pg->lab[r] = v ? DX7_FNAME[x - 0x40u] : DEFS[T_DX7].pname[x];
+        pg->llen[r] = (uint8_t)str_len(pg->lab[r]);
+        pg->xo[r] = (uint16_t)(v ? m : 0u);
+        pg->nrows++;
+    }
+}
+
+/* the byte of DX7 module m's voice field f is in (an operator's: the picked operator's), 0 none */
+static uint8_t *dx7_byte(uint32_t m, uint32_t f)
+{
+    uint8_t *v = f != DXF_OP ? m1_voice_at(m) : 0;
+    uint32_t at = DX7_FIELD[f][0];
+    return v ? v + ((at & DXG) ? at & 0x7Fu : (5u - dx7_op) * 17u + at) : 0;
+}
+/* field f's value (the picker's: the operator, 0..5) */
+static int32_t dx7_get(uint32_t m, uint32_t f)
+{
+    const uint8_t *b = dx7_byte(m, f);
+    uint32_t bits = DX7_FIELD[f][1];
+    if (f == DXF_OP)
+        return dx7_op;
+    return b ? clampi((int32_t)(*b >> (bits & 7u) & ((1u << (bits >> 3)) - 1u)), 0, DX7_FIELD[f][2]) : 0;
+}
+/* voice row f of module m turned by `clicks` (fast: five steps a click on a row of 32 steps or more): the voice in the
+ * running binary, the engine and the editor (m1_voice_edited); the picker picks the operator the next pages show */
+static void dx7_turn(uint32_t m, uint32_t f, int32_t clicks, int fast)
+{
+    uint32_t bits = DX7_FIELD[f][1], sh = bits & 7u, mask = ((1u << (bits >> 3)) - 1u) << sh;
+    int32_t was = dx7_get(m, f), v = clampi(was + clicks * (fast && DX7_FIELD[f][2] > 30u ? 5 : 1), 0, DX7_FIELD[f][2]);
+    uint8_t *b = dx7_byte(m, f);
+    if (f == DXF_OP) {
+        dx7_op = (uint8_t)v;
+        dx7_opname[3] = (char)('1' + v);
+        pg_strip_dirty = 1;                             /* (the header names the operator) */
+        return;
+    }
+    if (!b || v == was)
+        return;
+    *b = (uint8_t)((*b & ~mask) | ((uint32_t)v << sh & mask));
+    m1_voice_edited(m);
+}
+/* voice row f of module m as its bar shows it, as the DX7 and the editor's card: coarse 0.50 / 1..31 (ratio) or 1, 10,
+ * 100, 1000 Hz (fixed), fine 0..99, detune -7..+7, curves, the break point as a note (A-1 .. C8), the LFO's waves, the
+ * algorithm 1..32; *base its place over `width` px */
+static void dx7_show(uint32_t m, uint32_t f, char *num, char *unit, uint32_t width, uint32_t *base)
+{
+    static const char *const CURVE[4] = {"-LIN", "-EXP", "+EXP", "+LIN"};
+    static const char *const WAVE[6] = {"TRI", "SAW DN", "SAW UP", "SQUARE", "SINE", "S/H"};
+    static const char NOTE[] = "C C#D D#E F F#G G#A A#B ";
+    int32_t v = dx7_get(m, f);
+    char *q = num;
+    unit[0] = 0;
+    *base = (uint32_t)v * width / DX7_FIELD[f][2];
+    switch (DX7_FIELD[f][3]) {
+    case DXK_OP:
+    case DXK_ALG:
+        fmt_int(num, v + 1);
+        return;
+    case DXK_DETUNE:
+    case DXK_TRANS:
+        v -= DX7_FIELD[f][3] == DXK_DETUNE ? 7 : 24;
+        if (v > 0)
+            *q++ = '+';
+        fmt_int(q, v);
+        if (DX7_FIELD[f][3] == DXK_TRANS)
+            put(unit, "st")[0] = 0;
+        return;
+    case DXK_CURVE:
+        put(num, CURVE[v])[0] = 0;
+        return;
+    case DXK_WAVE:
+        put(num, WAVE[v])[0] = 0;
+        return;
+    case DXK_ONOFF:
+    case DXK_MODE:
+        put(num, DX7_FIELD[f][3] == DXK_MODE ? (v ? "FIXED" : "RATIO") : v ? "ON" : "OFF")[0] = 0;
+        return;
+    case DXK_NOTE:
+        v += 21;
+        *q++ = NOTE[2 * (v % 12)];
+        if (NOTE[2 * (v % 12) + 1] != ' ')
+            *q++ = '#';
+        fmt_int(q, v / 12 - 2);
+        return;
+    case DXK_COARSE:                                    /* (fixed: 10 ^ (coarse & 3) Hz; a ratio: coarse 0 is 0.50) */
+        if (dx7_get(m, DXF_MODE)) {
+            put(num, (v & 3) == 0 ? "1" : (v & 3) == 1 ? "10" : (v & 3) == 2 ? "100" : "1000")[0] = 0;
+            put(unit, "Hz")[0] = 0;
+        } else if (!v)
+            put(num, "0.50")[0] = 0;
+        else
+            fmt_int(num, v);
+        return;
+    default:
+        fmt_int(num, v);
+    }
+}
+
 /* a plain module's pages: its parameters, four to a page, the module's name (`name`, nlen bytes: its own, ENG_DEV_NAMED; 0
  * its type's); an envelope draws its shape on the first */
 static void pages_plain(uint32_t m, const char *name, uint32_t nlen)
@@ -299,7 +463,7 @@ static void pages_plain(uint32_t m, const char *name, uint32_t nlen)
     if (t < 0 || pg_ndev >= PG_DEVS)
         return;
     d = &DEFS[t];
-    n = (d->npar + PG_ROWS - 1u) / PG_ROWS;
+    n = t == T_DX7 ? DX7_NPAGES : (d->npar + PG_ROWS - 1u) / PG_ROWS;
     if (!n || pg_npage + n > PG_PAGES)
         return;
     pg_dev[pg_ndev].name = d->name;
@@ -332,6 +496,10 @@ static void pages_plain(uint32_t m, const char *name, uint32_t nlen)
         }
         pg->display = (uint8_t)(j == 0 && (t == T_ADSR || t == T_ENV || t == T_ENV8) ? m + 1u : 0u);
         pg->nrows = 0;
+        if (t == T_DX7) {                               /* a DX7: its own pages (dx7_page) */
+            dx7_page(pg, m, j);
+            continue;
+        }
         for (r = 0; r < PG_ROWS && j * PG_ROWS + r < d->npar; r++) {
             pg->mod[r] = (uint8_t)m;
             pg->par[r] = (uint8_t)(j * PG_ROWS + r);
@@ -410,6 +578,49 @@ static void pages_extras(const uint8_t *p, uint32_t len)
 }
 
 static void lag_clear(void);
+/* an assembly device holding exactly one DX7 (a poly DX7 in its card, #1338): that DX7's voice pages after the card's own,
+ * as pages.ts devicePages: a page DX7 (ALGORITHM, FEEDBACK), then OP n 1/6 .. VOICE (dx7_page's pages 2..12). Its
+ * members come from the extras, so this runs after pages_extras and moves the later devices' pages up */
+#define DX7_CARD_PAGES (DX7_NPAGES - 1u)
+static __attribute__((noinline)) void pages_dx7_cards(void)
+{
+    uint32_t d, k, j, e, m = 0, c;
+    for (d = 0; d < pg_ndev; d++) {
+        if (pg_dev[d].module >= 0)
+            continue;
+        for (k = 0, c = 0; k < pg_dev[d].nmem; k++)
+            if (eng_type(pg_mem(d, k)) == T_DX7)
+                c++, m = pg_mem(d, k);
+        if (c != 1u || pg_npage + DX7_CARD_PAGES > PG_PAGES)
+            continue;
+        e = pg_dev[d].pg0 + pg_dev[d].npg;
+        for (j = pg_npage; j-- > e;)
+            pg_page[j + DX7_CARD_PAGES] = pg_page[j];
+        for (k = 0; k < pg_ndev; k++)
+            if (k != d && pg_dev[k].pg0 >= e)
+                pg_dev[k].pg0 = (uint8_t)(pg_dev[k].pg0 + DX7_CARD_PAGES);
+        for (j = 0; j < DX7_CARD_PAGES; j++) {
+            ppage_t *pg = &pg_page[e + j];
+            pg->name = "DX7";
+            pg->nlen = 3;
+            pg->display = 0;
+            pg->nrows = 0;
+            dx7_page(pg, m, j + 1u);
+            if (!j) {                                   /* (DX7 2/2's voice rows alone: the card has its own parameters) */
+                for (k = 0; k + 2u < PG_ROWS; k++) {
+                    pg->mod[k] = pg->mod[k + 2u], pg->par[k] = pg->par[k + 2u], pg->xo[k] = pg->xo[k + 2u];
+                    pg->lab[k] = pg->lab[k + 2u], pg->llen[k] = pg->llen[k + 2u];
+                }
+                pg->nrows = 2;
+                pg->part = 0;
+                pg->parts = 1;
+            }
+        }
+        pg_npage += DX7_CARD_PAGES;
+        pg_dev[d].npg = (uint8_t)(pg_dev[d].npg + DX7_CARD_PAGES);
+    }
+}
+
 /* read the device pages of the running patch again (another patch, or its binary moved: a step value added) */
 static void pages_build(void)
 {
@@ -491,6 +702,7 @@ static void pages_build(void)
             pg_ndev++;
     }
     pages_extras(p, len);
+    pages_dx7_cards();
     if (pg_cur_dev >= pg_ndev)
         pg_cur_dev = 0;
     if (pg_ndev && pg_cur_page >= pg_dev[pg_cur_dev].npg)
@@ -761,6 +973,11 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, int fine, uint32_t *
         *v = 0;
         return 2;
     }
+    if (m == VOICE_ROW) {                               /* a DX7 voice row: its field, one step a click, set here */
+        dx7_turn(pg->xo[k], j, clicks, fast);
+        *v = 0;
+        return 2;
+    }
     if (j & POLY_ROW) {                                 /* a poly group's setting: one step a click (main.c applies it) */
         *v = clampi(poly_value(m, j & 0x7Fu) + (clicks > 0 ? 1 : -1), (j & 0x7Fu) == 0u ? 1 : 0, poly_top(pg, k));
         return 1;
@@ -800,7 +1017,7 @@ static int pages_lock_turn(const ppage_t *pg, uint32_t k, int32_t cur, int32_t c
 {
     const def_t *d;
     uint32_t m, j;
-    if (!pg || k >= pg->nrows || !clicks || pg->mod[k] == SETTING_ROW || (pg->par[k] & POLY_ROW) || eng_type(pg->mod[k]) == T_PART
+    if (!pg || k >= pg->nrows || !clicks || pg->mod[k] == SETTING_ROW || pg->mod[k] == VOICE_ROW || (pg->par[k] & POLY_ROW) || eng_type(pg->mod[k]) == T_PART
         || (eng_type(pg->mod[k]) >= 0 && DEF_FIXED((uint32_t)eng_type(pg->mod[k]), pg->par[k])))   /* (a row set when the patch loads: no lock) */
         return -1;
     m = pg->mod[k];
@@ -824,7 +1041,7 @@ static int row_set_unit(const ppage_t *pg, uint32_t k, int32_t u, uint32_t *mod,
 {
     const def_t *d;
     uint32_t m = pg->mod[k], j = pg->par[k];
-    if (m == SETTING_ROW)                               /* (an FM-1 setting: not from MIDI) */
+    if (m == SETTING_ROW || m == VOICE_ROW)             /* (an FM-1 setting, a DX7 voice row: not from MIDI) */
         return -1;
     *mod = m;
     *par = j;
@@ -911,6 +1128,8 @@ static uint32_t pages_cc(uint32_t k)
         return 0;
     if (pg->mod[k] == SETTING_ROW)
         return setting_bar(pg->par[k], 127u);
+    if (pg->mod[k] == VOICE_ROW)
+        return (uint32_t)dx7_get(pg->xo[k], pg->par[k]) * 127u / DX7_FIELD[pg->par[k]][2];
     if (pg->par[k] & POLY_ROW)
         return (uint32_t)(clampi(poly_value(pg->mod[k], pg->par[k] & 0x7Fu), 0, poly_top(pg, k)) * 127 / poly_top(pg, k));
     {
@@ -1008,6 +1227,11 @@ static void row_show(const ppage_t *pg, uint32_t k, char *num, char *unit, uint3
         menu_value(j, num);
         unit[0] = 0;
         *base = *live = setting_bar(j, width);
+        return;
+    }
+    if (m == VOICE_ROW) {                               /* a DX7 voice row */
+        dx7_show(pg->xo[k], j, num, unit, width, base);
+        *live = *base;
         return;
     }
     if (j & POLY_ROW) {

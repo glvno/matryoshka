@@ -21,7 +21,7 @@ import { popMenu, type MenuItem } from './menu';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
 import { parameterMenu } from './parameter-menu';
 import { sliderJack } from './slider-jack';
-import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, NAME_MAX, pageLabel, pageTitle, PAGE_ROWS, type Device, type Page, type PageRow } from './pages';
+import { devicesOf, findRow, fixFocus, groupStarts, isVoiceRow, moduleRows, NAME_MAX, pageLabel, pageTitle, PAGE_ROWS, type Device, type Page, type PageRow } from './pages';
 import { cableRole } from './cable-role';
 import { addBreak, fm1Name, layoutOf, moveRows, moveSection, pagesOf, removeBreak, removeHeading, removeRows, renameHeading, rowKey, setLayout, type KnobOf, type Layout, type RowSpot, type Sec } from './arrange';
 import type { ParameterValues } from './engine';
@@ -221,6 +221,9 @@ export interface EditorEvents {
   onBypass(id: number, on: boolean): void;
   /** a Steps module's notes changed (#133, ModuleInst.notes), of pattern `pat` (0-based, #375), a Steps module muted (not saved) */
   onTrack?(id: number, notes: StepNote[] | undefined, pat: number): void;
+  /** a DX7's voice changed (#1338, ModuleInst.voice as hex): the engines and a Live FM-1 take it without a reload (VOICE);
+   *  without this handler the change goes out as onStructure */
+  onVoice?(id: number, voice: string): void;
   /** the patch's pattern (0-based) or the song that plays (0 none) changed (#375: saved with the patch, no undo step) */
   onPattern?(pattern: number, song: number): void;
   /** song k's entries changed (0-based k) */
@@ -1460,13 +1463,23 @@ export class Editor {
 
   /** the DX7 cards' voice editors (dx7-view.ts): an edit is one undoable change of the module's voice */
   private dx7 = new Dx7Card({
-    setVoice: (id, hex) => {
-      const m = this.patch.modules.find((x) => x.id === id);
-      if (m && m.voice !== hex) this.change(() => (m.voice = hex));
-    },
+    setVoice: (id, hex) => this.setVoice(id, hex),
     say: (msg) => this.ev.onError(msg),
     redraw: () => this.rebuild(),
   });
+
+  /** module id's DX7 voice becomes `hex` (the card's edit, the FM-1's VOICE_NOW, #1338): one undo step, redrawn, out as
+   *  onVoice (live, no reload; the host sends nothing back for the FM-1's own) */
+  setVoice(id: number, hex: string): void {
+    const m = this.patch.modules.find((x) => x.id === id && x.type === 'dx7');
+    if (!m || m.voice === hex) return;
+    const before = this.mark();
+    m.voice = hex;
+    if (!this.commit(before)) return;
+    this.rebuild();
+    if (this.ev.onVoice) this.ev.onVoice(id, hex);
+    else this.ev.onStructure(this.patch);
+  }
 
   /** the Steps modules' grids drawn in this rebuild, by module id */
   private stepGrids = new Map<number, StepGrid>();
@@ -7950,8 +7963,9 @@ export class Editor {
     const pd = m && DEFS[m.type].params.find((q) => q.name === r!.param);
     if (!r || !m || !pd) {
       box.classList.add('off');
-      caption.textContent = '—';
-      dial.title = `K${i + 1}: this page has no row for it`;
+      caption.textContent = r && m && isVoiceRow(r.param) ? r.label : '—';
+      dial.title = r && m && isVoiceRow(r.param) ? `K${i + 1}: ${r.label}, a value of the DX7's voice: edit it on the card, or turn K${i + 1} on the FM-1`
+        : `K${i + 1}: this page has no row for it`;
       return box;
     }
     caption.textContent = r.label;
