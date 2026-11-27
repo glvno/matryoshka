@@ -113,6 +113,7 @@
     "ota": ["tools/ota_test.sh"],
     "guard": ["tools/guard_test.sh"],
     "power": ["tools/power_test.sh"],
+    "input": ["sh", "tools/input_test.sh"],
     "installer": ["python3", "tools/fm1_install_test.py"],
     "panel": ["tools/panel_test.sh"],
     "preset": ["tools/preset_test.sh"],
@@ -137,7 +138,7 @@
     "floor": ["sh", "tools/floor_test.sh"],
     "worktree-gc": ["python3", "tools/worktree_gc_test.py"]
   },
-  "full_host": ["pan", "golden", "buffer-budget", "sched-record", "aot", "usb", "usb_return", "clock", "clock-in", "peak", "audio", "frame", "ota", "guard", "power", "installer", "panel", "preset", "preset-pattern", "bank", "patstore", "ui", "fx-tail", "harness-compile", "patlink", "factory", "font-area", "floor", "palette", "pal-fade", "pal-preset"],
+  "full_host": ["pan", "golden", "buffer-budget", "sched-record", "aot", "usb", "usb_return", "clock", "clock-in", "peak", "audio", "frame", "ota", "guard", "power", "input", "installer", "panel", "preset", "preset-pattern", "bank", "patstore", "ui", "fx-tail", "harness-compile", "patlink", "factory", "font-area", "floor", "palette", "pal-fade", "pal-preset"],
   "optional_host": {"usb_return": "firmware/src/usb_return.h"},
   "rules": [
     {"name": "Pan arithmetic", "paths": ["firmware/src/engine.c", "firmware/test/pan_exact_test.c", "tools/pan_test.sh"], "host": ["pan"], "web": []},
@@ -178,6 +179,7 @@
     {"name": "Several FM-1s: Connect FM-1's chooser and the Install panel's target (D-965), and its look at the bank before 1.26 (#1202)", "paths": ["web/src/device.ts", "web/src/fm1-choice.ts", "web/src/fm1-pick.ts", "web/src/flasher.ts", "web/src/flasher/**", "web/src/mirror.ts", "web/src/test-fm1s.ts", "web/src/install-bank.ts"], "host": [], "web": ["web/src/fm1-choice.test.ts", "web/src/flasher.test.ts", "web/src/flasher-choice.test.ts", "web/src/device.test.ts", "web/src/mirror.test.ts", "web/src/install-bank.test.ts"]},
     {"name": "Overload accounting", "paths": ["firmware/src/ovl_guard.h", "firmware/src/blk_time.h", "firmware/src/bench.c"], "host": ["guard", "peak"], "web": []},
     {"name": "Supply setup", "paths": ["firmware/hal/fm1_power.h"], "host": ["power"], "web": []},
+    {"name": "Key and LED scan: a column read only once its latch settled, also after a late split pulse end (#803)", "paths": ["firmware/hal/fm1_input.h", "firmware/hal/fm1_timer.h"], "host": ["input"], "web": []},
     {"name": "Build and dependencies", "paths": ["tools/build.py", "tools/get_toolchain.sh", "firmware/app.ld", "firmware/src/modular.c", "firmware/test/host_ui.h", "web/package.json", "web/package-lock.json", "web/vite.config.ts", "web/tsconfig*.json"], "host": ["installer"], "web": ["web/src/version.test.ts", "web/src/engine-start.test.ts", "web/src/flasher.test.ts"]},
     {"name": "UI entry and CSS", "paths": ["web/src/main.ts", "web/src/*.css", "web/index.html"], "host": [], "web": ["web/src/startup.test.ts", "web/src/commands.test.ts", "web/src/editor-focus.test.ts", "web/src/editor-origins.test.ts"]},
     {"name": "Share API", "paths": ["web/functions/**"], "host": [], "web": ["web/src/share-store.test.ts"]},
@@ -194,6 +196,7 @@
     {"name": "Host test ota", "paths": ["tools/ota_test.sh", "firmware/test/ota_test.c"], "host": ["ota"], "web": []},
     {"name": "Host test guard", "paths": ["tools/guard_test.sh", "firmware/test/guard_test.c"], "host": ["guard"], "web": []},
     {"name": "Host test power", "paths": ["tools/power_test.sh", "firmware/test/power_test.c"], "host": ["power"], "web": []},
+    {"name": "Host test input", "paths": ["tools/input_test.sh", "firmware/test/input_test.c"], "host": ["input"], "web": []},
     {"name": "Host test installer", "paths": ["tools/fm1_install_test.py"], "host": ["installer"], "web": []},
     {"name": "Host test panel", "paths": ["tools/panel_test.sh", "firmware/test/panel_test.c"], "host": ["panel"], "web": []},
     {"name": "Host test preset", "paths": ["tools/preset_test.sh", "firmware/test/preset_test.c"], "host": ["preset"], "web": []},
