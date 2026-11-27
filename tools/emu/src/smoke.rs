@@ -48,8 +48,6 @@ pub const AUDIO_RATE: u32 = 44118;
 static PRESETS_H: LazyLock<String> = LazyLock::new(|| crate::repo::text("firmware/src/presets.h"));
 /// What the firmware compiles in of the factory content (#915): the fallback patch's name
 static FACTORY_TIER_H: LazyLock<String> = LazyLock::new(|| crate::repo::text("firmware/src/factory_tier.h"));
-/// Earlier presets of factory engines and what the editor makes of them (web/scripts/export-defs.ts, D-865)
-static PMIG_CASES_H: LazyLock<String> = LazyLock::new(|| crate::repo::text("firmware/test/pmig_cases.h"));
 /// Released copies of factory patches unlike today's: a firmware-tier patch's, then a factory-region patch's
 /// (web/scripts/legacy-factory.ts, D-887)
 static RELEASED_CASES_H: LazyLock<String> = LazyLock::new(|| crate::repo::text("firmware/test/released_cases.h"));
@@ -761,20 +759,14 @@ pub(crate) fn bank_name(f: &[u8], id: u32) -> Option<String> {
         .map(|a| String::from_utf8_lossy(&f[a + 20..a + 40]).trim_end_matches('\0').to_string())
 }
 
-/// One of PMIG_CASES_H's cases: name, the earlier structure, today's, the earlier values, the values the editor makes (Q16)
-struct PmCase { name: String, from: u32, to: u32, old: Vec<i32>, want: Vec<i32> }
-fn pm_cases() -> Vec<PmCase> {
-    let arr = |n: &str| -> Vec<i32> {
-        let d = &PMIG_CASES_H[PMIG_CASES_H.find(&format!("{n}[")).unwrap_or_else(|| panic!("{n}"))..];
-        d[d.find('{').unwrap() + 1..d.find('}').unwrap()].split(',').map(|x| x.trim().parse().unwrap()).collect()
-    };
-    let list = &PMIG_CASES_H[PMIG_CASES_H.find("PMC_LIST[").expect("PMC_LIST")..];
-    list.lines().skip(1).map_while(|l| l.trim().strip_prefix("{\"")).enumerate().map(|(i, rest)| {
-        let name = rest[..rest.find('"').unwrap()].to_string();
-        let f: Vec<&str> = rest[rest.find('"').unwrap() + 2..].split(',').map(|x| x.trim()).collect();
-        let hex = |x: &str| u32::from_str_radix(x.trim_start_matches("0x").trim_end_matches('u'), 16).unwrap();
-        PmCase { name, from: hex(f[0]), to: hex(f[1]), old: arr(&format!("PMC_OLD_{i}")), want: arr(&format!("PMC_WANT_{i}")) }
-    }).collect()
+/// An earlier structure of a factory engine and its row count (web/src/preset-migrations.json's first entry): firmware up
+/// to 1.28 moved its user presets at the first boot after an update; from 1.29 they stay as they are (D-865)
+fn earlier_structure() -> Option<(u32, usize)> {
+    let t = crate::repo::text("web/src/preset-migrations.json");
+    let at = t.find('"')? + 1;
+    let structure = u32::from_str_radix(t.get(at..at + 8)?, 16).ok()?;
+    let n = t[at..].split("\"n\":").nth(1)?.split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()?;
+    Some((structure, n))
 }
 
 /// CRC-16 (CCITT, 0xFFFF): proto.c m1_crc16
@@ -951,13 +943,11 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     // 1.6.0's settings record: version 1, slot 2, octave 0, LEDs, accel, CPU bar, clock in, program change, channel,
     // MIDI out, the bank's format (today's), module 0
     put(&mut flash, 0xA3000, record(64, 4, "", &[1, 2, 8, 0, 1, 0, 0, 0, 0, 1, version, 0], false));
-    // user presets stored for earlier structures of factory engines (D-865): a 1.9.0 Cassia 1, basic poly and Oracle V, a
-    // Cassia 1 of 88 values (stored before 1.8.2), a Cassia 1 from before #430, an 8 Lire from before D-852
-    let cases = pm_cases();
-    // (three cases a sector, two slots each: the store's seven sectors hold more cases than seven)
-    for (c, k) in cases.iter().zip(0..) {
-        preset_record(&mut flash, (k / 3) * 10 + (k % 3) * 2, 100 + k as u32, c.from, &c.name, &c.old);
-    }
+    // a user preset stored for an earlier structure of a factory engine (D-865): firmware up to 1.28 moved it at this boot;
+    // from 1.29 it stays as it is (the editor moves it)
+    let (old_st, old_n) = earlier_structure().ok_or("no earlier structure in web/src/preset-migrations.json")?;
+    let old_vals: Vec<i32> = (0..old_n as i32).map(|k| k * 8192).collect();
+    preset_record(&mut flash, 0, 100, old_st, "MY PRESET", &old_vals);
     let mut m = Machine::boot(app, Some(&flash));
     quick_start(&mut m, 9000)?;
     let said = wait_text(&mut m, &bar, 1000)?;
@@ -983,19 +973,12 @@ fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<
     let set = bank_record(&f, 64).ok_or("settings gone")?.1;
     let got = if set.len() >= 16 { set[13] as u32 | (set[14] as u32) << 8 | (set[15] as u32) << 16 } else { 0 };
     let store = preset_records(&f);
-    for c in &cases {
-        let moved = store.iter().find(|r| r.0 == c.to && r.1 == c.name);
-        let left = store.iter().any(|r| r.0 == c.from && r.1 == c.name);
-        let detail = match moved {
-            Some(r) => format!("{} values, {} differ from the editor's", r.2.len(), r.2.iter().zip(&c.want).filter(|(a, b)| a != b).count() + r.2.len().abs_diff(c.want.len())),
-            None => "not moved".into(),
-        };
-        t.check(&format!("upgrade: the preset {} ({:08x}) moves to {:08x} with the editor's values", c.name, c.from, c.to), moved.map_or(false, |r| r.2 == c.want) && !left, detail);
-    }
+    t.check(&format!("upgrade: a user preset of an earlier engine structure ({old_st:08x}) stays as it is (D-865)"),
+        store == vec![(old_st, "MY PRESET".to_string(), old_vals.clone())], format!("{} presets", store.len()));
     t.check("upgrade: the settings record keeps the factory set (16 bytes, 13..15)", set.len() == 16 && got == set_id && set[1] == 2, format!("{} bytes, set {got:06x}, FACTORY_SET_ID {set_id:06x}", set.len()));
     let mut m = Machine::boot(app, Some(&f));
     quick_start(&mut m, 9000)?;
-    let again = wait_text(&mut m, &bar, 2500)? || wait_text(&mut m, "PRESETS UPDATED", 10)? || wait_text(&mut m, "FACTORY PATCHES UPDATED", 10)?;
+    let again = wait_text(&mut m, &bar, 2500)? || wait_text(&mut m, "FACTORY PATCHES UPDATED", 10)?;
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     t.check("upgrade: the next boot rewrites nothing", !again && m.flash() == f, String::new());
     *emulated += m.ms();

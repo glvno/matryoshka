@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // User presets move when a factory engine's structure changes (#627, D-865): the lineage is up to date, every structure
-// change has a map or a decision, the FM-1 gets the same table and test cases, and earlier presets show and play on
-// today's factory patches with the values they had.
+// change has a map or a decision, and earlier presets show and play on today's factory patches with the values they had.
+// The editor moves them; the FM-1 no longer does from 1.29.
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { entryOf, lineageText, migrationsOf, migrationsText, readLineage, todaysEngines, LINEAGE_FILE, MIGRATIONS_FILE, type LineageEntry } from '../scripts/lineage-lib';
-import { CASE_PICKS, casesHeader, migrationCases, migrationSection } from '../scripts/preset-migration-c';
 import { addUserPreset, applyPreset, importPresets, migrateUserPresets, presetsFor, presetsOf, PRESETS_FORMAT, userPresets, currentValues } from './device-presets';
 import { factoryPresets } from './factory-presets';
 import { renderPlay, ways } from './headroom';
@@ -60,23 +59,6 @@ describe('the lineage (#627)', () => {
       expect(m.to, from).toBe(today[today.length - 1].structure);
       expect(m.rows.length, from).toBe(today[today.length - 1].rows.length);
     }
-  });
-});
-
-describe('the FM-1\'s copy (the firmware tier\'s migrations section, test/pmig_cases.h)', () => {
-  it('the firmware tier (factory_tier.h FC_TIER, #915) carries the migrations section', () => {
-    const tierH = readFileSync(new URL('../../firmware/src/factory_tier.h', import.meta.url), 'utf8');
-    const body = tierH.slice(tierH.indexOf('FC_TIER['));
-    const img = Uint8Array.from(body.slice(body.indexOf('{') + 1, body.indexOf('}')).split(',').map(Number));
-    const at = new DataView(img.buffer).getUint32(52, true), want = migrationSection(PRESET_MIGRATIONS);
-    expect(Array.from(img.subarray(at, at + want.length))).toEqual(Array.from(want));
-  });
-  it('the test cases are today\'s (npm run export-defs)', () => {
-    const want = casesHeader(migrationCases(lineage, PRESET_MIGRATIONS, initOf, CASE_PICKS));
-    expect(readFileSync(new URL('../../firmware/test/pmig_cases.h', import.meta.url), 'utf8')).toBe(want);
-  });
-  it('the tables stay small', () => {
-    expect(migrationSection(PRESET_MIGRATIONS).length).toBeLessThan(4800);   // (2,240 with the #658 engines: each earlier Cassia 1 structure moves onto its 153 rows; 3,073 once Expander S's structures move onto its ADS card, D-745; 3,273 once Verona Drum 1's move onto its eight channels, D-899; 2,970 once identical lines and tables share their values and Meridian 8's move onto the whole NOON, D-1054; 3,028 once the 808 Kit's eight-voice card moves onto the whole TR-808, D-1053; 3,131 once Briefcase 3's card moves onto the pin-board card, D-1052; 3,177 once the 909 Kit's lean card moves onto the whole TR-909, D-1055; 3,298 with Scrounge's, D-1056; 3,399 once Meridian 8's two earlier cards move onto the card with decay, release and drive rows, D-1054; 3,490 once Verona Drum 1's 1.16 card moves onto the knobs' travel, #866, its re-ranged rows at Init; 3,502 as the firmware tier's section with its counts, #915; 3,680 once 8 Lire's 1.11 card moves onto the structure with the pressure plates, #851; 3,759 once Oracle V's three earlier cards move onto the card with the 500 Hz LFO, #862; 4,080 once Elvira 2's earlier cards move onto its 101-row lighter-set card, D-1058; 4,216 once the 909 Kit's three earlier cards move onto the card whose hihat LEVEL sets both hats, #1124; 4,303 once Oracle V's four earlier cards move onto the card with the pedal and A-440, #862; 4,462 once Verona Drum 1's four earlier cards move onto the card with FM FREQ over the knob's travel, #866; 4,559 once the 808 and 909 Kits' cards move onto the cards with VELOCITY, D-1053, D-1055; 4,669 once they move onto the cards holding DRUMS with their pattern section, D-1062. The guard is a test, not a firmware limit: the tables cost flash, which is the real budget)
   });
 });
 

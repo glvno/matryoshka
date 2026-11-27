@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { lzPack, lzUnpack, presetsHPatches } from '../scripts/factory-lz';
-import { PRESET_MIGRATIONS } from './preset-migrate';
 import { FIRMWARE_TIER_OVERRIDES } from './factory-tiers';
 
 // The factory patches are stored packed in presets.h (scripts/factory-lz.ts packs, firmware/src/lz_unpack.h unpacks on the
@@ -97,13 +96,12 @@ int main(void)
     const fromC = lines.slice(0, factory.length).map(unhex);
     expect(fromC).toEqual(factory.map((p) => p.bytes));
     expect(lines.slice(factory.length).map(unhex)).toEqual(edges.map(([, bytes]) => bytes));
-    // the factory set id (export-defs.ts) is FNV-1a over the names and the unpacked bytes, then the preset migrations and
-    // the firmware-tier overrides when there are any: the released-set check is unchanged
+    // the factory set id (export-defs.ts) is FNV-1a over the names and the unpacked bytes, then the firmware-tier overrides
+    // when there are any: the released-set check is unchanged
     let h = 0x811c9dc5;
     factory.forEach((p, i) => {
       for (const x of [...new TextEncoder().encode(p.name), 0, ...fromC[i]]) h = Math.imul(h ^ x, 0x01000193) >>> 0;
     });
-    if (Object.keys(PRESET_MIGRATIONS).length) for (const x of new TextEncoder().encode(JSON.stringify(PRESET_MIGRATIONS))) h = Math.imul(h ^ x, 0x01000193) >>> 0;
     if (FIRMWARE_TIER_OVERRIDES.length) for (const x of new TextEncoder().encode(JSON.stringify(FIRMWARE_TIER_OVERRIDES))) h = Math.imul(h ^ x, 0x01000193) >>> 0;
     expect(parseInt(presetsH.match(/#define FACTORY_SET_ID 0x([0-9a-f]+)u/)![1], 16)).toBe((h & 0xffffff) || 1);
   });

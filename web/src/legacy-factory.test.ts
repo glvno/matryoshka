@@ -99,7 +99,7 @@ static uint8_t sl_buf[65536];
 static uint64_t bank_mask;
 static uint8_t bank_fmt;
 static uint32_t bank_set, cur_preset, sel;
-static int boot_safe, flash_ok = 1, boot_msg_ms, migrations, factories, fallbacks, settings_writes, loads;
+static int boot_safe, flash_ok = 1, boot_msg_ms, factories, fallbacks, settings_writes, loads;
 static uint8_t sl_sec[5];
 static const char *boot_msg;
 static uint8_t font_ok = 1;              /* (font_area.c: the screen font is there, #602) */
@@ -139,7 +139,6 @@ static int sl_read(uint32_t s, uint8_t *data, uint32_t *len, char *name) {
 static int settings_unpack(uint8_t *data, uint32_t len, uint32_t *slot, uint32_t *module) {
  (void)data; (void)len; *slot = 0; *module = 0; return 0;
 }
-static uint32_t presets_upgrade(void) { migrations++; return 1; }
 static void factory_bank(void) { factories++; bank_mask = 1; }
 static void leds_avail(void) {}
 static void leds_octave(void) {}
@@ -166,9 +165,9 @@ int main(void) {
  assert(!strcmp(slots[3].h.name, "NEW FACTORY") && slots[3].len == sizeof new_patch && !memcmp(slots[3].data, new_patch, sizeof new_patch));
  assert(bank_mask == 15 && bank_set == FACTORY_SET_ID && bank_fmt == ENG_PATCH_VERSION);
  assert(boot_msg && !strcmp(boot_msg_then, "FACTORY PATCHES UPDATED"));
- assert(migrations == 1 && settings_writes == 1 && loads == 1 && !factories && !fallbacks);
+ assert(settings_writes == 1 && loads == 1 && !factories && !fallbacks);
  patch_boot();
- assert(migrations == 1 && settings_writes == 1 && bank_mask == 15);
+ assert(settings_writes == 1 && bank_mask == 15);
  bank_mask = 0; sl_sec[SL_SETTINGS] = SL_NONE;
  /* Empty store, including after explicit reset, still takes the factory initializer. */
  patch_boot();

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The factory content's images (#915, D-1020), in the layout firmware/src/factory.c reads: the factory patches, the
-// factory engines' presets, the factory drum patterns, the released factory sets, the released copies and the preset
-// migrations. export-defs.ts writes two: the firmware tier (firmware/src/factory_tier.h FC_TIER, compiled
-// in: the patches of FIRMWARE_TIER in
-// web/src/factory-bank.ts and the preset migrations) and the factory region's image (web/public/firmware/matryoshka-factory.bin,
+// factory engines' presets, the factory drum patterns, the released factory sets and the released copies; the preset
+// migrations' section is empty (its count 0: firmware 1.10 to 1.28 read migrations from its own tier, D-865). export-defs.ts
+// writes two: the firmware tier (firmware/src/factory_tier.h FC_TIER, compiled in: the patches of FIRMWARE_TIER in
+// web/src/factory-tiers.ts) and the factory region's image (web/public/firmware/matryoshka-factory.bin,
 // which the editor's Flash tab and tools/fm1_install.py install into the FM-1's 18 sectors at 0xEA000: the other factory
 // patches, every factory engine preset, the drum patterns, and any firmware-tier patch fixed since, which replaces the
 // built-in copy when its revision is newer). Layout 4 is for firmware whose kit cards hold their DRUMS track (#1202 K2,
@@ -44,7 +44,6 @@ export interface RegionInput {
   patterns: RegionPattern[];
   released: { set: number; has: bigint }[];
   copies: ImageCopy[];
-  migrations: Uint8Array;
 }
 
 /** CRC-16/CCITT-FALSE, from `c` (proto.c m1_crc16 starts at 0xFFFF) */
@@ -272,8 +271,7 @@ function layout(input: RegionInput, pad: number): Uint8Array {
     if (c.patch >= input.patches.length || c.len > UNPACK_CAP) throw new Error(`released copy of patch ${c.patch}: out of range`);
     w.u32(c.fnv >>> 0); w.u32(c.crc >>> 0); w.u16(c.len); w.u8(c.patch); w.u8(0);
   }
-  const mig = w.at;
-  w.raw(input.migrations);
+  const mig = w.at;                         // (the migrations' section, empty)
   w.raw(new Array(PNAME).fill(0));          // (so a name read whole, 16 bytes, never runs past the image)
   const out = Uint8Array.from(w.bytes);
   const len = out.length - HEADER;
@@ -285,8 +283,7 @@ function layout(input: RegionInput, pad: number): Uint8Array {
   h.setUint32(8, input.set & 0xffffff, true);
   h.setUint32(12, len, true);
   h.setUint32(16, crc32(out.subarray(HEADER)), true);
-  [input.patches.length, input.presets.length, input.patterns.length, input.released.length, ps.dict.length,
-    input.migrations.length ? new DataView(input.migrations.buffer, input.migrations.byteOffset).getUint16(0, true) : 0]
+  [input.patches.length, input.presets.length, input.patterns.length, input.released.length, ps.dict.length, 0]
     .forEach((n, i) => h.setUint16(20 + 2 * i, n, true));
   [patchDir, preset, dict, pattern, released, mig].forEach((o, i) => h.setUint32(32 + 4 * i, o, true));
   out[56] = ps.bits;

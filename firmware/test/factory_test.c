@@ -4,7 +4,7 @@
  *   - the firmware tier and today's region image (export-defs: factory_tier.h, factory_region.h) merged: every factory
  *     patch once, in its own slot, unpacked in place to presets.h's bytes; every preset's values, every drum pattern and
  *     every released set are presets.h's;
- *   - a blank region: the firmware tier alone (its patches in their own slots, no presets, no patterns, the migrations);
+ *   - a blank region: the firmware tier alone (its patches in their own slots, no presets, no patterns);
  *   - a region record named as a firmware-tier patch replaces it when its revision is higher, else the built-in one plays;
  *   - the link's install (FACT_BEGIN, FACT_WRITE, FACT_SUM, FACT_COMMIT) and its refusals;
  *   - a power cut after every byte the install programs, and inside every erase: the next boot finds the old content,
@@ -178,7 +178,7 @@ static int same_as_presets_h(void)
             p.rate != PRESET_PATTERNS[i].rate || p.swing != PRESET_PATTERNS[i].swing || p.dir != PRESET_PATTERNS[i].dir ||
             p.gate != PRESET_PATTERNS[i].gate || memcmp(p.notes, PRESET_PATTERNS[i].notes, 4u * p.n))
             return 0;
-    return fc_set() == FACTORY_SET_ID && fc_nmig() > 0;
+    return fc_set() == FACTORY_SET_ID;
 }
 
 /* img (len bytes) with region patch record r renamed to `name` at revision `rev`: its CRCs made again */
@@ -235,8 +235,9 @@ int main(void)
     printf("        (the region: %u of %u bytes, %u patches; the firmware tier: %u bytes, %u patches)\n", (unsigned)len,
            (unsigned)FC_SIZE, (unsigned)fr.npatch, (unsigned)sizeof FC_TIER, (unsigned)ft.npatch);
     check("  it fits the region with the header", len <= FC_SIZE && fr.len + FC_HDR == len);
-    check("  the tier carries the migrations, no presets, no patterns; the region no migrations",
-          ft.nmig > 0 && !ft.npreset && !ft.npattern && ft.kind == FC_KIND_TIER && !fr.nmig && fr.kind == FC_KIND_REGION);
+    check("  the tier carries no presets, no patterns; neither carries migrations (D-865: none from 1.29)",
+          !ft.npreset && !ft.npattern && ft.kind == FC_KIND_TIER && fr.kind == FC_KIND_REGION && !fc_u16(FC_TIER + 30) &&
+          !fc_u16(img + 30));
     {
         int clear = 1;
         for (s = 0; s * 0x1000u + 0xF00u + LDR_REC_LEN <= len; s++)
@@ -258,7 +259,7 @@ int main(void)
         check("a blank region: the firmware tier alone, each patch a factory patch in its own slot, its bytes, the released "
               "sets over it", !fc_region && fc_state == FC_NONE && fc_set() == FC_TIER_SET && merged_ok() == (int)ft.npatch &&
               ft.npatch > 0 && ft.npatch < N_PRESETS && mo);
-        check("  no factory presets, no drum patterns; the migrations", !fc_npresets() && !fc_npatterns() && fc_nmig() > 0 &&
+        check("  no factory presets, no drum patterns", !fc_npresets() && !fc_npatterns() &&
               fc_preset_find(FPRESET_LIST[0].structure, 0) < 0);
     }
 

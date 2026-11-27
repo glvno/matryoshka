@@ -4,7 +4,7 @@
  * D-490).
  *
  * The firmware tier is compiled in (factory_tier.h FC_TIER, web/src/factory-tiers.ts FIRMWARE_TIER) and always plays: the
- * factory patches unlikely to change, and the user preset migrations (presetmig.c). The factory region holds the rest: the
+ * factory patches unlikely to change. The factory region holds the rest: the
  * other factory patches, every factory engine preset, the factory drum patterns, and a copy of any firmware-tier patch
  * fixed since that firmware shipped. It lives in the 18 flash sectors 0xEA000 .. 0xFBFFF (the stock package fills them
  * with its USR file, our update loader never writes them); the editor writes it over the link (FACT_BEGIN, FACT_WRITE,
@@ -21,9 +21,10 @@
  *   (FC_LAYOUT), u8 the newest patch format a record uses (the firmware must play it: the oldest firmware the content
  *   needs), u16 the content's version (an ordinal over the released factory sets: the editor compares it, a patch record's
  *   revision defaults to it), u32 the factory set (24 bits, as the settings record keeps it), u32 the body's length, u32
- *   its CRC-32, u16 counts of patches, presets, patterns, released sets, dictionary values and migrations, u32 the offsets
- *   (from the image's start) of the patch directory, the presets, the dictionary, the patterns, the released sets and the
- *   migrations, u8 the bits of a dictionary index, u8 kind (FC_KIND_REGION, FC_KIND_TIER), u16 the count of released
+ *   its CRC-32, u16 counts of patches, presets, patterns, released sets, dictionary values and migrations (0: firmware
+ *   1.10 to 1.28 moved user presets with its tier's, D-865), u32 the offsets (from the image's start) of the patch
+ *   directory, the presets, the dictionary, the patterns, the released sets and the (empty) migrations, u8 the bits of a
+ *   dictionary index, u8 kind (FC_KIND_REGION, FC_KIND_TIER), u16 the count of released
  *   copies, u16 spare (layouts 2 and 3: the length of the demo sets at the body's end, which this firmware ignores), u16
  *   CRC-16 (m1_crc16) of bytes 4..61;
  *   patches: 36 bytes each: name[20], u32 offset of the packed bytes (lz_unpack.h), u16 packed length, u16 length,
@@ -41,10 +42,6 @@
  *     12 bytes each: u32 FNV-1a and u32 CRC-32 of the bytes, u16 their length, u8 this image's patch, u8 spare. Each is
  *     a copy of that patch's name a release wrote whose bytes differ from today's (web/scripts/released-factory.json):
  *     a slot that still holds one gets today's patch (bank_upgrade.h, D-887);
- *   migrations: u16 counts of the list, tables, lines, ops, table values and line values, then the list (16 bytes each:
- *     u32 from, u32 to, u16 ops, u16 table, u16 line, u8 earlier rows, u8 today's), the tables (8 each: u8 a, b, na, nb,
- *     i8 la, lb, u16 v), the lines (6 each: u8 x, key, n, i8 lo, u16 v), the line values (i32), the table values (i8)
- *     and the ops (u8): presetmig.c reads them.
  * This firmware reads layouts FC_LAYOUT_MIN..FC_LAYOUT. Layout 4 is for firmware whose kit cards hold their DRUMS track
  * (#1202 K2, D-1062: the kits' presets and preset patterns are made for those cards) and that has no demo sets (#1202
  * G8); layouts 2 and 3 end the body with the demo sets (#1179), skipped here. 1.25 reads layouts 1 and 2 and 1.24.x
@@ -87,8 +84,8 @@ typedef struct {
     uint8_t layout, format;
     uint16_t version;
     uint32_t set, len, crc;
-    uint16_t npatch, npreset, npattern, nreleased, ndict, nmig;
-    uint32_t patch, preset, dict, pattern, released, mig;
+    uint16_t npatch, npreset, npattern, nreleased, ndict;
+    uint32_t patch, preset, dict, pattern, released;
     uint8_t bits;                       /* a dictionary index's bits (1..16) */
     uint8_t kind;                       /* FC_KIND_REGION, FC_KIND_TIER */
     uint16_t ncopy;                     /* released copies (in the struct's padding: no larger than before) */
@@ -172,13 +169,11 @@ static int fc_parse(const uint8_t *b, fc_hdr_t *h)
     h->npattern = (uint16_t)fc_u16(b + 24);
     h->nreleased = (uint16_t)fc_u16(b + 26);
     h->ndict = (uint16_t)fc_u16(b + 28);
-    h->nmig = (uint16_t)fc_u16(b + 30);
     h->patch = fc_u32(b + 32);
     h->preset = fc_u32(b + 36);
     h->dict = fc_u32(b + 40);
     h->pattern = fc_u32(b + 44);
     h->released = fc_u32(b + 48);
-    h->mig = fc_u32(b + 52);
     h->bits = b[56];
     h->kind = b[57];
     h->ncopy = (uint16_t)fc_u16(b + 58);
@@ -247,7 +242,7 @@ static void fc_scan(void)
     fc_hdr_t h;
     fc_scanned = 1;
     if (fc_parse(FC_TIER, &ft))                         /* (export-defs writes a whole one: never) */
-        ft.npatch = ft.npreset = ft.npattern = ft.nreleased = ft.nmig = ft.ncopy = 0;
+        ft.npatch = ft.npreset = ft.npattern = ft.nreleased = ft.ncopy = 0;
     fc_state = flash_ok ? (uint8_t)fc_check(&h) : (uint8_t)FC_NONE;
     fc_region = fc_state == FC_OK;
     if (fc_region)
@@ -527,13 +522,6 @@ static int fc_pattern(uint32_t i, fc_pattern_t *p)
         p->name[k] = 0;
     return 0;
 }
-
-/* ---- the user preset migrations (presetmig.c): the tier's */
-
-static uint32_t fc_nmig(void) { fc_ready(); return ft.nmig; }
-
-/* bytes of the migrations' section from offset `at` on */
-static int fc_mig_rd(uint32_t at, void *dst, uint32_t n) { fc_ready(); return fc_rd(0, ft.mig + at, dst, n); }
 
 /* ---- the editor link (proto.c): the region written, read and checked */
 

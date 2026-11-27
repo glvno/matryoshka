@@ -214,7 +214,6 @@ _Static_assert(sizeof sx_frame >= 4u + (8u * M1_RX_MAX + 7u) / 7u && sizeof sx_f
 #include "patstore.c"          /* the pattern store in the bank's last 4 sectors (#901; slotstore.c pt_claim hands them over) */
 #include "patlink.c"           /* the pattern store's glue: the payloads, the running patch's links (#901) */
 #include "presetstore.c"
-#include "presetmig.c"         /* user presets of earlier engine structures move at the first boot after an update (D-865) */
 #if M1_BENCH
 #include "bench.c"
 #endif

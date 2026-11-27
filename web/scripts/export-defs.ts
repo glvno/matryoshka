@@ -20,10 +20,7 @@ import { FM1_PRESETS } from '../src/presets';
 import { FALLBACK_NAME, fallbackPatch } from '../src/fallback';
 import { factoryPresets, factoryRackPresets } from '../src/factory-presets';
 import { controlsHeader, readmeWithControls } from './controls-h';
-import { PRESET_MIGRATIONS } from '../src/preset-migrate';
 import { CPU, planCosts } from '../src/cpu';
-import { readLineage } from './lineage-lib';
-import { CASE_PICKS, casesHeader, migrationCases, migrationSection } from './preset-migration-c';
 import { buildRegion, contentVersion, imageCopies, KIND_REGION, KIND_TIER, readHeader, REGION_SIZE, TIER_SET, type ReleasedCopy } from './factory-region';
 import { FIRMWARE_TIER, FIRMWARE_TIER_OVERRIDES } from '../src/factory-tiers';
 import { aotHeader } from './gen-aot';
@@ -306,20 +303,17 @@ const binaries = presetNames.map(name => {
 });
 let setId = 0;
 { // the factory set's fingerprint (24 bits of FNV-1a over every name and binary, never 0, never the tier-only 0xFFFFFF):
-  // stored in the settings record, a change checks new factory names and user assembly preset migrations, without
-  // rewriting saved patches
+  // stored in the settings record, a change checks new factory names and released copies, without rewriting saved patches
   let h = 0x811c9dc5;
   presetNames.forEach((n, i) => {
     for (const x of [...new TextEncoder().encode(n.toUpperCase()), 0, ...binaries[i]]) h = Math.imul(h ^ x, 0x01000193) >>> 0;
   });
-  // then the preset migrations (D-865), when there are any: a new map makes the boot move the presets it covers
-  if (Object.keys(PRESET_MIGRATIONS).length) for (const x of new TextEncoder().encode(JSON.stringify(PRESET_MIGRATIONS))) h = Math.imul(h ^ x, 0x01000193) >>> 0;
-  // and the firmware-tier overrides, when there are any: a region that gains a copy of a tier patch is new content, which
+  // then the firmware-tier overrides, when there are any: a region that gains a copy of a tier patch is new content, which
   // the editor offers to an FM-1 that has the region before it (factory-content.ts factoryOffer compares the sets)
   if (FIRMWARE_TIER_OVERRIDES.length) for (const x of new TextEncoder().encode(JSON.stringify(FIRMWARE_TIER_OVERRIDES))) h = Math.imul(h ^ x, 0x01000193) >>> 0;
   setId = (h & 0xffffff) || 1;
   if (setId === TIER_SET) setId = TIER_SET - 1;
-  P.push('', '/* the factory set (PRESET_LIST: names and unpacked bytes, then web/src/preset-migrations.json as JSON when it has any),', '   24 bits of FNV-1a, never 0: kept in the settings record. A change adds the factory names new to the bank (main.c bank_add),', '   gives an untouched released copy today\'s patch (bank_upgrade.h) and migrates user assembly presets (presets_upgrade). */');
+  P.push('', '/* the factory set (PRESET_LIST: names and unpacked bytes, then FIRMWARE_TIER_OVERRIDES as JSON when it has any),', '   24 bits of FNV-1a, never 0: kept in the settings record. A change adds the factory names new to the bank (main.c bank_add)', '   and gives an untouched released copy today\'s patch (bank_upgrade.h). */');
   P.push(`#define FACTORY_SET_ID 0x${setId.toString(16).padStart(6, '0')}u`);
 }
 P.push('', `#define N_PRESETS ${presetNames.length}`);
@@ -444,14 +438,13 @@ let KIT_PACKED = 0;   // (bytes: the groups packed)
 writeFileSync(new URL('../../firmware/src/presets.h', import.meta.url), P.join('\n'));
 
 // the factory content's two images (#915, factory-region.ts): the firmware tier (factory_tier.h FC_TIER, compiled in:
-// web/src/factory-tiers.ts FIRMWARE_TIER, the preset migrations, the released sets as far as its patches go) and the factory
+// web/src/factory-tiers.ts FIRMWARE_TIER, the released sets as far as its patches go) and the factory
 // region's (every other factory patch, the firmware-tier patches listed in FIRMWARE_TIER_OVERRIDES, every factory engine
 // preset, every drum pattern). No firmware-tier patch needs a drum pattern to boot (a patch carries its own patterns), so
 // the tier carries none. Each image's released sets say which of its own patches a released set had, and its released
 // copies how a release wrote each of its patches unlike today's (firmware/src/bank_upgrade.h)
 const regionPresets = FACTORY_PRESETS.map((p) => ({ structure: p.structure, name: p.name, values: p.values.map(toQ16) }));
 const regionPatterns = patternDefaults.map((p) => ({ identity: Number.parseInt(p.id, 16), structure: p.structure, name: p.name, notes: p.notes, len: p.len, rate: p.rate, swing: p.swing, dir: p.dir, gate: toQ16(p.gate) }));
-const migrations = migrationSection(PRESET_MIGRATIONS);
 const version = contentVersion(setId, releasedSets);
 const bankIndex = (name: string): number => {
   const i = presetNames.findIndex((n) => n.toUpperCase() === name.toUpperCase());
@@ -466,11 +459,11 @@ const imageReleased = (indexes: number[]): { set: number; has: bigint }[] =>
 const imagePatches = (indexes: number[]): { name: string; binary: Uint8Array; slot: number }[] => indexes.map((i) => ({ name: presetNames[i], binary: binaries[i], slot: i }));
 const tierPatches = imagePatches(tierIndexes), regionPatches = imagePatches(regionIndexes);
 const tier = buildRegion({
-  kind: KIND_TIER, set: setId, version, migrations, released: imageReleased(tierIndexes), copies: imageCopies(tierPatches, releasedCopies),
+  kind: KIND_TIER, set: setId, version, released: imageReleased(tierIndexes), copies: imageCopies(tierPatches, releasedCopies),
   patches: tierPatches, presets: [], patterns: [],
 });
 const region = buildRegion({
-  kind: KIND_REGION, set: setId, version, migrations: new Uint8Array(0), released: imageReleased(regionIndexes),
+  kind: KIND_REGION, set: setId, version, released: imageReleased(regionIndexes),
   copies: imageCopies(regionPatches, releasedCopies), patches: regionPatches, presets: regionPresets, patterns: regionPatterns,
 });
 writeFileSync(new URL('../public/firmware/matryoshka-factory.bin', import.meta.url), region);
@@ -499,17 +492,13 @@ writeFileSync(new URL('../../firmware/test/factory_region.h', import.meta.url), 
     '/* SPDX-License-Identifier: GPL-3.0-only */',
     '/* Generated by web/scripts/export-defs.ts. Do not edit. What the firmware keeps of the factory content (#915, factory.c):',
     '   safe mode\'s fallback patch (web/src/fallback.ts) and the firmware tier (web/src/factory-tiers.ts), an image in the',
-    `   factory region's layout (web/scripts/factory-region.ts): ${FIRMWARE_TIER.join(', ')}`,
-    '   and the preset migrations; then the legacy factory patterns (patlink.c KIT_GROUPS, #1202 G8). */',
+    `   factory region's layout (web/scripts/factory-region.ts): ${FIRMWARE_TIER.join(', ')};`,
+    '   then the legacy factory patterns (patlink.c KIT_GROUPS, #1202 G8). */',
     '#pragma once', '#include <stdint.h>',
     `#define FALLBACK_NAME "${FALLBACK_NAME}"`,
     `static const uint8_t FALLBACK_PATCH[${fallback.length}] = {${Array.from(fallback).join(',')}};`,
     `static const uint8_t FC_TIER[${tier.length}] = {${Array.from(tier).join(',')}};`, ...KIT_LINES].join('\n'));
-  console.log(`firmware tier: ${tier.length} bytes (${tierIndexes.length} patches, ${readHeader(tier)!.copies} released copies, migrations ${migrations.length}) + legacy factory patterns ${KIT_PACKED} bytes; factory region: ${region.length} of ${REGION_SIZE} bytes (${REGION_SIZE - region.length} free; ${regionIndexes.length} patches, ${readHeader(region)!.copies} released copies, ${regionPresets.length} presets, ${regionPatterns.length} patterns)`);
-}
-{ // the preset migrations' test cases (firmware/test/preset_test.c, tools/emu/src/smoke.rs)
-  const initOf = (s: string): number[] | undefined => FACTORY_PRESETS.find((p) => p.structure === s && p.name === 'Init')?.values;
-  writeFileSync(new URL('../../firmware/test/pmig_cases.h', import.meta.url), casesHeader(migrationCases(readLineage(), PRESET_MIGRATIONS, initOf, CASE_PICKS)));
+  console.log(`firmware tier: ${tier.length} bytes (${tierIndexes.length} patches, ${readHeader(tier)!.copies} released copies) + legacy factory patterns ${KIT_PACKED} bytes; factory region: ${region.length} of ${REGION_SIZE} bytes (${REGION_SIZE - region.length} free; ${regionIndexes.length} patches, ${readHeader(region)!.copies} released copies, ${regionPresets.length} presets, ${regionPatterns.length} patterns)`);
 }
 // the stored pattern payload's cross-language vectors (#901, pattern-vectors.ts; firmware/test reads them)
 writeFileSync(new URL('../../firmware/test/pattern_cases.h', import.meta.url), patternCasesHeader());
@@ -520,4 +509,4 @@ writeFileSync(new URL('../../firmware/src/controls.h', import.meta.url), control
   writeFileSync(readme, readmeWithControls(readFileSync(readme, 'utf8')));
 }
 writeFileSync(new URL('../../firmware/src/aot_gen.h', import.meta.url), aotHeader());   // the compiled factory assemblies (#808)
-console.log('wrote defs.h, presets.h, factory_tier.h, public/firmware/matryoshka-factory.bin, public/firmware/factory-sets.json, controls.h, the README\'s controls, test/factory_region.h, test/pmig_cases.h, test/pattern_cases.h, aot_gen.h');
+console.log('wrote defs.h, presets.h, factory_tier.h, public/firmware/matryoshka-factory.bin, public/firmware/factory-sets.json, controls.h, the README\'s controls, test/factory_region.h, test/pattern_cases.h, aot_gen.h');

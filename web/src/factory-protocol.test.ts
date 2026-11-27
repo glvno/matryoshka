@@ -108,19 +108,19 @@ describe('the factory region image and the firmware tier', () => {
       }
     }
   });
-  it('every factory preset and drum pattern is in the region, none in the tier; the migrations in the tier alone', () => {
+  it('every factory preset and drum pattern is in the region, none in the tier; neither carries preset migrations (D-865, from 1.29)', () => {
     const t = readHeader(tier)!, r = readHeader(image)!;
     expect(r.presets).toBe(factoryPresets().length + factoryRackPresets().length);
     expect(r.patterns).toBe(patterns.length);
     expect([t.presets, t.patterns]).toEqual([0, 0]);
-    expect(new DataView(tier.buffer).getUint16(30, true)).toBeGreaterThan(0);
+    expect(new DataView(tier.buffer).getUint16(30, true)).toBe(0);
     expect(new DataView(image.buffer, image.byteOffset).getUint16(30, true)).toBe(0);
   });
   it('refuses content over the region', () => {
     let x = 0x2545f491;
     const noise = (): number => { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; return x & 0xff; };
     const big = Array.from({ length: 30 }, (_, i) => ({ name: `P${i}`, binary: Uint8Array.from({ length: 3800 }, noise), slot: i }));
-    expect(() => buildRegion({ kind: KIND_REGION, set: 1, version: 1, patches: big, presets: [], patterns: [], released: [], copies: [], migrations: new Uint8Array(0) })).toThrow();
+    expect(() => buildRegion({ kind: KIND_REGION, set: 1, version: 1, patches: big, presets: [], patterns: [], released: [], copies: [] })).toThrow();
   });
   it('one structure has at most the factory presets the firmware lists (factory.c FC_STRUCT_PRESETS, pages_ui.c pr_list)', () => {
     const c = readFileSync(new URL('../../firmware/src/factory.c', import.meta.url), 'utf8');
@@ -129,6 +129,6 @@ describe('the factory region image and the firmware tier', () => {
     for (const p of [...factoryPresets(), ...factoryRackPresets()]) per.set(p.structure, (per.get(p.structure) ?? 0) + 1);
     expect(Math.max(...per.values())).toBeLessThanOrEqual(STRUCT_PRESETS);
     const over = Array.from({ length: STRUCT_PRESETS + 1 }, (_, i) => ({ structure: '0000abcd', name: `P${i}`, values: [i] }));
-    expect(() => buildRegion({ kind: KIND_REGION, set: 1, version: 1, patches: [], presets: over, patterns: [], released: [], copies: [], migrations: new Uint8Array(0) })).toThrow();
+    expect(() => buildRegion({ kind: KIND_REGION, set: 1, version: 1, patches: [], presets: over, patterns: [], released: [], copies: [] })).toThrow();
   });
 });
