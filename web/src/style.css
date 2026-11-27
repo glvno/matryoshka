@@ -475,10 +475,12 @@ body:has(.snap-column:not([hidden])) .workspace { margin-right: var(--snap-col-w
 .palette-keys { margin-left: auto; font: 400 11px/1 'Barlow', system-ui, sans-serif; color: var(--muted); opacity: .8; }
 /* after Send to FM-1, the saved palette it came from; Save as a palette (#1236) */
 .palette-from { font: 400 11px/1 'Barlow', system-ui, sans-serif; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.palette-from[hidden], .palette-save[hidden], .palette-keys[hidden] { display: none; }
-.palette-save { margin-left: auto; flex: none; height: 20px; padding: 0 7px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--ink);
+.palette-from[hidden], .palette-save[hidden], .palette-consolidate[hidden], .palette-keys[hidden] { display: none; }
+.palette-save, .palette-consolidate { margin-left: auto; flex: none; height: 20px; padding: 0 7px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--ink);
   font: 500 11px/1 'Barlow', system-ui, sans-serif; cursor: pointer; }
-.palette-save:hover { border-color: var(--secondary); color: var(--secondary); }
+.palette-save:hover, .palette-consolidate:hover { border-color: var(--secondary); color: var(--secondary); }
+/* Consolidate… before Save as a palette (D-1441): the first shown takes the push to the right */
+.palette-consolidate:not([hidden]) + .palette-save { margin-left: 4px; }
 /* the name a sound goes into a palette under (name-prompt.ts): a small popover by what the add came from */
 .name-prompt { position: fixed; inset: auto; margin: 0; display: flex; flex-direction: column; gap: 8px; width: 260px; padding: 10px; border: 1px solid var(--muted); border-radius: 8px;
   background: var(--panel); color: var(--ink); box-shadow: 0 6px 18px var(--shadow); font: 400 12px/1.3 'Barlow', system-ui, sans-serif; }
@@ -2739,3 +2741,19 @@ dialog.commands li.cmd-also kbd { margin-left: auto; color: var(--muted); font: 
 dialog.commands li.cmd-also:hover { background: var(--surface-tint); color: var(--ink); }
 @media (max-width: 700px) { dialog.commands li.cmd-also { padding-left: 24px; } }
 .commands-filters[hidden] { display: none; }
+/* Consolidate the FM-1's palette (consolidate-view.ts): one confirmation listing every change, each ticked */
+.consolidate { position: fixed; inset: auto; margin: 0; display: flex; flex-direction: column; gap: 8px; width: min(440px, calc(100vw - 16px)); max-height: calc(100vh - 16px); padding: 12px;
+  border: 1px solid var(--muted); border-radius: 8px; background: var(--panel); color: var(--ink); box-shadow: 0 6px 18px var(--shadow); font: 400 12px/1.3 'Barlow', system-ui, sans-serif; }
+.consolidate-title { margin: 0; font-size: 14px; font-weight: 600; }
+.consolidate-text { margin: 0; color: var(--muted); }
+.consolidate-steps { display: flex; flex-direction: column; gap: 2px; min-height: 0; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.consolidate-step { display: flex; gap: 8px; align-items: flex-start; padding: 5px 6px; border-radius: 6px; cursor: pointer; }
+.consolidate-step:hover { background: var(--surface-tint); }
+.consolidate-step input { flex: none; width: 15px; height: 15px; margin: 1px 0 0; accent-color: var(--secondary); }
+.consolidate-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.consolidate-line { font-weight: 500; overflow-wrap: anywhere; }
+.consolidate-note { color: var(--muted); font-size: 11px; }
+.consolidate-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.consolidate-actions button { height: 26px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink); cursor: pointer; }
+.consolidate-actions .primary { border-color: var(--secondary); background: var(--secondary); color: var(--accent-ink); }
+.consolidate-actions .primary:disabled { opacity: 0.45; cursor: default; }

@@ -41,7 +41,8 @@ import { candidateTitle, countText, generateText, renderList, renderProgress, re
 import { OutputLoudness } from './loudness-view';
 import { LimiterMeters } from './limit-view';
 import { EnvScreens } from './env-view';
-import { addToBank, bankCandidates, bankPatches, buildPatchesSection, deviceName, type LibrarySection as LibraryPane } from './bank';
+import { addToBank, bankCandidates, bankPatches, buildPatchesSection, deviceName, inBank, type LibrarySection as LibraryPane } from './bank';
+import { askConsolidate } from './consolidate-view';
 import { Palette } from './palette';
 import { fm1Presets } from './preset-fit';
 import { saveCandidate } from './candidate-save';
@@ -1790,6 +1791,7 @@ const paletteActs: PaletteActions = {
   move: (from, to) => void palette?.move(from, to),
   drop: (pos, item) => void dropOnFm1(pos, item),
   save: () => void saveFm1Palette(),
+  consolidate: (anchor) => void consolidateFm1Palette(anchor),
 };
 /** the Library's dock: the FM-1's palette, or the saved palette open in Library › Palettes */
 const dockActs: PaletteActions = {
@@ -1798,6 +1800,7 @@ const dockActs: PaletteActions = {
   move: (from, to) => { const p = dockState()?.saved; if (p) paletteStore.move(p.id, from, to); else paletteActs.move(from, to); },
   drop: (pos, item) => { const p = dockState()?.saved; if (p) void dropOnSaved(p.id, pos, item, chipAt(pos)); else paletteActs.drop(pos, item); },
   save: paletteActs.save,
+  consolidate: paletteActs.consolidate,
 };
 const paletteSide = new PaletteView(paletteActs);
 snapColumn.querySelector('.snap-foot')!.after(paletteSide.el);
@@ -1822,9 +1825,13 @@ function renderPalette(): void {
   const save = mode === 'old' || !palette.now ? null
     : palette.linked ? 'Save the FM-1’s palette as a new palette in Library › Palettes, each sound read back from the FM-1'
       : 'Save the palette as last read as a new palette in Library › Palettes, from the sounds this browser has copies of';
+  // (Consolidate…, D-1441: with an FM-1 that keeps a palette holding a sound and sends its slots back)
+  const consolidate = palette.linked && device.readsSlots && palette.now?.positions.some((p) => p.state === 1)
+    ? 'Turn palette entries stored as extra copies of another slot’s patch into presets on that slot, and free the extra slots' : null;
   for (const v of [paletteSide, paletteLib]) {
     v.setHead(ON_THE_FM1, sub);
     v.setSave(save);
+    v.setConsolidate(consolidate);
   }
   paletteSide.render(chips, mode);
   const dock = dockState();
@@ -1832,6 +1839,7 @@ function renderPalette(): void {
   if (dock?.saved) {
     paletteLib.setHead(dock.saved.name);
     paletteLib.setSave(null);
+    paletteLib.setConsolidate(null);
     paletteLib.render(dock.saved.sounds.map(soundChip), 'saved');
   } else paletteLib.render(chips, mode);
   renderPaletteRail(paletteRail, chips, mode, paletteActs.click);
@@ -1880,6 +1888,7 @@ palette = new Palette({
   },
   changed: renderPalette,
   banked: () => libraryPanes.patches?.deviceChanged(currentView === 'library' && librarySection === 'patches'),
+  inBank,
 });
 renderPalette();
 /** the name the candidate heard goes into the palette under (D-1319): the patch's, with the candidate's name or letter */
@@ -1954,6 +1963,30 @@ async function saveFm1Palette(): Promise<boolean> {
   status.textContent = `Saved ${what} as ${p.name}${got.missed.length ? `. Not included: ${got.missed.join(', ')}` : ''}`;
   showAction(status.textContent, 'Open', () => openSavedPalette(p.id), got.missed.length ? 12000 : undefined);
   return true;
+}
+/** Consolidate… (owner 2026-11-27, D-1441): the FM-1's palette entries that play an extra copy of another slot's patch,
+ *  listed in one confirmation; the ones ticked become presets on that slot and their extra slots are freed; Undo after */
+async function consolidateFm1Palette(anchor?: HTMLElement | null): Promise<void> {
+  if (!palette) return;
+  status.textContent = 'Comparing the FM-1’s slots with its palette…';
+  const plan = await palette.planConsolidate().catch((e: Error) => `Consolidating failed: ${e.message}`);
+  if (typeof plan === 'string') {
+    status.textContent = plan;
+    return void showToast(plan);
+  }
+  const left = plan.skipped.length ? `. Left as they are: ${plan.skipped.join(', ')}` : '';
+  if (!plan.items.length) {
+    status.textContent = `Nothing to consolidate: no palette entry plays an extra copy of another slot’s patch${left}`;
+    return void showToast(status.textContent);
+  }
+  status.textContent = `${plan.items.length} palette entr${plan.items.length > 1 ? 'ies' : 'y'} can become presets on the slot they were made from${left}`;
+  const chosen = await askConsolidate(plan.items.map((i) => i.step), { anchor });
+  if (!chosen?.length) return void (status.textContent = 'Consolidate cancelled: nothing changed');
+  const r = await palette.consolidate(plan.items.filter((i) => chosen.includes(i.step)));
+  status.textContent = r.line;
+  if (!r.undo) return void showToast(r.line);
+  const undo = r.undo;
+  showUndo(r.line, () => void undo().then((t) => { status.textContent = t; showToast(t); }));
 }
 /** Send to FM-1: saved palette `p` replaces the FM-1's whole palette, after a confirm that offers to save the FM-1's
  *  palette first (shown and ticked when it holds a sound) */
@@ -2545,6 +2578,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Add to palette: new palette', detail: 'a new saved palette in Library › Palettes', keywords: 'palette collect saved library create', run: () => void addHeardToSaved(null) },
     ...paletteStore.all().map((p) => ({ kind: 'command' as const, label: `Send ${p.name} to the FM-1`, detail: 'replaces the FM-1’s whole palette', keywords: 'palette saved upload device', run: () => void sendSavedPalette(p) })),
     { kind: 'command', label: 'Save the FM-1’s palette as a palette', detail: 'a new saved palette in Library › Palettes', keywords: 'palette saved capture keep device', run: () => void saveFm1Palette() },
+    { kind: 'command', label: 'Consolidate the FM-1’s palette', detail: 'extra copies of a slot’s patch become presets on it, their slots freed', keywords: 'palette consolidate duplicate extra slot preset free tidy', run: () => void consolidateFm1Palette() },
     { kind: 'command', label: 'Import a palette from .json', keywords: 'palette saved load file', run: () => $('load-file').click() },
     { kind: 'command', label: 'Reset canvas scale', detail: 'Ctrl/Cmd+0', keywords: 'zoom 100%', run: inPatch(() => editor.zoomAround(1)) },
     // the patch's modules with their own names (#518): picking one selects it

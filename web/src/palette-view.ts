@@ -5,7 +5,7 @@
 // the bar line. With an FM-1 that keeps a palette: a click switches to it, a patch dropped on it goes there, a chip
 // dragged onto another moves there (onto a full one the two swap), × empties it. With no FM-1: the last palette read,
 // greyed and read-only; a click opens the entry from this browser's copy. palette.ts holds the model. The FM-1's square
-// is headed ON THE FM-1 (after Send to FM-1: "· from Palette 3") with Save as a palette; a saved palette (#1236,
+// is headed ON THE FM-1 (after Send to FM-1: "· from Palette 3") with Consolidate… and Save as a palette; a saved palette (#1236,
 // library-palettes.ts) uses the same square in mode `saved`: a click hears the sound, drops, moves and × change the
 // saved palette.
 import type { Chip } from './palette';
@@ -22,6 +22,8 @@ export interface PaletteActions {
   drop(pos: number, item: PatchDragItem): void;
   /** Save as a palette (the FM-1's square): the palette as a new saved palette */
   save?(): void;
+  /** Consolidate… (the FM-1's square, D-1441): extra copies of a slot's patch become presets on it; `anchor` the button */
+  consolidate?(anchor: HTMLElement): void;
 }
 
 /** the head of the FM-1's square */
@@ -68,6 +70,7 @@ export class PaletteView {
   private sub: HTMLElement;
   private keys: HTMLElement;
   private saveBtn: HTMLButtonElement;
+  private consolidateBtn: HTMLButtonElement;
 
   constructor(private act: PaletteActions, className = '') {
     this.el = document.createElement('div');
@@ -92,7 +95,13 @@ export class PaletteView {
     this.saveBtn.textContent = 'Save as a palette';
     this.saveBtn.hidden = true;
     this.saveBtn.onclick = () => this.act.save?.();
-    head.append(this.title, this.sub, this.keys, this.saveBtn);
+    this.consolidateBtn = document.createElement('button');
+    this.consolidateBtn.type = 'button';
+    this.consolidateBtn.className = 'palette-consolidate';
+    this.consolidateBtn.textContent = 'Consolidate…';
+    this.consolidateBtn.hidden = true;
+    this.consolidateBtn.onclick = () => this.act.consolidate?.(this.consolidateBtn);
+    head.append(this.title, this.sub, this.keys, this.consolidateBtn, this.saveBtn);
     this.grid = document.createElement('div');
     this.grid.className = 'palette-grid';
     this.note = document.createElement('p');
@@ -113,6 +122,12 @@ export class PaletteView {
   setSave(title: string | null): void {
     this.saveBtn.hidden = title === null || !this.act.save;
     this.saveBtn.title = title ?? '';
+  }
+
+  /** Consolidate…: shown with `title` as its hover text, or hidden (null) */
+  setConsolidate(title: string | null): void {
+    this.consolidateBtn.hidden = title === null || !this.act.consolidate;
+    this.consolidateBtn.title = title ?? '';
   }
 
   render(chips: Chip[], mode: PaletteMode): void {
