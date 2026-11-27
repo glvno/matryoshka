@@ -564,7 +564,7 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     const id = deviceView(editor.patch, true).patch.modules[e.module]?.id;
     if (id === undefined) return;
     mark(true);
-    try { editor.voiceFromDevice(id, voiceHex(e.voice)); } finally { mark(false); }
+    try { editor.setVoice(id, voiceHex(e.voice)); } finally { mark(false); }
     return;
   }
   if (e.kind === 'track' || e.kind === 'mute') {   // the FM-1's SEQ page (#83, #133): a track edited or recorded, a track muted
@@ -4520,6 +4520,8 @@ if (import.meta.env.DEV) {
       if (a) editor.switchAssembly(a);
       return !!a;
     },
+    /** a DX7's voice (hex) as the card edits it (#1338): out live as VOICE */
+    voice: (id: number, hex: string): void => editor.setVoice(id, hex),
     /** a device's first page into focus, by name (Main's knobs; with Live on, the FM-1 follows) */
     focus: (name: string): boolean => {
       const d = editor.devices.find((x) => x.name === name);

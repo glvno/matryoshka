@@ -2333,6 +2333,50 @@ async function main() {
       }
       await openSynced('Init');
     },
+    // #1338 (D-1455, D-1357): a DX7's voice on the FM-1 and over the link. A patch with a DX7 opens synced; K3 on DX7 2/2
+    // (ALGORITHM) turned on the FM-1: the editor's voice follows (VOICE_NOW), nothing goes back; an edit of the voice in
+    // the editor goes as VOICE (0x03), no upload, and the FM-1 plays it (the next K3 turn starts from it)
+    async dx7Pages() {
+      const name = await page.evaluate(async (nm) => {
+        const { DEFS } = await import('/src/modules.ts');
+        const { newPatch, addModule, connect } = await import('/src/patch.ts');
+        const p = newPatch(DEFS, nm);
+        const main = p.modules.find((m) => m.type === 'fm1'), out = p.modules.find((m) => m.type === 'output');
+        const dx = addModule(p, DEFS.dx7, 300, 20);
+        for (const port of ['pitch', 'gate']) connect(p, DEFS, { module: main.id, port }, { module: dx.id, port });
+        connect(p, DEFS, { module: dx.id, port: 'out' }, { module: out.id, port: 'l' });
+        window.__m1test.save(JSON.stringify(p));
+        return nm;
+      }, 'T1338 DX7');
+      await check('dx7: a patch with a DX7 opens, synced', await openSynced(name));
+      const dx7 = async () => JSON.parse(await patchJson()).modules.find((m) => m.type === 'dx7');
+      const algOf = async () => parseInt(((await dx7()).voice ?? '').slice(220, 222) || '0', 16);
+      const sentNow = () => page.evaluate(() => window.__sent.splice(0).map((x) => x[1]));
+      const hex = (s) => s.map((c) => c.toString(16)).join(' ');
+      await check('dx7: the editor\'s focus on the DX7', await page.evaluate(() => window.__m1test.focus('DX7')));
+      await emu.elapse(600);
+      await emu.turn(ENC.algo, 1);
+      await check('dx7: ALGO on the FM-1: DX7 2/2 with ALGORITHM', await emu.waitText('ALGORITHM', 2000));
+      await sentNow();
+      await emu.turn(ENC.k3, 1);
+      await check('dx7: K3 on the FM-1: the editor\'s voice follows (VOICE_NOW), algorithm 2', !!(await until(async () => (await algOf()) === 1, 3000)),
+        `algorithm byte ${await algOf()}`);
+      await emu.elapse(600);
+      let sent = await sentNow();
+      await check('dx7: nothing goes back for it (no VOICE, no upload)', !sent.includes(0x03) && !sent.includes(0x10), `sent ${hex(sent)}`);
+      const m = await dx7();
+      const b = m.voice.match(/../g);
+      b[110] = (19).toString(16).padStart(2, '0');    // (algorithm 20)
+      await page.evaluate(([id, h]) => window.__m1test.voice(id, h), [m.id, b.join('')]);
+      await emu.elapse(800);
+      sent = await sentNow();
+      await check('dx7: an edit of the voice in the editor goes as VOICE, no upload', sent.includes(0x03) && !sent.includes(0x10) && !sent.includes(0x11),
+        `sent ${hex(sent)}`);
+      await emu.turn(ENC.k3, 1);
+      await check('dx7: the FM-1 took it: K3 again makes algorithm 21 in the editor', !!(await until(async () => (await algOf()) === 20, 3000)),
+        `algorithm byte ${await algOf()}`);
+      await openSynced('Init');
+    },
     // #1329 (D-1262, D-1042): the Harmonizer's RETRIG row on the polyphonic Hera 6 (chords need one: owner 2026-11-26), its
     // Harmonizer on with TYPE maj. C4 held on the FM-1, then its chord button min (black key 2): OFF keeps C major sounding
     // (D-778); ALL and DIFF sound C minor at once: E♭4 heard and E4 gone in the FM-1's own output (Goertzel). The same

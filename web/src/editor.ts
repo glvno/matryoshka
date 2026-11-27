@@ -1463,13 +1463,14 @@ export class Editor {
 
   /** the DX7 cards' voice editors (dx7-view.ts): an edit is one undoable change of the module's voice */
   private dx7 = new Dx7Card({
-    setVoice: (id, hex) => this.putVoice(id, hex),
+    setVoice: (id, hex) => this.setVoice(id, hex),
     say: (msg) => this.ev.onError(msg),
     redraw: () => this.rebuild(),
   });
 
-  /** module id's DX7 voice becomes `hex`: one undo step, redrawn, out as onVoice (live, no reload: #1338) */
-  private putVoice(id: number, hex: string): void {
+  /** module id's DX7 voice becomes `hex` (the card's edit, the FM-1's VOICE_NOW, #1338): one undo step, redrawn, out as
+   *  onVoice (live, no reload; the host sends nothing back for the FM-1's own) */
+  setVoice(id: number, hex: string): void {
     const m = this.patch.modules.find((x) => x.id === id && x.type === 'dx7');
     if (!m || m.voice === hex) return;
     const before = this.mark();
@@ -1478,12 +1479,6 @@ export class Editor {
     this.rebuild();
     if (this.ev.onVoice) this.ev.onVoice(id, hex);
     else this.ev.onStructure(this.patch);
-  }
-
-  /** a DX7's voice as a voice row on the FM-1 left it (VOICE_NOW, #1338): into the patch and the card, an undo step like an
-   *  edit here; the host does not send it back (it is the FM-1's) */
-  voiceFromDevice(id: number, hex: string): void {
-    this.putVoice(id, hex);
   }
 
   /** the Steps modules' grids drawn in this rebuild, by module id */
