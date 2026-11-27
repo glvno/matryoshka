@@ -948,7 +948,7 @@ describe('bend, mod wheel, aftertouch, cc', () => {
 });
 
 describe('frequency shifter', () => {
-  function rig(params: Record<string, number>, port: 'up' | 'down'): Float32Array {
+  function rig(params: Record<string, number>, port: 'up' | 'down', pm?: Record<string, number>): Float32Array {
     const e = new Engine(SR);
     const p = emptyPatch();
     addModule(p, DEFS.fm1, 0, 0);
@@ -960,9 +960,23 @@ describe('frequency shifter', () => {
     Object.assign(sh.params, params);
     connect(p, DEFS, { module: o.id, port: 'out' }, { module: sh.id, port: 'in' });
     connect(p, DEFS, { module: sh.id, port }, { module: out.id, port: 'l' });
+    if (pm) {
+      const m = addModule(p, DEFS.osc, 0, 0);
+      Object.assign(m.params, pm);
+      connect(p, DEFS, { module: m.id, port: 'out' }, { module: sh.id, port: 'pm' });
+    }
     e.load(p);
     render(e, 4800);
     return render(e, SR).l;
+  }
+  /** the level of frequency f in a (one Goertzel bin over the whole buffer) */
+  function level(a: Float32Array, f: number): number {
+    let re = 0, im = 0;
+    for (let i = 0; i < a.length; i++) {
+      re += a[i] * Math.cos((2 * Math.PI * f * i) / SR);
+      im -= a[i] * Math.sin((2 * Math.PI * f * i) / SR);
+    }
+    return (2 * Math.hypot(re, im)) / a.length;
   }
 
   it('moves a 440 Hz sine up and down by the shift, with the level kept', () => {
@@ -973,6 +987,42 @@ describe('frequency shifter', () => {
     expect(rms(up)).toBeCloseTo(0.5 / Math.SQRT2, 2);
     expect(Math.abs(freq(rig({ shift: -100, mix: 1 }, 'up')) - 340)).toBeLessThan(12);
     expect(Math.abs(freq(rig({ shift: 0, mix: 0 }, 'up')) - 440)).toBeLessThan(5);
+  });
+
+  it('pm adds to the phase in the sign of the shift: a rising saw of one turn a cycle into pm is a shift by its rate (#1337)', () => {
+    // a 100 Hz saw rising from -1 to 1, times pi radians: the phase climbs a turn every cycle, as a shift of +100 Hz turns
+    // it (the saw's smoothed reset leaves a click a cycle, so the levels are read, not the zero crossings)
+    const saw = { wave: 2, level: 1, coarse: -17, fine: 35 }; // C4 - 16.65 st = 100.0 Hz
+    const up = rig({ shift: 0, mix: 1, pm: Math.PI }, 'up', saw), down = rig({ shift: 0, mix: 1, pm: Math.PI }, 'down', saw);
+    expect(level(up, 540)).toBeGreaterThan(0.4);
+    expect(level(up, 340)).toBeLessThan(0.05);
+    expect(level(down, 340)).toBeGreaterThan(0.4);
+    expect(level(down, 540)).toBeLessThan(0.05);
+    // amount 0: the cable does nothing
+    expect(rig({ shift: 0, mix: 1, pm: 0 }, 'up', saw)).toEqual(rig({ shift: 0, mix: 1 }, 'up'));
+  });
+
+  it('with shift 0 Hz it phase modulates its input as the Oscillator\'s pm does: the same sidebands (#1337)', () => {
+    // a 440 Hz sine carrier, a 110 Hz sine modulator of level 1, index 1.5: the sidebands at 440 ± k x 110 Hz have the
+    // Bessel levels J_k(1.5) whether the Oscillator or the Freq shifter applies it
+    const mod = { wave: 0, level: 1, coarse: -15 }; // A2, 110 Hz
+    const sh = rig({ shift: 0, mix: 1, pm: 1.5 }, 'up', mod);
+    const e = new Engine(SR);
+    const p = emptyPatch();
+    addModule(p, DEFS.fm1, 0, 0);
+    const c = addModule(p, DEFS.osc, 0, 0);
+    const m = addModule(p, DEFS.osc, 0, 0);
+    const out = addModule(p, DEFS.output, 0, 0);
+    Object.assign(c.params, { wave: 0, level: 0.5, coarse: 9, pm: 1.5 });
+    Object.assign(m.params, mod);
+    out.params.level = 1;
+    connect(p, DEFS, { module: m.id, port: 'out' }, { module: c.id, port: 'pm' });
+    connect(p, DEFS, { module: c.id, port: 'out' }, { module: out.id, port: 'l' });
+    e.load(p);
+    render(e, 4800);
+    const osc = render(e, SR).l;
+    for (const f of [440, 550, 330, 660, 220, 770]) expect(Math.abs(level(sh, f) - level(osc, f)), `${f} Hz`).toBeLessThan(0.01);
+    expect(level(sh, 550)).toBeGreaterThan(0.15); // J1(1.5) x 0.5 = 0.28
   });
 });
 

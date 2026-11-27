@@ -79,7 +79,8 @@
       "params": {
         "shift": 3,
         "cvamt": 100,
-        "mix": 0.3
+        "mix": 0.3,
+        "pm": 0
       },
       "att": [
         1,

@@ -112,7 +112,13 @@ describe('the FM-1 reader (D-1354)', () => {
     wire(p, alloc, 'pitch', ids.osc, 'pitch');
   });
   byFormat.push(['52: the Harmonizer', () => harmonized('harm', {})], ['53: a chained Harmonizer', () => harmonized('chain', {}, 'arp')],
-    ['68: the Harmonizer\'s inversion keys', () => harmonized('invkeys', { invkeys: 1 })]);
+    ['68: the Harmonizer\'s inversion keys', () => harmonized('invkeys', { invkeys: 1 })],
+    ['70: a cable into the Freq shifter\'s pm input, its row at 0', () => voice('shift-pm', (p, ids) => {
+      const sh = add(p, 'shift', { shift: 0 }), m = add(p, 'osc', { coarse: 12 });
+      wire(p, ids.osc, 'out', sh, 'in');
+      wire(p, m, 'out', sh, 'pm');
+      wire(p, sh, 'up', ids.out, 'r');
+    })]);
   // every other format that appends a parameter or a type: that one off its default
   for (let v = WRITE_FLOOR + 1; v <= VERSION; v++) {
     if (v === 52 || v === 68) continue;
@@ -147,7 +153,7 @@ describe('the FM-1 reader (D-1354)', () => {
     expect(same(again, bin)).toBe(true);
   });
   it('covers the formats', () => {
-    expect([...formats].sort((a, b) => a - b).join(' ')).toBe('46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68');
+    expect([...formats].sort((a, b) => a - b).join(' ')).toBe('46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 70');
   });
 
   it('takes a linked pattern from the store, keeps its link, and lists the ids to fetch', () => {
