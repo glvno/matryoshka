@@ -10641,8 +10641,8 @@ static void m_modal(const node_t *nd, inst_t *it, uint32_t n)
 }
 
 /* The wavetable oscillator (modules.ts wavetable): two neighbouring frames of a bank read with linear interpolation and
- * crossfaded by pos; the mip level (32 / 16 / 8 harmonics) from the block's first pitch. Phase modulation as the plain
- * oscillator's (no oversampling). */
+ * crossfaded by pos; the mip level (32 / 16 / 8 harmonics, 256 / 128 / 64 samples per cycle) from the block's first
+ * pitch. Phase modulation as the plain oscillator's (no oversampling). */
 static void m_wavetable(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *pitch = it->in[WAVETABLE_I_PITCH], *pm = it->in[WAVETABLE_I_PM], *sync = it->in[WAVETABLE_I_SYNC];
@@ -10652,19 +10652,21 @@ static void m_wavetable(const node_t *nd, inst_t *it, uint32_t n)
     int32_t pos7 = clampi(EF(it, WAVETABLE_P_POS), 0, ENG_ONE) * 7, f0 = pos7 >> 16, f1 = f0 < 7 ? f0 + 1 : 7, fm = pos7 & 0xFFFF;
     int32_t idx = nd->conn & (1u << WAVETABLE_I_PM) ? EF(it, WAVETABLE_P_PM) : 0, s1 = it->s.wt.s1;
     uint32_t dt0 = exp2_scale(INC_C4, pitch[0] + base), phase = it->s.wt.phase, i;
-    uint32_t mip = dt0 < 67108864u ? 0u : dt0 < 134217728u ? 1u : 2u;
-    const int16_t *ta = WT_T[mip][bank * 8 + f0], *tb = WT_T[mip][bank * 8 + f1];
+    uint32_t mip = dt0 < 67108864u ? 0u : dt0 < 134217728u ? 1u : 2u, lg = WT_LOG2N[mip], sh = 16u - lg;
+    const uint32_t len = (1u << lg) + 1u;                                       /* (a cycle and its guard sample) */
+    const int16_t *ta = WT_T + WT_OFF[mip] + (uint32_t)(bank * 8 + f0) * len, *tb = WT_T + WT_OFF[mip] + (uint32_t)(bank * 8 + f1) * len;
     inc_ramp_t rp;
     INC_LOOP(rp, base) {
-        uint32_t dt = dt_, ph, xi, xf;
+        uint32_t dt = dt_, ph, x, xi, xf;
         int32_t ya, yb;
         if (sync[i] >= 32768 && s1 < 32768)
             phase = 0;
         s1 = sync[i];
         phase += dt;
         ph = phase + (uint32_t)(((int64_t)mul16(idx, pm[i]) * TURN_PER_RAD) >> 16);
-        xi = ph >> 24;
-        xf = (ph >> 8) & 0xFFFFu;
+        x = ph >> sh;                                                           /* (the sample, 16 fraction bits) */
+        xi = x >> 16;
+        xf = x & 0xFFFFu;
         ya = ta[xi] * 2 + (int32_t)(((int64_t)(ta[xi + 1] - ta[xi]) * 2 * (int32_t)xf) >> 16);
         yb = tb[xi] * 2 + (int32_t)(((int64_t)(tb[xi + 1] - tb[xi]) * 2 * (int32_t)xf) >> 16);
         out[i] = mul16(ya + mul16(yb - ya, fm), lvl);

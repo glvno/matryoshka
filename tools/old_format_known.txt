@@ -127,3 +127,9 @@ v1.24.1 steps-ratchets-trig
 v1.24.1 steps-song
 v1.24.1 steps-song-counted
 v1.24.1 steps-song-slim
+
+# v1.28.1: 1.29.0 changed the engine on purpose, and the change reaches these 2 golden kits.
+#   D-1121 (flash reclaim): the Wavetable's 16- and 8-harmonic levels hold 128 and 64 samples per cycle, not 256. Only
+#   notes above 689 Hz read them, and only these two kits play a Wavetable that high.
+v1.28.1 wavetable
+v1.28.1 wavetable-eml-high
