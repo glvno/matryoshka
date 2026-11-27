@@ -11,6 +11,11 @@ const USED = ['matryoshka.patch', 'matryoshka.patches', 'modular-1.patch', 'modu
 
 /** the main changes, by "major.minor"; a version without an entry shows no card */
 export const HIGHLIGHTS: Record<string, string[]> = {
+  '1.29': [
+    'Update your FM-1 to firmware 1.29 before you sync it with this editor: install it from Install firmware. Until then the editor says "update it to sync".',
+    'Any sound can be the carrier in an FM patch: cable a modulator into the Freq shifter\'s new pm input, with shift at 0 Hz. Try the new Library voice wavetable fm.',
+    'An effect\'s page on the FM-1 says NAME OFF in its header while the effect is off.',
+  ],
   '1.28': [
     'Update your FM-1 to firmware 1.28 before you sync it with this editor: install it from Install firmware. Until then the editor says "update it to sync".',
     'Inversion keys on the Harmonizer: turn on its inversion keys row (INVKEYS on the FM-1) and the three highest keys, F, F♯ and G, choose the 1st, 2nd and 3rd inversion of the chord.',
