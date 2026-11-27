@@ -96,7 +96,7 @@ describe('re-pointing after Send bank (#1196)', () => {
 });
 
 /** the editor's link to a stand-in FM-1, and a palette on it with recorded ports */
-async function linked(o: { features?: number; features25?: number; presetRoom?: number; live?: boolean; candidates?: Candidate[]; current?: () => Patch; onSlot?: () => void } = {}) {
+async function linked(o: { features?: number; features25?: number; presetRoom?: number; live?: boolean; candidates?: Candidate[]; current?: () => Patch; onSlot?: () => void; inBank?: (name: string) => boolean } = {}) {
   const fm1 = new PaletteFm1({ features: o.features, features25: o.features25, presetRoom: o.presetRoom });
   const g = globalThis as unknown as { window?: unknown; navigator: { requestMIDIAccess?: unknown } };
   g.window ??= globalThis;
@@ -117,6 +117,7 @@ async function linked(o: { features?: number; features25?: number; presetRoom?: 
     say: (t) => void said.push(t),
     full: (text, replace) => void full.push({ text, replace }),
     changed: () => {},
+    inBank: o.inBank,
   };
   const palette = new Palette(ports, storage);
   link.onEvent = (e) => {
@@ -982,5 +983,71 @@ describe('a palette entry names a preset only while the device plays it (owner 2
     await fm1.quiet();
     expect(fm1.entries[0]).toMatchObject({ slot: 22, devices: [{ name: 'Mine' }] });
     expect(fm1.presets.map((p) => p.name)).toEqual(['Mine']);
+  });
+});
+
+describe('Consolidate the FM-1\'s palette (owner 2026-11-27: "agree with everything you said about the palette", D-1441)', () => {
+  const hera = (): Patch => FM1_PRESETS['Hera 6']();
+  const synth = (p: Patch): AssemblyInst => p.assemblies!.find((a) => a.name === 'Hera 4')!;
+  function moved(p: Patch, row: number, by = 0.1): Patch {
+    const a = synth(p), rows = rowOrder(p, a), values = currentValues(p, a);
+    const pd = DEFS[p.modules.find((x) => x.id === rows[row].module)!.type].params.find((x) => x.name === rows[row].param)!;
+    const step = (pd.max - pd.min) * by;
+    values[row] += values[row] + step <= pd.max ? step : -step;
+    setRows(p, rows, values);
+    return p;
+  }
+  /** slot 23 HERA 6 (other values than the factory's), slot 24 HERA 6 PLUCKPAD (a tweak an older editor stored whole),
+   *  palette 1 on slot 24 as that editor left it */
+  async function bug(o: { inBank?: (name: string) => boolean; extra?: (p: Patch) => void } = {}) {
+    const r = await linked({ features25: FEATURE25_SLOT_GET | FEATURE5_FX_DRAWERS, inBank: o.inBank });
+    const held = moved(hera(), 1, 0.2), sound = moved(hera(), 0);
+    o.extra?.(sound);
+    for (const [slot, name, p] of [[22, 'HERA 6', held], [23, 'HERA 6 PLUCKPAD', sound]] as const) {
+      const bin = r.link.encodeFor(p);
+      r.fm1.slots[slot] = { slot, used: true, length: bin.length, name };
+      r.fm1.bins[slot] = bin;
+    }
+    r.fm1.entries[0] = entryOf(sound, 23, 'HERA 6 PLUCKPAD');
+    return { ...r, held, sound, bin: r.fm1.bins[23]! };
+  }
+
+  it('offers palette 1 as a preset on slot 23, frees slot 24, and Undo puts everything back', async () => {
+    const { fm1, link, palette, held, sound, bin } = await bug();
+    const was = fm1.entries[0];
+    const plan = await palette.planConsolidate();
+    if (typeof plan === 'string') throw new Error(plan);
+    expect(plan.items.map((i) => i.step)).toEqual([{ pos: 0, from: { slot: 23, name: 'HERA 6 PLUCKPAD' }, to: { slot: 22, name: 'HERA 6' }, presets: ['HERA 6 PLUCKPAD'], free: true }]);
+    expect([fm1.presets.length, fm1.slots[23].used]).toEqual([0, true]);   // (planning writes nothing)
+    const r = await palette.consolidate(plan.items);
+    await fm1.quiet();
+    expect(r.line).toBe('Consolidated 1 onto slot 23 · HERA 6; slot 24 freed');
+    expect([fm1.entries[0]?.slot, fm1.entries[0]?.devices.map((x) => x.name), fm1.slots[23].used, fm1.presets.map((x) => x.name)]).toEqual([22, ['HERA 6 PLUCKPAD'], false, ['HERA 6 PLUCKPAD']]);
+    // (the FM-1 plays the same sound as before: slot 23's patch with the preset, the preset under its name)
+    const plays = structuredClone(held);
+    applyEntry(plays, fm1.entries[0]!);
+    const named = structuredClone(sound);
+    synth(named).preset = 'HERA 6 PLUCKPAD';
+    expect(link.encodeFor(plays)).toEqual(link.encodeFor(named));
+    expect(await r.undo!()).toBe('Consolidate undone: each entry is back on its own slot');
+    await fm1.quiet();
+    expect([fm1.slots[23], fm1.bins[23], fm1.entries[0], fm1.presets]).toEqual([{ slot: 23, used: true, length: bin.length, name: 'HERA 6 PLUCKPAD' }, bin, was, []]);
+  });
+  it('never offers the base slot\'s own entry, and keeps a slot the bank list needs', async () => {
+    const { fm1, palette } = await bug({ inBank: (n) => n === 'HERA 6 PLUCKPAD' });
+    fm1.entries[1] = { slot: 22, pattern: 0, name: 'HERA 6', devices: [] };
+    const plan = await palette.planConsolidate();
+    if (typeof plan === 'string') throw new Error(plan);
+    expect(plan.items.map((i) => [i.step.pos, i.step.free, i.step.keep])).toEqual([[0, false, 'it is in your bank list']]);
+    await palette.consolidate(plan.items);
+    await fm1.quiet();
+    expect([fm1.entries[0]?.slot, fm1.slots[23].used, fm1.entries[1]?.slot]).toEqual([22, true, 22]);
+  });
+  it('leaves an entry whose slot differs from its base in a setting no preset holds, and says why', async () => {
+    const { palette } = await bug({ extra: (p) => { p.modules.find((m) => m.type === 'output')!.params.level = 0.33; } });
+    const plan = await palette.planConsolidate();
+    if (typeof plan === 'string') throw new Error(plan);
+    expect(plan.items).toEqual([]);
+    expect(plan.skipped).toEqual(['1 · HERA 6 PLUCKPAD (slot 23 · HERA 6 differs from it in settings no device preset holds)']);
   });
 });
