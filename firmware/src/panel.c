@@ -441,15 +441,17 @@ static void panel_patch_follow(void)
     if (panel_gen == pages_gen())
         return;
     panel_gen = pages_gen();
+    drum_bank = seq_view = 0;                      /* a load: the keys' octave, drum bank and DX7 operator picker start
+                                                     * over (the owner, 2026-11-27, D-1456), before the new pages are
+                                                     * read; a Live parameter edit is no load (PARAM changes no pages_gen) */
+    dx7_op = 0;
+    dx7_opname[3] = '1';
     pages_ensure();
     page_held = -1;
     for (i = 0; i < trail_n; i++)
         trail[i].lbtn = -1;
     seq_hold_drop();
     page_mask();
-    drum_bank = seq_view = 0;                      /* a load: the keys' octave and drum bank start over (the owner,
-                                                     * 2026-11-27, D-1456); a Live parameter edit is no load (PARAM changes
-                                                     * no pages_gen) */
     if (octave) {
         octave = 0;
         leds_octave();

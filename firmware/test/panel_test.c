@@ -5036,13 +5036,15 @@ int main(void)
             ok_copies &= E.node[m].ninst == 4u;
         }
         check("a voice row turned on the card reaches every copy of its DX7 (a Voicing's four), live", ok_copies);
-        dx7_op = 0;                                       /* (the picker as at start: it is kept across patches, and the
-                                                          * fixtures' sweeps above, the DX7 Piano example among them, move it) */
-        dx7_opname[3] = '1';
+        dx7_op = 4;                                       /* (operator 5 picked in the patch before: a load picks operator 1
+                                                          * again, D-1456) */
+        dx7_opname[3] = '5';
         check("DX7 fixture loads", load_fixture(FIX[0]) == 0);
         pv_gen++;
         eng_render(al, ar, 128);
         screen_idle();
+        loop();                                           /* (a panel pass: panel_patch_follow sees the load) */
+        check("  a patch load sets the DX7 operator picker back to OP 1 (D-1456)", dx7_op == 0u && dx7_opname[3] == '1');
         pages_ensure();
         for (d = 0, dx = -1; d < pg_ndev; d++)
             if (pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_DX7)
