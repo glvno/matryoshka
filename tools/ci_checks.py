@@ -18,6 +18,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / 'tools/ci_checks.json'
+# main mode's test report (D-1183): the failing tests of a red run on `main`, for its `main-red` issue
+MAIN_REPORT = ROOT / 'build/web-main-report.json'
 # web tests a release-candidate run keeps out of coverage (D-147): renders too slow to pass their limits instrumented
 SLOW_RENDERS = ('src/levels-*.test.ts', 'src/headroom-*.test.ts', 'src/kit909.test.ts', 'src/shared-levels.test.ts',
                 'scripts/audition-render.test.ts', 'scripts/quiet-load.test.ts')
@@ -130,9 +132,11 @@ def select(paths, config, area, root=ROOT):
     return {'firmware': firmware, 'host': sorted(host), 'web': sorted(web), 'reasons': explanations}
 
 
-def event_scope(event_name, event, head, root=ROOT):
+def event_scope(event_name, event, head, root=ROOT, area=None):
     inputs = event.get('inputs') or {}
     mode = inputs.get('mode', 'targeted') if event_name == 'workflow_dispatch' else 'targeted'
+    if mode == 'main':
+        return mode, []
     if mode == 'rc':
         frozen = inputs.get('rc_sha', '')
         if not re.fullmatch(r'[0-9a-f]{40}', frozen) or frozen != head:
@@ -148,7 +152,9 @@ def event_scope(event_name, event, head, root=ROOT):
         base = event.get('before', '')
         if not base or set(base) == {'0'}:
             raise ValueError('TEST PLAN REQUIRED: push has no comparison commit; dispatch targeted mode with base.')
-        return mode, changed_paths(base, root=root)
+        # D-1183: after every merge the web job runs the full web suite too, beside the merge's targeted checks
+        main = area == 'web' and event.get('ref') == 'refs/heads/main'
+        return 'main' if main else mode, changed_paths(base, root=root)
     if event_name == 'workflow_dispatch':
         base = inputs.get('base', '')
         if not base:
@@ -161,10 +167,12 @@ def plan(area, allow_package=False, root=ROOT):
     config = json.loads((root / 'tools/ci_checks.json').read_text())
     event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
     head = git('rev-parse', 'HEAD', root=root)
-    mode, paths = event_scope(os.environ['GITHUB_EVENT_NAME'], event, head, root=root)
+    mode, paths = event_scope(os.environ['GITHUB_EVENT_NAME'], event, head, root=root, area=area)
     if mode == 'package' and not allow_package:
         raise ValueError('Package-only mode belongs to the release packaging workflow.')
-    selected = select(paths, config, area, root=root) if mode == 'targeted' else {
+    if mode == 'main' and area != 'web':
+        raise ValueError('Main mode is the web job\'s full suite after a merge (D-1183).')
+    selected = select(paths, config, area, root=root) if mode in ('targeted', 'main') else {
         'firmware': True, 'host': sorted(applicable_host(config['full_host'], config, root)) if mode == 'rc' else [],
         'web': [], 'reasons': {}}
     return dict(selected, mode=mode, commit=head, changed=paths, area=area)
@@ -175,7 +183,8 @@ def execute(plan_path, area, group=None, part=None):
     test but the slow renders, with coverage, then the display stats; 'slow' runs the slow renders uninstrumented, only
     part `part` = (k, n) of them when given (`slow_part`). The RC workflow runs the groups as parallel jobs and seals
     the coverage record only after all of them pass. Without `group` both run here, one after the other, and the stats
-    come only after both pass."""
+    come only after both pass. Main mode, after a merge (D-1183), runs the coverage group's tests, then the slow renders
+    the merge's targeted selection names, each run writing its JSON report to `MAIN_REPORT`; it makes no stats."""
     chosen = json.loads(plan_path.read_text())
     if chosen['commit'] != git('rev-parse', 'HEAD'):
         raise ValueError('Check plan belongs to a different commit; regenerate it.')
@@ -188,17 +197,24 @@ def execute(plan_path, area, group=None, part=None):
         for check in chosen['host']:
             print('host check:', check, flush=True)
             subprocess.run(config['host_commands'][check], cwd=ROOT, check=True)
-    elif chosen['mode'] == 'rc':
+    elif chosen['mode'] in ('rc', 'main'):
         # Disjoint groups: coverage does not instrument the slow renders (loudness, headroom, the XL comparison),
         # which pass their time limits only uninstrumented. Every web test runs once.
         slow = slow_renders(ROOT)
         if not any(p.startswith('src/levels-') for p in slow):
             raise ValueError('Expected the uninstrumented loudness test group; no coverage bundle will be produced.')
+        report = ['--reporter=default', '--reporter=json', '--outputFile.json=' + str(MAIN_REPORT)] if chosen['mode'] == 'main' else []
         if group in (None, 'coverage'):
             subprocess.run(['npx', '--no-install', 'vitest', 'run', '--testTimeout=60000', '--coverage',
                             '--coverage.reporter=json-summary', '--coverage.reporter=text-summary',
-                            '--coverage.include=src/**', *[a for g in SLOW_RENDERS for a in ('--exclude', g)]],
+                            '--coverage.include=src/**', *[a for g in SLOW_RENDERS for a in ('--exclude', g)], *report],
                            cwd=ROOT / 'web', check=True)
+        if chosen['mode'] == 'main':
+            files = [f for f in (Path(p).relative_to('web').as_posix() for p in chosen['web']) if f in slow]
+            if files:
+                print('slow renders this merge selects:', ' '.join(files), flush=True)
+                subprocess.run(['npx', '--no-install', 'vitest', 'run', *files, *report], cwd=ROOT / 'web', check=True)
+            return
         if group in (None, 'slow'):
             files = slow_part(slow, *part) if part else slow
             print('slow renders' + (f', part {part[0]} of {part[1]}' if part else '') + ':', ' '.join(files) or 'none', flush=True)
@@ -237,6 +253,7 @@ def main():
             with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
                 out.write('firmware=' + str(chosen['firmware']).lower() + '\n')
                 out.write('coverage_record=' + str('coverage-record' in chosen['host']).lower() + '\n')
+                out.write('mode=' + chosen['mode'] + '\n')
         if os.environ.get('GITHUB_STEP_SUMMARY'):
             with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
                 out.write('### Check scope: ' + chosen['mode'] + '\n\nCommit: `' + chosen['commit']
