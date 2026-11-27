@@ -2539,6 +2539,11 @@ export class Editor {
     const fmt = (v: number, params = m.params, digits = 3): string => { const p = parts(v, params, digits); return p.unit ? `${p.num} ${p.unit}` : p.num; };
     let shown = '';
     const show = (v: number, params = m.params): void => {
+      // past 90 % of the range the thumb sits where the value is drawn: the value stands just left of the thumb instead
+      const at = pd.log ? toUnit(pd, v) : (v - pd.min) / (topOf(range()) - pd.min);
+      const top = !jacked && at > 0.9;
+      row.classList.toggle('top', top);
+      if (top) row.style.setProperty('--at-top', String(Math.min(1, at)));
       const text = fmt(v, params);
       if (text === shown) return;
       shown = text;
