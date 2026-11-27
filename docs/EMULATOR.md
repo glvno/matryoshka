@@ -166,7 +166,7 @@ command; deployment neither downloads arbitrary reports nor reruns tests.
   checkout it runs in: the nearest directory at or above the working directory holding `tools/emu/Cargo.toml`. The
   region is `web/public/firmware/matryoshka-factory.bin`, or the image `--factory FILE` names; the headers are
   `presets.h`, `factory_tier.h`, `engine.h`, `defs.h`, `font5x7.c` and `font_bc.h` in `firmware/src/`, and
-  `pmig_cases.h` and `released_cases.h` in `firmware/test/`. None of them is compiled in. Worktrees share one
+  `released_cases.h` in `firmware/test/`. None of them is compiled in. Worktrees share one
   `tools/emu/target` ([D-074](ledger/project.md#D-074), Decided, amended), so its binary is the one the last checkout
   built, and cargo does not rebuild it for another checkout's changed files: a compiled-in region ran kit-fold's
   firmware on main's factory sounds (#1205). The runners pass their checkout's image. `m1emu` prints the region it loaded

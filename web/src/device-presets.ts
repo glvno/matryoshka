@@ -429,7 +429,7 @@ export function replaceUserPresets(drop: readonly { structure: string; name: str
  * (FXP1) becomes an FX drawer preset. False when a factory one has that name. Returns the name it is stored under */
 export function addUserPreset(structure: string, name: string, values: number[]): string | false {
   let n = fixName(name);
-  const m = movedPreset(structure, n, values);   // (from an FM-1 that has not moved its presets yet, D-865)
+  const m = movedPreset(structure, n, values);   // (an FM-1 keeps such presets as they are from firmware 1.29, D-865)
   if (m) ({ structure, values } = m);
   const read = fxp1ToFxd1({ structure, name: n, values });
   if (!n || factoryFor(read.structure).some((f) => sameName(f.name, n))) return false;

@@ -3,8 +3,8 @@
 // is matched to its engine by the structure fingerprint (structure.ts), so a factory engine rebuilt with another structure
 // no longer lists the presets stored for its earlier one. preset-migrations.json (written by scripts/preset-lineage.ts
 // from preset-lineage.json and preset-maps.ts) says, for each earlier structure of a factory engine, how its values
-// become the values of today's structure: one entry for each of today's rows, in canonical row order. The editor (here,
-// device-presets.ts) and the FM-1 (firmware/src/presetmig.c, from the same table in presets.h) do the same.
+// become the values of today's structure: one entry for each of today's rows, in canonical row order. The editor moves
+// them (device-presets.ts); the FM-1 moved them too up to firmware 1.28 and keeps them as they are from 1.29 (D-865).
 import MIGRATIONS from './preset-migrations.json';
 
 /** how one of today's rows gets its value: a number is the earlier preset's row of that index (kept as it was); -1 the
@@ -22,7 +22,7 @@ export interface MigrationTable {
   v: number[];
 }
 /** a line: one earlier row x times mul plus add, held inside min .. max, in Q16 (65536 is 1) and computed in Q16, as the
- * FM-1 does (presetmig.c), so both give the same value. `key`: an earlier row read as a whole number picks the line
+ * FM-1 up to 1.28 did, so both gave the same value. `key`: an earlier row read as a whole number picks the line
  * (place key - lo, held inside the lines) */
 export interface MigrationLine {
   x: number;

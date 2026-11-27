@@ -182,57 +182,6 @@ static void c1_poll(void)                       /* the main loop */
     }
 }
 
-/* D-1114, #979: the float kernels' result bits on both cores (engine.c eng_fpu_probe). DIAG page 140 runs the probe
- * FPU_RUNS times on core 0 from the main loop with the interrupts on (the audio interrupt, which plays float kernels
- * too, comes between its instructions), then once on core 1, handed over as the self-test is (c1_test); 141 and 142
- * read core 0's first and core 1's hashes (tools/m1_link.py fpucheck). The hashes sit in NOINIT, outside the RAM
- * region's budget: before page 140 has run since power-on, 141 and 142 read whatever was there */
-#define FPU_RUNS 32u
-static uint32_t __attribute__((section(".noinit"))) fpu_h0[ENG_PROBE_CASES], fpu_h1[ENG_PROBE_CASES];
-
-static void fpu_job(uint32_t arg)               /* (runs on core 1) */
-{
-    (void)arg;
-    eng_fpu_probe(1u, fpu_h1);
-}
-
-/* v: the cases, the runs on core 0, its runs whose hashes differ from the first's (case by case), core 1 (bit 0 on,
- * 1 the job taken, 2 back in time), core 1's time and one core-0 run's (us), the cases where core 1 differs (bit c),
- * core 1's stack */
-static void fpu_check(uint32_t *v)
-{
-    uint32_t h[ENG_PROBE_CASES], r, c, k, t0, diff = 0, odd = 0;
-    int rc = 0, w = -1;
-    t0 = fm1_ticks();
-    eng_fpu_probe(0u, fpu_h0);
-    v[5] = (fm1_ticks() - t0) / FM1_TICKS_PER_US;
-    for (r = 1; r < FPU_RUNS; r++) {
-        eng_fpu_probe(0u, h);
-        for (c = 0; c < ENG_PROBE_CASES; c++)
-            diff += h[c] != fpu_h0[c];
-    }
-    for (c = 0; c < ENG_PROBE_CASES; c++)
-        fpu_h1[c] = ~fpu_h0[c];
-    v[4] = 0;
-    if (fm1_c1_on) {
-        t0 = fm1_ticks();
-        k = fm1__lock();                        /* (the hand-off as c1_test's: the audio interrupt waits for this job) */
-        rc = fm1_cpu1_run(fpu_job, 0);
-        fm1__unlock(k);
-        w = rc ? fm1_cpu1_wait() : -1;
-        v[4] = (fm1_ticks() - t0) / FM1_TICKS_PER_US;
-    }
-    for (c = 0; c < ENG_PROBE_CASES; c++)
-        if (fpu_h1[c] != fpu_h0[c])
-            odd |= 1u << c;
-    v[0] = ENG_PROBE_CASES;
-    v[1] = FPU_RUNS;
-    v[2] = diff;
-    v[3] = (uint32_t)fm1_c1_on | (uint32_t)(rc != 0) << 1 | (uint32_t)(w == 0) << 2;
-    v[6] = odd;
-    v[7] = fm1_cpu1_stack_used();
-}
-
 /* #729: TIMER5's longest wait between two entries (TIMER4 ticks) since DIAG page 130 was read, and the fm1_ms it ended
  * at. TIMER5 nests in the audio interrupt, so only the interrupts off (or its own long run) hold it back, and with it
  * the 2 kHz USB service that queues each USB audio packet */
@@ -613,17 +562,6 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         c1_test_ms = page == 108u ? 1u : C1_TEST_MS;
         fm1_c1_race_ticks = page == 108u ? 100u * FM1_TICKS_PER_US : 0u;
         page = 114u;
-    }
-    if (page >= 140u && page <= 142u) {         /* D-1114: the float kernels' bits on both cores (fpu_check) */
-        uint32_t v[8];
-        if (page == 140u)
-            fpu_check(v);
-        else
-            for (i = 0; i < ENG_PROBE_CASES; i++)
-                v[i] = page == 141u ? fpu_h0[i] : fpu_h1[i];
-        for (i = 0; i < (page == 140u ? 8u : ENG_PROBE_CASES) * 4u; i++)
-            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
-        return page == 140u ? 32u : ENG_PROBE_CASES * 4u;
     }
     if (page == 115u) {                         /* #271: the last failed self-test: its answer XOR the right one (all ones:
                                                  * never written), the seed, the answer */
@@ -1297,18 +1235,8 @@ static uint64_t bank_upgrade(void)
     return bu_run(bank_buf, sizeof bank_buf);
 }
 
-/* new factory content: the user presets of an earlier structure of a factory engine move to today's structure (presetmig.c,
- * D-865); how many moved */
-static uint32_t presets_upgrade(void)
-{
-    if (!fc_nmig())
-        return 0;
-    boot_step("PRESETS");
-    return pm_run(pr_vals);                     /* (pr_vals: pages_ui.c's preset values; the pages decode them again) */
-}
-
 /* the bank brought to the factory region's content (the first boot after an update that changed the factory content or
- * the format, or a new factory region, #915): the presets that move, the untouched factory slots, the patches new to it,
+ * the format, or a new factory region, #915): the untouched factory slots, the patches new to it,
  * then the settings record (cur_preset and sel as they are). What the bar says, 0 nothing; *then what it says next, when
  * there is more (it is left as it is otherwise); *up the slots given today's patch. Without the factory region nothing
  * changes: a later boot with it does this */
@@ -1316,12 +1244,12 @@ static const char *factory_sync(const char **then, uint64_t *up)
 {
     static char new_msg[BN_BAR + 1u];
     static const char UPDATED[] = "FACTORY PATCHES UPDATED";
-    uint32_t was = bank_set, moved;
+    uint32_t was = bank_set;
     int added;
     *up = 0;
     if (!fc_region || (bank_fmt >= ENG_PATCH_VERSION && bank_set == fc_set()))
         return 0;
-    moved = presets_upgrade();                  /* (all before the settings record: a cut runs them again) */
+    /* (user presets of an earlier engine structure stay as they are from 1.29: the editor moves them, D-865) */
     *up = bank_upgrade();                       /* (an untouched released factory copy: today's patch) */
     added = bank_add(was, new_msg);             /* (a factory patch new to this bank, #630) */
     bank_fmt = ENG_PATCH_VERSION;
@@ -1329,7 +1257,7 @@ static const char *factory_sync(const char **then, uint64_t *up)
     settings_store();
     if (added && *up)
         *then = UPDATED;
-    return added ? new_msg : *up ? UPDATED : moved ? "PRESETS UPDATED" : 0;
+    return added ? new_msg : *up ? UPDATED : 0;
 }
 
 /* the main loop, after a FACT_COMMIT (factory.c fc_sync_due): the bank brought to the new content. The running patch's

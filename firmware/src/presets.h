@@ -5,10 +5,10 @@
 #include <stdint.h>
 
 
-/* the factory set (PRESET_LIST: names and unpacked bytes, then web/src/preset-migrations.json as JSON when it has any),
-   24 bits of FNV-1a, never 0: kept in the settings record. A change adds the factory names new to the bank (main.c bank_add),
-   gives an untouched released copy today's patch (bank_upgrade.h) and migrates user assembly presets (presets_upgrade). */
-#define FACTORY_SET_ID 0x0187f5u
+/* the factory set (PRESET_LIST: names and unpacked bytes, then FIRMWARE_TIER_OVERRIDES as JSON when it has any),
+   24 bits of FNV-1a, never 0: kept in the settings record. A change adds the factory names new to the bank (main.c bank_add)
+   and gives an untouched released copy today's patch (bank_upgrade.h). */
+#define FACTORY_SET_ID 0xdf0852u
 
 #define N_PRESETS 21
 /* the factory patches, packed (lz_unpack.h, web/scripts/factory-lz.ts) */
