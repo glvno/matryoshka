@@ -120,10 +120,10 @@ const svgEl = (name: string, attrs: Record<string, string | number>): SVGElement
 /** the diagram as an SVG: a box per operator (carriers filled), lines from modulator to modulated, the carriers into
  *  the output line, the feedback loop */
 function drawAlg(alg: number, d: AlgDiagram): SVGSVGElement {
-  const CW = 24, RH = 22, BW = 16, BH = 13, PAD = 8;
-  const w = d.cols * CW + 2 * PAD, h = d.rows * RH + 10;
+  const CW = 30, RH = 27, BW = 20, BH = 16, PAD = 10, TOP = 8;
+  const w = d.cols * CW + 2 * PAD, h = d.rows * RH + TOP + 8;
   const svg = svgEl('svg', { class: 'dx7-alg-svg', viewBox: `0 0 ${w} ${h}`, width: w, height: h, role: 'img', 'aria-label': `Algorithm ${alg}` }) as SVGSVGElement;
-  const at = new Map(d.ops.map((o) => [o.op, { x: PAD + o.col * CW + CW / 2, y: (d.rows - 1 - o.row) * RH + 4 }]));
+  const at = new Map(d.ops.map((o) => [o.op, { x: PAD + o.col * CW + CW / 2, y: (d.rows - 1 - o.row) * RH + TOP }]));
   const outY = h - 3;
   const cx = d.ops.filter((o) => o.carrier).map((o) => at.get(o.op)!.x);
   svg.append(svgEl('line', { class: 'dx7-out', x1: Math.min(...cx), x2: Math.max(...cx), y1: outY, y2: outY }));
@@ -132,12 +132,12 @@ function drawAlg(alg: number, d: AlgDiagram): SVGSVGElement {
     const a = at.get(l.from)!, b = at.get(l.to)!;
     svg.append(svgEl('path', { class: 'dx7-link', d: `M${a.x},${a.y + BH} L${a.x},${(a.y + BH + b.y) / 2} L${b.x},${(a.y + BH + b.y) / 2} L${b.x},${b.y}` }));
   }
-  const f = at.get(d.feedback.from)!, t = at.get(d.feedback.to)!, fx = Math.max(f.x, t.x) + BW / 2 + 4;
-  svg.append(svgEl('path', { class: 'dx7-fb', d: `M${f.x + BW / 2},${f.y + BH / 2} L${fx},${f.y + BH / 2} L${fx},${t.y - 3} L${t.x},${t.y - 3} L${t.x},${t.y}` }));
+  const f = at.get(d.feedback.from)!, t = at.get(d.feedback.to)!, fx = Math.max(f.x, t.x) + BW / 2 + 5;
+  svg.append(svgEl('path', { class: 'dx7-fb', d: `M${f.x + BW / 2},${f.y + BH / 2} L${fx},${f.y + BH / 2} L${fx},${t.y - 5} L${t.x},${t.y - 5} L${t.x},${t.y}` }));
   for (const o of d.ops) {
     const p = at.get(o.op)!;
     svg.append(svgEl('rect', { class: o.carrier ? 'dx7-op carrier' : 'dx7-op', x: p.x - BW / 2, y: p.y, width: BW, height: BH, rx: 2 }));
-    const tx = svgEl('text', { x: p.x, y: p.y + BH - 3, 'text-anchor': 'middle' });
+    const tx = svgEl('text', { x: p.x, y: p.y + BH - 4, 'text-anchor': 'middle' });
     tx.textContent = String(o.op);
     svg.append(tx);
   }
@@ -460,7 +460,8 @@ export class Dx7Card {
     root.append(div('dx7-sec', div('dx7-st', `Operator ${o}`, drawEg(u, r, l)),
       div('dx7-grid', ...[0, 1, 2, 3].map((i) => field(r + i, `R${i + 1}`, 'rate')), ...[0, 1, 2, 3].map((i) => field(l + i, `L${i + 1}`, 'egLevel'))),
       div('dx7-grid',
-        field(opAt(o, OPF.bp), `BP ${bpName}`, 'bp'), field(opAt(o, OPF.ld), 'L DEP', 'ld'), field(opAt(o, OPF.rd), 'R DEP', 'rd'), field(opAt(o, OPF.rs), 'RATE SC', 'rs'),
+        field(opAt(o, OPF.bp), `BP ${bpName}`, 'bp'), field(opAt(o, OPF.ld), 'L DEP', 'ld'), field(opAt(o, OPF.rd), 'R DEP', 'rd'), field(opAt(o, OPF.rs), 'RATE SC', 'rs')),
+      div('dx7-grid dx7-two',
         field(opAt(o, OPF.lc), 'L CRV', 'curve', { choices: CURVES }), field(opAt(o, OPF.rc), 'R CRV', 'curve', { choices: CURVES }),
         field(opAt(o, OPF.vel), 'VEL', 'vel'), field(opAt(o, OPF.ams), 'AMS', 'ams'))));
 
@@ -475,9 +476,10 @@ export class Dx7Card {
       div('dx7-st', 'Pitch EG', drawEg(u, GLOBAL.pegR, GLOBAL.pegL)),
       div('dx7-grid', ...[0, 1, 2, 3].map((i) => field(GLOBAL.pegR + i, `R${i + 1}`, 'pegRate')), ...[0, 1, 2, 3].map((i) => field(GLOBAL.pegL + i, `L${i + 1}`, 'pegLevel'))),
       div('dx7-st', 'LFO'),
+      div('dx7-grid dx7-two', field(GLOBAL.wave, 'WAVE', 'wave', { choices: WAVES }), field(GLOBAL.sync, 'KEY SYNC', 'sync', { check: true })),
       div('dx7-grid',
-        field(GLOBAL.wave, 'WAVE', 'wave', { choices: WAVES }), field(GLOBAL.speed, 'SPEED', 'speed'), field(GLOBAL.delay, 'DELAY', 'delay'), field(GLOBAL.sync, 'SYNC', 'sync', { check: true }),
-        field(GLOBAL.pmd, 'PMD', 'pmd'), field(GLOBAL.amd, 'AMD', 'amd'), field(GLOBAL.pms, 'PMS', 'pms'), field(GLOBAL.transpose, 'TRANSP', 'transpose', { off: -24 })));
+        field(GLOBAL.speed, 'SPEED', 'speed'), field(GLOBAL.delay, 'DELAY', 'delay'), field(GLOBAL.pmd, 'PMD', 'pmd'), field(GLOBAL.amd, 'AMD', 'amd'),
+        field(GLOBAL.pms, 'PMS', 'pms'), field(GLOBAL.transpose, 'TRANSP', 'transpose', { off: -24 })));
     root.append(g);
 
     // the browsed bank: 32 names, a click loads one; with none open, the banks this browser keeps
@@ -505,18 +507,13 @@ export class Dx7Card {
       }));
       root.append(div('dx7-sec', head, list));
     } else if (kept.length) {
-      const sel = document.createElement('select');
-      sel.className = 'dx7-banks';
-      sel.title = hint('banks');
-      sel.setAttribute('aria-label', 'Open a bank kept in this browser');
-      sel.append(new Option('Kept banks…', '', true, true), ...kept.map((k, i) => new Option(k.name, String(i))));
-      sel.addEventListener('change', () => {
-        const k = kept[Number(sel.value)];
-        if (!k) return;
+      const head = div('dx7-st', 'Kept banks');
+      head.title = hint('banks');
+      const list = div('dx7-bank dx7-kept', ...kept.map((k) => button(k.name, `Open bank ${k.name}: list its 32 voices on this card`, () => {
         s.bank = { name: k.name, voices: k.voices, checksumOk: true, slot: null };
         this.host.redraw();
-      });
-      root.append(div('dx7-sec', sel));
+      })));
+      root.append(div('dx7-sec', head, list));
     }
     if (refocus) {
       const f: HTMLElement = refocus;

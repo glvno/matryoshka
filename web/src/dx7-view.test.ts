@@ -146,10 +146,9 @@ describe('DX7 SysEx into a module (#1338)', () => {
     // a new card (a new page) lists it and opens it
     const other = { id: 5, type: 'dx7', x: 0, y: 0, params: {} } as ModuleInst;
     const second = new Dx7Card({ setVoice: (_id, hex) => (other.voice = hex), say() {}, redraw() {} }, storage);
-    const sel = second.element(other).querySelector<HTMLSelectElement>('select.dx7-banks')!;
-    expect([...sel.options].map((o) => o.text)).toEqual(['Kept banks…', 'Keepers']);
-    sel.value = '0';
-    sel.dispatchEvent(new Event('change'));
+    const opens = [...second.element(other).querySelectorAll<HTMLButtonElement>('.dx7-kept button')];
+    expect(opens.map((b) => b.textContent)).toEqual(['Keepers']);
+    opens[0].click();
     const el = second.element(other);
     el.querySelectorAll<HTMLButtonElement>('.dx7-bank button')[0].click();
     expect(voiceName(voiceBytes(other.voice))).toBe('KEPT');

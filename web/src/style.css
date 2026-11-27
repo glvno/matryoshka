@@ -1954,7 +1954,7 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .dx7 { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 2px; padding: 0 8px; font: 500 10px/1.25 'Barlow', system-ui, sans-serif; color: var(--muted); }
 .dx7 input[type=number] { width: 3.2em; padding: 1px 2px; font: 600 11px/1.2 'Barlow', system-ui, sans-serif; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; border: 1px solid var(--line); border-radius: 3px; appearance: textfield; -moz-appearance: textfield; }
 .dx7 input[type=number]::-webkit-inner-spin-button, .dx7 input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-.dx7 select { max-width: 100%; padding: 0 1px; font: 500 11px/1.2 'Barlow', system-ui, sans-serif; color: var(--ink); }
+.module .dx7 select { max-width: 100%; height: 18px; padding: 0 1px; font: 500 11px/1.2 'Barlow', system-ui, sans-serif; color: var(--ink); border: 1px solid var(--line); border-radius: 3px; }
 .dx7 button { min-height: 18px; padding: 0 6px; font: 600 10px/1 'Barlow', system-ui, sans-serif; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); }
 .dx7-top { display: flex; align-items: center; gap: 4px; }
 .dx7-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; color: var(--ink); font: 700 12px/1.2 ui-monospace, monospace; }
@@ -1978,11 +1978,13 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .dx7-sec { display: flex; flex-direction: column; gap: 3px; padding-top: 4px; border-top: 1px solid var(--line); }
 .dx7-sec > summary { cursor: pointer; color: var(--ink); }
 .dx7-st { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: var(--ink); font-weight: 700; }
+.dx7-voice .dx7-st { margin-top: 4px; }
 .dx7-tools { display: flex; gap: 3px; }
 .module.syx-over { outline: 2px dashed var(--accent); outline-offset: 2px; }
 .dx7-eg { flex: none; }
 .dx7-eg polyline { fill: none; stroke: var(--accent); stroke-width: 1.2; }
 .dx7-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px 6px; }
+.dx7-grid.dx7-two { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px; }
 .dx7-bank { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
 .dx7 .dx7-bank button { justify-content: flex-start; overflow: hidden; text-overflow: ellipsis; white-space: pre; text-align: left; font-family: ui-monospace, monospace; font-weight: 500; }
 /* listening to one signal (#939): the chip under the view switch, the jack and cable listened to ringed in the accent */
