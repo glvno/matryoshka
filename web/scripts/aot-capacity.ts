@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Reproducible #808 capacity fixtures; not factory patches. Run from web/:
-// npx vite-node scripts/aot-capacity.ts (writes build/aot-capacity).
+// npx vite-node scripts/aot-capacity.ts (writes build/aot-capacity). Each Oracle V is the factory assembly the compiled
+// template is generated from, played by its own Steps track (#1188: the relocated 1.13 Oracle V patch carries an older
+// Oracle that now runs interpreted). No Oracle-plus-808 Kit fixture any more: the kit alone now has 211 cables, so with
+// Oracle V it needs 303 of the engine's 255 (ENG_MAX_CABLES) and cannot load.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { FACTORY } from '../src/assemblies';
 import { insertAssembly, type AssemblyInst } from '../src/assembly';
 import { DEFS } from '../src/modules';
-import { addModule, type Patch } from '../src/patch';
-import { factoryWithPatterns } from '../src/presets';
-import { relocatedPatches } from '../src/community-factory';
+import { addModule, newPatch, type Patch } from '../src/patch';
 import { deviceBudget, encodePatch } from '../src/patchbin';
 import { fixNotes } from '../src/track';
 import { plugIn, wire } from './factory-build';
@@ -20,12 +21,12 @@ const synthNotes = (voices: number) => fixNotes([0, 4, 8, 12].flatMap((at) =>
   [60, 64, 67, 71].slice(0, voices).map((note) => ({ at, note, len: 3, vel: 100 }))));
 const drumNotes = ([kick, snare, hat]: number[]) => fixNotes([0, 2, 4, 6, 8, 10, 12, 14].flatMap((at) =>
   [hat, ...(at % 4 === 0 ? [kick] : []), ...(at % 8 === 4 ? [snare] : [])].map((note) => ({ at, note, len: 1, vel: 100 }))));
-function track(p: Patch, a: AssemblyInst, voices: number, live: boolean): void {
+const oracleDef = FACTORY.find((d) => d.name === 'Oracle V')!;
+function track(p: Patch, a: AssemblyInst, voices: number, y: number): void {
   const main = p.modules.find((m) => m.type === 'fm1')!;
-  const t = addModule(p, DEFS.steps, 20, 2000);
+  const t = addModule(p, DEFS.steps, 20, y);
   t.name = 'SYNTH';
   t.notes = synthNotes(voices);
-  if (live) wire(p, main.id, 'keys', t.id, 'keys');
   plugIn(p, t.id, 'keys', a, 'keys');
   const alloc = p.modules.find((m) => a.modules.includes(m.id) && m.type === 'alloc');
   if (!alloc) throw new Error('Oracle allocator missing');
@@ -34,13 +35,13 @@ function track(p: Patch, a: AssemblyInst, voices: number, live: boolean): void {
     if (a.inputs.some((i) => i.label === label)) plugIn(p, main.id, label === 'wheel' ? 'mod' : 'at', a, label);
   }
 }
+/** Oracle V alone on the left output, its Steps track playing `voices`-note chords, the wheel and aftertouch cabled. */
 function oracle(voices: number): Patch {
-  const p = relocatedPatches['Oracle V']();
-  // Keep the factory's Steps -> Arpeggiator -> Oracle key path and performance controls.
-  const t = p.modules.find((m) => m.type === 'steps')!;
-  t.name = 'SYNTH';
-  t.notes = synthNotes(voices);
-  p.modules.find((m) => m.type === 'alloc')!.params.voices = voices;
+  const p = newPatch(DEFS, 'Oracle V');
+  const a = insertAssembly(p, DEFS, oracleDef, 300, 0);
+  track(p, a, voices, 0);
+  const sink = p.modules.find((m) => m.type === 'output')!;
+  for (const o of a.outputs) wire(p, o.module, o.port, sink.id, 'l');
   return p;
 }
 /** Separate the two instruments so a silent second instrument cannot pass the host audio check. */
@@ -61,21 +62,10 @@ function save(p: Patch, name: string): void {
   report.push({ name, expectedCompiledInstances: name.endsWith('-twice') ? 2 : 1, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), budget });
   console.log(name, bytes.length, 'bytes', 'over:', budget.over.map((x) => `${x.key} ${x.used}/${x.max}`).join(', ') || 'none');
 }
-for (const voices of [1, 2, 4]) {
-  const p = factoryWithPatterns('808 Kit');   // (with its 1.24.1 patterns: DRUMS plays pattern 1 on the left)
-  const main = p.modules.find((m) => m.type === 'fm1')!;
-  const drums = p.modules.find((m) => m.type === 'steps')!;
-  p.cables = p.cables.filter((c) => !(c.from.module === main.id && c.to.module === drums.id));
-  const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Oracle V')!, 300, 2500);
-  track(p, a, voices, true);
-  const sink = rightSide(p);
-  for (const o of a.outputs) wire(p, o.module, o.port, sink.id, 'r');
-  save(p, `oracle-${voices}-808`);
-}
 for (const voices of [1, 2]) {
   const p = oracle(voices);
-  const second = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Oracle V')!, 300, 2500);
-  track(p, second, voices, false);
+  const second = insertAssembly(p, DEFS, oracleDef, 300, 2500);
+  track(p, second, voices, 2500);
   const sink = rightSide(p);
   for (const o of second.outputs) wire(p, o.module, o.port, sink.id, 'r');
   save(p, `oracle-${voices}-twice`);
