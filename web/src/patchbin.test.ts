@@ -13,6 +13,9 @@ import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
 import { subtractiveSaw, wobble } from './test-patches';
 import { structureOf } from './structure';
+import { DX7_INIT_VOICE, voiceHex } from './dx7-voice';
+import { readFromFm1 } from './patch-reader';
+import { FORMAT_1_30 } from './patchbin';
 
 describe('binary patch format', () => {
   it('marks exactly the modules with a morph B side, including modules after the first mask byte', () => {
@@ -130,6 +133,25 @@ describe('binary patch format', () => {
     expect(lower).toBeLessThan(FORMAT_1_29);
     expect(formatOf(p)).toBe(FORMAT_1_29);
     expect(encodePatch(p)[1]).toBe(FORMAT_1_29);
+  });
+
+  it('writes format 71 for a patch with a DX7, its voice as the record\'s data, and reads the voice back (#1338)', () => {
+    const p = emptyPatch();
+    const kb = addModule(p, DEFS.fm1, 0, 0);
+    const out = addModule(p, DEFS.output, 0, 0);
+    connect(p, DEFS, { module: kb.id, port: 'pitch' }, { module: out.id, port: 'l' });
+    expect(formatOf(p)).toBeLessThan(FORMAT_1_30);
+    const dx = addModule(p, DEFS.dx7, 0, 0);
+    const voice = DX7_INIT_VOICE.slice();
+    voice[110] = 3;   // (algorithm 4)
+    voice[111] = 7 | 8;
+    dx.voice = voiceHex(voice);
+    connect(p, DEFS, { module: dx.id, port: 'out' }, { module: out.id, port: 'r' });
+    expect(formatOf(p)).toBe(FORMAT_1_30);
+    const bin = encodePatch(p);
+    expect(bin[1]).toBe(FORMAT_1_30);
+    const read = readFromFm1(bin, { name: 'dx7' })!;
+    expect(read.patch.modules.find((m) => m.type === 'dx7')!.voice).toBe(dx.voice);
   });
 
   it('a type with more than 16 parameters (Env 8) writes its matrix and route masks as u32, every other type as u16', () => {

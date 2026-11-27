@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **New: the DX7 module.** One voice of a Yamaha DX7, sample for sample as Dexed computes it, with algorithms 4 and 6 running the DX7's own feedback loops. Its sound is a DX7 voice (the 128 bytes a DX7 bank holds per voice), kept with the patch; a new one starts from INIT VOICE. Its rows are level, tune and the mod wheel; a cable into `op1`..`op6` replaces that operator's sine with any signal. Put it in a Voicing for polyphony. A patch with a DX7 is written in patch format 71 and needs firmware 1.30 ([D-1264](docs/ledger/modules.md#D-1264), [D-1044](docs/ledger/patch-format.md#D-1044)).
+
 ## 1.29.0 — 2026-11-27
 
 - **This editor syncs only with firmware 1.29.0: update your FM-1 before you sync it.** The editor now reads and writes patch format 70, which only the 1.29.0 firmware reads, so an FM-1 still on 1.28.x or older does not sync until it is updated: the editor says "update it to sync" and the Install panel offers the update. A patch is saved in format 70 only when a Freq shifter's `pm` is cabled or its row turned; every other patch keeps its format byte for byte. The editor also offers a factory sounds update (version 24): the same sounds as version 23, so installing it changes nothing you hear, and your saved slots stay as they are ([D-1043](docs/ledger/patch-format.md#D-1043), [D-1020](docs/ledger/patch-format.md#D-1020)).

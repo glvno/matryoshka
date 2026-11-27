@@ -162,7 +162,7 @@ describe('the FM-1\'s memory (the lines: D-375; one arena, #649)', () => {
     expect(cNum('engine.c', 'ENG_NODE_BYTES')).toBe(NODE_BYTES);
     expect(cNum('engine.c', 'ENG_TABLE_BYTES_128')).toBe(TABLE_BYTES_128);
     expect(TABLE_BYTES_128).toBe(256);
-    expect(LINES).toEqual({ string: 2208, grain: 88428, reverb: 16660, chorus: 1856, limit: 256 });
+    expect(LINES).toEqual({ string: 2208, grain: 88428, reverb: 16660, chorus: 1856, limit: 256, dx7: 1328 });
     expect(delayBytes(700)).toBe(61888);
     // the longest length is what one Delay's line can take of the arena beside a Main and an Output (#649): 10 ms more
     // would not fit even there

@@ -37,6 +37,7 @@ import { ALLOC } from './poly';
 import { matchAssemblies, rebuildRack } from './assembly-match';
 import { restoreLegacyBus } from './fx-drawer';
 import type { MidiBinding } from './midi-learn';
+import { voiceHex } from './dx7-voice';
 
 export { linkedIds } from './bin-parse';
 
@@ -112,6 +113,7 @@ export function plainPatch(b: BinPatch, name: string): { patch: Patch; keys: str
       const s = String.fromCharCode(...bm.data.filter((c) => c));
       if (s) m.name = s;
     }
+    if (type === 'dx7') m.voice = voiceHex(bm.data);   // (its packed voice, the record's data)
     modules.push(m);
   });
   const byId = new Map(modules.map((m) => [m.id, m]));

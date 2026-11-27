@@ -9,6 +9,8 @@ import { COND_FILL, COND_FIRST, COND_NEI, COND_NOT, COND_PRE, isDrone, MICRO_STE
 import WT from './wavetables.json';
 import { rateEnvelopeInit, rateEnvelopeProcess } from './rate-envelope';
 import { formatValue } from './labels';
+import { DX7_VOICE, dx7New, dx7Quiet, dx7Run, dx7SetVoice, type Dx7, type Dx7Io } from './dx7';
+import { DX7_INIT_VOICE } from './dx7-voice';
 
 export interface Voice {
   /** octaves relative to middle C (MIDI 60) */
@@ -57,6 +59,9 @@ export interface Voice {
   jump: number;
   /** the part's pitch flaw in octaves (its detune plus its drift's wander, PolyCfg.flaws): the Part module adds it; 0 outside */
   flaw: number;
+  /** the engine's samples since the patch loaded, at this block's start (engine.c E.frames): the DX7's LFO phase, which every
+   * copy shares as the DX7's one LFO */
+  frames?: number;
 }
 
 /** the pitch bend range: +-2 semitones on the Main module's pitch output */
@@ -5115,7 +5120,77 @@ const lpg: ModuleImpl<LpgState> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm, lpg, limit, euclid, eq];
+/** the DX7's modulation wheel assign (its function's MOD WHEEL ASSIGN): dx7.h reads choice + 1 as bits pitch, amp, EG bias */
+export const DX7_DESTS = ['pitch', 'amp', 'pitch+amp', 'EG bias', 'pitch+EG', 'amp+EG', 'all'];
+/** the DX7's operator inputs: a cable into opN replaces operator N's sine with the signal (dx7.h dx7_k_ext) */
+export const DX7_OPS = ['op1', 'op2', 'op3', 'op4', 'op5', 'op6'] as const;
+const DX7_BLOCK = 128;   // (engine.ts BLOCK: the most samples a call has)
+/** pk: the packed voice it plays (dx7Voice applies a new one only when it differs: an edit elsewhere reloads the patch) */
+interface Dx7State { s: Dx7; pk: Uint8Array; io: Dx7Io; q: Int32Array[]; out: Int32Array }
+const q16 = (from: Float32Array, to: Int32Array, n: number): Int32Array => {
+  for (let i = 0; i < n; i++) to[i] = Math.max(-0x80000000, Math.min(0x7fffffff, Math.round(from[i] * 65536)));
+  return to;
+};
+/**
+ * DX7 (#1338): one DX7 voice, exact (dx7.ts, msfa ported; engine.c m_dx7 runs the same code in C). Its voice is the
+ * DX7's own 128-byte packed voice (ModuleInst.voice, the record's data), not parameters; the engine gives each copy its
+ * voice at load (engine.ts load). Polyphony is a Voicing's: one copy per part. pitch, gate and vel start and steer the
+ * note (bend and glide come in through pitch); a cable into opN replaces that operator's sine with the signal.
+ */
+const dx7: ModuleImpl<Dx7State> = {
+  def: {
+    type: 'dx7',
+    label: 'DX7',
+    since: 71,
+    data: DX7_VOICE,
+    inputs: [control('pitch'), gate('gate'), control('vel'), ...DX7_OPS.map(audio)],
+    outputs: [audio('out')],
+    params: [
+      param('level', 0, 1, 1, { step: 0.01 }),
+      param('tune', -100, 100, 0, { unit: 'ct', step: 1 }),
+      param('mod', 0, 1, 0, { step: 0.01 }),
+      param('range', 0, 99, 50, { step: 1 }),
+      param('dest', 0, DX7_DESTS.length - 1, 0, { step: 1, choices: DX7_DESTS }),
+      param('ops', 0, 63, 63, { step: 1 }),
+    ],
+  },
+  init: (sr) => ({
+    s: dx7New(sr, DX7_INIT_VOICE),
+    pk: DX7_INIT_VOICE.slice(),
+    io: { pitch: null, gate: null, vel: null, x: [null, null, null, null, null, null], level: 0, tune: 0, mod: 0, range: 0, dest: 0, ops: 0, t: 0 },
+    q: Array.from({ length: 9 }, () => new Int32Array(DX7_BLOCK)),
+    out: new Int32Array(DX7_BLOCK),
+  }),
+  process(c, st) {
+    const io = st.io, n = c.n, q = st.q, at = (name: string, k: number): Int32Array | null => (c.connected[name] ? q16(c.inp[name], q[k], n) : null);
+    io.pitch = q16(c.inp.pitch, q[0], n);
+    io.gate = q16(c.inp.gate, q[1], n);
+    io.vel = at('vel', 2);
+    DX7_OPS.forEach((name, k) => (io.x[k] = at(name, 3 + k)));
+    io.level = Math.round(c.p.level * 65536);
+    io.tune = Math.round(c.p.tune * 65536);
+    io.mod = Math.round(c.p.mod * 65536);
+    io.range = Math.round(c.p.range * 65536);
+    io.dest = Math.round(c.p.dest * 65536);
+    io.ops = Math.round(c.p.ops * 65536);
+    io.t = c.voice.frames ?? 0;
+    dx7Run(st.s, io, st.out, n);
+    const o = c.out.out;
+    for (let i = 0; i < n; i++) o[i] = st.out[i] / 65536;
+  },
+};
+/** the voice a copy plays (engine.ts load: the module's ModuleInst.voice); a sounding note takes a changed one as Dexed's
+ * live edit does (dx7.ts dx7SetVoice) */
+export function dx7Voice(state: unknown, packed: Uint8Array): void {
+  const st = state as Dx7State;
+  if (packed.every((b, i) => b === st.pk[i])) return;
+  st.pk.set(packed);
+  dx7SetVoice(st.s, packed);
+}
+/** for the idle-part rule (engine.ts partQuiet, engine.c part_quiet): its gate is low and its carriers have finished */
+export const dx7Done = (state: unknown): boolean => dx7Quiet((state as Dx7State).s);
+
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm, lpg, limit, euclid, eq, dx7];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an
