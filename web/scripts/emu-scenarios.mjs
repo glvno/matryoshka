@@ -39,7 +39,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { boot, download, downloadEmuMidi, smoke, smokeState, venvPython } from './branch-firmware.mjs';
 import { DEV_ENV, RigIsolationError, ensureRigIgnored, audioLocation, fm1Label, loadRig, pickRig, rigAtLocation, rigPage, survey } from './rig-link.mjs';
-import { parseWav, startCapture } from './audio-capture.mjs';
+import { hz, parseWav, startCapture, toneLevel } from './audio-capture.mjs';
 import { CHECK_SCENARIOS, checkScenarios } from './device-check.mjs';
 import { EmuChannel } from './emu-channel.mjs';
 import { acquireEmulatorSlot, withDeadline } from './emu-slot.mjs';
@@ -2331,6 +2331,87 @@ async function main() {
         await page.evaluate((n) => window.__m1test.eraseSlot(n), slot).catch((e) => console.log(`  note: slot ${slot + 1} not emptied: ${e.message}`));
         await live(true);
       }
+      await openSynced('Init');
+    },
+    // #1329 (D-1262, D-1042): the Harmonizer's RETRIG row on the polyphonic Hera 6 (chords need one: owner 2026-11-26), its
+    // Harmonizer on with TYPE maj. C4 held on the FM-1, then its chord button min (black key 2): OFF keeps C major sounding
+    // (D-778); ALL and DIFF sound C minor at once: E♭4 heard and E4 gone in the FM-1's own output (Goertzel). The same
+    // with Hera 6's Arpeggiator on after the Harmonizer, running on the held root: its next steps play the new chord. RETRIG
+    // turned on in the editor under Live moves the patch to format 69, so the whole patch goes; set on the FM-1 (K4 on the
+    // Harmonizer's second page: LOCK, SPLIT, INVKEYS, RETRIG) the editor follows, and the FM-1 raised its copy to 69, so OFF
+    // from the editor is a PARAM
+    async retrig() {
+      const NAME = 'T1329 RETRIG';
+      const fixture = (arp) => page.evaluate(async ([nm, withArp]) => {
+        const { PRESETS } = await import('/src/presets.ts');
+        const p = PRESETS['Hera 6']();
+        p.name = nm;
+        const h = p.modules.find((m) => m.type === 'harm');
+        delete h.bypass;
+        Object.assign(h.params, { type: 1, retrig: 0 });
+        if (withArp) delete p.modules.find((m) => m.type === 'arp').bypass;
+        window.__m1test.save(JSON.stringify(p));
+        return nm;
+      }, [NAME, arp]);
+      const harmId = async () => JSON.parse(await patchJson()).modules.find((m) => m.type === 'harm').id;
+      const retrigOf = async () => JSON.parse(await patchJson()).modules.find((m) => m.type === 'harm').params.retrig ?? 0;
+      const MIN = 14 + 3;                            // (black key 2: the chord button min)
+      /** C4 held, then min pressed: E4 and E♭4 in the FM-1's output from 300 ms after the press, for `ms` */
+      const heldThenMin = async (tag, ms) => {
+        await emu.key(C4, true);
+        await emu.elapse(500);
+        await emu.key(MIN, true);
+        await emu.elapse(300);
+        const rec = await emu.record(`retrig-${tag}`);
+        await emu.elapse(ms);
+        const a = await rec.stop();
+        await emu.key(MIN, false);
+        await emu.key(C4, false);
+        await emu.elapse(600);
+        const lv = (n) => toneLevel(a.l, a.rate, hz(n), 0, a.l.length) + toneLevel(a.r, a.rate, hz(n), 0, a.r.length);
+        return { e: lv(64), eb: lv(63) };
+      };
+      const levels = (x) => `E4 ${(x.e * 1000).toFixed(2)}, E♭4 ${(x.eb * 1000).toFixed(2)} (thousandths)`;
+      const setRetrig = async (v) => {
+        const id = await harmId();
+        await page.evaluate(() => window.__sent.splice(0));
+        await page.evaluate(([h, x]) => window.__m1test.param(h, 'retrig', x), [id, v]);
+        await until(async () => { const s = await T(); return !s.uploadPending && s.status === 'patch on the FM-1'; }, 15000);
+        await emu.elapse(600);
+        return page.evaluate(() => window.__sent.splice(0).map((x) => x[1]));
+      };
+      const hex = (sent) => sent.map((c) => c.toString(16)).join(' ');
+      for (const arp of [false, true]) {
+        const what = arp ? 'with its Arpeggiator, ' : '';
+        const ms = arp ? 750 : 500;
+        await check(`retrig: Hera 6 ${what}its Harmonizer on (TYPE maj, RETRIG OFF) opens, synced`, await openSynced(await fixture(arp)));
+        let x = await heldThenMin(`off${arp ? '-arp' : ''}`, ms);
+        await check(`retrig: ${what}OFF: min pressed while C4 is held, C major keeps sounding (E4 over E♭4)`, x.e > 3 * x.eb, levels(x));
+        let sent = await setRetrig(1);
+        await check(`retrig: ${what}ALL set in the editor under Live: the patch is format 69 now, so it goes again (CHUNK, COMMIT), no PARAM`,
+          sent.includes(0x10) && sent.includes(0x11) && !sent.includes(0x20) && (await T()).chip === 'synced', `sent ${hex(sent)}, chip ${(await T()).chip}`);
+        x = await heldThenMin(`all${arp ? '-arp' : ''}`, ms);
+        await check(`retrig: ${what}ALL: min pressed while C4 is held, C minor at once (E♭4 over E4)`, x.eb > 3 * x.e, levels(x));
+        sent = await setRetrig(2);
+        await check(`retrig: ${what}DIFF next: a PARAM (the FM-1's copy is format 69 already)`, sent.includes(0x20) && !sent.includes(0x10), `sent ${hex(sent)}`);
+        x = await heldThenMin(`diff${arp ? '-arp' : ''}`, ms);
+        await check(`retrig: ${what}DIFF: min pressed while C4 is held, C minor at once (E♭4 over E4)`, x.eb > 3 * x.e, levels(x));
+      }
+      // set on the FM-1: K4 on the Harmonizer's second page
+      await check('retrig: the fixture again (RETRIG OFF), synced', await openSynced(await fixture(false)));
+      const focused = await page.evaluate(() => window.__m1test.focus('Harmonizer'));
+      await emu.elapse(600);
+      await emu.turn(ENC.algo, 1);
+      const page2 = await until(async () => { const f = (await T()).focus; return f?.page === 1 ? f : null; }, 2000);
+      await check('retrig: the editor\'s focus on the Harmonizer, ALGO on the FM-1: its second page (LOCK, SPLIT, INVKEYS, RETRIG)', focused && !!page2,
+        JSON.stringify({ editor: (await T()).focus }));
+      await emu.turn(ENC.k4, 1);
+      await check('retrig: K4 right on the FM-1: the editor follows, RETRIG ALL', !!(await until(async () => (await retrigOf()) === 1, 3000)), `retrig ${await retrigOf()}`);
+      const x = await heldThenMin('fm1-all', 500);
+      await check('retrig: set on the FM-1: min while C4 is held sounds C minor at once', x.eb > 3 * x.e, levels(x));
+      const sent = await setRetrig(0);
+      await check('retrig: set on the FM-1, then OFF in the editor: a PARAM, no upload (the FM-1 raised its copy to format 69)',
+        sent.includes(0x20) && !sent.includes(0x10) && !sent.includes(0x11) && (await retrigOf()) === 0, `sent ${hex(sent)}`);
       await openSynced('Init');
     },
     // #375: on a computer where no app reads the FM-1's MIDI, every message the FM-1 sends unasked (TRACK_NOW after a

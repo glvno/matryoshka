@@ -16,8 +16,8 @@ import { armView, type DeviceKey } from './arm';
 import { kindOf, switches, toggleTargets } from './buttons';
 import { fixNotes, PATTERNS_MAX, SONGS_MAX, type SongEntry, type StepNote } from './track';
 import { lockPlan, lockValue } from './locks';
-import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
-import { harmButton, harmButtonOf, harmChord, harmSnapshot, harmClear, harmInit, harmKey, type HarmParams, type HarmState } from './harmonizer';
+import { arpBlock, arpClear, arpInit, arpKeyDrop, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
+import { harmButton, harmButtonOf, harmChord, harmSnapshot, harmClear, harmInit, harmKey, harmRetrig, type HarmParams, type HarmState } from './harmonizer';
 import { DEFS, DELAY_SWELL_DEN, DELAY_SWELL_NUM, RIGHT_IN } from './modules';
 import { rackPlan } from './rack-plan';
 import { cableFeeds, feedModel } from './feeds';
@@ -544,7 +544,7 @@ export class Engine {
   };
   private harmParams(h: HarmRun): HarmParams {
     const p = h.node.params;
-    return { type: p.type ?? 0, sus: p.sus ?? 0, ext: p.ext ?? 0, voicing: p.voicing ?? 0, lock: p.lock ?? 0, split: p.split ?? 60, invkeys: p.invkeys ?? 0 };
+    return { type: p.type ?? 0, sus: p.sus ?? 0, ext: p.ext ?? 0, voicing: p.voicing ?? 0, lock: p.lock ?? 0, split: p.split ?? 60, invkeys: p.invkeys ?? 0, retrig: p.retrig ?? 0 };
   }
   private thruHeld = new Map<number, Set<number>>();
   private thruRoom(need: number): boolean {
@@ -558,16 +558,26 @@ export class Engine {
       for (const n of notes) if (!h.st.count[n]) need += this.thruHeld.get(t.id)?.has(n) ? 1 : 2;
     return this.thruRoom(need);
   }
-  /** a Harmonizer's note into its groups (an arpeggiator's way: their key range judges it) */
-  private harmOn(h: HarmRun, note: number, vel: number): void {
+  /** a Harmonizer's note into its groups (an arpeggiator's way: their key range judges it); `again`: RETRIG ALL starts a
+   * note it just ended, so the part it lands on restarts its envelopes (as an arpeggiator's note does: arpOn) */
+  private harmOn(h: HarmRun, note: number, vel: number, again = false): void {
     this.processorKeys(h.node.id, note, vel);
     this.mapKeys(h.node.id, note | 128, Math.round(vel * 127));
-    for (const g of this.groups) if (this.effSrc(g.src) === h.node.id && takesKey(g.cfg, note)) this.groupOn(g, note, vel);
+    for (const g of this.groups) if (this.effSrc(g.src) === h.node.id && takesKey(g.cfg, note)) {
+      this.groupOn(g, note, vel);
+      if (again) for (const x of g.parts) if (x.on && x.note === note && x.onStamp === this.stamp) x.retrig = true;
+    }
   }
-  private harmOff(h: HarmRun, note: number): void {
-    this.processorKeys(h.node.id, note, 0);
+  /** `drop`: RETRIG ended it while its root is held, so an Arpeggiator it feeds drops it even when latched */
+  private harmOff(h: HarmRun, note: number, drop = false): void {
+    this.processorKeys(h.node.id, note, 0, undefined, drop);
     this.mapKeys(h.node.id, note, 0);
     for (const g of this.groups) if (this.effSrc(g.src) === h.node.id) this.groupOff(g, note);
+  }
+  /** RETRIG (harmonizer.ts harmRetrig; engine.c harm_retrig): each Harmonizer's held chords follow what is set now */
+  private harmRetrigs(): void {
+    for (const h of this.harms) if (!h.node.bypass)
+      harmRetrig(h.st, this.harmParams(h), (n, v, again) => this.harmOn(h, n, v, again), n => this.harmOff(h, n, true), notes => this.harmRoom(h, notes));
   }
   /** a Harmonizer's groups let go of every note (its roots too; its buttons and latch stay) */
   private harmDrop(h: HarmRun): void {
@@ -644,14 +654,16 @@ export class Engine {
     }
   }
 
-  /** Pass a generated note to the next processor. Generated pitches are always roots, never split-zone controls. */
-  private processorKeys(src: number, note: number, vel: number, snapshot?: ReadonlyMap<number, number>): void {
+  /** Pass a generated note to the next processor. Generated pitches are always roots, never split-zone controls. `drop`:
+   * a note off an Arpeggiator drops even when latched (a Harmonizer's RETRIG) */
+  private processorKeys(src: number, note: number, vel: number, snapshot?: ReadonlyMap<number, number>, drop = false): void {
     for (const a of this.arps) if (this.effSrc(a.feed) === src) {
       if (vel) arpKeyOn(a.st, note, vel, this.arpParams(a));
+      else if (drop) arpKeyDrop(a.st, note);
       else arpKeyOff(a.st, note, this.arpParams(a));
     }
     for (const h of this.harms) if (this.effSrc(h.feed) === src && !h.node.bypass)
-      harmKey(h.st, note, !!vel, this.harmParams(h), false, n => this.harmOn(h, n, vel), n => this.harmOff(h, n), notes => this.harmRoom(h, notes), snapshot?.get(h.node.id) ?? 0);
+      harmKey(h.st, note, !!vel, this.harmParams(h), false, n => this.harmOn(h, n, vel), n => this.harmOff(h, n), notes => this.harmRoom(h, notes), snapshot?.get(h.node.id) ?? 0, vel);
     for (const t of this.tracks) {
       const from = this.src && keyFeed(this.src, t);
       if (from && this.effSrc(from.id) === src) this.thru(t.id, note, Math.round(vel * 127));
@@ -1079,7 +1091,7 @@ export class Engine {
    */
   noteOn(note: number, velocity = 1, ch = 1, root = false): void {
     for (const g of this.keyGroups()) if ((g.src < 0 || this.passesMain(this.arpById.get(g.src)) || this.harmPasses(g.src)) && takesKey(g.cfg, note, ch, this.channel)) this.groupOn(g, note, velocity);
-    if (this.listens(ch)) for (const h of this.keyHarms()) if (!h.node.bypass) harmKey(h.st, note, true, this.harmParams(h), !root, (n) => this.harmOn(h, n, velocity), (n) => this.harmOff(h, n), notes => this.harmRoom(h, notes));
+    if (this.listens(ch)) for (const h of this.keyHarms()) if (!h.node.bypass) harmKey(h.st, note, true, this.harmParams(h), !root, (n) => this.harmOn(h, n, velocity), (n) => this.harmOff(h, n), notes => this.harmRoom(h, notes), 0, velocity);
     if (this.listens(ch)) for (const a of this.keyArps()) arpKeyOn(a.st, note, velocity, this.arpParams(a));
     if (this.listens(ch)) this.mapKeys(-1, note | 0x80, Math.max(1, Math.min(127, Math.round(velocity * 127))));
     if (this.listens(ch)) for (const n of this.tracks.filter(n => this.fed.includes(n.inst[0].state as StepsState)))
@@ -1882,6 +1894,7 @@ export class Engine {
         }
       }
       this.trackKeys();
+      if (this.harms.length) this.harmRetrigs();
       if (this.arps.length) {
         // the clock as the arpeggiators read it (arpeggiator.ts ArpClock; engine.c arp_block the same): the part of the
         // next tick gone by, the tempo's accumulator or, with MIDI clock, the samples since its tick over a measured tick

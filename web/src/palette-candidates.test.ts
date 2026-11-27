@@ -19,6 +19,7 @@ import { DEFS } from './modules';
 import { connect, newPatch, type Patch } from './patch';
 import { Palette, type PalettePorts } from './palette';
 import { entryOf } from './preset-fit';
+import { FEATURE5_FX_DRAWERS } from './protocol';
 import { binLength, type Candidate } from './bank';
 import { FM1_PRESETS } from './presets';
 import { PaletteFm1 } from './test-palette-fm1';
@@ -58,13 +59,13 @@ const level = (p: Patch): number => p.modules.find((m) => m.type === 'output')!.
 /** an editor on `start` (A) with the candidates `cands` (B, C…; by default other levels of it), the palette linked to the
  *  stand-in FM-1 under Live, its ports as main.ts makes them; `saved`: this browser's saved patches (the copies a switch
  *  opens) */
-async function rig(saved: Candidate[] = [], start = pad('My Pad'), cands = [pad('My Pad', 0.4), pad('My Pad', 0.6)]) {
+async function rig(saved: Candidate[] = [], start = pad('My Pad'), cands = [pad('My Pad', 0.4), pad('My Pad', 0.6)], fm1Opts: ConstructorParameters<typeof PaletteFm1>[0] = {}) {
   document.body.innerHTML = '<div id="canvas"><div id="canvas-space"><div id="patch-world"><svg id="cables"></svg><div id="modules"></div><svg id="cable-glow"></svg><svg id="patch-preview"></svg></div></div></div>';
   const store = new CandidateStore(memoryBackend(), (p) => p as Patch);
   const ev: EditorEvents = { onStructure: nop, onParam: nop, onAtt: nop, onBypass: nop, onRange: nop, onTrack: nop, onSilence: nop, onTransport: nop, onLayout: nop, onError: nop, onSaveAssembly: nop, onPutAway: (set) => void store.save(set) };
   const editor = new Editor(document.getElementById('canvas')!, structuredClone(start), ev);
   for (const c of cands) editor.snaps.take(c);
-  const fm1 = new PaletteFm1();
+  const fm1 = new PaletteFm1(fm1Opts);
   const g = globalThis as unknown as { navigator: { requestMIDIAccess?: unknown } };
   g.navigator.requestMIDIAccess = async () => ({ inputs: new Map([[fm1.i.id, fm1.i]]), outputs: new Map([[fm1.o.id, fm1.o]]), onstatechange: null });
   const link = new DeviceLink();
@@ -387,16 +388,30 @@ describe('a switch to a sound of another instrument (owner 2026-11-24: "the fm1 
     expect([editor.patch.name, level(editor.patch), off, live()]).toEqual(['808 Kit', 0.32, [], true]);
     expect(names(editor)).toEqual(['808 Kit']);
   });
-  it('a position this browser has no copy of (a slot another program stored): Live goes off and says so, the editor keeps its patch', async () => {
-    const { editor, fm1, link, off, live } = await rig([], edited('Hera 6', 0.33), []);
+  /** Hera 6 in the editor; palette 5 on the FM-1 points at slot 10, which holds an 808 Kit stored by another program
+   *  under the name STRANGER (no copy in this browser); the FM-1 switches to it */
+  const stranger = async (fm1Opts: ConstructorParameters<typeof PaletteFm1>[0] = {}) => {
+    const r = await rig([], edited('Hera 6', 0.33), [], fm1Opts);
     const kit = edited('808 Kit', 0.32);
-    fm1.bins[9] = link.encodeFor(kit);
-    fm1.slots[9] = { slot: 9, used: true, length: fm1.bins[9]!.length, name: 'STRANGER' };
-    fm1.entries[4] = entryOf(kit, 9, 'STRANGER');
-    fm1.report();
-    await fm1.quiet();
-    fm1.tap(4);
-    await fm1.quiet();
-    expect([editor.patch.name, off, live()]).toEqual(['Hera 6', ['FM-1 switched to palette 5 · STRANGER: no copy in this browser, so Live sync is off'], false]);
+    r.fm1.bins[9] = r.link.encodeFor(kit);
+    r.fm1.slots[9] = { slot: 9, used: true, length: r.fm1.bins[9]!.length, name: 'STRANGER' };
+    r.fm1.entries[4] = entryOf(kit, 9, 'STRANGER');
+    r.fm1.report();
+    await r.fm1.quiet();
+    r.fm1.playing = null;
+    r.fm1.tap(4);
+    await r.fm1.quiet();
+    return { ...r, kit };
+  };
+  it('a position this browser has no copy of (a slot another program stored): the editor opens the patch read from the FM-1, Live stays on, nothing goes back (D-1354)', async () => {
+    const { editor, fm1, off, said, live, kit } = await stranger();
+    expect([off, live(), fm1.playing]).toEqual([[], true, null]);
+    expect(said.some((t) => t.startsWith('FM-1 switched to palette 5 · STRANGER: Read from the FM-1 · layout rebuilt · '))).toBe(true);
+    expect(editor.patch.name).not.toBe('Hera 6');
+    expect(editor.patch.modules.filter((m) => m.type === 'drummap').length).toBe(kit.modules.filter((m) => m.type === 'drummap').length);
+  });
+  it('the same with firmware that cannot send a slot back (no SLOT_GET): Live goes off and says so, the editor keeps its patch', async () => {
+    const { editor, fm1, off, live } = await stranger({ features25: FEATURE5_FX_DRAWERS });
+    expect([editor.patch.name, off, live(), fm1.playing]).toEqual(['Hera 6', ['FM-1 switched to palette 5 · STRANGER: no copy in this browser, so Live sync is off'], false, null]);
   });
 });

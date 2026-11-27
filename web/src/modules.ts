@@ -3,7 +3,7 @@
 
 import { fixedDoes } from './controls';
 import { ARP_MODES, ARP_RATE_CHOICES, ARP_RATES } from './arpeggiator';
-import { HARM_EXT, HARM_SUS, HARM_TYPES, HARM_VOICING } from './harmonizer';
+import { HARM_EXT, HARM_RETRIG, HARM_SUS, HARM_TYPES, HARM_VOICING } from './harmonizer';
 import { DRUM_ROWS, NOTE_NAMES, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
 import { COND_FILL, COND_FIRST, COND_NEI, COND_NOT, COND_PRE, isDrone, MICRO_STEPS, STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepLock, type StepNote } from './track';
 import WT from './wavetables.json';
@@ -5010,7 +5010,8 @@ const matrix: ModuleImpl<null> = {
  * whole chord on that root (harmonizer.ts, after the Telepathic Instruments Orchid; the Side layout after CoralFlower's):
  * the seven keys under `split` are chord buttons (maj min dim on the black ones, sus2 sus4 7 9 on the white ones; held
  * together they combine), every other key a root. With no button in effect the card's chord plays (type, sus, ext; all
- * none: the root alone). `lock` latches the buttons pressed together; `voicing` moves the chord through its inversions.
+ * none: the root alone). `lock` latches the buttons pressed together; `voicing` moves the chord through its inversions;
+ * `retrig` ALL / DIFF re-forms the held chords when what is set changes (format 69).
  * It runs once (SHARED_TYPES); the engine runs its notes, not process(): the keys output shows nothing.
  */
 const harm: ModuleImpl<null> = {
@@ -5028,6 +5029,7 @@ const harm: ModuleImpl<null> = {
       param('lock', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
       param('split', 0, 127, 60, { step: 1, choices: NOTE_NAMES }),
       param('invkeys', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 68 }),
+      param('retrig', 0, HARM_RETRIG.length - 1, 0, { step: 1, choices: HARM_RETRIG, since: 69 }),
     ],
   },
   init: () => null,

@@ -4363,6 +4363,24 @@ events['harm-inversion-latch'] = [[0, 'on', 56], [128 * 1, 'on', 57], [128 * 2, 
   [128 * 71, 'off', 56], [128 * 72, 'cbon', 9], [128 * 73, 'cboff', 9], [128 * 74, 'kon', 60], [128 * 93, 'koff', 60],
   [128 * 94, 'cbon', 3], [128 * 95, 'cboff', 3], [128 * 96, 'kon', 60], [128 * 115, 'koff', 60]];
 ends['harm-inversion-latch'] = 128 * 140;
+// RETRIG (#1329, format 69): harm-retrig-all (ALL) and harm-retrig-diff (DIFF), type maj, the inversion keys on. C4 at
+// velocity 90 (the re-formed notes take it); min (cbon 3) while it is held: C minor at once; a second root E4 (E G B,
+// sharing G); min let go: both back to major; 7 from MIDI (57) while held; the 2nd inversion from the FM-1's keys (cbon 8)
+// and let go; then the roots let go. harm-retrig-arp-*: route-harm-arp with the Arpeggiator latched, as played: the chord
+// buttons swap the notes it holds at once (DIFF swaps only the changed ones, the new last; ALL re-presses the chord)
+for (const [mode, retrig] of [['all', 1], ['diff', 2]] as const) {
+  const name = `harm-retrig-${mode}`;
+  harmVoice(name, { type: 1, invkeys: 1, retrig });
+  events[name] = [[0, 'von', 60, 90], [128 * 20, 'cbon', 3], [128 * 40, 'on', 64], [128 * 60, 'cboff', 3], [128 * 80, 'on', 57],
+    [128 * 100, 'cbon', 8], [128 * 120, 'cboff', 8], [128 * 130, 'off', 57], [128 * 140, 'off', 64], [128 * 160, 'off', 60]];
+  ends[name] = 128 * 200;
+  const arp = `harm-retrig-arp-${mode}`;
+  const p = tests[arp] = structuredClone(tests['route-harm-arp']);
+  p.modules.find(m => m.type === 'harm')!.params.retrig = retrig;
+  Object.assign(p.modules.find(m => m.type === 'arp')!.params, { latch: 1, mode: 4 });
+  events[arp] = [[0, 'on', 60], [128 * 30, 'cbon', 3], [128 * 60, 'cboff', 3], [128 * 70, 'cbon', 4], [128 * 90, 'cboff', 4], [128 * 100, 'off', 60]];
+  ends[arp] = 128 * 200;
+}
 
 if (process.argv.includes('--panel-fixtures')) {
   const out = new URL('../../build/panel-fixtures/', import.meta.url);

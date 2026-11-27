@@ -100,8 +100,9 @@ describe('binary patch format', () => {
       ps.forEach((q, i) => expect((q.since ?? 0) >= (ps[i - 1]?.since ?? 0), `${t}.${q.name}`).toBe(true));
       expect(ps.every((q) => (q.since ?? 0) <= VERSION), t).toBe(true);
     }
-    // a type of a later format: none appended since, but the Harmonizer's `invkeys` (format 68, #1311)
-    for (const t of TYPE_ORDER.slice(nTypes34)) expect(DEFS[t].params.filter((q) => q.since !== undefined).map((q) => q.name), t).toEqual(t === 'harm' ? ['invkeys'] : []);
+    // a type of a later format: none appended since, but the Harmonizer's `invkeys` (format 68, #1311) and `retrig` (format
+    // 69, #1329)
+    for (const t of TYPE_ORDER.slice(nTypes34)) expect(DEFS[t].params.filter((q) => q.since !== undefined).map((q) => q.name), t).toEqual(t === 'harm' ? ['invkeys', 'retrig'] : []);
     // a module without a stored matrix routes as before: a Pulse's p2 does not reach its new `inf`
     expect(defaultMap(DEFS.pulse).p2).toEqual([]);
   });

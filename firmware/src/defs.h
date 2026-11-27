@@ -1112,9 +1112,10 @@ enum {
 #define HARM_P_LOCK 4
 #define HARM_P_SPLIT 5
 #define HARM_P_INVKEYS 6
+#define HARM_P_RETRIG 7
 #define HARM_NIN 1
 #define HARM_NOUT 1
-#define HARM_NPAR 7
+#define HARM_NPAR 8
 #define HARM_CVBASE -1
 #define HARM_NDATA 0
 
@@ -1922,19 +1923,20 @@ static const uint8_t MATRIX_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 static const char *const MATRIX_UNIT[] = {"", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""};
 static const char *const *const MATRIX_CH[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static const char *const HARM_INNAMES[] = {"KEYS"};
-static const int32_t HARM_MIN[] = {0, 0, 0, -524288, 0, 0, 0};
-static const int32_t HARM_MAX[] = {196608, 196608, 196608, 524288, 65536, 8323072, 65536};
-static const int32_t HARM_DEF[] = {0, 0, 0, 0, 0, 3932160, 0};
-static const int32_t HARM_INC[] = {65536, 65536, 65536, 65536, 65536, 65536, 65536};
-static const int32_t HARM_STEP[] = {65536, 65536, 65536, 65536, 65536, 65536, 65536};
-static const uint8_t HARM_SINCE[] = {0, 0, 0, 0, 0, 0, 68};
-static const char *const HARM_PN[] = {"TYPE", "SUS", "EXT", "VOICING", "LOCK", "SPLIT", "INVKEYS"};
-static const uint8_t HARM_LOG[] = {0, 0, 0, 0, 0, 0, 0};
-static const char *const HARM_UNIT[] = {"", "", "", "", "", "", ""};
+static const int32_t HARM_MIN[] = {0, 0, 0, -524288, 0, 0, 0, 0};
+static const int32_t HARM_MAX[] = {196608, 196608, 196608, 524288, 65536, 8323072, 65536, 131072};
+static const int32_t HARM_DEF[] = {0, 0, 0, 0, 0, 3932160, 0, 0};
+static const int32_t HARM_INC[] = {65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536};
+static const int32_t HARM_STEP[] = {65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536};
+static const uint8_t HARM_SINCE[] = {0, 0, 0, 0, 0, 0, 68, 69};
+static const char *const HARM_PN[] = {"TYPE", "SUS", "EXT", "VOICING", "LOCK", "SPLIT", "INVKEYS", "RETRIG"};
+static const uint8_t HARM_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0};
+static const char *const HARM_UNIT[] = {"", "", "", "", "", "", "", ""};
 static const char *const HARM_CH0[] = {"NONE", "MAJ", "MIN", "DIM", 0};
 static const char *const HARM_CH1[] = {"NONE", "SUS2", "SUS4", "SUS2+4", 0};
 static const char *const HARM_CH2[] = {"NONE", "7", "9", "7+9", 0};
-static const char *const *const HARM_CH[] = {HARM_CH0, HARM_CH1, HARM_CH2, 0, ADSR_CH4, ALLOC_CH6, ADSR_CH4};
+static const char *const HARM_CH7[] = {"OFF", "ALL", "DIFF", 0};
+static const char *const *const HARM_CH[] = {HARM_CH0, HARM_CH1, HARM_CH2, 0, ADSR_CH4, ALLOC_CH6, ADSR_CH4, HARM_CH7};
 static const char *const LPG_INNAMES[] = {"IN", "CV", "STRIKE", "P1", "P2"};
 static const int32_t LPG_MIN[] = {0, 1311, 0, 0, 0};
 static const int32_t LPG_MAX[] = {131072, 196608, 65536, 131072, 65536};

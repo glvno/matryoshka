@@ -861,13 +861,15 @@ typedef struct {
 
 /* a Harmonizer module as it runs (web/src/harmonizer.ts, the same steps, #598): the chord buttons down, Lock's press under
  * way, latched set and toggle, the buttons' press order (the quality pressed last wins), the roots held (oldest first)
- * with the notes each started, and per note how many held roots sound it */
+ * with the notes each started and its velocity (RETRIG's re-formed notes take it), and per note how many held roots
+ * sound it */
 typedef struct {
     uint8_t node, toggle, nroots;
     uint16_t down, gesture, locked;              /* bit b: button b (the chord buttons, then the inversion keys) */
     uint8_t root[HARM_ROOTS], nnote[HARM_ROOTS], note[HARM_ROOTS][HARM_TONES];
     uint8_t count[128], button_key[128];          /* MIDI note -> press-time button + 1; zero is not a button */
     uint32_t stamp[HARM_ALL], clock;
+    int32_t vel[HARM_ROOTS];
 } harm_t;
 
 typedef struct {
@@ -4403,6 +4405,7 @@ static void arp_emit_off(const arp_t *a, uint32_t note)
 /* ------------------------------------------------------------------ harmonizer (web/src/harmonizer.ts, #598) */
 
 static uint8_t harm_raw;                         /* the keys come as roots whatever their note (the FM-1's keys: eng_harm_zone) */
+static uint8_t proc_drop;                        /* processor_keys: a note off drops from an Arpeggiator (harm_retrig) */
 
 static int32_t harm_par(const harm_t *h, uint32_t p, int32_t lo, int32_t hi) { return clampi(round_q16(E.node[h->node].par[p]), lo, hi); }
 static int harm_locks(const harm_t *h) { return harm_par(h, HARM_P_LOCK, 0, 1) == 1; }
@@ -4568,15 +4571,22 @@ static uint32_t harm_chord_snapshot(const harm_t *h, uint32_t root, uint8_t *out
 
 static uint32_t harm_chord(const harm_t *h, uint32_t root, uint8_t *out) { return harm_chord_snapshot(h, root, out, 0); }
 
-/* a note of its into the groups it plays (an arpeggiator's way: their key range judges it) */
-static void harm_emit_on(const harm_t *h, uint32_t note, int32_t vel)
+/* a note of its into the groups it plays (an arpeggiator's way: their key range judges it); again: RETRIG ALL starts a
+ * note it just ended, so the part it lands on restarts its envelopes (as arp_emit_on's note does) */
+static void harm_emit_on(const harm_t *h, uint32_t note, int32_t vel, int again)
 {
-    uint32_t g;
+    uint32_t g, v;
     processor_keys(h->node, note, vel, 0);
     dm_keys(h->node + 2u, note | 128u, (uint32_t)(((int64_t)vel * 127 + 32768) >> 16));
     for (g = 1; g <= E.ngrp; g++)
-        if (grp_src(g) == h->node + 1u && note >= E.grp[g].lo && note <= E.grp[g].hi)
+        if (grp_src(g) == h->node + 1u && note >= E.grp[g].lo && note <= E.grp[g].hi) {
             group_on(&E.grp[g], note, vel);
+            for (v = 0; again && v < E.grp[g].parts; v++) {
+                pv_t *x = &E.pv[E.grp[g].pv0 + v];
+                if (x->on && x->note == note && x->on_stamp == E.stamp)
+                    x->retrig = 1;
+            }
+        }
 }
 static void harm_emit_off(const harm_t *h, uint32_t note)
 {
@@ -4602,6 +4612,7 @@ static void harm_root_off(harm_t *h, uint32_t key)
     for (h->nroots--; i < h->nroots; i++) {
         h->root[i] = h->root[i + 1u];
         h->nnote[i] = h->nnote[i + 1u];
+        h->vel[i] = h->vel[i + 1u];
         for (j = 0; j < HARM_TONES; j++)
             h->note[i][j] = h->note[i + 1u][j];
     }
@@ -4618,7 +4629,8 @@ static int harm_room(const harm_t *h, const uint8_t *notes, uint32_t n)
     return (uint16_t)(thru_head - thru_tail) + thru_reserved + need <= ENG_THRU;
 }
 
-/* a root pressed: its chord's notes no held root sounds yet start; one already held plays again */
+/* a root pressed (at vel, which RETRIG's re-formed notes take too): its chord's notes no held root sounds yet start; one
+ * already held plays again */
 static void harm_root_on_snapshot(harm_t *h, uint32_t key, int32_t vel, uint32_t snapshot)
 {
     uint32_t i, j;
@@ -4631,10 +4643,73 @@ static void harm_root_on_snapshot(harm_t *h, uint32_t key, int32_t vel, uint32_t
     i = h->nroots++;
     h->root[i] = (uint8_t)key;
     h->nnote[i] = (uint8_t)n;
+    h->vel[i] = vel;
     for (j = 0; j < n; j++) h->note[i][j] = notes[j];
     for (j = 0; j < h->nnote[i]; j++)
         if (h->count[h->note[i][j]]++ == 0u)
-            harm_emit_on(h, h->note[i][j], vel);
+            harm_emit_on(h, h->note[i][j], vel, 0);
+}
+
+/* RETRIG (harmonizer.ts harmRetrig, the same steps): with the RETRIG row ALL or DIFF, when the chord a held root would get
+ * now differs from the one it sounds for any of them, every held root takes its new chord. ALL ends every note they
+ * sounded (oldest root first, in chord order), then starts every note of the new chords (oldest root first, at its
+ * root's velocity; one that sounded before restarts its part's envelopes); DIFF ends only the notes no new chord has and
+ * starts only those no old chord had. An Arpeggiator it feeds drops an ended note even when latched (proc_drop). Nothing
+ * changes when harm_room refuses the notes that would start. Run at the start of every block, before the Arpeggiators */
+static void harm_retrig(harm_t *h)
+{
+    int32_t mode = harm_par(h, HARM_P_RETRIG, 0, 2);
+    uint8_t fresh[HARM_ROOTS][HARM_TONES], nf[HARM_ROOTS], starts[128], next[128];
+    uint32_t was[4] = {0, 0, 0, 0}, seen[4] = {0, 0, 0, 0}, i, j, n, w, ns = 0, same = 1;
+    if (!mode || !h->nroots)
+        return;
+    for (i = 0; i < h->nroots; i++) {
+        nf[i] = (uint8_t)harm_chord(h, h->root[i], fresh[i]);
+        same &= nf[i] == h->nnote[i];
+        for (j = 0; same && j < nf[i]; j++)
+            same &= fresh[i][j] == h->note[i][j];
+    }
+    if (same)
+        return;
+    for (n = 0; n < 128u; n++) {
+        next[n] = 0;
+        if (h->count[n])
+            was[n >> 5] |= 1u << (n & 31u);
+    }
+    for (i = 0; i < h->nroots; i++)
+        for (j = 0; j < nf[i]; j++) {
+            n = fresh[i][j];
+            next[n]++;
+            if (!(seen[n >> 5] >> (n & 31u) & 1u)) {
+                seen[n >> 5] |= 1u << (n & 31u);
+                if (mode == 1 || !(was[n >> 5] >> (n & 31u) & 1u))
+                    starts[ns++] = (uint8_t)n;
+            }
+        }
+    if (!harm_room(h, starts, ns))
+        return;
+    proc_drop = 1;
+    for (i = 0; i < h->nroots; i++)
+        for (j = 0; j < h->nnote[i]; j++)
+            if (h->count[n = h->note[i][j]] && (mode == 1 || !next[n])) {
+                h->count[n] = 0;
+                harm_emit_off(h, n);
+            }
+    proc_drop = 0;
+    for (i = 0; i < h->nroots; i++)
+        for (j = 0; j < h->nnote[i]; j++)
+            h->count[h->note[i][j]] = 0;
+    for (i = 0; i < h->nroots; i++) {
+        h->nnote[i] = nf[i];
+        for (j = 0; j < nf[i]; j++)
+            h->note[i][j] = fresh[i][j];
+        for (j = 0; j < nf[i]; j++) {
+            n = fresh[i][j];
+            w = was[n >> 5] >> (n & 31u) & 1u;
+            if (h->count[n]++ == 0u && (mode == 1 || !w))
+                harm_emit_on(h, n, h->vel[i], (int)w);
+        }
+    }
 }
 
 static void harm_root_on(harm_t *h, uint32_t key, int32_t vel) { harm_root_on_snapshot(h, key, vel, 0); }
@@ -4677,7 +4752,8 @@ static void harm_key(harm_t *h, uint32_t note, int32_t vel, int down)
         harm_root_on(h, note, vel);
 }
 
-/* The editor permits one of each processor in an acyclic path. Output pitches never become chord controls. */
+/* The editor permits one of each processor in an acyclic path. Output pitches never become chord controls. proc_drop: a
+ * note off leaves an Arpeggiator's keys even when latched (a Harmonizer's RETRIG, harm_retrig; engine.ts processorKeys) */
 static void processor_keys(uint32_t src, uint32_t note, int32_t vel, uint32_t snapshot)
 {
     uint32_t i, m, feed;
@@ -4686,6 +4762,7 @@ static void processor_keys(uint32_t src, uint32_t note, int32_t vel, uint32_t sn
         feed = E.node[m].ksrc;
         if (feed >= 2u && key_src(feed - 1u) == src + 1u) {
             if (vel) arp_note_on(&E.arp[i], note, vel);
+            else if (proc_drop) arp_key_drop(&E.arp[i], note);
             else arp_note_off(&E.arp[i], note);
         }
     }
@@ -13987,6 +14064,9 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             E.clk_pulse = seen && run ? (n + 1u) / 2u : 0u;   /* the Main clock: half a block per block that saw a tick while running */
             if (ENG_RARELY(E.nkev))
                 steps_keys();
+            for (k = 0; ENG_RARELY(E.nharm) && k < E.nharm; k++)   /* RETRIG: the held chords follow what is set now */
+                if (!E.node[E.harm[k].node].bypass)            /* (engine.ts harmRetrigs, after the tracks' keys) */
+                    harm_retrig(&E.harm[k]);
             {                                    /* the keys played into tracks since the last block (eng_note_on) */
                 uint16_t q = thru_tail;
                 E.blk_q0 = q;
