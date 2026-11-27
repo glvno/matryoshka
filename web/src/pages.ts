@@ -8,7 +8,7 @@ import { keyReach } from './key-routing';
 // an Arpeggiator it plays through, into them); an assembly with a Steps track inside (the kits' DRUMS) is that track's
 // device: it stands where a track does, driven by its own track, and its card's rows are its pages. Then the others (an
 // Arpeggiator among them, never where a patch opens); the Output last. Tracks and the rest go in the canvas's reading order (columns from the left,
-// as Tidy reads them, each from the top). A device's rows are the rows
+// a card within half a card of a column's first card in it, each column from the top). A device's rows are the rows
 // of its collapsed card: an assembly's promoted parameters, a plain module's every parameter. A heading starts a section;
 // a section holds groups of at most PAGE_ROWS rows (`groupStarts`), and each group is one page ("Filter 2/2" = the
 // section's second group). Groups fill in fours; a row's `group` flag (Arrange's "new group") or a column break ends one
@@ -26,7 +26,7 @@ export const NAME_MAX = 12;
 export const NOT_DEVICES = new Set(['part', ...EDITOR_ONLY]);
 /** module types whose card display is an envelope shape the FM-1 draws */
 export const ENVELOPES = new Set(['adsr', 'env', 'env8']);
-/** how far right a card may start and still be in the column of the card above it (half a card, as tidy.ts reads it) */
+/** how far right a card may start and still be in the column of the card above it (half a card) */
 const COLUMN_SLACK = 150;
 
 export interface PageRow {
