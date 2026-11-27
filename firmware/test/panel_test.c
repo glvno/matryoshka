@@ -1394,7 +1394,7 @@ static void drum_bank_suite(void)
         check("  the footer: the tempo at the same x in every octave state, the octave's slot its widest", moved == 0u && widest == FOOT_OCT_W);
     }
     {                                                       /* a load sets the octave and the drum bank back (the owner,
-                                                             * 2026-11-27, D-1455): PRESET, any other load, never an edit */
+                                                             * 2026-11-27, D-1456): PRESET, any other load, never an edit */
         uint32_t leds;
         drum_open("909 KIT");
         tap(BTN_OCT_UP);

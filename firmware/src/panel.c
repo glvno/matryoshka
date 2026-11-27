@@ -448,7 +448,7 @@ static void panel_patch_follow(void)
     seq_hold_drop();
     page_mask();
     drum_bank = seq_view = 0;                      /* a load: the keys' octave and drum bank start over (the owner,
-                                                     * 2026-11-27, D-1455); a Live parameter edit is no load (PARAM changes
+                                                     * 2026-11-27, D-1456); a Live parameter edit is no load (PARAM changes
                                                      * no pages_gen) */
     if (octave) {
         octave = 0;

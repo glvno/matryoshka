@@ -1549,7 +1549,7 @@ async function main() {
       await emu.waitOwnPage(3000);
     },
     async drumKeys() {   // D-520 (the owner, 2026-11-27): Verona Drum 1's 10 rows on black keys 1..10 with no paging; the SEQ
-      // grid moves to the 8 rows that hold the row a black key picks (D-521); a palette switch sets the octave back (D-1455)
+      // grid moves to the 8 rows that hold the row a black key picks (D-521); a palette switch sets the octave back (D-1456)
       const BLACK9_11 = [14 + 20, 14 + 22, 14 + 25];   // (black keys 9, 10, 11: C#5 D#5 F#5, the keybed's F3 + 20, 22, 25)
       const hit = async (id) => {
         const before = await emu.windows(6, 25);
