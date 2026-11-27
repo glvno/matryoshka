@@ -1,0 +1,382 @@
+{
+ "checks": [
+  {
+   "name": "big big200.bin: format 67, 203 modules, sent and committed, plays",
+   "ok": true,
+   "info": "peak 983; screen ['0', '0', '0.50', '137', '= OCT =', 'COARSE']"
+  },
+  {
+   "name": "big big200.bin: stored in slot 48, SLOT_GET mode 0 byte for byte",
+   "ok": true,
+   "info": "2508 bytes sent, 2508 read"
+  },
+  {
+   "name": "big big200.bin: loaded from the slot, plays",
+   "ok": true,
+   "info": "peak 983"
+  },
+  {
+   "name": "big big240.bin: format 67, 243 modules, sent and committed, plays",
+   "ok": true,
+   "info": "peak 983; screen ['0', '0', '0.50', '137', '= OCT =', 'COARSE']"
+  },
+  {
+   "name": "big big240.bin: stored in slot 48, SLOT_GET mode 0 byte for byte",
+   "ok": true,
+   "info": "2848 bytes sent, 2848 read"
+  },
+  {
+   "name": "big big240.bin: loaded from the slot, plays",
+   "ok": true,
+   "info": "peak 983"
+  },
+  {
+   "name": "plock: the 808 Kit's own device page and its octave slot",
+   "ok": true,
+   "info": "['-', '-', '-', '-', '0.50', '137', '137', '808 KIT', '808 KIT', 'ACCENT']"
+  },
+  {
+   "name": "plock: a tap (nothing turned) toggles the step, twice back as it was",
+   "ok": true,
+   "info": "['1-16 OF 16  RATE 1/16', 'BD', 'BLACK row  WHITE step  FX acc  ', 'CB']"
+  },
+  {
+   "name": "plock: held, K2 sets the velocity on the note's stop",
+   "ok": true,
+   "info": "['1-16 OF 16  RATE 1/16', 'BD', 'CB', 'CH', 'CP/MA', 'HELD: K2 vel  SELECT chance  AL']"
+  },
+  {
+   "name": "plock: held, SELECT sets the chance on the note's stop",
+   "ok": true,
+   "info": "['1-16 OF 16  RATE 1/16', 'BD', 'CB', 'CH', 'CHANCE 90%', 'CP/MA']"
+  },
+  {
+   "name": "plock: held, K4 sets the trig condition on the note's stop",
+   "ok": true,
+   "info": "['1-16 OF 16  RATE 1/16', 'BD', 'CB', 'CH', 'COND FILL', 'CP/MA']"
+  },
+  {
+   "name": "plock: held, ALGO goes to the device's real page (its device page's \"ROWS 1-8\", no grid, no HELD: hint)",
+   "ok": true,
+   "info": "['-', '-', '-', '0.50', '137', 'ARM DRUMS', 'LEVEL', 'LOCK ACCENT', 'ROWS 1-8']"
+  },
+  {
+   "name": "plock: K1 locks its row on the device page (the bar moves)",
+   "ok": true,
+   "info": "['-', '-', '-', '0.53', '137', 'ARM DRUMS', 'LEVEL', 'LOCK LEVEL 0.53']"
+  },
+  {
+   "name": "plock: PRESET on a device page sets the ratchet",
+   "ok": true,
+   "info": "['-', '-', '-', '0.53', '137', 'ARM DRUMS', 'LEVEL', 'RATCHET X2']"
+  },
+  {
+   "name": "plock: OCT+ on a device page sets micro timing",
+   "ok": true,
+   "info": "['-', '-', '-', '0.53', '137', 'ARM DRUMS', 'LEVEL', 'MICRO +1/24']"
+  },
+  {
+   "name": "plock: SELECT on a device page is still the chance",
+   "ok": true,
+   "info": "['-', '-', '-', '0.53', '137', 'ARM DRUMS', 'CHANCE 100%', 'LEVEL']"
+  },
+  {
+   "name": "plock: ALGO on to the next real page",
+   "ok": true,
+   "info": "['-', '0.53', '1.50', '137', '600', 'ARM DRUMS', 'DECAY', 'LEVEL', 'LOCK BASS DRUM', 'ROWS 1-8', 'TONE', 'kHz', 'ms']"
+  },
+  {
+   "name": "plock: letting go returns to the grid exactly where it was",
+   "ok": true,
+   "info": "['1-16 OF 16  RATE 1/16', 'BD', 'BLACK row  WHITE step  FX acc  ', 'CB', 'CH', 'CP/MA'] vs ['1-16 OF 16  RATE 1/16', 'BD', 'BLACK row  WHITE step  FX acc  ', 'CB', 'CH', 'CP/MA']"
+  },
+  {
+   "name": "plock: the next hold starts on the note's stop again (no device page)",
+   "ok": true,
+   "info": "['1-16 OF 16  RATE 1/16', 'BD', 'CB', 'CH', 'CP/MA', 'DRUMS ARM P01', 'HELD: K2 vel  SELECT chance  AL', 'LT/LC', 'OH', 'RS/CL', 'SD', 'TRACK 1/1  ARMED  ALGO track  S']"
+  },
+  {
+   "name": "plock: FX held + step switches the accent, no device page",
+   "ok": true,
+   "info": "['1-16 OF 16  RATE 1/16', 'BD', 'BLACK row  WHITE step  FX acc  ', 'CB', 'CH', 'CP/MA']"
+  },
+  {
+   "name": "plock: the 808 Kit slot written back as it was",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "double: the 909 Kit slot is format 67 (its FX drawer)",
+   "ok": true,
+   "info": "67"
+  },
+  {
+   "name": "double: SEQ held + HOME twice clears",
+   "ok": true,
+   "info": "['1-16 OF 16  RATE 1/16', 'CL HAT', 'CLAP', 'DRUMS ARM P01', 'EMPTY  SEQ+SEL load a pattern', 'HI TOM']"
+  },
+  {
+   "name": "double: 8 notes and 32 P-locks entered, no PATCH FULL",
+   "ok": true,
+   "info": "[]"
+  },
+  {
+   "name": "double: SEQ held + OCT+ doubles (no NOT DOUBLED)",
+   "ok": true,
+   "info": "['1-16 OF 32  RATE 1/16', 'BLACK/SELECT row  WHITE step  F', 'CL HAT', 'CLAP', 'DOUBLED: 32 STEPS', 'HI TOM', 'KICK', 'LOW TOM']"
+  },
+  {
+   "name": "double: SAVE, the slot is format 67",
+   "ok": true,
+   "info": "(67, 3785)"
+  },
+  {
+   "name": "double: the 909 Kit slot written back as it was",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "refused: SEQ held + OCT+ on a pattern doubled past 256 notes is refused",
+   "ok": true,
+   "info": "['1-16 OF 64  RATE 1/16', '64 STEPS MAX: NOT DOUBLED', 'C#3', 'C3', 'D#3', 'D3', 'E3', 'F#3']"
+  },
+  {
+   "name": "refused: SAVE after the refusal writes the same bytes as before it (nothing changed)",
+   "ok": true,
+   "info": "975 / 975"
+  }
+ ],
+ "big": [
+  {
+   "file": "big200.bin",
+   "modules": 203,
+   "format": 67,
+   "bytes": 2508,
+   "peak": 983,
+   "peak_slot": 983
+  },
+  {
+   "file": "big240.bin",
+   "modules": 243,
+   "format": 67,
+   "bytes": 2848,
+   "peak": 983,
+   "peak_slot": 983
+  }
+ ],
+ "plock": {
+  "device_page": [
+   "-",
+   "-",
+   "-",
+   "-",
+   "0.50",
+   "137",
+   "137",
+   "808 KIT",
+   "808 KIT",
+   "ACCENT",
+   "KEYS WIRED",
+   "KEYS WIRED",
+   "ROWS 1-8",
+   "ROWS 1-8"
+  ],
+  "grid": [
+   "1-16 OF 16  RATE 1/16",
+   "BD",
+   "CB",
+   "CH",
+   "CP/MA",
+   "DRUMS ARM P01",
+   "EMPTY  SEQ+SEL load a pattern",
+   "LT/LC",
+   "OH",
+   "RS/CL",
+   "SD",
+   "TRACK 1/1  ARMED  ALGO track  S"
+  ],
+  "grid_on": [
+   "1-16 OF 16  RATE 1/16",
+   "BD",
+   "BLACK row  WHITE step  FX acc  ",
+   "CB",
+   "CH",
+   "CP/MA",
+   "DRUMS ARM P01",
+   "LT/LC",
+   "OH",
+   "RS/CL",
+   "SD",
+   "TRACK 1/1  ARMED  ALGO track  S"
+  ],
+  "note": [
+   "1-16 OF 16  RATE 1/16",
+   "BD",
+   "CB",
+   "CH",
+   "CP/MA",
+   "DRUMS ARM P01",
+   "HELD: K2 vel  SELECT chance  AL",
+   "LT/LC",
+   "OH",
+   "RS/CL",
+   "SD",
+   "TRACK 1/1  ARMED  ALGO track  S"
+  ],
+  "velocity": [
+   "1-16 OF 16  RATE 1/16",
+   "BD",
+   "CB",
+   "CH",
+   "CP/MA",
+   "HELD: K2 vel  SELECT chance  AL",
+   "LT/LC",
+   "OH",
+   "RS/CL",
+   "SD",
+   "STEP 3  VEL 97",
+   "TRACK 1/1  ARMED  ALGO track  S"
+  ],
+  "chance": [
+   "1-16 OF 16  RATE 1/16",
+   "BD",
+   "CB",
+   "CH",
+   "CHANCE 90%",
+   "CP/MA",
+   "HELD: K2 vel  SELECT chance  AL",
+   "LT/LC",
+   "OH",
+   "RS/CL",
+   "SD",
+   "TRACK 1/1  ARMED  ALGO track  S"
+  ],
+  "cond": [
+   "1-16 OF 16  RATE 1/16",
+   "BD",
+   "CB",
+   "CH",
+   "COND FILL",
+   "CP/MA",
+   "HELD: K2 vel  SELECT chance  AL",
+   "LT/LC",
+   "OH",
+   "RS/CL",
+   "SD",
+   "TRACK 1/1  ARMED  ALGO track  S"
+  ],
+  "page1": [
+   "-",
+   "-",
+   "-",
+   "0.50",
+   "137",
+   "ARM DRUMS",
+   "LEVEL",
+   "LOCK ACCENT",
+   "ROWS 1-8"
+  ],
+  "lock": [
+   "-",
+   "-",
+   "-",
+   "0.53",
+   "137",
+   "ARM DRUMS",
+   "LEVEL",
+   "LOCK LEVEL 0.53",
+   "ROWS 1-8"
+  ],
+  "ratchet": [
+   "-",
+   "-",
+   "-",
+   "0.53",
+   "137",
+   "ARM DRUMS",
+   "LEVEL",
+   "RATCHET X2",
+   "ROWS 1-8"
+  ],
+  "micro": [
+   "-",
+   "-",
+   "-",
+   "0.53",
+   "137",
+   "ARM DRUMS",
+   "LEVEL",
+   "MICRO +1/24",
+   "ROWS 1-8"
+  ],
+  "chance_page": [
+   "-",
+   "-",
+   "-",
+   "0.53",
+   "137",
+   "ARM DRUMS",
+   "CHANCE 100%",
+   "LEVEL",
+   "ROWS 1-8"
+  ],
+  "page2": [
+   "-",
+   "0.53",
+   "1.50",
+   "137",
+   "600",
+   "ARM DRUMS",
+   "DECAY",
+   "LEVEL",
+   "LOCK BASS DRUM",
+   "ROWS 1-8",
+   "TONE",
+   "kHz",
+   "ms"
+  ],
+  "released": [
+   "1-16 OF 16  RATE 1/16",
+   "BD",
+   "BLACK row  WHITE step  FX acc  ",
+   "CB",
+   "CH",
+   "CP/MA",
+   "DRUMS ARM P01",
+   "LT/LC",
+   "OH",
+   "RS/CL",
+   "SD",
+   "TRACK 1/1  ARMED  ALGO track  S"
+  ]
+ },
+ "double_screen": [
+  "1-16 OF 32  RATE 1/16",
+  "BLACK/SELECT row  WHITE step  F",
+  "CL HAT",
+  "CLAP",
+  "DOUBLED: 32 STEPS",
+  "HI TOM",
+  "KICK",
+  "LOW TOM",
+  "OP HAT",
+  "RIM",
+  "SNARE",
+  "TRACK 1/1  ARMED  ALGO track  S"
+ ],
+ "double_inline": 65534,
+ "refused_screen": [
+  "1-16 OF 64  RATE 1/16",
+  "64 STEPS MAX: NOT DOUBLED",
+  "C#3",
+  "C3",
+  "D#3",
+  "D3",
+  "E3",
+  "F#3",
+  "F3",
+  "G3",
+  "KEYS play  SELECT view  OCT oct",
+  "TRACK 1/1  ARMED  ALGO track  S"
+ ]
+}
