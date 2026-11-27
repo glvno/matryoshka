@@ -4,7 +4,8 @@
 // operator strips and the picked operator in full, the voice's pitch envelope, LFO, transpose and key sync, and SysEx in
 // and out (Import, or a .syx dropped onto the card: a single voice, or a bank browsed here). Every edit goes through
 // msfa's unpacked form (dx7Unpack, clamped, dx7Pack) into ModuleInst.voice as one undoable change of the editor
-// (Dx7Host.setVoice). An imported bank is kept in this browser (localStorage, a few named banks), never in the patch.
+// (Dx7Host.setVoice). An imported bank is kept in this browser (localStorage, a few named banks), never in the patch; the
+// banks the editor ships (factory/dx7/*.syx, our own voices) are listed above them.
 import { DX7_ALG, DX7_RANGE, DX7_VOICE, dx7Clamp, dx7Pack, dx7Unpack } from './dx7';
 import { bankSysex, parseDx7Sysex, singleSysex } from './dx7-sysex';
 import { canonicalVoice, DX7_INIT_VOICE, voiceBytes, voiceHex, voiceName } from './dx7-voice';
@@ -235,6 +236,14 @@ export function storeBanks(storage: Store | null, banks: readonly KeptBank[]): b
     return false;
   }
 }
+
+/** the banks the editor ships: factory/dx7/*.syx (our own voices, scripts/dx7-bank.ts), inlined into the build, each
+ *  named by its file */
+export const SHIPPED_BANKS: KeptBank[] = Object.entries(import.meta.glob<string>('../factory/dx7/*.syx', { eager: true, query: '?url&inline', import: 'default' }))
+  .flatMap(([path, url]) => {
+    const r = parseDx7Sysex(Uint8Array.from(atob(url.slice(url.indexOf(',') + 1)), (c) => c.charCodeAt(0)));
+    return r?.bank ? [{ name: path.replace(/^.*\/|\.syx$/g, ''), voices: r.voices }] : [];
+  });
 
 // ------------------------------------------------------------------ the view
 
@@ -482,7 +491,7 @@ export class Dx7Card {
         field(GLOBAL.pms, 'PMS', 'pms'), field(GLOBAL.transpose, 'TRANSP', 'transpose', { off: -24 })));
     root.append(g);
 
-    // the browsed bank: 32 names, a click loads one; with none open, the banks this browser keeps
+    // the browsed bank: 32 names, a click loads one; with none open, the banks the editor ships and this browser keeps
     const kept = this.keptList();
     if (s.bank) {
       const b = s.bank;
@@ -506,14 +515,18 @@ export class Dx7Card {
         return e;
       }));
       root.append(div('dx7-sec', head, list));
-    } else if (kept.length) {
-      const head = div('dx7-st', 'Kept banks');
-      head.title = hint('banks');
-      const list = div('dx7-bank dx7-kept', ...kept.map((k) => button(k.name, `Open bank ${k.name}: list its 32 voices on this card`, () => {
-        s.bank = { name: k.name, voices: k.voices, checksumOk: true, slot: null };
-        this.host.redraw();
-      })));
-      root.append(div('dx7-sec', head, list));
+    } else {
+      const lists: [string, string, string, KeptBank[]][] = [['Shipped banks', 'shipped', 'shipped', SHIPPED_BANKS], ['Kept banks', 'kept', 'banks', kept]];
+      for (const [title, key, tip, banks] of lists) {
+        if (!banks.length) continue;
+        const head = div('dx7-st', title);
+        head.title = hint(tip);
+        const list = div(`dx7-bank dx7-${key}`, ...banks.map((k) => button(k.name, `Open bank ${k.name}: list its 32 voices on this card`, () => {
+          s.bank = { name: k.name, voices: k.voices, checksumOk: true, slot: null };
+          this.host.redraw();
+        })));
+        root.append(div('dx7-sec', head, list));
+      }
     }
     if (refocus) {
       const f: HTMLElement = refocus;

@@ -5,7 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { dx7Unpack } from './dx7';
 import { bankSysex, parseDx7Sysex, singleSysex } from './dx7-sysex';
-import { algDiagram, bankToSave, Dx7Card, DX7_BANKS_MAX, DX7_BANKS_STORE, editVoice, GLOBAL, keptBanks, OPF, opAt, opFreq, storeBanks } from './dx7-view';
+import { algDiagram, bankToSave, Dx7Card, DX7_BANKS_MAX, DX7_BANKS_STORE, editVoice, GLOBAL, keptBanks, OPF, opAt, opFreq, SHIPPED_BANKS, storeBanks } from './dx7-view';
 import { DX7_INIT_VOICE, voiceBytes, voiceHex, voiceName } from './dx7-voice';
 import { Editor, type EditorEvents } from './editor';
 import { DEFS } from './modules';
@@ -160,6 +160,23 @@ describe('DX7 SysEx into a module (#1338)', () => {
     storage.setItem(DX7_BANKS_STORE, JSON.stringify([{ name: 'bad', data: 'AAAA' }, ...JSON.parse(storage.getItem(DX7_BANKS_STORE)!).slice(0, 1)]));
     expect(keptBanks(storage).map((b) => b.name)).toEqual([`b${DX7_BANKS_MAX + 1}`]);
     expect(storeBanks(null, [])).toBe(false);
+  });
+
+  it('the banks the editor ships (factory/dx7) are listed with no bank kept; opening one lists its voices', () => {
+    expect(SHIPPED_BANKS.map((b) => b.name)).toEqual(['matryoshka']);
+    const m = { id: 7, type: 'dx7', x: 0, y: 0, params: {} } as ModuleInst;
+    const { card } = host(m);
+    const el = card.element(m);
+    expect(el.querySelector('.dx7-kept')).toBeNull();
+    const opens = [...el.querySelectorAll<HTMLButtonElement>('.dx7-shipped button')];
+    expect(opens.map((b) => b.textContent)).toEqual(['matryoshka']);
+    opens[0].click();
+    const names = [...card.element(m).querySelectorAll<HTMLButtonElement>('.dx7-bank button')].map((b) => b.textContent);
+    expect(names[0]).toBe('1 TINE PIANO');
+    expect(names[31]).toBe('32 INIT VOICE');
+    card.element(m).querySelectorAll<HTMLButtonElement>('.dx7-bank button')[0].click();
+    expect(voiceName(voiceBytes(m.voice))).toBe('TINE PIANO');
+    expect([...card.element(m).querySelectorAll('.dx7-tools button')].map((b) => b.textContent)).toEqual(['×']);   // (no Forget: it is not kept)
   });
 
   it('a .syx dropped onto the card loads as Import does', async () => {
