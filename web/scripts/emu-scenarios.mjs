@@ -1567,9 +1567,12 @@ async function main() {
           `peak ${h.top}, quiet before ${h.floor}; ${prof(h.held)}`);
       }
       await emu.tap(B.seq, 120);
-      await check('drum keys: SEQ opens the drum grid on rows 1-8 (ROWS 1-8)', (await emu.waitText('ALGO track', 3000)) && (await emu.waitText('ROWS 1-8', 2000)));
-      await emu.tap(BLACK9_11[1], 120);
-      await check('drum keys: black key 10 on the grid: the grid shows ROWS 9-10, HH 2 CL on screen', (await emu.waitText('ROWS 9-10', 2000)) && (await emu.waitText('HH 2 CL', 2000)));
+      await check('drum keys: SEQ opens the drum grid', await emu.waitText('ALGO track', 3000));
+      await emu.snap('drum-keys-seq');                // (rows 1-8: KICK .. CLAP)
+      const g = await hit(BLACK9_11[1]);             // (the grid's names are not screen text: the snapshot shows HH 1 CL, HH 2 CL)
+      await emu.snap('drum-keys-row10');
+      await loudCheck('drum keys: black key 10 on the grid sounds row 10 (the grid moves to rows 9-10, drum-keys-row10)', g.top,
+        g.top > 4 * QUIET && g.top > 4 * g.floor, `peak ${g.top}, quiet before ${g.floor}; ${prof(g.held)}`);
       await emu.tap(B.seq, 120);
       await emu.waitOwnPage(3000);
       // palette 1 holds Verona Drum 1 (HOME + black key 1 held 1 s); another patch, OCT+ twice, then the palette switch
