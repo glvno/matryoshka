@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.29.1 — 2026-11-27
 
 - **Fixed: Add to palette stored a whole new patch for a tweak of a sound your FM-1 already has.** When the FM-1's slot held a version of that patch this browser had no exact copy of (stored by an earlier add, saved on the FM-1 after turning its knobs, or written by another browser), every add from the editor took a new slot, saying "no patch of its name with its modules and cables is on the FM-1". The editor now reads that slot back from the FM-1 and compares it with the sound: when they differ only in card values, tempo and patterns, the sound goes in as a preset on that slot under the name you give it, as the FM-1's own HOME + key save does. When the slot differs in another setting, the patch is still stored and the status line names that slot. A drag onto a chip, Add to palette and Send to FM-1 from Library › Palettes all work this way ([D-1240](docs/ledger/patches-and-presets.md#D-1240)).
 - Opening a slot read back from the FM-1 now shows its FX drawer's switched-off effects as off (they showed as on, though they played off).
