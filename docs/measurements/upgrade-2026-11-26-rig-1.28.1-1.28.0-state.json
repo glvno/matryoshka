@@ -1,0 +1,504 @@
+{
+ "bank": {
+  "1": [
+   "MONOLITH D",
+   2654
+  ],
+  "2": [
+   "ORACLE V",
+   3099
+  ],
+  "3": [
+   "SILVER BOX",
+   1302
+  ],
+  "4": [
+   "HERA 6",
+   2315
+  ],
+  "5": [
+   "SALLEN 20",
+   2359
+  ],
+  "6": [
+   "EXPANDER S",
+   2061
+  ],
+  "7": [
+   "ALGO FOUR",
+   1974
+  ],
+  "8": [
+   "CANVAS",
+   3614
+  ],
+  "9": [
+   "WANDERER",
+   3028
+  ],
+  "10": [
+   "BRIEFCASE 3",
+   3609
+  ],
+  "11": [
+   "IO 4",
+   2698
+  ],
+  "12": [
+   "VERNON 100",
+   2894
+  ],
+  "13": [
+   "8 LIRE",
+   3736
+  ],
+  "14": [
+   "ELVIRA 2",
+   3491
+  ],
+  "15": [
+   "SCROUNGE",
+   3517
+  ],
+  "16": [
+   "MERIDIAN 8",
+   3493
+  ],
+  "17": [
+   "808 KIT",
+   3420
+  ],
+  "18": [
+   "909 KIT",
+   3781
+  ],
+  "19": [
+   "CASSIA 1",
+   3556
+  ],
+  "20": [
+   "VERONA DRUM 1",
+   3788
+  ],
+  "21": [
+   "SHUSH 101",
+   2112
+  ],
+  "22": [
+   "MY 808 KIT",
+   3659
+  ],
+  "23": [
+   "MY SCROUNGE",
+   3159
+  ],
+  "24": [
+   "MY SILVER",
+   1420
+  ],
+  "25": [
+   "SILVER BOX",
+   1420
+  ],
+  "26": [
+   "HIGH 8 LIRE",
+   3736
+  ],
+  "27": [
+   "HIGH SILVER",
+   1420
+  ],
+  "28": [
+   null,
+   0
+  ],
+  "29": [
+   null,
+   0
+  ],
+  "30": [
+   null,
+   0
+  ],
+  "31": [
+   null,
+   0
+  ],
+  "32": [
+   null,
+   0
+  ],
+  "33": [
+   null,
+   0
+  ],
+  "34": [
+   null,
+   0
+  ],
+  "35": [
+   null,
+   0
+  ],
+  "36": [
+   null,
+   0
+  ],
+  "37": [
+   null,
+   0
+  ],
+  "38": [
+   null,
+   0
+  ],
+  "39": [
+   null,
+   0
+  ],
+  "40": [
+   null,
+   0
+  ],
+  "41": [
+   null,
+   0
+  ],
+  "42": [
+   null,
+   0
+  ],
+  "43": [
+   null,
+   0
+  ],
+  "44": [
+   null,
+   0
+  ],
+  "45": [
+   null,
+   0
+  ],
+  "46": [
+   null,
+   0
+  ],
+  "47": [
+   null,
+   0
+  ],
+  "48": [
+   null,
+   0
+  ]
+ },
+ "pats": [
+  {
+   "id": 94,
+   "len": 170,
+   "hash": "3808621e",
+   "flags": 0,
+   "name": "MY 808 KIT P02"
+  },
+  {
+   "id": 95,
+   "len": 146,
+   "hash": "12e149d6",
+   "flags": 0,
+   "name": "MY 808 KIT P03"
+  },
+  {
+   "id": 96,
+   "len": 190,
+   "hash": "02010f1a",
+   "flags": 0,
+   "name": "MY 808 KIT P04"
+  },
+  {
+   "id": 97,
+   "len": 198,
+   "hash": "73f01a03",
+   "flags": 0,
+   "name": "MY 808 KIT P05"
+  },
+  {
+   "id": 98,
+   "len": 198,
+   "hash": "08781fff",
+   "flags": 0,
+   "name": "MY 808 KIT P06"
+  },
+  {
+   "id": 117,
+   "len": 29,
+   "hash": "ebb146f0",
+   "flags": 0,
+   "name": "MY SCROUNGE P02"
+  },
+  {
+   "id": 99,
+   "len": 110,
+   "hash": "b4dbf035",
+   "flags": 0,
+   "name": "MY 808 KIT P07"
+  },
+  {
+   "id": 100,
+   "len": 118,
+   "hash": "3c82f4ed",
+   "flags": 0,
+   "name": "MY 808 KIT P08"
+  },
+  {
+   "id": 101,
+   "len": 190,
+   "hash": "a835abbc",
+   "flags": 0,
+   "name": "MY 808 KIT P09"
+  },
+  {
+   "id": 102,
+   "len": 162,
+   "hash": "436fdb89",
+   "flags": 0,
+   "name": "MY 808 KIT P10"
+  },
+  {
+   "id": 103,
+   "len": 150,
+   "hash": "78df5239",
+   "flags": 0,
+   "name": "MY 808 KIT P11"
+  },
+  {
+   "id": 104,
+   "len": 198,
+   "hash": "1fdc1112",
+   "flags": 0,
+   "name": "MY 808 KIT P12"
+  },
+  {
+   "id": 105,
+   "len": 170,
+   "hash": "f0b939ff",
+   "flags": 0,
+   "name": "MY 808 KIT P13"
+  },
+  {
+   "id": 106,
+   "len": 182,
+   "hash": "ab8621ab",
+   "flags": 0,
+   "name": "MY 808 KIT P14"
+  },
+  {
+   "id": 107,
+   "len": 154,
+   "hash": "e0a9ef5e",
+   "flags": 0,
+   "name": "MY 808 KIT P15"
+  },
+  {
+   "id": 108,
+   "len": 154,
+   "hash": "80a99faa",
+   "flags": 0,
+   "name": "MY 808 KIT P16"
+  },
+  {
+   "id": 109,
+   "len": 150,
+   "hash": "75f8a0e6",
+   "flags": 0,
+   "name": "MY 808 KIT P17"
+  },
+  {
+   "id": 110,
+   "len": 162,
+   "hash": "0836a726",
+   "flags": 0,
+   "name": "MY 808 KIT P18"
+  },
+  {
+   "id": 111,
+   "len": 234,
+   "hash": "16eae40b",
+   "flags": 0,
+   "name": "MY 808 KIT P19"
+  },
+  {
+   "id": 112,
+   "len": 294,
+   "hash": "2a7e67da",
+   "flags": 0,
+   "name": "MY 808 KIT P20"
+  },
+  {
+   "id": 113,
+   "len": 110,
+   "hash": "52ec8128",
+   "flags": 0,
+   "name": "MY 808 KIT P21"
+  },
+  {
+   "id": 114,
+   "len": 134,
+   "hash": "966abaa9",
+   "flags": 0,
+   "name": "MY 808 KIT P22"
+  },
+  {
+   "id": 115,
+   "len": 230,
+   "hash": "6944ee88",
+   "flags": 0,
+   "name": "MY 808 KIT P23"
+  },
+  {
+   "id": 116,
+   "len": 214,
+   "hash": "9fcc5d18",
+   "flags": 0,
+   "name": "MY 808 KIT P24"
+  },
+  {
+   "id": 118,
+   "len": 42,
+   "hash": "350b8b6c",
+   "flags": 0,
+   "name": "MY SCROUNGE P03"
+  },
+  {
+   "id": 119,
+   "len": 30,
+   "hash": "b823d620",
+   "flags": 0,
+   "name": "MY SCROUNGE P04"
+  },
+  {
+   "id": 120,
+   "len": 39,
+   "hash": "a44126fe",
+   "flags": 0,
+   "name": "MY SCROUNGE P05"
+  },
+  {
+   "id": 121,
+   "len": 72,
+   "hash": "8693c394",
+   "flags": 0,
+   "name": "MY SCROUNGE P06"
+  },
+  {
+   "id": 122,
+   "len": 80,
+   "hash": "703d0a57",
+   "flags": 0,
+   "name": "MY SCROUNGE P07"
+  },
+  {
+   "id": 123,
+   "len": 114,
+   "hash": "11cd1541",
+   "flags": 0,
+   "name": "MY SCROUNGE P08"
+  },
+  {
+   "id": 124,
+   "len": 122,
+   "hash": "c8bdbe8d",
+   "flags": 0,
+   "name": "MY SCROUNGE P09"
+  },
+  {
+   "id": 125,
+   "len": 71,
+   "hash": "a3351eba",
+   "flags": 0,
+   "name": "MY SCROUNGE P10"
+  },
+  {
+   "id": 126,
+   "len": 36,
+   "hash": "2ce93a3c",
+   "flags": 0,
+   "name": "MY SILVER P02"
+  },
+  {
+   "id": 127,
+   "len": 36,
+   "hash": "8875703b",
+   "flags": 0,
+   "name": "MY SILVER P03"
+  },
+  {
+   "id": 128,
+   "len": 36,
+   "hash": "6af491a3",
+   "flags": 0,
+   "name": "MY SILVER P04"
+  },
+  {
+   "id": 129,
+   "len": 34,
+   "hash": "270c98da",
+   "flags": 0,
+   "name": "MY SILVER P05"
+  }
+ ],
+ "palette": [
+  "1  slot 22 MY 808 KIT, P02, 3659 bytes, hash 0xa1a4",
+  "2  slot 23 MY SCROUNGE, P03, 3159 bytes, hash 0x4c55",
+  "3  slot 18 909 KIT, P01, 3781 bytes, hash 0x58bb",
+  "4  slot 01 MONOLITH D, P01, 2654 bytes, hash 0x2cb5",
+  "5  empty",
+  "6  empty",
+  "7  empty",
+  "8  empty",
+  "record seq 374"
+ ],
+ "renders": {
+  "1 MY 808 KIT P02": [
+   4252,
+   3551,
+   4579,
+   4333,
+   4635,
+   3881,
+   4523
+  ],
+  "2 MY SCROUNGE P03": [
+   3847,
+   3158,
+   3847,
+   3711,
+   3847,
+   3846,
+   3666
+  ],
+  "3 909 KIT P01": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "4 MONOLITH D P01": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ]
+ },
+ "version": [
+  1,
+  28,
+  0
+ ]
+}
