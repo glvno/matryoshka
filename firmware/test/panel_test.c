@@ -4939,6 +4939,9 @@ int main(void)
             ok_copies &= E.node[m].ninst == 4u;
         }
         check("a voice row turned on the card reaches every copy of its DX7 (a Voicing's four), live", ok_copies);
+        dx7_op = 0;                                       /* (the picker as at start: it is kept across patches, and the
+                                                          * fixtures' sweeps above, the DX7 Piano example among them, move it) */
+        dx7_opname[3] = '1';
         check("DX7 fixture loads", load_fixture(FIX[0]) == 0);
         pv_gen++;
         eng_render(al, ar, 128);
