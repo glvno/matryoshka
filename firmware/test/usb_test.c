@@ -69,9 +69,13 @@ static void fm1_usb_reset(void) {}
 static void fm1_usb_attach(void *p) { (void)p; }
 static void fm1_usb_off(void) {}
 static uint32_t fm1_usb_sie_on(void) { return 1; }
+/* #1339: the SIE registers that stop answering (bit r), as with the cable out; sie_spins: the _done polls that found
+ * nothing (the time the firmware waits); sie_reg: the register the last access started on */
+static uint32_t sie_mute, sie_spins, sie_reg, delay_ms_total;
 static FILE *trace;                      /* usb_test trace: every SIE write and EP0 packet */
 static void fm1_usb_sie_wr_start(uint32_t r, uint32_t v)
 {
+    sie_reg = r;
     if (trace)
         fprintf(trace, "W %2u %02X\n", r, v & 0xFFu);
     if (r == 14u)
@@ -87,8 +91,15 @@ static void fm1_usb_sie_wr_start(uint32_t r, uint32_t v)
     if (r == 20u && sie_index == 1u)
         rxcsr1_ep1 = 0;                  /* ep1_rx releases the packet */
 }
-static void fm1_usb_sie_rd_start(uint32_t r) { sie_rd_reg = r; sie_rd_val = sim_regs(r); }
-static uint32_t fm1_usb_sie_done(void) { return 0x8000u; }
+static void fm1_usb_sie_rd_start(uint32_t r) { sie_reg = sie_rd_reg = r; sie_rd_val = sim_regs(r); }
+static uint32_t fm1_usb_sie_done(void)
+{
+    if (sie_mute >> sie_reg & 1u) {
+        sie_spins++;
+        return 0;
+    }
+    return 0x8000u;
+}
 static uint32_t fm1_usb_sie_data(void) { return sie_rd_val & 0xFFu; }
 static void fm1_usb_ep0_buf(void *p) { (void)p; }
 static void fm1_usb_ep_txbuf(uint32_t ep, void *p) { (void)ep; (void)p; }
@@ -118,7 +129,7 @@ static void fm1_usb_ep4_send(void *p, uint32_t n)
 static void fm1_usb_rx_sync(void) {}
 static void fm1_usb_ep_enable(uint32_t m) { (void)m; }
 static uint32_t fm1_usb_sof_take(void) { return 1; }
-static void fm1_delay_ms(uint32_t ms) { (void)ms; }
+static void fm1_delay_ms(uint32_t ms) { delay_ms_total += ms; }
 
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 #define HALF_FRAMES 128u
@@ -479,6 +490,59 @@ static void test_ep0(void)
     usb_uac_switch(1);
     usb.up = 0;
     usb.config = 0;
+}
+
+/* #1339: the SIE stops answering while USB is up (the cable pulled out: with no VBUS it does not answer). usb_poll runs
+ * in TIMER5's interrupt, which the key scan's glow pulse ends wait behind (#803): a poll may wait out one timeout
+ * (20000 polls of _done), and USB stops after SIE_STUCK_POLLS such polls, also when some registers still answer.
+ * usb_retry then never waits in the main loop, and USB comes back once the SIE answers */
+static void test_sie_stops(void)
+{
+    uint32_t i, s;
+    usb.up = usb.config = 1;
+    usb.suspended = 0;
+    usb.detached = 0;
+    usb.timeouts = 0;
+    sie_mute = ~0u;                                             /* every register silent */
+    sie_spins = 0;
+    usb_poll();
+    CHECK(sie_spins <= 20000u && usb.up, "SIE silent: one poll waits out one timeout at most (%u polls of _done)", sie_spins);
+    for (i = 1; i < SIE_STUCK_POLLS; i++)
+        usb_poll();
+    CHECK(!usb.up && sie_spins <= SIE_STUCK_POLLS * 20000u, "SIE silent: USB stops after %u polls (%u polls of _done in all)",
+          SIE_STUCK_POLLS, sie_spins);
+    s = sie_spins;
+    for (i = 0; i < 100u; i++)
+        usb_poll();
+    CHECK(sie_spins == s, "stopped: the polls touch no SIE register");
+
+    usb.up = usb.config = 1;                                    /* only INTRUSB silent: the other reads answer, so no 50
+                                                                 * failures in a row ever came */
+    sie_mute = 1u << S_INTRUSB;
+    usb.timeouts = 0;
+    sie_spins = 0;
+    for (i = 0; i < 200u && usb.up; i++)
+        usb_poll();
+    CHECK(!usb.up && i == SIE_STUCK_POLLS && sie_spins <= SIE_STUCK_POLLS * 20000u,
+          "INTRUSB silent, the rest answering: USB stops after %u polls (%u), %u polls of _done", SIE_STUCK_POLLS, i, sie_spins);
+
+    sie_mute = ~0u;                                             /* usb_retry with the SIE still silent */
+    delay_ms_total = 0;
+    usb_retry(1000000u);
+    CHECK(!usb.up && delay_ms_total == 0u, "usb_retry: the reset, no wait in the main loop (%u ms)", delay_ms_total);
+    usb_retry(1000000u + USB_RESET_MS - 1u);
+    usb_retry(1000000u + USB_RESET_MS);
+    CHECK(!usb.up && delay_ms_total == 0u, "usb_retry: the attach %u ms later; the SIE silent: USB stays off", USB_RESET_MS);
+    usb_retry(1000000u + 999u);
+    CHECK(!usb.up, "usb_retry: once a second");
+    sie_mute = 0;                                               /* the cable back */
+    usb_retry(1001000u);
+    usb_retry(1001000u + USB_RESET_MS);
+    CHECK(usb.up && delay_ms_total == 0u, "the SIE answering again: USB is up from the next retry");
+    sie_spins = 0;
+    usb_poll();
+    CHECK(usb.up && !sie_spins, "and polls as before");
+    usb.up = usb.config = 0;
 }
 
 /* ------------------------------------------------------------------ the USB setup log, #535 --- */
@@ -1255,6 +1319,7 @@ int main(int argc, char **argv)
     test_capture_flash_yield();
     test_power();
     test_ep0();
+    test_sie_stops();
 #if USB_LOG
     test_usb_log();
 #endif
