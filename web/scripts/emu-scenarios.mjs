@@ -2872,7 +2872,8 @@ async function main() {
     // D-947 (the owner, 2026-11-25: "should be SEL, shouldn't it?", "1. yes"): on the 909 Kit, SEL on its drawer's Drive
     // and Reverb pages switches that effect (the bar says DRIVE OFF / ON), the editor follows (its modules bypassed), the
     // kick's peak changes with Drive, and a Reverb switched off right after a hit still rings out (D-1100); SEL on the kit
-    // page still arms it
+    // page still arms it. #1323: the effect's page header says DRIVE OFF (dim) while it is off, whatever switched it (SEL,
+    // the editor's ⏻), the name alone while it plays
     async selFx909() {
       await check('sel fx: the 909 Kit opens, synced', await openSynced('909 Kit'));
       const state = (label) => page.evaluate(async (lb) => {   // an effect's switch in the editor: on, off or mixed
@@ -2901,20 +2902,34 @@ async function main() {
         const ed = await follows(name === 'DRIVE' ? 'Drive' : 'Reverb', on ? 'on' : 'off');
         return said && !!ed;
       };
+      const header = async (name, on) => (await emu.text(`${name} OFF`)) === !on && (await emu.text(name));   // (the bar's message gone)
       await emu.tap(B.fx);
       await check('sel fx: FX opens the Drive', await emu.waitText('DRIVE', 2000));
       const drive0 = await state('Drive');
       await check('sel fx: the Drive is on or off as a whole in the editor', drive0 === 'on' || drive0 === 'off', drive0);
+      await check(`sel fx: #1323: the Drive's header says it is ${drive0}`, await header('DRIVE', drive0 === 'on'));
       const p0 = await hit(600);
       await emu.elapse(1000);
       await check(`sel fx: SEL switches the Drive ${drive0 === 'on' ? 'off' : 'on'}, the bar says so, the editor follows`, await sel('DRIVE', drive0 !== 'on'));
       await emu.snap('sel-fx-drive');
       await emu.elapse(1300);
+      await check(`sel fx: #1323: once the bar's message goes the header says ${drive0 === 'on' ? 'DRIVE OFF' : 'DRIVE'}`, await header('DRIVE', drive0 !== 'on'));
+      await emu.snap(drive0 === 'on' ? 'sel-fx-drive-header-off' : 'sel-fx-drive-header-on');
       const p1 = await hit(600);
       await emu.elapse(1000);
       await loudCheck('sel fx: the kick plays either way, its peak changes with the Drive', Math.max(p0, p1), Math.min(p0, p1) > LOUD && Math.abs(p1 - p0) > p0 / 50, `peak ${p0} -> ${p1}`);
       await check('sel fx: SEL again switches the Drive back', await sel('DRIVE', drive0 === 'on'));
       await emu.elapse(1300);
+      await check(`sel fx: #1323: the header follows: ${drive0 === 'on' ? 'DRIVE' : 'DRIVE OFF'}`, await header('DRIVE', drive0 === 'on'));
+      await emu.snap(drive0 === 'on' ? 'sel-fx-drive-header-on' : 'sel-fx-drive-header-off');
+      // the editor's ⏻ on the Drive's card: the FM-1's page header follows with no key pressed
+      await check('sel fx: #1323: the editor\'s Drive ⏻ switches it', await page.evaluate(() => window.__m1test.power('Drive'))
+        && !!(await follows('Drive', drive0 === 'on' ? 'off' : 'on')));
+      await check('sel fx: #1323: the FM-1\'s header follows the editor\'s ⏻', await emu.waitFor(() => header('DRIVE', drive0 !== 'on'), 2000));
+      await page.evaluate(() => window.__m1test.power('Drive'));
+      await check('sel fx: #1323: and back, the header too', !!(await follows('Drive', drive0))
+        && await emu.waitFor(() => header('DRIVE', drive0 === 'on'), 2000));
+      await emu.elapse(300);
       await emu.turn(ENC.select, 1);
       await check('sel fx: SELECT walks to the Reverb', await emu.waitText('REVERB', 2000));
       if ((await state('Reverb')) === 'off') {
@@ -2938,6 +2953,8 @@ async function main() {
       const wet = await tail('on');
       const rung = await tail('switch');
       await check('sel fx: SEL switched the Reverb off mid-tail, the editor follows', !!(await follows('Reverb', 'off')));
+      await check('sel fx: #1323: the Reverb\'s header says REVERB OFF', await header('REVERB', false));
+      await emu.snap('sel-fx-reverb-header-off');
       const dry = await tail('off');
       // (the floor scales with the Reverb's own tail, not the emulator's absolute QUIET: the rig's USB audio is quieter,
       // 1.27.1's rig run: on 229, switched off 28, off before 0; the emulator 354 / 78 / 0)
@@ -2945,6 +2962,7 @@ async function main() {
       await loudCheck('sel fx: a Reverb switched off right after a hit rings out (its tail stays, louder than with it off before)', rung, rung > dry * 1.1 && rung > wet / 20, `tail peak on ${wet}, switched off ${rung}, off before ${dry}`);
       await check('sel fx: SEL switches the Reverb on again', await sel('REVERB', true));
       await emu.elapse(1600);
+      await check('sel fx: #1323: the Reverb\'s header: REVERB, no OFF', await header('REVERB', true));
     },
     // #1312 (the owner, 2026-11-25: "S2: SEL switches canvas effects"), D-947 amended: Monolith D through effects on the
     // canvas, as the panel fixture fx-canvas (web/scripts/panel-fixtures.ts). SEL on a Delay module's page switches it (the
@@ -2993,6 +3011,7 @@ async function main() {
         }
         return re.test((await T()).focusName);
       };
+      const header = async (name, on) => (await emu.text(`${name} OFF`)) === !on && (await emu.text(name));   // (#1323: the bar's message gone)
       const s0 = await state();
       await check('sel canvas: every effect plays at load', !s0.delay && s0.reverb.length > 0 && !s0.reverb.some(Boolean) && s0.drive.length > 0 && !s0.drive.some(Boolean), JSON.stringify(s0));
       await check('sel canvas: SELECT reaches the Delay module', await walkTo(/^delay/i), (await T()).focusName);
@@ -3001,14 +3020,18 @@ async function main() {
       await check('sel canvas: the editor\'s Delay card follows (bypassed)', !!(await until(async () => ((await state()).delay ? true : null), 3000)));
       await emu.snap('sel-canvas-delay');
       await emu.elapse(1300);
+      await check('sel canvas: #1323: the Delay\'s header says DELAY OFF once the bar\'s message goes', await header('DELAY', false));
+      await emu.snap('sel-canvas-delay-header-off');
       await emu.tap(B.scl);
       await check('sel canvas: SEL again: DELAY ON, the editor follows', (await emu.waitText('DELAY ON', 1500)) && !!(await until(async () => (!(await state()).delay ? true : null), 3000)));
       await emu.elapse(1300);
+      await check('sel canvas: #1323: and DELAY again, no OFF', await header('DELAY', true));
       await check('sel canvas: SELECT reaches the Reverb card', await walkTo(/reverb/i), (await T()).focusName);
       await emu.tap(B.scl);
       await check('sel canvas: SEL switches the Reverb card off as a drawer effect, the bar says REVERB OFF, the editor follows',
         (await emu.waitText('REVERB OFF', 1500)) && !!(await until(async () => ((await state()).reverb.every(Boolean) ? true : null), 3000)));
       await emu.elapse(1300);
+      await check('sel canvas: #1323: the Reverb card\'s header says REVERB OFF', await header('REVERB', false));
       await emu.tap(B.scl);
       await check('sel canvas: SEL again: REVERB ON, the editor follows',
         (await emu.waitText('REVERB ON', 1500)) && !!(await until(async () => (!(await state()).reverb.some(Boolean) ? true : null), 3000)));
@@ -3021,6 +3044,16 @@ async function main() {
       const s1 = await state();
       await check('sel canvas: nothing switched in the editor', JSON.stringify(s1) === JSON.stringify(s0), JSON.stringify(s1));
       await emu.elapse(600);
+      // #1323: Overdrive (a Toggle or the editor's ⏻ switches it): its header says OVERDRIVE OFF while every module is bypassed
+      await check('sel canvas: #1323: Overdrive\'s header: OVERDRIVE, no OFF', await header('OVERDRIVE', true));
+      await check('sel canvas: #1323: the editor\'s Overdrive ⏻ switches it off', await page.evaluate(() => window.__m1test.power('Overdrive'))
+        && !!(await until(async () => ((await state()).drive.every(Boolean) ? true : null), 3000)));
+      await check('sel canvas: #1323: the FM-1\'s header follows: OVERDRIVE OFF', await emu.waitFor(() => header('OVERDRIVE', false), 2000));
+      await emu.snap('sel-canvas-overdrive-header-off');
+      await page.evaluate(() => window.__m1test.power('Overdrive'));
+      await check('sel canvas: #1323: and on, the header too', !!(await until(async () => (!(await state()).drive.some(Boolean) ? true : null), 3000))
+        && await emu.waitFor(() => header('OVERDRIVE', true), 2000));
+      await emu.elapse(300);
     },
     // #485: a Cassia 1 preset (153 rows since #755, D-747) stored on the FM-1 holds all its rows: sent from the editor (two store slots on
     // firmware with feature bit 17), read back whole, and loaded on the FM-1 with PRESET: every row reaches the editor.

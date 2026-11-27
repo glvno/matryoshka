@@ -797,6 +797,19 @@ static void fx_suite(void)
     ct_reset();
 }
 
+/* #1323: what the device page's header shows of the effect in focus: 1 off (NAME OFF, dim: no ivory in the device's
+ * section), 0 on (the name alone, in ivory), -1 neither */
+static int head_fx_shown(void)
+{
+    uint32_t x, y, x1 = (uint32_t)hd_drawn.xd >> 4, ink = 0, dim = 0, n = str_len(hd_drawn.a);
+    int off = n > 4u && !strcmp(hd_drawn.a + n - 4u, MSG_OFF);
+    for (y = 0; y < LK_HH; y++)
+        for (x = 0; x < x1; x++) {
+            ink += px(x, y) == P_INK;
+            dim += px(x, y) == P_DIM;
+        }
+    return ink && !dim && !off ? 0 : !ink && dim && off ? 1 : -1;
+}
 #include "fx_preset_panel_test.h"
 
 /* D-947 (the owner, 2026-11-25: "should be SEL, shouldn't it?", "1. yes"): SEL on an FX drawer effect's device page
@@ -856,6 +869,7 @@ static void fx_sel_suite(void)
     later(100);
     d = pg_cur_dev;
     check("  an effect's page: the sheet lists SEL as its switch, not as arming", hc_fx_effect() && !hc_dev_keys());
+    check("  #1323: its header shows it on (the name in ivory)", head_fx_shown() == 0);
     param_now = 0;
     preset_record = 1;
     preset_events = 0;
@@ -872,12 +886,15 @@ static void fx_sel_suite(void)
     check("  the page stays, nothing armed", page == 0u && pg_cur_dev == d && !m64(eng_arm_mask_get()));
     check("  the running patch is edited (SAVE keeps it)", m1_edited != 0);
     later(2000);
+    check("  #1323: the header shows it off once the bar's message goes (NAME OFF, dim)", head_fx_shown() == 1);
     tap(BTN_SEL);
     caps(want, pg_dev[d].name, pg_dev[d].nlen, 16);
     strcat(want, MSG_ON);
     for (ok = eng_fx_on(first), n = eng_fx_targets(first, &t), k = 0; k < n; k++)
         ok = ok && !eng_bypass(t[k]);
     check("  SEL again: on, NAME ON", ok && !strcmp(msg_text, want));
+    later(2000);
+    check("  #1323: the header shows it on again", head_fx_shown() == 0);
     tap(BTN_SEL);
     {   /* SAVE keeps it: the running binary (pv_bin, proto.c's m1_cur) loads with the effect off, the others on */
         check("  the running binary reloads with it off", !eng_load(pv_bin, pv_len) && !eng_fx_on(first)
@@ -886,6 +903,8 @@ static void fx_sel_suite(void)
         pages_ensure();
         pages_focus(d, 0);
         later(100);
+        later(2000);
+        check("  #1323: reloaded off, its page's header says so", head_fx_shown() == 1);
     }
     /* the drawer's Toggle (LFO) follows: on while every effect is off */
     check("  the drawer's Toggle stays off while an effect plays", !(eng_buttons_get() & 8u));
@@ -899,10 +918,22 @@ static void fx_sel_suite(void)
     check("  one back on by SEL: the Toggle off", eng_fx_on(first + 2u) && !(eng_buttons_get() & 8u) && !(panel_lights() & 8u));
     tap(5);
     check("  the Toggle switches them all off, SEL's effect too", !eng_fx_on(first + 2u) && (eng_buttons_get() & 8u));
+    later(2000);
+    check("  #1323: the page's header follows the Toggle: off", head_fx_shown() == 1);
     tap(5);
     for (ok = 1, e = first; e < first + 3u; e++)
         ok = ok && eng_fx_on(e);
     check("  and on again: SEL's state follows", ok);
+    later(2000);
+    check("  #1323: and the header: on", head_fx_shown() == 0);
+    for (n = eng_fx_targets(first + 2u, &t), k = 0; k < n; k++)   /* (the editor's on/off button: C_BYPASS, nothing else told) */
+        eng_set_bypass(t[k], 1);
+    later(100);
+    check("  #1323: the editor's on/off button switches it off: the header follows", !eng_fx_on(first + 2u) && head_fx_shown() == 1);
+    for (k = 0; k < n; k++)
+        eng_set_bypass(t[k], 0);
+    later(100);
+    check("  #1323: and on: the header follows", eng_fx_on(first + 2u) && head_fx_shown() == 0);
     later(2000);
     pages_focus(home, 0);
     eng_arm_mask(mset_none());
@@ -1018,11 +1049,13 @@ static void fx_canvas_suite(void)
     pages_ensure();
     pages_focus(d, 0);
     later(2000);
+    check("  #1323: reloaded bypassed, the Delay's header shows it off", head_fx_shown() == 1);
     tap(BTN_SEL);
     caps(want, pg_dev[d].name, pg_dev[d].nlen, 16);
     strcat(want, MSG_ON);
     check("  SEL again: it plays, DELAY ON", !eng_bypass((uint32_t)m) && !strcmp(msg_text, want));
     later(2000);
+    check("  #1323: SEL on: the header shows it on", head_fx_shown() == 0);
     d = fxc_dev(T_REVERB, 0);
     pages_focus(d, 0);
     later(100);
@@ -1035,6 +1068,7 @@ static void fx_canvas_suite(void)
     strcat(want, was ? MSG_OFF : MSG_ON);
     check("  SEL switches it as a drawer effect: its targets follow, the bar says REVERB OFF", ok && n > 0u && !strcmp(msg_text, want));
     later(2000);
+    check("  #1323: the Reverb card's header follows SEL", head_fx_shown() == (int)was);
     tap(BTN_SEL);
     check("  and back", (uint32_t)eng_fx_on(0) == was);
     later(2000);
@@ -1045,6 +1079,18 @@ static void fx_canvas_suite(void)
     check("  Overdrive (effect modules, no rack targets): SWITCH IT WITH A TOGGLE, nothing switched, nothing armed",
           !strcmp(msg_text, MSG_FX_TOGGLE_ONLY) && fxc_bypassed() == h && !m64(eng_arm_mask_get()) && page == 0u);
     later(2000);
+    {   /* #1323: a card of effect modules (a Toggle switches it) shows off while every one of them is bypassed */
+        uint32_t od = fxc_dev(T_DYN, 0);
+        check("  #1323: Overdrive's header shows it on", head_fx_shown() == 0);
+        for (k = 0; k < pg_dev[od].nmem; k++)
+            eng_set_bypass(pg_mem(od, k), 1);
+        later(100);
+        check("  #1323: its modules bypassed (its Toggle): the header shows it off", head_fx_shown() == 1);
+        for (k = 0; k < pg_dev[od].nmem; k++)
+            eng_set_bypass(pg_mem(od, k), 0);
+        later(100);
+        check("  #1323: and on", head_fx_shown() == 0);
+    }
     pages_focus(fxc_dev(T_PAN, 0), 0);
     later(100);
     tap(BTN_SEL);

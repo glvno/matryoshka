@@ -5222,8 +5222,9 @@ export class Editor {
     this.ev.onSaveAssembly(toDef(this.patch, a));
   }
 
-  /** an assembly's on / off switch (its card's ⏻): every module inside bypassed or back, one undo step, each change sent live */
-  private switchAssembly(a: AssemblyInst): void {
+  /** an assembly's on / off switch (its card's ⏻): every module inside bypassed or back, one undo step, each change sent
+   *  live (main.ts's __m1test.power too) */
+  switchAssembly(a: AssemblyInst): void {
     this.touch();
     for (const id of this.setBypass([], !a.bypass, a)) this.ev.onBypass(id, !!this.patch.modules.find((m) => m.id === id)?.bypass);
     this.ev.onLayout(this.patch);

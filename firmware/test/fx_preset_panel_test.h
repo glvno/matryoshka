@@ -318,12 +318,17 @@ static void fxd_preset_suite(void)
     check("FXD1: a base record of the same name stores", !ps_put(base, "DRAWER", old, rows));
     check("FXD1: both namespaces listed", fx_preset_index(d, base, "DRAWER") >= 0 && fx_preset_index(d, scope, "DRAWER") >= 0);
     k = fx_preset_index(d, scope, "DRAWER");
+    pages_focus(ed[1], 0);                              /* (#1323: the second effect's page on show) */
+    later(100);
+    check("FXD1: #1323: the second effect's page shows it on", head_fx_shown() == 0);
     preset_record = 1;
     preset_events = 0;
     check("FXD1: scoped recall", k >= 0 && !dp_load(d, (uint32_t)k));
     preset_record = 0;
     check("FXD1: the instrument and every effect recapture exactly", dp_values(d) == n && !memcmp(pr_vals, expected, n * sizeof *expected));
     check("FXD1: the second effect off, the others on", eng_fx_on(first) && !eng_fx_on(first + 1u) && eng_fx_on(first + 2u));
+    later(2000);
+    check("FXD1: #1323: its page's header follows the preset: off", head_fx_shown() == 1);
     {
         const uint8_t *t;
         uint32_t c = eng_fx_targets(first + 1u, &t);
