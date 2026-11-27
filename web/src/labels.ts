@@ -113,6 +113,7 @@ const HINTS: Record<string, string> = {
   'dx7.voice.exportBank': 'Save a 32-voice DX7 bank (.syx): the bank listed on the card with this voice in the slot it came from, or, with no bank, this voice in slot 1 and the init voice in the others.',
   'dx7.voice.bank': 'The bank loaded from a .syx file. This browser keeps it under its name (up to 8 banks), never the FM-1 or the patch: the patch keeps only the module\'s voice.',
   'dx7.voice.banks': 'The DX7 banks this browser keeps, the newest first: pick one to list its voices on this card.',
+  'dx7.voice.shipped': 'The DX7 banks that come with the editor: our own voices, never Yamaha\'s. Pick one to list its voices on this card.',
   'dx7.voice.forget': 'Stop keeping this bank in this browser. The module keeps its voice.',
   'dx7.voice.alg': 'The algorithm, 1..32: how the six operators connect. The drawing shows it: carriers (filled) on the bottom line are heard, the operators above modulate the ones under them, the dashed line is the feedback loop. The FM-1 shows the number.',
   'dx7.voice.fb': 'Feedback, 0..7: how much the looped operator modulates itself (on algorithms 4 and 6, operator 4 or 5 back into 6). Higher turns a sine into a saw, then noise.',

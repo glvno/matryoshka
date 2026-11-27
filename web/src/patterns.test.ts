@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type ModuleInst, type Patch } from './patch';
-import { DEVICE, deviceBudget, encodedSize, encodePatch, FLAG_NOTES, FLAG_PATTERNS, formatOf, FORMAT_1_27, FORMAT_PRIORITY_CABLE, FORMAT_RACK, harmonyLfo, layout, patternRecord, VERSION } from './patchbin';
+import { DEVICE, deviceBudget, encodedSize, encodePatch, FLAG_NOTES, FLAG_PATTERNS, formatOf, FORMAT_1_27, FORMAT_PRIORITY_CABLE, FORMAT_RACK, harmonyLfo, layout, patternRecord, typesSince, VERSION } from './patchbin';
 import { rackPlan } from './rack-plan';
 import { deviceView, VOICING_CABLE_INPUTS } from './poly';
 import { factoryWithPatterns, PRESETS } from './presets';
@@ -111,6 +111,7 @@ describe('patterns and songs: the binary (format 48)', () => {
       if (rackPlan(p, { patch: dev, groups: [] })) expect(b[1], name).toBe(name === '909 Kit' ? FORMAT_1_27 : FORMAT_RACK);
       else if (priority) expect(b[1], name).toBe(FORMAT_PRIORITY_CABLE);
       else if (harmonyLfo(p, dev)) { if (fits) expect(b[1], name).toBe(appended || 55); }
+      else if (typesSince(dev)) expect(b[1], name).toBe(typesSince(dev));   // (a module type newer than the rest: the DX7 Piano example's DX7, format 71)
       else if (fits && !cabled && !top && !appended && !many) expect(b[1], name).toBeLessThan(VERSION);
       expect(b[7] & (FLAG_PATTERNS >> 8), name).toBe(0);
     }

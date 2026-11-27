@@ -6477,5 +6477,287 @@
    ],
    "octave": -1
   }
+ },
+ {
+  "name": "DX7 Piano",
+  "patch": {
+   "version": 2,
+   "name": "DX7 Piano",
+   "modules": [
+    {
+     "id": 1,
+     "type": "fm1",
+     "x": 20,
+     "y": 20,
+     "params": {
+      "morph": 0,
+      "tempo": 120
+     },
+     "panel": {
+      "toggle": [
+       "arp"
+      ],
+      "kinds": {
+       "arp": "bypass"
+      },
+      "targets": {
+       "arp": {
+        "module": 6
+       }
+      }
+     }
+    },
+    {
+     "id": 2,
+     "type": "alloc",
+     "x": 20,
+     "y": 620,
+     "params": {
+      "voices": 8,
+      "assign": 0,
+      "legato": 0,
+      "priority": 0,
+      "unison": 0,
+      "channel": 0,
+      "low": 0,
+      "high": 127,
+      "steal": 1,
+      "stack": 0
+     }
+    },
+    {
+     "id": 3,
+     "type": "dx7",
+     "x": 20,
+     "y": 60,
+     "params": {
+      "level": 0.6,
+      "tune": 0,
+      "mod": 0,
+      "range": 70,
+      "dest": 1,
+      "ops": 63
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "mod"
+      ],
+      "p2": [
+       "tune"
+      ]
+     },
+     "voice": "603a20466337000027001e043b1442020060281a3e634c0000270018043b0a4c0400624a285063000000270028043c1c3e1c00601e163e63520000270012044b0a54020060341e46633e000027001e043b184c0200601e163e63520000270012043b0a600200636363633232323204081e000000391854494e45205049414e4f"
+    },
+    {
+     "id": 4,
+     "type": "output",
+     "x": 1040,
+     "y": 20,
+     "params": {
+      "level": 0.43
+     }
+    },
+    {
+     "id": 5,
+     "type": "steps",
+     "x": 20,
+     "y": 920,
+     "params": {
+      "len": 16,
+      "rate": 4,
+      "swing": 50,
+      "gate": 0.25,
+      "dir": 0
+     },
+     "att": [
+      1,
+      1
+     ],
+     "map": {
+      "p1": [
+       "len"
+      ],
+      "p2": [
+       "rate"
+      ]
+     },
+     "name": "PATTERN"
+    },
+    {
+     "id": 6,
+     "type": "arp",
+     "x": 1040,
+     "y": 920,
+     "params": {
+      "mode": 0,
+      "rate": 4,
+      "octaves": 1,
+      "gate": 0.5,
+      "latch": 0,
+      "swing": 50
+     },
+     "bypass": true
+    }
+   ],
+   "cables": [
+    {
+     "from": {
+      "module": 1,
+      "port": "keys"
+     },
+     "to": {
+      "module": 5,
+      "port": "keys"
+     }
+    },
+    {
+     "from": {
+      "module": 5,
+      "port": "keys"
+     },
+     "to": {
+      "module": 6,
+      "port": "keys"
+     }
+    },
+    {
+     "from": {
+      "module": 6,
+      "port": "keys"
+     },
+     "to": {
+      "module": 2,
+      "port": "keys"
+     }
+    },
+    {
+     "from": {
+      "module": 2,
+      "port": "pitch"
+     },
+     "to": {
+      "module": 3,
+      "port": "pitch"
+     }
+    },
+    {
+     "from": {
+      "module": 2,
+      "port": "gate"
+     },
+     "to": {
+      "module": 3,
+      "port": "gate"
+     }
+    },
+    {
+     "from": {
+      "module": 2,
+      "port": "vel"
+     },
+     "to": {
+      "module": 3,
+      "port": "vel"
+     }
+    },
+    {
+     "from": {
+      "module": 1,
+      "port": "mod"
+     },
+     "to": {
+      "module": 3,
+      "port": "p1"
+     }
+    },
+    {
+     "from": {
+      "module": 3,
+      "port": "out"
+     },
+     "to": {
+      "module": 4,
+      "port": "l"
+     }
+    },
+    {
+     "from": {
+      "module": 3,
+      "port": "out"
+     },
+     "to": {
+      "module": 4,
+      "port": "r"
+     }
+    }
+   ],
+   "assemblies": [
+    {
+     "v": 1,
+     "id": 1,
+     "name": "dx7 piano",
+     "label": "dx7 piano",
+     "x": 20,
+     "y": 60,
+     "open": false,
+     "modules": [
+      2,
+      3
+     ],
+     "inputs": [
+      {
+       "module": 2,
+       "port": "keys",
+       "label": "keys"
+      }
+     ],
+     "outputs": [
+      {
+       "module": 3,
+       "port": "out",
+       "label": "out"
+      }
+     ],
+     "params": [
+      {
+       "module": 2,
+       "param": "voices",
+       "label": "voices"
+      },
+      {
+       "module": 3,
+       "param": "level",
+       "label": "level"
+      },
+      {
+       "module": 3,
+       "param": "tune",
+       "label": "tune"
+      },
+      {
+       "module": 3,
+       "param": "mod",
+       "label": "mod"
+      },
+      {
+       "module": 3,
+       "param": "range",
+       "label": "range"
+      },
+      {
+       "module": 3,
+       "param": "dest",
+       "label": "dest"
+      }
+     ],
+     "poly": {}
+    }
+   ],
+   "notes": "A DX7 playing our own electric piano (TINE PIANO), eight voices. The mod wheel brings in its tremolo. More voices: the bank on the DX7 card."
+  }
  }
 ]
