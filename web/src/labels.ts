@@ -89,6 +89,7 @@ const HINTS: Record<string, string> = {
   'osc.analog': 'The flaws of an analog oscillator, 0 = none (ideal waves). The saw\'s ramp curves a little and dips below its bottom for 25 µs at each reset; the triangle\'s peak and the pulse width sit a little off centre. Each voice has its own fixed amount of each flaw. The sine has none.',
   'wavetable.pm': PM_HINT('pm'),
   'pd.pm': PM_HINT('pm'),
+  'shift.pm': `${PM_HINT('pm')} Every partial of the input is moved by the same amount, so any sound can be the carrier in an FM patch. With shift at 0 Hz, up moves the input's phase forward by it and down backward.`,
   'delay.length': 'The most time this Delay holds, set here in the editor (the FM-1 shows it). Its time plays up to it; ping-pong: half per side, as both sides share the line. It takes 8.6 KB of the FM-1\'s memory per 100 ms at rate 44k. At 22k the same memory holds 200 ms, at 11k 400 ms, and this row shows that longer time.',
   'delay.tape': 'Tape: echoes like a tape echo. Each repeat loses some highs and lows, the loop saturates softly instead of running away, and the wow / flutter row wobbles the echoes. The heads row picks up to three playback heads. Off: the plain Delay, exactly as without Tape.',
   'delay.wow': 'With Tape on: how much the tape wobbles. A slow wow (0.6 Hz) and a fast flutter (6.7 Hz) move the echo\'s time, at most 1 ms and 0.1 ms either way, so its pitch bends a little.',

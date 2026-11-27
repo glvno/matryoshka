@@ -41,6 +41,12 @@ describe('parseChangelog', () => {
     expect(r.some((x) => x.body.includes('Not out yet'))).toBe(false);
   });
 
+  it('with the released tags, leaves out a version heading that has no tag yet (#1115)', () => {
+    const r = parseChangelog(SAMPLE, new Set(['1.2.0', '1.1.0']));
+    expect(r.map((x) => x.version)).toEqual(['1.2.0']);
+    expect(r.some((x) => x.body.includes('A fix.'))).toBe(false);
+  });
+
   it('reads a heading without a date, and Windows line ends', () => {
     expect(parseChangelog('## v2.0.0\r\n\r\n- x\r\n')).toEqual([{ version: '2.0.0', date: '', body: '- x' }]);
   });

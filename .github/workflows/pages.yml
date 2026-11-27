@@ -9,8 +9,10 @@ name: deploy
 # The site serves the latest release, not main: the editor and the firmware are released together, so the site always
 # pairs an editor with the firmware package it was released with. Pushing a release tag vX.Y.Z deploys it (only when it
 # is the newest release: an older tag pushed later leaves the site alone); a manual run builds the newest release tag
-# or the one it names (to roll back). The changelog page is the exception: CHANGELOG.md always comes from main (the page
-# shows released versions only), and a push to main that changes it deploys the newest release again with it (D-112).
+# or the one it names (to roll back). The changelog page is the exception: CHANGELOG.md always comes from main, and a push
+# to main that changes it deploys the newest release again with it (D-112). The page lists only versions whose vX.Y.Z tag
+# exists, up to the deployed tag (`released`, passed to the build), so `## Unreleased` and a release frozen on main before
+# its tag is pushed stay off the site (#1115).
 # Nothing else deploys: the About card's AI usage figures are as of the last deploy. Other merges to main deploy nothing;
 # unreleased work is tried on the dev server (npm run dev). Tags with a suffix (v1.2.0-rc1) are not releases.
 # One-time setup: the repository secret CLOUDFLARE_API_TOKEN (Cloudflare Pages: Edit) and the variable CLOUDFLARE_ACCOUNT_ID;
@@ -43,6 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.release.outputs.tag }}
+      released: ${{ steps.release.outputs.released }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -70,6 +73,8 @@ jobs:
           git rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "::error::no tag $tag"; exit 1; }
           echo "::notice::deploying $tag"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          # the changelog page's versions: the release tags up to the deployed one (vite.config.ts MATRYOSHKA_RELEASED)
+          echo "released=$(git tag -l 'v*' --sort=v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | awk -v t="$tag" '{print} $0==t{exit}' | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
 
   build:
     needs: pick
@@ -140,6 +145,8 @@ jobs:
           GH_VARS: ${{ toJSON(vars) }}
         run: npm run ai-prompts -- collect
       - run: npm run build
+        env:
+          MATRYOSHKA_RELEASED: ${{ needs.pick.outputs.released }}
       - name: the firmware package must be there
         run: |
           test -s dist/firmware/matryoshka.fwsc && test -s dist/firmware/matryoshka.json && test -s dist/firmware/FM-1_015.fwsc && test -s dist/firmware/NOTICE-FM-1_015.txt

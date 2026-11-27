@@ -1932,7 +1932,9 @@ function hilbert(s: Float64Array, a: number[], x: number): number {
  * Frequency shifter (single sideband): the Hilbert pair gives I (chain A, one sample late) and Q (chain B), a quadrature
  * oscillator at `shift` + cv x cvamt Hz (per block, from the block mean of cv) moves the whole spectrum: up = I cos + Q sin,
  * down = I cos - Q sin (with this Hilbert pair's sign convention); each output is in (1 - mix) + shifted mix. A negative
- * shift swaps the two.
+ * shift swaps the two. The `pm` input (format 70, #1337) adds pm x in radians to the oscillator's phase every sample, as the
+ * Oscillator's `pm` does: with `shift` 0 Hz, up is the input phase modulated by + pm x in and down by - pm x in, every
+ * partial with the same index (any signal as a phase modulation carrier).
  */
 const shift: ModuleImpl<{ a: Float64Array; b: Float64Array; ia: number; phase: number }> = {
   def: {
@@ -1945,6 +1947,7 @@ const shift: ModuleImpl<{ a: Float64Array; b: Float64Array; ia: number; phase: n
       param('shift', -1000, 1000, 100, { unit: 'Hz', step: 0.5, input: 'cv', rest: (p, cv) => (p.shift ?? 0) + cv * (p.cvamt ?? 0), pitch: 'held' }),
       param('cvamt', 0, 1000, 100, { unit: 'Hz', step: 1, pitch: 'held' }),
       param('mix', 0, 1, 1, { step: 0.01 }),
+      param('pm', 0, 8, 0, { ...PM_INDEX, since: 70 }),
     ],
   },
   init: () => ({ a: new Float64Array(8), b: new Float64Array(8), ia: 0, phase: 0 }),
@@ -1957,13 +1960,21 @@ const shift: ModuleImpl<{ a: Float64Array; b: Float64Array; ia: number; phase: n
     const inc = hz / c.sr;
     const mix = c.p.mix ?? 1;
     const dry = 1 - mix;
+    const idx = c.connected.pm ? (c.p.pm ?? 0) : 0;
+    const pm = c.inp.pm;
+    const K = 1 / (2 * Math.PI);
     for (let i = 0; i < c.n; i++) {
       const x = c.inp.in[i];
       const ya = hilbert(s.a, HILBERT_A, x);
       const I = s.ia;
       s.ia = ya;
       const Q = hilbert(s.b, HILBERT_B, x);
-      const co = Math.cos(2 * Math.PI * s.phase), si = Math.sin(2 * Math.PI * s.phase);
+      let ph = s.phase;
+      if (idx) {
+        ph += idx * pm[i] * K;
+        ph -= Math.floor(ph);
+      }
+      const co = Math.cos(2 * Math.PI * ph), si = Math.sin(2 * Math.PI * ph);
       s.phase += inc;
       s.phase -= Math.floor(s.phase);
       c.out.up[i] = x * dry + (I * co + Q * si) * mix;
@@ -5138,6 +5149,8 @@ reverb.def.outputs.push(audio('r'));
 // the Delay's and the Chorus's right input (#1141, format 67): it pairs with `in`
 delay.def.inputs.push(audio('r'));
 chorus.def.inputs.push(audio('r'));
+// the Freq shifter's phase modulation input (#1337, format 70): any signal as a phase modulation carrier
+shift.def.inputs.push({ ...audio('pm'), since: 70 });
 
 /**
  * Jack pairs (#1141): per type, the right jack of the pair whose left jack is the type's first input (RIGHT_IN) or first

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The site's changelog page (changelog.html, changelog-page.ts): the released versions of the repository's CHANGELOG.md,
-// read when the site is built. `## Unreleased` is left out: the site serves the newest release (pages.yml), so the page
-// changes with each release. Each release has a stable anchor, `changelog#v1.2.0`, for announcing it.
+// read when the site is built. A version is released only when its vX.Y.Z tag exists and is not newer than the deployed
+// tag (pages.yml passes that list to the build, vite.config.ts __RELEASED__); `## Unreleased` and a frozen heading whose
+// tag is not pushed yet stay off the page (#1115). Each release has a stable anchor, `changelog#v1.2.0`, for announcing it.
 import MarkdownIt from 'markdown-it';
 
 export const REPO = 'https://github.com/glvno/matryoshka';
@@ -18,9 +19,9 @@ export interface Release {
 /** a released version's heading: `## 1.2.0 — 2026-10-23` (an em dash, an en dash or a hyphen before the date) */
 const RELEASE = /^## +v?(\d+\.\d+\.\d+)(?: +[—–-] +(\d{4}-\d{2}-\d{2}))? *$/;
 
-/** the released versions, newest first as the file lists them; `## Unreleased` and the text before the first release are
- *  left out, and so is any other `## ` section */
-export function parseChangelog(md: string): Release[] {
+/** the released versions, newest first as the file lists them; `## Unreleased`, the text before the first release and any
+ *  other `## ` section are left out. With `released` (versions with a tag, "1.2.0"), so is a version heading not in it */
+export function parseChangelog(md: string, released: ReadonlySet<string> | null = null): Release[] {
   const out: Release[] = [];
   let cur: { version: string; date: string; lines: string[] } | null = null;
   const close = (): void => {
@@ -31,7 +32,7 @@ export function parseChangelog(md: string): Release[] {
     if (line.startsWith('## ')) {
       close();
       const m = RELEASE.exec(line);
-      if (m) cur = { version: m[1], date: m[2] ?? '', lines: [] };
+      if (m && (!released || released.has(m[1]))) cur = { version: m[1], date: m[2] ?? '', lines: [] };
     } else cur?.lines.push(line);
   }
   close();
