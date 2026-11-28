@@ -343,26 +343,29 @@ describe('the name an add is given names what it makes (owner 2026-11-24)', () =
   });
 });
 
+/** the sounds of a Library > Palettes file in test-fixtures (`stem`.palette.json) */
+const savedPalette = (stem: string): PaletteSound[] =>
+  readPaletteFile(JSON.parse(readFileSync(new URL(`./test-fixtures/${stem}.palette.json`, import.meta.url), 'utf8')), (p) => validatePatch(p, DEFS)).sounds.filter((s) => !!s);
+const NAMES = Object.keys(FM1_PRESETS);
+/** the FM-1 after a factory reset: each factory patch in its slot, as the 1.30 editor encodes it, which it knows */
+async function reset() {
+  const r = await linked({ features25: FEATURE25_SLOT_GET | FEATURE5_FX_DRAWERS, candidates: NAMES.map((name) => ({ name, patch: FM1_PRESETS[name], factory: true })) });
+  NAMES.forEach((name, slot) => {
+    const bin = r.link.encodeFor(FM1_PRESETS[name]());
+    r.fm1.slots[slot] = { slot, used: true, length: bin.length, name: deviceName(name) };
+    r.fm1.bins[slot] = bin;
+  });
+  return r;
+}
+
 describe('a palette saved before 1.30, sent to a factory-reset 1.30 FM-1 (owner 2026-11-28: "7 of them were stored as new patches")', () => {
   // (Library > Palettes files written by the 1.26.6, 1.28.0 and 1.29.0 editors: Hera 6, Algo Four, Shush 101, Wanderer,
   // Oracle V and Canvas each with a card value moved, Monolith D and Sallen 20 as they were. The 1.30 factory patches sit
   // where Tidy puts them, which changed the page order of Hera 6, Algo Four, Shush 101, Wanderer, Monolith D and Oracle V,
   // D-1458)
   const FIXTURES = ['1.26.6', '1.28.0', '1.29.0'];
-  const saved = (version: string): PaletteSound[] =>
-    readPaletteFile(JSON.parse(readFileSync(new URL(`./test-fixtures/palette-4-${version}.palette.json`, import.meta.url), 'utf8')), (p) => validatePatch(p, DEFS)).sounds.filter((s) => !!s);
+  const saved = (version: string): PaletteSound[] => savedPalette(`palette-4-${version}`);
   const factoryOf = (s: PaletteSound): string => s.name.replace(/ T$/, '');
-  const NAMES = Object.keys(FM1_PRESETS);
-  /** the FM-1 after a factory reset: each factory patch in its slot, as the 1.30 editor encodes it, which it knows */
-  async function reset() {
-    const r = await linked({ features25: FEATURE25_SLOT_GET | FEATURE5_FX_DRAWERS, candidates: NAMES.map((name) => ({ name, patch: FM1_PRESETS[name], factory: true })) });
-    NAMES.forEach((name, slot) => {
-      const bin = r.link.encodeFor(FM1_PRESETS[name]());
-      r.fm1.slots[slot] = { slot, used: true, length: bin.length, name: deviceName(name) };
-      r.fm1.bins[slot] = bin;
-    });
-    return r;
-  }
 
   for (const version of FIXTURES) {
     it(`saved by ${version}: every sound goes in on its factory slot, no patch stored`, async () => {
@@ -401,5 +404,55 @@ describe('a palette saved before 1.30, sent to a factory-reset 1.30 FM-1 (owner 
     await fm1.quiet();
     expect(r.line).toBe('Consolidated 1 onto slot 4 · HERA 6; slot 41 freed');
     expect([fm1.entries[0]?.slot, fm1.slots[40].used]).toEqual([3, false]);
+  });
+});
+
+describe('FX drawer effects switched, in a palette saved before 1.30 (owner 2026-11-28: "patches with fx rack effects toggled on/off differently")', () => {
+  // (a Library > Palettes file written by the 1.29.0 editor: Hera 6 with its Delay on; Oracle V with its Chorus on in its
+  // drawer switched off; Briefcase 3 with its Chorus on; Monolith D with its Reverb on and moved first; and the owner's
+  // four sounds that stayed patches after Consolidate, as his FM-1 holds them: Padding (Hera 6 with its effects on, its
+  // Output at full and its FX button unassigned), Gauze (Hera 6 with its Drive taken out), Workhorse (Verona Drum 1 with
+  // a drawer holding a Drive) and Stub (Algo Four with its Harmonizer switched on))
+  const sounds = (): PaletteSound[] => savedPalette('palette-fx-1.29.0');
+
+  it('Send: a switched effect goes in as a preset on its factory slot; a patch no preset reaches is stored, and the line says why', async () => {
+    const { fm1, palette, said } = await reset();
+    expect(await palette.send(sounds(), { id: 'fx', name: 'Palette FX' })).toBe(true);
+    await fm1.quiet();
+    expect(fm1.entries.map((e) => e && fm1.slots[e.slot].name)).toEqual(['HERA 6', 'ORACLE V', 'BRIEFCASE 3', 'MONOLITH D MV', 'PADDING', 'GAUZE', 'WORKHORSE', 'STUB']);
+    expect(said.at(-1)).toBe('Palette FX is on the FM-1: 8 sounds (5 stored as new patches, 2 presets sent) · '
+      + '"Hera 6 DL" is palette 1: slot 4 · HERA 6 with preset Hera 6 DL (preset Hera 6 DL sent to the FM-1) · '
+      + '"Oracle V CO" is palette 2 · '
+      + '"Briefcase 3 B" is palette 3: slot 10 · BRIEFCASE 3 with preset Briefcase 3 B (preset Briefcase 3 B sent to the FM-1) · '
+      + `"Monolith D MV" is palette 4 (stored as a new patch in slot 22, as ${NO_SAME_STRUCTURE}) · `
+      + '"Padding" is palette 5 (stored as a new patch in slot 23, as it changes settings no device preset holds: the FX button, Output level) · '
+      + `"Gauze" is palette 6 (stored as a new patch in slot 24, as ${NO_SAME_STRUCTURE}) · `
+      + `"Workhorse" is palette 7 (stored as a new patch in slot 25, as ${NO_SAME_STRUCTURE}) · `
+      + '"Stub" is palette 8 (stored as a new patch in slot 26, as it changes settings no device preset holds: Harmonizer switched on)');
+  });
+
+  it('Consolidate, each stored whole as 1.30.0 sent it: folds the switched effects, and says why each other one stays', async () => {
+    const list = sounds();
+    const { fm1, link, palette } = await reset();
+    list.forEach((s, pos) => {
+      const slot = NAMES.length + pos, name = deviceName(s.name), bin = link.encodeFor(s.patch);
+      fm1.slots[slot] = { slot, used: true, length: bin.length, name };
+      fm1.bins[slot] = bin;
+      fm1.entries[pos] = entryOf(s.patch, slot, name);
+    });
+    const plan = await palette.planConsolidate();
+    if (typeof plan === 'string') throw new Error(plan);
+    expect(plan.items.map(({ step }) => [step.pos + 1, step.to.name, step.presets])).toEqual([[1, 'HERA 6', ['HERA 6 DL']], [2, 'ORACLE V', []], [3, 'BRIEFCASE 3', ['BRIEFCASE 3 B']]]);
+    expect(plan.skipped).toEqual([
+      '4 · MONOLITH D MV (its FX drawer holds Reverb, Drive, Chorus, Delay and slot 1 · MONOLITH D\'s holds Drive, Chorus, Delay, Reverb: a preset cannot add, take out or move an effect)',
+      '5 · PADDING (slot 4 · HERA 6 differs from it in settings no device preset holds: the FX button, Output level)',
+      '6 · GAUZE (its FX drawer holds Delay, Reverb and slot 4 · HERA 6\'s holds Drive, Delay, Reverb: a preset cannot add, take out or move an effect)',
+      '7 · WORKHORSE (its FX drawer holds Drive and slot 20 · VERONA DRUM 1 has none: a preset cannot add, take out or move an effect)',
+      '8 · STUB (slot 7 · ALGO FOUR differs from it in settings no device preset holds: Harmonizer switched on)',
+    ]);
+    const r = await palette.consolidate(plan.items);
+    await fm1.quiet();
+    expect(r.line).toBe('Consolidated 1 onto slot 4 · HERA 6, 2 onto slot 2 · ORACLE V, 3 onto slot 10 · BRIEFCASE 3; slots 22, 23, 24 freed');
+    expect([0, 1, 2].map((pos) => fm1.entries[pos]?.slot)).toEqual([3, 1, 9]);
   });
 });
