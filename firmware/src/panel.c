@@ -435,15 +435,19 @@ static void page_hold_poll(void)
  * seq_hold_drop). The trail's steps keep no page list of the patch before. The new patch's pages are read first
  * (pages_ensure: its home page, no list). Every panel input and every draw looks here first */
 static uint32_t panel_gen;
+/* set by the first load followed, the boot's: it keeps the octave the settings record restored (D-902), the loads after
+ * it set the octave back (D-1456) */
+static uint8_t panel_booted;
 static void panel_patch_follow(void)
 {
     uint32_t i;
     if (panel_gen == pages_gen())
         return;
     panel_gen = pages_gen();
-    drum_bank = seq_view = 0;                      /* a load: the keys' octave, drum bank and DX7 operator picker start
-                                                     * over (the owner, 2026-11-27, D-1456), before the new pages are
-                                                     * read; a Live parameter edit is no load (PARAM changes no pages_gen) */
+    drum_bank = seq_view = 0;                      /* a load: the keys' octave (after the boot's load), drum bank and DX7
+                                                     * operator picker start over (the owner, 2026-11-27, D-1456), before
+                                                     * the new pages are read; a Live parameter edit is no load (PARAM
+                                                     * changes no pages_gen) */
     dx7_op = 0;
     dx7_opname[3] = '1';
     pages_ensure();
@@ -452,10 +456,11 @@ static void panel_patch_follow(void)
         trail[i].lbtn = -1;
     seq_hold_drop();
     page_mask();
-    if (octave) {
+    if (octave && panel_booted) {
         octave = 0;
         leds_octave();
     }
+    panel_booted = 1;
 }
 
 static void play_toggle(void)                       /* PLAY: the transport (the Main module's run output and clock); a stop
