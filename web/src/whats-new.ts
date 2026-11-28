@@ -11,6 +11,12 @@ const USED = ['matryoshka.patch', 'matryoshka.patches', 'modular-1.patch', 'modu
 
 /** the main changes, by "major.minor"; a version without an entry shows no card */
 export const HIGHLIGHTS: Record<string, string[]> = {
+  '1.30': [
+    'Update your FM-1 to firmware 1.30 before you sync it with this editor: install it from Install firmware. Until then the editor says "update it to sync".',
+    'New: the DX7 module. Import a DX7 SysEx bank onto its card, or try our own voices and the DX7 Piano example; on the FM-1, K1 on its operator page picks the operator.',
+    'Black keys 1 to 11 play drum sounds: Verona Drum 1\'s hi-hats are on keys 9 and 10.',
+    'Tidy lays a patch out along its signal, and Consolidate turns extra palette patches into presets.',
+  ],
   '1.29': [
     'Update your FM-1 to firmware 1.29 before you sync it with this editor: install it from Install firmware. Until then the editor says "update it to sync".',
     'Any sound can be the carrier in an FM patch: cable a modulator into the Freq shifter\'s new pm input, with shift at 0 Hz. Try the new Library voice wavetable fm.',
