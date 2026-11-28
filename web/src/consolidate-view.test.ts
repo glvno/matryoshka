@@ -89,6 +89,15 @@ describe('askConsolidate', () => {
     expect(await got).toEqual([padding]);
   });
 
+  it('a step whose base has effects the sound lacks stays ticked and says they are switched off', async () => {
+    const gauze: ConsolidateStep = { ...hera, from: { slot: 22, name: 'GAUZE' }, presets: ['GAUZE'], off: ['Drive'] };
+    const got = askConsolidate([gauze, { ...gauze, pos: 2, off: ['Drive', 'Chorus'] }]);
+    expect(boxes().map((b) => b.checked)).toEqual([true, true]);
+    expect([...form().querySelectorAll('.consolidate-note')].map((n) => n.textContent)).toEqual(['Drive switched off (not in this sound)', 'Drive and Chorus switched off (not in this sound)']);
+    ok().click();
+    expect(await got).toHaveLength(2);
+  });
+
   it('Escape and Cancel answer null', async () => {
     const a = askConsolidate([hera]);
     key(document.body, 'Escape');

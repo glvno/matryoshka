@@ -3,8 +3,9 @@
 // cables and drawers) with other card values, tempo or patterns, each differing device then taking a preset of its values
 // (one this browser or the FM-1 has, else a new one). Add to palette (palette.ts) points a palette entry at an FM-1 slot
 // with it; a candidate's Save… (candidate-save.ts) stores those presets instead of a new patch.
-import { assemblyById, bypassAssembly, drawers, effectsOf, moveAssembly, parentOf, type AssemblyInst } from './assembly';
+import { assemblyById, bypassAssembly, drawers, effectsOf, moveAssembly, ownerOf, parentOf, type AssemblyInst } from './assembly';
 import { parseBinary, type BinPatch } from './bin-parse';
+import { removeEffect } from './fx-drawer';
 import { deviceName } from './bank';
 import { KIND_LABEL, type ButtonKind } from './buttons';
 import type { DeviceLink } from './device';
@@ -234,6 +235,70 @@ function takePlaces(to: Patch, from: Patch): void {
   }
 }
 
+/** `slot` with the effects of its FX drawers that `sound`'s lack taken out, when its drawers hold every effect the
+ *  sound's do, in the same order, and more; `off` lists those effects (their ids in `slot`, their names). Null otherwise,
+ *  or when the sound lacks none */
+export function narrowTo(sound: Patch, slot: Patch): { patch: Patch; off: { id: number; name: string }[] } | null {
+  const narrowed = structuredClone(slot), off: { id: number; name: string }[] = [];
+  const ownerKey = (p: Patch, d: AssemblyInst): string => {
+    const o = ownerOf(p, d);
+    return o === 'output' ? 'output' : `a${structureOf(p, o)}`;
+  };
+  const left = drawers(sound).map((d) => ({ key: ownerKey(sound, d), d }));
+  for (const d of drawers(narrowed)) {
+    const k = left.findIndex((x) => x.key === ownerKey(narrowed, d));
+    if (k < 0) return null;
+    const want = effectsOf(sound, left[k].d).map((e) => structureOf(sound, e));
+    left.splice(k, 1);
+    // (the sound's effects, in their order, within the slot's: the first that fits each)
+    let at = 0;
+    for (const e of effectsOf(narrowed, d)) {
+      if (at < want.length && structureOf(narrowed, e) === want[at]) at++;
+      else off.push({ id: e.id, name: e.label || e.name });
+    }
+    if (at < want.length) return null;
+  }
+  if (left.length || !off.length) return null;
+  for (const e of off) removeEffect(narrowed, e.id);
+  return { patch: narrowed, off };
+}
+
+/**
+ * `sound` as a patch of `slot`'s structure when the slot's FX drawers hold every effect the sound's do, in the same order,
+ * and more (owner 2026-11-28: GAUZE, a Hera 6 whose Drive was taken out): the slot with the sound's values, each effect
+ * the sound lacks switched off, and `off` naming those. A switched-off effect passes its input through sample for sample
+ * in both engines (engine.c m_bypass; renders of Verona Drum 1 and Hera 6 with and without switched-off effects agree bit
+ * for bit), so it plays as the sound does, and a preset (FXD1) holds those switches. Proven, not assumed: the slot with
+ * those effects taken out (narrowTo) and the sound's values (asSlot) must encode to the sound's bytes. Null otherwise, or
+ * when the sound lacks none (then it is the slot's structure or not that patch at all).
+ */
+export function withSlotEffects(sound: Patch, slot: Patch, encode: (p: Patch) => Uint8Array): { patch: Patch; off: string[] } | null {
+  const narrow = narrowTo(sound, slot);
+  const as = narrow && asSlot(narrow.patch, sound);
+  try {
+    if (!narrow || !as || !sameBytes(encode(as), encode(sound))) return null;
+  } catch {
+    return null;
+  }
+  const { off } = narrow;
+  // (the slot's modules and cards with the values, switches, places and preset names they have there: the same ids)
+  const out = structuredClone(slot);
+  out.modules = out.modules.map((m) => structuredClone(as.modules.find((x) => x.id === m.id) ?? m));
+  for (const a of out.assemblies ?? []) {
+    const f = assemblyById(as, a.id);
+    if (!f) continue;
+    for (const k of ['x', 'y', 'open', 'preset', 'bypass', 'kept'] as const) {
+      if (f[k] === undefined) delete a[k];
+      else Object.assign(a, { [k]: structuredClone(f[k]) });
+    }
+  }
+  for (const e of off) {
+    const a = assemblyById(out, e.id);
+    if (a) setEffectEnabled(out, a, false);
+  }
+  return { patch: out, off: off.map((e) => e.name) };
+}
+
 /** two patch binaries hold the same modules and cables (bin-parse.ts): what no device preset changes */
 export function sameWiring(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
   const x = parseBinary(a), y = parseBinary(b);
@@ -276,7 +341,7 @@ export function drawerDifference(bin: ArrayLike<number>, base: ArrayLike<number>
     const a = mine.get(k), b = theirs.get(k);
     return `${a === undefined ? 'it has no FX drawer' : `its FX drawer holds ${a}`} and ${label}${b === undefined ? ' has none' : `'s holds ${b}`}`;
   });
-  return parts.length ? `${parts.join('; ')}: a preset cannot add, take out or move an effect` : `it has other cables than ${label}`;
+  return parts.length ? `${parts.join('; ')}: a preset cannot add or move an effect` : `it has other cables than ${label}`;
 }
 
 /** the notes of `p` as a palette entry would change them: its tracks' patterns and the song it plays and keeps (the

@@ -762,7 +762,7 @@ describe('a sound the FM-1 reaches with device presets takes no new slot (owner 
     expect(fm1.slots[1]).toMatchObject({ used: true, name: 'MONOLITH D B' });
     expect(fm1.entries[0]).toMatchObject({ slot: 1 });
     expect(puts()).toBe(0);
-    expect(said.at(-1)).toBe(`"Monolith D B" is palette 1 (stored as a new patch in slot 2, as ${NO_SAME_STRUCTURE})`);
+    expect(said.at(-1)).toBe('"Monolith D B" is palette 1 (stored as a new patch in slot 2, as it has other cables than slot 1 · Monolith D)');
   });
   it('a setting outside the device presets stores a patch, and names it', async () => {
     const { fm1, palette, held, said } = await monolith();
