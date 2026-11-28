@@ -4,16 +4,19 @@
  * functions; editor.ts applies them.
  *
  * Levels: 0 the full card (40 % and up); 1 the sliders: each row keeps its control and loses its words, the title stays at
- * 12 px on screen (below 40 %). The names and blocks levels (below 16 % and 4.5 %) come with the canvas renderer.
+ * 12 px on screen (16 % to 40 %); 2 the names: each card only its name, drawn on a canvas with the columns spread apart
+ * (4.5 % to 16 %, far-view.ts); 3 the blocks: assemblies as named blocks and one arrow per pair (below 4.5 %).
  */
 
 /** a level of detail */
-export type Lod = 0 | 1;
+export type Lod = 0 | 1 | 2 | 3;
 export const LOD_FULL: Lod = 0;
 export const LOD_SLIDERS: Lod = 1;
+export const LOD_NAMES: Lod = 2;
+export const LOD_BLOCKS: Lod = 3;
 
 /** the zoom below which each level gives way to the next (level k ends at LOD_BOUNDS[k]) */
-export const LOD_BOUNDS = [0.4] as const;
+export const LOD_BOUNDS = [0.4, 0.16, 0.045] as const;
 
 /** a level changes 8 % past its boundary, both ways, so a zoom resting on a boundary never flickers */
 export const LOD_HYSTERESIS = 1.08;

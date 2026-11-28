@@ -2,16 +2,30 @@
 // Semantic zoom (D-1448, D-1449): the level of detail for a zoom, snapped with ±8 % hysteresis; the title's size at the
 // sliders level; the cursor kept on the element it was over when the level changes.
 import { describe, expect, it } from 'vitest';
-import { anchorIn, anchorShift, LOD_FULL, LOD_SLIDERS, lodFor, nameFits, titleScale, titleScaleFor } from './lod';
+import { anchorIn, anchorShift, LOD_BLOCKS, LOD_FULL, LOD_NAMES, LOD_SLIDERS, lodFor, nameFits, titleScale, titleScaleFor } from './lod';
 
 describe('lodFor: the level for a zoom', () => {
-  it('draws the full card from 40 % up and the sliders below, away from the boundary', () => {
+  it('draws the full card from 40 %, the sliders from 16 %, the names from 4.5 % and the blocks below, away from the boundaries', () => {
     expect(lodFor(1, LOD_FULL)).toBe(LOD_FULL);
     expect(lodFor(0.5, LOD_FULL)).toBe(LOD_FULL);
     expect(lodFor(0.3, LOD_FULL)).toBe(LOD_SLIDERS);
-    expect(lodFor(0.07, LOD_FULL)).toBe(LOD_SLIDERS);
+    expect(lodFor(0.1, LOD_FULL)).toBe(LOD_NAMES);
+    expect(lodFor(0.03, LOD_FULL)).toBe(LOD_BLOCKS);
     expect(lodFor(0.3, LOD_SLIDERS)).toBe(LOD_SLIDERS);
     expect(lodFor(1, LOD_SLIDERS)).toBe(LOD_FULL);
+    expect(lodFor(1, LOD_BLOCKS)).toBe(LOD_FULL);
+    expect(lodFor(0.1, LOD_BLOCKS)).toBe(LOD_NAMES);
+  });
+
+  it('keeps the 8 % band round 16 % and 4.5 % too', () => {
+    expect(lodFor(0.15, LOD_SLIDERS)).toBe(LOD_SLIDERS);   // down to 16 / 1.08 = 14.8 %
+    expect(lodFor(0.147, LOD_SLIDERS)).toBe(LOD_NAMES);
+    expect(lodFor(0.17, LOD_NAMES)).toBe(LOD_NAMES);       // up to 16 × 1.08 = 17.3 %
+    expect(lodFor(0.174, LOD_NAMES)).toBe(LOD_SLIDERS);
+    expect(lodFor(0.042, LOD_NAMES)).toBe(LOD_NAMES);      // down to 4.5 / 1.08 = 4.17 %
+    expect(lodFor(0.041, LOD_NAMES)).toBe(LOD_BLOCKS);
+    expect(lodFor(0.048, LOD_BLOCKS)).toBe(LOD_BLOCKS);    // up to 4.86 %
+    expect(lodFor(0.049, LOD_BLOCKS)).toBe(LOD_NAMES);
   });
 
   it('changes level 8 % past the boundary, both ways, so a zoom resting on 40 % keeps its level', () => {

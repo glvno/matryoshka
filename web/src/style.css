@@ -2784,3 +2784,7 @@ dialog.commands li.cmd-also:hover { background: var(--surface-tint); color: var(
 #canvas.lod-sliders .cable.role-gate { stroke-width: calc(1.4px / var(--lod-z, 1)); }
 #canvas.lod-sliders .cable.role-keys { stroke-width: calc(2px / var(--lod-z, 1)); }
 #canvas.lod-sliders :is(.cable-core, .cable-wire) { display: none; }
+/* the far levels (far-view.ts, D-1448): below 16 % one canvas over the view draws the patch, and the cards are not laid out */
+#canvas .far-view { display: none; position: absolute; left: 0; top: 0; z-index: 3; touch-action: none; }
+#canvas.lod-far .far-view { display: block; }
+#canvas.lod-far #patch-world { display: none; }
