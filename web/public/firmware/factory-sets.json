@@ -5,7 +5,7 @@
       "version": 25,
       "set": "e86d04",
       "layout": 4,
-      "format": 66,
+      "format": 71,
       "bytes": 57581
     },
     {
@@ -39,6 +39,14 @@
       "layout": 4,
       "format": 55,
       "bytes": 57999
+    },
+    {
+      "file": "factory/matryoshka-factory-v24-df0852.bin",
+      "version": 24,
+      "set": "df0852",
+      "layout": 4,
+      "format": 66,
+      "bytes": 57475
     }
   ]
 }

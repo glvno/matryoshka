@@ -2,6 +2,7 @@
 // The factory region's link frames (#915, D-490), the shipped region image (web/public/firmware/matryoshka-factory.bin) and
 // the firmware tier (firmware/src/factory_tier.h FC_TIER): together every factory patch once, the tier exactly
 // web/src/factory-tiers.ts FIRMWARE_TIER, every factory preset and drum pattern in the region.
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { FACT, FACT_SIZE, factCommitFrame, factReadFrame, factWriteFrame, parse, parseFactoryInfo, frame } from './protocol';
@@ -60,12 +61,20 @@ describe('the factory region image and the firmware tier', () => {
     expect(crc32(tier.subarray(64))).toBe(t.crc);
     expect([t.layout, t.set, t.version]).toEqual([r.layout, r.set, r.version]);
   });
-  it('offers each released firmware the newest image made for its kits: 1.25 (layout 2) the frozen 1.25 image, 1.24.x layout 1, 1.26.0–1.26.2 (layout 4, format 65) the frozen 1.26 image, today\'s firmware (layout 4, format 66) today\'s (D-1020, #1202 K2, G8)', () => {
+  it('offers each released firmware the newest image made for its kits: 1.25 (layout 2) the frozen 1.25 image, 1.24.x layout 1, 1.26.0–1.26.2 (layout 4, format 65) the frozen 1.26 image, 1.26.3–1.29.x (format 66..70) the frozen v24 image, today\'s firmware (format 71) today\'s (D-1020, #1202 K2, G8)', () => {
     const sets = (JSON.parse(readFileSync(new URL('../public/firmware/factory-sets.json', import.meta.url), 'utf8')) as { sets: FactorySet[] }).sets;
-    const offered = (reads: number, plays = 66): FactorySet | null => pickSet(sets, { state: 1, reads, plays, layout: 0, format: 0, version: 0, set: 0, len: 0, patches: 0,
+    const offered = (reads: number, plays = 71): FactorySet | null => pickSet(sets, { state: 1, reads, plays, layout: 0, format: 0, version: 0, set: 0, len: 0, patches: 0,
       writing: false, tierOnly: false, size: 0, tierVersion: 0, tierPatches: 0, merged: 0 });
     expect(offered(4)?.file).toBe('matryoshka-factory.bin');
-    // today's image is format 66 (the factory patches' FX drawers, the rack section): firmware that plays at most 65 keeps
+    expect(readHeader(image)!.format).toBe(71);
+    // today's image names format 71: its device order (the Tidy layout, D-1458) opens the Harmonizer-first patches on
+    // their instrument only on firmware 1.30, so 1.26.3 (plays 66) .. 1.29.x (plays 70) keep v24 df0852, v1.29.0's image
+    // byte for byte (D-1020, amended 2026-11-27)
+    for (const plays of [66, 67, 68, 69, 70]) expect(offered(4, plays)?.file).toBe('factory/matryoshka-factory-v24-df0852.bin');
+    const v24 = readFileSync(new URL('../public/firmware/factory/matryoshka-factory-v24-df0852.bin', import.meta.url));
+    expect(createHash('sha256').update(v24).digest('hex')).toBe('714c8ef3b62192378e519280fe1ced358cc2485cb0093b06d279bc8e90e7762c');
+    expect(offered(4, 70)?.set).toBe('df0852');
+    // v24's patches are format 66 (the factory patches' FX drawers, the rack section): firmware that plays at most 65 keeps
     // the last factory content it can play, frozen (D-1020, amended 2026-11-20)
     expect(offered(4, 65)?.file).toBe('factory/matryoshka-factory-v21-f81fee.bin');
     expect(offered(4, 65)?.set).toBe('f81fee');
