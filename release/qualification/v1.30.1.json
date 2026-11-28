@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "version": "1.30.1",
+  "kind": "web-only release (D-1160), cut from release/1.30.1 off v1.30.0 (D-1188, as D-1178)",
+  "firmware_product": "FM-1_7013000",
+  "source_commit": "d38415c0b9fc9bd8cb47db2440334fd70291488a",
+  "source_branch": "release/1.30.1",
+  "source_tree": "7998e1a36ef5535c6ee0344e64f6ef877b839550",
+  "tag_branch": "release/1.30.1: v1.30.0 + #1393 cherry-picked + from #1391 only the released-set listing of v1.30.0 + the freeze (the frozen commit) + this record and its coverage (D-1188, D-1163). main holds 1.31 work (#1383 Stereo utility, patch format 72; #1392 semantic zoom), which this release does not ship",
+  "status": "automated checks passed; awaiting the owner's go for publication",
+  "release_approval": {
+    "status": "pending",
+    "scope": "Publication of v1.30.1 on d38415c0 + this record and its coverage, with v1.30.0's firmware package, screen font and factory region."
+  },
+  "plan": "D-1188",
+  "contents": [
+    "Send to FM-1 / Add to palette / Consolidate ignore the FM-1 device order when matching a slot: a sound saved before 1.30 goes in as a preset on its factory slot, and Consolidate folds the extra slots 1.30.0 stored (PR #1393, D-1227, D-1458, D-1441)",
+    "v1.30.0 listed among the released factory sets: web/scripts/released-factory.json and firmware/src/presets.h's RELEASED_SETS row only (from PR #1391; the region and the firmware tier stay v1.30.0's)",
+    "freeze: version 1.30.1, CHANGELOG 1.30.1 section, D-1188 (PR #1395, into release/1.30.1)"
+  ],
+  "bundled_firmware": {
+    "release": "v1.30.0",
+    "package": {
+      "name": "web/public/firmware/matryoshka.fwsc",
+      "size": 610628,
+      "sha256": "4ecf7a807f695a8b6a585c8a364fed6821226785c5babda2cbc6e398c1581fe5"
+    },
+    "check": "D-1160 check 1: every file in web/public/firmware/ of the tag commit is byte-identical to the v1.30.0 tag's: the package, its sidecar, the font (765b681a), the factory region v25 e86d04 (57,581 bytes), factory-sets.json and the frozen older images. firmware/ equals v1.30.0's but for the FELUCCA_VERSION -DEV string and presets.h's v1.30.0 released-set row"
+  },
+  "factory_content": "unchanged from v1.30.0 (version 25, set e86d04, layout 4, header format 71): the image is byte-identical",
+  "ci_runs": {
+    "web_rc": 46111297501,
+    "freeze_pr": 1395
+  },
+  "full_web": {
+    "rc_run": 46111297501,
+    "run_success": true,
+    "result": "D-1160 check 2: the editor suite in rc mode (test job, the slow-render jobs and the coverage seal, D-1157) passed on d38415c0",
+    "coverage_record": "release/coverage/v1.30.1: current, measured on d38415c0 (D-147)"
+  },
+  "full_scenarios": {
+    "passed": 619,
+    "failed": 3,
+    "seconds": 677,
+    "on_tree": "7998e1a36ef5535c6ee0344e64f6ef877b839550",
+    "on_bridge_sha256": "fdc974f0084259d3361d078576a9bd6453940ffb3b5207a0848d432927611ac0",
+    "note": "D-1160 check 3: the full emu:scenarios on v1.30.0's release bridge (release run 46099730421). Run on tree a0d9d6fc (the freeze less its listing commit, which changes only presets.h's released-set row, released-factory.json and the ledger: nothing the editor or the bridge runs). The 3 failures are all paletteEditor (issue #1388: the emulator's link goes deaf after ORDER; passed 63/63 on the rig for 1.30.0)."
+  },
+  "rig_scenarios": "Test rig 0x01140000 on 1.30.0, factory region v25, factory-reset bank (21 slots), via throwaway scenario send1301: palette-4-1.29.0.palette.json (written by the 1.29.0 editor) imported into a fresh profile and sent with the candidate: 15/15, 8 sounds on their factory slots, 6 presets sent, no SLOT, status 'Palette 4 is on the FM-1: 8 sounds (6 presets sent)'. The same sent with the v1.30.0 editor: 6 new slots 22-27 (HERA 6 T, ALGO FOUR T, SHUSH 101 T, WANDERER T, MONOLITH D 2, ORACLE V T), 12/12. Candidate Consolidate in a fresh profile: offered all 6, folded into presets on their factory slots, slots 22-27 freed ('Consolidated 1 onto slot 4 · Hera 6, ...; slots 22, 23, 24, 25, 26, 27 freed'), Undo restored them, refold ok: 13/13. Rig left as found.",
+  "not_run": "firmware build, emu:smoke and the full device check: the firmware is 1.30.0's, already qualified (release/qualification/v1.30.0.json; D-1160). The freeze PR's firmware 'build' job stops at 'the generated headers are current' by design: the branch carries v1.30.0's factory region image, its manifest, the firmware tier and the host tests' region copy, which export-defs on this tree would regenerate with v1.30.0 in the region's release list (57,593 bytes)",
+  "owner_checks": {
+    "status": "pending",
+    "steps": "D-1160 check 4, on the owner's own FM-1 (1.30.0, factory v25), with the candidate editor at crate/v1301: Consolidate his palette (the 7 extra slots palette 4 got from 1.30.0 folded into presets on their factory slots); re-send palette 4 saved before 1.30: the factory-patch sounds go in as presets, no new patch"
+  }
+}
