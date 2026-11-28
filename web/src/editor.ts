@@ -99,7 +99,8 @@ import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
 import { GUTTER_ROOM, ribbons, type RibbonCable, type RibbonFrame } from './ribbons';
 import { pinchStart, pinchStep, type Pinch } from './touch';
 import { cameraOf, edgeSpeed, KEY_ZOOM, nearEdge, PanPress, scrollFor, spaceExtent, WheelGestures, wheelPx, wheelZoom, zoomCamera, type WheelSetting } from './canvas-nav';
-import { anchorIn, anchorShift, LOD_FULL, LOD_SLIDERS, lodFor, nameFits, titleScaleFor, type Anchor, type Lod } from './lod';
+import { anchorIn, anchorShift, LOD_BOUNDS, LOD_FULL, LOD_HYSTERESIS, LOD_NAMES, LOD_SLIDERS, lodFor, nameFits, titleScaleFor, type Anchor, type Lod } from './lod';
+import { drawFar, farFit, farLayout, farMix, farRect, farScene, pickFar, type FarCard, type FarLayout, type FarPick, type FarScene, type FarTheme, type Kind, type Measure, type RawCable, type RawCard, type RawFrame } from './far-view';
 import { scopeTools, type ScreenSpec } from './scope-view';
 import { listenable, type ListenSource } from './listen';
 import type { EnvSpec } from './env-view';
@@ -290,9 +291,9 @@ export interface EditorEvents {
 type CableEnd = 'side' | 'up' | 'down';
 /** the straight run of a cable out of its jack at full slack, px */
 const CABLE_STUB = 20;
-/** the zoom's range (the wheel, pinch, fit and the sidebar's zoom slider): down to where Fit shows the widest factory patch,
- *  the 909 Kit expanded and tidied (12,500 px), in a 1440 × 900 window (D-1447) */
-export const ZOOM_MIN = 0.07;
+/** the zoom's range (the wheel, pinch, fit and the sidebar's zoom slider): down to 2 %, where the blocks level shows any
+ *  patch whole (D-1448; the names and blocks levels draw on a canvas, far-view.ts) */
+export const ZOOM_MIN = 0.02;
 export const ZOOM_MAX = 2;
 /** a chain of cubic Béziers: a start point, then three points per segment */
 const pathOf = ([a, ...rest]: { x: number; y: number }[]): string => {
@@ -554,6 +555,9 @@ export class Editor {
       dock.addEventListener('scroll', () => this.viewMoved(), { passive: true, capture: true });
       new ResizeObserver(() => this.positionCables()).observe(dock);
     }
+    // the far levels' canvas follows the view (it is drawn against the window)
+    canvas.addEventListener('scroll', () => this.drawFarSoon(), { passive: true });
+    new ResizeObserver(() => this.drawFarSoon()).observe(canvas);
     document.fonts.addEventListener('loadingdone', () => {
       this.layoutFrames(); this.sizeCanvas(); this.positionCables();
     });
@@ -1097,6 +1101,7 @@ export class Editor {
       this.sizeCanvas();
       this.drawCables();
       if (this.lod !== LOD_FULL) this.fitTitles();   // (the frames have their size now)
+      if (this.farState) this.refreshFar();
     });
   }
 
@@ -1167,7 +1172,11 @@ export class Editor {
     const c = this.canvas, z = this.zoom;
     const MARGIN = 32;
     let content: Rect | null = null;
-    if (elements.length) {
+    const far = this.farState ? this.farExtent() : null;
+    if (far) {
+      // the far levels: the scene's extent (the cards themselves are hidden and measure nothing)
+      content = { x: far.x - MARGIN, y: far.y - MARGIN, w: far.w + 2 * MARGIN, h: far.h + 2 * MARGIN };
+    } else if (elements.length) {
       const x0 = Math.min(...elements.map((el) => el.offsetLeft)) - MARGIN, y0 = Math.min(...elements.map((el) => el.offsetTop)) - MARGIN;
       const x1 = Math.max(...elements.map((el) => el.offsetLeft + el.offsetWidth)) + MARGIN, y1 = Math.max(...elements.map((el) => el.offsetTop + el.offsetHeight)) + MARGIN;
       content = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
@@ -3057,17 +3066,284 @@ export class Editor {
     this.onZoom(this.zoom, live);
   }
 
-  /** the level for the zoom (snapped, ±8 %); at the sliders level, titles stay 12 px on screen (the tag when the name does not fit) */
+  /** the level for the zoom (snapped, ±8 %); at the sliders level, titles stay 12 px on screen (the tag when the name does not
+   *  fit); from the names level on, one canvas draws the patch in place of the cards (far-view.ts) */
   private applyLod(): void {
     const next = lodFor(this.zoom, this.lod);
     if (next !== this.lod) {
       this.lod = next;
       this.canvas.classList.toggle('lod-sliders', next >= LOD_SLIDERS);
     }
+    this.setFar(this.lod >= LOD_NAMES);
+    if (this.farState) return this.drawFarSoon();
     if (this.lod === LOD_FULL) return;
     // the cables' widths at this level are screen px divided by the zoom (style.css), set on their layer only
     this.svg.style.setProperty('--lod-z', String(this.zoom));
     this.fitTitles();
+  }
+
+  // ---- the far levels (far-view.ts, D-1448): below 16 % the cards are hidden and one canvas draws the names, then the blocks
+
+  private farState: { scene: FarScene; el: HTMLCanvasElement; ctx: CanvasRenderingContext2D; layout: FarLayout | null; theme: FarTheme; hover: FarCard | null; band: Rect | null; frame: number } | null = null;
+  private farCanvas: HTMLCanvasElement | null = null;
+  /** a text's width in the card title's type at `px` on screen (nameWidth measures at 15 px) */
+  private farMeasure: Measure = (text, px) => (this.nameWidth(text) * px) / 15;
+
+  /** run `fn` with the cards laid out (the far levels hide them: they come back, unpainted, for the measuring) */
+  private domShown<T>(fn: () => T): T {
+    if (!this.farState || this.farShown) return fn();
+    this.farShown = true;
+    this.canvas.classList.remove('lod-far');
+    try { return fn(); } finally { this.canvas.classList.add('lod-far'); this.farShown = false; }
+  }
+  private farShown = false;
+
+  /** what the far levels draw, read off the cards: their places, names, tags, colours and jacks, the frames, the cables */
+  private farSnapshot(): FarScene {
+    return this.domShown(() => {
+      const kindOf = (el: Element): Kind => (['audio', 'gate', 'keys', 'control'] as const).find((k) => el.classList.contains(k)) ?? 'control';
+      const keyOf = (el: Element): string | null => {
+        const card = el.closest<HTMLElement>('#modules > .module');
+        return card ? (card.dataset.id ? `m${card.dataset.id}` : `a${card.dataset.asm}`) : null;
+      };
+      const box = (el: HTMLElement): Rect => ({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight });
+      const cards: RawCard[] = [...this.cards.values(), ...this.containers.values()].map((el) => {
+        const r = box(el);
+        const title = el.querySelector<HTMLElement>(':scope > .mhead > .lod-title');
+        const tag = title?.querySelector<HTMLElement>(':scope > .mtag');
+        const ports = [...el.querySelectorAll<HTMLElement>('.dot[data-port]')].map((d) => {
+          const p = this.center(d);
+          return { fx: (p.x - r.x) / (r.w || 1), fy: (p.y - r.y) / (r.h || 1), kind: kindOf(d), on: d.classList.contains('connected') };
+        });
+        return { key: keyOf(el) ?? '', ...r, name: title?.dataset.name ?? '', tag: tag?.textContent ?? '', color: tag ? getComputedStyle(tag).color : '', off: el.classList.contains('off'), ports };
+      });
+      const frames: RawFrame[] = [...this.frames].map(([id, el]) => {
+        const a = assemblyById(this.patch, id);
+        // (far-view counts depth from 0 at the outermost assembly; depthOf from 1)
+        return { key: `f${id}`, ...box(el), name: a?.label ?? '', depth: a ? depthOf(this.patch, a) - 1 : 0 };
+      });
+      const cables: RawCable[] = this.cablePaths
+        .filter((p) => p.origin === this.world && !p.path.classList.contains('alias') && this.world.contains(p.from) && this.world.contains(p.to))
+        .map((p) => ({
+          kind: kindOf(p.path), mod: p.path.classList.contains('role-mod'),
+          a: { key: keyOf(p.from), ...this.center(p.from) }, b: { key: keyOf(p.to), ...this.center(p.to) },
+        }));
+      return farScene({ cards, frames, cables });
+    });
+  }
+
+  /** the far levels' colours, from the page's tokens */
+  private farTheme(): FarTheme {
+    const cs = getComputedStyle(document.documentElement), v = (k: string): string => cs.getPropertyValue(k).trim();
+    const bg = v('--bg'), secondary = v('--secondary');
+    return { bg, panel: v('--panel'), ink: v('--ink'), muted: v('--muted'), line: v('--line'), secondary, accent: v('--accent'),
+      audio: v('--audio'), control: v('--control'), gate: v('--gate'), keys: v('--ink'), block: farMix(bg, secondary, 0.12), block2: farMix(bg, secondary, 0.22) };
+  }
+
+  /** the far levels on or off: on, the cards are hidden (no layout, no paint) and the canvas over the view draws them */
+  private setFar(on: boolean): void {
+    if (on === !!this.farState) return;
+    if (!on) {
+      if (this.farState?.frame) cancelAnimationFrame(this.farState.frame);
+      this.farState = null;
+      this.canvas.classList.remove('lod-far');
+      this.dockCables?.style.removeProperty('visibility');
+      this.sizeCanvas();
+      this.positionCables();
+      return;
+    }
+    // (a test's DOM has no canvas to draw on: the cards stay)
+    if (/jsdom/.test(navigator.userAgent)) return;
+    let el = this.farCanvas;
+    if (!el) {
+      el = document.createElement('canvas');
+      el.className = 'far-view';
+      this.canvas.prepend(el);
+      this.farCanvas = el;
+      this.farEvents(el);
+    }
+    const ctx = el.getContext('2d');
+    if (!ctx) return;
+    const scene = this.farSnapshot();
+    this.farState = { scene, el, ctx, layout: null, theme: this.farTheme(), hover: null, band: null, frame: 0 };
+    this.canvas.classList.add('lod-far');
+    // (the cables from the docked Main end on cards that are not drawn)
+    this.dockCables?.style.setProperty('visibility', 'hidden');
+    this.sizeCanvas();
+    this.drawFarSoon();
+  }
+
+  /** the cards changed while far (a rebuild): read them again */
+  private refreshFar(): void {
+    const f = this.farState;
+    if (!f) return;
+    f.scene = this.farSnapshot();
+    f.layout = null;
+    f.hover = null;
+    this.sizeCanvas();
+    this.drawFarSoon();
+  }
+
+  /** the names level's layout at this zoom (the columns spread apart), made once per zoom */
+  private farLayoutNow(): FarLayout | null {
+    const f = this.farState;
+    if (!f || this.lod !== LOD_NAMES) return null;
+    if (f.layout?.z !== this.zoom) f.layout = farLayout(f.scene, this.zoom, this.farMeasure);
+    return f.layout;
+  }
+
+  /** what the far level draws: the spread layout's extent at the names level, the patch's at the blocks level */
+  private farExtent(): Rect | null {
+    const f = this.farState;
+    return f ? (this.farLayoutNow()?.extent ?? f.scene.bounds) : null;
+  }
+
+  private drawFarSoon(): void {
+    const f = this.farState;
+    if (!f || f.frame) return;
+    f.frame = requestAnimationFrame(() => { f.frame = 0; this.drawFarNow(); });
+  }
+
+  private drawFarNow(): void {
+    const f = this.farState;
+    if (!f) return;
+    const c = this.canvas, W = c.clientWidth, H = c.clientHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (f.el.width !== Math.round(W * dpr) || f.el.height !== Math.round(H * dpr)) {
+      f.el.width = Math.round(W * dpr); f.el.height = Math.round(H * dpr);
+      f.el.style.width = `${W}px`; f.el.style.height = `${H}px`;
+    }
+    // (it sits in the scrolled space: moved with the scroll so it stays over the view)
+    f.el.style.transform = `translate(${c.scrollLeft}px, ${c.scrollTop}px)`;
+    const selected = new Set([...[...this.selected].map((id) => `m${id}`), ...[...this.selectedAsm].map((id) => `a${id}`)]);
+    drawFar(f.ctx, f.scene, this.lod, this.farLayoutNow(), { z: this.zoom, cam: this.camera, W, H, dpr }, f.theme, this.farMeasure, { card: f.hover ?? undefined, selected, band: f.band ?? undefined });
+  }
+
+  /** a client point on the far canvas, in world coordinates */
+  private farWorld(e: { clientX: number; clientY: number }): Pt {
+    const r = this.canvas.getBoundingClientRect(), cam = this.camera;
+    return { x: cam.x + (e.clientX - r.left - this.canvas.clientLeft) / this.zoom, y: cam.y + (e.clientY - r.top - this.canvas.clientTop) / this.zoom };
+  }
+
+  /** what is under a world point at the far level */
+  private farPick(p: Pt): FarPick {
+    return this.farState ? pickFar(this.farState.scene, this.lod, this.farLayoutNow(), p, this.zoom, this.farMeasure) : null;
+  }
+
+  /**
+   * The far canvas's pointer (D-1448): a press on a card flies to it, a drag moves it (down to the names level); a press on
+   * a patched jack zooms in to it; a press on a block (blocks level) fits it; a drag on empty canvas selects the cards it
+   * crosses. A touch is left to the canvas's own pan and pinch, but a tap still flies to the card. The right and middle
+   * buttons pan, as on the cards.
+   */
+  private farEvents(el: HTMLCanvasElement): void {
+    let down: { x: number; y: number; at: Pt; pick: FarPick; moved: boolean; touch: boolean } | null = null;
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || !this.farState) return;
+      const touch = e.pointerType === 'touch';
+      if (!touch) { e.stopPropagation(); el.setPointerCapture?.(e.pointerId); }
+      const at = this.farWorld(e);
+      down = { x: e.clientX, y: e.clientY, at, pick: this.farPick(at), moved: false, touch };
+    });
+    el.addEventListener('pointermove', (e) => {
+      const f = this.farState;
+      if (!f) return;
+      const p = this.farWorld(e);
+      if (down && !down.touch) {
+        if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) down.moved = true;
+        if (!down.moved) return;
+        const card = down.pick && 'card' in down.pick ? down.pick.card : null;
+        const layout = this.farLayoutNow();
+        if (card && layout) {
+          // the card follows the hand; where it lands is worked out on release
+          const r = layout.cards.get(card)!;
+          r.x += p.x - down.at.x; r.y += p.y - down.at.y;
+          down.at = p;
+        } else if (!card) f.band = { x: Math.min(down.at.x, p.x), y: Math.min(down.at.y, p.y), w: Math.abs(p.x - down.at.x), h: Math.abs(p.y - down.at.y) };
+        this.drawFarSoon();
+        return;
+      }
+      const h = this.farPick(p);
+      const card = h && 'card' in h ? h.card : null;
+      el.style.cursor = h && 'jack' in h ? 'zoom-in' : card ? 'pointer' : '';
+      if (card !== f.hover) { f.hover = card; this.drawFarSoon(); }
+    });
+    el.addEventListener('pointerleave', () => { if (this.farState?.hover) { this.farState.hover = null; this.drawFarSoon(); } });
+    el.addEventListener('pointerup', () => {
+      const d = down;
+      down = null;
+      const f = this.farState;
+      if (!d || !f) return;
+      if (d.moved && d.touch) return;
+      if (!d.moved) return this.farClick(d.pick);
+      const card = d.pick && 'card' in d.pick ? d.pick.card : null;
+      if (card) return this.farDrop(card);
+      const band = f.band;
+      f.band = null;
+      const layout = this.farLayoutNow();
+      if (!band || !layout) return this.drawFarSoon();
+      const crossed = f.scene.cards.filter((c) => { const r = layout.cards.get(c)!; return r.x < band.x + band.w && r.x + r.w > band.x && r.y < band.y + band.h && r.y + r.h > band.y; });
+      this.select(crossed.filter((c) => c.key[0] === 'm').map((c) => Number(c.key.slice(1))), crossed.filter((c) => c.key[0] === 'a').map((c) => Number(c.key.slice(1))));
+      this.drawFarSoon();
+    });
+  }
+
+  /** a press without a drag on the far canvas */
+  private farClick(p: FarPick): void {
+    const c = this.canvas;
+    if (!p) return;
+    if ('jack' in p) return this.flyTo(0.5, p.jack.x, p.jack.y);
+    if ('card' in p) {
+      const k = p.card;
+      return this.flyTo(Math.min(1, Math.max(0.5, Math.min(c.clientWidth / (k.w * 2.6), c.clientHeight / (k.h * 1.6)))), k.x + k.w / 2, k.y + k.h / 2);
+    }
+    const f = p.frame;
+    this.flyTo(Math.min(c.clientWidth / (f.w * 1.15), c.clientHeight / (f.h * 1.15)), f.x + f.w / 2, f.y + f.h / 2);
+  }
+
+  /**
+   * A card dropped at the names level: its new place keeps where it landed against the nearest card there (the spread
+   * layout is not the patch's own); one undo step
+   */
+  private farDrop(card: FarCard): void {
+    const layout = this.farLayoutNow();
+    const f = this.farState;
+    if (!layout || !f) return;
+    const r = layout.cards.get(card)!, cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+    let near: FarCard | null = null, best = Infinity;
+    for (const o of f.scene.cards) {
+      if (o === card) continue;
+      const q = layout.cards.get(o)!, d = Math.hypot(q.x + q.w / 2 - cx, q.y + q.h / 2 - cy);
+      if (d < best) { best = d; near = o; }
+    }
+    const q = near ? layout.cards.get(near)! : null;
+    const x = near && q ? near.x + near.w / 2 + (cx - (q.x + q.w / 2)) - card.w / 2 : card.x;
+    const y = near && q ? near.y + near.h / 2 + (cy - (q.y + q.h / 2)) - card.h / 2 : card.y;
+    const dx = Math.round(x - card.x), dy = Math.round(y - card.y);
+    f.layout = null;
+    if (!dx && !dy) return this.drawFarSoon();
+    const before = this.mark();
+    const id = Number(card.key.slice(1));
+    if (card.key[0] === 'm') { const m = this.patch.modules.find((x) => x.id === id); if (m) { m.x += dx; m.y += dy; } }
+    else { const a = assemblyById(this.patch, id); if (a) moveAssembly(this.patch, a, dx, dy); }
+    if (!this.commit(before)) return this.drawFarSoon();
+    this.rebuild();
+    this.ev.onLayout(this.patch);
+  }
+
+  /** fly to zoom `target` centred on world point (x, y), in 420 ms (at once with reduced motion) */
+  private flyTo(target: number, x: number, y: number): void {
+    // (the user's zoom is in whole percent)
+    const z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(target * 100) / 100));
+    const c = this.canvas, z0 = this.zoom, cam0 = this.camera;
+    const c0 = { x: cam0.x + c.clientWidth / 2 / z0, y: cam0.y + c.clientHeight / 2 / z0 };
+    const t0 = performance.now(), MS = 420, reduce = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const step = (now: number): void => {
+      const t = reduce ? 1 : Math.min(1, (now - t0) / MS), e = 1 - (1 - t) ** 3;
+      this.setZoom(z0 * Math.pow(z / z0, e), t < 1);
+      this.sizeCanvas({ x: c0.x + (x - c0.x) * e - c.clientWidth / 2 / this.zoom, y: c0.y + (y - c0.y) * e - c.clientHeight / 2 / this.zoom });
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   }
 
   /** a name's width at the card title's size and face (style.css .mhead > span), cached; layout px at the zoom of 1 */
@@ -3169,36 +3445,91 @@ export class Editor {
   }
 
   /** the zoom, holding a point in place: `at` (client px: the pointer, for the wheel and pinch) or else the canvas's centre (the
-   *  zoom slider and its source); `live`: a modulation, not the user's. When the level of detail changes, the card or frame
-   *  under that point stays under it, at the same place inside it (D-1449) */
+   *  zoom slider and its source); `live`: a modulation, not the user's. When the level of detail changes, or the names level
+   *  lays the columns out again, the card or frame under that point stays under it, at the same place inside it (D-1449) */
   zoomAround(z: number, live = false, at?: Pt): void {
     const c = this.canvas;
     const r = c.getBoundingClientRect();
     const p = at ? { x: at.x - r.left - c.clientLeft, y: at.y - r.top - c.clientTop } : { x: c.clientWidth / 2, y: c.clientHeight / 2 };
     const client = { x: r.left + c.clientLeft + p.x, y: r.top + c.clientTop + p.y };
     const cam = this.camera, was = this.zoom;
-    const anchor = lodFor(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)), this.lod) !== this.lod ? this.anchorAt(client) : null;
+    const next = lodFor(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)), this.lod);
+    const anchor = next !== this.lod || next === LOD_NAMES ? this.anchorAt(client) : null;
     this.setZoom(z, live);
     if (this.zoom === was) return;
     // the space is laid out round the new view, so the point holds even at the cards' top left (no scroll 0 to stop at)
     this.sizeCanvas(zoomCamera(cam, p, was, this.zoom));
-    if (!anchor?.el.isConnected) return;
-    const { dx, dy } = anchorShift(anchor.at, anchor.el.getBoundingClientRect(), client);
+    const box = anchor && this.keyRect(anchor.key);
+    if (!anchor || !box) return;
+    const { dx, dy } = anchorShift(anchor.at, box, client);
     if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
     const now = this.camera;
     this.sizeCanvas({ x: now.x + dx / this.zoom, y: now.y + dy / this.zoom });
+    this.drawFarSoon();
   }
 
-  /** the card, collapsed assembly or frame under a client point, and where the point is inside it (D-1449) */
-  private anchorAt(pt: Pt): { el: HTMLElement; at: Anchor } | null {
-    const hit = document.elementFromPoint?.(pt.x, pt.y);
-    const el = hit instanceof HTMLElement && this.world.contains(hit) ? hit.closest<HTMLElement>('#modules > .module, #modules > .frame') : null;
-    return el ? { el, at: anchorIn(el.getBoundingClientRect(), pt) } : null;
+  /** where the card (`m<id>`), collapsed assembly (`a<id>`) or frame (`f<id>`) of a key is drawn now, client px; null when
+   *  this level draws nothing for it (at the blocks level a card inside an assembly is stood for by its block) */
+  private keyRect(key: string): { left: number; top: number; width: number; height: number } | null {
+    const f = this.farState;
+    if (f) {
+      const r = farRect(f.scene, this.lod, this.farLayoutNow(), key, this.zoom, this.farMeasure);
+      if (!r) return null;
+      const c = this.canvas.getBoundingClientRect(), cam = this.camera, z = this.zoom;
+      return { left: c.left + this.canvas.clientLeft + (r.x - cam.x) * z, top: c.top + this.canvas.clientTop + (r.y - cam.y) * z, width: r.w * z, height: r.h * z };
+    }
+    const id = Number(key.slice(1));
+    const el = key[0] === 'm' ? this.cards.get(id) : key[0] === 'a' ? this.containers.get(id) : this.frames.get(id);
+    return el?.isConnected ? el.getBoundingClientRect() : null;
   }
 
-  /** every card in view: the zoom that fits the cards' extent into the canvas, centred */
+  /**
+   * The element under a client point and where the point is inside it (D-1449): a card, collapsed assembly or frame; over
+   * empty canvas inside an assembly, that assembly; elsewhere the nearest card within a screen, the point kept as fractions
+   * of it that may lie outside it; null with none that near (the zoom then holds the point)
+   */
+  private anchorAt(pt: Pt): { key: string; at: Anchor } | null {
+    const keyed = (key: string | null): { key: string; at: Anchor } | null => {
+      const r = key ? this.keyRect(key) : null;
+      return key && r ? { key, at: anchorIn(r, pt) } : null;
+    };
+    if (this.farState) {
+      const h = this.farPick(this.farWorld({ clientX: pt.x, clientY: pt.y }));
+      const hit = keyed(h && 'card' in h ? h.card.key : h && 'frame' in h ? h.frame.key : null);
+      if (hit) return hit;
+    } else {
+      const el = document.elementFromPoint?.(pt.x, pt.y);
+      const card = el instanceof HTMLElement && this.world.contains(el) ? el.closest<HTMLElement>('#modules > .module, #modules > .frame') : null;
+      const frame = card ? null : [...this.frames].filter(([, f]) => { const r = f.getBoundingClientRect(); return pt.x >= r.left && pt.x <= r.right && pt.y >= r.top && pt.y <= r.bottom; })
+        .map(([id]) => assemblyById(this.patch, id)).filter((a): a is AssemblyInst => !!a).sort((a, b) => depthOf(this.patch, b) - depthOf(this.patch, a))[0];
+      const key = card ? (card.classList.contains('frame') ? `f${card.dataset.asm}` : card.dataset.id ? `m${card.dataset.id}` : `a${card.dataset.asm}`) : frame ? `f${frame.id}` : null;
+      const hit = keyed(key);
+      if (hit) return hit;
+    }
+    let best: { key: string; at: Anchor } | null = null, near = Math.max(this.canvas.clientWidth, this.canvas.clientHeight);
+    for (const key of [...[...this.cards.keys()].map((id) => `m${id}`), ...[...this.containers.keys()].map((id) => `a${id}`)]) {
+      const r = this.keyRect(key);
+      if (!r || !r.width || !r.height) continue;
+      const d = Math.hypot(Math.max(r.left - pt.x, 0, pt.x - r.left - r.width), Math.max(r.top - pt.y, 0, pt.y - r.top - r.height));
+      if (d < near) { near = d; best = { key, at: { fx: (pt.x - r.left) / r.width, fy: (pt.y - r.top) / r.height } }; }
+    }
+    return best;
+  }
+
+  /** every card in view: the zoom that fits the cards' extent into the canvas, centred; below 16 % the largest names-level
+   *  zoom at which the spread columns fit, else the top of the blocks level (D-1448) */
   zoomToFit(): void {
-    this.fitElements([...this.cards.values(), ...this.containers.values(), ...this.frames.values()]);
+    const els = [...this.cards.values(), ...this.containers.values(), ...this.frames.values()];
+    const c = this.canvas, W = c.clientWidth, H = c.clientHeight;
+    if (!els.length || !W || !H) return;
+    const box = this.domShown(() => this.fitBox(els));
+    if (Math.min(1.5, W / box.w, H / box.h) >= LOD_BOUNDS[1] || /jsdom/.test(navigator.userAgent)) return this.fitTo(box);
+    const scene = this.farState?.scene ?? this.farSnapshot();
+    const fit = farFit(scene, W, H, LOD_BOUNDS[1], ZOOM_MIN, LOD_BOUNDS[2] / LOD_HYSTERESIS - 0.001, this.farMeasure);
+    this.setZoom(Math.floor(fit.z * 100) / 100);
+    const e = this.farExtent() ?? scene.bounds, z = this.zoom;
+    this.sizeCanvas({ x: e.x + e.w / 2 - W / z / 2, y: e.y + e.h / 2 - H / z / 2 });
+    this.drawFarSoon();
   }
 
   /** Shift+2 (#1075): the zoom that fits the selected cards, assemblies and comments, centred; false with nothing selected */
@@ -3213,22 +3544,30 @@ export class Editor {
     return true;
   }
 
-  /** the zoom that fits `elements` (at most 150 %), with them centred */
-  private fitElements(elements: HTMLElement[]): void {
-    // (a canvas not laid out, hidden or in a test, has no size to fit to)
-    if (!elements.length || !this.canvas.clientWidth || !this.canvas.clientHeight) return;
+  /** the box round `elements` with room for an open frame's gutter, world px (the cards must be laid out) */
+  private fitBox(elements: HTMLElement[]): Rect {
     const PAD = 24;
     // an open frame's cables run in a gutter round it (ribbons.ts): fit that too
     const out = (el: HTMLElement): number => (el.classList.contains('frame') ? GUTTER_ROOM : 0);
     const x0 = Math.min(...elements.map((el) => el.offsetLeft - out(el))) - PAD;
     const y0 = Math.min(...elements.map((el) => el.offsetTop - out(el))) - PAD;
-    const w = Math.max(...elements.map((el) => el.offsetLeft + el.offsetWidth + out(el))) + PAD - x0;
-    const h = Math.max(...elements.map((el) => el.offsetTop + el.offsetHeight + out(el))) + PAD - y0;
+    return { x: x0, y: y0, w: Math.max(...elements.map((el) => el.offsetLeft + el.offsetWidth + out(el))) + PAD - x0, h: Math.max(...elements.map((el) => el.offsetTop + el.offsetHeight + out(el))) + PAD - y0 };
+  }
+
+  /** the zoom that fits `elements` (at most 150 %), with them centred */
+  private fitElements(elements: HTMLElement[]): void {
+    // (a canvas not laid out, hidden or in a test, has no size to fit to)
+    if (!elements.length || !this.canvas.clientWidth || !this.canvas.clientHeight) return;
+    this.fitTo(this.domShown(() => this.fitBox(elements)));
+  }
+
+  private fitTo(b: Rect): void {
     const c = this.canvas;
     // (the user's zoom is in whole percent: rounded down, so a wide patch still fits)
-    this.setZoom(Math.floor(Math.min(1.5, c.clientWidth / w, c.clientHeight / h) * 100) / 100);
+    this.setZoom(Math.floor(Math.min(1.5, c.clientWidth / b.w, c.clientHeight / b.h) * 100) / 100);
     const z = this.zoom;
-    this.sizeCanvas({ x: x0 + w / 2 - c.clientWidth / z / 2, y: y0 + h / 2 - c.clientHeight / z / 2 });
+    this.sizeCanvas({ x: b.x + b.w / 2 - c.clientWidth / z / 2, y: b.y + b.h / 2 - c.clientHeight / z / 2 });
+    this.drawFarSoon();
   }
 
   /** Ctrl / Cmd + = and − (#1075): one step in or out, around the canvas's centre */
@@ -7518,6 +7857,8 @@ export class Editor {
   }
 
   private layoutFrames(exclude?: Set<number>, excludeAsm?: number): void {
+    // (the far levels hide the cards: they are measured shown)
+    if (this.farState && !this.farShown) return this.domShown(() => this.layoutFrames(exclude, excludeAsm));
     for (const a of assembliesOf(this.patch)) {
       const el = this.frames.get(a.id);
       if (!el) continue;

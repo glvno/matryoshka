@@ -2,7 +2,8 @@
 // @vitest-environment jsdom
 // Semantic zoom in the editor (D-1448, D-1449): below 40 % the canvas draws the sliders level (a class on the canvas, with
 // ±8 % hysteresis); each title is 12 px on screen and shows the card's tag when the name does not fit; a zoom across the
-// boundary keeps the card under the pointer under it.
+// boundary keeps the card under the pointer under it (over empty canvas, the nearest card); the zoom goes down to 2 %.
+// (The names and blocks levels draw on a canvas, which jsdom lacks: far-view.test.ts covers them.)
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Editor, type EditorEvents } from './editor';
 import { zoomCamera } from './canvas-nav';
@@ -119,5 +120,32 @@ describe('a zoom across a level keeps the card under the pointer (D-1449)', () =
     const plain = zoomCamera(cam0, { x: 150, y: 200 }, 0.8, 0.6);
     expect(ed.cam.x).toBeCloseTo(plain.x, 6);
     expect(ed.cam.y).toBeCloseTo(plain.y, 6);
+  });
+
+  it('over empty canvas, the nearest card within a screen keeps its offset from the pointer', () => {
+    const { editor, canvas } = open();
+    // (a 1000 × 600 canvas: "within a screen" is within 1000 px)
+    Object.defineProperty(canvas, 'clientWidth', { configurable: true, value: 1000 });
+    Object.defineProperty(canvas, 'clientHeight', { configurable: true, value: 600 });
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => null });
+    const card = cards()[0];
+    const key = card.dataset.id ? `m${card.dataset.id}` : `a${card.dataset.asm}`;
+    let left = 100;
+    vi.spyOn(card, 'getBoundingClientRect').mockImplementation(() => ({ left, top: 100, width: 200, height: 400, right: left + 200, bottom: 500, x: left, y: 100, toJSON() {} }) as DOMRect);
+    const anchorAt = (pt: { x: number; y: number }): unknown => (editor as unknown as { anchorAt: (pt: { x: number; y: number }) => unknown }).anchorAt(pt);
+    // 50 px left of the card: a quarter of its width outside it, a quarter down (zoomAround then moves the view so that
+    // point of the card is back under the pointer, as over the card itself)
+    expect(anchorAt({ x: 50, y: 200 })).toEqual({ key, at: { fx: -0.25, fy: 0.25 } });
+    // 2,000 px away the card is not near: the zoom holds the point under the pointer
+    left = 2050;
+    expect(anchorAt({ x: 50, y: 200 })).toBeNull();
+  });
+});
+
+describe('the far levels (D-1448)', () => {
+  it('zooms out to 2 % and no further', () => {
+    const { editor } = open();
+    editor.setZoom(0.01);
+    expect(editor.zoom).toBe(0.02);
   });
 });
