@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Consolidate the FM-1's palette: the one confirmation that lists every change. Each palette entry that points at an
 // extra slot holding a tweak of another slot's patch (an old Add to palette stored it as a whole patch) becomes a preset
-// on that base slot, and the extra slot is freed when nothing else needs it. One row per change, each ticked; Enter or
-// Consolidate takes the ticked ones, Escape, Cancel or a press elsewhere takes none. A popover like every other
+// on that base slot, and the extra slot is freed when nothing else needs it. One row per change, each ticked; a Fold
+// anyway row (the entry then takes the base slot's settings no device preset holds, each listed) starts unticked. Enter
+// or Consolidate takes the ticked ones, Escape, Cancel or a press elsewhere takes none. A popover like every other
 // (popover.ts, D-1423). The finding and the doing are palette.ts's; this file only asks.
 import { closeFloat, openFloat } from './popover';
 
@@ -21,6 +22,9 @@ export interface ConsolidateStep {
   keep?: string;
   /** what the entry then plays from `to` instead of its own: "tempo", "patterns", "tempo and patterns" */
   plays?: string;
+  /** Fold anyway (owner 2026-11-28): the settings no device preset holds that the entry takes from `to`, each as
+   *  "Output level 1.00 → 0.39"; the row starts unticked */
+  adopts?: string[];
 }
 
 /** "a", "a and b", "a, b and c" */
@@ -33,8 +37,8 @@ export function stepLine(s: ConsolidateStep): string {
   return `${s.pos + 1} · ${s.from.name} → slot ${s.to.slot + 1} · ${s.to.name}${presets}${s.free ? `; slot ${s.from.slot + 1} freed` : ''}`;
 }
 
-/** one confirmation listing every step, each with a checkbox (all ticked), shown under `anchor` (the middle of the window
- *  without one); resolves the ticked steps in their order, or null on Cancel/Escape */
+/** one confirmation listing every step, each with a checkbox (ticked, a Fold anyway step's not), shown under `anchor`
+ *  (the middle of the window without one); resolves the ticked steps in their order, or null on Cancel/Escape */
 export function askConsolidate(steps: readonly ConsolidateStep[], o: { anchor?: HTMLElement | null } = {}): Promise<ConsolidateStep[] | null> {
   return new Promise((resolve) => {
     let answer: ConsolidateStep[] | null = null;
@@ -48,7 +52,7 @@ export function askConsolidate(steps: readonly ConsolidateStep[], o: { anchor?: 
     head.textContent = title;
     const text = document.createElement('p');
     text.className = 'consolidate-text';
-    text.textContent = 'Each entry below plays a patch stored as an extra slot. It becomes a preset on the slot it was made from, and the extra slot is freed. Untick what to leave as it is.';
+    text.textContent = `Each entry below plays a patch stored as an extra slot. It becomes a preset on the slot it was made from, and the extra slot is freed. Untick what to leave as it is.${steps.some((s) => s.adopts) ? ' A Fold anyway entry differs from that slot in settings no preset holds: ticked, it takes the slot’s, as listed.' : ''}`;
     const rows = document.createElement('ul');
     rows.className = 'consolidate-steps';
     const boxes = steps.map((s) => {
@@ -57,7 +61,7 @@ export function askConsolidate(steps: readonly ConsolidateStep[], o: { anchor?: 
       label.className = 'consolidate-step';
       const box = document.createElement('input');
       box.type = 'checkbox';
-      box.checked = true;
+      box.checked = !s.adopts;
       const body = document.createElement('span');
       body.className = 'consolidate-body';
       const line = document.createElement('span');
@@ -65,7 +69,8 @@ export function askConsolidate(steps: readonly ConsolidateStep[], o: { anchor?: 
       line.textContent = stepLine(s);
       body.append(line);
       const kept = s.free ? null : `slot ${s.from.slot + 1} kept${s.keep ? `: ${s.keep}` : ''}`;
-      for (const note of [kept, s.plays ? `plays slot ${s.to.slot + 1}'s ${s.plays}` : null]) {
+      const anyway = s.adopts ? `Fold anyway: it takes slot ${s.to.slot + 1}'s ${s.adopts.join('; ')}` : null;
+      for (const note of [anyway, kept, s.plays ? `plays slot ${s.to.slot + 1}'s ${s.plays}` : null]) {
         if (!note) continue;
         const n = document.createElement('span');
         n.className = 'consolidate-note';

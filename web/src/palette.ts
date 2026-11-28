@@ -22,7 +22,7 @@ import { deletePreset as dropUserPreset, rememberedPreset, replaceUserPresets, s
 import type { Patch } from './patch';
 import { layout } from './patchbin';
 import { devicePresetName, NAME_BYTES, PAL_EMPTY, PAL_GO_CANCELLED, PAL_GO_WAITING, PAL_MISSING, PAL_REFUSED, PALETTE_SIZE, paletteHash, STATUS_PRESETS_FULL, type Ack, type DevicePresetEntry, type PaletteEntry, type PaletteNow, type PalettePos, type SlotInfo } from './protocol';
-import { applyEntry, asSlot, binCore, binStructure, drawerDifference, entryOf, fm1Presets, NO_SAME_STRUCTURE, paletteDevices, patchStructure, presetFit, q16, sameBytes, samePatch, samePreset, slotPlays, takeTempoAndPatterns, truePresetNames, unheldSettings, type PresetFit } from './preset-fit';
+import { applyEntry, asSlot, binCore, binStructure, drawerDifference, entryOf, fm1Presets, NO_SAME_STRUCTURE, paletteDevices, patchStructure, presetFit, q16, sameBytes, samePatch, samePreset, slotPlays, takeTempoAndPatterns, truePresetNames, unheldChanges, unheldSettings, type PresetFit } from './preset-fit';
 import { drawerScope } from './fx-preset';
 import { soundOf, type PaletteSound } from './saved-palettes';
 import type { ConsolidateStep } from './consolidate-view';
@@ -223,8 +223,8 @@ const SWITCH_WAITS = 'The FM-1 is waiting to switch at the bar line: try again a
 export const PALETTE_FULL = 'Palette full: drag onto a chip to replace';
 
 /** a change Consolidate offers (planConsolidate): the step its confirmation lists, and what doing it needs: the sound the
- *  entry plays now (its slot's patch with the entry applied), the presets only the FM-1 had, the entry as it was, and the
- *  extra slot's binary as read (Undo stores it again) */
+ *  entry plays afterwards (its slot's patch with the entry applied; with Fold anyway, with the base's settings), the
+ *  presets only the FM-1 had, the entry as it was, and the extra slot's binary as read (Undo stores it again) */
 export interface ConsolidateItem { step: ConsolidateStep; sound: Patch; extra: Preset[]; was: PaletteEntry; bin: Uint8Array }
 
 export class Palette {
@@ -902,12 +902,14 @@ export class Palette {
    * the same structure whose name its slot's name starts with ("HERA 6" for "HERA 6 PLUCKPAD", or the name before its
    * number), the longest such, else the lowest such slot below it; a slot whose name starts with its own is never its
    * base. The entry's sound (its slot read back, the entry applied, its presets only the FM-1 has read from it) must
-   * reach the base with device presets (presetPlace, tempo and patterns noted); otherwise it is left out, said in
-   * `skipped`. An entry with no base but a slot found the same way with its devices (binCore: other FX drawer effects,
-   * or other cables) is left out too, and `skipped` says what differs (owner 2026-11-28: Consolidate left 4 entries
-   * without a word). A slot that is another step's base keeps its own entry. A step frees its slot when no other
-   * position points at it and the editor's bank list has no patch of its name (inBank). Nothing is written. A string:
-   * why not now.
+   * reach the base with device presets (presetPlace, tempo and patterns noted). Else, when the base's patch with the
+   * sound's device presets does (asSlot the other way round: the sound differs only in settings no device preset holds),
+   * the step is offered as Fold anyway (owner 2026-11-28: "fold anyway (b)"): its sound takes the base's settings, which
+   * `adopts` lists, and the confirmation shows it unticked. Otherwise it is left out, said in `skipped`. An entry with no
+   * base but a slot found the same way with its devices (binCore: other FX drawer effects, or other cables) is left out
+   * too, and `skipped` says what differs (owner 2026-11-28: Consolidate left 4 entries without a word). A slot that is
+   * another step's base keeps its own entry. A step frees its slot when no other position points at it and the editor's
+   * bank list has no patch of its name (inBank). Nothing is written. A string: why not now.
    */
   async planConsolidate(): Promise<{ items: ConsolidateItem[]; skipped: string[] } | string> {
     const why = this.blocked();
@@ -949,13 +951,23 @@ export class Palette {
         skipped.push(`${pos + 1} · ${x.name} (its slot could not be read back)`);
         continue;
       }
-      const { patch: sound, extra } = await this.played(read.patch, e, d.hasPresets ? list : null);
-      const fit = await this.presetPlace(sound, x.name, [base], extra);
+      const played = await this.played(read.patch, e, d.hasPresets ? list : null), extra = played.extra;
+      let sound = played.patch, adopts: string[] | undefined;
+      let fit = await this.presetPlace(sound, x.name, [base], extra);
       if ('why' in fit) {
-        skipped.push(`${pos + 1} · ${x.name} (${fit.why})`);
-        continue;
+        // (Fold anyway, owner 2026-11-28 "fold anyway (b)": the base slot's patch with the sound's device presets, so with
+        // the base's settings no device preset holds, offered unticked with each of them listed)
+        const there = await this.readSlot(base, bins), held = there && (await readFm1Bin(d, there, base.name));
+        const adopted = held && asSlot(held.patch, sound);
+        const changes = adopted ? unheldChanges(sound, adopted) : [];
+        const again = adopted && changes.length ? await this.presetPlace(adopted, x.name, [base], extra) : null;
+        if (!adopted || !again || 'why' in again) {
+          skipped.push(`${pos + 1} · ${x.name} (${fit.why})`);
+          continue;
+        }
+        [sound, fit, adopts] = [adopted, again, changes];
       }
-      const step: ConsolidateStep = { pos, from: { slot: x.slot, name: x.name }, to: { slot: base.slot, name: base.name }, presets: this.fitEntry(fit).devices.map((v) => v.name), free: false, ...(fit.plays ? { plays: fit.plays } : {}) };
+      const step: ConsolidateStep = { pos, from: { slot: x.slot, name: x.name }, to: { slot: base.slot, name: base.name }, presets: this.fitEntry(fit).devices.map((v) => v.name), free: false, ...(fit.plays ? { plays: fit.plays } : {}), ...(adopts ? { adopts } : {}) };
       items.push({ step, sound, extra, was: e, bin });
     }
     const bases = new Set(items.map((i) => i.step.to.slot));
