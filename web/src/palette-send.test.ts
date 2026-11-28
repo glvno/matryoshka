@@ -2,18 +2,20 @@
 // Saved palettes and the FM-1's palette (#1236): Send to FM-1 (a saved palette replaces the FM-1's by add's rules), what
 // it left (`from`), Save from FM-1 (capture, linked and offline), and the names an add gives what it makes, against the
 // stand-in FM-1 (test-palette-fm1.ts).
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { FACTORY } from './assemblies';
 import { insertAssembly, type AssemblyInst } from './assembly';
-import { binLength, type Candidate } from './bank';
+import { binLength, deviceName, type Candidate } from './bank';
 import { DeviceLink } from './device';
 import { addUserPreset, applyPreset, currentValues, presetsOf, replaceUserPresets, setFactoryPresets, userPresets } from './device-presets';
 import { DEFS } from './modules';
-import { connect, newPatch, type Patch } from './patch';
+import { connect, newPatch, validatePatch, type Patch } from './patch';
 import { Palette, PALETTE_FROM, type PalettePorts } from './palette';
-import { NO_SAME_STRUCTURE, paletteDevices, patchPattern } from './preset-fit';
-import { CMD, type PaletteEntry } from './protocol';
-import type { PaletteSound } from './saved-palettes';
+import { entryOf, NO_SAME_STRUCTURE, paletteDevices, patchPattern } from './preset-fit';
+import { FM1_PRESETS } from './presets';
+import { CMD, FEATURE25_SLOT_GET, FEATURE5_FX_DRAWERS, type PaletteEntry } from './protocol';
+import { readPaletteFile, type PaletteSound } from './saved-palettes';
 import { rowOrder, structureOf } from './structure';
 import { setRows } from './fx-preset';
 import { PaletteFm1 } from './test-palette-fm1';
@@ -338,5 +340,66 @@ describe('the name an add is given names what it makes (owner 2026-11-24)', () =
     await fm1.quiet();
     expect(fm1.slots[1]).toMatchObject({ used: true, name: 'LEAD X 2' });
     expect(fm1.entries.slice(0, 2)).toMatchObject([{ slot: 0, name: 'LEAD X' }, { slot: 1, name: 'LEAD X 2' }]);
+  });
+});
+
+describe('a palette saved before 1.30, sent to a factory-reset 1.30 FM-1 (owner 2026-11-28: "7 of them were stored as new patches")', () => {
+  // (Library > Palettes files written by the 1.26.6, 1.28.0 and 1.29.0 editors: Hera 6, Algo Four, Shush 101, Wanderer,
+  // Oracle V and Canvas each with a card value moved, Monolith D and Sallen 20 as they were. The 1.30 factory patches sit
+  // where Tidy puts them, which changed the page order of Hera 6, Algo Four, Shush 101, Wanderer, Monolith D and Oracle V,
+  // D-1458)
+  const FIXTURES = ['1.26.6', '1.28.0', '1.29.0'];
+  const saved = (version: string): PaletteSound[] =>
+    readPaletteFile(JSON.parse(readFileSync(new URL(`./test-fixtures/palette-4-${version}.palette.json`, import.meta.url), 'utf8')), (p) => validatePatch(p, DEFS)).sounds.filter((s) => !!s);
+  const factoryOf = (s: PaletteSound): string => s.name.replace(/ T$/, '');
+  const NAMES = Object.keys(FM1_PRESETS);
+  /** the FM-1 after a factory reset: each factory patch in its slot, as the 1.30 editor encodes it, which it knows */
+  async function reset() {
+    const r = await linked({ features25: FEATURE25_SLOT_GET | FEATURE5_FX_DRAWERS, candidates: NAMES.map((name) => ({ name, patch: FM1_PRESETS[name], factory: true })) });
+    NAMES.forEach((name, slot) => {
+      const bin = r.link.encodeFor(FM1_PRESETS[name]());
+      r.fm1.slots[slot] = { slot, used: true, length: bin.length, name: deviceName(name) };
+      r.fm1.bins[slot] = bin;
+    });
+    return r;
+  }
+
+  for (const version of FIXTURES) {
+    it(`saved by ${version}: every sound goes in on its factory slot, no patch stored`, async () => {
+      const sounds = saved(version);
+      const { fm1, palette, said } = await reset();
+      expect(await palette.send(sounds, { id: 'p4', name: 'Palette 4' })).toBe(true);
+      await fm1.quiet();
+      expect(sentCmds(fm1)).not.toContain(CMD.slot);
+      expect(fm1.entries.map((e) => e?.slot)).toEqual(sounds.map((s) => NAMES.indexOf(factoryOf(s))));
+      expect(said.at(-1)).not.toMatch(/new patch/);
+    });
+  }
+  it('a slot this browser has no copy of, read back: the sound saved in the old page order still takes it', async () => {
+    const hera = saved('1.29.0').find((s) => factoryOf(s) === 'Hera 6')!;
+    const { fm1, link, palette } = await linked({ features25: FEATURE25_SLOT_GET | FEATURE5_FX_DRAWERS });
+    const bin = link.encodeFor(FM1_PRESETS['Hera 6']());
+    fm1.slots[30] = { slot: 30, used: true, length: bin.length, name: 'MY HERA' };
+    fm1.bins[30] = bin;
+    expect(await palette.send([hera, null, null, null, null, null, null, null], { id: 'p4', name: 'Palette 4' })).toBe(true);
+    await fm1.quiet();
+    expect(sentCmds(fm1)).not.toContain(CMD.slot);
+    expect(fm1.entries[0]).toMatchObject({ slot: 30, devices: [{ name: 'Hera 6 T' }] });
+  });
+  it('Consolidate folds a patch 1.30.0 stored for such a sound back onto its factory slot', async () => {
+    const hera = saved('1.29.0').find((s) => factoryOf(s) === 'Hera 6')!;
+    const { fm1, link, palette } = await reset();
+    // (as 1.30.0 left it: the sound stored whole as HERA 6 2, palette 1 on it)
+    const bin = link.encodeFor(hera.patch);
+    fm1.slots[40] = { slot: 40, used: true, length: bin.length, name: 'HERA 6 2' };
+    fm1.bins[40] = bin;
+    fm1.entries[0] = entryOf(hera.patch, 40, 'HERA 6 2');
+    const plan = await palette.planConsolidate();
+    if (typeof plan === 'string') throw new Error(plan);
+    expect(plan.items.map((i) => i.step)).toEqual([{ pos: 0, from: { slot: 40, name: 'HERA 6 2' }, to: { slot: 3, name: 'HERA 6' }, presets: ['HERA 6 2'], free: true }]);
+    const r = await palette.consolidate(plan.items);
+    await fm1.quiet();
+    expect(r.line).toBe('Consolidated 1 onto slot 4 · HERA 6; slot 41 freed');
+    expect([fm1.entries[0]?.slot, fm1.slots[40].used]).toEqual([3, false]);
   });
 });

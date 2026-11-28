@@ -229,8 +229,9 @@ export function fm1PageTitle(device: string, pg: Page): string {
   return pg.parts > 1 ? `${base} ${pg.part + 1}/${pg.parts}` : base;
 }
 
-/** where a top-level item sits on the canvas: a collapsed card's corner, an open frame's first member */
-function placeOf(p: Patch, a: AssemblyInst): { x: number; y: number } {
+/** where a top-level item sits on the canvas, which its reading order reads: a collapsed card's corner, an open frame's
+ *  first member */
+export function placeOf(p: Patch, a: AssemblyInst): { x: number; y: number } {
   if (!a.open) return { x: a.x, y: a.y };
   const ms = deviceModules(p, a).map((id) => p.modules.find((m) => m.id === id)).filter((m) => !!m);
   return ms.length ? { x: Math.min(...ms.map((m) => m!.x)), y: Math.min(...ms.map((m) => m!.y)) } : { x: a.x, y: a.y };
