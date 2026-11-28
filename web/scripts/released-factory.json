@@ -1241,6 +1241,58 @@
    ]
   },
   {
+   "set": "e86d04",
+   "tags": [
+    "v1.30.0"
+   ],
+   "names": [
+    "MONOLITH D",
+    "ORACLE V",
+    "SILVER BOX",
+    "HERA 6",
+    "SALLEN 20",
+    "EXPANDER S",
+    "ALGO FOUR",
+    "CANVAS",
+    "WANDERER",
+    "BRIEFCASE 3",
+    "IO 4",
+    "VERNON 100",
+    "8 LIRE",
+    "ELVIRA 2",
+    "SCROUNGE",
+    "MERIDIAN 8",
+    "808 KIT",
+    "909 KIT",
+    "CASSIA 1",
+    "VERONA DRUM 1",
+    "SHUSH 101"
+   ],
+   "copies": [
+    {"name": "MONOLITH D", "len": 2654, "fnv": "8a8608a1", "crc": "79f3b1e7"},
+    {"name": "ORACLE V", "len": 3045, "fnv": "d814b620", "crc": "97f6c383"},
+    {"name": "SILVER BOX", "len": 1302, "fnv": "0a6ea865", "crc": "506baf7c"},
+    {"name": "HERA 6", "len": 2315, "fnv": "c7f35fc3", "crc": "25a822d0"},
+    {"name": "SALLEN 20", "len": 2359, "fnv": "bf2bd2de", "crc": "db9b361f"},
+    {"name": "EXPANDER S", "len": 2061, "fnv": "0b79e63f", "crc": "1ea1711d"},
+    {"name": "ALGO FOUR", "len": 1974, "fnv": "028490df", "crc": "a3fdc1a3"},
+    {"name": "CANVAS", "len": 3614, "fnv": "36fb07f4", "crc": "e776a730"},
+    {"name": "WANDERER", "len": 3028, "fnv": "5e93fc77", "crc": "98aeb931"},
+    {"name": "BRIEFCASE 3", "len": 3609, "fnv": "6da77ef9", "crc": "462aa6a8"},
+    {"name": "IO 4", "len": 2698, "fnv": "c03080c6", "crc": "8bbed73e"},
+    {"name": "VERNON 100", "len": 2894, "fnv": "5d9f0e4e", "crc": "9ca73a50"},
+    {"name": "8 LIRE", "len": 3736, "fnv": "43660209", "crc": "6ec4b297"},
+    {"name": "ELVIRA 2", "len": 3491, "fnv": "59e85248", "crc": "0b3bc2fe"},
+    {"name": "SCROUNGE", "len": 3517, "fnv": "9ba9f717", "crc": "d54c96fb"},
+    {"name": "MERIDIAN 8", "len": 3493, "fnv": "14e2c1db", "crc": "c8ac62d8"},
+    {"name": "808 KIT", "len": 3420, "fnv": "3fb86975", "crc": "e87b6c08"},
+    {"name": "909 KIT", "len": 3781, "fnv": "5b0baf42", "crc": "0e06fc40"},
+    {"name": "CASSIA 1", "len": 3556, "fnv": "354effe5", "crc": "cc694782"},
+    {"name": "VERONA DRUM 1", "len": 3788, "fnv": "20116dd3", "crc": "6c10cf43"},
+    {"name": "SHUSH 101", "len": 2112, "fnv": "25c697ed", "crc": "bd30752f"}
+   ]
+  },
+  {
    "set": "e93254",
    "tags": [
     "v1.17.0"
