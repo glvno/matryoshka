@@ -2,9 +2,10 @@
 import { describe, expect, it } from 'vitest';
 import { assembliesOf, childrenOf, makeAssembly, overlaps, parentOf, type AssemblyInst, type Rect } from './assembly';
 import { DEFS } from './modules';
+import { devicesOf } from './pages';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
 import { PRESETS } from './presets';
-import { clearAround, isPile, pushAside, TIDY_GAP, TIDY_GAP_X, tidy, tidyAssembly, type TidySizes } from './tidy';
+import { clearAround, isPile, numberedSeries, pushAside, TIDY_GAP, TIDY_GAP_X, tidy, tidyAssembly, type TidySizes } from './tidy';
 
 const W = 250;
 const H = 300;
@@ -222,6 +223,33 @@ describe('tidy up: the signal flow, left to right', () => {
     const right = Math.max(...boxes.map((b) => b.x + b.w)), bottom = Math.max(...boxes.map((b) => b.y + b.h));
     expect(right).toBeGreaterThan(bottom); // not one tall column
     expect(at(p, ids[0])).toEqual([TIDY_GAP, TIDY_GAP]);
+  });
+
+  it('finds numbered siblings: names alike but for a number, or for a last capital letter in sequence', () => {
+    const s = numberedSeries(['VOICE 1', 'VOICE 12', 'Oscillator', 'AENP 1-4', 'AENP 13-16', 'MOD X', 'MOD Y', 'PAD A', 'LONE 3', 'TAPE A', 'TAPE C']);
+    expect(s.map((k) => k?.num ?? null)).toEqual([1, 12, null, 1, 13, 88, 89, null, null, null, null]);
+    expect(s[0]!.series).toBe(s[1]!.series);
+    expect(s[3]!.series).not.toBe(s[0]!.series);
+  });
+
+  it('keeps numbered siblings in their number order, down a column and across, whatever the cables say (D-1458)', () => {
+    const p = emptyPatch();
+    const out = addModule(p, DEFS.output, 0, 0).id;
+    const filter = addModule(p, DEFS.filter, 0, 0).id;
+    const voices = [3, 1, 2, 4].map((k) => { const m = addModule(p, DEFS.osc, 0, 900 - 200 * k); m.name = `VOICE ${k}`; return m; });
+    const byName = (k: number) => voices.find((m) => m.name === `VOICE ${k}`)!.id;
+    // VOICE 2 runs through a filter, so the cables alone would put it a column before the others
+    wire(p, byName(2), 'out', filter, 'in');
+    wire(p, filter, 'lp24', out, 'l');
+    for (const k of [1, 3, 4]) wire(p, byName(k), 'out', out, 'r');
+    tidy(p, sizes);
+    const [x1, y1] = at(p, byName(1)), [x2, y2] = at(p, byName(2));
+    expect(x1).toBeLessThanOrEqual(x2);
+    expect(x1 < x2 || y1 < y2).toBe(true);
+    expect(at(p, byName(3))[1]).toBeLessThan(at(p, byName(4))[1]);
+    expect(at(p, byName(3))[0]).toBe(at(p, byName(4))[0]);
+    const order = devicesOf(p, DEFS).map((d) => d.name).filter((n) => n.startsWith('VOICE'));
+    expect(order).toEqual(['VOICE 1', 'VOICE 2', 'VOICE 3', 'VOICE 4']);
   });
 
   it('every factory patch and example, everything expanded: nothing overlaps on any level, the same layout every time', () => {

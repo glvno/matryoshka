@@ -24,6 +24,7 @@
 // and where their jacks are.
 import { assembliesOf, childrenOf, findRef, moveAssembly, ownerOf, parentOf, type AssemblyInst, type Rect } from './assembly';
 import { cableRole, type CableRole } from './cable-role';
+import { moduleName } from './labels';
 import { DEFS } from './modules';
 import type { Cable, Patch } from './patch';
 
@@ -89,6 +90,42 @@ interface LNode {
   watcher?: boolean;
   /** a comment box: sits above or below the card nearest it */
   note?: boolean;
+  /** a numbered sibling (VOICE 1 … VOICE 8, AENP 1-4 … AENP 13-16, MOD X and MOD Y: named alike but for a number, D-1458):
+   *  its name with the number left out, and the number. Siblings keep their number order, down a column and across */
+  series?: string;
+  num?: number;
+}
+
+/** `list` with each numbered series (LNode.series) gathered where its first member is, in ascending order; the rest keep
+ *  their places */
+function seriesOrder(list: number[], of: (i: number) => LNode | undefined): number[] {
+  let out = [...list];
+  for (const s of new Set(list.map((i) => of(i)?.series).filter((x): x is string => !!x))) {
+    const members = out.filter((i) => of(i)?.series === s).sort((a, b) => of(a)!.num! - of(b)!.num!);
+    const at = out.findIndex((i) => of(i)?.series === s);
+    out = out.filter((i) => of(i)?.series !== s);
+    out.splice(at, 0, ...members);
+  }
+  return out;
+}
+
+/** the numbered series among cards' names: a name with its numbers left out shared by two or more, or two or more names
+ *  alike but for a last capital letter in sequence (MOD X, MOD Y) */
+export function numberedSeries(names: readonly (string | undefined)[]): ({ series: string; num: number } | undefined)[] {
+  const keyed = names.map((name) => {
+    if (!name) return undefined;
+    const digits = name.match(/\d+/);
+    if (digits) return { series: name.replace(/\d+/g, '#'), num: Number(digits[0]) };
+    const letter = name.match(/^(.*\s)([A-Z])$/);
+    return letter ? { series: `${letter[1]}@`, num: letter[2].charCodeAt(0) } : undefined;
+  });
+  const nums = new Map<string, number[]>();
+  for (const k of keyed) if (k) nums.set(k.series, [...(nums.get(k.series) ?? []), k.num]);
+  const real = (s: string): boolean => {
+    const n = [...nums.get(s)!].sort((a, b) => a - b);
+    return n.length > 1 && (!s.endsWith('@') || n.every((x, i) => !i || x === n[i - 1] + 1));
+  };
+  return keyed.map((k) => (k && real(k.series) ? k : undefined));
 }
 
 /** a cable from box u to box v, its jacks `uy` / `vy` below the boxes' tops, and what it carries (cable-role.ts) */
@@ -182,7 +219,7 @@ function layoutGraph(nodes: LNode[], edges: LEdge[]): { x: number; y: number }[]
   // lone cards: rows as wide as the drawing (at least four cards), in reading order
   const rowW = Math.max(width, 4 * (300 + TIDY_GAP_X));
   let x = 0, rowH = 0;
-  for (const b of lone.sort((a, c) => blocks[a].y0 - blocks[c].y0 || blocks[a].x0 - blocks[c].x0)) {
+  for (const b of seriesOrder([...lone].sort((a, c) => blocks[a].y0 - blocks[c].y0 || blocks[a].x0 - blocks[c].x0), (i) => blocks[i])) {
     if (x > 0 && x + blocks[b].w > rowW) {
       top += rowH + TIDY_GAP;
       x = 0;
@@ -206,6 +243,23 @@ function layoutGroup(nodes: LNode[], edges: LEdge[]): { at: { x: number; y: numb
   const dag = edges.map((e) => (pos[e.u] < pos[e.v] ? { a: e.u, b: e.v, ay: e.uy, by: e.vy, e } : { a: e.v, b: e.u, ay: e.vy, by: e.uy, e }));
   // 3. columns
   const rank = simplexRanks(n, dag.map((d) => ({ a: d.a, b: d.b, w: weight(d.e) })), order);
+  // numbered siblings: a higher number never in an earlier column (what it feeds moves on with it)
+  const series = new Map<string, number[]>();
+  nodes.forEach((nd, i) => { if (nd.series) series.set(nd.series, [...(series.get(nd.series) ?? []), i]); });
+  for (const list of series.values()) list.sort((a, b) => nodes[a].num! - nodes[b].num!);
+  for (let changed = true, guard = 0; changed && guard < 4 * n; guard++) {
+    changed = false;
+    for (const list of series.values())
+      for (let k = 1; k < list.length; k++) {
+        if (rank[list[k]] >= rank[list[k - 1]]) continue;
+        rank[list[k]] = rank[list[k - 1]];
+        changed = true;
+        for (const todo = [list[k]]; todo.length; ) {
+          const v = todo.pop()!;
+          for (const d of dag) if (d.a === v && rank[d.b] < rank[v] + 1) { rank[d.b] = rank[v] + 1; todo.push(d.b); }
+        }
+      }
+  }
   const others = (pin: 'first' | 'last'): number[] => rank.filter((_, i) => nodes[i].pin !== pin);
   for (let i = 0; i < n; i++) {
     if (nodes[i].pin === 'first') rank[i] = Math.min(0, ...others('first').map((r) => r - 1));
@@ -308,6 +362,11 @@ function layoutGroup(nodes: LNode[], edges: LEdge[]): { at: { x: number; y: numb
       }
     }
   }
+  // numbered siblings in a column: together, in their number order
+  layers.forEach((l, r) => {
+    layers[r] = seriesOrder(l, (v) => (v < n ? nodes[v] : undefined));
+    stack(layers[r]);
+  });
   // 6. the tallest column splits into columns side by side, in its order, while that brings the group nearer a screen's
   //    shape: one card feeding a dozen would make a dozen-card column
   const chunks = (l: number[], parts: number): number[][] => {
@@ -571,6 +630,8 @@ function level(p: Patch, sizes: TidySizes, skip: Set<number>, container: Assembl
   const modules = (container ? container.modules : p.modules.filter((m) => !inAsm.has(m.id)).map((m) => m.id)).filter((id) => !skip.has(id));
   const asms = (container ? childrenOf(p, container) : assembliesOf(p).filter((a) => !parentOf(p, a.id))).filter((a) => !a.drawer);
   const items: LevelItem[] = [];
+  /** each item's name as the FM-1 shows it (pages.ts devicesOf): numbered siblings keep their order (D-1458) */
+  const names: (string | undefined)[] = [];
   const itemOf = new Map<CardKey, number>();
   const hang = (k: CardKey): Overhang => sizes.overhang?.(k) ?? NONE;
   const typeOf = (id: number): string => p.modules.find((m) => m.id === id)?.type ?? '';
@@ -580,6 +641,7 @@ function level(p: Patch, sizes: TidySizes, skip: Set<number>, container: Assembl
     const s = sizes.module(id), oh = hang(`m${id}`);
     const box = { x: m.x - oh.l, y: m.y - oh.t, w: s.w + oh.l + oh.r, h: s.h + oh.t + oh.b };
     itemOf.set(`m${id}`, items.length);
+    names.push(m.name || moduleName(m.type, DEFS[m.type]?.label ?? m.type));
     items.push({
       node: { w: box.w, h: box.h, x0: box.x, y0: box.y, pin: m.type === 'fm1' ? 'first' : m.type === 'output' ? 'last' : undefined, watcher: !DEFS[m.type]?.outputs.length && m.type !== 'output' },
       box,
@@ -595,6 +657,7 @@ function level(p: Patch, sizes: TidySizes, skip: Set<number>, container: Assembl
     }
     if (!box) continue;
     itemOf.set(`a${a.id}`, items.length);
+    names.push(a.label);
     items.push({ node: { w: box.w, h: box.h, x0: box.x, y0: box.y }, box, move: (dx, dy) => moveAssembly(p, a, dx, dy) });
   }
   if (!container)
@@ -604,6 +667,7 @@ function level(p: Patch, sizes: TidySizes, skip: Set<number>, container: Assembl
     }
   const real = items.length;
   if (!real) return null;
+  numberedSeries(names).forEach((k, i) => { if (k) Object.assign(items[i].node, k); });
   const left0 = Math.min(...items.map((it) => it.box.x)), top0 = Math.min(...items.map((it) => it.box.y));
   let inAnchor = -1, outAnchor = -1;
   if (container) {
