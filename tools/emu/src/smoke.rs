@@ -87,9 +87,9 @@ pub(crate) const LOUD: i32 = 1000;
 
 /// on the device page (pages_ui.c): the footer's octave at 0 ("= OCT =")
 pub(crate) const DEVICE_PAGE: &str = "= OCT =";
-/// on the device page of a patch whose Drum map has more than 8 rows (the 808 Kit): the footer's octave slot names the
-/// drum bank the black keys play instead, here the first (pages_ui.c foot_layout, seq_ui.c drum_bank_label, D-520)
-const DRUM_DEVICE_PAGE: &str = "ROWS 1-8";
+/// on the device page of a patch whose Drum map has more than 11 rows (the 808 Kit): the footer's octave slot names the
+/// drum rows black keys 1-11 play instead, here the first 11 (pages_ui.c foot_layout, seq_ui.c drum_bank_label, D-520)
+const DRUM_DEVICE_PAGE: &str = "ROWS 1-11";
 
 /// A factory patch as presets.h stores it, unpacked (the format: firmware/src/lz_unpack.h)
 fn lz_unpack(src: &[u8]) -> Vec<u8> {
