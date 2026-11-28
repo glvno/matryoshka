@@ -70,6 +70,15 @@ describe('device pages', () => {
     expect(fixFocus(devs, null)).toEqual({ device: `m${osc.id}`, page: 0 });
   });
 
+  it('a patch opens on its first instrument, not on the Harmonizer a Tidy puts before it (D-217, D-1458)', () => {
+    for (const name of ['Hera 6', 'Monolith D', 'Shush 101']) {
+      const p = PRESETS[name]();
+      const devs = devicesOf(p, DEFS);
+      expect(devs.findIndex((d) => d.kind === 'harm'), name).toBeLessThan(homeDevice(devs));
+      expect(devs[homeDevice(devs)].name, name).toBe(name);
+    }
+  });
+
   it('an assembly is a device of its card: a heading starts a page, a long group spills, an envelope shape lands on its rows', () => {
     const p = emptyPatch();
     const osc = addModule(p, DEFS.osc, 20, 20);

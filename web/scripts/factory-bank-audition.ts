@@ -8,6 +8,7 @@ import SOURCE from '../factory/bank.json';
 import { buildSelectedFactoryBank, factoryFile, factoryFxAudit, selectedFactoryProfile, UNSHIPPED_PATTERNS } from '../src/factory-bank';
 import { clearAllPatterns } from '../src/pattern-ops';
 import { withKitPatterns } from '../src/factory-kit-patterns';
+import { applyFactoryLayout } from '../src/factory-layout';
 import type { Patch } from '../src/patch';
 import {
   FACTORY_QUALIFICATION_SCOPE, factoryQualificationPhaseIds, factoryQualificationPolicy,
@@ -204,9 +205,10 @@ export function exportSelectedFactoryAudition(options: AuditionExportOptions) {
     const selected = selectedFactoryProfile[sourceName];
     // (a drum kit with a pattern set is its source plus those patterns, links and songs: D-829; a kit with a drum rack or
     // an FX drawer keeps every module of that as it was, Main's panel aside, D-1053, D-1055; a patch of UNSHIPPED_PATTERNS
-    // ships without its patterns and songs)
+    // ships without its patterns and songs; its top-level cards sit where Tidy lays them out, D-1458)
     const source = withKitPatterns(structuredClone(SOURCE[index].patch) as unknown as Patch);
     if (UNSHIPPED_PATTERNS.includes(sourceName)) clearAllPatterns(source);
+    applyFactoryLayout(source, name);
     const kept = selected?.drumRack || selected?.drawer
       ? source.modules.every(m => JSON.stringify({ ...patch.modules.find(x => x.id === m.id), panel: undefined }) === JSON.stringify({ ...m, panel: undefined }))
       : JSON.stringify(patch) === JSON.stringify(source);

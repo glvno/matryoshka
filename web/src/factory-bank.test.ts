@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildFactoryBank, buildSelectedFactoryBank, factoryFile, factoryFxAudit, selectedFactoryNames, selectedFactoryProfile, shippedFactoryBank } from './factory-bank';
 import { FACTORY_KITS, withKitPatterns } from './factory-kit-patterns';
+import { applyFactoryLayout } from './factory-layout';
 import SOURCE from '../factory/bank.json';
 import { assemblyById, drawers, rackOf, type AssemblyInst } from './assembly';
 import type { FxStageKind } from './fx-legacy';
@@ -94,9 +95,11 @@ describe('owner-selected factory defaults', () => {
     const full = buildSelectedFactoryBank({ full: true });
     expect(bank).toEqual(shippedFactoryBank(full));
     for (const source of protectedEntries) {
-      // (a drum kit with a pattern set, D-829: its source plus those patterns, links and songs, nothing else; D-1053, D-1055)
+      // (a drum kit with a pattern set, D-829: its source plus those patterns, links and songs, nothing else; D-1053, D-1055.
+      // Its top-level cards sit where Tidy lays them out, D-1458)
       const kit = FACTORY_KITS.some(k => k.patch === source.name);
-      const original = kit ? withKitPatterns(structuredClone(source.patch) as unknown as Patch) : source.patch as unknown as Patch;
+      const original = structuredClone(kit ? withKitPatterns(structuredClone(source.patch) as unknown as Patch) : source.patch as unknown as Patch);
+      applyFactoryLayout(original, selectedFactoryProfile[source.name]?.bankName ?? source.name);
       if (!selectedFactoryProfile[source.name]) {
         expect(patchOf(source.name, full)).toEqual(original);
         continue;

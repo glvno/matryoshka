@@ -709,12 +709,12 @@ static void pages_build(void)
         pg_cur_page = 0;
 }
 
-/* Main, a Steps track, an Arpeggiator or the Output: the environment's frame, not where a patch opens (pages.ts
- * homeDevice, #196) */
+/* Main, a Steps track, an Arpeggiator, a Harmonizer or the Output: the environment's frame, not where a patch opens
+ * (pages.ts homeDevice, #196; a Tidy puts a Harmonizer before the instrument it plays, D-1458) */
 static int pages_frame(uint32_t d)
 {
     int t = pg_dev[d].module >= 0 ? eng_type((uint32_t)pg_dev[d].module) : -1;
-    return t == T_FM1 || t == T_STEPS || t == T_ARP || t == T_OUTPUT;
+    return t == T_FM1 || t == T_STEPS || t == T_ARP || t == T_HARM || t == T_OUTPUT;
 }
 
 /* where a fresh patch's focus goes: the first device that is no frame, else the first */

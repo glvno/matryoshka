@@ -13,6 +13,7 @@ import { cpuEstimate, CPU_VOICE_TOP } from './cpu';
 import { applyPreset } from './device-presets';
 import { Engine } from './engine';
 import { buildFactoryBank, shippedFactoryBank } from './factory-bank';
+import { applyFactoryLayout } from './factory-layout';
 import { FACTORY_KITS } from './factory-kit-patterns';
 import { factoryPresets } from './factory-presets';
 import { Fm1Engine } from './fm1-engine';
@@ -38,7 +39,12 @@ beforeAll(() => {
 
 /** the 909 Kit without its drawer (the protected kit as bank.json has it, with its 1.24.1 patterns): full, or as it ships */
 const plainFull = (): Patch => structuredClone(buildFactoryBank().find((c) => c.name === NAME)!.patch);
-const plainShipped = (): Patch => structuredClone(shippedFactoryBank(buildFactoryBank()).find((c) => c.name === NAME)!.patch);
+/** the kit as it ships without the drawer, its cards where the shipped kit's are (factory-layout.ts) */
+const plainShipped = (): Patch => {
+  const p = structuredClone(shippedFactoryBank(buildFactoryBank()).find((c) => c.name === NAME)!.patch);
+  applyFactoryLayout(p, NAME);
+  return p;
+};
 const cardOf = (p: Patch) => assembliesOf(p).find((a) => a.name === '909 kit' && !parentOf(p, a.id))!;
 const effects = (p: Patch) => effectsOf(p, drawerOf(p, cardOf(p).id)!);
 

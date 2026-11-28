@@ -7,7 +7,12 @@ import { DEFS } from './modules';
 import { BAR_H, CARD_H, CARD_W, cardLayout, cutLabel, DARK, detailFor, fitLine, HEAD_H, LABEL_CHAR, LABEL_PAD, mapTop, patchFacts, ROW_H, type CardLayout } from './patch-card';
 import { PRESETS } from './presets';
 import { relocatedPatches } from './community-factory';
+import EXAMPLES from '../factory/examples.json';
+import { validatePatch } from './patch';
 
+/** the Init example as written in factory/examples.json, before its Tidy layout (factory-layout.ts): a compact map whose
+ *  boxes have room for every row */
+const initAsWritten = () => validatePatch(structuredClone(EXAMPLES.find((e) => e.name === 'Init')!.patch), DEFS);
 const inside = (l: CardLayout): void => {
   for (const b of l.boxes) {
     expect(b.x).toBeGreaterThanOrEqual(l.map.x);
@@ -80,7 +85,7 @@ describe('the patch card', () => {
   });
 
   it('shows a module’s main parameters, without a page title that repeats its name', () => {
-    const l = cardLayout(PRESETS.Init(), DEFS);
+    const l = cardLayout(initAsWritten(), DEFS);
     const osc = l.boxes.find((b) => b.label === 'OSCILLATOR')!;
     expect(osc.pages![0].title).toBe('');
     expect(osc.pages![0].rows.map((r) => r.label)).toEqual(['wave', 'pulse width', 'coarse tune', 'fine tune']);
@@ -89,7 +94,7 @@ describe('the patch card', () => {
   });
 
   it('undisplayed module ports and rows do not hide a neighboring envelope control', () => {
-    const p = PRESETS.Init();
+    const p = initAsWritten();
     const defs = { ...DEFS, alloc: { ...DEFS.alloc, params: [...DEFS.alloc.params, ...DEFS.alloc.params], outputs: [...DEFS.alloc.outputs, ...DEFS.alloc.outputs] } };
     const l = cardLayout(p, defs);
     inside(l);
