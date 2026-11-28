@@ -111,7 +111,7 @@ import { inlineWordmarks } from './brand';
 import { clipText, parseClip, type Clip } from './clipboard';
 import { isGlobalTempo, patchTempo, readTempo, tempo, TEMPO_KEY, tempoNow } from './tempo';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
-import { binaryPage, deviceBudget, editorPage, encodePatch, kb, linesAdvice, overText, POLY_ROW, POLY_ROW_PARAMS, SANITY_CAPS, SLIM, toQ16, type BudgetStore } from './patchbin';
+import { binaryPage, deviceBudget, editorPage, encodePatch, kb, linesAdvice, overText, POLY_ROW, POLY_ROW_PARAMS, SANITY_CAPS, SLIM, stutilBytes, toQ16, type BudgetStore } from './patchbin';
 import { UploadGate } from './upload-gate';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
@@ -279,6 +279,8 @@ let uploadedLoad = -1;
 /** the encoded patch the FM-1 holds under Live: a structural change that leaves it the same (a comment, the layout) sends
  *  nothing (upload-gate.ts) */
 const uploadGate = new UploadGate();
+/** each Stereo utility's line bytes as the FM-1 last got them (onParam: a delay that needs another size sends the patch again) */
+const stuLines = new Map<number, number>();
 let installedLayout: string | null = null;
 /** Library > Patterns (#901), once built: it follows the patch's selected pattern and the FM-1's store */
 let patternsPane: LibraryPane | null = null;
@@ -1105,10 +1107,19 @@ const editor = new Editor($('canvas'), firstPatch, {
       return;
     }
     // a parameter set when the patch loads (ParamDef.fixed: a Delay's length, the size of its line) changes the effect
-    // memory: the budget again, and the FM-1 takes the whole patch again (it sizes the lines as it loads)
-    const pd = DEFS[editor.patch.modules.find((m) => m.id === id)?.type ?? '']?.params.find((q) => q.name === name);
+    // a parameter set when the patch loads (ParamDef.fixed: a Delay's length, the size of its line), or a Stereo utility's
+    // delay that needs another size of line (patchbin.ts stutilBytes, D-1269), changes the effect memory: the budget again,
+    // and the FM-1 takes the whole patch again (it sizes the lines as it loads)
+    const mod = editor.patch.modules.find((m) => m.id === id);
+    const pd = DEFS[mod?.type ?? '']?.params.find((q) => q.name === name);
     if (fromDevice && pd?.since !== undefined) uploadGate.raised(pd.since);   // (set there, it raised its copy, D-1041)
-    if (pd?.fixed) {
+    let resized = false;
+    if (mod?.type === 'stutil' && (name === 'dl' || name === 'dr')) {
+      const bytes = stutilBytes(mod.params);
+      resized = stuLines.get(id) !== bytes;
+      stuLines.set(id, bytes);
+    }
+    if (pd?.fixed || resized) {
       showBudget();
       if (live() && !fromDevice) queueUpload();
       queueEmu();

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Zoomed out below 40 %, cards keep their controls and drop their words.** Each row shows only its slider, selector or switch, as matryoshka-native draws a zoomed-out card. Each card's title stays readable at 12 px on screen, and shows the card's tag (VCO, ENV) when the name no longer fits. Modulation cables are faded so the sound path stands out. No card, jack or cable moves when the drawing changes ([D-1448](docs/ledger/editor.md#D-1448)). The change happens 8 % past 40 % each way, so a zoom that stops near 40 % does not flicker, and the card under the pointer stays under it ([D-1449](docs/ledger/editor.md#D-1449)).
+- **New: the Stereo utility module** (issue #1324). Split a stereo signal into its left and right for two chains of modules, join two mono signals into one stereo cable, convert to and from mid/side, and set balance, width, a side swap, phase inversion per side and a short delay per side (up to 45 ms, in milliseconds or samples). Mid/side encode then decode gives back what went in, and the module takes memory only for the delays it is saved with. Try the Library effect **split filters**, which runs left and right through their own filters. A patch with a Stereo utility is written in patch format 72 and needs firmware 1.31 ([D-1265](docs/ledger/modules.md#D-1265), [D-1045](docs/ledger/patch-format.md#D-1045)).
 
 ## 1.30.0 — 2026-11-27
 

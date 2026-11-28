@@ -5323,6 +5323,29 @@ asm('auto pan', 'Effects', (b) => {
   b.param('centre', pan, 'pan');
 });
 
+// split filters (#1324): parallel processing of L and R. A Stereo utility splits the stereo input (a mono one reaches both
+// sides), each side runs through its own filter, a low pass on the left and a band pass on the right, and a second Stereo
+// utility joins them again, with width, balance and a short delay on the right (the Haas effect)
+asm('split filters', 'Effects', (b) => {
+  const split = b.add('stutil', 0, 0);
+  const fl = b.add('filter', 1, 0, { cutoff: 700, res: 0.3 });
+  const fr = b.add('filter', 1, 1, { cutoff: 2400, res: 0.5 });
+  const join = b.add('stutil', 2, 0, { dr: 8 });
+  b.wire(split, 'l', fl, 'in');
+  b.wire(split, 'r', fr, 'in');
+  b.wire(fl, 'lp12', join, 'l');
+  b.wire(fr, 'bp', join, 'r');
+  b.input('in', split, 'in');
+  b.output('out', join, 'out');
+  b.param('left cutoff', fl, 'cutoff');
+  b.param('left res', fl, 'res');
+  b.param('right cutoff', fr, 'cutoff');
+  b.param('right res', fr, 'res');
+  b.param('width', join, 'width');
+  b.param('balance', join, 'bal');
+  b.param('right delay', join, 'dr');
+});
+
 // ---- effects built from the Follower, the Comparator, the Compressor and the Waveshaper (#661)
 
 // an envelope filter (auto-wah): the Follower's envelope of the input opens a resonant low pass, so playing harder opens it.

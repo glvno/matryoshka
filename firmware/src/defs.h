@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 60
+#define N_TYPES 61
 enum {
     T_FM1,
     T_OSC,
@@ -65,6 +65,7 @@ enum {
     T_EUCLID,
     T_EQ,
     T_DX7,
+    T_STUTIL,
 };
 
 /* fm1: Main */
@@ -1215,10 +1216,33 @@ enum {
 #define DX7_CVBASE 9
 #define DX7_NDATA 128
 
+/* stutil: Stereo util */
+#define STUTIL_I_IN 0
+#define STUTIL_I_L 1
+#define STUTIL_I_R 2
+#define STUTIL_I_P1 3
+#define STUTIL_I_P2 4
+#define STUTIL_O_OUT 0
+#define STUTIL_O_L 1
+#define STUTIL_O_R 2
+#define STUTIL_P_MODE 0
+#define STUTIL_P_BAL 1
+#define STUTIL_P_WIDTH 2
+#define STUTIL_P_SWAP 3
+#define STUTIL_P_DL 4
+#define STUTIL_P_DR 5
+#define STUTIL_P_INVERT 6
+#define STUTIL_P_UNIT 7
+#define STUTIL_NIN 5
+#define STUTIL_NOUT 3
+#define STUTIL_NPAR 8
+#define STUTIL_CVBASE 3
+#define STUTIL_NDATA 0
+
 #define DEF_STEREO(t) ((t) == T_VCA || (t) == T_FILTER || (t) == T_MIXER || (t) == T_SHAPE || (t) == T_XFADE || (t) == T_VOWEL || (t) == T_PHASER || (t) == T_CRUSH || (t) == T_LADDER || (t) == T_DYN || (t) == T_COMB || (t) == T_MODAL || (t) == T_SHIFT || (t) == T_LPG || (t) == T_LIMIT || (t) == T_EQ)   /* a type that can run in stereo mode */
 #define DEF_EFFECT(t) ((t) == T_FILTER || (t) == T_DELAY || (t) == T_REVERB || (t) == T_SHAPE || (t) == T_CHORUS || (t) == T_PAN || (t) == T_VOWEL || (t) == T_PHASER || (t) == T_CRUSH || (t) == T_LADDER || (t) == T_DYN || (t) == T_GRAIN || (t) == T_COMB || (t) == T_MODAL || (t) == T_SHIFT || (t) == T_LIMIT || (t) == T_EQ)   /* an audio effect type (fx-drawer.ts effectKind): SEL switches a canvas device of one (pages_ui.c fx_sel_effect, D-947) */
-#define DEF_RIN(t) ((t) == T_OUTPUT ? OUTPUT_I_R : (t) == T_DELAY ? DELAY_I_R : (t) == T_REVERB ? REVERB_I_R : (t) == T_CHORUS ? CHORUS_I_R : -1)   /* the right input of the pair whose left is input 0, -1 none */
-#define DEF_ROUT(t) ((t) == T_PAN ? PAN_O_R : (t) == T_DELAY ? DELAY_O_R : (t) == T_REVERB ? REVERB_O_R : (t) == T_CHORUS ? CHORUS_O_R : -1)   /* the right output of the pair whose left is output 0, -1 none */
+#define DEF_RIN(t) ((t) == T_OUTPUT ? OUTPUT_I_R : (t) == T_DELAY ? DELAY_I_R : (t) == T_REVERB ? REVERB_I_R : (t) == T_CHORUS ? CHORUS_I_R : (t) == T_STUTIL ? STUTIL_I_R : -1)   /* the right input of the pair whose left is input 0, -1 none */
+#define DEF_ROUT(t) ((t) == T_PAN ? PAN_O_R : (t) == T_DELAY ? DELAY_O_R : (t) == T_REVERB ? REVERB_O_R : (t) == T_CHORUS ? CHORUS_O_R : (t) == T_STUTIL ? STUTIL_O_R : -1)   /* the right output of the pair whose left is output 0, -1 none */
 
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
@@ -1290,6 +1314,7 @@ static const int32_t ANALOG_SAWC_T[129] = {1073741824, 1071647400, 1069558421, 1
 #define LIMIT_KA 109857605   /* its attack with lookahead, Q30: 99.9 % of a step in LIMIT_AHEAD samples */
 #define EUCLID_STEPS_MAX 32   /* Euclid's longest pattern, steps (#1018) */
 static const uint8_t EUCLID_RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};   /* its rates on the engine's clock: clock ticks a step */
+#define STU_DELAY_MAX 45   /* the Stereo utility's longest delay, ms (#1324) */
 #define EQ_LIM 67108864.0f   /* the EQ's states and output are held to +-this, in steps of Q16 (#1107) */
 #define EQ_SHELF_Q 2.0f   /* a shelf's q is held to this */
 #define EQ_SHELF_TOP 2.19911486f   /* a shelf's third matched level is where its zeros are, at most this (radians a sample) */
@@ -2021,6 +2046,19 @@ static const uint8_t DX7_LOG[] = {0, 0, 0, 0, 0, 0};
 static const char *const DX7_UNIT[] = {"", "CT", "", "", "", ""};
 static const char *const DX7_CH4[] = {"PITCH", "AMP", "PITCH+AMP", "EG BIAS", "PITCH+EG", "AMP+EG", "ALL", 0};
 static const char *const *const DX7_CH[] = {0, 0, 0, 0, DX7_CH4, 0};
+static const char *const STUTIL_INNAMES[] = {"IN", "L", "R", "P1", "P2"};
+static const int32_t STUTIL_MIN[] = {0, -65536, 0, 0, 0, 0, 0, 0};
+static const int32_t STUTIL_MAX[] = {131072, 65536, 131072, 65536, 2949120, 2949120, 196608, 65536};
+static const int32_t STUTIL_DEF[] = {0, 0, 65536, 0, 0, 0, 0, 0};
+static const int32_t STUTIL_INC[] = {65536, 1311, 1311, 65536, 29491, 29491, 65536, 65536};
+static const int32_t STUTIL_STEP[] = {65536, 655, 655, 65536, 655, 655, 65536, 65536};
+static const char *const STUTIL_PN[] = {"MODE", "BAL", "WIDTH", "SWAP", "DL", "DR", "INVERT", "UNIT"};
+static const uint8_t STUTIL_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0};
+static const char *const STUTIL_UNIT[] = {"", "", "", "", "MS", "MS", "", ""};
+static const char *const STUTIL_CH0[] = {"L/R", "ENCODE", "DECODE", 0};
+static const char *const STUTIL_CH6[] = {"OFF", "L", "R", "L+R", 0};
+static const char *const STUTIL_CH7[] = {"MS", "SMP", 0};
+static const char *const *const STUTIL_CH[] = {STUTIL_CH0, 0, 0, ADSR_CH4, 0, 0, STUTIL_CH6, STUTIL_CH7};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0, FM1_STEP},   /* fm1 */
@@ -2083,15 +2121,16 @@ static const def_t DEFS[N_TYPES] = {
     {EUCLID_NIN, EUCLID_NOUT, EUCLID_NPAR, 0, EUCLID_CVBASE, -1, EUCLID_NDATA, 0, EUCLID_MIN, EUCLID_MAX, EUCLID_DEF, EUCLID_INC, "EUCLID", EUCLID_PN, EUCLID_INNAMES, EUCLID_LOG, EUCLID_UNIT, EUCLID_CH, 0, 0, EUCLID_STEP},   /* euclid */
     {EQ_NIN, EQ_NOUT, EQ_NPAR, 0, EQ_CVBASE, 0, EQ_NDATA, 1, EQ_MIN, EQ_MAX, EQ_DEF, EQ_INC, "EQ", EQ_PN, EQ_INNAMES, EQ_LOG, EQ_UNIT, EQ_CH, 0, 0, EQ_STEP},   /* eq */
     {DX7_NIN, DX7_NOUT, DX7_NPAR, 0, DX7_CVBASE, -1, DX7_NDATA, 1, DX7_MIN, DX7_MAX, DX7_DEF, DX7_INC, "DX7", DX7_PN, DX7_INNAMES, DX7_LOG, DX7_UNIT, DX7_CH, 0, 0, DX7_STEP},   /* dx7 */
+    {STUTIL_NIN, STUTIL_NOUT, STUTIL_NPAR, 0, STUTIL_CVBASE, 0, STUTIL_NDATA, 7, STUTIL_MIN, STUTIL_MAX, STUTIL_DEF, STUTIL_INC, "STEREO UTIL", STUTIL_PN, STUTIL_INNAMES, STUTIL_LOG, STUTIL_UNIT, STUTIL_CH, 0, 0, STUTIL_STEP},   /* stutil */
 };
 /* one copy of each type, a block: what the two-core plan balances (engine.c sched_build, #802), in 64 cycles: its median
  * time measured on the test rig (web/src/plan-costs.json; cpu.ts planCosts rig) */
-static const uint16_t DEF_COST[N_TYPES] = {84, 147, 110, 56, 10, 20, 63, 30, 241, 51, 145, 939, 31, 59, 80, 38, 413, 141, 273, 177, 110, 36, 40, 29, 49, 43, 242, 163, 43, 234, 130, 54, 46, 585, 393, 441, 834, 32, 9, 1, 14, 125, 10, 47, 211, 36, 20, 220, 10, 236, 16, 83, 116, 39, 4, 224, 223, 38, 135, 114};
+static const uint16_t DEF_COST[N_TYPES] = {84, 147, 110, 56, 10, 20, 63, 30, 241, 51, 145, 939, 31, 59, 80, 38, 413, 141, 273, 177, 110, 36, 40, 29, 49, 43, 242, 163, 43, 234, 130, 54, 46, 585, 393, 441, 834, 32, 9, 1, 14, 125, 10, 47, 211, 36, 20, 220, 10, 236, 16, 83, 116, 39, 4, 224, 223, 38, 135, 114, 116};
 /* a module bypassed when the patch loads, in the same units: passing an input through (D-1104) */
 #define DEF_COST_BYPASS 23u
 /* the same from web/src/cpu-costs.json: its run and parameter inputs, and its bypass (cpu.ts planCosts table) */
-static const uint16_t DEF_TCOST[N_TYPES] = {14, 77, 33, 52, 7, 8, 32, 8, 320, 9, 109, 1216, 2, 39, 94, 36, 328, 176, 325, 153, 87, 34, 34, 39, 47, 59, 273, 220, 52, 161, 103, 44, 27, 466, 276, 446, 682, 10, 13, 1, 11, 53, 7, 15, 131, 33, 13, 174, 8, 10, 11, 65, 92, 11, 3, 177, 176, 29, 135, 114};
+static const uint16_t DEF_TCOST[N_TYPES] = {14, 77, 33, 52, 7, 8, 32, 8, 320, 9, 109, 1216, 2, 39, 94, 36, 328, 176, 325, 153, 87, 34, 34, 39, 47, 59, 273, 220, 52, 161, 103, 44, 27, 466, 276, 446, 682, 10, 13, 1, 11, 53, 7, 15, 131, 33, 13, 174, 8, 10, 11, 65, 92, 11, 3, 177, 176, 29, 135, 114, 116};
 #define DEF_TCOST_BYPASS 18u
 /* Gate-port kinds for pattern authorization, independent of environment grouping (bit n: port n is a gate) */
-static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u,4u,0u,3u,0u,2u};
-static const uint32_t PRESET_GATE_OUT[] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u,0u,0u,7u,0u,0u};
+static const uint32_t PRESET_GATE_IN[] = {0u,4u,3u,0u,0u,0u,9u,0u,0u,0u,2u,0u,0u,0u,0u,1u,2u,4u,0u,3u,3u,2u,0u,1u,0u,0u,0u,0u,0u,0u,0u,0u,3u,2u,0u,0u,0u,0u,4u,0u,2u,3u,0u,0u,8u,1u,0u,5u,0u,0u,7u,0u,0u,0u,0u,4u,0u,3u,0u,2u,0u};
+static const uint32_t PRESET_GATE_OUT[] = {65290u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,0u,2u,15u,0u,0u,1u,0u,0u,0u,0u,0u,0u,0u,64u,15u,0u,0u,0u,0u,978u,0u,978u,0u,1u,0u,21845u,0u,0u,510u,0u,0u,16u,767u,7u,0u,0u,0u,0u,0u,7u,0u,0u,0u};

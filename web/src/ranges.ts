@@ -24,6 +24,13 @@ const PITCH = '1 per octave, 0 = middle C (C4)';
 const UNIT = '0..1';
 const BIPOLAR = '−1..1';
 const FOLLOWS = 'audio, about the level of its input';
+/** a Stereo utility's side as its mode makes it (#1324) */
+const stutilRange = (side: 'left' | 'right') => (p: Params): string => {
+  const mode = Math.round(get(p, 'mode', 0));
+  if (mode === 1) return `audio: ${side === 'left' ? 'mid, L + R' : 'side, L − R'}: up to twice its inputs`;
+  if (mode === 2) return `audio: ${side === 'left' ? 'L = (M + S) / 2' : 'R = (M − S) / 2'}, about the level of its inputs`;
+  return `${FOLLOWS} (its ${side} side)`;
+};
 /** the outputs of a Voicing / Part (one voice's note) */
 const VOICE: Record<string, Range> = {
   pitch: `${PITCH}; bend adds up to ±2 semitones`,
@@ -218,6 +225,7 @@ export const OUTPUT_RANGES: Record<string, Record<string, Range>> = {
       return `audio: one carrier at output level 99 peaks at ${sym(0.5 * l)}, all six at ${sym(3 * l)}; held to ${sym(4 * l)} (±4 × level)`;
     },
   },
+  stutil: { out: stutilRange('left'), l: stutilRange('left'), r: stutilRange('right') },
 };
 
 /** the range an output carries, worked out from the module's parameters now ('' for an output without one) */

@@ -107,7 +107,7 @@ import { flipPlan } from './ab';
 import { CANDIDATE_LIMIT, sameVersion, Snapshots, tweakBody, type CandidateSet, type Deleted, type Snapshot } from './snapshots';
 import { isGlobalTempo, patchTempo, tempo } from './tempo';
 import { rowOrder } from './structure';
-import { PAIR_LEFT, runsStereo, setStereo, stereoModule, stereoProblem } from './stereo';
+import { cableSides, runsStereo, setStereo, stereoJack, stereoModule, stereoProblem } from './stereo';
 import type { Card } from './quick-patch';
 import { Dx7Card } from './dx7-view';
 import { EXCLUDED_TYPES,
@@ -4687,8 +4687,8 @@ export class Editor {
     dot.dataset.mod = String(m.id);
     dot.dataset.port = p.name;
     dot.dataset.dir = dir;
-    // a stereo module's jacks carry both sides (#1141): drawn as double rings
-    if (runsStereo(this.patch, m)) dot.classList.add('stereo');
+    // a stereo module's jacks carry both sides (#1141), as a Stereo utility's `in` and `out` do (#1324): double rings
+    if (runsStereo(this.patch, m) || stereoJack(m.type, p.name)) dot.classList.add('stereo');
     dot.title = `${longName(m.type, p.name)} (${p.kind})`;
     dot.addEventListener('pointerdown', (e) => this.beginDrag(e, dot));
     this.ports.set(this.key(m.id, p.name, dir), dot);
@@ -8701,15 +8701,13 @@ export class Editor {
   /** the cables' L / R / L+R marks (#1141), made again with the cables */
   private cableMarks: SVGTextElement[] = [];
 
-  /** what a cable's mark says (#1141): its side on a side cable; L+R on a stereo cable into a mono jack, which averages the
-   *  two (C2), except the left jack of an input pair whose right jack is free (the sides go to the two jacks) */
-  private cableMark(c: Cable): string | null {
-    if (c.side) return c.side.toUpperCase();
-    if (!stereoModule(this.patch, c.from.module) || stereoModule(this.patch, c.to.module)) return null;
-    const type = this.patch.modules.find((m) => m.id === c.to.module)?.type ?? '';
-    const paired = PAIR_LEFT[type] === c.to.port && DEFS[type].inputs.some((q) => q.name === 'r') &&
-      !this.patch.cables.some((x) => x.to.module === c.to.module && x.to.port === 'r');
-    return paired ? null : 'L+R';
+  /** what a cable's mark says and whether it sits by the input jack (#1141): its side on a side cable; L+R by the jack on a
+   *  stereo cable into a mono jack, which averages the two (C2); L by the jack on a Stereo utility's stereo outlet into a
+   *  mono jack, which takes its left (#1324); none where the sides go on (stereo.ts cableSides) */
+  private cableMark(c: Cable): { text: string; jack: boolean } | null {
+    if (c.side) return { text: c.side.toUpperCase(), jack: false };
+    const sides = cableSides(this.patch, c);
+    return sides === 'avg' ? { text: 'L+R', jack: true } : sides === 'left' ? { text: 'L', jack: true } : null;
   }
 
   /** Outside cables end at side jacks; internal branches are editable input-to-parameter routes. */
@@ -8746,8 +8744,9 @@ export class Editor {
       // Alt-click on a cable: listen to its source (#939) instead of disconnecting it
       const listen = (e: MouseEvent): boolean => !!cable && e.altKey && (this.toggleListen(cable.from), true);
       const path = document.createElementNS(SVGNS, 'path');
-      // (#1141) a cable from a stereo module carries both sides: a double line
-      const stereo = !!cable && !cable.side && stereoModule(this.patch, cable.from.module);
+      // (#1141) a cable that carries both sides, or averages them into a mono jack: a double line (stereo.ts cableSides)
+      const sides = cable && cableSides(this.patch, cable);
+      const stereo = sides === 'both' || sides === 'avg';
       path.setAttribute('class', `cable ${kind}${internal ? ' alias' : ''}${remove ? '' : ' fixed'}${stereo ? ' stereo' : ''}`);
       path.setAttribute('aria-label', title);
       if (remove) {
@@ -8787,9 +8786,9 @@ export class Editor {
         text.setAttribute('class', 'cable-mark');
         const along = document.createElementNS(SVGNS, 'textPath');
         along.setAttribute('href', `#${path.id}`);
-        along.setAttribute('startOffset', mark === 'L+R' ? '85%' : '50%');
+        along.setAttribute('startOffset', mark.jack ? '85%' : '50%');
         along.setAttribute('text-anchor', 'middle');
-        along.textContent = mark;
+        along.textContent = mark.text;
         text.append(along);
         layer.append(text);
         this.cableMarks.push(text);

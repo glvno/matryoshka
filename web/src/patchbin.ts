@@ -138,7 +138,7 @@ import { chainedHarmonizer, keyRouteError } from './key-routing';
 // Type indices are the position in TYPE_ORDER (append only: the firmware has the same list in defs.h).
 // Port indices are positions in ModuleDef.outputs / inputs (explicit ports first, then the `<param>_cv` inputs).
 
-import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DRUM_MAP_DEFAULT, DRUM_ROWS, drumRowName, LIMIT_AHEAD, PANEL_BUTTONS, RIGHT_IN } from './modules';
+import { DEFS, delayLine, DELAY_LENGTH_DEFAULT, DEVICE_SR, DRUM_MAP_DEFAULT, DRUM_ROWS, drumRowName, LIMIT_AHEAD, PANEL_BUTTONS, RIGHT_IN, stuLineLen } from './modules';
 import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } from './buttons';
 import { defaultMap, EDITOR_ONLY, flawOf, hasMorph, isBipolar, MAX_MODULES, MAX_PARTS, MODULES_1_10, MODULES_1_26, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, TRACK_NAME_MAX, trackName, type ModuleInst, type ParamDef, type Patch } from './patch';
 import { countBytes, hasTiming, noteWords, patternWords, TRACK_NOTES_1_26, wordCount } from './track';
@@ -164,7 +164,7 @@ export const GROUP_REC = 4 + 5 * MAX_PARTS + 4;
 /** bytes of the panel section before format 64 (engine.h ENG_PANEL_BYTES): two masks and the labels (since: panelBytes) */
 export const PANEL_BYTES = 4 + PANEL_LABEL_KEYS.length * PANEL_LABEL_MAX;
 export const MAX_CABLES = 255;
-export const VERSION = 71; // 71 (1.30, FORMAT_1_30): the DX7 module type (#1338), its packed voice the record's data, written only by a patch with a DX7 (ModuleDef.since, typesSince); 70 (1.29, FORMAT_1_29): the Freq shifter's `pm` input and `pm` parameter appended (any signal as a phase modulation carrier, #1337), written only by a patch that cables that input (PortDef.since, cabledSince) or turns that parameter (ParamDef.since); 69 (1.28.1, FORMAT_1_28_1): the Harmonizer's `retrig` appended (#1329), written only by a patch that turns it on (ParamDef.since); 68 (1.28, FORMAT_1_28): the Harmonizer's `invkeys` appended (the inversion keys, #1311), written only by a patch that turns it on (ParamDef.since); 67 (1.27, FORMAT_1_27): more than 128 modules (MAX_MODULES 254, #1286; a device's member count past 127, MEMBER_WIDE), written only by a patch that uses it (uses127); 66 (1.26.3, FORMAT_RACK): flag bit 14 is the FX rack, the patch's effects and FX drawers (rackRecord, #1214), written only by a patch with one; 65 (the release after 1.22, FORMAT_1_23): the MIDI learn mappings, the binary's last section (mapRecord, #1067), written only by a patch with MIDI learn; 64 (the release after 1.21, FORMAT_1_22): the EQ module (eq, #1107) appended after the Euclid, written only by patches that use it (ModuleDef.since); and the panel labels by length, the cables grouped by the module they go into, only the Drum map row names off their default (SLIM, D-1025), for a patch that fits no older format; 63 (release 1.20, FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid module (euclid, #1018) appended after the Limiter, Steps notes' timing words, ratchets and micro timing (#675, #677); 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14 (no longer written: the editor turns a master FX bus into FX drawers, fx-legacy.ts); ordinary patches retain their lowest format
+export const VERSION = 72; // 72 (1.31, FORMAT_1_31): the Stereo utility module type (#1324), written only by a patch with one (ModuleDef.since, typesSince); 71 (1.30, FORMAT_1_30): the DX7 module type (#1338), its packed voice the record's data, written only by a patch with a DX7 (ModuleDef.since, typesSince); 70 (1.29, FORMAT_1_29): the Freq shifter's `pm` input and `pm` parameter appended (any signal as a phase modulation carrier, #1337), written only by a patch that cables that input (PortDef.since, cabledSince) or turns that parameter (ParamDef.since); 69 (1.28.1, FORMAT_1_28_1): the Harmonizer's `retrig` appended (#1329), written only by a patch that turns it on (ParamDef.since); 68 (1.28, FORMAT_1_28): the Harmonizer's `invkeys` appended (the inversion keys, #1311), written only by a patch that turns it on (ParamDef.since); 67 (1.27, FORMAT_1_27): more than 128 modules (MAX_MODULES 254, #1286; a device's member count past 127, MEMBER_WIDE), written only by a patch that uses it (uses127); 66 (1.26.3, FORMAT_RACK): flag bit 14 is the FX rack, the patch's effects and FX drawers (rackRecord, #1214), written only by a patch with one; 65 (the release after 1.22, FORMAT_1_23): the MIDI learn mappings, the binary's last section (mapRecord, #1067), written only by a patch with MIDI learn; 64 (the release after 1.21, FORMAT_1_22): the EQ module (eq, #1107) appended after the Euclid, written only by patches that use it (ModuleDef.since); and the panel labels by length, the cables grouped by the module they go into, only the Drum map row names off their default (SLIM, D-1025), for a patch that fits no older format; 63 (release 1.20, FORMAT_1_20): the Arpeggiator's `swing` appended and its bar rates past 1/32 (#1010, #1012), the Euclid module (euclid, #1018) appended after the Limiter, Steps notes' timing words, ratchets and micro timing (#675, #677); 62 (release 1.19, FORMAT_1_19): the 1.19 module types, the Low pass gate (lpg, #1018) and the Limiter (limit, #1019), appended after the Harmonizer, written only by patches that use them (ModuleDef.since); 61: a cable into a Part's priority input (#976); 60: trig conditions, a note's condition word after it (#674); 59: stored pattern links, flag bit 15 (#901); 58: the Oscillator's `phase` appended (where sync restarts the cycle, #691); 57: the ADSR's `ads` appended (the SEM's release at the decay's time, D-745); 56: Env L/R `curve` appended (a linear fall, #689); 55: optional graph-proven master FX record, flag bit 14 (no longer written: the editor turns a master FX bus into FX drawers, fx-legacy.ts); ordinary patches retain their lowest format
 /**
  * The lowest format the encoder writes: a patch that uses no parameter appended after it (ParamDef.since past it: a value
  * off its default on either morph side, a pin, macro range, input route or card row on it) is written in this format, its
@@ -180,7 +180,7 @@ export const WRITE_FLOOR = 46;
  * 63: the 1.20 module types, FORMAT_1_20; format 64: the EQ module, and the shorter panel labels, cables and Drum map row
  * names when the patch would not fit otherwise, FORMAT_1_22, SLIM; format 66: the FX rack, FORMAT_RACK; format 67: the
  * 1.27 things, FORMAT_1_27, uses127); every other format past WRITE_FLOOR appends parameters (ParamDef.since) */
-export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase', 59: 'stored pattern links', 60: 'trig conditions', 61: 'note priority on a cable', 62: 'the 1.19 modules', 63: 'the 1.20 features', 64: 'the EQ module and the shorter panel labels, cables and row names', 65: 'MIDI learn mappings', 66: 'FX drawers', 67: 'more than 128 modules', 71: 'the DX7 module' };
+export const SECTION_FORMATS: Record<number, string> = { 48: 'patterns and songs', 50: 'notes tied across the loop point', 51: 'counted records', 52: 'the Harmonizer module', 53: 'chained Harmonizer keys routes', 54: 'factory pattern origins', 55: 'master FX stages', 56: 'the linear envelope fall', 57: 'the ADS envelope', 58: 'the oscillator start phase', 59: 'stored pattern links', 60: 'trig conditions', 61: 'note priority on a cable', 62: 'the 1.19 modules', 63: 'the 1.20 features', 64: 'the EQ module and the shorter panel labels, cables and row names', 65: 'MIDI learn mappings', 66: 'FX drawers', 67: 'more than 128 modules', 71: 'the DX7 module', 72: 'the Stereo utility module' };
 /** the flag (u16 at offset 6) of the P-locks section (format 49, #524) */
 export const FLAG_LOCKS = 2048;
 
@@ -401,6 +401,9 @@ export const FORMAT_1_29 = 70;
 /** The format of 1.30 (D-1040's rule, #1338): the DX7 module type (ModuleDef.since), its voice in the record's data. Only a
  *  patch with a DX7 is written in it (typesSince); it has format 67's layout */
 export const FORMAT_1_30 = 71;
+/** The format of 1.31 (D-1040's rule, #1324): the Stereo utility module type (ModuleDef.since). Only a patch with one is
+ *  written in it (typesSince); it has format 67's layout */
+export const FORMAT_1_31 = 72;
 /** the newest format that added the type of a module this patch has (ModuleDef.since), 0 when none (`dev`: its device form) */
 export const typesSince = (dev: Patch): number => Math.max(0, ...dev.modules.map((m) => DEFS[m.type]?.since ?? 0));
 /** bit 6 of a record's count byte (format 67, #1141; engine.h ENG_REC_STEREO): the module runs in stereo mode */
@@ -1419,7 +1422,7 @@ const lineBytes = (n: number): number => (n + 3) & ~3;
 /** the lines of the fixed-size line modules, bytes (engine.c): a string or comb line per copy (STR_LEN), the granular's 1 s
  * and its grain records (grain_line_t), the reverb's eight lines, allpasses and pre-delay (RV_LEN) and its ring of the last
  * block's inputs (RV_MEM, D-1103: 128 int32), the chorus's (CH_LEN), the Limiter's lookahead (LIMIT_AHEAD int32), a DX7
- * copy's voice state (dx7.h dx7_t, 1,328 bytes) */
+ * copy's voice state (dx7.h dx7_t, 1,328 bytes). A Stereo utility's lines follow its saved delays: stutilBytes */
 export const LINES = {
   string: lineBytes(2 * 1104), grain: lineBytes(2 * 44118 + 8 * 24), reverb: lineBytes(2 * 8074 + 4 * 128), chorus: lineBytes(2 * 927),
   limit: lineBytes(4 * LIMIT_AHEAD), dx7: lineBytes(1328),
@@ -1470,9 +1473,12 @@ export const overText = (i: BudgetItem): string => (i.key === 'cpu' ? `CPU ${i.u
   : i.key === 'memory' ? `Memory ${kb(i.used)} of ${kb(i.max)} KB${i.used <= i.max ? ' (the lines do not fit what is left)' : ''}` : `${i.used} ${i.label} of ${i.max}`);
 
 /** the types whose modules take lines from the FM-1's memory */
-export const LINE_TYPES = ['delay', 'string', 'comb', 'grain', 'reverb', 'chorus', 'limit', 'dx7'];
+export const LINE_TYPES = ['delay', 'string', 'comb', 'grain', 'reverb', 'chorus', 'limit', 'dx7', 'stutil'];
 /** the line of each fixed-size line type, bytes (the comb uses a string line) */
 const FIXED_LINE: Record<string, number> = { string: LINES.string, comb: LINES.string, grain: LINES.grain, reverb: LINES.reverb, chorus: LINES.chorus, limit: LINES.limit, dx7: LINES.dx7 };
+/** a Stereo utility's two delay lines, bytes, for its saved delays (modules.ts stuLineLen; engine.c stu_len): 0 when both
+ *  are 0, so it then takes no line */
+export const stutilBytes = (params: Record<string, number>): number => lineBytes(8 * stuLineLen(params.dl ?? 0, params.dr ?? 0, DEVICE_SR));
 
 /**
  * Where the FM-1 puts lines of these sizes (bytes), as engine.c line_place does when a patch loads: the largest first (of
@@ -1557,7 +1563,8 @@ function linesOf(p: Patch, ninst: (id: number) => number, pool: PoolUse): LineBu
   const sizes: number[] = [];
   for (const m of p.modules) {
     if (!LINE_TYPES.includes(m.type)) continue;
-    const one = m.type === 'delay' ? delayBytes(m.params.length ?? DELAY_LENGTH_DEFAULT) : FIXED_LINE[m.type];
+    const one = m.type === 'delay' ? delayBytes(m.params.length ?? DELAY_LENGTH_DEFAULT) : m.type === 'stutil' ? stutilBytes(m.params) : FIXED_LINE[m.type];
+    if (!one) continue;   // (a Stereo utility without delays: no line)
     const n = ninst(m.id);
     for (let k = 0; k < n; k++) sizes.push(one);
     modules.push({ id: m.id, type: m.type, copies: n, bytes: one * n });

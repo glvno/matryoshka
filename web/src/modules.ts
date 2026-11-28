@@ -5190,7 +5190,123 @@ export function dx7Voice(state: unknown, packed: Uint8Array): void {
 /** for the idle-part rule (engine.ts partQuiet, engine.c part_quiet): its gate is low and its carriers have finished */
 export const dx7Done = (state: unknown): boolean => dx7Quiet((state as Dx7State).s);
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm, lpg, limit, euclid, eq, dx7];
+/** the Stereo utility's modes (#1324): its two sides as they come, mid/side encode, mid/side decode */
+export const STU_MODES = ['L/R', 'encode', 'decode'];
+/** which of its sides it inverts, after the modes (bit 0 the left, bit 1 the right) */
+export const STU_INVERT = ['off', 'L', 'R', 'L+R'];
+/** the longest delay of a side, ms. Each side's line holds what the module's saved delays need, no more: a power of two of
+ * samples over the longer of `dl` and `dr` (and the sample the interpolation reads past it), none when both are 0
+ * (stuLineLen; engine.c stu_len sizes it so when the patch loads). Both lines, int32, are one line of 8 x that many bytes */
+export const STU_DELAY_MAX = 45;
+/** samples per side of a Stereo utility's lines for these saved delays (ms) at rate `sr`, 0 for none */
+export function stuLineLen(dl: number, dr: number, sr: number): number {
+  const q = Math.floor((Math.max(0, Math.min(STU_DELAY_MAX * 65536, q16s(Math.max(dl, dr)))) * sr) / 1000);
+  return q ? 2 ** Math.ceil(Math.log2((q >> 16) + 2)) : 0;
+}
+interface StuState { l: Int32Array; r: Int32Array; w: number }
+/** a value in Q16 as engine.c holds it (signals and effective parameters), and engine.c's mul16 */
+const q16s = (x: number): number => Math.max(-0x80000000, Math.min(0x7fffffff, Math.round(x * 65536)));
+const mul16s = (a: number, b: number): number => Math.floor((a * b) / 65536);
+/**
+ * Stereo utility (#1324): split, merge, mid/side, balance, width, swap, invert and a short delay per side, in Q16 integers
+ * as engine.c m_stutil computes them (so both engines give the same samples). Its left side is `in`'s left (or a mono
+ * cable into `in`) plus `l`; its right side is `in`'s right (or the mono cable) plus `r`: feeds.ts sends both into the `r`
+ * input buffer (a cable into `in` feeds `r` too), so the right side is the `r` input alone. Out: `out` (a stereo outlet, its
+ * right side the `r` output: modules.ts RIGHT_OUT), `l` and `r`.
+ *
+ * swap exchanges the sides first. L/R: width scales the side part, (L - R), around the mid; balance lowers one side.
+ * encode: M = (L + R) / 2, S = (L - R) / 2 (rounded down), then width on S, then balance on M and S. decode: balance on M
+ * and S, width on S, then L = M + S, R = M - S: encode then decode gives back L and R, the left one step of Q16 lower where
+ * L + R is odd. Then invert, then each side's delay (linear interpolation between two samples), held to its line.
+ */
+const stutil: ModuleImpl<StuState> = {
+  def: {
+    type: 'stutil',
+    label: 'Stereo util',
+    since: 72,
+    inputs: [audio('in'), audio('l'), audio('r')],
+    outputs: [audio('out'), audio('l'), audio('r')],
+    params: [
+      param('mode', 0, STU_MODES.length - 1, 0, { step: 1, choices: STU_MODES }),
+      param('bal', -1, 1, 0, { step: 0.01 }),
+      param('width', 0, 2, 1, { step: 0.01 }),
+      param('swap', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
+      param('dl', 0, STU_DELAY_MAX, 0, { unit: 'ms', step: 0.01, altText: { when: 'unit', text: (v) => `${((v * DEVICE_SR) / 1000).toFixed(1)} smp` } }),
+      param('dr', 0, STU_DELAY_MAX, 0, { unit: 'ms', step: 0.01, altText: { when: 'unit', text: (v) => `${((v * DEVICE_SR) / 1000).toFixed(1)} smp` } }),
+      param('invert', 0, STU_INVERT.length - 1, 0, { step: 1, choices: STU_INVERT }),
+      param('unit', 0, 1, 0, { step: 1, choices: ['ms', 'smp'], toggle: true }),
+    ],
+  },
+  init: () => ({ l: new Int32Array(0), r: new Int32Array(0), w: 0 }),
+  process(c, s) {
+    const n = c.n, p = c.p, inA = c.inp.in, inL = c.inp.l, inR = c.inp.r, o = c.out;
+    const mode = (q16s(p.mode ?? 0) + 32768) >> 16, swap = q16s(p.swap ?? 0) >= 32768, inv = (q16s(p.invert ?? 0) + 32768) >> 16;
+    const b = Math.max(-65536, Math.min(65536, q16s(p.bal ?? 0))), w = Math.max(0, Math.min(131072, q16s(p.width ?? 1)));
+    const gx = b > 0 ? 65536 - b : 65536, gy = b < 0 ? 65536 + b : 65536;
+    const delay = (ms: number): number => Math.floor((Math.max(0, Math.min(STU_DELAY_MAX * 65536, q16s(ms))) * c.sr) / 1000);
+    const len = s.l.length, top = len ? ((len - 2) << 16) | 0xffff : 0;   // (the longest delay its line holds)
+    const dL = Math.min(top, delay(p.dl ?? 0)), dR = Math.min(top, delay(p.dr ?? 0)), mask = len - 1, lineL = s.l, lineR = s.r;
+    const read = (line: Int32Array, at: number, d: number): number => {
+      const y0 = line[(at - (d >> 16)) & mask];
+      return y0 + mul16s(line[(at - (d >> 16) - 1) & mask] - y0, d & 0xffff);
+    };
+    let at = s.w;
+    for (let i = 0; i < n; i++) {
+      let a = q16s(inA[i]) + q16s(inL[i]), z = q16s(inR[i]), x: number, y: number;
+      if (swap) [a, z] = [z, a];
+      if (mode === 1) {
+        x = mul16s((a + z) >> 1, gx);
+        y = mul16s(mul16s((a - z) >> 1, w), gy);
+      } else if (mode === 2) {
+        const m = mul16s(a, gx), sd = mul16s(mul16s(z, gy), w);
+        x = m + sd;
+        y = m - sd;
+      } else {
+        x = a;
+        y = z;
+        if (w !== 65536) {
+          const m = x + y, sd = mul16s(x - y, w);
+          x = (m + sd) >> 1;
+          y = (m - sd) >> 1;
+        }
+        x = mul16s(x, gx);
+        y = mul16s(y, gy);
+      }
+      if (inv & 1) x = -x;
+      if (inv & 2) y = -y;
+      if (len) {
+        lineL[at] = x;
+        lineR[at] = y;
+        x = read(lineL, at, dL);
+        y = read(lineR, at, dR);
+        at = (at + 1) & mask;
+      }
+      o.out[i] = o.l[i] = x / 65536;
+      o.r[i] = y / 65536;
+    }
+    s.w = at;
+  },
+};
+/** a Stereo utility's lines for its saved delays (engine.ts, at load and when a delay row changes; the FM-1 sizes them as
+ *  the patch loads, and the editor sends the patch again when the size changes): a new size starts empty lines */
+export function stutilSize(state: unknown, params: Record<string, number>, sr: number): void {
+  const s = state as StuState, len = stuLineLen(params.dl ?? 0, params.dr ?? 0, sr);
+  if (len === s.l.length) return;
+  s.l = new Int32Array(len);
+  s.r = new Int32Array(len);
+  s.w = 0;
+}
+/** a bypassed Stereo utility passes its sides through (engine.c m_bypass): left = in + l (its `out` and `l`), right = r */
+export function stutilThru(inp: Record<string, Float32Array>, out: Record<string, Float32Array>, n: number): void {
+  for (let i = 0; i < n; i++) {
+    const x = (q16s(inp.in[i]) + q16s(inp.l[i])) / 65536, y = q16s(inp.r[i]) / 65536;
+    if (out.out) out.out[i] = x;
+    if (out.l) out.l[i] = x;
+    if (out.r) out.r[i] = y;
+  }
+}
+
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp, shreg, comp, range, matrix, harm, lpg, limit, euclid, eq, dx7, stutil];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an
@@ -5231,10 +5347,11 @@ shift.def.inputs.push({ ...audio('pm'), since: 70 });
  * Jack pairs (#1141): per type, the right jack of the pair whose left jack is the type's first input (RIGHT_IN) or first
  * output (RIGHT_OUT). A stereo cable into the left input while the right one has no cable feeds L to the left and R to the
  * right; a cable from the left output into a stereo module carries the pair (engine.ts feeds; engine.c cab_feed, from
- * defs.h DEF_RIN / DEF_ROUT). Keep in step with export-defs.ts.
+ * defs.h DEF_RIN / DEF_ROUT). Keep in step with export-defs.ts. The Stereo utility's pairs (#1324) are its stereo jacks:
+ * `in` with `r`, `out` with `r` (feeds.ts has their own rules).
  */
-export const RIGHT_IN: Readonly<Record<string, string>> = { output: 'r', delay: 'r', reverb: 'r', chorus: 'r' };
-export const RIGHT_OUT: Readonly<Record<string, string>> = { pan: 'r', delay: 'r', reverb: 'r', chorus: 'r' };
+export const RIGHT_IN: Readonly<Record<string, string>> = { output: 'r', delay: 'r', reverb: 'r', chorus: 'r', stutil: 'r' };
+export const RIGHT_OUT: Readonly<Record<string, string>> = { pan: 'r', delay: 'r', reverb: 'r', chorus: 'r', stutil: 'r' };
 
 export const IMPLS: Record<string, ModuleImpl> = Object.fromEntries(ALL.map((m) => [m.def.type, m as ModuleImpl]));
 
