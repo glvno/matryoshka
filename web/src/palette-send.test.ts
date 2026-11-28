@@ -5,14 +5,14 @@
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { FACTORY } from './assemblies';
-import { insertAssembly, type AssemblyInst } from './assembly';
-import { binLength, deviceName, type Candidate } from './bank';
+import { drawers, effectsOf, insertAssembly, type AssemblyInst } from './assembly';
+import { binLength, deviceName, readFm1Bin, type Candidate } from './bank';
 import { DeviceLink } from './device';
 import { addUserPreset, applyPreset, currentValues, presetsOf, replaceUserPresets, setFactoryPresets, userPresets } from './device-presets';
 import { DEFS } from './modules';
 import { connect, newPatch, validatePatch, type Patch } from './patch';
 import { Palette, PALETTE_FROM, type PalettePorts } from './palette';
-import { applyEntry, entryOf, NO_SAME_STRUCTURE, paletteDevices, patchPattern, takeTempoAndPatterns, unheldChanges } from './preset-fit';
+import { applyEntry, entryOf, narrowTo, NO_SAME_STRUCTURE, paletteDevices, patchPattern, takeTempoAndPatterns, unheldChanges } from './preset-fit';
 import { FM1_PRESETS } from './presets';
 import { CMD, FEATURE25_SLOT_GET, FEATURE5_FX_DRAWERS, type PaletteEntry } from './protocol';
 import { readPaletteFile, type PaletteSound } from './saved-palettes';
@@ -415,20 +415,21 @@ describe('FX drawer effects switched, in a palette saved before 1.30 (owner 2026
   // a drawer holding a Drive) and Stub (Algo Four with its Harmonizer switched on))
   const sounds = (): PaletteSound[] => savedPalette('palette-fx-1.29.0');
 
-  it('Send: a switched effect goes in as a preset on its factory slot; a patch no preset reaches is stored, and the line says why', async () => {
+  it('Send: a switched effect goes in as a preset on its factory slot, so does a sound lacking an effect its slot has (that one switched off); a patch no preset reaches is stored, and the line says why', async () => {
     const { fm1, palette, said } = await reset();
     expect(await palette.send(sounds(), { id: 'fx', name: 'Palette FX' })).toBe(true);
     await fm1.quiet();
-    expect(fm1.entries.map((e) => e && fm1.slots[e.slot].name)).toEqual(['HERA 6', 'ORACLE V', 'BRIEFCASE 3', 'MONOLITH D MV', 'PADDING', 'GAUZE', 'WORKHORSE', 'STUB']);
-    expect(said.at(-1)).toBe('Palette FX is on the FM-1: 8 sounds (5 stored as new patches, 2 presets sent) · '
+    expect(fm1.entries.map((e) => e && fm1.slots[e.slot].name)).toEqual(['HERA 6', 'ORACLE V', 'BRIEFCASE 3', 'MONOLITH D MV', 'PADDING', 'HERA 6', 'WORKHORSE', 'STUB']);
+    expect(said.at(-1)).toBe('Palette FX is on the FM-1: 8 sounds (4 stored as new patches, 2 presets sent) · '
       + '"Hera 6 DL" is palette 1: slot 4 · HERA 6 with preset Hera 6 DL (preset Hera 6 DL sent to the FM-1) · '
       + '"Oracle V CO" is palette 2 · '
       + '"Briefcase 3 B" is palette 3: slot 10 · BRIEFCASE 3 with preset Briefcase 3 B (preset Briefcase 3 B sent to the FM-1) · '
-      + `"Monolith D MV" is palette 4 (stored as a new patch in slot 22, as ${NO_SAME_STRUCTURE}) · `
+      + '"Monolith D MV" is palette 4 (stored as a new patch in slot 22, as its FX drawer holds Reverb, Drive, Chorus, Delay and slot 1 · MONOLITH D\'s holds Drive, Chorus, Delay, Reverb: a preset cannot add or move an effect) · '
       + '"Padding" is palette 5 (stored as a new patch in slot 23, as it changes settings no device preset holds: the FX button, Output level) · '
-      + `"Gauze" is palette 6 (stored as a new patch in slot 24, as ${NO_SAME_STRUCTURE}) · `
-      + `"Workhorse" is palette 7 (stored as a new patch in slot 25, as ${NO_SAME_STRUCTURE}) · `
-      + '"Stub" is palette 8 (stored as a new patch in slot 26, as it changes settings no device preset holds: Harmonizer switched on)');
+      // (Gauze plays Hera 6 DL's values: its Delay on, the Drive it lacks off)
+      + '"Gauze" is palette 6: slot 4 · HERA 6 with preset Hera 6 DL (Drive switched off, not in this sound) · '
+      + '"Workhorse" is palette 7 (stored as a new patch in slot 24, as its FX drawer holds Drive and slot 20 · VERONA DRUM 1 has none: a preset cannot add or move an effect) · '
+      + '"Stub" is palette 8 (stored as a new patch in slot 25, as it changes settings no device preset holds: Harmonizer switched on)');
   });
 
   /** the FM-1 after a factory reset with each sound stored whole as 1.30.0's Send stored it, the palette on them */
@@ -444,25 +445,34 @@ describe('FX drawer effects switched, in a palette saved before 1.30 (owner 2026
     return { ...r, list };
   }
 
-  it('Consolidate, each stored whole as 1.30.0 sent it: folds the switched effects, offers Fold anyway only for settings no preset holds, and says why each other one stays', async () => {
-    const { fm1, palette } = await stored();
+  it('Consolidate, each stored whole as 1.30.0 sent it: folds the switched effects and a sound lacking an effect its base has, offers Fold anyway only for settings no preset holds, and says why each other one stays', async () => {
+    const { fm1, link, palette, list } = await stored();
     const plan = await palette.planConsolidate();
     if (typeof plan === 'string') throw new Error(plan);
-    expect(plan.items.map(({ step }) => [step.pos + 1, step.to.name, step.presets, step.adopts])).toEqual([
-      [1, 'HERA 6', ['HERA 6 DL'], undefined], [2, 'ORACLE V', [], undefined], [3, 'BRIEFCASE 3', ['BRIEFCASE 3 B'], undefined],
-      [5, 'HERA 6', ['PADDING'], ['FX button unassigned → gate', 'Output level 1.00 → 0.39']],
-      [8, 'ALGO FOUR', ['STUB'], ['Harmonizer on → off']],
+    expect(plan.items.map(({ step }) => [step.pos + 1, step.to.name, step.presets, step.adopts, step.off])).toEqual([
+      [1, 'HERA 6', ['HERA 6 DL'], undefined, undefined], [2, 'ORACLE V', [], undefined, undefined], [3, 'BRIEFCASE 3', ['BRIEFCASE 3 B'], undefined, undefined],
+      [5, 'HERA 6', ['PADDING'], ['FX button unassigned → gate', 'Output level 1.00 → 0.39'], undefined],
+      [6, 'HERA 6', ['GAUZE'], undefined, ['Drive']],
+      [8, 'ALGO FOUR', ['STUB'], ['Harmonizer on → off'], undefined],
     ]);
     expect(plan.skipped).toEqual([
-      '4 · MONOLITH D MV (its FX drawer holds Reverb, Drive, Chorus, Delay and slot 1 · MONOLITH D\'s holds Drive, Chorus, Delay, Reverb: a preset cannot add, take out or move an effect)',
-      '6 · GAUZE (its FX drawer holds Delay, Reverb and slot 4 · HERA 6\'s holds Drive, Delay, Reverb: a preset cannot add, take out or move an effect)',
-      '7 · WORKHORSE (its FX drawer holds Drive and slot 20 · VERONA DRUM 1 has none: a preset cannot add, take out or move an effect)',
+      '4 · MONOLITH D MV (its FX drawer holds Reverb, Drive, Chorus, Delay and slot 1 · MONOLITH D\'s holds Drive, Chorus, Delay, Reverb: a preset cannot add or move an effect)',
+      '7 · WORKHORSE (its FX drawer holds Drive and slot 20 · VERONA DRUM 1 has none: a preset cannot add or move an effect)',
     ]);
     // (as the confirmation leaves them: the Fold anyway rows unticked)
     const r = await palette.consolidate(plan.items.filter((i) => !i.step.adopts));
     await fm1.quiet();
-    expect(r.line).toBe('Consolidated 1 onto slot 4 · HERA 6, 2 onto slot 2 · ORACLE V, 3 onto slot 10 · BRIEFCASE 3; slots 22, 23, 24 freed');
-    expect(fm1.entries.map((e) => e?.slot)).toEqual([3, 1, 9, 24, 25, 26, 27, 28]);
+    expect(r.line).toBe('Consolidated 1 onto slot 4 · HERA 6, 2 onto slot 2 · ORACLE V, 3 onto slot 10 · BRIEFCASE 3, 6 onto slot 4 · HERA 6; slots 22, 23, 24, 27 freed');
+    expect(fm1.entries.map((e) => e?.slot)).toEqual([3, 1, 9, 24, 25, 3, 27, 28]);
+    // (Gauze plays its own sound: Hera 6 with its entry has the Drive off, and without the Drive it is Gauze, value for
+    // value; a switched-off effect passes its input through, sample for sample in both engines)
+    const plays = FM1_PRESETS['Hera 6']();
+    applyEntry(plays, fm1.entries[5]!);
+    expect(effectsOf(plays, drawers(plays)[0]).find((e) => e.name === 'Drive')?.bypass).toBe(true);
+    const read = async (p: Patch): Promise<Patch> => (await readFm1Bin({ getPattern: async () => null }, link.encodeFor(p), 'X'))!.patch;
+    const narrowed = await read(narrowTo(list[5].patch, plays)!.patch), gauze = await read(list[5].patch);
+    takeTempoAndPatterns(gauze, narrowed);
+    expect(unheldChanges(narrowed, gauze)).toEqual([]);
   });
 
   it('Fold anyway, ticked: Padding and Stub become presets on their factory slots and play its settings; Undo puts them back', async () => {
@@ -488,5 +498,28 @@ describe('FX drawer effects switched, in a palette saved before 1.30 (owner 2026
     expect(await r.undo!()).toBe('Consolidate undone: each entry is back on its own slot');
     await fm1.quiet();
     expect([fm1.entries, fm1.bins.slice(0, bins.length)]).toEqual([was, bins]);
+  });
+
+  it('the owner\'s GAUZE (no Drive, and its Output level and FX button as PADDING\'s): Fold anyway, the Drive switched off too; ticked, it folds and Undo puts it back', async () => {
+    const { fm1, link, palette } = await stored();
+    // (as his FM-1 holds it: the sound saved with the old "+ FX" bus, its Output at full and its FX button unassigned)
+    const gauze = savedPalette('palette-fx-1.29.0')[5].patch;
+    gauze.modules.find((m) => m.type === 'output')!.params.level = 1;
+    gauze.modules.find((m) => m.type === 'fm1')!.panel!.kinds!.fx = 'nothing';
+    const bin = link.encodeFor(gauze);
+    fm1.slots[26] = { slot: 26, used: true, length: bin.length, name: 'GAUZE' };
+    fm1.bins[26] = bin;
+    fm1.entries[5] = entryOf(gauze, 26, 'GAUZE');
+    const was = structuredClone(fm1.entries);
+    const plan = await palette.planConsolidate();
+    if (typeof plan === 'string') throw new Error(plan);
+    const step = plan.items.find((i) => i.step.pos === 5)!;
+    expect(step.step).toMatchObject({ to: { slot: 3, name: 'HERA 6' }, adopts: ['FX button unassigned → gate', 'Output level 1.00 → 0.39'], off: ['Drive'] });
+    const r = await palette.consolidate([step]);
+    await fm1.quiet();
+    expect([r.line, fm1.entries[5]?.slot, fm1.slots[26].used]).toEqual(['Consolidated 6 onto slot 4 · HERA 6; slot 27 freed', 3, false]);
+    expect(await r.undo!()).toBe('Consolidate undone: each entry is back on its own slot');
+    await fm1.quiet();
+    expect([fm1.entries, fm1.bins[26]]).toEqual([was, bin]);
   });
 });

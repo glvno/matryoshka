@@ -25,6 +25,9 @@ export interface ConsolidateStep {
   /** Fold anyway (owner 2026-11-28): the settings no device preset holds that the entry takes from `to`, each as
    *  "Output level 1.00 → 0.39"; the row starts unticked */
   adopts?: string[];
+  /** the effects in `to`'s FX drawers the entry's sound does not have: its preset switches them off, so it plays the
+   *  same (a switched-off effect passes its input through); the row stays ticked */
+  off?: string[];
 }
 
 /** "a", "a and b", "a, b and c" */
@@ -70,7 +73,8 @@ export function askConsolidate(steps: readonly ConsolidateStep[], o: { anchor?: 
       body.append(line);
       const kept = s.free ? null : `slot ${s.from.slot + 1} kept${s.keep ? `: ${s.keep}` : ''}`;
       const anyway = s.adopts ? `Fold anyway: it takes slot ${s.to.slot + 1}'s ${s.adopts.join('; ')}` : null;
-      for (const note of [anyway, kept, s.plays ? `plays slot ${s.to.slot + 1}'s ${s.plays}` : null]) {
+      const off = s.off?.length ? `${list(s.off)} switched off (not in this sound)` : null;
+      for (const note of [anyway, off, kept, s.plays ? `plays slot ${s.to.slot + 1}'s ${s.plays}` : null]) {
         if (!note) continue;
         const n = document.createElement('span');
         n.className = 'consolidate-note';

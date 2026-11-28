@@ -22,7 +22,7 @@ import { deletePreset as dropUserPreset, rememberedPreset, replaceUserPresets, s
 import type { Patch } from './patch';
 import { layout } from './patchbin';
 import { devicePresetName, NAME_BYTES, PAL_EMPTY, PAL_GO_CANCELLED, PAL_GO_WAITING, PAL_MISSING, PAL_REFUSED, PALETTE_SIZE, paletteHash, STATUS_PRESETS_FULL, type Ack, type DevicePresetEntry, type PaletteEntry, type PaletteNow, type PalettePos, type SlotInfo } from './protocol';
-import { applyEntry, asSlot, binCore, binStructure, drawerDifference, entryOf, fm1Presets, NO_SAME_STRUCTURE, paletteDevices, patchStructure, presetFit, q16, sameBytes, samePatch, samePreset, slotPlays, takeTempoAndPatterns, truePresetNames, unheldChanges, unheldSettings, type PresetFit } from './preset-fit';
+import { applyEntry, asSlot, binCore, binStructure, drawerDifference, entryOf, fm1Presets, narrowTo, NO_SAME_STRUCTURE, paletteDevices, patchStructure, presetFit, q16, sameBytes, samePatch, samePreset, slotPlays, takeTempoAndPatterns, truePresetNames, unheldChanges, unheldSettings, withSlotEffects, type PresetFit } from './preset-fit';
 import { drawerScope } from './fx-preset';
 import { soundOf, type PaletteSound } from './saved-palettes';
 import type { ConsolidateStep } from './consolidate-view';
@@ -507,66 +507,86 @@ export class Palette {
    * byte for byte (SLOT_GET: firmware that cannot send a slot back has none), a patch of the sound's structure: one this
    * browser knows (the sound itself, the editor's candidates, the copies it kept, a saved or factory patch of a slot's
    * name), else what the slot holds read back and taken as the sound with that slot's card values, preset names, tempo
-   * and patterns (asSlot: a slot stored by an earlier add, an FM-1 hold-save of its own edits, another browser). A slot is
-   * read only when a known patch has its binary length or its structure may be the sound's: each slot's structure is kept
-   * by its name and length (slotStructure), so a later add reads only the slots that may match. Nothing is written.
-   * `extra`: a saved sound's own presets (presetFit)
+   * and patterns (asSlot: a slot stored by an earlier add, an FM-1 hold-save of its own edits, another browser). A slot
+   * whose FX drawers hold every effect the sound's do and more is that patch too: the sound is taken with those effects
+   * switched off (withSlotEffects, which plays the same), and `off` names them. A slot is read only when a known patch has
+   * its binary length or its structure may be the sound's: each slot's structure is kept by its name and length
+   * (slotStructure), so a later add reads only the slots that may match. Nothing is written. `extra`: a saved sound's own
+   * presets (presetFit)
    */
-  private async presetPlace(sound: Patch, name: string, bank: SlotInfo[], extra: readonly Preset[] = []): Promise<PresetFit & { slot: number; label: string; held: Patch; known: Preset[] } | { why: string }> {
+  private async presetPlace(sound: Patch, name: string, bank: SlotInfo[], extra: readonly Preset[] = []): Promise<PresetFit & { slot: number; label: string; held: Patch; known: Preset[]; off?: string[] } | { why: string }> {
     const d = this.ports.device;
     if (!d.readsSlots) return { why: 'this FM-1 cannot send its slots back to compare' };
+    const encode = (p: Patch): Uint8Array => d.encodeFor(p);
     const used = bank.filter((s) => s.used);
     const named = (s: SlotInfo, x: string): boolean => deviceName(s.name) === x || isNumbered(deviceName(s.name), x);
     const own = [deviceName(sound.name.trim() || 'PATCH'), deviceName(name.trim() || 'PATCH')];
     const shape = patchStructure(sound);
+    let mineBin: Uint8Array | null = null;
+    try {
+      mineBin = encode(sound);
+    } catch {
+      /* over the FM-1's budget: no slot holds it, and none is read back */
+    }
+    const want = mineBin && binStructure(mineBin), core = mineBin && binCore(mineBin);
     const known = [
       sound,
       ...this.ports.versions(),
       ...this.copies.map((x) => x.patch),
       ...this.ports.candidates().filter((c) => used.some((s) => named(s, deviceName(c.name)))).map((c) => c.patch()),
     ];
-    /** the binaries of the patches this browser knows with the sound's structure */
-    const pairs: { held: Patch; bin: Uint8Array }[] = [];
+    /** the binaries of the patches this browser knows with the sound's structure, or with its effects and more (the
+     *  sound taken with the others off) */
+    const pairs: { held: Patch; bin: Uint8Array; sound: Patch; off?: string[] }[] = [];
     const seen = new Set<string>();
     for (const held of known) {
-      if (patchStructure(held) !== shape) continue;
       let bin: Uint8Array;
       try {
-        bin = d.encodeFor(held);
+        bin = encode(held);
       } catch {
         continue;   // (over the FM-1's budget: not a patch it holds)
       }
       const key = bin.join();
       if (seen.has(key)) continue;
+      if (patchStructure(held) === shape) pairs.push({ held, bin, sound });
+      else {
+        const w = core && binCore(bin) === core ? withSlotEffects(sound, held, encode) : null;
+        if (!w) continue;
+        pairs.push({ held, bin, sound: w.patch, off: w.off });
+      }
       seen.add(key);
-      pairs.push({ held, bin });
-    }
-    let want: string | null = null;
-    try {
-      want = binStructure(d.encodeFor(sound));
-    } catch {
-      /* over the FM-1's budget: no slot holds it, and none is read back */
     }
     const rank = (s: SlotInfo): number => (named(s, own[0]) ? 0 : named(s, own[1]) ? 1 : 2);
     const order = [...used].sort((a, b) => rank(a) - rank(b) || a.slot - b.slot);
     const bins = new Map<number, Uint8Array | null>();
-    let onFm1: Preset[] | undefined;
+    const onFm1 = new Map<Patch, Preset[]>();
     let why = '';
     for (const s of order) {
       const mine = pairs.filter((p) => p.bin.length === s.length);
-      if (!mine.length && (want === null || (await this.slotStructure(s, bins)) !== want)) continue;
+      if (!mine.length && (!want || ((await this.slotStructure(s, bins)) !== want && (await this.slotStructure(s, bins, true)) !== core))) continue;
       const there = await this.readSlot(s, bins);
       if (!there) continue;
-      let held = mine.find((p) => sameBytes(there, p.bin))?.held;
+      const pair = mine.find((p) => sameBytes(there, p.bin));
+      let held = pair?.held, taken = pair?.sound ?? sound, off = pair?.off;
       if (!held) {
         // (what the slot holds, read back: no patch this browser knows matches it)
-        if (want === null || binStructure(there) !== want) continue;
+        const same = binStructure(there) === want;
+        if (!want || !mineBin || (!same && binCore(there) !== core)) continue;
         const read = await readFm1Bin(d, there, s.name);
-        const as = read && asSlot(sound, read.patch);
+        if (!read) continue;
+        if (!same) {
+          const w = withSlotEffects(sound, read.patch, encode);
+          if (!w) {
+            why ||= drawerDifference(mineBin, there, `slot ${s.slot + 1} · ${s.name}`);
+            continue;
+          }
+          [taken, off] = [w.patch, w.off];
+        }
+        const as = asSlot(taken, read.patch);
         if (!as) continue;
         let bin: Uint8Array;
         try {
-          bin = d.encodeFor(as);
+          bin = encode(as);
         } catch {
           continue;
         }
@@ -578,9 +598,10 @@ export class Palette {
         }
         held = as;
       }
-      onFm1 ??= await fm1Presets(sound, d);
-      const fit = presetFit(sound, held, name, (p) => d.encodeFor(p), onFm1, extra);
-      if (!('why' in fit)) return { ...fit, slot: s.slot, label: s.name, held, known: [...onFm1, ...extra] };
+      const theirs = onFm1.get(taken) ?? (await fm1Presets(taken, d));
+      onFm1.set(taken, theirs);
+      const fit = presetFit(taken, held, name, encode, theirs, extra);
+      if (!('why' in fit)) return { ...fit, slot: s.slot, label: s.name, held, known: [...theirs, ...extra], ...(off ? { off } : {}) };
       why ||= fit.why;
     }
     return { why: why || NO_SAME_STRUCTURE };
@@ -612,7 +633,7 @@ export class Palette {
    *  Mine: the entry opens here as the FM-1 plays it). Its line and how many presets it sent or updated when added; a
    *  preset the FM-1 cannot take makes it take back what it sent and return why the sound needs a patch; any other
    *  failure throws (each write's undo is on `undo`) */
-  private async addOnSlot(pos: number, name: string, fit: PresetFit & { slot: number; label: string; held: Patch; known: Preset[] }, undo: (() => Promise<unknown>)[]): Promise<{ line: string; sent: number } | string> {
+  private async addOnSlot(pos: number, name: string, fit: PresetFit & { slot: number; label: string; held: Patch; known: Preset[]; off?: string[] }, undo: (() => Promise<unknown>)[]): Promise<{ line: string; sent: number } | string> {
     const send = fit.picks.filter((p) => p.from === 'browser' || p.from === 'sound' || p.from === 'new').map((p) => ({ name: p.preset.name, preset: p.preset }));
     const mark = undo.length;
     const presets = await this.sendPresets(send, undo);
@@ -631,6 +652,7 @@ export class Palette {
     this.keepCopy(fit.slot, fit.label, fit.held);
     const names = fit.picks.map((p) => p.preset.name);
     const notes = [
+      ...(fit.off?.length ? [`${fit.off.join(', ')} switched off, not in this sound`] : []),
       ...(presets.sent.length ? [`${presetWord(presets.sent)} sent to the FM-1`] : []),
       ...(presets.updated.length ? [`${presetWord(presets.updated)} updated on the FM-1`] : []),
     ];
@@ -905,11 +927,13 @@ export class Palette {
    * reach the base with device presets (presetPlace, tempo and patterns noted). Else, when the base's patch with the
    * sound's device presets does (asSlot the other way round: the sound differs only in settings no device preset holds),
    * the step is offered as Fold anyway (owner 2026-11-28: "fold anyway (b)"): its sound takes the base's settings, which
-   * `adopts` lists, and the confirmation shows it unticked. Otherwise it is left out, said in `skipped`. An entry with no
-   * base but a slot found the same way with its devices (binCore: other FX drawer effects, or other cables) is left out
-   * too, and `skipped` says what differs (owner 2026-11-28: Consolidate left 4 entries without a word). A slot that is
-   * another step's base keeps its own entry. A step frees its slot when no other position points at it and the editor's
-   * bank list has no patch of its name (inBank). Nothing is written. A string: why not now.
+   * `adopts` lists, and the confirmation shows it unticked. Otherwise it is left out, said in `skipped`. With no slot of
+   * its structure, a slot found the same way with its devices (binCore) is its base: one whose FX drawers hold every
+   * effect the sound's do and more takes it as a preset with those switched off (presetPlace, `off`), which plays the
+   * same; one whose drawers hold others, or with other cables, leaves it, and `skipped` says what differs (owner
+   * 2026-11-28: Consolidate left 4 entries without a word). A slot that is another step's base keeps its own entry. A step
+   * frees its slot when no other position points at it and the editor's bank list has no patch of its name (inBank).
+   * Nothing is written. A string: why not now.
    */
   async planConsolidate(): Promise<{ items: ConsolidateItem[]; skipped: string[] } | string> {
     const why = this.blocked();
@@ -937,14 +961,11 @@ export class Palette {
         }
         return same.filter(named).sort((a, b) => b.name.length - a.name.length)[0] ?? same.find((s) => s.slot < x.slot);
       };
-      const base = await baseBy(false, key);
-      if (!base) {
-        const core = await this.slotStructure(x, bins, true);
-        const like = core ? await baseBy(true, core) : undefined;
-        const mineBin = like && (await this.readSlot(x, bins)), likeBin = like && (await this.readSlot(like, bins));
-        if (like && mineBin && likeBin) skipped.push(`${pos + 1} · ${x.name} (${drawerDifference(mineBin, likeBin, `slot ${like.slot + 1} · ${like.name}`)})`);
-        continue;
-      }
+      // (no slot of its structure: one of its devices whose FX drawers hold more effects is its base too, presetPlace taking
+      // the sound with those effects off; one whose drawers hold others is left, said in `skipped`)
+      const core = await this.slotStructure(x, bins, true);
+      const base = (await baseBy(false, key)) ?? (core ? await baseBy(true, core) : undefined);
+      if (!base) continue;
       const bin = await this.readSlot(x, bins);
       const read = bin && (await readFm1Bin(d, bin, x.name));
       if (!bin || !read) {
@@ -956,9 +977,19 @@ export class Palette {
       let fit = await this.presetPlace(sound, x.name, [base], extra);
       if ('why' in fit) {
         // (Fold anyway, owner 2026-11-28 "fold anyway (b)": the base slot's patch with the sound's device presets, so with
-        // the base's settings no device preset holds, offered unticked with each of them listed)
+        // the base's settings no device preset holds, offered unticked with each of them listed. A base whose FX drawers
+        // hold more effects: its patch without them, read back so its modules are numbered as the sound's)
         const there = await this.readSlot(base, bins), held = there && (await readFm1Bin(d, there, base.name));
-        const adopted = held && asSlot(held.patch, sound);
+        let adopted: Patch | null = null;
+        if (held && binStructure(there) === key) adopted = asSlot(held.patch, sound);
+        else if (held) {
+          const narrow = narrowTo(sound, held.patch), as = narrow && asSlot(narrow.patch, sound);
+          try {
+            adopted = as ? (await readFm1Bin(d, d.encodeFor(as), base.name))?.patch ?? null : null;
+          } catch {
+            adopted = null;
+          }
+        }
         const changes = adopted ? unheldChanges(sound, adopted) : [];
         const again = adopted && changes.length ? await this.presetPlace(adopted, x.name, [base], extra) : null;
         if (!adopted || !again || 'why' in again) {
@@ -967,7 +998,7 @@ export class Palette {
         }
         [sound, fit, adopts] = [adopted, again, changes];
       }
-      const step: ConsolidateStep = { pos, from: { slot: x.slot, name: x.name }, to: { slot: base.slot, name: base.name }, presets: this.fitEntry(fit).devices.map((v) => v.name), free: false, ...(fit.plays ? { plays: fit.plays } : {}), ...(adopts ? { adopts } : {}) };
+      const step: ConsolidateStep = { pos, from: { slot: x.slot, name: x.name }, to: { slot: base.slot, name: base.name }, presets: this.fitEntry(fit).devices.map((v) => v.name), free: false, ...(fit.plays ? { plays: fit.plays } : {}), ...(adopts ? { adopts } : {}), ...(fit.off ? { off: fit.off } : {}) };
       items.push({ step, sound, extra, was: e, bin });
     }
     const bases = new Set(items.map((i) => i.step.to.slot));
