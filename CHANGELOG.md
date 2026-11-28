@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Zoomed out below 40 %, cards keep their controls and drop their words.** Each row shows only its slider, selector or switch, as matryoshka-native draws a zoomed-out card. Each card's title stays readable at 12 px on screen, and shows the card's tag (VCO, ENV) when the name no longer fits. Modulation cables are faded so the sound path stands out. No card, jack or cable moves when the drawing changes ([D-1448](docs/ledger/editor.md#D-1448)). The change happens 8 % past 40 % each way, so a zoom that stops near 40 % does not flicker, and the card under the pointer stays under it ([D-1449](docs/ledger/editor.md#D-1449)).
+
 ## 1.30.0 — 2026-11-27
 
 - **This editor syncs only with firmware 1.30.0: update your FM-1 before you sync it.** The editor now reads and writes patch format 71, which only the 1.30.0 firmware reads, so an FM-1 still on 1.29.x or older does not sync until it is updated: the editor says "update it to sync" and the Install panel offers the update. A patch is saved in format 71 only when it holds a DX7; every other patch keeps its format byte for byte. Once the FM-1 runs 1.30.0, the editor also offers a factory sounds update (version 25): the same sounds as version 24, laid out by the new Tidy, so the FM-1's page order changes in 14 patches (below) and your saved slots stay as they are ([D-1044](docs/ledger/patch-format.md#D-1044), [D-1020](docs/ledger/patch-format.md#D-1020)).

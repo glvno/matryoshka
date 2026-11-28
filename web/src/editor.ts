@@ -99,6 +99,7 @@ import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
 import { GUTTER_ROOM, ribbons, type RibbonCable, type RibbonFrame } from './ribbons';
 import { pinchStart, pinchStep, type Pinch } from './touch';
 import { cameraOf, edgeSpeed, KEY_ZOOM, nearEdge, PanPress, scrollFor, spaceExtent, WheelGestures, wheelPx, wheelZoom, zoomCamera, type WheelSetting } from './canvas-nav';
+import { anchorIn, anchorShift, LOD_FULL, LOD_SLIDERS, lodFor, nameFits, titleScaleFor, type Anchor, type Lod } from './lod';
 import { scopeTools, type ScreenSpec } from './scope-view';
 import { listenable, type ListenSource } from './listen';
 import type { EnvSpec } from './env-view';
@@ -1035,6 +1036,7 @@ export class Editor {
     this.fxAnchors.clear();
     this.gutterJacks.clear();
     this.commentEls.clear();
+    this.titles = null;
     const copies = copiesOf(this.patch);
     const hidden = hiddenModules(this.patch);
     const hiddenAsm = hiddenAssemblies(this.patch);
@@ -1094,6 +1096,7 @@ export class Editor {
       this.layoutDrawers();
       this.sizeCanvas();
       this.drawCables();
+      if (this.lod !== LOD_FULL) this.fitTitles();   // (the frames have their size now)
     });
   }
 
@@ -1397,6 +1400,8 @@ export class Editor {
     const head = document.createElement('div');
     head.className = 'mhead';
     const title = document.createElement('span');
+    title.className = 'lod-title';
+    title.dataset.name = m.name && def.type !== 'steps' ? m.name : moduleName(def.type, def.label);
     if (m.name && def.type !== 'steps') {
       // its own name (#518), its type small underneath
       const name = document.createElement('span');
@@ -1408,7 +1413,10 @@ export class Editor {
       title.append(this.tag(def.type), name);
       title.title = `${m.name} (${moduleName(def.type, def.label)}): double-click to rename`;
     } else {
-      title.append(this.tag(def.type), moduleName(def.type, def.label));
+      const name = document.createElement('span');
+      name.className = 'nm';
+      name.textContent = moduleName(def.type, def.label);
+      title.append(this.tag(def.type), name);
       if (def.type !== 'fm1') title.title = 'double-click to rename';
     }
     if (def.type !== 'fm1') title.addEventListener('dblclick', (e) => { e.stopPropagation(); this.renameModule(m); });
@@ -3026,6 +3034,8 @@ export class Editor {
   // ---- zoom and touch: the cards and cables are scaled by `zoom`; offsets stay in layout pixels, pointer deltas are divided by it
 
   zoom = 1;
+  /** the level of detail drawn at this zoom (lod.ts, D-1448): a class on the canvas, so a level change moves nothing */
+  lod: Lod = LOD_FULL;
   /** `live`: the zoom slider's source moved it, not the user */
   onZoom: (z: number, live: boolean) => void = () => {};
 
@@ -3043,7 +3053,57 @@ export class Editor {
     // unless a drawer under its card (as wide as the view) changed with the zoom
     if (this.layoutDrawers()) this.positionCables();
     else this.positionViewCables();
+    this.applyLod();
     this.onZoom(this.zoom, live);
+  }
+
+  /** the level for the zoom (snapped, ±8 %); at the sliders level, titles stay 12 px on screen (the tag when the name does not fit) */
+  private applyLod(): void {
+    const next = lodFor(this.zoom, this.lod);
+    if (next !== this.lod) {
+      this.lod = next;
+      this.canvas.classList.toggle('lod-sliders', next >= LOD_SLIDERS);
+    }
+    if (this.lod === LOD_FULL) return;
+    // the cables' widths at this level are screen px divided by the zoom (style.css), set on their layer only
+    this.svg.style.setProperty('--lod-z', String(this.zoom));
+    this.fitTitles();
+  }
+
+  /** a name's width at the card title's size and face (style.css .mhead > span), cached; layout px at the zoom of 1 */
+  private nameWidths = new Map<string, number>();
+  private nameCtx: CanvasRenderingContext2D | null | undefined;
+  private nameWidth(name: string): number {
+    let w = this.nameWidths.get(name);
+    if (w !== undefined) return w;
+    if (this.nameCtx === undefined) {
+      // (no canvas in a test's DOM: estimated from the letters)
+      this.nameCtx = typeof navigator !== 'undefined' && /jsdom/.test(navigator.userAgent) ? null : document.createElement('canvas').getContext('2d');
+      if (this.nameCtx) { this.nameCtx.font = "600 15px 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif"; this.nameCtx.letterSpacing = '1.05px'; }
+    }
+    w = this.nameCtx ? this.nameCtx.measureText(name.toUpperCase()).width : name.length * 8.5;
+    this.nameWidths.set(name, w);
+    return w;
+  }
+
+  /** the canvas's titles with their names' and tags' widths, found once per rebuild (rebuild clears it) */
+  private titles: { el: HTMLElement; t: HTMLElement; name: number; tag: number }[] | null = null;
+
+  /** each card's and frame's title at the sliders level: its name, or its tag when the name no longer fits on one line, 12 px
+   *  on screen or smaller when even that is wider than the card (its own --lod-k, so a zoom step restyles only the titles) */
+  private fitTitles(): void {
+    const z = this.zoom;
+    this.titles ??= [...this.cards.values(), ...this.containers.values(), ...this.frames.values()].flatMap((el) => {
+      const t = el.querySelector<HTMLElement>(':scope > :is(.mhead, .fhead) > .lod-title');
+      return t ? [{ el, t, name: this.nameWidth(t.dataset.name ?? ''), tag: this.nameWidth(t.querySelector(':scope > .mtag')?.textContent ?? '') }] : [];
+    });
+    // (every width read before anything is written)
+    const widths = this.titles.map((h) => h.el.offsetWidth);
+    this.titles.forEach((h, i) => {
+      const fits = nameFits(h.name, widths[i], z);
+      h.t.style.setProperty('--lod-k', titleScaleFor(fits ? h.name : h.tag, widths[i], z).toFixed(4));
+      h.el.classList.toggle('lod-tag', !fits);
+    });
   }
 
   /** the layout tidyUp made last: left alone (Tidy again says so) until something moves or resizes */
@@ -3109,16 +3169,31 @@ export class Editor {
   }
 
   /** the zoom, holding a point in place: `at` (client px: the pointer, for the wheel and pinch) or else the canvas's centre (the
-   *  zoom slider and its source); `live`: a modulation, not the user's */
+   *  zoom slider and its source); `live`: a modulation, not the user's. When the level of detail changes, the card or frame
+   *  under that point stays under it, at the same place inside it (D-1449) */
   zoomAround(z: number, live = false, at?: Pt): void {
     const c = this.canvas;
     const r = c.getBoundingClientRect();
     const p = at ? { x: at.x - r.left - c.clientLeft, y: at.y - r.top - c.clientTop } : { x: c.clientWidth / 2, y: c.clientHeight / 2 };
+    const client = { x: r.left + c.clientLeft + p.x, y: r.top + c.clientTop + p.y };
     const cam = this.camera, was = this.zoom;
+    const anchor = lodFor(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)), this.lod) !== this.lod ? this.anchorAt(client) : null;
     this.setZoom(z, live);
     if (this.zoom === was) return;
     // the space is laid out round the new view, so the point holds even at the cards' top left (no scroll 0 to stop at)
     this.sizeCanvas(zoomCamera(cam, p, was, this.zoom));
+    if (!anchor?.el.isConnected) return;
+    const { dx, dy } = anchorShift(anchor.at, anchor.el.getBoundingClientRect(), client);
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+    const now = this.camera;
+    this.sizeCanvas({ x: now.x + dx / this.zoom, y: now.y + dy / this.zoom });
+  }
+
+  /** the card, collapsed assembly or frame under a client point, and where the point is inside it (D-1449) */
+  private anchorAt(pt: Pt): { el: HTMLElement; at: Anchor } | null {
+    const hit = document.elementFromPoint?.(pt.x, pt.y);
+    const el = hit instanceof HTMLElement && this.world.contains(hit) ? hit.closest<HTMLElement>('#modules > .module, #modules > .frame') : null;
+    return el ? { el, at: anchorIn(el.getBoundingClientRect(), pt) } : null;
   }
 
   /** every card in view: the zoom that fits the cards' extent into the canvas, centred */
@@ -5624,7 +5699,8 @@ export class Editor {
   /** an assembly's title segment: the name, its ×N badge and, on a poly assembly, the voice control drop-down */
   private titleOf(a: AssemblyInst, perVoice: number): HTMLElement {
     const title = document.createElement('span');
-    title.className = 'rename asm-title';
+    title.className = 'rename asm-title lod-title';
+    title.dataset.name = a.label;
     title.title = `${a.name}: double-click to rename`;
     const name = document.createElement('span');
     name.className = 'asm-name';
