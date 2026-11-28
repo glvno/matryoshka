@@ -3,12 +3,12 @@
 // cables and drawers) with other card values, tempo or patterns, each differing device then taking a preset of its values
 // (one this browser or the FM-1 has, else a new one). Add to palette (palette.ts) points a palette entry at an FM-1 slot
 // with it; a candidate's Save… (candidate-save.ts) stores those presets instead of a new patch.
-import { assemblyById, moveAssembly, parentOf, type AssemblyInst } from './assembly';
-import { parseBinary } from './bin-parse';
+import { assemblyById, bypassAssembly, drawers, effectsOf, moveAssembly, parentOf, type AssemblyInst } from './assembly';
+import { parseBinary, type BinPatch } from './bin-parse';
 import { deviceName } from './bank';
 import type { DeviceLink } from './device';
 import { applyPreset, capturePreset, currentValues, matchesPreset, presetsOf, rememberedPreset, sameName, type Preset } from './device-presets';
-import { drawerScope } from './fx-preset';
+import { drawerScope, setEffectEnabled } from './fx-preset';
 import { DEFS } from './modules';
 import type { Patch } from './patch';
 import { placeOf } from './pages';
@@ -150,13 +150,15 @@ export function takeTempoAndPatterns(to: Patch, from: Patch, pair: (m: Patch['mo
  * `slot`, a slot's patch read back from the FM-1 (patch-reader.ts: its own module ids, its cards rebuilt), as a patch of
  * `sound`'s structure: the sound with each device's card values and preset names (an instrument's with its FX drawer), the
  * tempo and the patterns of the slot's patch, and its devices in the slot's order. Each device is paired with the slot's
- * of its kind (an assembly's structure, a plain module's type) in the same turn, so a sound whose cards sat elsewhere
- * is still that patch: the device order is where the cards sit (D-1458), and a Tidy may have changed it since the sound
- * was saved (owner 2026-11-28: the 1.30 factory patches against palettes saved before). Its cards then take the slot's
- * places. Null when their devices differ in number or kind. It encodes to the slot's bytes exactly when the two differ
- * in nothing else: then it is the slot's patch as presetFit compares it, which Add to palette needs when this browser
- * has no copy of what the slot holds (owner 2026-11-27: a slot stored by an earlier add, a hold-save of the FM-1's own
- * edits, another browser).
+ * of its kind (an assembly's structure, a plain module's type): the one of the same modules when the sound was read back
+ * too (Consolidate: the reader numbers modules as the binary lists them, and both binaries list the same modules), else
+ * the one in the same turn. So a sound whose cards sat elsewhere is still that patch: the device order is where the cards
+ * sit (D-1458), and a Tidy may have changed it since the sound was saved (owner 2026-11-28: the 1.30 factory patches
+ * against palettes saved before; Briefcase 3's mixers, all of one type, came in another order). Its cards then take the
+ * slot's places. Null when their devices differ in number or kind. It encodes to the slot's bytes exactly when the two
+ * differ in nothing else: then it is the slot's patch as presetFit compares it, which Add to palette needs when this
+ * browser has no copy of what the slot holds (owner 2026-11-27: a slot stored by an earlier add, a hold-save of the
+ * FM-1's own edits, another browser).
  */
 export function asSlot(sound: Patch, slot: Patch): Patch | null {
   const out = structuredClone(sound);
@@ -168,8 +170,15 @@ export function asSlot(sound: Patch, slot: Patch): Patch | null {
     return a ? `a${structureOf(p, a)}` : `m${p.modules.find((m) => m.id === d.module)?.type}`;
   };
   const left = theirs.map((t) => kindOf(slot, t));
+  // (the same device: an assembly of the same modules, a plain module of the same id)
+  const idOf = (p: Patch, d: (typeof mine)[number]): string => {
+    const a = asmOf(p, d);
+    return a ? `a${[...a.modules].sort((x, y) => x - y).join()}` : `m${d.module}`;
+  };
+  const same = mine.map((d) => theirs.findIndex((t, k) => left[k] === kindOf(out, d) && idOf(slot, t) === idOf(out, d)));
   const pairs: [(typeof mine)[number], (typeof theirs)[number]][] = [];
-  for (const d of mine) {
+  if (same.every((k) => k >= 0) && new Set(same).size === same.length) mine.forEach((d, i) => pairs.push([d, theirs[same[i]]]));
+  else for (const d of mine) {
     const k = left.indexOf(kindOf(out, d));
     if (k < 0) return null;
     left[k] = '';
@@ -241,6 +250,34 @@ export function binStructure(bin: ArrayLike<number>): string | null {
     (b.rack?.drawers ?? []).map((d) => [b.extras[d.owner]?.structure ?? -1, d.count]).sort((x, y) => x[0] - y[0] || x[1] - y[1])]);
 }
 
+/** a patch binary's structure as binStructure has it with its FX rack's effects left out: its devices' structure
+ *  fingerprints and the types of the modules outside every effect, in no order. Two slots of one patch whose FX drawers
+ *  hold other effects (one added or taken out, or another order) have one, and no preset makes one the other: an FXD1
+ *  preset sets the effects a drawer holds, never which (D-1215). Null when this editor does not read the binary */
+export function binCore(bin: ArrayLike<number>): string | null {
+  const b = parseBinary(bin);
+  if (!b) return null;
+  const effects = b.rack?.effects ?? [];
+  const fx = new Set(effects.map((e) => e.device));
+  const inFx = new Set(effects.flatMap((e) => [...e.targets, ...(b.extras[e.device]?.members ?? [])]));
+  return JSON.stringify([b.extras.filter((_, i) => !fx.has(i)).map((e) => e.structure).sort((x, y) => x - y),
+    b.modules.flatMap((m, i) => (inFx.has(i) ? [] : [m.type])).sort()]);
+}
+
+/** why the patch of binary `bin` is not that of `base` (slot `label`'s), one of the same binCore: what each FX drawer
+ *  holds in both (owner 2026-11-28: a palette entry Consolidate leaves says why), else that their cables differ */
+export function drawerDifference(bin: ArrayLike<number>, base: ArrayLike<number>, label: string): string {
+  const fxOf = (b: BinPatch): Map<number, string> => new Map((b.rack?.drawers ?? []).map((d): [number, string] =>
+    [b.extras[d.owner]?.structure ?? -1, b.rack!.effects.slice(d.first, d.first + d.count).map((e) => b.devices[e.device]?.name || 'an effect').join(', ') || 'no effects']));
+  const x = parseBinary(bin), y = parseBinary(base);
+  const mine = x ? fxOf(x) : new Map<number, string>(), theirs = y ? fxOf(y) : new Map<number, string>();
+  const parts = [...new Set([...mine.keys(), ...theirs.keys()])].filter((k) => mine.get(k) !== theirs.get(k)).map((k) => {
+    const a = mine.get(k), b = theirs.get(k);
+    return `${a === undefined ? 'it has no FX drawer' : `its FX drawer holds ${a}`} and ${label}${b === undefined ? ' has none' : `'s holds ${b}`}`;
+  });
+  return parts.length ? `${parts.join('; ')}: a preset cannot add, take out or move an effect` : `it has other cables than ${label}`;
+}
+
 /** the notes of `p` as a palette entry would change them: its tracks' patterns and the song it plays and keeps (the
  *  selected pattern aside: the entry selects the sound's; pattern origins and store links aside: bookkeeping) */
 const patternsOf = (p: Patch): string => JSON.stringify(p.modules.map((m) =>
@@ -280,21 +317,65 @@ export const q16 = (v: number): number => Math.round(v * 65536);
 const canonical = (v: unknown): unknown => (Array.isArray(v) ? v.map(canonical)
   : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)).map(([k, x]) => [k, canonical(x)])) : v);
 
-/** the module whose settings differ between two patches of one structure, as the user knows it: its assembly's label, or
- *  its own name */
-function differing(a: Patch, b: Patch): string | null {
-  const body = (m: Patch['modules'][number]): string => JSON.stringify(canonical({ ...m, x: 0, y: 0 }));
+/** the button settings of a panel (MainPanel), each button's together */
+const buttonsOf = (p: Patch['modules'][number]['panel'] = {}): Map<string, string> => {
+  const keys = new Set([...(p.toggle ?? []), ...(p.on ?? []), ...[p.labels, p.kinds, p.targets, p.pages].flatMap((r) => Object.keys(r ?? {}))]);
+  return new Map([...keys].map((b) => [b, JSON.stringify(canonical([p.toggle?.includes(b), p.on?.includes(b), p.labels?.[b], p.kinds?.[b], p.targets?.[b], p.pages?.[b]]))]));
+};
+
+/**
+ * The settings that differ between two patches of one structure (patchStructure), as the user knows them: what a
+ * device preset cannot hold when their presets agree (owner 2026-11-28: the line names it). A parameter by its module
+ * (`Output level`; inside an assembly `Hera 6 › filter cutoff`), a module's switch as `a` has it (`Harmonizer switched
+ * on`), a panel button (`the FX button`), any other setting of a module (`Main`); with no module's, an assembly's card or
+ * MIDI learn. "settings no device preset holds", and what they are.
+ */
+export function unheldSettings(a: Patch, b: Patch): string {
+  const same = (x: unknown, y: unknown): boolean => JSON.stringify(canonical(x)) === JSON.stringify(canonical(y));
+  const out: string[] = [];
   for (const m of a.modules) {
     const o = b.modules.find((x) => x.id === m.id);
-    if (!o || body(m) === body(o)) continue;
+    if (!o) continue;
     const asm = (a.assemblies ?? []).find((x) => x.modules.includes(m.id));
-    return asm ? asm.label || asm.name : m.name || DEFS[m.type]?.label || m.type;
+    const own = m.name || DEFS[m.type]?.label || m.type;
+    const name = asm ? `${asm.label || asm.name} › ${own}` : own;
+    if (!!m.bypass !== !!o.bypass) out.push(`${name} switched ${m.bypass ? 'off' : 'on'}`);
+    // (as the FM-1 keeps values: Q16)
+    const params = [...new Set([...Object.keys(m.params), ...Object.keys(o.params)])].filter((k) => q16(m.params[k]) !== q16(o.params[k]));
+    if (params.length) out.push(`${name} ${params.slice(0, 3).join(', ')}${params.length > 3 ? '…' : ''}`);
+    const mine = buttonsOf(m.panel), theirs = buttonsOf(o.panel);
+    for (const k of new Set([...mine.keys(), ...theirs.keys()])) if (mine.get(k) !== theirs.get(k)) out.push(`the ${k.toUpperCase()} button`);
+    const rest = (x: Patch['modules'][number]): unknown => ({ ...x, x: 0, y: 0, params: 0, bypass: 0, panel: 0 });
+    if (!same(rest(m), rest(o))) out.push(name);
   }
-  return null;
+  if (!out.length) {
+    for (const x of a.assemblies ?? []) {
+      const y = assemblyById(b, x.id);
+      if (y && !same(x.params, y.params)) out.push(`${x.label || x.name}'s card`);
+    }
+    if (!same(a.midiLearn ?? [], b.midiLearn ?? [])) out.push('MIDI learn');
+  }
+  const list = [...new Set(out)];
+  return `settings no device preset holds${list.length ? `: ${list.slice(0, 4).join(', ')}${list.length > 4 ? ` and ${list.length - 4} more` : ''}` : ''}`;
+}
+
+/** `p` as the FM-1 plays its FX drawers: one switched off by its own ⏻ as one switched on with each effect off. The
+ *  FM-1 keeps no drawer switch (the binary holds its modules' bypass, and a slot reads back so, assembly-match.ts
+ *  rebuildRack), so an effect left on inside a drawer that is off plays off there, and a preset (FXD1) that switches it on
+ *  would play it (owner 2026-11-28). The same bytes; `p` itself when no drawer is off, else a copy */
+function drawersAsPlayed(p: Patch): Patch {
+  if (!drawers(p).some((d) => d.bypass)) return p;
+  const out = structuredClone(p);
+  for (const d of drawers(out)) {
+    if (!d.bypass) continue;
+    bypassAssembly(out, d, false);
+    for (const e of effectsOf(out, d)) setEffectEnabled(out, e, false);
+  }
+  return out;
 }
 
 /**
- * The sound `sound` reached from `held` (a slot's patch) with device presets (owner 2026-11-24: "it should first
+ * The sound `sound` reached from `slot` (a slot's patch) with device presets (owner 2026-11-24: "it should first
  * determine if it's a preset of the instrument the fm1 has already"), or why not. Both need one structure (patchStructure;
  * the names aside: a slot of another name holding that structure is that patch, D-1227). Each device (a top-level
  * assembly; an instrument with an FX drawer with its drawer, FXD1) whose card
@@ -302,13 +383,14 @@ function differing(a: Patch, b: Patch): string | null {
  * one the device remembers first), else one of `extra` (a saved sound's own presets), else one of `onFm1` (the FM-1's
  * own user presets), else a new one named `name` (the name the sound is added under, numbered when taken). A device
  * whose values agree keeps the slot's preset name, which the FM-1 leaves
- * as it is. Then the entry applied to `held` (applyEntry) must give the sound byte for byte as `encode` writes it,
+ * as it is. Then the entry applied to `slot` (applyEntry) must give the sound byte for byte as `encode` writes it,
  * tempo and patterns aside (the entry plays the slot's, with the sound's selected pattern): anything else (a module's
  * setting outside its card, a device past PRESET_VALUES_MAX values, the panel, names) is a reason to store the patch.
+ * Both are taken as the FM-1 plays their FX drawers (drawersAsPlayed).
  */
-export function presetFit(sound: Patch, held: Patch, name: string, encode: (p: Patch) => Uint8Array, onFm1: readonly Preset[] = [], extra: readonly Preset[] = []): PresetFit | { why: string } {
-  if (patchStructure(sound) !== patchStructure(held)) return { why: NO_SAME_STRUCTURE };
-  const named = structuredClone(sound);
+export function presetFit(sound: Patch, slot: Patch, name: string, encode: (p: Patch) => Uint8Array, onFm1: readonly Preset[] = [], extra: readonly Preset[] = []): PresetFit | { why: string } {
+  if (patchStructure(sound) !== patchStructure(slot)) return { why: NO_SAME_STRUCTURE };
+  const named = structuredClone(drawersAsPlayed(sound)), held = drawersAsPlayed(slot);
   // (its cards where the slot's are: they set the device order the binary lists, D-1458)
   takePlaces(named, held);
   const picks: PresetPick[] = [];
@@ -376,10 +458,7 @@ export function presetFit(sound: Patch, held: Patch, name: string, encode: (p: P
   } catch (e) {
     return { why: (e as Error).message };
   }
-  if (!same) {
-    const who = differing(norm, played);
-    return { why: who ? `it changes ${who} settings no device preset holds` : 'it changes settings no device preset holds' };
-  }
+  if (!same) return { why: `it changes ${unheldSettings(norm, played)}` };
   return { named, picks, plays: slotPlays(sound, held) };
 }
 

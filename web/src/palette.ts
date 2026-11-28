@@ -22,7 +22,7 @@ import { deletePreset as dropUserPreset, rememberedPreset, replaceUserPresets, s
 import type { Patch } from './patch';
 import { layout } from './patchbin';
 import { devicePresetName, NAME_BYTES, PAL_EMPTY, PAL_GO_CANCELLED, PAL_GO_WAITING, PAL_MISSING, PAL_REFUSED, PALETTE_SIZE, paletteHash, STATUS_PRESETS_FULL, type Ack, type DevicePresetEntry, type PaletteEntry, type PaletteNow, type PalettePos, type SlotInfo } from './protocol';
-import { applyEntry, asSlot, binStructure, entryOf, fm1Presets, NO_SAME_STRUCTURE, paletteDevices, patchStructure, presetFit, q16, sameBytes, samePatch, samePreset, slotPlays, takeTempoAndPatterns, truePresetNames, type PresetFit } from './preset-fit';
+import { applyEntry, asSlot, binCore, binStructure, drawerDifference, entryOf, fm1Presets, NO_SAME_STRUCTURE, paletteDevices, patchStructure, presetFit, q16, sameBytes, samePatch, samePreset, slotPlays, takeTempoAndPatterns, truePresetNames, unheldSettings, type PresetFit } from './preset-fit';
 import { drawerScope } from './fx-preset';
 import { soundOf, type PaletteSound } from './saved-palettes';
 import type { ConsolidateStep } from './consolidate-view';
@@ -247,9 +247,9 @@ export class Palette {
   private atSlot: Patch | null = null;
   /** what Send to FM-1 left (PALETTE_FROM), until a palette read whose hashes differ */
   private sentFrom: SentFrom | null;
-  /** each slot's structure (binStructure) as last read, with the name and binary length it had then (slotStructure);
-   *  dropped when an FM-1 connects */
-  private structures = new Map<number, { name: string; length: number; key: string | null }>();
+  /** each slot's structure (binStructure) and devices (binCore) as last read, with the name and binary length it had then
+   *  (slotStructure); dropped when an FM-1 connects */
+  private structures = new Map<number, { name: string; length: number; key: string | null; core: string | null }>();
 
   constructor(private ports: PalettePorts, private storage: Pick<Storage, 'getItem' | 'setItem'> | null = globalThis.localStorage ?? null) {
     const kept = loadKept(storage);
@@ -571,7 +571,9 @@ export class Palette {
           continue;
         }
         if (!sameBytes(bin, there)) {
-          why ||= `slot ${s.slot + 1} · ${s.name} differs from it in settings no device preset holds`;
+          // (what differs, both read as the reader numbers modules: the binary's order, the same in both)
+          const ours = !why && (await readFm1Bin(d, bin, s.name));
+          why ||= `slot ${s.slot + 1} · ${s.name} differs from it in ${ours ? unheldSettings(ours.patch, read.patch) : 'settings no device preset holds'}`;
           continue;
         }
         held = as;
@@ -590,19 +592,19 @@ export class Palette {
     if (!bins.has(s.slot)) {
       const bin = await this.ports.device.readSlotBin(s.slot).catch(() => null);
       bins.set(s.slot, bin);
-      if (bin) this.structures.set(s.slot, { name: s.name, length: s.length, key: binStructure(bin) });
+      if (bin) this.structures.set(s.slot, { name: s.name, length: s.length, key: binStructure(bin), core: binCore(bin) });
     }
     return bins.get(s.slot) ?? null;
   }
 
-  /** slot `s`'s structure (binStructure): kept from its last read while the slot keeps its name and binary length (the
-   *  FM-1 keeps no revision of a slot, D-1227), else read now (`bins`, readSlot). A slot that may match is read again
-   *  before it is used, so a kept structure only spares the reads of slots that cannot */
-  private async slotStructure(s: SlotInfo, bins: Map<number, Uint8Array | null>): Promise<string | null> {
+  /** slot `s`'s structure (binStructure; `core`: binCore): kept from its last read while the slot keeps its name and
+   *  binary length (the FM-1 keeps no revision of a slot, D-1227), else read now (`bins`, readSlot). A slot that may match
+   *  is read again before it is used, so a kept structure only spares the reads of slots that cannot */
+  private async slotStructure(s: SlotInfo, bins: Map<number, Uint8Array | null>, core = false): Promise<string | null> {
     const kept = this.structures.get(s.slot);
-    if (kept && kept.name === s.name && kept.length === s.length) return kept.key;
+    if (kept && kept.name === s.name && kept.length === s.length) return core ? kept.core : kept.key;
     const bin = await this.readSlot(s, bins);
-    return bin ? binStructure(bin) : null;
+    return bin ? (core ? binCore : binStructure)(bin) : null;
   }
 
   /** point position `pos` at the slot `fit` found, with the presets it names: the ones the FM-1 lacks are sent first, a
@@ -901,8 +903,11 @@ export class Palette {
    * number), the longest such, else the lowest such slot below it; a slot whose name starts with its own is never its
    * base. The entry's sound (its slot read back, the entry applied, its presets only the FM-1 has read from it) must
    * reach the base with device presets (presetPlace, tempo and patterns noted); otherwise it is left out, said in
-   * `skipped`. A slot that is another step's base keeps its own entry. A step frees its slot when no other position
-   * points at it and the editor's bank list has no patch of its name (inBank). Nothing is written. A string: why not now.
+   * `skipped`. An entry with no base but a slot found the same way with its devices (binCore: other FX drawer effects,
+   * or other cables) is left out too, and `skipped` says what differs (owner 2026-11-28: Consolidate left 4 entries
+   * without a word). A slot that is another step's base keeps its own entry. A step frees its slot when no other
+   * position points at it and the editor's bank list has no patch of its name (inBank). Nothing is written. A string:
+   * why not now.
    */
   async planConsolidate(): Promise<{ items: ConsolidateItem[]; skipped: string[] } | string> {
     const why = this.blocked();
@@ -921,13 +926,23 @@ export class Palette {
       const key = x && (await this.slotStructure(x, bins));
       if (!x || !e || !key) continue;
       const mine = deviceName(x.name);
-      const same: SlotInfo[] = [];
-      for (const s of used) {
-        if (s.slot !== x.slot && !deviceName(s.name).startsWith(`${mine} `) && (await this.slotStructure(s, bins)) === key) same.push(s);
-      }
       const named = (s: SlotInfo): boolean => mine.startsWith(`${deviceName(s.name)} `) || isNumbered(mine, deviceName(s.name));
-      const base = same.filter(named).sort((a, b) => b.name.length - a.name.length)[0] ?? same.find((s) => s.slot < x.slot);
-      if (!base) continue;
+      /** the slot the entry's was made from, by its structure (binStructure) or its devices (binCore, `core`) */
+      const baseBy = async (core: boolean, k: string): Promise<SlotInfo | undefined> => {
+        const same: SlotInfo[] = [];
+        for (const s of used) {
+          if (s.slot !== x.slot && !deviceName(s.name).startsWith(`${mine} `) && (await this.slotStructure(s, bins, core)) === k) same.push(s);
+        }
+        return same.filter(named).sort((a, b) => b.name.length - a.name.length)[0] ?? same.find((s) => s.slot < x.slot);
+      };
+      const base = await baseBy(false, key);
+      if (!base) {
+        const core = await this.slotStructure(x, bins, true);
+        const like = core ? await baseBy(true, core) : undefined;
+        const mineBin = like && (await this.readSlot(x, bins)), likeBin = like && (await this.readSlot(like, bins));
+        if (like && mineBin && likeBin) skipped.push(`${pos + 1} · ${x.name} (${drawerDifference(mineBin, likeBin, `slot ${like.slot + 1} · ${like.name}`)})`);
+        continue;
+      }
       const bin = await this.readSlot(x, bins);
       const read = bin && (await readFm1Bin(d, bin, x.name));
       if (!bin || !read) {
