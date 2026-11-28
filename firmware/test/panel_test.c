@@ -1434,6 +1434,14 @@ static void drum_bank_suite(void)
         later(500);
         preset_loads = 0;
         check("  PRESET from octave -1: the next patch at octave 0", octave == 0 && cur_preset != preset_at("MERIDIAN 8"));
+        /* the boot: settings_unpack restored octave +2 (D-902), then the bank's slot loads: that load keeps it, the next
+         * one does not */
+        panel_booted = 0;
+        octave = 2;
+        load_as_device("909 KIT");
+        check("  the boot's load keeps the octave the settings record restored", octave == 2 && drum_bank == 0u);
+        load_as_device("MERIDIAN 8");
+        check("  the load after it: octave 0", octave == 0);
         load_as_device("MERIDIAN 8");
     }
     tap(BTN_OCT_UP);
