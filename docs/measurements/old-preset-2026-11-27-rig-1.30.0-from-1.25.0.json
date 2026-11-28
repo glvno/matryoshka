@@ -1,0 +1,141 @@
+{
+ "presets": [
+  {
+   "structure": "63a8df70",
+   "name": "T129 OLD KIT",
+   "values": 31
+  },
+  {
+   "structure": "63e92120",
+   "name": "Pal 12352",
+   "values": 8
+  },
+  {
+   "structure": "63e92120",
+   "name": "Pal 84665",
+   "values": 8
+  },
+  {
+   "structure": "7e57417e",
+   "name": "FLASH TEST",
+   "values": 4
+  },
+  {
+   "structure": "7e57417e",
+   "name": "MATRYOSHKA RIG",
+   "values": 4
+  },
+  {
+   "structure": "aaa2b095",
+   "name": "Monolith D B",
+   "values": 64
+  },
+  {
+   "structure": "aaa2b095",
+   "name": "Monolith D C",
+   "values": 64
+  },
+  {
+   "structure": "cec4b522",
+   "name": "Pal RB pluck",
+   "values": 55
+  },
+  {
+   "structure": "cec4b522",
+   "name": "Pal St one",
+   "values": 55
+  },
+  {
+   "structure": "cec4b522",
+   "name": "Pal St two",
+   "values": 55
+  },
+  {
+   "structure": "e9b694ab",
+   "name": "Pal Test B",
+   "values": 35
+  },
+  {
+   "structure": "e9b694ab",
+   "name": "Pal Test C",
+   "values": 35
+  },
+  {
+   "structure": "e9b694ab",
+   "name": "Pal Test C 2",
+   "values": 35
+  },
+  {
+   "structure": "fa71d127",
+   "name": "T129 OLD KIT",
+   "values": 29
+  }
+ ],
+ "old": [
+  1000,
+  2000,
+  3000,
+  4000,
+  5000,
+  6000,
+  7000,
+  8000,
+  9000,
+  10000,
+  11000,
+  12000,
+  13000,
+  14000,
+  15000,
+  16000,
+  17000,
+  18000,
+  19000,
+  20000,
+  21000,
+  22000,
+  23000,
+  24000,
+  25000,
+  26000,
+  27000,
+  28000,
+  29000
+ ],
+ "new": [
+  1000,
+  27000,
+  28000,
+  29000,
+  2000,
+  19000,
+  20000,
+  21000,
+  4000,
+  7000,
+  25000,
+  16000,
+  11000,
+  12000,
+  13000,
+  14000,
+  15000,
+  0,
+  1048576,
+  6000,
+  26000,
+  18000,
+  3000,
+  17000,
+  5000,
+  8000,
+  9000,
+  22000,
+  10000,
+  24000,
+  23000
+ ],
+ "name": "T129 OLD KIT",
+ "old_structure": "fa71d127",
+ "new_structure": "63a8df70"
+}

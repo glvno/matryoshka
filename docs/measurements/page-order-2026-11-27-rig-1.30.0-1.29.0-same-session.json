@@ -1,0 +1,85 @@
+{
+ "checks": [
+  {
+   "name": "HERA 6 is in the bank",
+   "ok": true,
+   "info": "slot 4"
+  },
+  {
+   "name": "HERA 6 opens on its instrument (HERA 6 on the screen, no HARMONIZER)",
+   "ok": false,
+   "info": "['QUICK START', 'SELECT', 'devices', 'ALGO', 'device pages', 'PRESET', 'device presets', 'HOME', '+', 'PRESET', 'patches', 'PLAY', '+', 'PRESET', 'tempo', 'adjust values', '+', 'OCT-', 'OCT+', 'TO SEE CONTROLS FOR CURRENT PAG', 'HOME', ' dismiss    ', 'HOME', '+', 'SAVE', ' forever']"
+  },
+  {
+   "name": "SELECT -1 from HERA 6: HARMONIZER (it comes before the instrument)",
+   "ok": false,
+   "info": "FACTORY SOUNDS MISSING:"
+  },
+  {
+   "name": "the walk: HARMONIZER before HERA 6, HERA 6 before ARPEGGIATOR and OUTPUT",
+   "ok": true,
+   "info": "['FACTORY SOUNDS MISSING:', 'PATTERN', 'HARMONIZER', 'HERA 6', 'DRIVE OFF', 'DELAY OFF', 'REVERB OFF', 'ARPEGGIATOR', 'OUTPUT', 'MAIN', 'PATTERN', 'HARMONIZER', 'HERA 6']"
+  }
+ ],
+ "walk": [
+  "FACTORY SOUNDS MISSING:",
+  "FACTORY SOUNDS MISSING:",
+  "PATTERN",
+  "HARMONIZER",
+  "HERA 6",
+  "DRIVE OFF",
+  "DELAY OFF",
+  "REVERB OFF",
+  "ARPEGGIATOR",
+  "OUTPUT",
+  "MAIN",
+  "PATTERN",
+  "HARMONIZER",
+  "HERA 6"
+ ],
+ "home": [
+  "QUICK START",
+  "SELECT",
+  "devices",
+  "ALGO",
+  "device pages",
+  "PRESET",
+  "device presets",
+  "HOME",
+  "+",
+  "PRESET",
+  "patches",
+  "PLAY",
+  "+",
+  "PRESET",
+  "tempo",
+  "adjust values",
+  "+",
+  "OCT-",
+  "OCT+",
+  "TO SEE CONTROLS FOR CURRENT PAG",
+  "HOME",
+  " dismiss    ",
+  "HOME",
+  "+",
+  "SAVE",
+  " forever"
+ ],
+ "before_home": "FACTORY SOUNDS MISSING:",
+ "order": [
+  "FACTORY SOUNDS MISSING:",
+  "PATTERN",
+  "HARMONIZER",
+  "HERA 6",
+  "DRIVE OFF",
+  "DELAY OFF",
+  "REVERB OFF",
+  "ARPEGGIATOR",
+  "OUTPUT",
+  "MAIN",
+  "PATTERN",
+  "HARMONIZER",
+  "HERA 6"
+ ],
+ "all_ok": false
+}
