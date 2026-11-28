@@ -1,0 +1,110 @@
+{
+ "a": "/Users/mg/projects/music/fm1/modular-1/build/release-1.30.0/qual/aud909-1.29.0.json",
+ "b": "/Users/mg/projects/music/fm1/modular-1/build/release-1.30.0/qual/aud909-1.30.0.json",
+ "notes": {
+  "54": {
+   "peak": 2576,
+   "max_diff": 4303,
+   "share_differ": 0.07589,
+   "floor_a": 2304,
+   "floor_b": 2649
+  },
+  "55": {
+   "peak": 3644,
+   "max_diff": 4166,
+   "share_differ": 0.04407,
+   "floor_a": 3784,
+   "floor_b": 3203
+  },
+  "56": {
+   "peak": 3581,
+   "max_diff": 3574,
+   "share_differ": 0.05966,
+   "floor_a": 4231,
+   "floor_b": 3561
+  },
+  "57": {
+   "peak": 1110,
+   "max_diff": 1099,
+   "share_differ": 0.11584,
+   "floor_a": 1110,
+   "floor_b": 1126
+  },
+  "59": {
+   "peak": 1831,
+   "max_diff": 2000,
+   "share_differ": 0.04371,
+   "floor_a": 2017,
+   "floor_b": 2149
+  },
+  "60": {
+   "peak": 892,
+   "max_diff": 1088,
+   "share_differ": 0.41223,
+   "floor_a": 1087,
+   "floor_b": 1124
+  },
+  "62": {
+   "peak": 1007,
+   "max_diff": 583,
+   "share_differ": 0.29457,
+   "floor_a": 1622,
+   "floor_b": 1538
+  },
+  "63": {
+   "peak": 1012,
+   "max_diff": 1452,
+   "share_differ": 0.31262,
+   "floor_a": 189,
+   "floor_b": 1570
+  },
+  "64": {
+   "peak": 1005,
+   "max_diff": 802,
+   "share_differ": 0.02155,
+   "floor_a": 569,
+   "floor_b": 681
+  },
+  "65": {
+   "peak": 966,
+   "max_diff": 629,
+   "share_differ": 0.23641,
+   "floor_a": 585,
+   "floor_b": 643
+  },
+  "66": {
+   "peak": 995,
+   "max_diff": 169,
+   "share_differ": 0.24455,
+   "floor_a": 1077,
+   "floor_b": 128
+  },
+  "67": {
+   "peak": 958,
+   "max_diff": 1414,
+   "share_differ": 0.27218,
+   "floor_a": 1239,
+   "floor_b": 179
+  },
+  "68": {
+   "peak": 987,
+   "max_diff": 427,
+   "share_differ": 0.28449,
+   "floor_a": 819,
+   "floor_b": 582
+  },
+  "69": {
+   "peak": 877,
+   "max_diff": 1182,
+   "share_differ": 0.98289,
+   "floor_a": 1145,
+   "floor_b": 1163
+  }
+ },
+ "worst": 4303,
+ "silent_notes": [],
+ "over_floor": [
+  54
+ ],
+ "ok": false
+}

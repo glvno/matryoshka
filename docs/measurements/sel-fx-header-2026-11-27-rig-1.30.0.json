@@ -1,0 +1,156 @@
+{
+ "checks": [
+  {
+   "name": "the 909 Kit is in the bank",
+   "ok": true,
+   "info": "slot 18"
+  },
+  {
+   "name": "SEL on the kit page arms it (909 KIT ARMED)",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "FX opens the Drive",
+   "ok": true,
+   "info": "['0.00', '1.00', '1.00', '137', 'ARM DRUMS', 'DRIVE', 'DRIVE OFF', 'LEVEL']"
+  },
+  {
+   "name": "#1347: the page header reads DRIVE OFF",
+   "ok": true,
+   "info": "top row ['DRIVE OFF', 'PAGE']"
+  },
+  {
+   "name": "SEL switches the Drive on (DRIVE ON)",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "#1347: the page header reads DRIVE",
+   "ok": true,
+   "info": "top row ['DRIVE', 'PAGE']"
+  },
+  {
+   "name": "SEL switches the Drive off again (DRIVE OFF)",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "#1347: the page header reads DRIVE OFF",
+   "ok": true,
+   "info": "top row ['DRIVE OFF', 'PAGE']"
+  },
+  {
+   "name": "the kick changes with the Drive on (hit RMS or peak beyond the takes' spread)",
+   "ok": true,
+   "info": "hit off -33.37/-33.4, on -30.72/-30.68 dB; peak off -22.07/-22.07, on -19.6/-19.6 dBFS"
+  },
+  {
+   "name": "and back with it off",
+   "ok": true,
+   "info": "-33.42 vs -33.37 dB"
+  },
+  {
+   "name": "SELECT walks to the Reverb",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "#1347: the page header reads REVERB OFF",
+   "ok": true,
+   "info": "top row ['REVERB OFF', 'PAGE']"
+  },
+  {
+   "name": "SEL switches the Reverb on (REVERB ON)",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "#1347: the page header reads REVERB",
+   "ok": true,
+   "info": "top row ['REVERB', 'PAGE']"
+  },
+  {
+   "name": "SEL mid-tail switches the Reverb off (REVERB OFF)",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "the Reverb on lengthens the kick's tail (so the next check is not blind)",
+   "ok": true,
+   "info": "tail dry -120.0, wet -89.64 dBFS"
+  },
+  {
+   "name": "switched off 0.35 s after the hit, the Reverb rings out (tail 6 dB or more over the dry tail)",
+   "ok": true,
+   "info": "tail dry -120.0, wet -89.64, switched -89.48 dBFS"
+  },
+  {
+   "name": "the 909 slot read before SAVE",
+   "ok": true,
+   "info": "3781 bytes"
+  },
+  {
+   "name": "SEL on again (REVERB ON)",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "SAVE kept the Reverb on: after a reload SEL turns it off (REVERB OFF)",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "the 909 slot written back as it was",
+   "ok": true,
+   "info": ""
+  }
+ ],
+ "drive_off": [
+  {
+   "hit": -33.37,
+   "peak": -22.07,
+   "tail": -120.0
+  },
+  {
+   "hit": -33.4,
+   "peak": -22.07,
+   "tail": -120.0
+  }
+ ],
+ "drive_on": [
+  {
+   "hit": -30.72,
+   "peak": -19.6,
+   "tail": -120.0
+  },
+  {
+   "hit": -30.68,
+   "peak": -19.6,
+   "tail": -120.0
+  }
+ ],
+ "drive_back": {
+  "hit": -33.42,
+  "peak": -22.09,
+  "tail": -120.0
+ },
+ "reverb": {
+  "dry": {
+   "hit": -33.35,
+   "peak": -22.08,
+   "tail": -120.0
+  },
+  "wet": {
+   "hit": -35.47,
+   "peak": -23.36,
+   "tail": -89.64
+  },
+  "switched": {
+   "hit": -35.46,
+   "peak": -23.73,
+   "tail": -89.48
+  }
+ },
+ "all_ok": true
+}

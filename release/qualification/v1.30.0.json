@@ -1,0 +1,468 @@
+{
+  "schema": 1,
+  "version": "1.30.0",
+  "firmware_product": "FM-1_7013000",
+  "source_commit": "a0b8d7f6a2ac49c542e1320cdcb46e8ac6b2603b",
+  "source_tree": "977f66ab6b7f6defbbf9a6492a574d7d048d72db",
+  "frozen_commit": "a0b8d7f6a2ac49c542e1320cdcb46e8ac6b2603b",
+  "status": "automated and rig checks passed, with three noted exceptions judged test or rig state, not firmware: (1) the rig's clean rerun of paletteEditor (6 checks) and paletteReadBack (1) failed on leftover 'Pal Test' user presets from earlier runs (the editor correctly numbers the new preset name, so exact-name checks fail); the same editor with firmware differing only by #1387's boot-octave change in panel.c passed paletteEditor 63/63 on this rig at 23eb0854, and Consolidate with Undo passed 9/9 on F2 (qual/consolidate-rerun.log); (2) the 909 vs 1.29.0 note 54 over its session floor by 30 counts (floors swing 2304-4982 between sessions); (3) carry from 1.26.3 11/12, one 808 entry's loudest window 16.3 % vs 15 % (past readings 4635-5911). The boot octave was checked by the owner's real power cycle (checklist step 6); the emulator palette-editor failures are #1388. The owner's device check passed 6/6 on his own FM-1.",
+  "release_approval": {
+    "status": "the owner's go, 2026-11-28: \"you have my go unless you need a new manual rig test from me\" (D-139, D-1187)",
+    "scope": "Publication of v1.30.0 from the tag on release/1.30.0: the frozen commit plus only this record, the qualified package and its screen font in web/public/firmware/, the coverage record and the rig measurements (D-1163); its firmware/ and tools/ equal the qualified source (D-105)."
+  },
+  "contents": [
+    "#1355, #1357, #1358, #1362, #1377: the DX7 module (patch format 71, D-1264, D-1044), its editor card with SysEx import/export, our nine voices and the DX7 Piano example, its FM-1 pages and operator picker (D-1455), its output range",
+    "#1367: black keys 1-11 play drum rows, the grid follows, SELECT walks every row, SEL + black key 10 the step-record backspace (D-520, D-521, D-842); a patch load resets the octave, the drum bank and the DX7 picker (D-1456)",
+    "#1380: the editor keyboard opens each patch at its own octave",
+    "#1368, #1369, #1371, #1373, #1375: the palette named PRESET | PATCH (D-942, D-943, D-1457), a tweak read back from its slot, truthful preset names (D-1226, D-1440), structure matching across slots (D-1227), Consolidate (D-1441)",
+    "#1376, #1381: the signal-flow Tidy (D-1446), patches open fitted, zoom to 7 % (D-1447), factory patches laid out by it, the layout sets the FM-1 page order (D-1458); factory content v25 e86d04",
+    "#1386: v25 offered only to firmware 1.30 (header format 71), v24 df0852 frozen for 1.26.3-1.29.x (D-1020)",
+    "#1378: panning moves only the cables at docked jacks",
+    "#1379: owner rulings",
+    "not in it: semantic zoom (zoom-lod), the Stereo utility (#1383): 1.31"
+  ],
+  "plan": "D-1187 (freeze PR #1384 = a0b8d7f6)",
+  "patch_format": 71,
+  "factory_content": {
+    "version": 25,
+    "set": "e86d04",
+    "layout": 4,
+    "format": 71,
+    "note": "decoded v24 (v1.29.0) vs v25 (F): header equal but version 24->25, set df0852->e86d04, format 66->71 (gate); the 12 patches named alike; presets/dict/patterns byte-identical (32082 B); patch section 23789 -> 23787 B (Tidy device order); RELEASED_SETS 23 -> 24, released copies 104 -> 112; offer (layout 4) by plays: {65: 'f81fee', 66: 'df0852', 70: 'df0852', 71: 'e86d04'} (1.26.3-1.29.x plays 66-70: frozen v24; 1.30 plays 71: v25; Tests  21 passed (21): factory-protocol / factory-content tests)"
+  },
+  "artifacts": {
+    "package": {
+      "name": "matryoshka-1.30.0.fwsc",
+      "size": 610628,
+      "sha256": "4ecf7a807f695a8b6a585c8a364fed6821226785c5babda2cbc6e398c1581fe5"
+    },
+    "screen_font": {
+      "name": "matryoshka-1.30.0-font.bin",
+      "size": 40946,
+      "sha256": "765b681ae53c51855791860e8f1c6b7eb8113fdb8e6d8aec96261f4d8a7cc3fa",
+      "id": "528f1926"
+    },
+    "normal": {
+      "name": "matryoshka-1.30.0-app.bin",
+      "size": 539112,
+      "sha256": "4da837f1d7aad37a68a43c68e7c8e923e246b98a11d4aac383bcc862e6ebc0f7"
+    },
+    "normal_elf": {
+      "name": "matryoshka-1.30.0-app.elf",
+      "size": 615284,
+      "sha256": "671db778955ffef34e49f2da747ae8b5f6a156fd7cb560d896df26929120e778"
+    },
+    "normal_sidecar": {
+      "name": "matryoshka-1.30.0.json",
+      "size": 431,
+      "sha256": "dba85c3f7dce5490a87d96096dce8dca58ea0c95e98dcdac837dc9715d4406f4"
+    },
+    "bridge": {
+      "name": "matryoshka-emu.bin",
+      "size": 536552,
+      "sha256": "fdc974f0084259d3361d078576a9bd6453940ffb3b5207a0848d432927611ac0"
+    }
+  },
+  "build_manifest_sha256": "029870bcd3ab9e6d267571d3e48e14d0675bb4d1cca3696eb410e32b1b9dc16e",
+  "build": "release run 46099730421: image 539112 B; RAM .data+.bss 19392 B of 24448 (5056 B free); pool 408684 B of 417920 (9236 B headroom, the floor 8192)",
+  "ci_runs": {
+    "release": 46099730421,
+    "web_rc": 46099733492,
+    "freeze_pr": 1384
+  },
+  "coverage": "release/coverage/v1.30.0: coverage record: current, measured a0b8d7f6, fingerprint matches the frozen commit (web RC run 46099733492, D-147)",
+  "full_scenarios": "600 of 611 checks passed, 1 skipped (open from FM-1: a slot this browser has no copy of opens from the FM-1: the palette has no empty position); failed: [1] palette editor: chip 4 holds PAL TEST; [1] ",
+  "smoke": [
+    "emu:smoke: passed; 317 checks, 0 failed, 0 level warnings; 537.0 s emulated in 356.4 s; snapshots in build/emu/smoke (/Users/mg/projects/music/fm1/wt/rel130/bui"
+  ],
+  "boot": "boot check: PASS (49 checks, 0 failed; the editor link and the update handshake checked on the M1_EMU_MIDI build; 82.1 s emulated in 70.1 s; snapshots in /Users",
+  "old_format": [
+    "older format ok: 708 binaries load, upgrade and render bit-identically; 0 upgraded as today's encoder writes them, 336 differ, 372 too big to upgrade, 0 already in today's format; 2276 records grown to all their parameters render the same; 708 raised to format 71 render the same; 0 over a slot skipped",
+    "older format ok: 104 binaries load, upgrade and render bit-identically; 0 upgraded as today's encoder writes them, 103 differ, 1 too big to upgrade, 0 already in today's format; 1297 records grown to all their parameters render the same; 103 raised to format 71 render the same; 0 over a slot skipped",
+    "differences against v1.29.0: none"
+  ],
+  "install_panel": {
+    "vs_1.29.0_emulator": "6 of 7 checks; FAILED: connect: Sync turns Live on: chip not synced",
+    "v24_region_on_1.30.0_emulator": "5 of 5 checks"
+  },
+  "hardware": {
+    "upgrade_from_1.29.0": {
+      "checks": "8 of 8",
+      "method": "build/release-1.30.0/prep/carry130.py: on 1.29.0 every slot, the pattern store, the palette and each entry's sound recorded; after the 1.30.0 install (which updated the factory region v24 df0852 -> v25 e86d04) all of it as on 1.29.0, the font, region v25"
+    },
+    "upgrade_from_1.26.3": {
+      "checks": "11 of 12; FAILED: palette 1 MY 808 KIT P02: plays as on the base (loudest 250 ms within 15 %, sum within 25 %) (loudest 5911 / 5081, sum 33588 / 31457)",
+      "method": "carry130.py: 1.25.0 fresh with the 1.25.0 bank, 1.26.3 over it (upgrade1263.py: 70 of 70), snapshot, then 1.30.0 over it"
+    },
+    "from_1.25.0_straight_old_preset": {
+      "install": [
+        "screen font: /Users/mg/projects/music/fm1/modular-1/build/release-1.30.0/dl/matryoshka-release-1.30.0/matryoshka-1.30.0-font.bin (font 528f1926)",
+        "done: the FM-1 runs FM-1_7013000",
+        "screen font: installing font 528f1926 from /Users/mg/projects/music/fm1/modular-1/build/release-1.30.0/dl/matryoshka-release-1.30.0/matryoshka-1.30.0-font.bin",
+        "  screen font committed",
+        "screen font: installed, font 528f1926",
+        "factory region: valid; layout 4 (the firmware reads 4), format 71, version 25, set e86d04, 57581 of 73728 bytes, 12 patches; the firmware tier: version 25, 9 patches; 21 factory patches in all"
+      ],
+      "on_the_fm1": "T129 OLD KIT: under fa71d127: kept, 29 values; under 63a8df70: present; 14 user presets",
+      "editor": "ok   the editor moves T129 OLD KIT fa71d127 -> 63a8df70 (31 values)",
+      "detail": {
+        "fm1": {
+          "presets": [
+            {
+              "structure": "63a8df70",
+              "name": "T129 OLD KIT",
+              "values": 31
+            },
+            {
+              "structure": "63e92120",
+              "name": "Pal 12352",
+              "values": 8
+            },
+            {
+              "structure": "63e92120",
+              "name": "Pal 84665",
+              "values": 8
+            },
+            {
+              "structure": "7e57417e",
+              "name": "FLASH TEST",
+              "values": 4
+            },
+            {
+              "structure": "7e57417e",
+              "name": "MATRYOSHKA RIG",
+              "values": 4
+            },
+            {
+              "structure": "aaa2b095",
+              "name": "Monolith D B",
+              "values": 64
+            },
+            {
+              "structure": "aaa2b095",
+              "name": "Monolith D C",
+              "values": 64
+            },
+            {
+              "structure": "cec4b522",
+              "name": "Pal RB pluck",
+              "values": 55
+            },
+            {
+              "structure": "cec4b522",
+              "name": "Pal St one",
+              "values": 55
+            },
+            {
+              "structure": "cec4b522",
+              "name": "Pal St two",
+              "values": 55
+            },
+            {
+              "structure": "e9b694ab",
+              "name": "Pal Test B",
+              "values": 35
+            },
+            {
+              "structure": "e9b694ab",
+              "name": "Pal Test C",
+              "values": 35
+            },
+            {
+              "structure": "e9b694ab",
+              "name": "Pal Test C 2",
+              "values": 35
+            },
+            {
+              "structure": "fa71d127",
+              "name": "T129 OLD KIT",
+              "values": 29
+            }
+          ],
+          "old": [
+            1000,
+            2000,
+            3000,
+            4000,
+            5000,
+            6000,
+            7000,
+            8000,
+            9000,
+            10000,
+            11000,
+            12000,
+            13000,
+            14000,
+            15000,
+            16000,
+            17000,
+            18000,
+            19000,
+            20000,
+            21000,
+            22000,
+            23000,
+            24000,
+            25000,
+            26000,
+            27000,
+            28000,
+            29000
+          ],
+          "new": [
+            1000,
+            27000,
+            28000,
+            29000,
+            2000,
+            19000,
+            20000,
+            21000,
+            4000,
+            7000,
+            25000,
+            16000,
+            11000,
+            12000,
+            13000,
+            14000,
+            15000,
+            0,
+            1048576,
+            6000,
+            26000,
+            18000,
+            3000,
+            17000,
+            5000,
+            8000,
+            9000,
+            22000,
+            10000,
+            24000,
+            23000
+          ],
+          "name": "T129 OLD KIT",
+          "old_structure": "fa71d127",
+          "new_structure": "63a8df70"
+        },
+        "editor": {
+          "from": "fa71d127",
+          "moved_to": "63a8df70",
+          "as_expected": true,
+          "values_before": [
+            1000,
+            2000,
+            3000,
+            4000,
+            5000,
+            6000,
+            7000,
+            8000,
+            9000,
+            10000,
+            11000,
+            12000,
+            13000,
+            14000,
+            15000,
+            16000,
+            17000,
+            18000,
+            19000,
+            20000,
+            21000,
+            22000,
+            23000,
+            24000,
+            25000,
+            26000,
+            27000,
+            28000,
+            29000
+          ],
+          "values_after": [
+            0.0152587890625,
+            0.4119873046875,
+            0.42724609375,
+            0.4425048828125,
+            0.030517578125,
+            0.2899169921875,
+            0.30517578125,
+            0.3204345703125,
+            0.06103515625,
+            0.1068115234375,
+            0.3814697265625,
+            0.244140625,
+            0.1678466796875,
+            0.18310546875,
+            0.1983642578125,
+            0.213623046875,
+            0.2288818359375,
+            0,
+            16,
+            0.091552734375,
+            0.396728515625,
+            0.274658203125,
+            0.0457763671875,
+            0.2593994140625,
+            0.0762939453125,
+            0.1220703125,
+            0.1373291015625,
+            0.335693359375,
+            0.152587890625,
+            0.3662109375,
+            0.3509521484375
+          ]
+        }
+      }
+    },
+    "palette": {
+      "on_1.30.0": "9 of 9",
+      "on_1.26.3": "9 of 9",
+      "left": "9 of 9",
+      "names": "9 of 9 checks",
+      "read_back": "9 of 10 checks; FAILED: palette read back: it read the slot back (SLOT_GET), sent one preset (PRESET_PUT) and stored no patch (no SLOT): 15 15 15 15 15 15 15 15 15 15 15 15 15 15 15 15 15 15 15 15 15 15 15 15 15 15 15 1",
+      "structure": "9 of 9 checks",
+      "consolidate": "3 of 3 checks"
+    },
+    "dx7": {
+      "checks": "75 of 75",
+      "modtime_us_at_0_1_8_notes": null,
+      "isr_8_voices_ns": {
+        "mean": 723293,
+        "max": 847416
+      },
+      "pages_scenario": "7 of 7 checks",
+      "method": "build/release-1.30.0/prep/dx7_ts.ts + dx7_rig.py: our bank's nine voices and algorithm 4/6 voices with and without feedback sent live, C4 at velocity 127, the rig's USB audio: non-silent and the 1/3-octave spectrum against the TS engine's render; the DX7 Piano (8 voices): modtime per voice against the spike's 115.9 us (#1338), blocktime's whole audio ISR at 8 notes under 85 %; the pages: ALGORITHM, OP 1, K1 to OP 3, the patch loaded again back on OP 1"
+    },
+    "drum_keys": {
+      "drumKeys": "10 of 10 checks",
+      "drum130": "14 of 14 checks"
+    },
+    "page_order": {
+      "checks": "4 of 4",
+      "walk_1.30.0": [
+        "MAIN",
+        "PATTERN",
+        "HARMONIZER",
+        "HERA 6",
+        "DRIVE OFF",
+        "DELAY OFF",
+        "REVERB OFF",
+        "ARPEGGIATOR",
+        "OUTPUT",
+        "MAIN",
+        "PATTERN",
+        "HARMONIZER",
+        "HERA 6",
+        "DRIVE OFF"
+      ],
+      "walk_1.29.0_v24": [
+        "FACTORY SOUNDS MISSING:",
+        "PATTERN",
+        "HARMONIZER",
+        "HERA 6",
+        "DRIVE OFF",
+        "DELAY OFF",
+        "REVERB OFF",
+        "ARPEGGIATOR",
+        "OUTPUT",
+        "MAIN",
+        "PATTERN",
+        "HARMONIZER",
+        "HERA 6"
+      ],
+      "method": "build/release-1.30.0/prep/page_order.py: the factory HERA 6 slot loaded by program change: opens on HERA 6, SELECT -1 reaches HARMONIZER, then a SELECT walk"
+    },
+    "effect_header": "21 of 21",
+    "inversion_keys": "35 of 35 checks",
+    "retrig": "17 of 17 checks",
+    "held_through_palette_switch": {
+      "on_1.30.0": "PASS held through a palette switch, LFO rests in step record on 1.30.0"
+    },
+    "counters": {
+      "1.29.0": {
+        "firmware": "1.29.0",
+        "secs": 30.0,
+        "armed": [
+          "STEP 1/16  DRUMS ARM P01"
+        ],
+        "ticks_per_s": 9988,
+        "usb_polls": 60027,
+        "usb_poll_mean_us": 4.67,
+        "t5_gap_max_us": 103,
+        "audio_peak_pct": 64,
+        "overload": 0,
+        "usb_before": {
+          "sie_timeouts": 0,
+          "retries": 0,
+          "resets": 1,
+          "suspends": 0
+        },
+        "usb_after": {
+          "sie_timeouts": 0,
+          "retries": 0,
+          "resets": 1,
+          "suspends": 0
+        }
+      },
+      "1.30.0": {
+        "firmware": "1.30.0",
+        "secs": 30.0,
+        "armed": [
+          "STEP 1/16  PATTERN ARM G#3-D#4 "
+        ],
+        "ticks_per_s": 9988,
+        "usb_polls": 60031,
+        "usb_poll_mean_us": 4.85,
+        "t5_gap_max_us": 105,
+        "audio_peak_pct": 47,
+        "overload": 0,
+        "usb_before": {
+          "sie_timeouts": 0,
+          "retries": 0,
+          "resets": 1,
+          "suspends": 0
+        },
+        "usb_after": {
+          "sie_timeouts": 0,
+          "retries": 0,
+          "resets": 1,
+          "suspends": 0
+        }
+      }
+    },
+    "909_hits_vs_1.29.0": {
+      "ok": false,
+      "worst_counts": 4303,
+      "silent_notes": [],
+      "over_floor": [
+        54
+      ],
+      "min_peak": 877
+    },
+    "rig127": "29 of 29",
+    "device_scenarios": "186 of 198 checks passed, 3 skipped (1.2 output: MONO, both sounds on both sides, each a bit quieter: the rig's USB audio is taken before OUTPUT's mix (audio.c): the emulator's I2S proves it, the owne",
+    "older_firmware_refused": {
+      "1.25.0_without_force_exit_11": true,
+      "log": "qual/downgrade.log"
+    },
+    "midi_endpoint_names": {
+      "1.29.0": true,
+      "1.30.0": true
+    },
+    "irq_vs_1.29.0": "D-1165, one session: program 18 1927.9 -> 1923.6 us; program 6 1844.9 -> 1869.6 us; program 1 2171.6 -> 2175.8 us; 18 Cassia 1 fx 2113.8 -> 2117.4 us; 05 Expander S fx 2347.7 -> 2343.2 us; 03 Hera 6 fx 2091.8 -> 2101.7 us; 06 Algo Four fx 2202.7 -> 2211.9 us; differences [-4.5, 24.7]",
+    "cpu_survey_vs_1.29.0": "same session, stopped: 1.22.0's FX patches [-0.7, 3.0] mean 0.88; factory patches [-0.1, 3.1] mean 1.32; the 1.27 set [0.6, 3.0] mean 1.24 points",
+    "clock_in_at_0": "raw steady offset 40.0 ms against 1.29.0's 40.56 ms (difference -0.56 ms)",
+    "cores": [
+      "2 CORES; barred no; trace 0xc1000002; split on",
+      "self-test passed 17755, failed 0; refused jobs 0; jobs done 578174; core 1 stack 2144 B used; longest wait 2350 us since the last read"
+    ]
+  },
+  "owner_checks": {
+    "status": "done 2026-11-27/28 on the owner's own FM-1 (he installed the candidate F2 a0b8d7f6 from crate/v130's Install panel): all six steps passed",
+    "steps": "a DX7 voice by ear and a SysEx bank, the operator picker; Verona hi-hats and the SELECT walk; Add to palette / PRESET | PATCH / Consolidate on his own palette; Tidy, fitted factory patches and the Hera 6 order (after the editor's v24 -> v25 update); panning feel; a power cycle, the saved octave coming back"
+  }
+}

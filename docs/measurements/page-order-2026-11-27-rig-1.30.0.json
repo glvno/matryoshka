@@ -1,0 +1,78 @@
+{
+ "checks": [
+  {
+   "name": "HERA 6 is in the bank",
+   "ok": true,
+   "info": "slot 4"
+  },
+  {
+   "name": "HERA 6 opens on its instrument (HERA 6 on the screen, no HARMONIZER)",
+   "ok": true,
+   "info": "['HERA 6', 'LFO', '-', '3.00', 'Hz', '1.0', 'DELAY TIME', 'ms', '-', 'HERA 6', 'KEYS WIRED', '137', '= OCT =', '-', 'HERA 6', 'KEYS WIRED', '137', '= OCT =']"
+  },
+  {
+   "name": "SELECT -1 from HERA 6: HARMONIZER (it comes before the instrument)",
+   "ok": true,
+   "info": "HARMONIZER"
+  },
+  {
+   "name": "the walk: HARMONIZER before HERA 6, HERA 6 before ARPEGGIATOR and OUTPUT",
+   "ok": true,
+   "info": "['MAIN', 'PATTERN', 'HARMONIZER', 'HERA 6', 'DRIVE OFF', 'DELAY OFF', 'REVERB OFF', 'ARPEGGIATOR', 'OUTPUT', 'MAIN', 'PATTERN', 'HARMONIZER', 'HERA 6', 'DRIVE OFF']"
+  }
+ ],
+ "walk": [
+  "MAIN",
+  "PATTERN",
+  "HARMONIZER",
+  "HERA 6",
+  "DRIVE OFF",
+  "DELAY OFF",
+  "REVERB OFF",
+  "ARPEGGIATOR",
+  "OUTPUT",
+  "MAIN",
+  "PATTERN",
+  "HARMONIZER",
+  "HERA 6",
+  "DRIVE OFF"
+ ],
+ "home": [
+  "HERA 6",
+  "LFO",
+  "-",
+  "3.00",
+  "Hz",
+  "1.0",
+  "DELAY TIME",
+  "ms",
+  "-",
+  "HERA 6",
+  "KEYS WIRED",
+  "137",
+  "= OCT =",
+  "-",
+  "HERA 6",
+  "KEYS WIRED",
+  "137",
+  "= OCT ="
+ ],
+ "before_home": "HARMONIZER",
+ "order": [
+  "MAIN",
+  "PATTERN",
+  "HARMONIZER",
+  "HERA 6",
+  "DRIVE OFF",
+  "DELAY OFF",
+  "REVERB OFF",
+  "ARPEGGIATOR",
+  "OUTPUT",
+  "MAIN",
+  "PATTERN",
+  "HARMONIZER",
+  "HERA 6",
+  "DRIVE OFF"
+ ],
+ "all_ok": true
+}
