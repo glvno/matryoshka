@@ -750,6 +750,9 @@ async function main() {
    *  it is flat), so the checks of a voice that holds hear the voice, not the delay */
   const openDry = (name) => page.evaluate((n) => window.__m1test.openRows(n, [['mix', 0]]), name);
   const patchJson = () => page.evaluate(() => window.__m1test.patchJson());
+  /** the patch without its view: a patch opened without one gets the fitted view a moment later (D-1447), which is no edit
+   *  (undo and unsaved changes leave it out, saved.ts) */
+  const soundJson = () => page.evaluate(() => { const { view: _view, ...p } = JSON.parse(window.__m1test.patchJson()); return JSON.stringify(p); });
   /** an assembly's factory presets in the editor's table, in its order: their names and row counts */
   const factoryPresets = (label) => page.evaluate(async (l) => {
     const { presetsOf } = await import('/src/device-presets.ts');
@@ -1248,27 +1251,27 @@ async function main() {
     },
     async arp() {
       await inSandbox();
-      const before = await patchJson();
+      const before = await soundJson();
       await emu.tap(B.arp);
-      const changed = await until(async () => (await patchJson()) !== before, 1500);
+      const changed = await until(async () => (await soundJson()) !== before, 1500);
       await emu.elapse(700);
       await emu.tap(B.arp);
-      const mid = await patchJson();
-      const back = await until(async () => (await patchJson()) === before, 3000);
-      if (changed && !back) console.log(`  ARP 1: ${diff(JSON.parse(before), JSON.parse(mid)).join('; ')}\n  ARP 2: ${diff(JSON.parse(mid), JSON.parse(await patchJson())).join('; ')}`);
+      const mid = await soundJson();
+      const back = await until(async () => (await soundJson()) === before, 3000);
+      if (changed && !back) console.log(`  ARP 1: ${diff(JSON.parse(before), JSON.parse(mid)).join('; ')}\n  ARP 2: ${diff(JSON.parse(mid), JSON.parse(await soundJson())).join('; ')}`);
       if (!changed) return skip('sandbox: ARP toggles on, and off again', 'ARP changes nothing in this patch');
       await check('sandbox: ARP toggles on, and off again', changed && back, `first press ${changed ? 'changed the patch' : 'changed nothing'}, second ${back ? 'undid it' : 'did not undo it'}`);
     },
     async arpQuick() {   // a quick second press, as a hand does it (300 ms apart)
       await inSandbox();
       await page.evaluate(() => { window.__midiLog.splice(0); window.__m1test.inputs(); });
-      const before = await patchJson();
+      const before = await soundJson();
       await emu.tap(B.arp);
       await emu.elapse(100);
       await emu.tap(B.arp);
       await emu.elapse(1500);
       // (where the editor ends, once both CCs reached it: a busy machine may still be on the first)
-      const after = (await until(async () => { const x = await patchJson(); return x === before ? x : null; }, 2000)) ?? (await patchJson());
+      const after = (await until(async () => { const x = await soundJson(); return x === before ? x : null; }, 2000)) ?? (await soundJson());
       const log = await page.evaluate(() => window.__midiLog.splice(0).filter((x) => x[2] === 86));
       await check('sandbox: ARP pressed twice quickly ends where it began', after === before, after === before ? '' : `${diff(JSON.parse(before), JSON.parse(after)).join('; ')} (CC 86 seen: ${log.map((x) => `${x[3]}@${x[0]}`).join(' ')})`);
       if (after !== before) { await emu.tap(B.arp); await emu.elapse(1500); }
