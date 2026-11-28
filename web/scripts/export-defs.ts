@@ -11,7 +11,7 @@ import { ADSR_LONG, ANALOG_CURVE, ANALOG_DIP, ANALOG_DIP_S, ANALOG_PWO, ANALOG_S
 import { LPG_ATTACK, LPG_CLIP, LPG_RES_K, RIGHT_IN, RIGHT_OUT } from '../src/modules';
 import { effectKind } from '../src/fx-drawer';
 import { EQ_LIM, EQ_SHELF_Q, EQ_SHELF_TOP, EUCLID_RATE_TICKS, EUCLID_STEPS_MAX, LIMIT_AHEAD, LIMIT_CHUNK, LIMIT_KA } from '../src/modules';
-import { encodePatch, TYPE_ORDER, toQ16, VERSION, deviceBudget, DEVICE } from '../src/patchbin';
+import { encodePatch, TYPE_ORDER, toQ16, VERSION, deviceBudget, DEVICE, FORMAT_1_30 } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX, trackName } from '../src/patch';
 import { ACCENT_VEL, MICRO_MAX, MICRO_STEPS, RATCHET_MAX, TRACK_NOTES_MAX } from '../src/track';
 import { DRUM_MAP_DEFAULT, DRUM_ROWS, STEPS_HITS } from '../src/modules';
@@ -462,8 +462,11 @@ const tier = buildRegion({
   kind: KIND_TIER, set: setId, version, released: imageReleased(tierIndexes), copies: imageCopies(tierPatches, releasedCopies),
   patches: tierPatches, presets: [], patterns: [],
 });
+// the region names format 71 (1.30) though its patches need only 66: its device order (the Tidy layout, D-1458) opens the
+// Harmonizer-first patches on their instrument only on firmware 1.30 (pages_ui.c), so 1.26.3..1.29.x keep the frozen
+// v24 df0852 image (D-1020)
 const region = buildRegion({
-  kind: KIND_REGION, set: setId, version, released: imageReleased(regionIndexes),
+  kind: KIND_REGION, set: setId, version, released: imageReleased(regionIndexes), minFormat: FORMAT_1_30,
   copies: imageCopies(regionPatches, releasedCopies), patches: regionPatches, presets: regionPresets, patterns: regionPatterns,
 });
 writeFileSync(new URL('../public/firmware/matryoshka-factory.bin', import.meta.url), region);

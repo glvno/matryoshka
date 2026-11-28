@@ -44,6 +44,9 @@ export interface RegionInput {
   patterns: RegionPattern[];
   released: { set: number; has: bigint }[];
   copies: ImageCopy[];
+  /** the least format the header names (default: none), so firmware older than it refuses the image (factory.c FC_NEWER)
+   *  and the editor offers that firmware its frozen set instead (D-1020) */
+  minFormat?: number;
 }
 
 /** CRC-16/CCITT-FALSE, from `c` (proto.c m1_crc16 starts at 0xFFFF) */
@@ -238,13 +241,13 @@ function layout(input: RegionInput, pad: number): Uint8Array {
   const patchDir = w.at;
   w.raw(new Array(PATCH_REC * input.patches.length).fill(0));
   w.raw(new Array(pad).fill(0));
-  let format = 0;
+  let format = input.minFormat ?? 0;
   input.patches.forEach((p, i) => {
     const z = lzPack(p.binary);
     if (lzUnpack(z, UNPACK_CAP).length !== p.binary.length) throw new Error(`${p.name}: packing does not round-trip`);
     checkInPlace(z, UNPACK_CAP);
-    // (the region's format is its newest patch's, and firmware older than it refuses the whole region, factory.c FC_NEWER:
-    // each binary keeps its lowest format, D-281, so the set stays at 66 unless a patch uses a 1.27 thing, uses127)
+    // (the region's format is its newest patch's, or minFormat when higher, and firmware older than it refuses the whole
+    // region, factory.c FC_NEWER: each binary keeps its lowest format, D-281, so the patches alone keep the set at 66)
     format = Math.max(format, p.binary[1]);
     const e = patchDir + PATCH_REC * i, at = w.at;
     w.raw(z);
