@@ -6,6 +6,7 @@
 import { assemblyById, bypassAssembly, drawers, effectsOf, moveAssembly, parentOf, type AssemblyInst } from './assembly';
 import { parseBinary, type BinPatch } from './bin-parse';
 import { deviceName } from './bank';
+import { KIND_LABEL, type ButtonKind } from './buttons';
 import type { DeviceLink } from './device';
 import { applyPreset, capturePreset, currentValues, matchesPreset, presetsOf, rememberedPreset, sameName, type Preset } from './device-presets';
 import { drawerScope, setEffectEnabled } from './fx-preset';
@@ -323,6 +324,67 @@ const buttonsOf = (p: Patch['modules'][number]['panel'] = {}): Map<string, strin
   return new Map([...keys].map((b) => [b, JSON.stringify(canonical([p.toggle?.includes(b), p.on?.includes(b), p.labels?.[b], p.kinds?.[b], p.targets?.[b], p.pages?.[b]]))]));
 };
 
+/** one setting that differs between two patches of one structure: its name as a reason gives it (`the FX button`; a
+ *  parameter's is its module's, `param` then naming it) and the change from the first patch's value to the second's */
+interface SettingChange { name: string; change: string; param?: string }
+
+/** a value as a change shows it */
+const shown = (v: number | undefined): string => (v === undefined ? 'none' : Math.abs(v) >= 100 ? String(Math.round(v)) : v.toFixed(2));
+/** a button's kind as the editor's button card says it (Nothing is "unassigned") */
+const kindName = (k: ButtonKind): string => (k === 'nothing' ? 'unassigned' : KIND_LABEL[k].toLowerCase());
+
+/** the settings that differ between two patches of one structure (patchStructure), module by module: a switch, each
+ *  parameter (Q16, as the FM-1 keeps values), each panel button's kind, label, press, target, pages and state, any other
+ *  setting of a module; with no module's, an assembly's card rows and MIDI learn */
+function settingChanges(a: Patch, b: Patch): SettingChange[] {
+  const same = (x: unknown, y: unknown): boolean => JSON.stringify(canonical(x)) === JSON.stringify(canonical(y));
+  const named = (m: Patch['modules'][number]): string => m.name || DEFS[m.type]?.label || m.type;
+  const target = (p: Patch, t: { module: number } | { asm: number } | undefined): string => {
+    if (!t) return 'none';
+    if ('asm' in t) return assemblyById(p, t.asm)?.label ?? 'an assembly';
+    const m = p.modules.find((x) => x.id === t.module);
+    return m ? named(m) : 'a module';
+  };
+  const out: SettingChange[] = [];
+  for (const m of a.modules) {
+    const o = b.modules.find((x) => x.id === m.id);
+    if (!o) continue;
+    const asm = (a.assemblies ?? []).find((x) => x.modules.includes(m.id));
+    const name = asm ? `${asm.label || asm.name} › ${named(m)}` : named(m);
+    const state = (x: Patch['modules'][number]): string => (x.bypass ? 'off' : 'on');
+    if (!!m.bypass !== !!o.bypass) out.push({ name: `${name} switched ${state(m)}`, change: `${name} ${state(m)} → ${state(o)}` });
+    for (const k of new Set([...Object.keys(m.params), ...Object.keys(o.params)])) {
+      if (q16(m.params[k]) !== q16(o.params[k])) out.push({ name, param: k, change: `${name} ${k} ${shown(m.params[k])} → ${shown(o.params[k])}` });
+    }
+    const x = m.panel ?? {}, y = o.panel ?? {};
+    const mine = buttonsOf(x), theirs = buttonsOf(y);
+    for (const key of new Set([...mine.keys(), ...theirs.keys()])) {
+      if (mine.get(key) === theirs.get(key)) continue;
+      const B = key.toUpperCase(), parts: string[] = [];
+      const kx = x.kinds?.[key] ?? 'gate', ky = y.kinds?.[key] ?? 'gate';
+      if (kx !== ky) parts.push(`${kindName(kx)} → ${kindName(ky)}`);
+      if ((x.labels?.[key] ?? '') !== (y.labels?.[key] ?? '')) parts.push(`label "${x.labels?.[key] ?? ''}" → "${y.labels?.[key] ?? ''}"`);
+      const press = (p: typeof x): string => (p.toggle?.includes(key) ? 'switches' : 'holds');
+      if (press(x) !== press(y)) parts.push(`press ${press(x)} → ${press(y)}`);
+      if (!same(x.targets?.[key], y.targets?.[key])) parts.push(`target ${target(a, x.targets?.[key])} → ${target(b, y.targets?.[key])}`);
+      if (!same(x.pages?.[key] ?? [], y.pages?.[key] ?? [])) parts.push(`pages ${(x.pages?.[key] ?? []).length} → ${(y.pages?.[key] ?? []).length}`);
+      const lit = (p: typeof x): string => (p.on?.includes(key) ? 'on' : 'off');
+      if (lit(x) !== lit(y)) parts.push(`${lit(x)} → ${lit(y)}`);
+      for (const part of parts) out.push({ name: `the ${B} button`, change: `${B} button ${part}` });
+    }
+    const rest = (v: Patch['modules'][number]): unknown => ({ ...v, x: 0, y: 0, params: 0, bypass: 0, panel: 0 });
+    if (!same(rest(m), rest(o))) out.push({ name, change: `${name}'s other settings` });
+  }
+  if (!out.length) {
+    for (const x of a.assemblies ?? []) {
+      const y = assemblyById(b, x.id);
+      if (y && !same(x.params, y.params)) out.push({ name: `${x.label || x.name}'s card`, change: `${x.label || x.name}'s card rows` });
+    }
+    if (!same(a.midiLearn ?? [], b.midiLearn ?? [])) out.push({ name: 'MIDI learn', change: 'MIDI learn' });
+  }
+  return out;
+}
+
 /**
  * The settings that differ between two patches of one structure (patchStructure), as the user knows them: what a
  * device preset cannot hold when their presets agree (owner 2026-11-28: the line names it). A parameter by its module
@@ -331,33 +393,24 @@ const buttonsOf = (p: Patch['modules'][number]['panel'] = {}): Map<string, strin
  * MIDI learn. "settings no device preset holds", and what they are.
  */
 export function unheldSettings(a: Patch, b: Patch): string {
-  const same = (x: unknown, y: unknown): boolean => JSON.stringify(canonical(x)) === JSON.stringify(canonical(y));
-  const out: string[] = [];
-  for (const m of a.modules) {
-    const o = b.modules.find((x) => x.id === m.id);
-    if (!o) continue;
-    const asm = (a.assemblies ?? []).find((x) => x.modules.includes(m.id));
-    const own = m.name || DEFS[m.type]?.label || m.type;
-    const name = asm ? `${asm.label || asm.name} › ${own}` : own;
-    if (!!m.bypass !== !!o.bypass) out.push(`${name} switched ${m.bypass ? 'off' : 'on'}`);
-    // (as the FM-1 keeps values: Q16)
-    const params = [...new Set([...Object.keys(m.params), ...Object.keys(o.params)])].filter((k) => q16(m.params[k]) !== q16(o.params[k]));
-    if (params.length) out.push(`${name} ${params.slice(0, 3).join(', ')}${params.length > 3 ? '…' : ''}`);
-    const mine = buttonsOf(m.panel), theirs = buttonsOf(o.panel);
-    for (const k of new Set([...mine.keys(), ...theirs.keys()])) if (mine.get(k) !== theirs.get(k)) out.push(`the ${k.toUpperCase()} button`);
-    const rest = (x: Patch['modules'][number]): unknown => ({ ...x, x: 0, y: 0, params: 0, bypass: 0, panel: 0 });
-    if (!same(rest(m), rest(o))) out.push(name);
+  const params = new Map<string, string[]>(), order: string[] = [];
+  for (const c of settingChanges(a, b)) {
+    // (a module's parameters together: "Output level")
+    const key = c.param === undefined ? c.name : `\0${c.name}`;
+    if (!order.includes(key)) order.push(key);
+    if (c.param !== undefined) params.set(c.name, [...(params.get(c.name) ?? []), c.param]);
   }
-  if (!out.length) {
-    for (const x of a.assemblies ?? []) {
-      const y = assemblyById(b, x.id);
-      if (y && !same(x.params, y.params)) out.push(`${x.label || x.name}'s card`);
-    }
-    if (!same(a.midiLearn ?? [], b.midiLearn ?? [])) out.push('MIDI learn');
-  }
-  const list = [...new Set(out)];
+  const list = order.map((k) => {
+    if (!k.startsWith('\0')) return k;
+    const ps = params.get(k.slice(1))!;
+    return `${k.slice(1)} ${ps.slice(0, 3).join(', ')}${ps.length > 3 ? '…' : ''}`;
+  });
   return `settings no device preset holds${list.length ? `: ${list.slice(0, 4).join(', ')}${list.length > 4 ? ` and ${list.length - 4} more` : ''}` : ''}`;
 }
+
+/** each setting that differs between two patches of one structure, as its change from `a`'s value to `b`'s: "Output
+ *  level 1.00 → 0.39", "FX button unassigned → gate", "Harmonizer on → off" (Consolidate's Fold anyway lists them) */
+export const unheldChanges = (a: Patch, b: Patch): string[] => settingChanges(a, b).map((c) => c.change);
 
 /** `p` as the FM-1 plays its FX drawers: one switched off by its own ⏻ as one switched on with each effect off. The
  *  FM-1 keeps no drawer switch (the binary holds its modules' bypass, and a slot reads back so, assembly-match.ts

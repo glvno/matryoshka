@@ -1969,7 +1969,8 @@ async function consolidateFm1Palette(anchor?: HTMLElement | null): Promise<void>
     status.textContent = `Nothing to consolidate: no palette entry plays an extra copy of another slot’s patch${left}`;
     return void showToast(status.textContent);
   }
-  status.textContent = `${plan.items.length} palette entr${plan.items.length > 1 ? 'ies' : 'y'} can become presets on the slot they were made from${left}`;
+  const anyway = plan.items.filter((i) => i.step.adopts).length;
+  status.textContent = `${plan.items.length} palette entr${plan.items.length > 1 ? 'ies' : 'y'} can become presets on the slot they were made from${anyway ? ` (${anyway} only with Fold anyway)` : ''}${left}`;
   const chosen = await askConsolidate(plan.items.map((i) => i.step), { anchor });
   if (!chosen?.length) return void (status.textContent = 'Consolidate cancelled: nothing changed');
   const r = await palette.consolidate(plan.items.filter((i) => chosen.includes(i.step)));
