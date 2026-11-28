@@ -2757,3 +2757,30 @@ dialog.commands li.cmd-also:hover { background: var(--surface-tint); color: var(
 .consolidate-actions button { height: 26px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink); cursor: pointer; }
 .consolidate-actions .primary { border-color: var(--secondary); background: var(--secondary); color: var(--accent-ink); }
 .consolidate-actions .primary:disabled { opacity: 0.45; cursor: default; }
+
+/* ---- semantic zoom (lod.ts, D-1448): below 40 % (#canvas.lod-sliders, set by the editor with ±8 % hysteresis) each row keeps
+   its control and loses its words, as matryoshka-native draws a zoomed-out card. Nothing changes size, so no jack or cable
+   moves. The jacks (.dot) and the knobs draw with currentColor and keep their colour. */
+#canvas.lod-sliders .module .mbody :not(.dot, .slider-knob, .sel-knob) { color: transparent; }
+#canvas.lod-sliders .module .mbody svg text { fill: transparent; }
+#canvas.lod-sliders .module .mbody ::placeholder { color: transparent; }
+#canvas.lod-sliders :is(.mhead, .fhead) :is(.tools, .preset-chip, button.chev, .grip) { visibility: hidden; }
+/* the title of a card or frame on the canvas (not a card shown inside another): 12 px on screen whatever the zoom (--lod-k =
+   0.8 / zoom), over the top of the first row; its name, or its tag when the name does not fit on one line (.lod-tag). It keeps
+   its width and is clipped to the card after scaling, so a zoom step repaints it without laying anything out */
+#canvas.lod-sliders #modules > * > :is(.mhead, .fhead) > .lod-title { flex: none; contain: none; position: relative; z-index: 4; width: calc(100% - 12px);
+  overflow: visible; text-overflow: clip; transform: scale(var(--lod-k, 1)); transform-origin: 0 0; clip-path: inset(0 calc(100% * (1 - 1 / var(--lod-k, 1))) 0 0);
+  border-radius: 0 0 4px 0; background: inherit; }
+#canvas.lod-sliders #modules > .frame > .fhead > .lod-title { background: color-mix(in oklab, var(--secondary) 12%, var(--bg)); padding: 0 4px; }
+#canvas.lod-sliders #modules > * > :is(.mhead, .fhead) > .lod-title > :is(.mtag, .voices, .vc-btn, .fx-classic) { display: none; }
+#canvas.lod-sliders #modules > * > :is(.mhead, .fhead) > .lod-title .mtype { display: none; }
+#canvas.lod-sliders #modules > * > :is(.mhead, .fhead) > .lod-title .mname { font-size: inherit; }
+#canvas.lod-sliders #modules > .lod-tag > :is(.mhead, .fhead) > .lod-title > :not(.mtag) { display: none; }
+#canvas.lod-sliders #modules > .lod-tag > :is(.mhead, .fhead) > .lod-title > .mtag { display: inline-block; padding: 0; font: inherit; background: none; }
+/* cables one by one, as wide on screen as they need to be; modulation faded so the sound path stands out */
+/* (widths in world units, divided by the zoom the editor sets on #cables: non-scaling-stroke made every scroll restroke them all) */
+#canvas.lod-sliders .cable.role-signal { stroke-width: calc(1.6px / var(--lod-z, 1)); }
+#canvas.lod-sliders .cable.role-mod { stroke-width: calc(1px / var(--lod-z, 1)); opacity: .3; }
+#canvas.lod-sliders .cable.role-gate { stroke-width: calc(1.4px / var(--lod-z, 1)); }
+#canvas.lod-sliders .cable.role-keys { stroke-width: calc(2px / var(--lod-z, 1)); }
+#canvas.lod-sliders :is(.cable-core, .cable-wire) { display: none; }
