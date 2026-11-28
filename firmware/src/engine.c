@@ -609,6 +609,7 @@ typedef struct {
         struct { int32_t env; } dyn;                  /* the peak follower, Q24 */
         struct { esig_t *buf; int32_t g, cm, pm, c[LIMIT_AHEAD / LIMIT_CHUNK]; uint8_t w; } lim;   /* Limiter (#1019): its lookahead line, the gain (Q30), the peak of the chunk being filled and of the line's chunks (pm: the largest of c), the line's next place */
         struct { dx7_t *s; } dx7;     /* DX7 (#1338): its voice state, its line (dx7.h dx7_t, LINES.dx7) */
+        struct { esig_t *buf; uint32_t w, len; } stu;     /* Stereo utility (#1324): its two delay lines (the left, then the right; len samples each, 0 for none: stu_len), their next place */
         struct { int32_t env, lc, hc, pk, prev, y; uint32_t cnt; int32_t frac, t; uint8_t trig, arm, valid; } esp;   /* Q24: the envelope, the band pass's one-poles, its peak hold, its previous sample, the glided pitch; samples since the last crossing, that crossing's fraction (Q16), the measured pitch (Q16 octaves) */
         struct { float u[6], v[6], r[6], b[6]; int32_t kdec, kdamp, kbr; uint8_t ok; } mod;   /* the modal resonators' state pairs (float in steps of Q16,
                                                     * D-1112), the modes' radii and input gains for kdec kdamp kbr (ok: worked out) */
@@ -1181,6 +1182,23 @@ static uint32_t dly_samples(int32_t length_q16)
     uint32_t ms = (uint32_t)clampi((length_q16 + 32768) >> 16, DELAY_LENGTH_MIN, DELAY_LENGTH_MAX);
     return 2u * ((ms * ENG_SR + 1999u) / 2000u) + 60u;
 }
+/* a Stereo utility's delay (Q16 ms) in Q16 samples (modules.ts stutil: the same integer steps) */
+static int32_t stu_delay(int32_t ms)
+{
+    return (int32_t)(((int64_t)clampi(ms, 0, STU_DELAY_MAX << 16) * ENG_SR) / 1000);
+}
+/* the samples per side of a Stereo utility's delay lines for its saved delays (par, as the patch loads; modules.ts
+ * stuLineLen): a power of two over the longer one and the sample the interpolation reads past it, 0 when both are 0 */
+static uint32_t stu_len(const int32_t *par)
+{
+    int32_t q = stu_delay(par[STUTIL_P_DL] > par[STUTIL_P_DR] ? par[STUTIL_P_DL] : par[STUTIL_P_DR]);
+    uint32_t n = 2u;
+    if (!q)
+        return 0;
+    while (n < ((uint32_t)q >> 16) + 2u)
+        n <<= 1;
+    return n;
+}
 /* the bytes of one copy's line for a module of type t with parameters par (0: not a line-type module) */
 static uint32_t line_bytes(uint32_t t, const int32_t *par)
 {
@@ -1192,6 +1210,7 @@ static uint32_t line_bytes(uint32_t t, const int32_t *par)
     case T_CHORUS: return LINE_BYTES(2u * CH_LEN);
     case T_LIMIT: return LINE_BYTES(4u * LIMIT_AHEAD);
     case T_DX7: return LINE_BYTES(sizeof(dx7_t));   /* (its voice state, it->s.dx7.s) */
+    case T_STUTIL: return LINE_BYTES(8u * stu_len(par));   /* (its two delay lines, int32, it->s.stu.buf; none without delays) */
     default: return 0;
     }
 }
@@ -1304,18 +1323,37 @@ static int buf_late(const node_t *nd) { return nd->type == T_OUTPUT || nd->type 
 #define CAB_SIDE(c) ((uint32_t)E.to_p[c] >> 6)
 #define FEED_ANY 0xFFu
 static uint16_t para_w(uint32_t m, uint32_t p);
-/* cable c is a stereo cable into the left jack of an input pair whose right jack has no cable: L into the left jack, R into
- * the right one (feeds.ts pairSplit) */
+/* cable c leaves the left output of an output pair as a stereo cable (feeds.ts stereoOutlet): a Stereo utility's `out` into
+ * anything, any pair's left output into a Stereo utility's `in` (#1324) */
+static int cab_outlet(uint32_t c)
+{
+    uint32_t f = E.node[E.from_m[c]].type;
+    return !E.from_p[c] && !CAB_SIDE(c) && DEF_ROUT(f) >= 0 && (f == T_STUTIL || E.node[E.to_m[c]].type == T_STUTIL);
+}
+/* cable c is a stereo cable (from a stereo module, or cab_outlet) into the left jack of an input pair whose right jack has no
+ * cable: L into the left jack, R into the right one (feeds.ts pairSplit). A Stereo utility's `in` splits even with a cable in
+ * its `r`, which then adds to the right side */
 static int cab_split(uint32_t c)
 {
     uint32_t t = E.to_m[c], d;
     int32_t r = DEF_RIN(E.node[t].type);
-    if (r < 0 || E.to_p[c] || !ST_NODE(&E.node[E.from_m[c]]))   /* (to_p 0: input 0, no side) */
+    if (r < 0 || E.to_p[c] || !(ST_NODE(&E.node[E.from_m[c]]) || cab_outlet(c)))   /* (to_p 0: input 0, no side) */
         return 0;
+    if (E.node[t].type == T_STUTIL)
+        return 1;
     for (d = 0; d < E.ncab; d++)
         if (E.to_m[d] == t && CAB_TP(d) == (uint32_t)r)
             return 0;
     return 1;
+}
+/* what a source that is no stereo module adds through cable c into copy v of its reader, from its output p: every part of
+ * another group's at its paraphonic weight, else its own part or its one copy (feeds.ts mono) */
+static uint32_t cab_mono(uint32_t c, uint32_t v, uint32_t p)
+{
+    const node_t *f = &E.node[E.from_m[c]];
+    if (f->grp && f->grp != E.node[E.to_m[c]].grp)
+        return ((1u << f->ninst) - 1u) | p << 8 | (uint32_t)para_w(E.from_m[c], E.from_p[c]) << 16;
+    return 1u << (f->grp ? v : 0u) | p << 8;
 }
 /* what cable c adds into input j of copy v of its module (feeds.ts cableFeeds): bits 0..7 the source's copies, 8..12 their
  * output, 16..31 their Q16 weight (0: as they are: para_w, or 32768 for a stereo source into a mono jack, (L + R) / 2) */
@@ -1324,16 +1362,20 @@ static uint32_t cab_feed(uint32_t c, uint32_t j, uint32_t v)
     const node_t *f = &E.node[E.from_m[c]], *t = &E.node[E.to_m[c]];
     uint32_t side = CAB_SIDE(c), fp = E.from_p[c], st = ST_NODE(t), port = fp;
     int32_t ro = DEF_ROUT(f->type);
-    if (CAB_TP(c) != j)
-        return (int32_t)j == DEF_RIN(t->type) && cab_split(c) ? 2u | fp << 8 : 0u;
+    if (CAB_TP(c) != j) {
+        if ((int32_t)j != DEF_RIN(t->type))
+            return 0u;
+        if (cab_split(c))                            /* (a stereo outlet's R: its pair's right output) */
+            return ST_NODE(f) ? 2u | fp << 8 : cab_mono(c, v, (uint32_t)ro);
+        /* a mono cable, or one side, into a Stereo utility's `in` feeds its right side as well */
+        return t->type == T_STUTIL && !CAB_TP(c) ? cab_feed(c, 0u, v) : 0u;
+    }
     if (side && st && (side == 2u) != v)
         return 0;
     if (st && ro >= 0 && !fp && (side ? side == 2u : v == 1u))   /* a pair's left output into a stereo module: the pair */
         port = (uint32_t)ro;
-    if (f->grp && f->grp != t->grp)
-        return ((1u << f->ninst) - 1u) | port << 8 | (uint32_t)para_w(E.from_m[c], fp) << 16;
     if (!ST_NODE(f))
-        return 1u << (f->grp ? v : 0u) | port << 8;
+        return cab_mono(c, v, port);
     if (side)
         return 1u << (side == 2u) | port << 8;
     if (st || cab_split(c))
@@ -1357,21 +1399,23 @@ static uint32_t cab_reads(uint32_t c, uint32_t p, uint32_t s)
         }
     return r;
 }
-/* output p of module m is read: a cable from it, or it is a pair's right output whose left one feeds a stereo module
- * (feeds.ts outputRead) */
+/* output p of module m is read: a cable from it, or it is a pair's right output whose left one feeds a stereo module or
+ * splits into an input pair (cab_split; feeds.ts outputRead) */
 static int out_read(uint32_t m, uint32_t p)
 {
     uint32_t c;
     for (c = 0; c < E.ncab; c++)
         if (E.from_m[c] == m && (E.from_p[c] == p ||
-            ((int32_t)p == DEF_ROUT(E.node[m].type) && !E.from_p[c] && ST_NODE(&E.node[E.to_m[c]]))))
+            ((int32_t)p == DEF_ROUT(E.node[m].type) && !E.from_p[c] && (ST_NODE(&E.node[E.to_m[c]]) || cab_split(c)))))
             return 1;
     return 0;
 }
-/* the pair's right output a stereo reader takes through cable c too (cab_feed; part_quiet checks it), -1 none */
+/* the pair's right output a stereo reader, or a split input pair, takes through cable c too (cab_feed; part_quiet checks
+ * it), -1 none */
 static int32_t cab_rport(uint32_t c)
 {
-    return ST_NODE(&E.node[E.to_m[c]]) && !E.from_p[c] && CAB_SIDE(c) != 1u ? DEF_ROUT(E.node[E.from_m[c]].type) : -1;
+    const node_t *f = &E.node[E.from_m[c]];
+    return (ST_NODE(&E.node[E.to_m[c]]) && !E.from_p[c] && CAB_SIDE(c) != 1u) || (!ST_NODE(f) && cab_split(c)) ? DEF_ROUT(f->type) : -1;
 }
 /* the most sources one copy of module m sums into input j (as eng_load wires them: cab_feed; feeds.ts sourcesInto) */
 static uint32_t buf_nsrc(uint32_t m, uint32_t j)
@@ -3469,6 +3513,10 @@ int eng_load(const uint8_t *p, uint32_t len)
             else if (nd->type == T_DX7) {
                 it->s.dx7.s = (dx7_t *)ln;
                 dx7_init(it->s.dx7.s, vd);
+            } else if (nd->type == T_STUTIL) {
+                it->s.stu.buf = (esig_t *)ln;
+                it->s.stu.w = 0;
+                it->s.stu.len = stu_len(nd->par);
             }
         }
     }
@@ -12068,6 +12116,74 @@ static void m_comp(const node_t *nd, inst_t *it, uint32_t n)
     it->s.cmp.hi = (uint8_t)hi;
     (void)nd;
 }
+/* the sample d (Q16 samples) before place `at` of a delay line of len samples (a power of two), between two samples linearly */
+static int32_t stu_read(const esig_t *line, uint32_t len, uint32_t at, int32_t d)
+{
+    int32_t y0 = line[(at - ((uint32_t)d >> 16)) & (len - 1u)], y1 = line[(at - ((uint32_t)d >> 16) - 1u) & (len - 1u)];
+    return y0 + (int32_t)((((int64_t)y1 - y0) * (d & 0xFFFF)) >> 16);
+}
+/* Stereo utility (modules.ts stutil, #1324): left side = in + l (the left of a stereo cable into `in`, or a mono one), right
+ * side = r (cab_feed adds `in`'s right side, or its mono cable, to it). swap, then the mode: L/R (width around the mid,
+ * balance), M/S encode (M = (L + R) / 2, S = (L - R) / 2; width on S, balance), M/S decode (balance, width on S, L = M + S,
+ * R = M - S: encode then decode gives back R exactly, L at most one step lower); then invert and each side's delay (held to its lines, sized at load: stu_len). A gain of ENG_ONE and
+ * a delay of 0 are skipped (mul16(v, ENG_ONE) and stu_read(.., 0) give v: the same samples). Out of line: kept off the hot
+ * code (FAST_TEXT) */
+#define STU_MUL(v, g) ((g) == ENG_ONE ? (v) : mul16((v), (g)))
+static __attribute__((noinline)) void m_stutil(inst_t *it, uint32_t n)
+{
+    const esig_t *in = it->in[STUTIL_I_IN], *il = it->in[STUTIL_I_L], *ir = it->in[STUTIL_I_R];
+    const uint32_t len = it->s.stu.len;
+    esig_t *lb = it->s.stu.buf, *rb = lb + len, *oo = it->out[STUTIL_O_OUT], *ol = it->out[STUTIL_O_L], *orr = it->out[STUTIL_O_R];
+    const int32_t mode = round_q16(EF(it, STUTIL_P_MODE)), inv = round_q16(EF(it, STUTIL_P_INVERT)), swap = EF(it, STUTIL_P_SWAP) >= 32768;
+    const int32_t b = clampi(EF(it, STUTIL_P_BAL), -ENG_ONE, ENG_ONE), w = clampi(EF(it, STUTIL_P_WIDTH), 0, 2 * ENG_ONE);
+    const int32_t gx = b > 0 ? ENG_ONE - b : ENG_ONE, gy = b < 0 ? ENG_ONE + b : ENG_ONE;
+    const int32_t top = len ? (int32_t)(((len - 2u) << 16) | 0xFFFFu) : 0;   /* (the longest delay its lines hold) */
+    const int32_t dl = clampi(stu_delay(EF(it, STUTIL_P_DL)), 0, top), dr = clampi(stu_delay(EF(it, STUTIL_P_DR)), 0, top);
+    uint32_t at = it->s.stu.w, i;
+    for (i = 0; i < n; i++) {
+        int32_t a = in[i] + il[i], z = ir[i], x, y;
+        if (swap) {
+            x = a;
+            a = z;
+            z = x;
+        }
+        if (mode == 1) {
+            x = STU_MUL((a + z) >> 1, gx);
+            y = STU_MUL(STU_MUL((a - z) >> 1, w), gy);
+        } else if (mode == 2) {
+            int32_t m = STU_MUL(a, gx), s = STU_MUL(STU_MUL(z, gy), w);
+            x = m + s;
+            y = m - s;
+        } else {
+            x = a;
+            y = z;
+            if (w != ENG_ONE) {
+                int32_t m = x + y, s = mul16(x - y, w);
+                x = (m + s) >> 1;
+                y = (m - s) >> 1;
+            }
+            x = STU_MUL(x, gx);
+            y = STU_MUL(y, gy);
+        }
+        if (inv & 1)
+            x = -x;
+        if (inv & 2)
+            y = -y;
+        if (len) {
+            lb[at] = x;
+            rb[at] = y;
+            if (dl)
+                x = stu_read(lb, len, at, dl);
+            if (dr)
+                y = stu_read(rb, len, at, dr);
+            at = (at + 1u) & (len - 1u);
+        }
+        oo[i] = ol[i] = x;
+        orr[i] = y;
+    }
+    it->s.stu.w = at;
+}
+#undef STU_MUL
 
 /* DX7 (modules.ts dx7, #1338): one DX7 voice, dx7.h run on this copy's state. vel and the operator inputs count only when
  * cabled (an operator's cable replaces its sine). Out of line: kept off the hot code (FAST_TEXT) */
@@ -12742,15 +12858,30 @@ HOT void apply_flaws(const node_t *nd, inst_t *it, uint32_t v)   /* (v: the part
 #undef FLAW_ENV
 }
 
+/* a bypassed Stereo utility (#1324): its two sides through (modules.ts stutilThru), left = in + l on `out` and `l`, right =
+ * its `r` input (which holds `in`'s right side too: cab_feed) on `r` */
+static __attribute__((noinline)) void stu_thru(inst_t *it, uint32_t n)
+{
+    const esig_t *a = it->in[STUTIL_I_IN], *l = it->in[STUTIL_I_L], *r = it->in[STUTIL_I_R];
+    uint32_t i;
+    for (i = 0; i < n; i++) {
+        it->out[STUTIL_O_OUT][i] = it->out[STUTIL_O_L][i] = a[i] + l[i];
+        it->out[STUTIL_O_R][i] = r[i];
+    }
+}
 /* a bypassed module: every output carries the through input (the definition's `thru`, e.g. the filter's `in`), or silence
  * for a module without one (an oscillator or envelope is muted); with a right signal (#1141) output 1 carries the `r`
- * input. Its state is untouched, so it resumes where it stopped. */
+ * input; a Stereo utility its two sides (stu_thru). Its state is untouched, so it resumes where it stopped. */
 static void m_bypass(const node_t *nd, inst_t *it, uint32_t n)
 {
     const def_t *d = &DEFS[nd->type];
     const esig_t *src = d->thru >= 0 ? it->in[d->thru] : zero_buf;
     uint32_t j, i;
     int32_t rin;
+    if (nd->type == T_STUTIL) {
+        stu_thru(it, n);
+        return;
+    }
     for (j = 0; j < d->nout; j++) {
         esig_t *o = it->out[j];
         if (IS_DUMMY(o))
@@ -12806,6 +12937,7 @@ static __attribute__((noinline)) void process(const node_t *nd, inst_t *it, uint
     case T_MATRIX: m_matrix(nd, it, n); break;
     case T_LPG: m_lpg(nd, it, n); break;
     case T_DX7: m_dx7(nd, it, n); break;
+    case T_STUTIL: m_stutil(it, n); break;
     case T_QUANT: m_quant(nd, it, n); break;
     case T_PULSE: m_pulse(nd, it, n); break;
     case T_PAN: m_pan(nd, it, n); break;

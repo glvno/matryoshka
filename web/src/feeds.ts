@@ -29,23 +29,43 @@ export function feedModel(p: Patch, groups: readonly DeviceGroup[]): FeedModel {
 /** module m runs in stereo mode: two copies outside the poly groups, copy 0 L, copy 1 R */
 export const stereoAt = (x: FeedModel, m: number): boolean => x.group[m] < 0 && x.copies[m] === 2;
 
-/** cable c is a stereo cable into the left jack of an input pair whose right jack has no cable (modules.ts RIGHT_IN): L
- *  into the left jack, R into the right one (engine.c cab_split) */
+/** the Stereo utility (#1324): its `out` is a stereo outlet (L in `out`, R in its `r` output, modules.ts RIGHT_OUT), its `in`
+ *  a stereo inlet whose right side goes to its `r` input (RIGHT_IN) */
+export const STEREO_UTIL = 'stutil';
+/** cable k leaves the left output of an output pair (no side) as a stereo cable: a Stereo utility's `out` into anything, any
+ *  pair's left output (a Pan's `l`, a Delay's `out`) into a Stereo utility's `in`. Into an input pair's left jack it carries
+ *  both sides; into a stereo module every pair's left output does already (cableFeeds), into any other mono jack the left */
+const stereoOutlet = (x: FeedModel, k: FeedCable): boolean => {
+  const from = x.type[k.from];
+  return !k.side && !!RIGHT_OUT[from] && k.output === DEFS[from].outputs[0].name && (from === STEREO_UTIL || x.type[k.to] === STEREO_UTIL);
+};
+
+/** cable c is a stereo cable (from a stereo module, or stereoOutlet) into the left jack of an input pair whose right jack has
+ *  no cable (modules.ts RIGHT_IN): L into the left jack, R into the right one (engine.c cab_split). A Stereo utility's `in`
+ *  splits even with a cable in its `r`, which then adds to the right side */
 export function pairSplit(x: FeedModel, c: number): boolean {
-  const k = x.cables[c], r = RIGHT_IN[x.type[k.to]];
-  return !!r && !k.side && k.input === DEFS[x.type[k.to]].inputs[0].name && stereoAt(x, k.from) && !x.cables.some((d) => d.to === k.to && d.input === r);
+  const k = x.cables[c], type = x.type[k.to], r = RIGHT_IN[type];
+  if (!r || k.side || k.input !== DEFS[type].inputs[0].name || !(stereoAt(x, k.from) || stereoOutlet(x, k))) return false;
+  return type === STEREO_UTIL || !x.cables.some((d) => d.to === k.to && d.input === r);
 }
 
 /** what cable c adds into input `input` of copy v of its module (engine.c cab_feed); [] nothing */
 export function cableFeeds(x: FeedModel, c: number, input: string, v: number): Feed[] {
   const k = x.cables[c], f = k.from, t = k.to, st = stereoAt(x, t);
-  if (k.input !== input) return input === RIGHT_IN[x.type[t]] && pairSplit(x, c) ? [{ cable: c, copy: 1, port: k.output, w: 1 }] : [];
-  if (k.side && st && (k.side === 'r' ? 1 : 0) !== v) return [];
   const ro = RIGHT_OUT[x.type[f]];
   const port = st && ro && k.output === DEFS[x.type[f]].outputs[0].name && (k.side ? k.side === 'r' : v === 1) ? ro : k.output;
-  const one = (copy: number, w: Feed['w'] = 1): Feed => ({ cable: c, copy, port, w });
-  if (x.group[f] >= 0 && x.group[f] !== x.group[t]) return Array.from({ length: x.copies[f] }, (_, w) => one(w, 'para'));
-  if (!stereoAt(x, f)) return [one(x.group[f] >= 0 ? v : 0)];
+  const one = (copy: number, w: Feed['w'] = 1, from = port): Feed => ({ cable: c, copy, port: from, w });
+  // a source that is no stereo module: its own part of its poly group, every part of another group's, or its one copy
+  const mono = (from: string): Feed[] => (x.group[f] >= 0 && x.group[f] !== x.group[t]
+    ? Array.from({ length: x.copies[f] }, (_, w) => one(w, 'para', from)) : [one(x.group[f] >= 0 ? v : 0, 1, from)]);
+  if (k.input !== input) {
+    if (input !== RIGHT_IN[x.type[t]]) return [];
+    if (pairSplit(x, c)) return stereoAt(x, f) ? [one(1, 1, k.output)] : mono(ro);   // (a Stereo utility's R: its `r` output)
+    // a mono cable, or one side, into a Stereo utility's `in` feeds its right side as well
+    return x.type[t] === STEREO_UTIL && k.input === 'in' ? cableFeeds(x, c, k.input, v) : [];
+  }
+  if (k.side && st && (k.side === 'r' ? 1 : 0) !== v) return [];
+  if (!stereoAt(x, f)) return mono(port);
   if (k.side) return [one(k.side === 'r' ? 1 : 0)];
   if (st || pairSplit(x, c)) return [one(st ? v : 0)];
   return [one(0, 0.5), one(1, 0.5)];
@@ -63,10 +83,10 @@ export const sourcesInto = (x: FeedModel, m: number, input: string): number =>
   Math.max(feeds(x, m, input, 0).length, stereoAt(x, m) ? feeds(x, m, input, 1).length : 0);
 
 /** output `port` of module m is read: a cable from it, or it is a pair's right output whose left one feeds a stereo module
- *  (engine.c out_read) */
+ *  or splits into an input pair (pairSplit; engine.c out_read) */
 export function outputRead(x: FeedModel, m: number, port: string): boolean {
   const left = DEFS[x.type[m]].outputs[0].name;
-  return x.cables.some((k) => k.from === m && (k.output === port || (port === RIGHT_OUT[x.type[m]] && k.output === left && stereoAt(x, k.to))));
+  return x.cables.some((k, c) => k.from === m && (k.output === port || (port === RIGHT_OUT[x.type[m]] && k.output === left && (stereoAt(x, k.to) || pairSplit(x, c)))));
 }
 
 /** the copies of cable c's reader that read copy s of output `port` of its source through it (any output: port null;

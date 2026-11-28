@@ -1,0 +1,211 @@
+{
+  "format": "matryoshka-assembly",
+  "version": 1,
+  "name": "split filters",
+  "category": "Effects",
+  "modules": [
+    {
+      "id": 1,
+      "type": "stutil",
+      "x": 0,
+      "y": 0,
+      "params": {
+        "mode": 0,
+        "bal": 0,
+        "width": 1,
+        "swap": 0,
+        "dl": 0,
+        "dr": 0,
+        "invert": 0,
+        "unit": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "mode"
+        ],
+        "p2": [
+          "bal"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "filter",
+      "x": 320,
+      "y": 0,
+      "params": {
+        "cutoff": 700,
+        "res": 0.3,
+        "cvamt": 1,
+        "track": 0,
+        "morph": 0,
+        "osc": 0,
+        "drive": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "cutoff"
+        ],
+        "p2": [
+          "res"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "type": "filter",
+      "x": 320,
+      "y": 560,
+      "params": {
+        "cutoff": 2400,
+        "res": 0.5,
+        "cvamt": 1,
+        "track": 0,
+        "morph": 0,
+        "osc": 0,
+        "drive": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "cutoff"
+        ],
+        "p2": [
+          "res"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "type": "stutil",
+      "x": 640,
+      "y": 0,
+      "params": {
+        "mode": 0,
+        "bal": 0,
+        "width": 1,
+        "swap": 0,
+        "dl": 0,
+        "dr": 8,
+        "invert": 0,
+        "unit": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "mode"
+        ],
+        "p2": [
+          "bal"
+        ]
+      }
+    }
+  ],
+  "cables": [
+    {
+      "from": {
+        "module": 1,
+        "port": "l"
+      },
+      "to": {
+        "module": 2,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 1,
+        "port": "r"
+      },
+      "to": {
+        "module": 3,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 2,
+        "port": "lp12"
+      },
+      "to": {
+        "module": 4,
+        "port": "l"
+      }
+    },
+    {
+      "from": {
+        "module": 3,
+        "port": "bp"
+      },
+      "to": {
+        "module": 4,
+        "port": "r"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "module": 1,
+      "port": "in",
+      "label": "in"
+    }
+  ],
+  "outputs": [
+    {
+      "module": 4,
+      "port": "out",
+      "label": "out"
+    }
+  ],
+  "params": [
+    {
+      "module": 2,
+      "param": "cutoff",
+      "label": "left cutoff"
+    },
+    {
+      "module": 2,
+      "param": "res",
+      "label": "left res"
+    },
+    {
+      "module": 3,
+      "param": "cutoff",
+      "label": "right cutoff"
+    },
+    {
+      "module": 3,
+      "param": "res",
+      "label": "right res"
+    },
+    {
+      "module": 4,
+      "param": "width",
+      "label": "width"
+    },
+    {
+      "module": 4,
+      "param": "bal",
+      "label": "balance"
+    },
+    {
+      "module": 4,
+      "param": "dr",
+      "label": "right delay"
+    }
+  ]
+}

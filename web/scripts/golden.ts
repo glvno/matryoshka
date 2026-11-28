@@ -5,7 +5,7 @@
 // Run from web/:  npx vite-node scripts/golden.ts   (tools/golden.sh does this and runs the C comparison)
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { Engine } from '../src/engine';
-import { COUNTED, deviceBudget, encodePatch, FLAG_INPUTS, FLAG_LINKS, FORMAT_1_27, FORMAT_LINKS, MEMBER_WIDE, PANEL_BYTES, recordSize, SLIM, toQ16 } from '../src/patchbin';
+import { COUNTED, deviceBudget, encodePatch, FLAG_INPUTS, FLAG_LINKS, FORMAT_1_27, FORMAT_1_31, FORMAT_LINKS, MEMBER_WIDE, PANEL_BYTES, recordSize, SLIM, toQ16 } from '../src/patchbin';
 import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
@@ -4848,6 +4848,91 @@ for (const name of [...Object.keys(audioPresets), 'morph', 'morph-unassigned', '
     if (ends[name]) ends[twin] = ends[name];
     set.add(twin);
   }
+}
+
+// The Stereo utility (#1324, format 72): split, merge, the stereo outlet, mid/side round trip, balance / width / swap /
+// invert, the delays, bypass and a pair's left output into its stereo inlet. Named stereo-util-*: tools/golden.sh checks
+// each on two lanes as on one. S is the stereo source of the stereo kits (#1141)
+function utilKit(key: string, build: StereoBuild, bypass: number[] = []): void {
+  const sides: [number, string, number, string, 'l' | 'r'][] = [], sts: number[] = [];
+  const p = make(key, (add, wire) => build(add, wire, (a, ap, b, bp, s) => sides.push([a, ap, b, bp, s]), (id) => sts.push(id)));
+  for (const id of sts) p.modules.find((m) => m.id === id)!.stereo = true;
+  for (const id of bypass) p.modules.find((m) => m.id === id)!.bypass = true;
+  for (const [a, ap, b, bp, s] of sides) if (!connect(p, DEFS, { module: a, port: ap }, { module: b, port: bp }, s)) throw new Error(`${key}: bad side cable`);
+  if (encodePatch(p, true)[1] !== FORMAT_1_31) throw new Error(`${key}: not format 72`);
+  tests[key] = p;
+}
+// split: the stereo source into `in`, its `l` and `r` into two mono Filters, one per Output jack
+utilKit('stereo-util-split', (add, wire, side, st) => {
+  const { s } = S(add, wire, side, st), u = add('stutil', 0, 0), out = add('output', 0, 0, { level: 0.8 });
+  const fl = add('filter', 0, 0, { cutoff: 500 }), fr = add('filter', 0, 0, { cutoff: 2500 });
+  wire(s, 'out', u, 'in'); wire(u, 'l', fl, 'in'); wire(u, 'r', fr, 'in'); wire(fl, 'lp24', out, 'l'); wire(fr, 'lp24', out, 'r');
+});
+// merge: two mono oscillators into `l` and `r`, the stereo outlet into the Output's l alone (L left, R right)
+utilKit('stereo-util-merge', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.8 }), u = add('stutil', 0, 0);
+  const a = add('osc', 0, 0, { wave: 2, level: 0.5 }), b = add('osc', 0, 0, { wave: 3, coarse: 7, level: 0.4 });
+  wire(kb, 'pitch', a, 'pitch'); wire(kb, 'pitch', b, 'pitch'); wire(a, 'out', u, 'l'); wire(b, 'out', u, 'r'); wire(u, 'out', out, 'l');
+});
+// the inlets summed: the stereo source into `in`, a mono sine into `in` too (both sides), a saw into `r`; the stereo outlet
+// into a stereo Filter (both sides) and into a mono VCA (its left), crossfaded in stereo into the Output
+utilKit('stereo-util-sum', (add, wire, side, st) => {
+  const { kb, env, s } = S(add, wire, side, st), u = add('stutil', 0, 0), out = add('output', 0, 0, { level: 0.6 });
+  const sine = add('osc', 0, 0, { wave: 0, coarse: -12, level: 0.3 }), saw = add('osc', 0, 0, { wave: 2, coarse: 12, level: 0.2 });
+  const f = add('filter', 0, 0, { cutoff: 1500, res: 0.3 }), v = add('vca', 0, 0), x = add('xfade', 0, 0, { mix: 0.3 });
+  wire(kb, 'pitch', sine, 'pitch'); wire(kb, 'pitch', saw, 'pitch');
+  wire(s, 'out', u, 'in'); wire(sine, 'out', u, 'in'); wire(saw, 'out', u, 'r');
+  wire(u, 'out', f, 'in'); st(f); wire(u, 'out', v, 'in'); wire(env, 'env', v, 'cv');
+  wire(f, 'lp12', x, 'a'); wire(v, 'out', x, 'b'); st(x); wire(x, 'out', out, 'l');
+});
+// mid/side round trip: encode then decode gives back the stereo source, its left within one Q16 step; a third, in encode,
+// takes half the decoded left minus the source's left (a side cable) as its S: the same in both engines
+utilKit('stereo-util-ms', (add, wire, side, st) => {
+  const { s } = S(add, wire, side, st), out = add('output', 0, 0, { level: 0.8 });
+  const enc = add('stutil', 0, 0, { mode: 1 }), dec = add('stutil', 0, 0, { mode: 2 }), diff = add('stutil', 0, 0, { mode: 1 });
+  wire(s, 'out', enc, 'in'); wire(enc, 'out', dec, 'in'); wire(dec, 'out', out, 'l');
+  wire(dec, 'l', diff, 'l'); side(s, 'out', diff, 'r', 'l'); wire(diff, 'r', out, 'r');
+});
+// balance swept by an LFO in M/S encode with width and swap, then decode with its own balance, width and an inverted right
+utilKit('stereo-util-balance', (add, wire, side, st) => {
+  const { s } = S(add, wire, side, st), out = add('output', 0, 0, { level: 0.6 }), lfo = add('lfo', 0, 0, { rate: 2.3, depth: 1 });
+  const enc = add('stutil', 0, 0, { mode: 1, width: 1.5, swap: 1 }, { map: { p1: ['bal'] } });
+  const dec = add('stutil', 0, 0, { mode: 2, bal: -0.3, width: 0.6, invert: 2 });
+  const lr = add('stutil', 0, 0, { bal: 0.45, width: 1.7, invert: 1 });
+  wire(lfo, 'out', enc, 'p1'); wire(s, 'out', enc, 'in'); wire(enc, 'out', dec, 'in'); wire(dec, 'out', lr, 'in'); wire(lr, 'out', out, 'l');
+});
+// the delays: a fixed one on the left (3.3 ms, fractional samples), one on the right moved by an LFO (5..25 ms, gliding)
+utilKit('stereo-util-delay', (add, wire, side, st) => {
+  const { s } = S(add, wire, side, st), out = add('output', 0, 0, { level: 0.8 }), lfo = add('lfo', 0, 0, { rate: 0.9, depth: 1 });
+  const u = add('stutil', 0, 0, { dl: 3.3, dr: 15 }, { map: { p1: ['dr'] }, att: [0.25, 0] });
+  wire(lfo, 'out', u, 'p1'); wire(s, 'out', u, 'in'); wire(u, 'out', out, 'l');
+});
+// bypassed: its sides pass through (in + l on the left, r with `in`'s right on the right), whatever its settings
+const bypassed: number[] = [];
+utilKit('stereo-util-bypass', (add, wire, side, st) => {
+  const { kb, s } = S(add, wire, side, st), out = add('output', 0, 0, { level: 0.6 });
+  const u = add('stutil', 0, 0, { mode: 1, bal: 0.8, dl: 10, invert: 3 }), saw = add('osc', 0, 0, { wave: 2, coarse: 12, level: 0.2 });
+  wire(kb, 'pitch', saw, 'pitch'); wire(s, 'out', u, 'in'); wire(saw, 'out', u, 'l'); wire(u, 'out', out, 'l');
+  bypassed.push(u);
+}, bypassed);
+// a pair's left output into the stereo inlet carries the pair (Pan l and r), then decode puts it in the middle and the sides
+utilKit('stereo-util-pan', (add, wire) => {
+  const kb = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.8 }), lfo = add('lfo', 0, 0, { rate: 3 });
+  const o = add('osc', 0, 0, { wave: 1, level: 0.6 }), pan = add('pan', 0, 0), u = add('stutil', 0, 0, { mode: 2, dr: 0.7 });
+  wire(kb, 'pitch', o, 'pitch'); wire(o, 'out', pan, 'in'); wire(lfo, 'out', pan, 'pos'); wire(pan, 'l', u, 'in'); wire(u, 'out', out, 'l');
+});
+// exact (each mode): sources both engines give on the same Q16 steps (Main's gate and pitch, an Offset), so the Stereo
+// utility's own arithmetic is all that differs: rel_rms 0 means it is sample for sample the same in both
+for (const [mode, params] of [['lr', { bal: 0.45, width: 1.7, swap: 1, invert: 1, dl: 3.3, dr: 0.77 }], ['encode', { mode: 1, bal: -0.6, width: 0.35, invert: 2, dl: 12.34, dr: 44.9 }],
+  ['decode', { mode: 2, bal: 0.2, width: 1.25, swap: 1, invert: 3, dl: 0.05, dr: 7.77 }]] as const) {
+  const key = `stereo-util-exact-${mode}`;
+  utilKit(key, (add, wire) => {
+    const kb = add('fm1', 0, 0), dc = add('const', 0, 0, { value: 0.25 }), dr = add('const', 0, 0, { value: -0.15 }), u = add('stutil', 0, 0, params);
+    const out = add('output', 0, 0, { level: 1 });   // (level 1: the Output passes the samples as they are)
+    wire(dc, 'out', u, 'in'); wire(kb, 'pitch', u, 'l'); wire(dr, 'out', u, 'r'); wire(u, 'l', out, 'l'); wire(u, 'r', out, 'r');
+  });
+  events[key] = [[0, 'on', 60], [128 * 20, 'on', 64], [128 * 40, 'off', 64], [128 * 45, 'on', 55], [128 * 70, 'off', 55], [128 * 72, 'off', 60], [128 * 90, 'on', 52], [128 * 110, 'off', 52]];
+  ends[key] = 128 * 130;
 }
 
 // GOLDEN_PATCHES=FILE writes every kit's patch (and the layout its binary is forced to) as JSON and stops before rendering:

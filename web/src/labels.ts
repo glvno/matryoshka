@@ -33,6 +33,7 @@ const BY_TYPE: Record<string, Record<string, string>> = {
   limit: { gr: 'gain reduction', ahead: 'lookahead' },
   euclid: { hits: 'hits (fill)', off: 'off (rests)' },
   eq: { freq: 'frequency' },
+  stutil: { in: 'stereo', out: 'stereo', bal: 'balance', dl: 'delay L', dr: 'delay R', unit: 'delay unit' },
   matrix: {
     ...Object.fromEntries([1, 2, 3, 4].flatMap((k) => [[`in${k}`, `in ${k}`], [`out${k}`, `out ${k}`]])),
     ...Object.fromEntries([1, 2, 3, 4].flatMap((i) => [1, 2, 3, 4].map((o) => [`i${i}o${o}`, `in ${i} → out ${o}`]))),
@@ -55,7 +56,7 @@ const BY_TYPE: Record<string, Record<string, string>> = {
 
 const MODULES: Record<string, string> = {
   sh: 'Sample & hold', clkdiv: 'Clock divider', shift: 'Frequency shifter', env: 'Level/rate envelope', pd: 'Phase distortion',
-  env8: 'Eight-step envelope',
+  env8: 'Eight-step envelope', stutil: 'Stereo utility',
 };
 
 const PD_CHOICES: Record<string, string> = {
@@ -74,6 +75,7 @@ const CHOICES: Record<string, Record<string, string>> = {
   'quant.scale': { 'pent maj': 'pentatonic major', 'pent min': 'pentatonic minor', whole: 'whole tone' },
   'pd.wave': PD_CHOICES,
   'pd.wave2': PD_CHOICES,
+  'stutil.mode': { encode: 'M/S encode', decode: 'M/S decode' },
 };
 
 /** a port's or parameter's label on a module of `type` */
@@ -106,6 +108,14 @@ const HINTS: Record<string, string> = {
   'dx7.range': 'The mod wheel\'s range, 0..99, as the DX7\'s function setting.',
   'dx7.dest': 'Where the mod wheel sends the LFO: pitch (vibrato), amp (tremolo on the operators with AMS), EG bias (lowers the operators with AMS), or a mix.',
   'dx7.ops': 'The operator switches, as the DX7\'s OP 1..6 buttons: bit 1 is operator 1 ... bit 32 operator 6. 63: all on.',
+  'stutil.mode': 'L/R: the two sides as they come in. M/S encode: out comes mid, M = (L + R) / 2, on the left and side, S = (L − R) / 2, on the right. M/S decode: mid comes in on the left, side on the right, and out comes L = M + S and R = M − S, so encode then decode gives back what went in (the left at most one smallest step lower).',
+  'stutil.bal': 'Balance: −1 leaves only the left side, +1 only the right, 0 both at full level. Turning one way lowers the other side, linearly, to silence at the end. In the M/S modes it sets mid against side: −1 mid only, +1 side only.',
+  'stutil.width': 'Width: scales the side part, the difference between the sides. 1: as it comes in, 0: mono (both sides the mid), 2: twice as wide. In the M/S modes it scales S.',
+  'stutil.swap': 'Swap the two sides as they come in (in the M/S modes: mid and side).',
+  'stutil.dl': 'Delays the left output by up to 45 ms; between two samples it interpolates, so a moving delay glides. A few samples tune phase, 10 to 40 ms make the Haas effect. Memory: the saved delays size its lines (none at 0, 16 KB at 45 ms); a delay moved further while it plays stays at their end.',
+  'stutil.dr': 'Delays the right output by up to 45 ms; between two samples it interpolates, so a moving delay glides. A few samples tune phase, 10 to 40 ms make the Haas effect. Memory: the saved delays size its lines (none at 0, 16 KB at 45 ms); a delay moved further while it plays stays at their end.',
+  'stutil.invert': 'Invert the phase of the left output, the right, or both (after the mode, balance and width).',
+  'stutil.unit': 'Shows the delays in milliseconds or in samples at the FM-1\'s rate (44,118 a second). The delays stay as they are.',
   // the DX7 card's voice editor (#1338, dx7-view.ts): the voice's own values, not parameters
   'dx7.voice.name': 'The voice\'s name, as the DX7 shows it (10 characters, kept in the voice).',
   'dx7.voice.import': 'Load a DX7 SysEx file (.syx), or drop one onto the card: a single voice becomes this module\'s voice; a 32-voice bank is listed on the card, and a click on a name loads that voice. A wrong checksum is said, and the file is read anyway.',
@@ -187,7 +197,7 @@ const TAGS: Record<string, [string, TagFamily]> = {
   mixer: ['MIX', 'util'], math: ['MATH', 'util'], logic: ['LOGIC', 'util'], const: ['DC', 'util'], macro: ['MACRO', 'util'], scale: ['SCALE', 'util'],
   output: ['OUT', 'util'], fm1: ['MAIN', 'util'], part: ['PART', 'util'], alloc: ['VOICES', 'util'], scope: ['SCOPE', 'util'],
   drummap: ['MAP', 'mod'], pd: ['PD', 'src'], select: ['SEL', 'util'], shreg: ['SHREG', 'mod'], comp: ['COMP', 'util'], range: ['RANGE', 'util'], matrix: ['MATRIX', 'util'], lpg: ['LPG', 'shp'],
-  limit: ['LIMIT', 'shp'], euclid: ['EUCLID', 'mod'], eq: ['EQ', 'shp'], dx7: ['DX7', 'src'],
+  limit: ['LIMIT', 'shp'], euclid: ['EUCLID', 'mod'], eq: ['EQ', 'shp'], dx7: ['DX7', 'src'], stutil: ['STEREO', 'util'],
 };
 
 /** the short tag before a card's title and the family that colours it */
@@ -216,6 +226,7 @@ const ALIASES: Record<string, string> = {
   limit: 'brickwall peak ceiling clip maximizer loudness ear safety protect headphones feedback master dynamics',
   eq: 'equalizer equaliser parametric band tone bass treble presence shelf shelving bell peak peaking notch low cut high cut lowpass highpass mastering mix',
   dx7: 'dx7 yamaha fm synthesis six operator 6op algorithm dexed msfa sysex voice e piano bass bell tx802 tx7',
+  stutil: 'stereo utility split merge mid side ms m/s encode decode balance width swap invert phase polarity haas delay left right l/r',
   euclid: 'euclidean bjorklund rhythm pattern trigger gate clock drum sequencer fill hits pulses rotate accent tresillo polyrhythm',
   // (the envelopes, modules.ts ENVELOPE_TYPES: `envelope` finds all four, the ADSR first as the commonest, owner 2026-11-19)
   adsr: 'envelope eg contour attack decay sustain release',

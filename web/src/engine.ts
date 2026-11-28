@@ -18,7 +18,7 @@ import { fixNotes, PATTERNS_MAX, SONGS_MAX, type SongEntry, type StepNote } from
 import { lockPlan, lockValue } from './locks';
 import { arpBlock, arpClear, arpInit, arpKeyDrop, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
 import { harmButton, harmButtonOf, harmChord, harmSnapshot, harmClear, harmInit, harmKey, harmRetrig, type HarmParams, type HarmState } from './harmonizer';
-import { DEFS, DELAY_SWELL_DEN, DELAY_SWELL_NUM, dx7Done, dx7Voice, RIGHT_IN } from './modules';
+import { DEFS, DELAY_SWELL_DEN, DELAY_SWELL_NUM, dx7Done, dx7Voice, RIGHT_IN, stutilSize, stutilThru } from './modules';
 import { voiceBytes } from './dx7-voice';
 import { rackPlan } from './rack-plan';
 import { cableFeeds, feedModel } from './feeds';
@@ -412,6 +412,7 @@ export class Engine {
       node.inputRoutes = Object.entries(m.inputMap ?? {}).map(([port, params]) => ({ port, params: [...params], mean: 0 }));
       for (const inst of node.inst) inst.dspInp = { ...inst.inp };
       if (m.type === 'dx7') for (const inst of node.inst) dx7Voice(inst.state, voiceBytes(m.voice));
+      if (m.type === 'stutil') for (const inst of node.inst) stutilSize(inst.state, node.params, this.sampleRate);
       if (m.type === 'steps')
         for (const inst of node.inst) {
           const st = inst.state as StepsState;
@@ -957,6 +958,8 @@ export class Engine {
     }
     const n = this.nodes.get(id);
     if (n) n.params[name] = value;
+    // a Stereo utility's saved delay sizes its lines (as the FM-1 does when the editor sends the patch again)
+    if (n?.type === 'stutil' && (name === 'dl' || name === 'dr')) for (const inst of n.inst) stutilSize(inst.state, n.params, this.sampleRate);
   }
 
   setAtt(id: number, index: number, value: number): void {
@@ -1747,6 +1750,7 @@ export class Engine {
       return;
     }
     if (node.bypass) {
+      if (node.type === 'stutil') return stutilThru(inst.inp, out, n);   // (its two sides through, engine.c m_bypass)
       const rin = RIGHT_IN[node.type], src = node.thru ? inst.inp[node.thru] : undefined;
       for (const name in out) {
         // a right signal (#1141): the `r` output carries the `r` input (engine.c m_bypass)
