@@ -487,7 +487,7 @@ describe('adding to the palette saves what the FM-1 needs to play the sound (own
     expect(fm1.slots[1]).toMatchObject({ used: true, name: 'MY PAD 2' });
     expect(fm1.bins[1]).toEqual(link.encodeFor(p));
     expect(fm1.entries[1]).toMatchObject({ slot: 1, name: 'MY PAD 2' });
-    expect(said.at(-1)).toBe('"My Pad" is palette 2 (stored as a new patch in slot 2, as slot 1 · MY PAD differs from it in settings no device preset holds; preset Warm1 sent to the FM-1; slot 1 holds another "MY PAD", so it is stored as "MY PAD 2")');
+    expect(said.at(-1)).toBe('"My Pad" is palette 2 (stored as a new patch in slot 2, as slot 1 · MY PAD differs from it in settings no device preset holds: Output level; preset Warm1 sent to the FM-1; slot 1 holds another "MY PAD", so it is stored as "MY PAD 2")');
   });
   it('finds this browser\'s copy of a numbered slot by the name before the number', async () => {
     const { p } = padPatch();
@@ -771,7 +771,7 @@ describe('a sound the FM-1 reaches with device presets takes no new slot (owner 
     expect(await palette.add('Monolith D B', sound)).toBe(true);
     await fm1.quiet();
     expect(fm1.entries[0]).toMatchObject({ slot: 1, name: 'MONOLITH D B' });
-    expect(said.at(-1)).toBe('"Monolith D B" is palette 1 (stored as a new patch in slot 2, as it changes Output settings no device preset holds)');
+    expect(said.at(-1)).toBe('"Monolith D B" is palette 1 (stored as a new patch in slot 2, as it changes settings no device preset holds: Output level)');
   });
   it('with the preset store full, a tweak stores a patch, and says why', async () => {
     const { fm1, palette, held, synth, said } = await monolith({ presetRoom: 0 });
@@ -872,7 +872,7 @@ describe('a slot whose patch this browser has no copy of (owner 2026-11-27: "add
     expect(await palette.add('Hera 6 B', moved(hera(), 0))).toBe(true);
     await fm1.quiet();
     expect([fm1.entries[0]?.slot, puts()]).toEqual([0, 0]);
-    expect(said.at(-1)).toBe('"Hera 6 B" is palette 1 (stored as a new patch in slot 1, as slot 23 · HERA 6 differs from it in settings no device preset holds)');
+    expect(said.at(-1)).toBe('"Hera 6 B" is palette 1 (stored as a new patch in slot 1, as slot 23 · HERA 6 differs from it in settings no device preset holds: Output level)');
   });
   it('a slot of another name that holds the structure is that patch (D-1227): the sound goes in as a preset on it', async () => {
     const { fm1, palette, said, slotWrites } = await stored(moved(hera(), 1, 0.2), 'MY HERA');
@@ -1048,6 +1048,6 @@ describe('Consolidate the FM-1\'s palette (owner 2026-11-27: "agree with everyth
     const plan = await palette.planConsolidate();
     if (typeof plan === 'string') throw new Error(plan);
     expect(plan.items).toEqual([]);
-    expect(plan.skipped).toEqual(['1 · HERA 6 PLUCKPAD (slot 23 · HERA 6 differs from it in settings no device preset holds)']);
+    expect(plan.skipped).toEqual(['1 · HERA 6 PLUCKPAD (slot 23 · HERA 6 differs from it in settings no device preset holds: Output level)']);
   });
 });
