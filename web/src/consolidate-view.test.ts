@@ -10,6 +10,11 @@ const kept: ConsolidateStep = {
   pos: 4, from: { slot: 30, name: 'MONOLITH DARK' }, to: { slot: 29, name: 'MONOLITH' }, presets: ['Dark', 'Dark drums'], free: false,
   keep: 'palette 6 also uses it', plays: 'tempo',
 };
+/** a Fold anyway step (owner 2026-11-28: "fold anyway (b)"): the entry takes the base slot's settings no preset holds */
+const padding: ConsolidateStep = {
+  pos: 4, from: { slot: 21, name: 'PADDING' }, to: { slot: 3, name: 'HERA 6' }, presets: ['PADDING'], free: true,
+  adopts: ['Output level 1.00 → 0.39', 'FX button unassigned → gate'],
+};
 
 const form = (): HTMLFormElement => document.querySelector<HTMLFormElement>('form.consolidate')!;
 const boxes = (): HTMLInputElement[] => [...form().querySelectorAll<HTMLInputElement>('input[type=checkbox]')];
@@ -61,6 +66,27 @@ describe('askConsolidate', () => {
     tick(boxes()[1], true);
     key(boxes()[1], 'Enter');
     expect(await got).toEqual([kept]);
+  });
+
+  it('a Fold anyway row starts unticked and lists every setting it takes from the slot; ticked, it is taken', async () => {
+    const got = askConsolidate([hera, padding]);
+    expect(boxes().map((b) => b.checked)).toEqual([true, false]);
+    expect(form().querySelector('.consolidate-text')!.textContent).toContain('A Fold anyway entry differs from that slot in settings no preset holds');
+    const row = form().querySelectorAll('.consolidate-step')[1];
+    expect(row.querySelector('.consolidate-line')!.textContent).toBe('5 · PADDING → slot 4 · HERA 6 with preset PADDING; slot 22 freed');
+    expect([...row.querySelectorAll('.consolidate-note')].map((n) => n.textContent)).toEqual(["Fold anyway: it takes slot 4's Output level 1.00 → 0.39; FX button unassigned → gate"]);
+    tick(boxes()[1], true);
+    ok().click();
+    expect(await got).toEqual([hera, padding]);
+  });
+
+  it('with only Fold anyway rows nothing is ticked and Consolidate is disabled until one is', async () => {
+    const got = askConsolidate([padding]);
+    expect(ok().disabled).toBe(true);
+    tick(boxes()[0], true);
+    expect(ok().disabled).toBe(false);
+    ok().click();
+    expect(await got).toEqual([padding]);
   });
 
   it('Escape and Cancel answer null', async () => {

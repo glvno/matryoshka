@@ -1043,11 +1043,25 @@ describe('Consolidate the FM-1\'s palette (owner 2026-11-27: "agree with everyth
     await fm1.quiet();
     expect([fm1.entries[0]?.slot, fm1.slots[23].used, fm1.entries[1]?.slot]).toEqual([22, true, 22]);
   });
-  it('leaves an entry whose slot differs from its base in a setting no preset holds, and says why', async () => {
-    const { palette } = await bug({ extra: (p) => { p.modules.find((m) => m.type === 'output')!.params.level = 0.33; } });
+  it('offers an entry whose slot differs from its base in a setting no preset holds as Fold anyway, listing the change; done, it plays the base\'s setting, and Undo puts everything back (owner 2026-11-28: "fold anyway (b)")', async () => {
+    const { fm1, link, palette, held, sound, bin } = await bug({ extra: (p) => { p.modules.find((m) => m.type === 'output')!.params.level = 0.33; } });
+    const was = fm1.entries[0];
     const plan = await palette.planConsolidate();
     if (typeof plan === 'string') throw new Error(plan);
-    expect(plan.items).toEqual([]);
-    expect(plan.skipped).toEqual(['1 · HERA 6 PLUCKPAD (slot 23 · HERA 6 differs from it in settings no device preset holds: Output level)']);
+    expect(plan.skipped).toEqual([]);
+    expect(plan.items.map((i) => i.step)).toEqual([{ pos: 0, from: { slot: 23, name: 'HERA 6 PLUCKPAD' }, to: { slot: 22, name: 'HERA 6' }, presets: ['HERA 6 PLUCKPAD'], free: true, adopts: ['Output level 0.33 → 0.39'] }]);
+    const r = await palette.consolidate(plan.items);
+    await fm1.quiet();
+    expect(r.line).toBe('Consolidated 1 onto slot 23 · HERA 6; slot 24 freed');
+    // (the FM-1 plays the sound with slot 23's Output level: slot 23's patch with the preset)
+    const plays = structuredClone(held);
+    applyEntry(plays, fm1.entries[0]!);
+    const named = structuredClone(sound);
+    synth(named).preset = 'HERA 6 PLUCKPAD';
+    named.modules.find((m) => m.type === 'output')!.params.level = held.modules.find((m) => m.type === 'output')!.params.level;
+    expect(link.encodeFor(plays)).toEqual(link.encodeFor(named));
+    expect(await r.undo!()).toBe('Consolidate undone: each entry is back on its own slot');
+    await fm1.quiet();
+    expect([fm1.slots[23], fm1.bins[23], fm1.entries[0], fm1.presets]).toEqual([{ slot: 23, used: true, length: bin.length, name: 'HERA 6 PLUCKPAD' }, bin, was, []]);
   });
 });

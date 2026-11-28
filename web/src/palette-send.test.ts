@@ -12,7 +12,7 @@ import { addUserPreset, applyPreset, currentValues, presetsOf, replaceUserPreset
 import { DEFS } from './modules';
 import { connect, newPatch, validatePatch, type Patch } from './patch';
 import { Palette, PALETTE_FROM, type PalettePorts } from './palette';
-import { entryOf, NO_SAME_STRUCTURE, paletteDevices, patchPattern } from './preset-fit';
+import { applyEntry, entryOf, NO_SAME_STRUCTURE, paletteDevices, patchPattern, takeTempoAndPatterns, unheldChanges } from './preset-fit';
 import { FM1_PRESETS } from './presets';
 import { CMD, FEATURE25_SLOT_GET, FEATURE5_FX_DRAWERS, type PaletteEntry } from './protocol';
 import { readPaletteFile, type PaletteSound } from './saved-palettes';
@@ -431,28 +431,62 @@ describe('FX drawer effects switched, in a palette saved before 1.30 (owner 2026
       + '"Stub" is palette 8 (stored as a new patch in slot 26, as it changes settings no device preset holds: Harmonizer switched on)');
   });
 
-  it('Consolidate, each stored whole as 1.30.0 sent it: folds the switched effects, and says why each other one stays', async () => {
+  /** the FM-1 after a factory reset with each sound stored whole as 1.30.0's Send stored it, the palette on them */
+  async function stored() {
     const list = sounds();
-    const { fm1, link, palette } = await reset();
+    const r = await reset();
     list.forEach((s, pos) => {
-      const slot = NAMES.length + pos, name = deviceName(s.name), bin = link.encodeFor(s.patch);
-      fm1.slots[slot] = { slot, used: true, length: bin.length, name };
-      fm1.bins[slot] = bin;
-      fm1.entries[pos] = entryOf(s.patch, slot, name);
+      const slot = NAMES.length + pos, name = deviceName(s.name), bin = r.link.encodeFor(s.patch);
+      r.fm1.slots[slot] = { slot, used: true, length: bin.length, name };
+      r.fm1.bins[slot] = bin;
+      r.fm1.entries[pos] = entryOf(s.patch, slot, name);
     });
+    return { ...r, list };
+  }
+
+  it('Consolidate, each stored whole as 1.30.0 sent it: folds the switched effects, offers Fold anyway only for settings no preset holds, and says why each other one stays', async () => {
+    const { fm1, palette } = await stored();
     const plan = await palette.planConsolidate();
     if (typeof plan === 'string') throw new Error(plan);
-    expect(plan.items.map(({ step }) => [step.pos + 1, step.to.name, step.presets])).toEqual([[1, 'HERA 6', ['HERA 6 DL']], [2, 'ORACLE V', []], [3, 'BRIEFCASE 3', ['BRIEFCASE 3 B']]]);
+    expect(plan.items.map(({ step }) => [step.pos + 1, step.to.name, step.presets, step.adopts])).toEqual([
+      [1, 'HERA 6', ['HERA 6 DL'], undefined], [2, 'ORACLE V', [], undefined], [3, 'BRIEFCASE 3', ['BRIEFCASE 3 B'], undefined],
+      [5, 'HERA 6', ['PADDING'], ['FX button unassigned → gate', 'Output level 1.00 → 0.39']],
+      [8, 'ALGO FOUR', ['STUB'], ['Harmonizer on → off']],
+    ]);
     expect(plan.skipped).toEqual([
       '4 · MONOLITH D MV (its FX drawer holds Reverb, Drive, Chorus, Delay and slot 1 · MONOLITH D\'s holds Drive, Chorus, Delay, Reverb: a preset cannot add, take out or move an effect)',
-      '5 · PADDING (slot 4 · HERA 6 differs from it in settings no device preset holds: the FX button, Output level)',
       '6 · GAUZE (its FX drawer holds Delay, Reverb and slot 4 · HERA 6\'s holds Drive, Delay, Reverb: a preset cannot add, take out or move an effect)',
       '7 · WORKHORSE (its FX drawer holds Drive and slot 20 · VERONA DRUM 1 has none: a preset cannot add, take out or move an effect)',
-      '8 · STUB (slot 7 · ALGO FOUR differs from it in settings no device preset holds: Harmonizer switched on)',
     ]);
-    const r = await palette.consolidate(plan.items);
+    // (as the confirmation leaves them: the Fold anyway rows unticked)
+    const r = await palette.consolidate(plan.items.filter((i) => !i.step.adopts));
     await fm1.quiet();
     expect(r.line).toBe('Consolidated 1 onto slot 4 · HERA 6, 2 onto slot 2 · ORACLE V, 3 onto slot 10 · BRIEFCASE 3; slots 22, 23, 24 freed');
-    expect([0, 1, 2].map((pos) => fm1.entries[pos]?.slot)).toEqual([3, 1, 9]);
+    expect(fm1.entries.map((e) => e?.slot)).toEqual([3, 1, 9, 24, 25, 26, 27, 28]);
+  });
+
+  it('Fold anyway, ticked: Padding and Stub become presets on their factory slots and play its settings; Undo puts them back', async () => {
+    const { fm1, palette, list } = await stored();
+    const was = structuredClone(fm1.entries), bins = fm1.bins.slice();
+    const plan = await palette.planConsolidate();
+    if (typeof plan === 'string') throw new Error(plan);
+    const r = await palette.consolidate(plan.items.filter((i) => i.step.adopts));
+    await fm1.quiet();
+    expect(r.line).toBe('Consolidated 5 onto slot 4 · HERA 6, 8 onto slot 7 · ALGO FOUR; slots 26, 29 freed');
+    // (each plays its factory slot with its preset: the sound with the slot's Output level and FX button, or Harmonizer,
+    // and the slot's tempo and patterns, which an entry always plays)
+    const padding = structuredClone(list[4].patch), stub = structuredClone(list[7].patch);
+    padding.modules.find((m) => m.type === 'output')!.params.level = FM1_PRESETS['Hera 6']().modules.find((m) => m.type === 'output')!.params.level;
+    delete padding.modules.find((m) => m.type === 'fm1')!.panel!.kinds!.fx;
+    stub.modules.find((m) => m.type === 'harm')!.bypass = true;
+    for (const [pos, factory, sound] of [[4, 'Hera 6', padding], [7, 'Algo Four', stub]] as const) {
+      const plays = FM1_PRESETS[factory]();
+      applyEntry(plays, fm1.entries[pos]!);
+      takeTempoAndPatterns(sound, plays);
+      expect([fm1.entries[pos]?.slot, unheldChanges(plays, sound)], list[pos].name).toEqual([NAMES.indexOf(factory), []]);
+    }
+    expect(await r.undo!()).toBe('Consolidate undone: each entry is back on its own slot');
+    await fm1.quiet();
+    expect([fm1.entries, fm1.bins.slice(0, bins.length)]).toEqual([was, bins]);
   });
 });
